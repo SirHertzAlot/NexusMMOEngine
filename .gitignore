@@ -37,3 +37,6 @@ dist-app/
 # Repo archives and handoff patches can bundle the art above
 /patches/
 *.zip
+
+# preview:world output (regenerable)
+world-preview.png

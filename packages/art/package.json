@@ -15,7 +15,7 @@
   "name": "@mmo-engine/art",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@mmo-engine/schema && tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
     "convert:packs": "node dist/src/convert/convert-packs.js"
   },

@@ -122,8 +122,10 @@ async function main(): Promise<void> {
     await closeWorldCatalogs();
     console.log(
       `[bake] terrain: ${report.chunks} chunks (${spec.sizeChunks * spec.chunkWorldSize / 1000} km square), ` +
-        `heights ${report.heightRange.min}..${report.heightRange.max} m, ${report.riverChunks} river chunks, ` +
-        `erosion mean ${report.erosion.meanM.toFixed(2)} m, peak memory ${report.peakRssMb} MB`,
+        `land ${report.landPercent}%, heights ${report.heightRange.min}..${report.heightRange.max} m, ` +
+        `${report.mountainRanges} mountain range(s), ${report.riverChunks} river chunks, ` +
+        `erosion mean ${report.erosion.meanM.toFixed(2)} m (deepest river cut ${report.erosion.deepestCutM.toFixed(1)} m), ` +
+        `peak memory ${report.peakRssMb} MB`,
     );
     spawn = report.spawn;
     console.log(`[bake] spawn point (${spawn.x}, ${spawn.z})${report.spawn.biome ? ` in ${report.spawn.biome}` : ""}`);
@@ -144,7 +146,7 @@ async function main(): Promise<void> {
     for (let dx = -RADIUS; dx <= RADIUS; dx++) area.push([scx + dx, scz + dz]);
   }
   const sim = new SimWorld();
-  const populator = makeScatterPopulator(worldSeed, chunkSize);
+  const populator = makeScatterPopulator(worldSeed, chunkSize, spec ? { seaLevel: spec.land.seaLevel } : {});
   const chunkStore = new ChunkEntityStore(dbPath);
   const chunks = new ChunkStreamer({
     terrain,
@@ -169,6 +171,7 @@ async function main(): Promise<void> {
     const { minChunk, maxChunk } = worldBounds(spec);
     store.setMeta("world_bounds", JSON.stringify({ minChunk, maxChunk }));
     store.setMeta("spawn_point", JSON.stringify({ x: spawn.x, z: spawn.z }));
+    store.setMeta("sea_level", String(spec.land.seaLevel));
     // Biome map values index this list (clients colour the ground by it).
     store.setMeta("world_biomes", JSON.stringify(spec.biomes.map((b) => b.id)));
   }
