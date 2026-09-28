@@ -188,6 +188,12 @@ function shape(biome: BiomeSpec, n: number, x: number, z: number): number {
   }
 }
 
+function smoothstep(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return t * t * (3 - 2 * t);
+}
+
 /**
  * Droplet hydraulic erosion (after Hans Theobald Beyer's method). Heights
  * are handled in units of one cell width so gradients are true slopes.
@@ -438,6 +444,15 @@ export function surveyWorld(spec: WorldSpec): Survey {
         dist[r] = Math.hypot(x - regions[r].x, z - regions[r].z);
         if (dist[r] < dmin) [dmin, nearest] = [dist[r], r];
       }
+      // Depth inside the nearest biome's territory: half the extra distance
+      // to the nearest region of another biome (0 on the border). Touching
+      // regions of one biome are one territory, so they form one massif.
+      const nearBiome = regions[nearest].biome;
+      let dOther = Infinity;
+      for (let r = 0; r < regions.length; r++) {
+        if (regions[r].biome !== nearBiome && dist[r] < dOther) dOther = dist[r];
+      }
+      const depth = (dOther - dmin) / 2;
       biomeWeight.fill(0);
       let wsum = 0;
       for (let r = 0; r < regions.length; r++) {
@@ -452,7 +467,10 @@ export function surveyWorld(spec: WorldSpec): Survey {
         const w = biomeWeight[b] / wsum;
         if (w === 0) continue;
         const bs = spec.biomes[b];
-        h += w * (bs.base + bs.relief * shape(bs, biomeNoise[b][i], x, z));
+        // A ramped biome's relief grows from nothing at its border to full
+        // height `ramp` metres in (it has none outside its territory).
+        const rise = bs.ramp > 0 ? (b === nearBiome ? smoothstep(depth / bs.ramp) : 0) : 1;
+        h += w * (bs.base + bs.relief * rise * shape(bs, biomeNoise[b][i], x, z));
         rough += w * bs.roughness;
         if (biomeWeight[b] > biomeWeight[dominant]) dominant = b;
       }

@@ -36,6 +36,13 @@ export const BiomeSpecSchema = z.object({
   scale: z.number().positive(),
   /** Fine detail strength, 0..1 (0 = smooth, 1 = rough ground). */
   roughness: z.number().min(0).max(1),
+  /**
+   * How far inside the biome's territory its relief reaches full height,
+   * metres; 0 = full relief right up to the border. Mountains use it to
+   * climb from foothills into a massif instead of standing as a wall on
+   * the region border.
+   */
+  ramp: z.number().min(0).default(0),
 });
 
 export const WorldSpecSchema = z
