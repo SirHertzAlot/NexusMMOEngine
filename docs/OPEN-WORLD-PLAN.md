@@ -27,8 +27,10 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
   coarse survey, in batches.
 - **One landmass, a peninsula (2026-09-28):** the sea opens onto the
   south edge and the lower 70% of the east and west edges (60% of the
-  world's edge); the land runs off the north edge. Mountain ranges (up
-  to ~400 m) are pushed up across the prevailing wind.
+  world's edge); the land runs off the north edge, and the far north is
+  frozen. One mountain chain runs across the prevailing wind with spurs
+  branching off it (no parallel rows), a volcano on it (the highest peak,
+  ~550 m, with a crater); most peaks hold ice.
 - **Biomes emerge, uncapped:** no biome counts. Climate (wind-carried
   rain, rain shadows, temperature by height and distance from the sea)
   and water (sea, lakes, rivers) are simulated, and ordered biome rules
@@ -101,27 +103,39 @@ reproducible (same spec → same bytes), not identical across platforms.
       rebuilt 2026-09-28 (`src/terrain/`):
   - *Land* (`landmass.ts`): a peninsula mask from a warped coast frame
     (bays, headlands; one landmass, tiny islands sink); land rises from
-    the shore with broad swells, the sea floor falls to a shelf; ranges
-    are curving axes laid across the wind, clear of the coast, pushed up
-    with ridged crests.
-  - *Erosion* (`erosion.ts`): thermal collapse to the angle of repose
-    (38°), stream-power river incision weighted by rain (valleys, up to
-    ~24 m), droplet erosion spawned where it rains (deltas at the sea).
+    the shore with broad swells, the sea floor falls to a shelf. One main
+    chain across the wind (`ranges.center` pins it; it may run on past
+    the land edge), spurs branching off at 35–80° and merging where they
+    join, ridges warped into a network. Volcanoes sit on the chain,
+    raised after erosion (young): a lobed cone, a crater, vent heat.
+  - *Erosion* (`erosion.ts`, `glaciers.ts`): thermal collapse to the
+    angle of repose (38°); glaciers — ice where it's cold and snowy
+    enough, flowing down the drainage, melting with warmth and sunshine
+    (shaded ice lasts), grinding U-shaped valleys, calving at the sea,
+    dropping terminal moraines, feeding rivers and lakes with meltwater;
+    stream-power river incision weighted by rain and meltwater (valleys,
+    up to ~24 m); droplet erosion spawned where it rains (deltas).
   - *Water* (`hydrology.ts`): sea = below sea level and open to it;
     lakes in hollows deep, large and wet enough (dry ones stay dry);
     rivers from rain-weighted drainage.
-  - *Climate* (`climate.ts`): temperature from the sea edge, inland
-    cooling and a steep lapse rate (snow on the peaks); rain carried off
-    the sea by the wind, falling faster uphill, spent behind ranges.
+  - *Climate* (`climate.ts`, `sun.ts`): sunlight per slope over the day
+    (the sun over the sea edge, an equinox path, cast shadows);
+    temperature from the sea edge, a cooling curve that freezes the far
+    north, a steep lapse rate, sun-facing slopes warmer and vents hot;
+    rain carried off the sea by the wind, falling faster uphill, spent
+    behind ranges; a UV index (sun height, slope, altitude, cloud, snow
+    reflection) stored for gameplay.
   - *Biomes* (`biomes.ts`): first matching rule wins (temperature, rain,
     height, slope, distance to sea / any water / fresh water, sea
     exposure); a majority filter and a minimum patch size make regions;
     each biome adds surface character (dunes across the wind, flat
     swamps, rolling or ridged hills).
-  - Default world: land 53.5%; sea 46.5, mountains 16.4, forest 13.5,
-    desert 8, plains 8, beach 3.2, swamp 1.4, rainforest 1.2, snow 1.1,
-    lake 0.7 (% of the world); deserts in both rain shadows; survey ~9 s,
-    full bake ~19 s.
+  - Default world: a spine down the peninsula (westerly wind: wet west,
+    rain-shadow desert east), the volcano mid-spine, a frozen north.
+    Biomes % of the world: sea 48, forest 8.4, glacier 8.1, snow 7.6,
+    mountains 7.4, tundra 6.8, desert 4.5, beach 3, plains 2.9, volcanic
+    2.1, swamp 0.8, lake 0.4; UV index 2.6–18 over land. Survey ~12 s,
+    full bake ~21 s.
 - [x] **Fine heightmap:** bicubic upsampling of the survey to the 16/15 m
       sample grid plus native detail noise × biome roughness — a pure
       function of the global sample, so seams are exact by construction.

@@ -166,6 +166,12 @@ export const WorldSpecSchema = z
       .object({
         /** Main chains, laid across the wind and kept apart. */
         count: z.number().int().min(0).default(1),
+        /**
+         * Where the first main chain is centred, world metres (x east, z
+         * south); omitted = anywhere on the land (the seed picks). Its
+         * volcanoes move with it.
+         */
+        center: z.object({ x: z.number(), z: z.number() }).strict().optional(),
         /** Crest height above the land, metres. */
         height: z.number().min(0).default(380),
         /** Full width of a range, metres. */

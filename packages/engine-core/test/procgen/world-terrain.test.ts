@@ -371,6 +371,20 @@ describe("survey: climate and biomes", () => {
     }
   });
 
+  test("ranges.center pins the main chain; its volcano moves with it and stays in the world", () => {
+    const at = (center: { x: number; z: number }) =>
+      surveyWorld(parseWorldSpec({ ...MID, ranges: { ...MID.ranges, center }, volcano: { count: 1, radius: 200, height: 250 } }));
+    const b = worldBounds(MID);
+    for (const center of [{ x: -120, z: -200 }, { x: 150, z: -300 }]) {
+      const w = at(center);
+      const chain = w.ranges.find((r) => !r.spur)!;
+      assert.deepEqual(chain.points[Math.floor(chain.points.length / 2)], center, "the chain is centred where asked");
+      const [v] = w.volcanoes;
+      assert.ok(chain.points.some((p) => p.x === v.x && p.z === v.z), "the volcano sits on the chain");
+      assert.ok(v.x > b.min && v.x < b.max && v.z > b.min && v.z < b.max, "inside the world");
+    }
+  });
+
   test("a volcano: the highest peak, a crater at its top, a warm vent", () => {
     const withVolcano = parseWorldSpec({ ...MID, volcano: { count: 1, height: 300, radius: 250, craterRadius: 40, craterDepth: 25, heatC: 12 } });
     const v = surveyWorld(withVolcano);
