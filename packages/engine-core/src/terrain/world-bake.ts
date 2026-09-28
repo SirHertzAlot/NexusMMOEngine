@@ -1,0 +1,239 @@
+/**
+ * World terrain bake — survey the whole world, store every chunk's tile,
+ * the survey maps, and the SurrealDB catalog. Run once per world (terrain
+ * is data afterwards; the editor sculpts it, the server reads it).
+ *
+ * Memory stays bounded: the survey is a few MB, and fine tiles are
+ * generated and written in batches, never held for the whole world.
+ */
+
+import * as path from "node:path";
+import type { TerrainTile } from "@mmo-engine/protocol";
+import { TerrainTileStore } from "../persist/terrain-tiles.js";
+import { rocksdbUrl, writeWorldCatalog, type CatalogChunk } from "../persist/world-catalog.js";
+import { surveyWorld, type Survey } from "./survey.js";
+import { WorldHeights } from "./world-heights.js";
+import { worldBounds, type WorldSpec } from "./world-spec.js";
+
+export interface TerrainBakeReport {
+  chunks: number;
+  surveyMs: number;
+  tilesMs: number;
+  catalogMs: number | null;
+  peakRssMb: number;
+  heightRange: { min: number; max: number };
+  biomeRegions: Record<string, number>;
+  riverChunks: number;
+  erosion: { meanM: number; maxM: number };
+  /** Where players spawn (world metres) and the biome it lies in. */
+  spawn: { x: number; z: number; biome: string | null };
+}
+
+export interface TerrainBakeOptions {
+  /** world.db to write tiles and maps into. */
+  dbPath: string;
+  /** SurrealDB storage directory; null skips the catalog. */
+  catalogDir: string | null;
+  log?: (line: string) => void;
+}
+
+const TILE_BATCH = 2500;
+
+/** Index of the region server owning a chunk. */
+export function regionOf(spec: WorldSpec, cx: number, cz: number): [number, number] {
+  const { minChunk } = worldBounds(spec);
+  const per = spec.sizeChunks / spec.regionsPerSide;
+  return [Math.floor((cx - minChunk) / per), Math.floor((cz - minChunk) / per)];
+}
+
+/**
+ * Where players spawn (see WorldSpec.spawn): the given point, or the
+ * flattest dry spot within ~48 m of the centre of the spawn biome's region
+ * nearest the world centre. Falls back to the world centre when that
+ * biome has no regions.
+ */
+export function spawnPoint(spec: WorldSpec, survey: Survey): { x: number; z: number; biome: string | null } {
+  if (spec.spawn?.x !== undefined && spec.spawn.z !== undefined) return { x: spec.spawn.x, z: spec.spawn.z, biome: null };
+  const id = spec.spawn?.biome ?? spec.biomes.find((b) => b.pick === "rest")!.id;
+  const bi = spec.biomes.findIndex((b) => b.id === id);
+  const region = survey.regions
+    .filter((r) => r.biome === bi)
+    .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z) || a.index - b.index)[0];
+  if (!region) return { x: 0, z: 0, biome: null };
+
+  const g = survey.grid;
+  const W = g.width;
+  const cu = Math.round((region.x - g.originX) / g.cell);
+  const cv = Math.round((region.z - g.originZ) / g.cell);
+  const reach = Math.ceil(48 / g.cell);
+  let best = { u: cu, v: cv, slope: Infinity, d: Infinity };
+  for (let v = cv - reach; v <= cv + reach; v++) {
+    for (let u = cu - reach; u <= cu + reach; u++) {
+      if (u < 1 || v < 1 || u >= W - 1 || v >= g.depth - 1) continue;
+      const i = v * W + u;
+      if (survey.river[i]) continue;
+      const h = survey.height[i];
+      const slope = Math.max(
+        Math.abs(h - survey.height[i - 1]),
+        Math.abs(h - survey.height[i + 1]),
+        Math.abs(h - survey.height[i - W]),
+        Math.abs(h - survey.height[i + W]),
+      );
+      const d = Math.hypot(u - cu, v - cv);
+      if (slope < best.slope - 1e-6 || (Math.abs(slope - best.slope) <= 1e-6 && d < best.d)) best = { u, v, slope, d };
+    }
+  }
+  return { x: g.originX + best.u * g.cell, z: g.originZ + best.v * g.cell, biome: id };
+}
+
+/** Survey cells overlapping a chunk: [u0, v0, u1, v1] inclusive. */
+function chunkCells(survey: Survey, cx: number, cz: number): [number, number, number, number] {
+  const g = survey.grid;
+  const size = survey.spec.chunkWorldSize;
+  const cell = (w: number, origin: number): number => Math.floor((w - origin) / g.cell);
+  return [
+    cell(cx * size, g.originX),
+    cell(cz * size, g.originZ),
+    cell((cx + 1) * size - 1e-6, g.originX),
+    cell((cz + 1) * size - 1e-6, g.originZ),
+  ];
+}
+
+export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions): Promise<TerrainBakeReport> {
+  const log = opts.log ?? (() => {});
+  let peakRss = process.memoryUsage().rss;
+  const sampleRss = (): void => {
+    peakRss = Math.max(peakRss, process.memoryUsage().rss);
+  };
+
+  let t0 = performance.now();
+  const survey = surveyWorld(spec);
+  const surveyMs = performance.now() - t0;
+  sampleRss();
+  const biomeRegions: Record<string, number> = {};
+  for (const r of survey.regions) {
+    const id = spec.biomes[r.biome].id;
+    biomeRegions[id] = (biomeRegions[id] ?? 0) + 1;
+  }
+  log(`[bake] survey ${survey.grid.width}x${survey.grid.depth} cells (${spec.coarseCell} m) in ${(surveyMs / 1000).toFixed(1)} s — regions ${JSON.stringify(biomeRegions)}`);
+
+  // ---- fine tiles, in batches ------------------------------------------
+  t0 = performance.now();
+  const heights = new WorldHeights(survey);
+  const store = new TerrainTileStore(opts.dbPath);
+  const { minChunk, maxChunk } = worldBounds(spec);
+  const catalogChunks: CatalogChunk[] = [];
+  let batch: TerrainTile[] = [];
+  let min = Infinity;
+  let max = -Infinity;
+  let riverChunks = 0;
+  try {
+    for (let cz = minChunk; cz <= maxChunk; cz++) {
+      for (let cx = minChunk; cx <= maxChunk; cx++) {
+        const tile = new Float32Array(heights.chunkSamples);
+        heights.generateChunk(0n, cx, cz, 0, tile);
+        let tmin = Infinity;
+        let tmax = -Infinity;
+        for (const h of tile) {
+          if (h < tmin) tmin = h;
+          if (h > tmax) tmax = h;
+        }
+        min = Math.min(min, tmin);
+        max = Math.max(max, tmax);
+        batch.push({ cx, cz, heights: tile });
+        if (batch.length >= TILE_BATCH) {
+          store.putMany(batch);
+          batch = [];
+          sampleRss();
+        }
+        const [u0, v0, u1, v1] = chunkCells(survey, cx, cz);
+        let river = false;
+        for (let v = v0; v <= v1 && !river; v++) {
+          for (let u = u0; u <= u1; u++) if (survey.river[v * survey.grid.width + u]) river = true;
+        }
+        if (river) riverChunks++;
+        const centre = Math.round((v0 + v1) / 2) * survey.grid.width + Math.round((u0 + u1) / 2);
+        catalogChunks.push({
+          cx,
+          cz,
+          region: regionOf(spec, cx, cz),
+          biome: spec.biomes[survey.biome[centre]].id,
+          minHeight: Math.round(tmin * 100) / 100,
+          maxHeight: Math.round(tmax * 100) / 100,
+          river,
+        });
+      }
+      if ((cz - minChunk + 1) % 50 === 0) log(`[bake]   tiles: ${cz - minChunk + 1}/${spec.sizeChunks} rows`);
+    }
+    if (batch.length > 0) store.putMany(batch);
+
+    // Survey maps: the world-scale view for the editor, scatter, and
+    // settlements (biome and river placement).
+    const g = survey.grid;
+    const map = <T extends Float32Array | Uint8Array | Uint16Array>(data: T) => ({
+      width: g.width, depth: g.depth, cell: g.cell, originX: g.originX, originZ: g.originZ, data,
+    });
+    store.putMap("elevation", map(survey.height));
+    store.putMap("biome", map(survey.biome));
+    store.putMap("region", map(survey.region));
+    store.putMap("moisture", map(survey.moisture));
+    store.putMap("flow", map(survey.flow));
+    store.putMap("river", map(survey.river));
+    store.putMap("roughness", map(survey.roughness));
+  } finally {
+    store.close();
+  }
+  const tilesMs = performance.now() - t0;
+  sampleRss();
+  log(`[bake] ${catalogChunks.length} tiles + survey maps in ${(tilesMs / 1000).toFixed(1)} s`);
+
+  // ---- SurrealDB catalog ---------------------------------------------------
+  let catalogMs: number | null = null;
+  if (opts.catalogDir !== null) {
+    t0 = performance.now();
+    const per = spec.sizeChunks / spec.regionsPerSide;
+    const regions = [];
+    for (let rz = 0; rz < spec.regionsPerSide; rz++) {
+      for (let rx = 0; rx < spec.regionsPerSide; rx++) {
+        regions.push({
+          rx,
+          rz,
+          chunks: { x0: minChunk + rx * per, z0: minChunk + rz * per, x1: minChunk + (rx + 1) * per - 1, z1: minChunk + (rz + 1) * per - 1 },
+        });
+      }
+    }
+    await writeWorldCatalog(rocksdbUrl(opts.catalogDir), {
+      world: {
+        name: spec.name,
+        seed: spec.seed,
+        sizeChunks: spec.sizeChunks,
+        chunkWorldSize: spec.chunkWorldSize,
+        regionsPerSide: spec.regionsPerSide,
+      },
+      regions,
+      biomeRegions: survey.regions.map((r) => ({
+        index: r.index,
+        biome: spec.biomes[r.biome].id,
+        x: Math.round(r.x),
+        z: Math.round(r.z),
+      })),
+      chunks: catalogChunks,
+    });
+    catalogMs = performance.now() - t0;
+    sampleRss();
+    log(`[bake] SurrealDB catalog (${path.basename(opts.catalogDir)}): ${catalogChunks.length} chunks, ${regions.length} regions in ${(catalogMs / 1000).toFixed(1)} s`);
+  }
+
+  return {
+    chunks: catalogChunks.length,
+    surveyMs,
+    tilesMs,
+    catalogMs,
+    peakRssMb: Math.round(peakRss / 1e6),
+    heightRange: { min: Math.round(min * 10) / 10, max: Math.round(max * 10) / 10 },
+    biomeRegions,
+    riverChunks,
+    erosion: { meanM: survey.stats.erodedMeanM, maxM: survey.stats.erodedMaxM },
+    spawn: spawnPoint(spec, survey),
+  };
+}

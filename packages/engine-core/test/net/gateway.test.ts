@@ -148,6 +148,20 @@ describe("gateway: hello / welcome / snapshot / deltas", () => {
     for (const d of deltas) decodeDelta(d); // must parse, never throw
     await client.close();
   });
+
+  it("spawns players standing on the ground (groundHeightAt)", async () => {
+    const ground = (x: number, z: number): number => 120 + x * 0.5 - z * 0.25;
+    const url = await startGateway({ groundHeightAt: ground });
+    const a = await connectHello(url, "alice", creds("alice"));
+    const b = await connectHello(url, "user-a", creds("user-a"));
+    for (const { entity, snapshot } of [a, b]) {
+      const me = snapshot.transforms.find((r) => r.wireId === entity);
+      assert(me);
+      assert.equal(me.py, Math.fround(ground(me.px, me.pz)), `spawned on the ground at (${me.px}, ${me.pz})`);
+    }
+    await a.client.close();
+    await b.client.close();
+  });
 });
 
 describe("gateway: intents drive the sim", () => {

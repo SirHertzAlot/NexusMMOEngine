@@ -116,6 +116,11 @@ export interface CharacterOptions {
   worldSeed?: bigint;
   /** Chunk edge length in world units. Default 16. */
   chunkSize?: number;
+  /**
+   * World edge, world units: players are held inside it (beyond it there
+   * is no terrain to stand on). Default: unbounded.
+   */
+  bounds?: { minX: number; minZ: number; maxX: number; maxZ: number };
 }
 
 /**
@@ -144,6 +149,7 @@ export class CharacterSystem implements SimSystem {
   private readonly source: ChunkDataSource | null;
   private readonly worldSeed: bigint;
   private readonly chunkSize: number;
+  private readonly bounds: CharacterOptions["bounds"] | null;
   /**
    * Per-chunk heightfields, keyed by packed (cx, cz). Bounded LRU: players
    * spread across chunks each hit their own entry instead of thrashing a
@@ -157,10 +163,11 @@ export class CharacterSystem implements SimSystem {
     this.source = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? 0n;
     this.chunkSize = opts.chunkSize ?? 16;
+    this.bounds = opts.bounds ?? null;
   }
 
   /** Terrain height under world (x, z); y=0 without a source. */
-  private groundHeight(x: number, z: number): number {
+  groundHeight(x: number, z: number): number {
     if (this.source === null) return 0;
     const cx = Math.floor(x / this.chunkSize);
     const cz = Math.floor(z / this.chunkSize);
@@ -192,8 +199,14 @@ export class CharacterSystem implements SimSystem {
       const live = new Set<number>(eids as unknown as number[]);
       for (const e of this.jumpHeld) if (!live.has(e)) this.jumpHeld.delete(e);
     }
+    const b = this.bounds;
     for (let k = 0; k < eids.length; k++) {
       const e = eids[k] as number;
+      if (b) {
+        // Just inside the edge: the last chunk's far side belongs to no chunk.
+        Transform.px[e] = Math.min(b.maxX - 0.01, Math.max(b.minX, Transform.px[e]));
+        Transform.pz[e] = Math.min(b.maxZ - 0.01, Math.max(b.minZ, Transform.pz[e]));
+      }
       const ground = this.groundHeight(Transform.px[e], Transform.pz[e]);
       const grounded = Transform.py[e] <= ground + GROUND_SNAP;
       const wantJump = PlayerIntent.jump[e] !== 0;
@@ -286,6 +299,14 @@ export interface PhysicsBackend {
   ): void;
   bodyCount(): number;
   destroy(): void;
+  /**
+   * Static terrain collision: one height-field body per chunk tile,
+   * keyed by a chunk key (its own id space). Optional: mock backends
+   * without terrain skip it. See addon-physics addTerrain.
+   */
+  addTerrain?(key: bigint, originX: number, originZ: number, spacing: number, samples: Float32Array, friction: number): boolean;
+  removeTerrain?(key: bigint): void;
+  terrainCount?(): number;
 }
 
 /** syncBodies flag: force-set a dynamic body's transform (respawns, restores). */
@@ -395,6 +416,31 @@ export class PhysicsSystem implements SimSystem {
   /** Shut the backend down explicitly (native world teardown). */
   close(): void {
     this.backend.destroy();
+  }
+
+  /**
+   * Terrain collision for streamed chunks (a ChunkStreamer `colliders`
+   * hook): each loaded chunk's tile becomes a static height field, so
+   * physics bodies rest on the same surface characters walk on and
+   * clients render. A no-op when the backend has no terrain support.
+   */
+  terrainColliders(chunkWorldSize: number, friction = 0.8): {
+    add(cx: number, cz: number, heights: Float32Array): void;
+    remove(cx: number, cz: number): void;
+  } {
+    const key = (cx: number, cz: number): bigint =>
+      (BigInt.asUintN(32, BigInt(cx)) << 32n) | BigInt.asUintN(32, BigInt(cz));
+    return {
+      add: (cx, cz, heights) => {
+        if (!this.backend.addTerrain) return;
+        // Samples span the chunk edge to edge (neighbours share borders).
+        const spacing = chunkWorldSize / (Math.sqrt(heights.length) - 1);
+        if (!this.backend.addTerrain(key(cx, cz), cx * chunkWorldSize, cz * chunkWorldSize, spacing, heights, friction)) {
+          throw new Error(`physics: terrain collider for chunk ${cx},${cz} was rejected`);
+        }
+      },
+      remove: (cx, cz) => this.backend.removeTerrain?.(key(cx, cz)),
+    };
   }
 
   step(sim: SimWorld, dtSeconds: number): void {
@@ -652,6 +698,9 @@ interface JoltAddonModule {
     ): void;
     bodyCount(): number;
     destroy(): void;
+    addTerrain(key: bigint, originX: number, originZ: number, spacing: number, samples: Float32Array, friction: number): boolean;
+    removeTerrain(key: bigint): void;
+    terrainCount(): number;
   };
   ShapeKind: { Box: 0; Sphere: 1 };
   MotionType: { Static: 0; Kinematic: 1; Dynamic: 2 };
@@ -681,5 +730,9 @@ export function createJoltBackend(): PhysicsBackend {
       world.copyResults(count, entityIds, pos, quat, linVel, angVel),
     bodyCount: () => world.bodyCount(),
     destroy: () => world.destroy(),
+    addTerrain: (key, originX, originZ, spacing, samples, friction) =>
+      world.addTerrain(key, originX, originZ, spacing, samples, friction),
+    removeTerrain: (key) => world.removeTerrain(key),
+    terrainCount: () => world.terrainCount(),
   };
 }

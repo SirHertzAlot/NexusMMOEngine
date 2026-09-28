@@ -31,6 +31,7 @@
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -38,6 +39,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -297,6 +299,64 @@ struct mj_physics_world {
 
   int bodyCount() const { return static_cast<int>(mBodies.size()); }
 
+  // Jolt splits each height-field cell along its (0,0)-(1,1) diagonal;
+  // the engine's terrain (client mesh, grounding) splits along
+  // (1,0)-(0,1). A height field rotated +90 degrees about Y maps one onto
+  // the other without flipping any triangle: local sample (i, j) lands at
+  // world (x = j, z = side-1-i) when the body sits at
+  // (origin_x, 0, origin_z + (side-1)*spacing).
+  bool addTerrain(uint64_t key, float origin_x, float origin_z, float spacing,
+                  int side, const float *samples, float friction) {
+    if (side < 4 || (side & 1) != 0 || !(spacing > 0.0f) || samples == nullptr)
+      return false;
+    removeTerrain(key); // replace: a sculpted chunk re-adds its tile
+    std::vector<float> local(static_cast<size_t>(side) * side);
+    for (int gz = 0; gz < side; ++gz)
+      for (int gx = 0; gx < side; ++gx)
+        local[static_cast<size_t>(gx) * side + (side - 1 - gz)] =
+            samples[static_cast<size_t>(gz) * side + gx];
+    // Heap-allocated settings (see addBodies: never stack + SetEmbedded).
+    JPH::Ref<JPH::HeightFieldShapeSettings> settings =
+        new JPH::HeightFieldShapeSettings(
+            local.data(), JPH::Vec3::sZero(),
+            JPH::Vec3(spacing, 1.0f, spacing), static_cast<JPH::uint32>(side));
+    JPH::ShapeSettings::ShapeResult shape = settings->Create();
+    if (shape.HasError())
+      return false;
+    JPH::BodyCreationSettings bcs(
+        shape.Get(),
+        JPH::RVec3(origin_x, 0.0f,
+                   origin_z + static_cast<float>(side - 1) * spacing),
+        JPH::Quat::sRotation(JPH::Vec3::sAxisY(), 0.5f * JPH::JPH_PI),
+        JPH::EMotionType::Static, Layers::NON_MOVING);
+    bcs.mFriction = friction;
+    JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    JPH::Body *body = bi.CreateBody(bcs);
+    if (body == nullptr)
+      return false; // body limit reached
+    bi.AddBody(body->GetID(), JPH::EActivation::DontActivate);
+    mTerrain.emplace(key, body->GetID());
+    return true;
+  }
+
+  void removeTerrain(uint64_t key) {
+    auto it = mTerrain.find(key);
+    if (it == mTerrain.end())
+      return;
+    JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    JPH::AABox bounds = bi.GetTransformedShape(it->second).GetWorldSpaceBounds();
+    bounds.ExpandBy(JPH::Vec3::sReplicate(0.5f));
+    bi.RemoveBody(it->second);
+    bi.DestroyBody(it->second);
+    mTerrain.erase(it);
+    // Bodies resting on the ground are usually asleep, and removing what
+    // they rest on doesn't wake them: they would hang in the air (or, on
+    // a replaced/sculpted tile, never settle onto the new surface).
+    bi.ActivateBodiesInAABox(bounds, JPH::BroadPhaseLayerFilter(), JPH::ObjectLayerFilter());
+  }
+
+  int terrainCount() const { return static_cast<int>(mTerrain.size()); }
+
 private:
   BPLayerInterfaceImpl mBroadPhaseLayerInterface;
   ObjectVsBroadPhaseLayerFilterImpl mObjectVsBroadPhaseLayerFilter;
@@ -305,6 +365,7 @@ private:
   std::unique_ptr<JPH::JobSystemSingleThreaded> mJobSystem;
   std::unique_ptr<JPH::PhysicsSystem> mSystem;
   std::unordered_map<uint64_t, BodyRecord> mBodies;
+  std::unordered_map<uint64_t, JPH::BodyID> mTerrain;
 };
 
 // --- C ABI -----------------------------------------------------------------
@@ -368,6 +429,26 @@ void mj_physics_copy_results(mj_physics_world_t *world, int n,
 
 int mj_physics_body_count(mj_physics_world_t *world) {
   return world == nullptr ? 0 : world->bodyCount();
+}
+
+int mj_physics_add_terrain(mj_physics_world_t *world, uint64_t key,
+                           float origin_x, float origin_z, float spacing,
+                           int side, const float *samples, float friction) {
+  if (world == nullptr)
+    return 0;
+  return world->addTerrain(key, origin_x, origin_z, spacing, side, samples,
+                           friction)
+             ? 1
+             : 0;
+}
+
+void mj_physics_remove_terrain(mj_physics_world_t *world, uint64_t key) {
+  if (world != nullptr)
+    world->removeTerrain(key);
+}
+
+int mj_physics_terrain_count(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->terrainCount();
 }
 
 } // extern "C"

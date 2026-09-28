@@ -6,6 +6,8 @@
  * u64 ids travel as JSON strings — JS numbers can't hold 64 bits.
  */
 
+import type { WorldInfo } from "./world-info.js";
+
 /** Message type byte. Values are the catalog contract — never renumber. */
 export enum MessageType {
   Hello = 0x01,
@@ -48,6 +50,8 @@ export interface WelcomeMessage {
   tick_hz: number; // 30 — the fixed sim rate (architecture brief §2)
   snapshot_every: number; // 300 — full-snapshot broadcast cadence, in ticks
   session_token: string; // opaque token: reconnect identity from here on
+  /** A baked world's extent and coarse map (see world-info.ts); absent for legacy worlds. */
+  world?: WorldInfo;
 }
 
 /** S→C on protocol/auth/server errors. */

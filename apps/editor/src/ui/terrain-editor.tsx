@@ -1,11 +1,14 @@
 /**
  * Terrain panel — sculpt the world heightmap the game server runs on.
  *
- * Loads the stored tiles of the editor's world (the same world.db as
- * `npm run server`), edits them as ONE HeightGrid (so seams can't open),
- * and saves only the chunks that changed. Saving re-seats trees/rocks onto
- * the new ground and stops play mode first (a running server would
- * overwrite the edit); the server serves the new terrain on next start.
+ * Loads one area of the editor's world (the same world.db as
+ * `npm run server`) - a baked world is far too big to load whole - edits
+ * it as ONE HeightGrid (so seams can't open), and saves only the chunks
+ * that changed. The area's outer border is pinned when the world continues
+ * past it, so edits always meet the unloaded neighbours exactly. Saving
+ * re-seats trees/rocks onto the new ground and stops play mode first (a
+ * running server would overwrite the edit); the server serves the new
+ * terrain on next start.
  */
 
 import * as React from "react";
@@ -21,6 +24,7 @@ import {
   generateTerrain,
   loadTerrain,
   saveTerrain,
+  type TerrainArea,
   type WorldTerrain,
 } from "../terrain/terrain-api.js";
 import {
@@ -61,6 +65,9 @@ export function TerrainEditorPanel(): React.JSX.Element {
   const [message, setMessage] = React.useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [amplitude, setAmplitude] = React.useState("2");
   const [frequency, setFrequency] = React.useState("0.02");
+  // The area loaded (what Revert/Save reload) and the one being typed.
+  const areaRef = React.useRef<TerrainArea | undefined>(undefined);
+  const [areaInput, setAreaInput] = React.useState({ cx: "0", cz: "0", radius: "8" });
 
   React.useEffect(() => {
     brush.current = { tool, radius, strength };
@@ -108,7 +115,10 @@ export function TerrainEditorPanel(): React.JSX.Element {
 
   const showWorld = React.useCallback((w: WorldTerrain) => {
     const grid = HeightGrid.fromTiles(w.tiles);
+    if (w.partial) grid.pinBorders();
     gridRef.current = grid;
+    areaRef.current = w.area;
+    setAreaInput({ cx: String(w.area.cx), cz: String(w.area.cz), radius: String(w.area.radius) });
     chunkSize.current = w.chunkWorldSize;
     dirtyRef.current.clear();
     setDirtyCount(0);
@@ -118,10 +128,10 @@ export function TerrainEditorPanel(): React.JSX.Element {
     viewRef.current?.setWorld(grid, w.props, w.chunkWorldSize);
   }, []);
 
-  const reload = React.useCallback(async () => {
+  const reload = React.useCallback(async (area?: TerrainArea) => {
     setBusy("loading");
     try {
-      showWorld(await loadTerrain());
+      showWorld(await loadTerrain(area ?? areaRef.current));
     } catch (err) {
       setMessage({ tone: "bad", text: errText(err) });
     } finally {
@@ -154,12 +164,23 @@ export function TerrainEditorPanel(): React.JSX.Element {
           `Saved ${r.saved} chunk(s); ${r.reseatedProps} prop(s) moved onto the new ground.` +
           (r.stoppedPlayMode ? " Play mode was stopped — start it again to see the change." : ""),
       });
-      showWorld(await loadTerrain());
+      showWorld(await loadTerrain(areaRef.current));
     } catch (err) {
       setMessage({ tone: "bad", text: errText(err) });
     } finally {
       setBusy(null);
     }
+  }
+
+  function loadArea(): void {
+    const area = { cx: Number(areaInput.cx), cz: Number(areaInput.cz), radius: Number(areaInput.radius) };
+    if (![area.cx, area.cz, area.radius].every(Number.isInteger)) {
+      setMessage({ tone: "bad", text: "Area centre and radius are whole chunk numbers." });
+      return;
+    }
+    if (dirtyRef.current.size > 0 && !window.confirm("Loading another area discards your unsaved sculpting. Continue?")) return;
+    setMessage(null);
+    void reload(area);
   }
 
   async function regenerate(): Promise<void> {
@@ -252,6 +273,38 @@ export function TerrainEditorPanel(): React.JSX.Element {
           </div>
 
           <div className="flex flex-col gap-2 border-t border-border pt-4">
+            <SectionTitle>Area</SectionTitle>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="terrain-area-cx">Chunk X</Label>
+                <Input id="terrain-area-cx" value={areaInput.cx}
+                  onChange={(e) => setAreaInput({ ...areaInput, cx: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="terrain-area-cz">Chunk Z</Label>
+                <Input id="terrain-area-cz" value={areaInput.cz}
+                  onChange={(e) => setAreaInput({ ...areaInput, cz: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="terrain-area-r">Radius</Label>
+                <Input id="terrain-area-r" value={areaInput.radius}
+                  onChange={(e) => setAreaInput({ ...areaInput, radius: e.target.value })} />
+              </div>
+            </div>
+            <Button variant="secondary" size="sm" onClick={loadArea} disabled={busy !== null}>
+              {busy === "loading" ? "Loading…" : "Load area"}
+            </Button>
+            {world?.world && (
+              <p className="text-xs text-muted-foreground">
+                World "{world.world.name}": chunks {world.world.minChunk}..{world.world.maxChunk} on each axis
+                ({((world.world.maxChunk - world.world.minChunk + 1) * world.chunkWorldSize / 1000).toFixed(1)} km).
+                {world.partial && " The area's outer edge is pinned to its neighbours."}
+              </p>
+            )}
+          </div>
+
+          {world && !world.world && (
+          <div className="flex flex-col gap-2 border-t border-border pt-4">
             <SectionTitle>Regenerate from noise</SectionTitle>
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1">
@@ -267,13 +320,14 @@ export function TerrainEditorPanel(): React.JSX.Element {
               {busy === "generating" ? "Generating…" : "Preview regenerate"}
             </Button>
           </div>
+          )}
 
           {message && (
             <p className={`text-xs ${message.tone === "ok" ? "text-green-400" : "text-red-400"}`}>{message.text}</p>
           )}
           {world && (
             <p className="text-xs text-muted-foreground">
-              {world.tiles.length} chunk(s) · seed {world.seed} ·{" "}
+              {world.tiles.length} of {world.totalTiles || world.tiles.length} chunk(s) · seed {world.seed} ·{" "}
               <span className="font-mono break-all">{world.dataDir}</span>
             </p>
           )}

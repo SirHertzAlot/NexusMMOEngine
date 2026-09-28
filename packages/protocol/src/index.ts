@@ -30,3 +30,5 @@ export {
   TILE_SAMPLES,
 } from "./terrain-grid.js";
 export type { BrushStroke, BrushTool, TerrainTile } from "./terrain-grid.js";
+export { decodeWorldMap, encodeWorldMap } from "./world-info.js";
+export type { ChunkRange, WorldInfo, WorldMap, WorldMapWire } from "./world-info.js";

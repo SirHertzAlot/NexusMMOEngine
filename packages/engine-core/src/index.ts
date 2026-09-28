@@ -44,6 +44,7 @@ export type { SimSystem, PhysicsBackend, PhysicsAddBatch } from "./systems.js";
 export {
   collectFullState,
   collectDeltaState,
+  collectEntitiesState,
   attachChunkHeights,
   encodeSnapshot,
   encodeDelta,
@@ -119,6 +120,7 @@ export {
   scatterChunkToECS,
   scatterSeedU32,
   spawnScatterEntity,
+  makeScatterPopulator,
 } from "./procgen/scatter-spawn.js";
 export type { ScatterBinding, ScatterContent, ScatterChunkOptions } from "./procgen/scatter-spawn.js";
 
@@ -184,3 +186,17 @@ export {
 } from "./world/client.js";
 export type { WorldTransport, WorldClientOptions } from "./world/client.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
+
+export { ChunkEntityStore } from "./persist/chunk-entities.js";
+export type { ChunkEntitiesRow } from "./persist/chunk-entities.js";
+export { ChunkNavmesh } from "./navigation/chunk-navmesh.js";
+export type { ChunkNavmeshOptions, ChunkNavmeshLoad } from "./navigation/chunk-navmesh.js";
+export { ChunkStreamer, packChunk, unpackChunk } from "./streaming/chunk-streamer.js";
+export type {
+  ChunkBounds,
+  ChunkPopulator,
+  ChunkNavmeshHook,
+  ChunkColliderHook,
+  ChunkStreamerOptions,
+  ChunkStreamerStats,
+} from "./streaming/chunk-streamer.js";

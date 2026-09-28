@@ -265,3 +265,21 @@ export function scatterChunkToECS(
   const spawns = resolveSpawns(records, content.table);
   return spawns.map((s) => spawnScatterEntity(world, s));
 }
+
+/**
+ * A chunk's first-load contents for the ChunkStreamer: the scatter plan
+ * run over its heights. Loads the plan and the native binding once.
+ */
+export function makeScatterPopulator(worldSeed: bigint, chunkWorldSize: number): {
+  populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
+  readonly planHash: string;
+} {
+  const content = loadScatterContent();
+  const binding = makeScatterBinding();
+  return {
+    planHash: content.planHash,
+    populate(world, cx, cz, heights) {
+      scatterChunkToECS(world, binding, content, { worldSeed, cx, cz, heights, chunkWorldSize });
+    },
+  };
+}

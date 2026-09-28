@@ -8,7 +8,8 @@
  *   POST /api/editor/server/start  → spawn `npm run server` (one only)
  *   POST /api/editor/server/stop   → stop ONLY the process we started
  *   GET  /api/editor/server/status → { running, pid?, port? }
- *   GET  /api/editor/terrain       → the world heightmap tiles + props
+ *   GET  /api/editor/terrain       → the heightmap tiles + props around (0,0)
+ *   POST /api/editor/terrain/area  → the same for an area {cx, cz, radius}
  *   POST /api/editor/terrain/generate → generator preview (not saved)
  *   POST /api/editor/terrain       → save edited tiles (stops play mode first)
  *   GET  /api/editor/assets        → art-pack scan of <repo>/assets
@@ -576,6 +577,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url === "/api/editor/terrain" && req.method === "GET") {
             sendJson(res, 200, { ok: true, dataDir, ...(await runTerrainTool("export")) as object });
+            return;
+          }
+          if (url === "/api/editor/terrain/area" && req.method === "POST") {
+            const body = await readBody(req);
+            sendJson(res, 200, { ok: true, dataDir, ...(await runTerrainTool("export", body)) as object });
             return;
           }
           if (url === "/api/editor/terrain/generate" && req.method === "POST") {

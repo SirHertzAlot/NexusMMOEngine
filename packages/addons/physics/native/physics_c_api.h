@@ -96,6 +96,24 @@ void mj_physics_copy_results(mj_physics_world_t *world, int n,
 // Number of bodies currently in the native world (diagnostics).
 int mj_physics_body_count(mj_physics_world_t *world);
 
+/*
+ * Terrain: one static height-field body per chunk tile, keyed by a
+ * caller-chosen u64 (a chunk key — its own id space, separate from
+ * entity ids). `samples` holds side*side heights, row-major with X inner
+ * (samples[z*side + x]); sample (x, z) sits at world
+ * (origin_x + x*spacing, height, origin_z + z*spacing). Each cell splits
+ * into triangles along its (x+1, z)-(x, z+1) diagonal, like the engine's
+ * terrain mesh. Adding an existing key replaces it (a sculpted chunk).
+ * Returns 1 on success, 0 on invalid input (side must be even, >= 4).
+ */
+int mj_physics_add_terrain(mj_physics_world_t *world, uint64_t key,
+                           float origin_x, float origin_z, float spacing,
+                           int side, const float *samples, float friction);
+
+void mj_physics_remove_terrain(mj_physics_world_t *world, uint64_t key);
+
+int mj_physics_terrain_count(mj_physics_world_t *world);
+
 #ifdef __cplusplus
 }
 #endif

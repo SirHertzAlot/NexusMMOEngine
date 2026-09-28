@@ -31,7 +31,9 @@
     "flatbuffers": "^25.9.23",
     "ws": "^8.22.0",
     "zod": "^4.6.5",
-    "@mmo-engine/world-server": "0.1.0"
+    "@mmo-engine/world-server": "0.1.0",
+    "surrealdb": "^2.0.8",
+    "@surrealdb/node": "^3.0.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0"

@@ -2,10 +2,11 @@
  * Production server entry (Phase 3): `npm run server`.
  *
  * Wires the full authoritative stack in one Node process:
- *   SimWorld + IntentSystem + IntegrateSystem + Jolt PhysicsSystem +
- *   Recast NavigationSystem, a procgen chunk baked into the navmesh
- *   tile registry at boot, SQLite persistence (save every 300 ticks +
- *   on SIGTERM/SIGINT), CSV auth, and the WebSocket gateway.
+ *   SimWorld + ChunkStreamer (chunks, scatter, and navmesh tiles load
+ *   around players and unload behind them) + IntentSystem +
+ *   IntegrateSystem + Jolt PhysicsSystem + Recast NavigationSystem,
+ *   SQLite persistence (save every 300 ticks + on SIGTERM/SIGINT), CSV
+ *   auth, and the WebSocket gateway.
  *
  * The browser mirror client (apps/client) connects to this.
  *
@@ -13,9 +14,13 @@
  *   MMO_PORT       WebSocket listen port (default 7777)
  *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv
  *                  (default ./data, relative to the process cwd)
- *   MMO_WORLD_SEED procgen world seed (default 1234)
+ *   MMO_WORLD_SEED procgen world seed (default 1234; a world baked from a
+ *                  world spec uses the seed recorded at bake time)
  *   MMO_CHUNK_SIZE chunk world size in units (default 16)
- *   MMO_WORLD_RADIUS chunk radius around (0,0) loaded at boot (default 1 = 3x3)
+ *   MMO_WORLD_RADIUS spawn-area chunk radius, always loaded (default 1 =
+ *                  3x3 around the spawn point; a legacy world IS this area)
+ *   MMO_STREAM_RADIUS chunks loaded around each player (default 8 = 17x17,
+ *                  272 m: past the client's fog)
  *   MMO_TERRAIN_AMPLITUDE  terrain height scale, world units (default 2)
  *   MMO_TERRAIN_FREQUENCY  terrain noise frequency, (0, 1] (default 0.02)
  *                  Must match the values the world was baked with.
@@ -26,7 +31,8 @@
  *   WORLD_URL          world server base URL (unset = standalone region)
  *   WORLD_API_KEY      bootstrap key matching the world's WORLD_API_KEY
  *   REGION_ID          this region's id (default "region-1")
- *   REGION_CHUNK_RANGE "x0,z0,x1,z1" owned chunk bounds (default "0,0,4096,4096")
+ *   REGION_CHUNK_RANGE "x0,z0,x1,z1" owned chunk bounds (default "0,0,4096,4096";
+ *                      when set, the streamer loads only inside it)
  *   REGION_ENDPOINT    advertised gateway URL (default ws://localhost:<MMO_PORT>)
  *   REGION_CAPACITY    max entities for load reporting (default 1000)
  *
@@ -49,19 +55,16 @@ import {
   createJoltBackend,
   NavigationSystem,
   createNavigationBackend,
-  bakeChunkTile,
-  DEFAULT_BAKE_CONFIG,
   makeProcgenChunkSource,
   makeTileChunkSource,
-  heightsFingerprint,
   createCachedChunkSource,
   terrainOptionsFromEnv,
   TerrainTileStore,
   SERVER_PID_FILE,
-  spawnChunk,
-  loadScatterContent,
-  makeScatterBinding,
-  scatterChunkToECS,
+  makeScatterPopulator,
+  ChunkEntityStore,
+  ChunkNavmesh,
+  ChunkStreamer,
   SnapshotStore,
   installShutdownHook,
   NavmeshTileRegistry,
@@ -69,18 +72,24 @@ import {
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
-  type NavmeshTileKey,
+  type ChunkBounds,
 } from "./index.js";
+import { worldInfoFor } from "./terrain/world-info.js";
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 const SAVE_EVERY_TICKS = 300;
-/** Chunk radius around (0,0) loaded at boot (1 = 3x3), matching bake:world. */
+/** Spawn-area chunk radius, always loaded (1 = 3x3), matching bake:world. */
 const WORLD_RADIUS = Number(process.env.MMO_WORLD_RADIUS ?? 1);
 if (!Number.isInteger(WORLD_RADIUS) || WORLD_RADIUS < 0) {
   throw new Error(`MMO_WORLD_RADIUS must be a non-negative integer (got ${process.env.MMO_WORLD_RADIUS})`);
+}
+/** Chunks loaded around each player (Chebyshev radius). */
+const STREAM_RADIUS = Number(process.env.MMO_STREAM_RADIUS ?? 8);
+if (!Number.isInteger(STREAM_RADIUS) || STREAM_RADIUS < 0) {
+  throw new Error(`MMO_STREAM_RADIUS must be a non-negative integer (got ${process.env.MMO_STREAM_RADIUS})`);
 }
 
 async function main(): Promise<void> {
@@ -91,6 +100,13 @@ async function main(): Promise<void> {
     dbPath: path.join(DATA_DIR, "world.db"),
     saveEveryTicks: SAVE_EVERY_TICKS,
   });
+  // A world baked from a spec carries its own seed: scatter, navmesh keys,
+  // and anything generated later must agree with its baked terrain.
+  const bakedSeed = store.getMeta("world_seed");
+  const worldSeed = bakedSeed !== null ? BigInt(bakedSeed) : WORLD_SEED;
+  if (bakedSeed !== null && process.env.MMO_WORLD_SEED !== undefined && worldSeed !== WORLD_SEED) {
+    console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
+  }
   const sim = new SimWorld();
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
@@ -108,10 +124,15 @@ async function main(): Promise<void> {
     originZ: 0,
     tileWorldSize: CHUNK_SIZE,
     profiles: [{ id: 0, agentHeight: 2, agentRadius: 0.6, agentMaxClimb: 0.9 }],
+    // One tile per loaded chunk (up to ~441 per player while streaming).
+    // Poly refs are 32-bit: tile bits + poly bits must stay <= 22, and a
+    // 16 m terrain tile holds at most a few dozen polys.
+    maxTiles: 8192,
+    maxPolys: 256,
   });
   const navigation = new NavigationSystem({ backend: navBackend });
 
-  // ---- procgen chunk + navmesh tile, baked at boot (never per tick) ------
+  // ---- terrain ---------------------------------------------------------------
   const terrain = makeProcgenChunkSource(terrainOptionsFromEnv());
   // The world heightmap is DATA once generated: stored tiles (baked or
   // sculpted in the editor) win; chunks without a tile — never baked, the
@@ -139,115 +160,123 @@ async function main(): Promise<void> {
       );
     }
   }
-  const registry = new NavmeshTileRegistry({ dir: path.join(DATA_DIR, "navmesh") });
-  // The (2R+1)^2 chunk area around the origin — the same area bake:world
-  // produces, so a fresh boot (e.g. editor play mode) and a baked world
-  // look alike, and the player spawn grid (-14..14) is on rendered ground.
+  const navmeshDir = path.join(DATA_DIR, "navmesh");
+  const registry = new NavmeshTileRegistry({ dir: navmeshDir });
+
+  // ---- world extent and spawn --------------------------------------------
+  // A baked world records its chunk range and spawn point. A legacy world
+  // is just the spawn area around the origin.
+  const spawnMeta = store.getMeta("spawn_point");
+  const spawn = spawnMeta ? (JSON.parse(spawnMeta) as { x: number; z: number }) : { x: 0, z: 0 };
+  const scx = Math.floor(spawn.x / CHUNK_SIZE);
+  const scz = Math.floor(spawn.z / CHUNK_SIZE);
   const area: Array<[number, number]> = [];
-  for (let cz = -WORLD_RADIUS; cz <= WORLD_RADIUS; cz++) {
-    for (let cx = -WORLD_RADIUS; cx <= WORLD_RADIUS; cx++) area.push([cx, cz]);
+  for (let dz = -WORLD_RADIUS; dz <= WORLD_RADIUS; dz++) {
+    for (let dx = -WORLD_RADIUS; dx <= WORLD_RADIUS; dx++) area.push([scx + dx, scz + dz]);
   }
+  const boundsMeta = store.getMeta("world_bounds");
+  let bounds: ChunkBounds;
+  if (boundsMeta) {
+    const { minChunk, maxChunk } = JSON.parse(boundsMeta) as { minChunk: number; maxChunk: number };
+    bounds = { minCx: minChunk, minCz: minChunk, maxCx: maxChunk, maxCz: maxChunk };
+  } else {
+    bounds = { minCx: scx - WORLD_RADIUS, minCz: scz - WORLD_RADIUS, maxCx: scx + WORLD_RADIUS, maxCz: scz + WORLD_RADIUS };
+  }
+  if (process.env.REGION_CHUNK_RANGE) {
+    // A region streams only the chunks it owns.
+    const [x0, z0, x1, z1] = process.env.REGION_CHUNK_RANGE.split(",").map(Number);
+    bounds = {
+      minCx: Math.max(bounds.minCx, x0),
+      minCz: Math.max(bounds.minCz, z0),
+      maxCx: Math.min(bounds.maxCx, x1),
+      maxCz: Math.min(bounds.maxCz, z1),
+    };
+  }
+
   if (storedTiles === 0 && (freshBoot || store.getMeta("terrain_version") === terrainVersion)) {
-    // Freeze the loaded area's terrain into tiles (fresh worlds, and legacy
+    // Freeze the spawn area's terrain into tiles (fresh worlds, and legacy
     // worlds whose generator settings still match): from here on it is
     // editable data, not a formula.
     tiles.putMany(
       area.map(([cx, cz]) => {
         const heights = new Float32Array(procgen.chunkSamples);
-        procgen.generateChunk(WORLD_SEED, cx, cz, 0, heights);
+        procgen.generateChunk(worldSeed, cx, cz, 0, heights);
         return { cx, cz, heights };
       }),
     );
   }
-  if (freshBoot) {
-    // PCG scatter (slice 4): chunk-load-time spawn of environment
-    // entities from the cooked scatter plan. Runs only when the chunk
-    // entity is spawned (fresh boot) — never on reboot restore — so
-    // scatter output is never duplicated. Entities persist through the
-    // normal snapshot path like everything else.
-    const scatterContent = loadScatterContent();
-    const scatterBinding = makeScatterBinding();
-    let scattered = 0;
-    for (const [cx, cz] of area) {
-      const { heights } = spawnChunk(sim, procgen, WORLD_SEED, cx, cz, 0);
-      scattered += scatterChunkToECS(sim, scatterBinding, scatterContent, {
-        worldSeed: WORLD_SEED,
-        cx,
-        cz,
-        heights,
-        chunkWorldSize: CHUNK_SIZE,
-      }).length;
-    }
-    console.log(
-      `[scatter] ${area.length} chunk(s): ${scattered} entities ` +
-        `(plan ${scatterContent.planHash.slice(0, 12)}…)`,
-    );
-  }
-  // Navmesh tile per chunk. The registry is the tile source of truth:
-  // bake only when missing, then load from the stored (content-addressed)
-  // blob, never re-bake.
-  const loadedTileKeys: NavmeshTileKey[] = [];
-  let navPolys = 0;
-  for (const [cx, cz] of area) {
-    const baked = bakeChunkTile(
-      {
-        backend: navBackend,
-        source: procgen,
-        seed: WORLD_SEED,
-        chunkWorldSize: CHUNK_SIZE,
-        bakeConfig: { ...DEFAULT_BAKE_CONFIG },
-      },
-      cx,
-      cz,
-    );
-    navPolys += baked.stats.polyCount;
-    // Keyed to this chunk's exact heights: a sculpted chunk gets a new key
-    // (fresh bake); untouched chunks keep reusing their cached tile.
-    const chunkHeights = new Float32Array(procgen.chunkSamples);
-    procgen.generateChunk(WORLD_SEED, cx, cz, 0, chunkHeights);
-    const tileKey: NavmeshTileKey = {
-      worldSeed: WORLD_SEED.toString(),
-      chunkX: cx,
-      chunkZ: cz,
-      terrainVersion: heightsFingerprint(chunkHeights),
-      agentProfile: 0,
-      bakeConfigHash: baked.bakeConfigHash,
-    };
-    if (!registry.lookup(tileKey)) registry.register(tileKey, baked.blob);
-    const tileBlob = fs.readFileSync(
-      registry.tilePath(registry.lookup(tileKey)!.blobSha256),
-    );
-    navBackend.loadTiles([new Uint8Array(tileBlob)]);
-    loadedTileKeys.push(tileKey);
-  }
+
+  // ---- streaming ---------------------------------------------------------
+  // Chunks (terrain entity + scatter + navmesh tile) load around players
+  // and unload behind them; unloaded chunks' entities live in world.db
+  // (ChunkEntityStore) and come back exactly as they were left. The spawn
+  // area stays loaded. Restored chunks are adopted, never loaded twice.
+  const chunkNavmesh = new ChunkNavmesh({
+    backend: navBackend,
+    registry,
+    registryDir: navmeshDir,
+    source: procgen,
+    seed: worldSeed,
+    chunkWorldSize: CHUNK_SIZE,
+    // New tiles bake off the tick thread (5-40 ms each on first visit).
+    worker: true,
+  });
+  // Unload passes write rows on the tick thread. The snapshot store's
+  // background worker already checkpoints world.db after every save, so
+  // this connection leaves checkpoints (and their fsync) to it.
+  const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  const populator = makeScatterPopulator(worldSeed, CHUNK_SIZE);
+  const streamer = new ChunkStreamer({
+    terrain: procgen,
+    worldSeed,
+    chunkWorldSize: CHUNK_SIZE,
+    store: chunkStore,
+    populator,
+    navmesh: chunkNavmesh,
+    // Each loaded chunk is static ground for physics bodies.
+    colliders: physics.terrainColliders(CHUNK_SIZE),
+    bounds,
+    pinned: area,
+    loadRadius: STREAM_RADIUS,
+  });
+  const adopted = streamer.adopt(sim);
+  const warmed = streamer.warm(sim);
+  console.log(
+    `[stream] ${adopted} chunk(s) restored, ${warmed} loaded for the spawn area; ` +
+      `radius ${STREAM_RADIUS} around players, world chunks ${bounds.minCx}..${bounds.maxCx} x ${bounds.minCz}..${bounds.maxCz} ` +
+      `(scatter plan ${populator.planHash.slice(0, 12)}…)`,
+  );
 
   // ---- auth + gateway ----------------------------------------------------
   const credentialStore = new CsvCredentialStore(
     path.join(DATA_DIR, "users.csv"),
   );
-  // The debug overlay draws what pathfinding can actually use: the tiles
-  // currently LOADED into the nav backend (tracked above at load time),
-  // not every key the registry happens to know about.
-  const tileBounds = (
-    k: NavmeshTileKey,
-  ): [number, number, number, number] => [
-    k.chunkX * CHUNK_SIZE,
-    k.chunkZ * CHUNK_SIZE,
-    (k.chunkX + 1) * CHUNK_SIZE,
-    (k.chunkZ + 1) * CHUNK_SIZE,
-  ];
+  // Kinematic character control (gravity/jump/grounding) corrects the
+  // integrated Y in the same tick, before snapshot collection. Players are
+  // held inside the world's edge.
+  const character = new CharacterSystem({
+    chunkSource: procgen,
+    worldSeed,
+    chunkSize: CHUNK_SIZE,
+    bounds: {
+      minX: bounds.minCx * CHUNK_SIZE,
+      minZ: bounds.minCz * CHUNK_SIZE,
+      maxX: (bounds.maxCx + 1) * CHUNK_SIZE,
+      maxZ: (bounds.maxCz + 1) * CHUNK_SIZE,
+    },
+  });
   const gw = new Gateway({
     port: PORT,
     world: sim,
-    systems: [
-      new IntentSystem(),
-      new IntegrateSystem(),
-      // Kinematic character control (gravity/jump/grounding) corrects
-      // the integrated Y in the same tick, before snapshot collection.
-      new CharacterSystem({ chunkSource: procgen, worldSeed: WORLD_SEED }),
-      physics,
-      navigation,
-    ],
+    // The streamer runs first: chunks it loads this tick are in this
+    // tick's delta, and physics picks up their bodies in the same tick.
+    systems: [streamer, new IntentSystem(), new IntegrateSystem(), character, physics, navigation],
+    // Players spawn standing on the terrain (a baked world's ground is
+    // anywhere from a swamp floor below 0 to mountain tops).
+    groundHeightAt: (x, z) => character.groundHeight(x, z),
+    spawnPoint: spawn,
+    // Baked worlds: extent + coarse map for the client's far horizon.
+    worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     startTick: freshBoot ? 1 : restoredTick! + 1,
     // Terrain-height channel (slice 4.1): the gateway attaches authoritative
@@ -257,10 +286,11 @@ async function main(): Promise<void> {
     // Editor-only debug (protocol v3, 0x0a): read-only answers composed
     // from the live sim. The gateway only validates/authenticates and
     // encodes — all sim knowledge lives behind this interface.
+    // The overlay draws what pathfinding can use: the tiles loaded now.
     debugSource: makeDebugSource({
       world: sim,
       navigation,
-      loadedTileBounds: () => loadedTileKeys.map(tileBounds),
+      loadedTileBounds: () => chunkNavmesh.bounds(),
     }),
   });
 
@@ -307,8 +337,10 @@ async function main(): Promise<void> {
   const saveTimer = setInterval(() => {
     if (gw.serverTick >= nextSaveTick) {
       const result = store.saveWorld(gw.serverTick, sim);
+      const st = streamer.stats;
       console.log(
-        `[server] saved tick ${result.tick} (${result.entityCount} entities, ${result.bytes} B, ${result.ms.toFixed(1)} ms)`,
+        `[server] saved tick ${result.tick} (${result.entityCount} entities, ${result.bytes} B, ${result.ms.toFixed(1)} ms) | ` +
+          `chunks ${st.loaded} loaded, ${st.queued} queued, ${st.loads} loads / ${st.unloads} unloads, navmesh ${chunkNavmesh.size} tile(s)`,
       );
       if (worldClient?.registered) {
         const digest = crypto
@@ -353,9 +385,9 @@ async function main(): Promise<void> {
   console.log(`[server] listening on ws://0.0.0.0:${port}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +
-      `seed ${WORLD_SEED} | chunk ${CHUNK_SIZE}u | ` +
+      `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +
       `terrain ${storedTiles > 0 ? `${storedTiles} stored tile(s)` : `amp ${terrain.amplitude} freq ${terrain.frequency} (v${terrainVersion})`} | ` +
-      `navmesh ${loadedTileKeys.length} tile(s), ${navPolys} polys | data ${DATA_DIR}`,
+      `spawn (${spawn.x}, ${spawn.z}) | navmesh ${chunkNavmesh.size} tile(s) | data ${DATA_DIR}`,
   );
   console.log(
     `[server] no users yet? create one in the client ("Create account" tab), or: MMO_DEV_PASSWORD=<8-128 chars> npm run seed:user --workspace=@mmo-engine/engine-core -- <name>`,

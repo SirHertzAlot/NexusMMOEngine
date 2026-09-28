@@ -19,9 +19,9 @@
  * it to a real version when the pack is published.
  */
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, extname, join, relative, sep } from "node:path";
-import type { AssetManifest } from "./manifest.js";
+import { checkManifestFiles, parseManifestJSON, type AssetManifest } from "./manifest.js";
 import { errMessage } from "./util.js";
 
 const MODEL_EXTS: ReadonlySet<string> = new Set([".glb", ".gltf"]);
@@ -98,11 +98,34 @@ function duplicateIdDiagnostics(
 }
 
 /**
- * Scan `<root>/models/` and `<root>/textures/` into a manifest.
- * Never throws for missing/unreadable directories — problems land in
- * `diagnostics` and the manifest contains whatever was found.
+ * The pack's asset list. A `<root>/manifest.json` (e.g. written by the
+ * pack converter, with pack-qualified ids) wins: it is validated and every
+ * file it references is checked to exist. Without one — or when it is
+ * invalid — `<root>/models/` and `<root>/textures/` are scanned instead.
+ * Never throws: problems land in `diagnostics`.
  */
 export function scanAssetDir(root: string): ScanResult {
+  const manifestPath = join(root, "manifest.json");
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = parseManifestJSON(JSON.parse(readFileSync(manifestPath, "utf8")));
+      const present = new Set(
+        [...manifest.models, ...manifest.textures]
+          .map((e) => e.file)
+          .filter((f) => existsSync(join(root, f))),
+      );
+      return { manifest, diagnostics: checkManifestFiles(manifest, present) };
+    } catch (err) {
+      const fallback = scanDirs(root);
+      fallback.diagnostics.unshift(`manifest.json is invalid, scanned folders instead: ${errMessage(err)}`);
+      return fallback;
+    }
+  }
+  return scanDirs(root);
+}
+
+/** Scan `<root>/models/` and `<root>/textures/` into a manifest. */
+function scanDirs(root: string): ScanResult {
   const diagnostics: string[] = [];
   const rawModels = collectFiles(join(root, "models"), root, MODEL_EXTS, "models", diagnostics);
   const rawTextures = collectFiles(join(root, "textures"), root, TEXTURE_EXTS, "textures", diagnostics);

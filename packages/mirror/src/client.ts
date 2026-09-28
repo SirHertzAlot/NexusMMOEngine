@@ -27,6 +27,7 @@ import {
   type IntentFields,
   type RegisterMessage,
   type WelcomeMessage,
+  type WorldInfo,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
 import { MirrorState } from "./state.js";
@@ -54,6 +55,8 @@ export class MirrorClient {
   sessionToken: string | null = null;
   serverTick = 0;
   tickHz = 30;
+  /** A baked world's extent and coarse map, from the welcome; null for legacy worlds. */
+  world: WorldInfo | null = null;
   lastError: ErrorMessage | null = null;
   closed = false;
 
@@ -289,6 +292,7 @@ export class MirrorClient {
     this.sessionToken = w.session_token;
     this.serverTick = w.server_tick;
     this.tickHz = w.tick_hz;
+    this.world = w.world ?? null;
     this.events.onWelcome(w);
     this.welcomeResolve?.(w);
     this.welcomeResolve = null;

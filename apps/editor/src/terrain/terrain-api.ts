@@ -5,6 +5,13 @@
 
 import type { TerrainTile } from "@mmo-engine/protocol";
 
+/** An area of the world, in chunks: (2*radius+1)^2 chunks around (cx, cz). */
+export interface TerrainArea {
+  cx: number;
+  cz: number;
+  radius: number;
+}
+
 export interface WorldTerrain {
   dataDir: string;
   chunkWorldSize: number;
@@ -13,6 +20,13 @@ export interface WorldTerrain {
   stored: boolean;
   amplitude: number;
   frequency: number;
+  /** A world baked from a world spec (its chunk range); null for a legacy world. */
+  world: { name: string; minChunk: number; maxChunk: number } | null;
+  area: TerrainArea;
+  /** Stored tiles in the whole world. */
+  totalTiles: number;
+  /** More stored tiles exist outside this area (its border is pinned). */
+  partial: boolean;
   tiles: TerrainTile[];
   props: Array<[number, number, number]>;
 }
@@ -42,8 +56,12 @@ async function call<T>(url: string, body?: unknown): Promise<T> {
 const fromWire = (t: WireTile): TerrainTile => ({ cx: t.cx, cz: t.cz, heights: Float32Array.from(t.heights) });
 const toWire = (t: TerrainTile): WireTile => ({ cx: t.cx, cz: t.cz, heights: Array.from(t.heights) });
 
-export async function loadTerrain(): Promise<WorldTerrain> {
-  const json = await call<Omit<WorldTerrain, "tiles"> & { tiles: WireTile[] }>("/api/editor/terrain");
+/** Load one area of the world (default: around (0,0)). */
+export async function loadTerrain(area?: TerrainArea): Promise<WorldTerrain> {
+  const json = await call<Omit<WorldTerrain, "tiles"> & { tiles: WireTile[] }>(
+    area ? "/api/editor/terrain/area" : "/api/editor/terrain",
+    area,
+  );
   return { ...json, tiles: json.tiles.map(fromWire) };
 }
 
