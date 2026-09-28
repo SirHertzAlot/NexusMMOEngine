@@ -138,6 +138,25 @@ describe("InputState hygiene", () => {
     assert.deepEqual([input.toIntent().my, input.toIntent().buttons], [0, 0]);
   });
 
+  it("a press shorter than a frame still reaches one intent, then the release", () => {
+    const input = new InputState();
+    input.consumeDirty();
+    input.keyDown("KeyF");
+    input.keyUp("KeyF"); // released before the next frame read the input
+    assert.equal(input.consumeDirty(), true);
+    assert.equal(input.toIntent().buttons, IntentButton.ToggleFlight, "the press is sent");
+    assert.equal(input.consumeDirty(), true, "and the release follows");
+    assert.equal(input.toIntent().buttons, 0);
+    input.keyDown("Space");
+    input.keyUp("Space");
+    input.consumeDirty();
+    assert.equal(input.toIntent().jump, true, "a quick tap still jumps");
+    assert.equal(input.toIntent().jump, false);
+    input.keyDown("KeyF");
+    input.clear(); // window blur: nothing latched survives
+    assert.equal(input.toIntent().buttons, 0);
+  });
+
   it("reports dirty only when input changed", () => {
     const input = withKeys("KeyW");
     assert.equal(input.consumeDirty(), true);

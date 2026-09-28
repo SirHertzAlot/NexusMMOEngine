@@ -294,6 +294,32 @@ describe("MirrorClient.sendIntent", () => {
     assert.equal(sentIntents().length, 2, "nothing held, nothing resent");
   });
 
+  it("a press let go within one tick still reaches the server, then the release", async () => {
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    const sentIntents = () =>
+      socket.sent
+        .map((d) => decodeEnvelope(d))
+        .filter((e) => e.type === MessageType.Intent)
+        .map((e) => decodeIntentMessage(e.payload).intent);
+    const input = (buttons: number, jump = false) => ({
+      mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump, buttons,
+    });
+
+    client.sendIntent(input(0)); // tick 100: sent
+    client.sendIntent(input(1)); // press the flight toggle
+    client.sendIntent(input(0)); // and let go, all within tick 100
+    client.sendIntent(input(0, true)); // a jump tap
+    client.sendIntent(input(0)); // released too
+    for (let t = 101; t <= 104; t++) {
+      socket.receive(encodeEnvelope(MessageType.Delta, encodeDelta(emptyState(t, t - 1))));
+    }
+    assert.deepEqual(
+      sentIntents().map((i) => [i.buttons, i.jump]),
+      [[0, false], [1, false], [0, true], [0, false]],
+      "every press is seen for a tick, then released",
+    );
+  });
+
   it("sends nothing before the welcome arrives", async () => {
     let socket!: FakeSocket;
     const client = new MirrorClient(() => (socket = new FakeSocket()), {

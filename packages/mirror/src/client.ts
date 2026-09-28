@@ -47,6 +47,14 @@ export interface MirrorEvents {
 
 const CONNECT_TIMEOUT_MS = 8000;
 
+/** Held-back intents kept at most (a burst of presses; older changes collapse). */
+const MAX_PENDING_INTENTS = 4;
+
+/** Whether `next` lets go of a press (jump, a button) that `held` carries. */
+function releasesPress(held: IntentFields, next: IntentFields): boolean {
+  return (held.jump && !next.jump) || (held.buttons & ~next.buttons) !== 0;
+}
+
 export class MirrorClient {
   readonly state = new MirrorState();
   readonly interpolator = new Interpolator();
@@ -63,8 +71,8 @@ export class MirrorClient {
   private socket: SocketLike | null = null;
   /** Server tick the last intent was sent at (-1: none on this connection). */
   private intentSentAt = -1;
-  /** Newest intent held back until the next authoritative tick. */
-  private pendingIntent: IntentFields | null = null;
+  /** Intents held back for the next authoritative ticks, oldest first (one goes per tick). */
+  private pendingIntents: IntentFields[] = [];
   private welcomeResolve: ((w: WelcomeMessage) => void) | null = null;
   private welcomeReject: ((e: Error) => void) | null = null;
   private debugResolve: ((r: DebugResponse) => void) | null = null;
@@ -182,14 +190,27 @@ export class MirrorClient {
    * Hz — so a second call in the same tick is held and sent, newest
    * wins, when the next tick arrives. Otherwise a quick press-and-release
    * would lose the release and the player would keep running.
+   *
+   * Newest wins except over a held press (jump, a button) the newer
+   * intent lets go of: the server acts on presses, so that one keeps its
+   * place and the newer intent queues behind it, a tick later.
    */
   sendIntent(intent: IntentFields): void {
     if (!this.socket || this.playerEntity == null) return;
-    if (this.serverTick <= this.intentSentAt) {
-      this.pendingIntent = intent;
+    const q = this.pendingIntents;
+    if (this.serverTick <= this.intentSentAt || q.length > 0) {
+      const last = q[q.length - 1];
+      if (last !== undefined && !releasesPress(last, intent)) q[q.length - 1] = intent;
+      else if (q.length < MAX_PENDING_INTENTS) q.push(intent);
+      else q[q.length - 1] = intent;
+      if (this.serverTick > this.intentSentAt) this.flushIntent();
       return;
     }
-    this.pendingIntent = null;
+    this.transmitIntent(intent);
+  }
+
+  private transmitIntent(intent: IntentFields): void {
+    if (!this.socket || this.playerEntity == null) return;
     this.intentSentAt = this.serverTick;
     const payload = encodeIntentMessage(
       BigInt(this.serverTick),
@@ -305,7 +326,7 @@ export class MirrorClient {
     this.sessionToken = w.session_token;
     this.serverTick = w.server_tick;
     this.intentSentAt = -1; // a new connection: nothing sent on it yet
-    this.pendingIntent = null;
+    this.pendingIntents = [];
     this.tickHz = w.tick_hz;
     this.world = w.world ?? null;
     this.events.onWelcome(w);
@@ -334,9 +355,10 @@ export class MirrorClient {
     this.flushIntent();
   }
 
-  /** Send an intent held back by sendIntent, now that a new tick arrived. */
+  /** Send the oldest intent held back by sendIntent, now that a new tick arrived. */
   private flushIntent(): void {
-    if (this.pendingIntent !== null) this.sendIntent(this.pendingIntent);
+    const next = this.pendingIntents.shift();
+    if (next !== undefined) this.transmitIntent(next);
   }
 
   private onClose(): void {

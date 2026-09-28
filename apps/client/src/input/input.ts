@@ -31,16 +31,26 @@ const MOVEMENT_KEYS = new Set([
   "KeyF", // toggle flight
 ]);
 
+/**
+ * Keys whose press the server acts on (jump, flight toggle). A press is
+ * latched until an intent has carried it: at a low frame rate a key can
+ * go down and up between two reads, and would otherwise never be sent.
+ */
+const PRESS_KEYS = new Set(["Space", "KeyF"]);
+
 export class InputState {
   lookYaw = 0;
   lookPitch = 0;
   private readonly keys = new Set<string>();
+  /** Presses not yet carried by an intent (see PRESS_KEYS). */
+  private readonly pressed = new Set<string>();
   /** Set when the intent vector changed since the last read. */
   private dirty = true;
 
   keyDown(code: string): void {
     if (MOVEMENT_KEYS.has(code) && !this.keys.has(code)) {
       this.keys.add(code);
+      if (PRESS_KEYS.has(code)) this.pressed.add(code);
       this.dirty = true;
     }
   }
@@ -51,8 +61,9 @@ export class InputState {
 
   /** Clear all keys immediately if the browser loses focus to prevent stuck "ghost" inputs. */
   clear(): void {
-    if (this.keys.size > 0) {
+    if (this.keys.size > 0 || this.pressed.size > 0) {
       this.keys.clear();
+      this.pressed.clear();
       this.dirty = true;
     }
   }
@@ -77,7 +88,12 @@ export class InputState {
   }
 
   toIntent(): IntentFields {
-    const k = this.keys;
+    const held = this.keys;
+    // A latched press reads as held this once; if the key is already up,
+    // the next read sends the release.
+    const k = this.pressed.size > 0 ? new Set([...held, ...this.pressed]) : held;
+    for (const code of this.pressed) if (!held.has(code)) this.dirty = true;
+    this.pressed.clear();
     const fwd = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) -
       (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
     const strafe = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) -
