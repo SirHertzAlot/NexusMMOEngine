@@ -12,7 +12,9 @@
  *         <assets>/manifest.json   (the art-pack contract the editor/client load)
  *         <assets>/catalog.json    (per-model metadata: category, rig, size…)
  *
- * Per model: FBX -> three.js (FBXLoader) -> centimetres to metres ->
+ * Per model: FBX -> three.js (FBXLoader) -> metres (each source folder's
+ * unit is detected from a sample: headers always claim centimetres, but some
+ * folders are authored in metres) ->
  * materials renamed/atlased from the pack's material list (the FBX only
  * carries DCC leftovers like "lambert1439") -> UVs flipped to glTF
  * orientation -> GLB (GLTFExporter) whose materials reference the shared
@@ -31,15 +33,25 @@ import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { ManifestSchema, type AssetManifest } from "../manifest.js";
 import { withExternalTextures } from "./glb-textures.js";
 import {
+  indexMeshes,
   parseMaterialList,
   primaryTexture,
   type MaterialSlot,
+  type MeshMaterials,
   type PrefabMaterials,
 } from "./material-list.js";
 
 /** Bump to force a full reconvert when the output format changes. */
-export const CONVERTER_VERSION = 1;
-const CM_TO_M = 0.01;
+export const CONVERTER_VERSION = 3;
+/**
+ * A source folder whose median model would be smaller than this many
+ * centimetres is authored in metres (its FBX headers claim centimetres
+ * regardless — e.g. the dungeon pack's static meshes). Folders of real
+ * environment art don't have a 5 cm median.
+ */
+const METRES_IF_MEDIAN_UNDER_CM = 5;
+/** Files sampled per folder to decide its unit. */
+const UNIT_SAMPLE = 12;
 const WEB_TEXTURE = /\.(png|jpe?g|webp)$/i;
 
 export interface CatalogModel {
@@ -55,6 +67,10 @@ export interface CatalogModel {
   /** Bounding box in metres [x, y, z]. */
   size: [number, number, number];
   materials: Array<{ name: string; texture: string | null }>;
+  /** Source unit detected for the model's folder (cm: scaled by 0.01). */
+  unit: "cm" | "m";
+  /** Conversion notes (unmatched material list, missing atlas), re-reported every run. */
+  notes: string[];
 }
 
 export interface Catalog {
@@ -96,6 +112,7 @@ interface Pack {
   slug: string;
   dir: string;
   materials: Map<string, PrefabMaterials>;
+  meshIndex: Map<string, MeshMaterials>;
   defaultTexture: string | null;
   texturesDir: string | null;
   fbx: string[];
@@ -119,11 +136,13 @@ export function discoverPacks(sourceRoot: string): Pack[] {
       slug: packSlug(e.name),
       dir,
       materials,
+      meshIndex: indexMeshes(materials),
       defaultTexture: primaryTexture(materials),
       texturesDir,
       fbx: walk(dir, skipSourceDir)
         .filter((f) => /\.fbx$/i.test(f) && !/fixedscale/i.test(path.basename(f)))
-        .sort(),
+        // Main folders before Bonus* ones, so duplicate names keep the main file.
+        .sort((a, b) => Number(/bonus/i.test(a)) - Number(/bonus/i.test(b)) || a.localeCompare(b)),
     });
   }
   return packs;
@@ -153,29 +172,79 @@ function installNodeShims(): void {
   };
 }
 
-function slotsFor(prefab: PrefabMaterials | undefined, meshName: string): MaterialSlot[] {
-  if (!prefab) return [];
-  return prefab.meshes.get(meshName) ?? prefab.meshes.values().next().value ?? [];
+/** A mesh's material slots: its own prefab entry, else any prefab's mesh of that name. */
+function slotsFor(
+  prefab: PrefabMaterials | undefined,
+  meshIndex: Map<string, MeshMaterials>,
+  meshName: string,
+): { slots: MaterialSlot[]; folder: string | null } {
+  const own = prefab?.meshes.get(meshName);
+  if (own && prefab) return { slots: own, folder: prefab.folder };
+  const indexed = meshIndex.get(meshName);
+  if (indexed) return { slots: indexed.slots, folder: indexed.folder };
+  if (prefab) return { slots: prefab.meshes.values().next().value ?? [], folder: prefab.folder };
+  return { slots: [], folder: null };
 }
 
 interface Converted {
   glb: Uint8Array;
-  stats: Omit<CatalogModel, "id" | "pack" | "name" | "category" | "file">;
+  stats: Omit<CatalogModel, "id" | "pack" | "name" | "category" | "file" | "notes">;
+  /** Material-list folder of the first matched mesh (null: nothing matched). */
+  folder: string | null;
+}
+
+function loadFbx(file: string): THREE.Group {
+  const buf = fs.readFileSync(file);
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  return new FBXLoader().parse(ab, `${path.dirname(file)}/`);
+}
+
+/** Largest bounding-box dimension of an FBX in its own raw units. */
+function rawLargestDimension(file: string): number {
+  const model = loadFbx(file);
+  model.updateMatrixWorld(true);
+  const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+  model.traverse((o) => {
+    (o as THREE.Mesh).geometry?.dispose();
+    const m = (o as THREE.Mesh).material;
+    if (m) (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+  });
+  return Math.max(size.x, size.y, size.z);
+}
+
+/**
+ * Decide a folder's unit from a sample of its files: FBX headers claim
+ * centimetres everywhere, but some folders are authored in metres.
+ */
+function detectUnit(files: readonly string[]): { unit: "cm" | "m"; medianCm: number } {
+  const step = Math.max(1, Math.floor(files.length / UNIT_SAMPLE));
+  const sizes: number[] = [];
+  for (let i = 0; i < files.length && sizes.length < UNIT_SAMPLE; i += step) {
+    try {
+      const d = rawLargestDimension(files[i]);
+      if (d > 0) sizes.push(d);
+    } catch {
+      /* unreadable sample: skip it */
+    }
+  }
+  sizes.sort((a, b) => a - b);
+  const medianCm = sizes.length > 0 ? sizes[sizes.length >> 1] : Infinity;
+  return { unit: medianCm < METRES_IF_MEDIAN_UNDER_CM ? "m" : "cm", medianCm };
 }
 
 async function convertOne(
   file: string,
   prefab: PrefabMaterials | undefined,
+  meshIndex: Map<string, MeshMaterials>,
   textureUri: (texture: string) => string | null,
   defaultTexture: string | null,
+  unit: "cm" | "m",
 ): Promise<Converted> {
-  const buf = fs.readFileSync(file);
-  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-  const model = new FBXLoader().parse(ab, `${path.dirname(file)}/`);
+  const model = loadFbx(file);
 
   const root = new THREE.Group();
   root.name = path.basename(file, path.extname(file));
-  root.scale.setScalar(CM_TO_M);
+  root.scale.setScalar(unit === "cm" ? 0.01 : 1);
   root.add(model);
 
   const byName = new Map<string, THREE.MeshStandardMaterial>();
@@ -186,6 +255,7 @@ async function convertOne(
   let skinned = 0;
   let bones = 0;
   let triangles = 0;
+  let folder: string | null = null;
 
   root.traverse((o) => {
     if ((o as THREE.Bone).isBone) bones++;
@@ -201,7 +271,9 @@ async function convertOne(
       for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
       flipped.add(geo);
     }
-    const slots = slotsFor(prefab, mesh.name);
+    const match = slotsFor(prefab, meshIndex, mesh.name);
+    const slots = match.slots;
+    folder ??= match.folder;
     const convert = (src: THREE.Material, i: number): THREE.Material => {
       const slot = slots[i] ?? slots[0];
       const name = slot?.material ?? src.name ?? `material_${i}`;
@@ -251,7 +323,9 @@ async function convertOne(
       triangles: Math.round(triangles),
       size: [round3(size.x), round3(size.y), round3(size.z)],
       materials: materialsOut,
+      unit,
     },
+    folder,
   };
 }
 
@@ -316,6 +390,17 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
       const seen = new Set<string>();
       const files = opts.limit ? pack.fbx.slice(0, opts.limit) : pack.fbx;
       log(`[convert] ${pack.slug}: ${files.length} FBX -> GLB`);
+      // One unit decision per source folder, logged so it can be checked.
+      const unitByDir = new Map<string, "cm" | "m">();
+      const byDir = new Map<string, string[]>();
+      for (const f of files) byDir.set(path.dirname(f), [...(byDir.get(path.dirname(f)) ?? []), f]);
+      for (const [dir, group] of byDir) {
+        const { unit, medianCm } = detectUnit(group);
+        unitByDir.set(dir, unit);
+        if (unit === "m") {
+          log(`[convert]   ${posix(path.relative(pack.dir, dir))}: median model ${medianCm.toFixed(1)} "cm" -> authored in metres, not scaled`);
+        }
+      }
       for (const file of files) {
         const name = path.basename(file, path.extname(file));
         const id = `${pack.slug}/${name}`;
@@ -325,32 +410,47 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
         }
         seen.add(id);
         const prefab = pack.materials.get(name);
-        const relDir = path.basename(path.dirname(file));
-        const category = safeSegment(prefab?.folder ?? (/^(fbx|source_?files)$/i.test(relDir) ? "Uncategorized" : relDir));
-        const out = path.join(assetsRoot, "models", "glb", pack.slug, category, `${name}.glb`);
-        const rel = posix(path.relative(assetsRoot, out));
         const prev = previousById.get(id);
         let entry: CatalogModel;
-        if (!opts.force && prev && prev.file === rel && isFresh(out, file)) {
+        const unit = unitByDir.get(path.dirname(file)) ?? "cm";
+        if (!opts.force && prev && prev.unit === unit && isFresh(path.join(assetsRoot, prev.file), file)) {
+          if (prev.meshes === 0) {
+            catalog.diagnostics.push(`${id}: no geometry in the FBX, skipped`);
+            continue;
+          }
           entry = prev;
           reused++;
         } else {
+          // Every GLB sits at models/glb/<pack>/<category>/, so atlas URIs
+          // are the same for any category (decided after loading the FBX).
+          const glbDir = path.join(assetsRoot, "models", "glb", pack.slug, "_");
+          const notes: string[] = [];
           const uriFor = (texture: string): string | null => {
             if (!textureCache.has(texture)) textureCache.set(texture, textureFile(texture));
             const abs = textureCache.get(texture) ?? null;
             if (!abs) {
-              if (!available.has(texture.toLowerCase())) {
-                catalog.diagnostics.push(`${id}: atlas "${texture}" has no web-loadable file (.png/.jpg/.webp)`);
-              }
+              const note = `atlas "${texture}" has no web-loadable file (.png/.jpg/.webp)`;
+              if (!available.has(texture.toLowerCase()) && !notes.includes(note)) notes.push(note);
               return null;
             }
-            return posix(path.relative(path.dirname(out), abs));
+            return posix(path.relative(glbDir, abs));
           };
           try {
-            const r = await convertOne(file, prefab, uriFor, pack.defaultTexture);
+            const r = await convertOne(file, prefab, pack.meshIndex, uriFor, pack.defaultTexture, unit);
+            if (r.stats.meshes === 0) {
+              // DCC leftovers (locators, empty groups): nothing to render.
+              catalog.diagnostics.push(`${id}: no geometry in the FBX, skipped`);
+              continue;
+            }
+            const relDir = path.basename(path.dirname(file));
+            const category = safeSegment(
+              r.folder ?? (/^(fbx|source_?files)$/i.test(relDir) ? "Uncategorized" : relDir),
+            );
+            const out = path.join(assetsRoot, "models", "glb", pack.slug, category, `${name}.glb`);
             fs.mkdirSync(path.dirname(out), { recursive: true });
             fs.writeFileSync(out, r.glb);
-            entry = { id, pack: pack.slug, name, category, file: rel, ...r.stats };
+            if (r.folder === null) notes.push("no prefab or mesh match in the pack's material list (used the default atlas)");
+            entry = { id, pack: pack.slug, name, category, file: posix(path.relative(assetsRoot, out)), ...r.stats, notes };
             converted++;
             if (converted % 100 === 0) log(`[convert]   ${pack.slug}: ${converted} converted…`);
           } catch (err) {
@@ -358,7 +458,7 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
             continue;
           }
         }
-        if (!prefab) catalog.diagnostics.push(`${id}: not in the pack's material list (used the default atlas)`);
+        for (const note of entry.notes) catalog.diagnostics.push(`${id}: ${note}`);
         catalog.models.push(entry);
       }
       catalog.packs.push({ slug: pack.slug, source: posix(path.relative(assetsRoot, pack.dir)), models: converted + reused, textures: texCount });
@@ -390,6 +490,23 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
   };
   // Never write a manifest the editor/client would reject.
   ManifestSchema.parse(manifest);
+
+  // A full run owns models/glb: drop GLBs no model maps to any more (a
+  // model that changed category, a duplicate now won by another file).
+  if (!opts.only && !opts.limit) {
+    const glbRoot = path.join(assetsRoot, "models", "glb");
+    const keep = new Set(catalog.models.map((m) => path.join(assetsRoot, m.file)));
+    let removed = 0;
+    if (fs.existsSync(glbRoot)) {
+      for (const f of walk(glbRoot, () => false)) {
+        if (f.endsWith(".glb") && !keep.has(f)) {
+          fs.rmSync(f);
+          removed++;
+        }
+      }
+    }
+    if (removed > 0) log(`[convert] removed ${removed} stale GLB(s)`);
+  }
   fs.writeFileSync(path.join(assetsRoot, "manifest.json"), JSON.stringify(manifest, null, 2));
   fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
   log(`[convert] done: ${catalog.models.length} models, ${manifest.textures.length} textures, ` +

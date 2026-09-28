@@ -65,6 +65,28 @@ export function parseMaterialList(text: string): Map<string, PrefabMaterials> {
   return prefabs;
 }
 
+export interface MeshMaterials {
+  prefab: string;
+  folder: string;
+  slots: MaterialSlot[];
+}
+
+/**
+ * Mesh name -> slots, across all prefabs (first occurrence wins). FBX file
+ * names don't always match prefab names ("SK_BR_Character_Big_Ork_01" vs
+ * prefab "Character_BR_BigOrk_01"), but the mesh inside the file is named
+ * like the list's "Mesh Name" ("Character_Big_Ork_01").
+ */
+export function indexMeshes(prefabs: Map<string, PrefabMaterials>): Map<string, MeshMaterials> {
+  const index = new Map<string, MeshMaterials>();
+  for (const [prefab, p] of prefabs) {
+    for (const [mesh, slots] of p.meshes) {
+      if (!index.has(mesh)) index.set(mesh, { prefab, folder: p.folder, slots });
+    }
+  }
+  return index;
+}
+
 /** The atlas used by the most slots — the pack's default texture. */
 export function primaryTexture(prefabs: Map<string, PrefabMaterials>): string | null {
   const counts = new Map<string, number>();

@@ -26,6 +26,12 @@ import {
   CardTitle,
   SectionTitle,
 } from "./components.js";
+import { ModelPreview } from "./model-preview.js";
+
+/** Table rows rendered at once (converted packs list thousands of models). */
+const MAX_ROWS = 200;
+/** Models the browser load test fetches in one go. */
+const MAX_LOAD_TEST = 100;
 
 interface AssetScan {
   ok: boolean;
@@ -40,6 +46,8 @@ export function AssetInspectorPanel(): React.JSX.Element {
   const [loading, setLoading] = React.useState(false);
   const [fallbacks, setFallbacks] = React.useState<AssetLoadStatus[] | null>(null);
   const [packLoading, setPackLoading] = React.useState(false);
+  const [filter, setFilter] = React.useState("");
+  const [previewId, setPreviewId] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -61,12 +69,14 @@ export function AssetInspectorPanel(): React.JSX.Element {
   }, [refresh]);
 
   async function loadPackInBrowser(): Promise<void> {
-    if (!scan?.manifest) return;
+    if (!scan?.manifest || !loadable) return;
     setPackLoading(true);
     try {
+      // Load-test only the filtered models: converted packs hold thousands,
+      // and loading them all at once would stall the tab.
       const provider = new ManifestAssetProvider({
         baseUrl: "/assets",
-        manifest: scan.manifest,
+        manifest: { ...scan.manifest, models: matching, textures: [] },
       });
       await provider.loadAssetPack("/assets");
       setFallbacks(provider.fallbackStatus());
@@ -77,6 +87,12 @@ export function AssetInspectorPanel(): React.JSX.Element {
 
   const manifest = scan?.manifest ?? null;
   const diagnostics = scan?.diagnostics ?? [];
+  const needle = filter.trim().toLowerCase();
+  const matching = (manifest?.models ?? []).filter(
+    (m) => needle === "" || m.id.toLowerCase().includes(needle),
+  );
+  const loadable = matching.length > 0 && matching.length <= MAX_LOAD_TEST;
+  const previewFile = manifest?.models.find((m) => m.id === previewId)?.file ?? null;
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
@@ -115,15 +131,33 @@ export function AssetInspectorPanel(): React.JSX.Element {
 
           {manifest && (
             <>
-              <div>
-                <SectionTitle>Models</SectionTitle>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <SectionTitle>
+                    Models ({matching.length} of {manifest.models.length})
+                  </SectionTitle>
+                  <input
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder="filter, e.g. fantasy-kingdom/SM_Prop"
+                    className="h-8 w-72 rounded-md border border-input bg-background px-2 text-xs"
+                  />
+                </div>
+                {previewFile && <ModelPreview url={`/assets/${previewFile}`} />}
                 <ModelTable
-                  rows={manifest.models.map((m) => ({
+                  selected={previewId}
+                  onSelect={setPreviewId}
+                  rows={matching.slice(0, MAX_ROWS).map((m) => ({
                     id: m.id,
                     file: m.file,
                     extra: m.forShape ? `shape: ${m.forShape}` : "",
                   }))}
                 />
+                {matching.length > MAX_ROWS && (
+                  <p className="text-xs text-muted-foreground">
+                    Showing the first {MAX_ROWS} — narrow the filter to see more.
+                  </p>
+                )}
               </div>
               <div>
                 <SectionTitle>Textures</SectionTitle>
@@ -145,9 +179,10 @@ export function AssetInspectorPanel(): React.JSX.Element {
                 variant="secondary"
                 size="sm"
                 onClick={() => void loadPackInBrowser()}
-                disabled={!manifest || packLoading}
+                disabled={!manifest || packLoading || !loadable}
+                title={loadable ? undefined : `Filter to at most ${MAX_LOAD_TEST} models first`}
               >
-                {packLoading ? "Loading…" : "Load pack in browser"}
+                {packLoading ? "Loading…" : `Load ${Math.min(matching.length, MAX_LOAD_TEST)} in browser`}
               </Button>
             </div>
             {fallbacks ? (
@@ -166,7 +201,7 @@ export function AssetInspectorPanel(): React.JSX.Element {
               </ul>
             ) : (
               <p className="mt-1 text-xs text-muted-foreground">
-                Loads every model through the real provider — failures stay on
+                Loads the filtered models (at most 100) through the real provider — failures stay on
                 placeholder fallback and are reported per asset.
               </p>
             )}
@@ -226,8 +261,12 @@ export function AssetInspectorPanel(): React.JSX.Element {
 
 function ModelTable({
   rows,
+  selected,
+  onSelect,
 }: {
   rows: Array<{ id: string; file: string; extra: string }>;
+  selected?: string | null;
+  onSelect?: (id: string) => void;
 }): React.JSX.Element {
   if (rows.length === 0) {
     return (
@@ -238,7 +277,15 @@ function ModelTable({
     <table className="mt-1 w-full text-xs">
       <tbody>
         {rows.map((r) => (
-          <tr key={r.id} className="border-b border-border/50 last:border-0">
+          <tr
+            key={r.id}
+            onClick={onSelect ? () => onSelect(r.id) : undefined}
+            className={
+              "border-b border-border/50 last:border-0" +
+              (onSelect ? " cursor-pointer hover:bg-accent" : "") +
+              (selected === r.id ? " bg-accent" : "")
+            }
+          >
             <td className="py-1 pr-3 font-mono font-semibold">{r.id}</td>
             <td className="py-1 font-mono text-muted-foreground">{r.file}</td>
             <td className="py-1 text-right text-muted-foreground">{r.extra}</td>
