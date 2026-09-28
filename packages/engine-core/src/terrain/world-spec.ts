@@ -74,6 +74,8 @@ export const BiomeCondition = z
     ice: Bound.optional(),
     /** Distance to the nearest volcano's vent, metres (Infinity with none). */
     volcanoDistance: Bound.optional(),
+    /** UV index (about 0–15). */
+    uvIndex: Bound.optional(),
   })
   .strict();
 export type BiomeCondition = z.infer<typeof BiomeCondition>;
@@ -210,6 +212,26 @@ export const WorldSpecSchema = z
         recycling: z.number().min(0).max(0.95).default(0.35),
         /** Humidity (0..1) of air blowing in over the land edges. */
         inlandHumidity: z.number().min(0).max(1).default(0.35),
+        /** The edge the sun stands over at noon (the equator side). */
+        sunFrom: Side.default("south"),
+        /** Noon sun elevation over the sea edge and over the far edge, degrees. */
+        sunNoonAtSeaDeg: z.number().gt(0).max(90).default(62),
+        sunNoonAtFarDeg: z.number().gt(0).max(90).default(32),
+        /** Sun-facing slopes run this much warmer, shaded ones this much colder, °C. */
+        aspectWarmingC: z.number().min(0).default(2),
+        uv: z
+          .object({
+            /** UV index on flat open ground at sea level on the sea edge. */
+            atSeaEdge: z.number().min(0).default(10),
+            /** Share gained per km of height (thinner air; exaggerated like the lapse rate). */
+            altitudeGainPerKm: z.number().min(0).default(0.6),
+            /** Share cloud cuts where it rains twice the windward coast's rain. */
+            cloudCut: z.number().min(0).max(1).default(0.4),
+            /** Share snow and ice add by reflecting it. */
+            snowReflection: z.number().min(0).default(0.6),
+          })
+          .strict()
+          .prefault({}),
       })
       .strict()
       .prefault({}),
@@ -237,8 +259,14 @@ export const WorldSpecSchema = z
         minSnowMm: z.number().min(0).default(500),
         /** Ice melts where it is warmer than this, °C… */
         meltAboveC: z.number().default(1),
-        /** …by this many metres of ice a year per °C above it. */
+        /** …by this many metres of ice a year per °C above it… */
         meltRate: z.number().min(0).default(1.5),
+        /**
+         * …scaled by the sun: 0 = sun makes no difference; 0.8 = a slope with
+         * half the sun of flat ground melts 40% slower, one with 1.5× melts
+         * 40% faster (glaciers keep to the shade).
+         */
+        sunMelt: z.number().min(0).max(1).default(0.8),
         /** Carving passes (ice re-routes over the carved land each pass). */
         passes: z.number().int().min(0).default(5),
         /** How hard ice grinds its bed, and the most one pass can cut, metres. */

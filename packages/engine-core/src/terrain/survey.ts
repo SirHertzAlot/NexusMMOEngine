@@ -13,9 +13,11 @@
  *     valleys, and rain washes soil downhill (erosion.ts);
  *  3. water: the sea, lakes in the hollows that hold water, and rivers
  *     from the rain-weighted drainage (hydrology.ts);
- *  4. climate: temperature from height and distance to the sea; rainfall
- *     carried in off the sea by the wind, wrung out over the ranges, with
- *     rain shadows behind them (climate.ts);
+ *  4. climate: sunlight on each slope over the day, with shadows, and the
+ *     UV it brings (sun.ts); temperature from height, distance to the sea
+ *     and the sun a slope gets; rainfall carried in off the sea by the
+ *     wind, wrung out over the ranges, with rain shadows behind them
+ *     (climate.ts). Glaciers melt by warmth and sunshine;
  *  5. biomes: read off all of the above by the spec's rules, smoothed into
  *     regions, each adding its surface character (biomes.ts).
  *
@@ -29,6 +31,7 @@ import { applySurface, biomeRegions, classifyBiomes, smoothBiomes } from "./biom
 import { rainfall, temperature } from "./climate.js";
 import { dropletErosion, fluvialErosion, thermalErosion } from "./erosion.js";
 import { glaciate } from "./glaciers.js";
+import { sunlight, uvIndex } from "./sun.js";
 import { boxBlur, distanceTo, slopeDegrees } from "./grid-ops.js";
 import {
   accumulate,
@@ -106,6 +109,10 @@ export interface Survey {
   meltMm: Float32Array;
   /** Distance to the nearest volcano vent, metres (Infinity with none). */
   ventDistance: Float32Array;
+  /** The day's sunlight relative to flat open ground (1); shadows included. */
+  sun: Float32Array;
+  /** UV index. */
+  uv: Float32Array;
   /** Rain-weighted upstream area per cell, m² (at the windward coast's rainfall). */
   flow: Float32Array;
   /** 1 where a river runs. */
@@ -120,6 +127,8 @@ export interface Survey {
     glacierCells: number;
     glacierSnouts: number;
     deepestGlacialCutM: number;
+    /** Glacier meltwater, m³ a year, over the whole world. */
+    meltwaterM3: number;
     riverCells: number;
     lakeCells: number;
     /** Share of the world (inside its edges) that is land. */
@@ -229,7 +238,16 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const shaped = Float32Array.from(height);
   const firstSea = seaMask(height, grid, sea);
   const firstRain = rainfall(spec, grid, height, (i) => firstSea[i] === 1).rainMm;
-  const glaciers = glaciate(spec, grid, height, temperature(spec, grid, height, vents), firstRain, (i) => firstSea[i] === 1);
+  const youngSun = sunlight(spec, grid, height).sun;
+  const glaciers = glaciate(
+    spec,
+    grid,
+    height,
+    temperature(spec, grid, height, vents, youngSun),
+    firstRain,
+    (i) => firstSea[i] === 1,
+    youngSun,
+  );
   const meltMm = glaciers.melt.map((m) => (m / (grid.cell * grid.cell)) * 1000);
   const share = firstRain.map((r) => r / spec.climate.rainMm);
   const runoff = firstRain.map((r, i) => (r + meltMm[i]) / spec.climate.rainMm);
@@ -263,7 +281,9 @@ export function surveyWorld(spec: WorldSpec): Survey {
 
   // ---- 4. climate --------------------------------------------------------------
   const { rainMm, humidity } = rainfall(spec, grid, height, (i) => water[i] !== LAND);
-  const tempC = temperature(spec, grid, height, vents);
+  const light = sunlight(spec, grid, height);
+  const tempC = temperature(spec, grid, height, vents, light.sun);
+  const uv = uvIndex(spec, grid, height, light, rainMm, (i) => glaciers.ice[i] === 1 || tempC[i] <= spec.glaciers.formBelowC);
 
   // ---- rivers: rain-weighted drainage over the filled surface -----------------
   const flow = accumulate(drainage(filled, grid), grid, (i) => (rainMm[i] + meltMm[i]) / spec.climate.rainMm);
@@ -292,6 +312,7 @@ export function surveyWorld(spec: WorldSpec): Survey {
     seaExposure: boxBlur(seaShare, W, D, SEA_EXPOSURE_RADIUS_M / grid.cell / 2),
     ice: glaciers.ice,
     volcanoDistance: vents,
+    uvIndex: uv,
   });
   smoothBiomes(biome, water, W, D, spec.minBiomeArea / (grid.cell * grid.cell));
   const { regions, region } = biomeRegions(biome, grid);
@@ -338,6 +359,8 @@ export function surveyWorld(spec: WorldSpec): Survey {
     ice: glaciers.ice,
     meltMm,
     ventDistance: vents,
+    sun: light.sun,
+    uv,
     flow,
     river,
     regions,
@@ -350,6 +373,7 @@ export function surveyWorld(spec: WorldSpec): Survey {
       glacierCells: glaciers.ice.reduce((a, b) => a + b, 0),
       glacierSnouts: glaciers.snouts,
       deepestGlacialCutM: glaciers.deepestCutM,
+      meltwaterM3: glaciers.melt.reduce((a, m) => a + m, 0),
       riverCells,
       lakeCells,
       landFraction: landCells / worldCells,

@@ -160,6 +160,11 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
       `land ${landPercent}%, ${survey.ranges.length} mountain range(s), ${survey.stats.lakeCells} lake cells`,
   );
   log(`[bake]   biomes (% of the world): ${Object.entries(biomeShare).map(([id, p]) => `${id} ${p}`).join(", ")}`);
+  log(
+    `[bake]   glaciers: ${survey.stats.glacierCells} ice cells, ${survey.stats.glacierSnouts} snouts, ` +
+      `${(survey.stats.meltwaterM3 / 1e6).toFixed(2)} million m³ of meltwater a year; ` +
+      `UV index ${uvRange(survey)}`,
+  );
 
   // ---- fine tiles, in batches ------------------------------------------
   t0 = performance.now();
@@ -224,6 +229,10 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     store.putMap("rain", map(survey.rain));
     store.putMap("temperature", map(survey.temperature));
     store.putMap("water", map(survey.water));
+    store.putMap("ice", map(survey.ice));
+    store.putMap("melt", map(survey.meltMm));
+    store.putMap("sun", map(survey.sun));
+    store.putMap("uv", map(survey.uv));
     store.putMap("flow", map(survey.flow));
     store.putMap("river", map(survey.river));
     store.putMap("roughness", map(survey.roughness));
@@ -310,4 +319,12 @@ export function biomeShares(survey: Survey): Record<string, number> {
       .filter(([, p]) => p > 0)
       .sort((a, b) => b[1] - a[1]),
   );
+}
+
+/** UV index range over land, "min–max (median)". */
+function uvRange(survey: Survey): string {
+  const land = survey.uv.filter((_, i) => survey.water[i] === LAND).sort();
+  if (land.length === 0) return "n/a";
+  const at = (p: number): string => land[Math.min(land.length - 1, Math.floor(p * land.length))].toFixed(1);
+  return `${at(0)}–${at(1)} (median ${at(0.5)})`;
 }

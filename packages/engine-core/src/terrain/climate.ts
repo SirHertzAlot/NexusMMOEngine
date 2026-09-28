@@ -22,9 +22,17 @@ import { windVector, type WorldSpec } from "./world-spec.js";
 
 /**
  * Mean temperature per cell, °C. `ventDistance` (metres to the nearest
- * volcano vent) adds the vents' heat, fading to nothing at the cone's foot.
+ * volcano vent) adds the vents' heat, fading to nothing at the cone's foot;
+ * `sun` (sunlight relative to flat ground, see sun.ts) warms sun-facing
+ * slopes and cools shaded ones.
  */
-export function temperature(spec: WorldSpec, grid: CoarseGrid, h: Float32Array, ventDistance?: Float32Array): Float32Array {
+export function temperature(
+  spec: WorldSpec,
+  grid: CoarseGrid,
+  h: Float32Array,
+  ventDistance?: Float32Array,
+  sun?: Float32Array,
+): Float32Array {
   const C = spec.climate;
   const sea = spec.land.seaLevel;
   const W = grid.width;
@@ -36,11 +44,13 @@ export function temperature(spec: WorldSpec, grid: CoarseGrid, h: Float32Array, 
       const i = v * W + u;
       const t = Math.min(1, Math.max(0, coastFrame(spec, x, z).t));
       const heat = ventDistance ? spec.volcano.heatC * Math.max(0, 1 - ventDistance[i] / spec.volcano.radius) : 0;
+      const aspect = sun ? C.aspectWarmingC * Math.max(-1, Math.min(1, sun[i] - 1)) : 0;
       out[i] =
         C.seaTempC -
         C.inlandCoolingC * Math.pow(1 - t, C.inlandCoolingCurve) -
         (C.lapseCPerKm * Math.max(0, h[i] - sea)) / 1000 +
-        heat;
+        heat +
+        aspect;
     }
   }
   return out;

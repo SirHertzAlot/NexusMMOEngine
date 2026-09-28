@@ -5,8 +5,9 @@
  * Each pass routes ice over the land's drainage (highest cells first):
  * a cell at or below `formBelowC` with at least `minSnowMm` of snow adds
  * it to the ice (drier cold ground stays bare — tundra); ice
- * crossing warmer ground loses meltwater in proportion to how warm it is
- * and how wide the glacier is (width grows with the ice it carries), and
+ * crossing warmer ground loses meltwater in proportion to how warm it is,
+ * how much sun the slope gets (shaded ice lasts), and how wide the
+ * glacier is (width grows with the ice it carries), and
  * the glacier ends where the ice runs out — its snout. Ice reaching the
  * sea calves into it. Along the way it grinds a wide, round-bottomed
  * (U-shaped) valley, deeper under more ice; at the snout it drops a
@@ -42,6 +43,7 @@ export function glaciate(
   tempC: Float32Array,
   precipMm: Float32Array,
   isSea: (i: number) => boolean,
+  sun?: Float32Array,
 ): GlacierResult {
   const G = spec.glaciers;
   const W = grid.width;
@@ -95,7 +97,9 @@ export function glaciate(
       ice[i] = 1;
       peak[i] = Math.max(peak[i], q);
       const width = glacierWidth(q, grid.cell);
-      const ablation = G.meltRate * Math.max(0, tempC[i] - G.meltAboveC); // metres of ice a year
+      // Metres of ice a year: warmth melts it, sunshine speeds that up.
+      const sunny = sun ? Math.max(0.1, 1 + G.sunMelt * (sun[i] - 1)) : 1;
+      const ablation = G.meltRate * sunny * Math.max(0, tempC[i] - G.meltAboveC);
       const melted = Math.min(q, ablation * width * grid.cell);
       melt[i] += melted;
       q -= melted;

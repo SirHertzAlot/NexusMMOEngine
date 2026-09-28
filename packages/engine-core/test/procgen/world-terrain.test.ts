@@ -17,6 +17,7 @@ import { closeWorldCatalogs, readCatalogSummary, rocksdbUrl } from "../../src/pe
 import { classifyBiomes, smoothBiomes, type BiomeInputs } from "../../src/terrain/biomes.js";
 import { thermalErosion } from "../../src/terrain/erosion.js";
 import { glaciate } from "../../src/terrain/glaciers.js";
+import { sunlight, uvIndex } from "../../src/terrain/sun.js";
 import { labelComponents } from "../../src/terrain/grid-ops.js";
 import { findLakes } from "../../src/terrain/hydrology.js";
 import { coastFrame } from "../../src/terrain/landmass.js";
@@ -215,6 +216,51 @@ describe("survey: land and water", () => {
 
     const dry = glaciate(spec, grid, slope(), tempC, new Float32Array(N).fill(200), () => false);
     assert.equal(dry.ice.reduce((a, b) => a + b, 0), 0, "too little snow: bare cold ground (tundra), no ice");
+
+    // The sun melts ice too: in shade the same glacier reaches further down.
+    const reach = (sun: number): number => {
+      const g = glaciate(spec, grid, slope(), tempC, new Float32Array(N).fill(1500), () => false, new Float32Array(N).fill(sun));
+      return Math.max(...[...g.ice.keys()].filter((i) => g.ice[i]).map((i) => Math.floor(i / 30)));
+    };
+    assert.ok(reach(0.4) > reach(1.4), `shaded ice reaches row ${reach(0.4)}, sunlit ice row ${reach(1.4)}`);
+  });
+
+  test("sunlight: sun-facing slopes get more, shaded ones less, and ridges cast shadows", () => {
+    const spec = parseWorldSpec({ ...SMALL_WORLD, climate: { sunFrom: "south" } });
+    const grid: CoarseGrid = { width: 40, depth: 40, cell: 8, originX: 0, originZ: 0 };
+    const at = (u: number, v: number): number => v * 40 + u;
+    // An east–west ridge along v = 20: its south face (v > 20) faces the sun.
+    const ridge = Float32Array.from({ length: 1600 }, (_, i) => 60 - Math.abs(Math.floor(i / 40) - 20) * 3);
+    const lit = sunlight(spec, grid, ridge).sun;
+    assert.ok(lit[at(20, 26)] > 1.05, `south face ${lit[at(20, 26)].toFixed(2)}`);
+    assert.ok(lit[at(20, 14)] < 0.9, `north face ${lit[at(20, 14)].toFixed(2)}`);
+    assert.ok(Math.abs(sunlight(spec, grid, new Float32Array(1600)).sun[at(20, 20)] - 1) < 1e-6, "flat ground is the reference");
+    // A tall wall along v = 30 shades the flat ground just north of it.
+    const wall = Float32Array.from({ length: 1600 }, (_, i) => (Math.floor(i / 40) >= 30 && Math.floor(i / 40) <= 31 ? 200 : 0));
+    const shaded = sunlight(spec, grid, wall).sun;
+    assert.ok(shaded[at(20, 27)] < 0.5, `in the wall's shadow: ${shaded[at(20, 27)].toFixed(2)}`);
+    assert.ok(shaded[at(20, 5)] > 0.95, "far from the wall: full sun");
+  });
+
+  test("UV: stronger with altitude and over snow, weaker under rainclouds and toward the far edge", () => {
+    const spec = SMALL;
+    const grid: CoarseGrid = { width: 20, depth: 20, cell: 8, originX: -80, originZ: -80 };
+    const flat = new Float32Array(400);
+    const light = sunlight(spec, grid, flat);
+    const uvWith = (h: number, rain: number, snowy: boolean): number =>
+      uvIndex(spec, grid, new Float32Array(400).fill(h), light, new Float32Array(400).fill(rain), () => snowy)[210];
+    const base = uvWith(0, 0, false);
+    assert.ok(base > 0);
+    assert.ok(uvWith(500, 0, false) > base * 1.2, "higher up, more UV");
+    assert.ok(uvWith(0, 0, true) > base * 1.4, "snow reflects it");
+    assert.ok(uvWith(0, 4 * spec.climate.rainMm, false) < base * 0.7, "clouds cut it");
+    // The same flat ground near the far (north) edge and near the sea edge.
+    const b = worldBounds(spec);
+    const near = (originZ: number): number => {
+      const g: CoarseGrid = { ...grid, originZ };
+      return uvIndex(spec, g, flat, sunlight(spec, g, flat), new Float32Array(400), () => false)[210];
+    };
+    assert.ok(near(b.min) < 0.85 * near(b.max - 160), `far edge ${near(b.min).toFixed(1)} vs sea edge ${near(b.max - 160).toFixed(1)}`);
   });
 
   test("thermal erosion relaxes slopes to the angle of repose and keeps the ground", () => {
@@ -276,12 +322,13 @@ describe("survey: climate and biomes", () => {
     assert.ok(mean(lee) < 0.6 * mean(windward), `lee ${mean(lee).toFixed(0)} mm vs windward ${mean(windward).toFixed(0)} mm`);
   });
 
-  test("temperature: warmest by the sea, cooling inland and with height", () => {
+  test("temperature: warmest by the sea, cooling inland and with height, warmer on sunny slopes", () => {
     const C = MID.climate;
     for (const { i, t } of worldCells(mid)) {
       if (mid.water[i] !== LAND) continue;
       const inland = Math.pow(1 - Math.min(1, Math.max(0, t)), C.inlandCoolingCurve);
-      const expected = C.seaTempC - C.inlandCoolingC * inland - (C.lapseCPerKm * mid.height[i]) / 1000;
+      const aspect = C.aspectWarmingC * Math.max(-1, Math.min(1, mid.sun[i] - 1));
+      const expected = C.seaTempC - C.inlandCoolingC * inland - (C.lapseCPerKm * mid.height[i]) / 1000 + aspect;
       assert.ok(Math.abs(mid.temperature[i] - expected) < 0.5, `cell ${i}: ${mid.temperature[i]} vs ${expected}`);
     }
   });
@@ -379,6 +426,7 @@ describe("biome rules", () => {
       seaExposure: f("seaExposure", 0),
       ice: Uint8Array.from(over.ice ?? new Array(n).fill(0)),
       volcanoDistance: f("volcanoDistance", Infinity),
+      uvIndex: f("uvIndex", 6),
     };
   };
   const ids = (b: Uint8Array): string[] => [...b].map((k) => spec.biomes[k].id);

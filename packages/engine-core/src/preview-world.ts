@@ -5,10 +5,11 @@
  * Usage (from packages/engine-core, after `npm run build`):
  *   npm run preview:world -- [spec.json] [out.png]
  *
- * Defaults: worlds/default.world.json -> world-preview.png. Three panels,
+ * Defaults: worlds/default.world.json -> world-preview.png. Four panels,
  * north up: biomes (hillshaded; rivers blue, range axes dotted, spawn
- * ringed red), yearly rainfall (brown dry → purple soaked), and
- * temperature (white cold → red hot). The wind arrow is top-left.
+ * ringed red), yearly rainfall (brown dry → purple soaked), temperature
+ * (white cold → red hot), and UV index (green low → violet extreme, the
+ * UV-index colour scale). The wind arrow is top-left.
  */
 
 import * as fs from "node:fs";
@@ -79,12 +80,13 @@ function png(width: number, height: number, rgb: Uint8Array): Buffer {
   ]);
 }
 
-/** Biomes | rainfall | temperature, side by side, as RGB. */
+/** Biomes | rainfall | temperature | UV, side by side, as RGB. */
 export function drawSurvey(s: Survey): { width: number; height: number; rgb: Uint8Array } {
-  const { grid, height, rain, temperature, biome, water, river, spec } = s;
+  const { grid, height, rain, temperature, uv, biome, water, river, spec } = s;
+  const PANELS = 4;
   const W = grid.width;
   const D = grid.depth;
-  const width = W * 3;
+  const width = W * PANELS;
   const rgb = new Uint8Array(width * D * 3);
   const put = (panel: number, u: number, v: number, c: RGB): void => {
     const o = (v * width + panel * W + u) * 3;
@@ -102,6 +104,7 @@ export function drawSurvey(s: Survey): { width: number; height: number; rgb: Uin
       const under: RGB = [20, 30, 50];
       put(1, u, v, water[i] !== LAND ? under : lit(ramp(rain[i] / 2500, [[150, 90, 40], [230, 210, 120], [90, 180, 90], [30, 90, 170], [60, 30, 140]])));
       put(2, u, v, water[i] !== LAND ? under : lit(ramp((temperature[i] + 10) / 35, [[250, 250, 255], [120, 160, 230], [120, 200, 120], [240, 200, 80], [220, 70, 40]])));
+      put(3, u, v, water[i] !== LAND ? under : lit(ramp(uv[i] / 14, [[60, 150, 60], [230, 220, 60], [240, 140, 40], [210, 40, 40], [140, 60, 170]])));
     }
   }
   const ring = (x: number, z: number, r: number, c: RGB): void => {
@@ -112,7 +115,7 @@ export function drawSurvey(s: Survey): { width: number; height: number; rgb: Uin
         if (Math.abs(Math.hypot(du, dv) - r) > 0.8) continue;
         const u = cu + du;
         const v = cv + dv;
-        if (u >= 0 && v >= 0 && u < W && v < D) for (let p = 0; p < 3; p++) put(p, u, v, c);
+        if (u >= 0 && v >= 0 && u < W && v < D) for (let p = 0; p < PANELS; p++) put(p, u, v, c);
       }
     }
   };
@@ -121,7 +124,7 @@ export function drawSurvey(s: Survey): { width: number; height: number; rgb: Uin
   for (const r of s.ranges) for (const p of r.points) ring(p.x, p.z, 1, [0, 0, 0]);
   const wind = windVector(spec.climate.wind);
   for (let k = 0; k < 40; k++) {
-    for (let p = 0; p < 3; p++) put(p, 30 + Math.round(wind.x * k), 30 + Math.round(wind.z * k), [255, 255, 255]);
+    for (let p = 0; p < PANELS; p++) put(p, 30 + Math.round(wind.x * k), 30 + Math.round(wind.z * k), [255, 255, 255]);
   }
   return { width, height: D, rgb };
 }
@@ -142,7 +145,11 @@ function main(): void {
       `${survey.stats.riverCells} river cells, ${survey.stats.lakeCells} lake cells; spawn (${sp.x}, ${sp.z}) in ${sp.biome}`,
   );
   console.log(`[preview] biomes (% of the world): ${Object.entries(biomeShares(survey)).map(([id, p]) => `${id} ${p}`).join(", ")}`);
-  console.log(`[preview] wrote ${out} (biomes | rainfall | temperature)`);
+  console.log(
+    `[preview] glaciers: ${survey.stats.glacierCells} ice cells, ${survey.stats.glacierSnouts} snouts, ` +
+      `${(survey.stats.meltwaterM3 / 1e6).toFixed(2)} million m³ of meltwater a year`,
+  );
+  console.log(`[preview] wrote ${out} (biomes | rainfall | temperature | UV)`);
 }
 
 main();
