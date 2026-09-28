@@ -225,7 +225,9 @@ async function main(): Promise<void> {
   // background worker already checkpoints world.db after every save, so
   // this connection leaves checkpoints (and their fsync) to it.
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
-  const populator = makeScatterPopulator(worldSeed, CHUNK_SIZE);
+  // Baked worlds have a sea: nothing is scattered below it.
+  const seaLevelMeta = store.getMeta("sea_level");
+  const populator = makeScatterPopulator(worldSeed, CHUNK_SIZE, seaLevelMeta === null ? {} : { seaLevel: Number(seaLevelMeta) });
   const streamer = new ChunkStreamer({
     terrain: procgen,
     worldSeed,

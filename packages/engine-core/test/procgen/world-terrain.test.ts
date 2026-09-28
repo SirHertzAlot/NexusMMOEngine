@@ -1,8 +1,8 @@
 /**
- * Whole-world terrain: the spec, the coarse survey (biomes, drainage,
- * rivers), the fine heights built on it, and the bake into world.db + the
- * SurrealDB catalog. A small world (32x32 chunks, 512 m) keeps it fast;
- * the default 4 km world runs the same code.
+ * Whole-world terrain: the spec, the coarse survey (landmass, erosion,
+ * water, climate, emergent biomes), the fine heights built on it, and the
+ * bake into world.db + the SurrealDB catalog. Small worlds (512 m, 1 km)
+ * keep it fast; the default 4 km world runs the same code.
  */
 
 import test, { describe } from "node:test";
@@ -14,11 +14,16 @@ import Database from "better-sqlite3";
 import { decodeWorldMap, HeightGrid, type TerrainTile } from "@mmo-engine/protocol";
 import { TerrainTileStore } from "../../src/persist/terrain-tiles.js";
 import { closeWorldCatalogs, readCatalogSummary, rocksdbUrl } from "../../src/persist/world-catalog.js";
-import { fillDepressions, surveyWorld, type CoarseGrid } from "../../src/terrain/survey.js";
-import { bakeWorldTerrain, regionOf } from "../../src/terrain/world-bake.js";
+import { classifyBiomes, smoothBiomes, type BiomeInputs } from "../../src/terrain/biomes.js";
+import { thermalErosion } from "../../src/terrain/erosion.js";
+import { labelComponents } from "../../src/terrain/grid-ops.js";
+import { findLakes } from "../../src/terrain/hydrology.js";
+import { coastFrame } from "../../src/terrain/landmass.js";
+import { fillDepressions, LAKE, LAND, SEA, surveyWorld, type CoarseGrid, type Survey } from "../../src/terrain/survey.js";
+import { bakeWorldTerrain, regionOf, spawnPoint } from "../../src/terrain/world-bake.js";
 import { WorldHeights } from "../../src/terrain/world-heights.js";
 import { worldInfoFor } from "../../src/terrain/world-info.js";
-import { parseWorldSpec, worldBounds } from "../../src/terrain/world-spec.js";
+import { parseWorldSpec, windVector, worldBounds } from "../../src/terrain/world-spec.js";
 
 const tmpDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "mmo-world-"));
 
@@ -27,12 +32,19 @@ const SMALL_WORLD = {
   seed: 77,
   sizeChunks: 32,
   regionsPerSide: 2,
-  erosion: { droplets: 3000, strength: 0.35 },
+  land: { coast: { wander: 40, wanderScale: 150 }, rise: 15, riseDistance: 200, relief: 6, reliefScale: 300, shelfWidth: 60, minIslandArea: 2000 },
+  ranges: { count: 1, height: 120, width: 140, length: 300, ridgeScale: 120, coastClearance: 60 },
+  climate: { dryDistance: 800, orographic: 0.01 },
+  erosion: { droplets: 3000, thermalPasses: 10, fluvialPasses: 4 },
   rivers: { minCatchment: 20_000, maxDepth: 3 },
+  lakes: { minArea: 2000 },
+  minBiomeArea: 1000,
   biomes: [
-    { id: "mountains", count: 1, pick: "highest", shape: "ridged", base: 20, relief: 120, scale: 200, roughness: 1 },
-    { id: "swamp", count: 1, pick: "lowest-wet", shape: "flat", base: -3, relief: 2, scale: 60, roughness: 0.2 },
-    { id: "plains", count: 2, pick: "rest", shape: "rolling", base: 2, relief: 6, scale: 200, roughness: 0.4 },
+    { id: "sea", when: { water: "sea" }, roughness: 0.2 },
+    { id: "lake", when: { water: "lake" }, roughness: 0.1 },
+    { id: "mountains", when: { height: { min: 60 } }, surface: { shape: "ridged", relief: 4, scale: 60 }, roughness: 1 },
+    { id: "desert", when: { rainMm: { max: 400 } }, surface: { shape: "dunes", relief: 3, scale: 30 }, roughness: 0.3 },
+    { id: "plains", surface: { shape: "rolling", relief: 3, scale: 150 }, roughness: 0.4 },
   ],
 };
 const SMALL = parseWorldSpec(SMALL_WORLD);
@@ -46,15 +58,31 @@ describe("world spec", () => {
       min: -2000,
       max: 2000,
     });
+    // Nested sections take their defaults.
+    const bare = parseWorldSpec({ name: "bare", seed: 1, sizeChunks: 4, biomes: [{ id: "plains", roughness: 0.5 }] });
+    assert.equal(bare.land.coast.side, "south");
+    assert.equal(bare.land.coast.waterEdge, 0.6);
+    assert.equal(bare.climate.wind, "south-west");
+    assert.equal(bare.erosion.talusDeg, 38);
+
+    const biomes = SMALL_WORLD.biomes;
     assert.throws(() => parseWorldSpec({ ...SMALL_WORLD, sizeChunks: 33 }), /divisible by regionsPerSide/);
+    assert.throws(() => parseWorldSpec({ ...SMALL_WORLD, biomes: biomes.slice(0, -1) }), /must be a catch-all/);
     assert.throws(
-      () => parseWorldSpec({ ...SMALL_WORLD, biomes: SMALL_WORLD.biomes.filter((b) => b.pick !== "rest") }),
-      /one biome must use pick/,
+      () => parseWorldSpec({ ...SMALL_WORLD, biomes: [{ id: "early", roughness: 0 }, ...biomes] }),
+      /could never form/,
     );
-    assert.throws(
-      () => parseWorldSpec({ ...SMALL_WORLD, biomes: [...SMALL_WORLD.biomes, SMALL_WORLD.biomes[0]] }),
-      /duplicate biome id/,
-    );
+    assert.throws(() => parseWorldSpec({ ...SMALL_WORLD, biomes: [biomes[0], ...biomes] }), /duplicate biome id/);
+    assert.throws(() => parseWorldSpec({ ...SMALL_WORLD, spawn: { biome: "tundra" } }), /not one of the world's biomes/);
+    assert.throws(() => parseWorldSpec({ ...SMALL_WORLD, land: { coast: { waterEdge: 0.9 } } }));
+    assert.throws(() => parseWorldSpec({ ...SMALL_WORLD, land: { coast: { waterEdge: 0.6, tip: 0.2 } } }), /must reach past/);
+  });
+
+  test("the wind blows away from where it comes from", () => {
+    const sw = windVector("south-west");
+    assert.ok(sw.x > 0 && sw.z < 0, "a south-westerly blows north-east (+x, -z)");
+    assert.ok(Math.abs(Math.hypot(sw.x, sw.z) - 1) < 1e-12);
+    assert.deepEqual(windVector("south"), { x: 0, z: -1 });
   });
 
   test("regionOf splits the world into regionsPerSide^2 equal squares", () => {
@@ -87,62 +115,226 @@ describe("survey", () => {
     }
   });
 
-  test("deterministic, and places exactly the spec's biome regions", () => {
+  test("deterministic, and every cell gets a biome", () => {
     const a = surveyWorld(SMALL);
     const b = surveyWorld(SMALL);
-    for (const key of ["height", "roughness", "biome", "region", "moisture", "flow", "river"] as const) {
+    for (const key of ["height", "roughness", "biome", "region", "moisture", "rain", "temperature", "water", "flow", "river"] as const) {
       assert.deepStrictEqual(a[key], b[key], `${key} is reproducible`);
     }
-    const counts = new Map<string, number>();
-    for (const r of a.regions) {
-      const id = SMALL.biomes[r.biome].id;
-      counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-    assert.deepEqual(Object.fromEntries(counts), { mountains: 1, swamp: 1, plains: 2 });
     for (const v of a.height) assert.ok(Number.isFinite(v));
+    assert.ok(a.biome.every((x) => x < SMALL.biomes.length));
     // Different seed, different world.
     const c = surveyWorld(parseWorldSpec({ ...SMALL_WORLD, seed: 78 }));
     assert.notDeepStrictEqual(c.height, a.height);
   });
 });
 
-describe("survey: ramped biomes", () => {
-  // Erosion and rivers off, so only the mountains' relief term differs.
-  const variant = (mountains: Record<string, number>) =>
-    surveyWorld(
-      parseWorldSpec({
-        ...SMALL_WORLD,
-        erosion: { droplets: 0, strength: 0 },
-        rivers: { minCatchment: 1e12, maxDepth: 0 },
-        biomes: SMALL_WORLD.biomes.map((b) => (b.id === "mountains" ? { ...b, ...mountains } : b)),
-      }),
-    );
+/** Cells inside the world's edges, with their coast frame. */
+function worldCells(s: Survey): Array<{ i: number; t: number; a: number }> {
+  const b = worldBounds(s.spec);
+  const out: Array<{ i: number; t: number; a: number }> = [];
+  for (let v = 0; v < s.grid.depth; v++) {
+    const z = s.grid.originZ + v * s.grid.cell;
+    for (let u = 0; u < s.grid.width; u++) {
+      const x = s.grid.originX + u * s.grid.cell;
+      if (x < b.min || z < b.min || x >= b.max || z >= b.max) continue;
+      out.push({ i: v * s.grid.width + u, ...coastFrame(s.spec, x, z) });
+    }
+  }
+  return out;
+}
 
-  test("relief rises from the region border instead of standing on it", () => {
-    const flat = variant({ relief: 0 });
-    const wall = variant({}); // ramp 0: full relief up to the border
-    const ramped = variant({ ramp: 100 });
-    const { grid } = flat;
-    const W = grid.width;
-    const mountainRegion = flat.regions.find((r) => SMALL.biomes[r.biome].id === "mountains")!.index;
-    const inside = (i: number): boolean => flat.region[i] === mountainRegion;
-    // Border band: mountain cells with a non-mountain neighbour.
-    const border: number[] = [];
-    for (let v = 1; v < grid.depth - 1; v++) {
-      for (let u = 1; u < W - 1; u++) {
-        const i = v * W + u;
-        if (inside(i) && [i - 1, i + 1, i - W, i + W].some((n) => !inside(n))) border.push(i);
+describe("survey: land and water", () => {
+  const small = surveyWorld(SMALL);
+
+  test("a peninsula: sea on the south edge and the lower sides, land along the north", () => {
+    const cells = worldCells(small);
+    const edge = (c: { t: number; a: number }): boolean => c.t < 0.02 || c.t > 0.98 || Math.abs(c.a) > 0.97;
+    const share = (pick: (c: { t: number; a: number }) => boolean): number => {
+      const e = cells.filter((c) => edge(c) && pick(c));
+      return e.filter((c) => small.water[c.i] === SEA).length / e.length;
+    };
+    assert.equal(share((c) => c.t < 0.02), 0, "the north edge is land");
+    assert.equal(share((c) => c.t > 0.98), 1, "the south edge is sea");
+    assert.equal(share((c) => Math.abs(c.a) > 0.97 && c.t < 0.2), 0, "the upper sides are land");
+    assert.equal(share((c) => Math.abs(c.a) > 0.97 && c.t > 0.45), 1, "the lower sides are sea");
+    const land = cells.filter((c) => small.water[c.i] !== SEA).length / cells.length;
+    assert.ok(land > 0.4 && land < 0.75, `land share ${land.toFixed(2)}`);
+    assert.ok(Math.abs(land - small.stats.landFraction) < 1e-9);
+  });
+
+  test("one landmass, sea below sea level, land above it", () => {
+    const { grid, water, height } = small;
+    const parts = labelComponents(grid.width, grid.depth, (i) => water[i] !== SEA);
+    const total = parts.sizes.reduce((a, b) => a + b, 0);
+    assert.ok(Math.max(...parts.sizes) / total > 0.95, "the land is one piece (tiny islands sink)");
+    for (let i = 0; i < water.length; i++) {
+      if (water[i] === SEA) assert.ok(height[i] < 0, `sea cell ${i} above sea level`);
+      if (water[i] === LAND && !small.river[i]) assert.ok(height[i] >= 0.3 - 1e-4, `land cell ${i} below the shore margin`);
+      if (water[i] === LAKE) assert.ok(height[i] <= small.waterLevel[i], `lake cell ${i} above its water`);
+    }
+  });
+
+  test("lakes form in wet hollows; dry hollows stay dry", () => {
+    const grid: CoarseGrid = { width: 20, depth: 20, cell: 8, originX: 0, originZ: 0 };
+    const h = Float32Array.from({ length: 400 }, (_, i) => 10 + Math.max(0, 40 - Math.hypot((i % 20) - 10, Math.floor(i / 20) - 10) ** 2) * -0.1);
+    const filled = fillDepressions(h, grid);
+    const noSea = new Uint8Array(400);
+    const opts = { minDepth: 0.8, minArea: 1000, minRainMm: 350 };
+    const wet = findLakes(h, filled, grid, noSea, new Float32Array(400).fill(900), opts);
+    const dry = findLakes(h, filled, grid, noSea, new Float32Array(400).fill(150), opts);
+    const lakeCells = wet.lake.reduce((a, b) => a + b, 0);
+    assert.ok(lakeCells * 64 >= 1000, `a lake formed (${lakeCells} cells)`);
+    assert.equal(wet.level[10 * 20 + 10], filled[10 * 20 + 10], "at the hollow's spill level");
+    assert.equal(dry.lake.reduce((a, b) => a + b, 0), 0, "too dry for a lake");
+    assert.equal(findLakes(h, filled, grid, noSea, new Float32Array(400).fill(900), { ...opts, minDepth: 50 }).lake.reduce((a, b) => a + b, 0), 0, "too shallow");
+  });
+
+  test("thermal erosion relaxes slopes to the angle of repose and keeps the ground", () => {
+    const grid: CoarseGrid = { width: 24, depth: 24, cell: 8, originX: 0, originZ: 0 };
+    const h = Float32Array.from({ length: 576 }, (_, i) => ((i % 24) - 12) ** 2 + (Math.floor(i / 24) - 12) ** 2 < 9 ? 80 : 0);
+    const before = h.reduce((a, b) => a + b, 0);
+    thermalErosion(h, grid, 35, 400);
+    const limit = Math.tan((35 * Math.PI) / 180) * 8;
+    let steepest = 0;
+    for (let v = 1; v < 23; v++) for (let u = 1; u < 23; u++) {
+      const i = v * 24 + u;
+      steepest = Math.max(steepest, Math.abs(h[i] - h[i + 1]), Math.abs(h[i] - h[i + 24]));
+    }
+    assert.ok(steepest <= limit * 1.1, `steepest step ${steepest.toFixed(2)} m vs ${limit.toFixed(2)} m`);
+    assert.ok(Math.abs(h.reduce((a, b) => a + b, 0) - before) < before * 1e-5, "material moves, none is lost");
+  });
+});
+
+describe("survey: climate and biomes", () => {
+  // 1 km, one range across a south wind: the rain shadow falls north of it.
+  const MID = parseWorldSpec({
+    ...SMALL_WORLD,
+    name: "mid",
+    seed: 5,
+    sizeChunks: 64,
+    land: { ...SMALL_WORLD.land, coast: { wander: 60, wanderScale: 250 }, riseDistance: 400 },
+    ranges: { count: 1, height: 200, width: 260, length: 600, ridgeScale: 200, coastClearance: 100 },
+    climate: { wind: "south", dryDistance: 1500, orographic: 0.012 },
+  });
+  const mid = surveyWorld(MID);
+
+  test("the wind drops its rain on the windward side of a range; the lee is dry", () => {
+    assert.equal(mid.ranges.length, 1);
+    const axis = mid.ranges[0].points;
+    const wind = windVector(MID.climate.wind);
+    const { grid } = mid;
+    const band = (lo: number, hi: number): number[] => {
+      const rain: number[] = [];
+      for (let i = 0; i < mid.rain.length; i++) {
+        if (mid.water[i] !== LAND) continue;
+        const x = grid.originX + (i % grid.width) * grid.cell;
+        const z = grid.originZ + Math.floor(i / grid.width) * grid.cell;
+        let best = 0;
+        let bestD = Infinity;
+        axis.forEach((p, k) => {
+          const d = Math.hypot(x - p.x, z - p.z);
+          if (d < bestD) [best, bestD] = [k, d];
+        });
+        if (best < 3 || best > axis.length - 4) continue; // away from the range's ends
+        const downwind = (x - axis[best].x) * wind.x + (z - axis[best].z) * wind.z;
+        if (downwind >= lo && downwind <= hi) rain.push(mid.rain[i]);
+      }
+      return rain;
+    };
+    const mean = (a: number[]): number => a.reduce((s, x) => s + x, 0) / a.length;
+    const windward = band(-240, -120);
+    const lee = band(120, 240);
+    assert.ok(windward.length > 20 && lee.length > 20);
+    assert.ok(mean(lee) < 0.6 * mean(windward), `lee ${mean(lee).toFixed(0)} mm vs windward ${mean(windward).toFixed(0)} mm`);
+  });
+
+  test("temperature: warmest by the sea, cooling inland and with height", () => {
+    const C = MID.climate;
+    for (const { i, t } of worldCells(mid)) {
+      if (mid.water[i] !== LAND) continue;
+      const expected = C.seaTempC - C.inlandCoolingC * (1 - Math.min(1, Math.max(0, t))) - (C.lapseCPerKm * mid.height[i]) / 1000;
+      assert.ok(Math.abs(mid.temperature[i] - expected) < 0.5, `cell ${i}: ${mid.temperature[i]} vs ${expected}`);
+    }
+  });
+
+  test("biomes form where their rules say, water biomes on the water", () => {
+    const id = (i: number): string => MID.biomes[mid.biome[i]].id;
+    let desert = 0;
+    let dryDesert = 0;
+    for (let i = 0; i < mid.biome.length; i++) {
+      if (mid.water[i] === SEA) assert.equal(id(i), "sea");
+      if (mid.water[i] === LAKE) assert.equal(id(i), "lake");
+      if (mid.water[i] === LAND) assert.ok(!["sea", "lake"].includes(id(i)), `land cell ${i} is ${id(i)}`);
+      if (id(i) === "desert") {
+        desert++;
+        if (mid.rain[i] <= 450) dryDesert++; // smoothing may pull a few border cells in
       }
     }
-    assert.ok(border.length > 10, "the mountains have a border");
-    const relief = (s: typeof flat, i: number): number => Math.abs(s.height[i] - flat.height[i]);
-    const maxOver = (s: typeof flat, cells: Iterable<number>): number => Math.max(...[...cells].map((i) => relief(s, i)));
+    assert.ok(desert > 0, "the rain shadow grew a desert");
+    assert.ok(dryDesert / desert > 0.85, `${dryDesert}/${desert} desert cells are dry`);
+    assert.ok(mid.regions.every((r) => r.cells > 0));
+  });
 
-    assert.ok(maxOver(wall, border) > 30, `without a ramp the border is a wall (${maxOver(wall, border).toFixed(1)} m)`);
-    assert.ok(maxOver(ramped, border) < 6, `with one it starts as foothills (${maxOver(ramped, border).toFixed(1)} m)`);
-    const all = Array.from({ length: flat.height.length }, (_, i) => i);
-    for (const i of all) assert.ok(relief(ramped, i) <= relief(wall, i) + 1e-3, `cell ${i}: never above the unramped relief`);
-    assert.ok(maxOver(ramped, all) > 0.5 * maxOver(wall, all), "the massif still reaches most of its height inside");
+  test("spawn: on dry land in the spawn biome, off the rivers", () => {
+    const sp = spawnPoint(MID, mid);
+    assert.equal(sp.biome, "plains");
+    const g = mid.grid;
+    const i = Math.round((sp.z - g.originZ) / g.cell) * g.width + Math.round((sp.x - g.originX) / g.cell);
+    assert.equal(mid.water[i], LAND);
+    assert.equal(mid.river[i], 0);
+    assert.equal(MID.biomes[mid.biome[i]].id, "plains");
+  });
+});
+
+describe("biome rules", () => {
+  const spec = parseWorldSpec({
+    ...SMALL_WORLD,
+    biomes: [
+      { id: "sea", when: { water: "sea" }, roughness: 0 },
+      { id: "swamp", when: [{ freshwaterDistance: { max: 50 }, height: { max: 3 } }, { seaExposure: { max: 0.2 }, coastDistance: { max: 60 } }], roughness: 0 },
+      { id: "desert", when: { rainMm: { max: 300 } }, roughness: 0 },
+      { id: "plains", roughness: 0 },
+    ],
+  });
+  const inputs = (n: number, over: Partial<Record<keyof BiomeInputs, number[]>>): BiomeInputs => {
+    const f = (k: keyof BiomeInputs, d: number) => Float32Array.from(over[k] ?? new Array(n).fill(d));
+    return {
+      water: Uint8Array.from(over.water ?? new Array(n).fill(LAND)),
+      tempC: f("tempC", 15),
+      rainMm: f("rainMm", 900),
+      height: f("height", 20),
+      slopeDeg: f("slopeDeg", 2),
+      coastDistance: f("coastDistance", 1000),
+      waterDistance: f("waterDistance", 1000),
+      freshwaterDistance: f("freshwaterDistance", 1000),
+      seaExposure: f("seaExposure", 0),
+    };
+  };
+  const ids = (b: Uint8Array): string[] => [...b].map((k) => spec.biomes[k].id);
+
+  test("first match wins; any alternative is enough; the catch-all takes the rest", () => {
+    const f = inputs(6, {
+      water: [SEA, LAND, LAND, LAND, LAND, LAND],
+      rainMm: [100, 100, 900, 900, 100, 900],
+      freshwaterDistance: [10, 10, 10, 1000, 1000, 1000],
+      height: [0, 2, 10, 2, 20, 20],
+      coastDistance: [0, 1000, 1000, 40, 1000, 1000],
+      seaExposure: [1, 0, 0, 0.1, 0, 0],
+    });
+    assert.deepEqual(ids(classifyBiomes(spec, f)), ["sea", "swamp", "plains", "swamp", "desert", "plains"]);
+  });
+
+  test("smoothing removes specks and small patches but never touches water", () => {
+    const W = 12;
+    const D = 12;
+    const biome = new Uint8Array(W * D).fill(3); // plains
+    const water = new Uint8Array(W * D);
+    biome[5 * W + 5] = 2; // a one-cell desert speck
+    for (let u = 0; u < W; u++) [biome[u], water[u]] = [0, SEA]; // a sea row
+    smoothBiomes(biome, water, W, D, 4);
+    assert.equal(biome[5 * W + 5], 3, "the speck joins the plains");
+    for (let u = 0; u < W; u++) assert.equal(biome[u], 0, "the sea stays sea");
   });
 });
 
@@ -184,6 +376,9 @@ describe("bakeWorldTerrain", () => {
       const biome = store.getMap("biome");
       assert.ok(elevation && elevation.data instanceof Float32Array);
       assert.ok(biome && biome.data instanceof Uint8Array);
+      assert.ok(store.getMap("rain")?.data instanceof Float32Array);
+      assert.ok(store.getMap("temperature")?.data instanceof Float32Array);
+      assert.ok(store.getMap("water")?.data instanceof Uint8Array);
       assert.equal(elevation.data.length, elevation.width * elevation.depth);
       assert.equal(store.getMap("nope"), null);
     } finally {
@@ -226,7 +421,7 @@ describe("worldInfoFor (the welcome's world map)", () => {
       const info = worldInfoFor({ getMeta: (k) => meta.get(k) ?? null }, store, 16);
       assert.ok(info);
       assert.deepEqual(info.bounds, { minCx: -16, minCz: -16, maxCx: 15, maxCz: 15 });
-      assert.deepEqual(info.map.biomes, ["mountains", "swamp", "plains"]);
+      assert.deepEqual(info.map.biomes, ["sea", "lake", "mountains", "desert", "plains"]);
       const map = decodeWorldMap(info.map);
       const survey = store.getMap("elevation")!;
       assert.equal(map.cell, 16);
@@ -237,7 +432,7 @@ describe("worldInfoFor (the welcome's world map)", () => {
       const mean = (s(0, 0) + s(1, 0) + s(0, 1) + s(1, 1)) / 4;
       assert.ok(Math.abs(map.heights[v * map.width + u] - mean) < 0.01);
       assert.equal(map.originX + u * map.cell, survey.originX + (2 * u + 0.5) * survey.cell);
-      assert.ok(map.biome.every((b) => b < 3));
+      assert.ok(map.biome.every((b) => b < SMALL.biomes.length));
       assert.equal(worldInfoFor({ getMeta: () => null }, store, 16), null, "legacy world: none");
     } finally {
       store.close();

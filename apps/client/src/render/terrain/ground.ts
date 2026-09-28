@@ -14,9 +14,15 @@ import type { WorldMap } from "@mmo-engine/protocol";
 export const BIOME_GROUND: Record<string, readonly [number, number, number]> = {
   plains: [104, 138, 68],
   forest: [56, 90, 46],
+  rainforest: [38, 78, 40],
   desert: [201, 172, 118],
   swamp: [76, 82, 56],
   mountains: [112, 104, 94],
+  snow: [232, 236, 240],
+  beach: [214, 196, 150],
+  // Under water: the sea floor and lake beds (the water surface is drawn over them).
+  sea: [150, 138, 104],
+  lake: [92, 86, 64],
 };
 export const DEFAULT_GROUND: readonly [number, number, number] = [96, 128, 66];
 const RIVER_MUD: readonly [number, number, number] = [82, 72, 56];

@@ -2,18 +2,47 @@
  * World survey — the coarse, whole-world pass of the terrain bake.
  *
  * On a coarse grid (spec.coarseCell metres, ~500 × 500 cells for 4 km) it
- * lays out the world's large-scale shape: continental elevation and
- * moisture, a FINITE set of biome regions chosen by that survey (mountains
- * take the highest ground, swamps the low wet ground, …), blended biome
- * landforms, droplet erosion, and rivers from flow accumulation. The fine
- * heightmap (world-heights.ts) is built on top of it.
+ * builds the world the way nature would, in order:
  *
- * Terrain is baked once and stored, so this only needs to be reproducible
- * (same spec -> same bytes), not bit-identical across platforms.
+ *  1. land: a landmass with a wandering coast and mountain ranges pushed
+ *     up across the prevailing wind (landmass.ts);
+ *  2. erosion: slopes collapse to their angle of repose, rivers cut
+ *     valleys, and rain washes soil downhill — all driven by a first look
+ *     at where it rains (erosion.ts);
+ *  3. water: the sea, lakes in the hollows that hold water, and rivers
+ *     from the rain-weighted drainage (hydrology.ts);
+ *  4. climate: temperature from height and distance to the sea; rainfall
+ *     carried in off the sea by the wind, wrung out over the ranges, with
+ *     rain shadows behind them (climate.ts);
+ *  5. biomes: read off all of the above by the spec's rules, smoothed into
+ *     regions, each adding its surface character (biomes.ts).
+ *
+ * The fine heightmap (world-heights.ts) is built on top of it. Terrain is
+ * baked once and stored, so this only needs to be reproducible (same spec
+ * -> same bytes), not bit-identical across platforms.
  */
 
 import { makeProcgenChunkSource } from "../procgen/chunk-source.js";
-import { worldBounds, type BiomeSpec, type WorldSpec } from "./world-spec.js";
+import { applySurface, biomeRegions, classifyBiomes, smoothBiomes } from "./biomes.js";
+import { rainfall, temperature } from "./climate.js";
+import { dropletErosion, fluvialErosion, thermalErosion } from "./erosion.js";
+import { boxBlur, distanceTo, slopeDegrees } from "./grid-ops.js";
+import {
+  accumulate,
+  carveRivers,
+  drainage,
+  fillDepressions,
+  findLakes,
+  LAKE,
+  LAND,
+  SEA,
+  seaMask,
+} from "./hydrology.js";
+import { baseElevation, landMask, placeRanges, rangeUplift, tidyLandmass, type RangeAxis } from "./landmass.js";
+import { worldBounds, type WorldSpec } from "./world-spec.js";
+
+export { fillDepressions, flowAccumulation, LAKE, LAND, SEA } from "./hydrology.js";
+export type { RangeAxis } from "./landmass.js";
 
 /** Coarse cell (u, v) sits at world (originX + u*cell, originZ + v*cell). */
 export interface CoarseGrid {
@@ -24,33 +53,54 @@ export interface CoarseGrid {
   originZ: number;
 }
 
+/** A connected patch of one biome. */
 export interface BiomeRegion {
   index: number;
   /** Index into spec.biomes. */
   biome: number;
+  /** Centroid, world metres. */
   x: number;
   z: number;
+  /** Size in survey cells. */
+  cells: number;
 }
 
 export interface Survey {
   spec: WorldSpec;
   grid: CoarseGrid;
-  /** Final coarse elevation, metres (after erosion and rivers). */
+  /** Final coarse elevation, metres (sea floor and lake beds included). */
   height: Float32Array;
   /** Fine-detail strength 0..1, blended across biome borders. */
   roughness: Float32Array;
-  /** Dominant biome (index into spec.biomes) per cell. */
+  /** Biome (index into spec.biomes) per cell. */
   biome: Uint8Array;
-  /** Nearest biome region per cell. */
+  /** Biome region per cell (index into `regions`). */
   region: Uint16Array;
-  /** Moisture -1..1. */
+  /** Humidity of the wind 0..1. */
   moisture: Float32Array;
-  /** Upstream catchment area per cell, m². */
+  /** Yearly rainfall, mm. */
+  rain: Float32Array;
+  /** Mean temperature, °C. */
+  temperature: Float32Array;
+  /** LAND, SEA, or LAKE per cell. */
+  water: Uint8Array;
+  /** Water surface height on sea and lake cells, NaN on land. */
+  waterLevel: Float32Array;
+  /** Rain-weighted upstream area per cell, m² (at the windward coast's rainfall). */
   flow: Float32Array;
   /** 1 where a river runs. */
   river: Uint8Array;
   regions: BiomeRegion[];
-  stats: { erodedMeanM: number; erodedMaxM: number; riverCells: number };
+  ranges: RangeAxis[];
+  stats: {
+    erodedMeanM: number;
+    erodedMaxM: number;
+    deepestCutM: number;
+    riverCells: number;
+    lakeCells: number;
+    /** Share of the world (inside its edges) that is land. */
+    landFraction: number;
+  };
 }
 
 /** Cells beyond the world edge so bicubic sampling never runs off the grid. */
@@ -110,405 +160,127 @@ export function noiseField(grid: CoarseGrid, seed: bigint, scale: number): Float
   return out;
 }
 
-function sampleNearest(field: Float32Array, grid: CoarseGrid, x: number, z: number): number {
-  const u = Math.min(grid.width - 1, Math.max(0, Math.round((x - grid.originX) / grid.cell)));
-  const v = Math.min(grid.depth - 1, Math.max(0, Math.round((z - grid.originZ) / grid.cell)));
-  return field[v * grid.width + u];
-}
+/** Neighbourhood for sea exposure: ~400 m across. */
+const SEA_EXPOSURE_RADIUS_M = 400;
 
-/**
- * Spread `n` region centres over the world (best-candidate sampling: each
- * new centre is the candidate farthest from the existing ones).
- */
-function placeRegionCentres(spec: WorldSpec, n: number, rng: () => number): Array<{ x: number; z: number }> {
-  const b = worldBounds(spec);
-  const inset = (b.max - b.min) * 0.08;
-  const lo = b.min + inset;
-  const span = b.max - b.min - 2 * inset;
-  const points: Array<{ x: number; z: number }> = [];
-  for (let k = 0; k < n; k++) {
-    let best = { x: 0, z: 0 };
-    let bestD = -1;
-    for (let c = 0; c < 32; c++) {
-      const p = { x: lo + rng() * span, z: lo + rng() * span };
-      let d = Infinity;
-      for (const q of points) d = Math.min(d, Math.hypot(p.x - q.x, p.z - q.z));
-      if (d > bestD) [best, bestD] = [p, d];
-    }
-    points.push(best);
-  }
-  return points;
-}
-
-/** Order in which picks claim regions; "rest" takes what is left. */
-const PICK_ORDER = ["highest", "lowest-wet", "driest", "wettest", "rest"] as const;
-
-/**
- * Give every region centre a biome, honouring each biome's finite count and
- * its pick rule against the survey (continental elevation, moisture).
- */
-export function assignBiomes(
-  spec: WorldSpec,
-  centres: Array<{ x: number; z: number }>,
-  elevationAt: (x: number, z: number) => number,
-  moistureAt: (x: number, z: number) => number,
-): BiomeRegion[] {
-  const pool = centres.map((c, index) => ({ ...c, index, e: elevationAt(c.x, c.z), m: moistureAt(c.x, c.z) }));
-  const regions: BiomeRegion[] = [];
-  const score: Record<(typeof PICK_ORDER)[number], (p: (typeof pool)[number]) => number> = {
-    highest: (p) => p.e,
-    "lowest-wet": (p) => p.m - p.e,
-    driest: (p) => -p.m,
-    wettest: (p) => p.m,
-    rest: () => 0,
-  };
-  for (const pick of PICK_ORDER) {
-    spec.biomes.forEach((biome, bi) => {
-      if (biome.pick !== pick) return;
-      pool.sort((a, b) => score[pick](b) - score[pick](a) || a.index - b.index);
-      for (const p of pool.splice(0, biome.count)) regions.push({ index: p.index, biome: bi, x: p.x, z: p.z });
-    });
-  }
-  return regions.sort((a, b) => a.index - b.index);
-}
-
-/** 0..1 landform shape of a biome at a point, from its own noise field value n (-1..1). */
-function shape(biome: BiomeSpec, n: number, x: number, z: number): number {
-  switch (biome.shape) {
-    case "rolling":
-      return 0.5 * (n + 1);
-    case "ridged": {
-      const r = 1 - Math.abs(n);
-      return r * r;
-    }
-    case "dunes":
-      return 0.5 + 0.5 * Math.sin((2 * Math.PI * (x * 0.8 + z * 0.6)) / biome.scale + 2.5 * n);
-    case "flat":
-      return 0.15 * (n + 1);
-  }
-}
-
-function smoothstep(t: number): number {
-  if (t <= 0) return 0;
-  if (t >= 1) return 1;
-  return t * t * (3 - 2 * t);
-}
-
-/**
- * Droplet hydraulic erosion (after Hans Theobald Beyer's method). Heights
- * are handled in units of one cell width so gradients are true slopes.
- */
-function erode(
-  h: Float32Array,
-  grid: CoarseGrid,
-  droplets: number,
-  strength: number,
-  rng: () => number,
-): { meanM: number; maxM: number } {
-  const W = grid.width;
-  const D = grid.depth;
-  const toUnits = 1 / grid.cell;
-  for (let i = 0; i < h.length; i++) h[i] *= toUnits;
-  const before = Float32Array.from(h);
-  const inertia = 0.05;
-  const capacityFactor = 4;
-  const minCapacity = 0.01;
-  const erodeSpeed = 0.3 * strength;
-  const depositSpeed = 0.3;
-  const evaporate = 0.02;
-  const gravity = 4;
-  const maxLife = 40;
-  const radius = 2;
-  // Cap what one droplet step may move (units = cell widths). Without it,
-  // a step on 250 m mountains can remove a whole slope's drop at once and
-  // 150k droplets carve 100 m canyons instead of weathering the relief.
-  const maxStep = 0.04;
-
-  const heightGrad = (x: number, z: number): [number, number, number] => {
-    const u = Math.floor(x);
-    const v = Math.floor(z);
-    const fx = x - u;
-    const fz = z - v;
-    const i = v * W + u;
-    const nw = h[i], ne = h[i + 1], sw = h[i + W], se = h[i + W + 1];
-    return [
-      nw * (1 - fx) * (1 - fz) + ne * fx * (1 - fz) + sw * (1 - fx) * fz + se * fx * fz,
-      (ne - nw) * (1 - fz) + (se - sw) * fz,
-      (sw - nw) * (1 - fx) + (se - ne) * fx,
-    ];
-  };
-
-  for (let d = 0; d < droplets; d++) {
-    let x = 1 + rng() * (W - 3);
-    let z = 1 + rng() * (D - 3);
-    let dx = 0;
-    let dz = 0;
-    let speed = 1;
-    let water = 1;
-    let sediment = 0;
-    for (let life = 0; life < maxLife; life++) {
-      const u = Math.floor(x);
-      const v = Math.floor(z);
-      const fx = x - u;
-      const fz = z - v;
-      const [height, gx, gz] = heightGrad(x, z);
-      dx = dx * inertia - gx * (1 - inertia);
-      dz = dz * inertia - gz * (1 - inertia);
-      const len = Math.hypot(dx, dz);
-      if (len < 1e-9) break;
-      dx /= len;
-      dz /= len;
-      x += dx;
-      z += dz;
-      if (x < 1 || z < 1 || x >= W - 2 || z >= D - 2) break;
-      const deltaH = heightGrad(x, z)[0] - height;
-      const capacity = Math.max(-deltaH * speed * water * capacityFactor, minCapacity);
-      const i = v * W + u;
-      if (sediment > capacity || deltaH > 0) {
-        const amount = Math.min(maxStep, deltaH > 0 ? Math.min(deltaH, sediment) : (sediment - capacity) * depositSpeed);
-        sediment -= amount;
-        h[i] += amount * (1 - fx) * (1 - fz);
-        h[i + 1] += amount * fx * (1 - fz);
-        h[i + W] += amount * (1 - fx) * fz;
-        h[i + W + 1] += amount * fx * fz;
-      } else {
-        const amount = Math.min(maxStep, (capacity - sediment) * erodeSpeed, -deltaH);
-        // Spread the removal over a small brush so channels stay smooth.
-        let wsum = 0;
-        for (let bz = -radius; bz <= radius; bz++) {
-          for (let bx = -radius; bx <= radius; bx++) {
-            const w = Math.max(0, radius - Math.hypot(bx, bz));
-            if (w > 0 && u + bx > 0 && v + bz > 0 && u + bx < W - 1 && v + bz < D - 1) wsum += w;
-          }
-        }
-        if (wsum > 0) {
-          for (let bz = -radius; bz <= radius; bz++) {
-            for (let bx = -radius; bx <= radius; bx++) {
-              const w = Math.max(0, radius - Math.hypot(bx, bz));
-              if (w <= 0 || u + bx <= 0 || v + bz <= 0 || u + bx >= W - 1 || v + bz >= D - 1) continue;
-              // Heights are signed metres (swamps sit below 0), so no
-              // clamp at zero: each brush cell gives up its share.
-              const take = (amount * w) / wsum;
-              h[(v + bz) * W + (u + bx)] -= take;
-              sediment += take;
-            }
-          }
-        }
-      }
-      speed = Math.sqrt(Math.max(0, speed * speed + -deltaH * gravity));
-      water *= 1 - evaporate;
-    }
-  }
-  let sum = 0;
-  let max = 0;
-  for (let i = 0; i < h.length; i++) {
-    const change = Math.abs(h[i] - before[i]) * grid.cell;
-    sum += change;
-    if (change > max) max = change;
-    h[i] *= grid.cell;
-  }
-  return { meanM: sum / h.length, maxM: max };
-}
-
-/**
- * Priority-flood depression filling (Barnes, Lehman & Mulla 2014): raise
- * every enclosed hollow to its spill level (+ a tiny gradient so flats
- * drain), giving a surface on which all water reaches the world's edge.
- * Used only to ROUTE flow — the terrain itself keeps its hollows.
- */
-export function fillDepressions(h: Float32Array, grid: CoarseGrid): Float32Array {
-  const W = grid.width;
-  const D = grid.depth;
-  const N = W * D;
-  const filled = Float32Array.from(h);
-  const closed = new Uint8Array(N);
-  // Binary min-heap of cell indices keyed by filled height.
-  const heap = new Int32Array(N);
-  let size = 0;
-  const less = (a: number, b: number): boolean =>
-    filled[heap[a]] < filled[heap[b]] || (filled[heap[a]] === filled[heap[b]] && heap[a] < heap[b]);
-  const push = (i: number): void => {
-    let k = size++;
-    heap[k] = i;
-    while (k > 0) {
-      const p = (k - 1) >> 1;
-      if (!less(k, p)) break;
-      [heap[k], heap[p]] = [heap[p], heap[k]];
-      k = p;
-    }
-  };
-  const pop = (): number => {
-    const top = heap[0];
-    heap[0] = heap[--size];
-    let k = 0;
-    for (;;) {
-      const l = 2 * k + 1;
-      const r = l + 1;
-      let m = k;
-      if (l < size && less(l, m)) m = l;
-      if (r < size && less(r, m)) m = r;
-      if (m === k) break;
-      [heap[k], heap[m]] = [heap[m], heap[k]];
-      k = m;
-    }
-    return top;
-  };
-  for (let v = 0; v < D; v++) {
-    for (let u = 0; u < W; u++) {
-      if (u === 0 || v === 0 || u === W - 1 || v === D - 1) {
-        closed[v * W + u] = 1;
-        push(v * W + u);
-      }
-    }
-  }
-  const epsilon = 1e-3;
-  while (size > 0) {
-    const c = pop();
-    const u = c % W;
-    const v = (c - u) / W;
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nu = u + dx;
-        const nv = v + dz;
-        if ((dx === 0 && dz === 0) || nu < 0 || nv < 0 || nu >= W || nv >= D) continue;
-        const n = nv * W + nu;
-        if (closed[n]) continue;
-        closed[n] = 1;
-        filled[n] = Math.max(filled[n], filled[c] + epsilon);
-        push(n);
-      }
-    }
-  }
-  return filled;
-}
-
-/** D8 flow accumulation: every cell drains to its steepest-descent neighbour. */
-export function flowAccumulation(h: Float32Array, grid: CoarseGrid): Float32Array {
-  const W = grid.width;
-  const D = grid.depth;
-  const area = grid.cell * grid.cell;
-  const flow = new Float32Array(h.length).fill(area);
-  const order = Uint32Array.from({ length: h.length }, (_, i) => i).sort((a, b) => h[b] - h[a] || a - b);
-  for (const i of order) {
-    const u = i % W;
-    const v = (i - u) / W;
-    let best = -1;
-    let bestDrop = 0;
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if ((dx === 0 && dz === 0) || u + dx < 0 || v + dz < 0 || u + dx >= W || v + dz >= D) continue;
-        const n = (v + dz) * W + (u + dx);
-        const drop = (h[i] - h[n]) / (dx !== 0 && dz !== 0 ? Math.SQRT2 : 1);
-        if (drop > bestDrop) [best, bestDrop] = [n, drop];
-      }
-    }
-    if (best >= 0) flow[best] += flow[i];
-  }
-  return flow;
-}
+/** Keep land at least this far above the sea (off the rivers) after the surface pass. */
+const SHORE_MARGIN_M = 0.3;
 
 export function surveyWorld(spec: WorldSpec): Survey {
   const grid = coarseGrid(spec);
   const W = grid.width;
-  const N = W * grid.depth;
-  const continental = noiseField(grid, fieldSeed(spec.seed, 1), spec.continentalScale);
-  const moisture = noiseField(grid, fieldSeed(spec.seed, 2), spec.continentalScale * 0.8);
-  const biomeNoise = spec.biomes.map((b, i) => noiseField(grid, fieldSeed(spec.seed, 100 + i), b.scale));
+  const D = grid.depth;
+  const N = W * D;
+  const sea = spec.land.seaLevel;
+  const E = spec.erosion;
 
-  const total = spec.biomes.reduce((n, b) => n + b.count, 0);
-  const rng = mulberry32(spec.seed ^ 0x5eed);
-  const regions = assignBiomes(
+  // ---- 1. land and uplift ---------------------------------------------------
+  const swell = noiseField(grid, fieldSeed(spec.seed, 1), spec.land.reliefScale);
+  const warpA = noiseField(grid, fieldSeed(spec.seed, 3), spec.land.coast.wanderScale);
+  const warpT = noiseField(grid, fieldSeed(spec.seed, 4), spec.land.coast.wanderScale);
+  const land = landMask(spec, grid, warpA, warpT);
+  const height = baseElevation(spec, grid, land, swell);
+  const ranges = placeRanges(spec, grid, land, mulberry32(spec.seed ^ 0x5eed));
+  const uplift = rangeUplift(
     spec,
-    placeRegionCentres(spec, total, rng),
-    (x, z) => sampleNearest(continental, grid, x, z),
-    (x, z) => sampleNearest(moisture, grid, x, z),
+    grid,
+    ranges,
+    noiseField(grid, fieldSeed(spec.seed, 5), spec.ranges.ridgeScale),
+    noiseField(grid, fieldSeed(spec.seed, 6), spec.ranges.length / 3),
   );
+  for (let i = 0; i < N; i++) if (land[i]) height[i] += uplift[i];
 
-  // Blend biome landforms: softmax over distance to region centres, so
-  // borders are smooth over ~blendWidth metres.
-  const height = new Float32Array(N);
-  const roughness = new Float32Array(N);
-  const biome = new Uint8Array(N);
-  const region = new Uint16Array(N);
-  const tau = spec.blendWidth / 3;
-  const dist = new Float64Array(regions.length);
-  const biomeWeight = new Float64Array(spec.biomes.length);
-  for (let v = 0; v < grid.depth; v++) {
+  // ---- 2. erosion, driven by a first look at the rain ------------------------
+  thermalErosion(height, grid, E.talusDeg, Math.ceil(E.thermalPasses / 2));
+  const shaped = Float32Array.from(height);
+  const firstSea = seaMask(height, grid, sea);
+  const firstRain = rainfall(spec, grid, height, (i) => firstSea[i] === 1).rainMm;
+  const share = firstRain.map((r) => r / spec.climate.rainMm);
+  const deepestCutM = fluvialErosion(height, grid, sea, share, E.fluvialPasses, E.fluvialStrength);
+  dropletErosion(height, grid, sea, share, E.droplets, E.strength, mulberry32(spec.seed ^ 0xe20d));
+  thermalErosion(height, grid, E.talusDeg, Math.floor(E.thermalPasses / 2));
+  let erodedSum = 0;
+  let erodedMaxM = 0;
+  for (let i = 0; i < N; i++) {
+    const change = Math.abs(height[i] - shaped[i]);
+    erodedSum += change;
+    erodedMaxM = Math.max(erodedMaxM, change);
+  }
+
+  // ---- 3. water ---------------------------------------------------------------
+  // One landmass: islands the erosion cut off, if too small, go under.
+  let seaCells = seaMask(height, grid, sea);
+  const kept = tidyLandmass(seaCells.map((s) => (s ? 0 : 1)), W, D, grid.cell, spec.land.minIslandArea);
+  for (let i = 0; i < N; i++) if (!kept[i] && !seaCells[i]) height[i] = Math.min(height[i], sea - 0.5);
+  seaCells = seaMask(height, grid, sea);
+  const filled = fillDepressions(height, grid);
+  const lakes = findLakes(height, filled, grid, seaCells, firstRain, spec.lakes);
+  const water = new Uint8Array(N);
+  const waterLevel = new Float32Array(N).fill(Number.NaN);
+  for (let i = 0; i < N; i++) {
+    if (seaCells[i]) [water[i], waterLevel[i]] = [SEA, sea];
+    else if (lakes.lake[i]) [water[i], waterLevel[i]] = [LAKE, lakes.level[i]];
+  }
+
+  // ---- 4. climate --------------------------------------------------------------
+  const { rainMm, humidity } = rainfall(spec, grid, height, (i) => water[i] !== LAND);
+  const tempC = temperature(spec, grid, height);
+
+  // ---- rivers: rain-weighted drainage over the filled surface -----------------
+  const flow = accumulate(drainage(filled, grid), grid, (i) => rainMm[i] / spec.climate.rainMm);
+  const river = new Uint8Array(N);
+  let riverCells = 0;
+  for (let i = 0; i < N; i++) {
+    if (water[i] === LAND && flow[i] >= spec.rivers.minCatchment) {
+      river[i] = 1;
+      riverCells++;
+    }
+  }
+
+  // ---- 5. biomes ---------------------------------------------------------------
+  const above = height.map((h) => h - sea);
+  const seaShare = new Float32Array(N);
+  for (let i = 0; i < N; i++) seaShare[i] = water[i] === SEA ? 1 : 0;
+  const biome = classifyBiomes(spec, {
+    water,
+    tempC,
+    rainMm,
+    height: above,
+    slopeDeg: slopeDegrees(height, W, D, grid.cell),
+    coastDistance: distanceTo(W, D, grid.cell, (i) => water[i] === SEA),
+    waterDistance: distanceTo(W, D, grid.cell, (i) => water[i] !== LAND || river[i] === 1),
+    freshwaterDistance: distanceTo(W, D, grid.cell, (i) => water[i] === LAKE || river[i] === 1),
+    seaExposure: boxBlur(seaShare, W, D, SEA_EXPOSURE_RADIUS_M / grid.cell / 2),
+  });
+  smoothBiomes(biome, water, W, D, spec.minBiomeArea / (grid.cell * grid.cell));
+  const { regions, region } = biomeRegions(biome, grid);
+
+  // ---- surface character, then river beds -------------------------------------
+  const roughness = applySurface(spec, grid, height, biome, water, (b) =>
+    noiseField(grid, fieldSeed(spec.seed, 100 + b), spec.biomes[b].surface!.scale),
+  );
+  carveRivers(height, grid, river, flow, water, spec.rivers.minCatchment, spec.rivers.maxDepth);
+  // Land stays above the sea off the rivers: the water map is final, and
+  // surface noise must not open flooded pits it doesn't know about.
+  for (let i = 0; i < N; i++) {
+    if (water[i] === LAND && !river[i] && height[i] < sea + SHORE_MARGIN_M) height[i] = sea + SHORE_MARGIN_M;
+  }
+
+  let landCells = 0;
+  let worldCells = 0;
+  let lakeCells = 0;
+  const b = worldBounds(spec);
+  for (let v = 0; v < D; v++) {
     const z = grid.originZ + v * grid.cell;
     for (let u = 0; u < W; u++) {
       const x = grid.originX + u * grid.cell;
       const i = v * W + u;
-      let dmin = Infinity;
-      let nearest = 0;
-      for (let r = 0; r < regions.length; r++) {
-        dist[r] = Math.hypot(x - regions[r].x, z - regions[r].z);
-        if (dist[r] < dmin) [dmin, nearest] = [dist[r], r];
-      }
-      // Depth inside the nearest biome's territory: half the extra distance
-      // to the nearest region of another biome (0 on the border). Touching
-      // regions of one biome are one territory, so they form one massif.
-      const nearBiome = regions[nearest].biome;
-      let dOther = Infinity;
-      for (let r = 0; r < regions.length; r++) {
-        if (regions[r].biome !== nearBiome && dist[r] < dOther) dOther = dist[r];
-      }
-      const depth = (dOther - dmin) / 2;
-      biomeWeight.fill(0);
-      let wsum = 0;
-      for (let r = 0; r < regions.length; r++) {
-        const w = Math.exp(-(dist[r] - dmin) / tau);
-        biomeWeight[regions[r].biome] += w;
-        wsum += w;
-      }
-      let h = continental[i] * spec.continentalRelief;
-      let rough = 0;
-      let dominant = 0;
-      for (let b = 0; b < spec.biomes.length; b++) {
-        const w = biomeWeight[b] / wsum;
-        if (w === 0) continue;
-        const bs = spec.biomes[b];
-        // A ramped biome's relief grows from nothing at its border to full
-        // height `ramp` metres in (it has none outside its territory).
-        const rise = bs.ramp > 0 ? (b === nearBiome ? smoothstep(depth / bs.ramp) : 0) : 1;
-        h += w * (bs.base + bs.relief * rise * shape(bs, biomeNoise[b][i], x, z));
-        rough += w * bs.roughness;
-        if (biomeWeight[b] > biomeWeight[dominant]) dominant = b;
-      }
-      height[i] = h;
-      roughness[i] = rough;
-      biome[i] = dominant;
-      region[i] = regions[nearest].index;
+      if (water[i] === LAKE) lakeCells++;
+      if (x < b.min || z < b.min || x >= b.max || z >= b.max) continue;
+      worldCells++;
+      if (water[i] !== SEA) landCells++;
     }
   }
-
-  const erosion = erode(height, grid, spec.erosion.droplets, spec.erosion.strength, mulberry32(spec.seed ^ 0xe20d));
-
-  // Rivers: route water over the depression-filled surface (so hollows
-  // don't swallow it), then carve beds into the real terrain wherever the
-  // upstream catchment is large enough.
-  const flow = flowAccumulation(fillDepressions(height, grid), grid);
-  const river = new Uint8Array(N);
-  let riverCells = 0;
-  const { minCatchment, maxDepth } = spec.rivers;
-  const carve = new Float32Array(N);
-  for (let v = MARGIN; v < grid.depth - MARGIN; v++) {
-    for (let u = MARGIN; u < W - MARGIN; u++) {
-      const i = v * W + u;
-      if (flow[i] < minCatchment) continue;
-      river[i] = 1;
-      riverCells++;
-      const depth = maxDepth * Math.min(1, 0.25 + Math.log(flow[i] / minCatchment) / Math.log(64));
-      carve[i] = Math.max(carve[i], depth);
-      // Soften the banks so beds are valleys, not slots.
-      for (let dz = -1; dz <= 1; dz++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const n = (v + dz) * W + (u + dx);
-          carve[n] = Math.max(carve[n], depth * 0.4);
-        }
-      }
-    }
-  }
-  for (let i = 0; i < N; i++) height[i] -= carve[i];
 
   return {
     spec,
@@ -517,10 +289,22 @@ export function surveyWorld(spec: WorldSpec): Survey {
     roughness,
     biome,
     region,
-    moisture,
+    moisture: humidity,
+    rain: rainMm,
+    temperature: tempC,
+    water,
+    waterLevel,
     flow,
     river,
     regions,
-    stats: { erodedMeanM: erosion.meanM, erodedMaxM: erosion.maxM, riverCells },
+    ranges,
+    stats: {
+      erodedMeanM: erodedSum / N,
+      erodedMaxM,
+      deepestCutM,
+      riverCells,
+      lakeCells,
+      landFraction: landCells / worldCells,
+    },
   };
 }
