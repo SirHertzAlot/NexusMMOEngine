@@ -69,7 +69,7 @@ export interface TerrainViewCallbacks {
 export class TerrainView {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2000);
+  private readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 5000);
   private readonly controls: OrbitControls;
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
@@ -266,8 +266,9 @@ export class TerrainView {
     const cx = ((Math.min(...xs) + Math.max(...xs) + 1) / 2) * this.size;
     const cz = ((Math.min(...zs) + Math.max(...zs) + 1) / 2) * this.size;
     const span = (Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) + 1) * this.size;
-    this.controls.target.set(cx, 0, cz);
-    this.camera.position.set(cx - span * 0.6, span * 0.8, cz - span * 0.6);
+    const y = (this.range.min + this.range.max) / 2;
+    this.controls.target.set(cx, y, cz);
+    this.camera.position.set(cx - span * 0.6, y + span * 0.8, cz - span * 0.6);
     this.controls.update();
   }
 

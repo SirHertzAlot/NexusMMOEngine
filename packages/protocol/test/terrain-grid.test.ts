@@ -128,3 +128,29 @@ describe("applyBrush", () => {
     assert.equal(grid.get(99, 99), Number.NaN);
   });
 });
+
+describe("HeightGrid.pinBorders", () => {
+  it("brushes never move samples shared with unloaded chunks", () => {
+    const grid = HeightGrid.fromTiles(tilesFrom(wave, THREE_BY_THREE));
+    grid.pinBorders();
+    // gx = -15 is the loaded area's west edge, shared with chunk (-2, *);
+    // gx = 0 is shared by two loaded chunks.
+    const edge = grid.get(-15, 7);
+    const inner = grid.get(-14, 7);
+    const shared = grid.get(0, 7);
+    for (let k = 0; k < 3; k++) applyBrush(grid, { tool: "raise", x: -16, z: 8, radius: 20, strength: 1 });
+    assert.equal(grid.get(-15, 7), edge, "outer edge pinned");
+    assert.ok(grid.get(-14, 7) > inner, "one sample in: edited");
+    assert.ok(grid.get(0, 7) > shared, "border between loaded chunks: edited");
+    assert.equal(grid.isPinned(-15, 7), true);
+    assert.equal(grid.isPinned(0, 7), false);
+  });
+
+  it("is off by default (a fully loaded world edits to its edge)", () => {
+    const grid = HeightGrid.fromTiles(tilesFrom(wave, THREE_BY_THREE));
+    const edge = grid.get(-15, 7);
+    applyBrush(grid, { tool: "raise", x: -16, z: 8, radius: 20, strength: 1 });
+    assert.ok(grid.get(-15, 7) > edge);
+    assert.equal(grid.isPinned(-15, 7), false);
+  });
+});

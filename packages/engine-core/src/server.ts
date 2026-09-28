@@ -13,7 +13,8 @@
  *   MMO_PORT       WebSocket listen port (default 7777)
  *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv
  *                  (default ./data, relative to the process cwd)
- *   MMO_WORLD_SEED procgen world seed (default 1234)
+ *   MMO_WORLD_SEED procgen world seed (default 1234; a world baked from a
+ *                  world spec uses the seed recorded at bake time)
  *   MMO_CHUNK_SIZE chunk world size in units (default 16)
  *   MMO_WORLD_RADIUS chunk radius around (0,0) loaded at boot (default 1 = 3x3)
  *   MMO_TERRAIN_AMPLITUDE  terrain height scale, world units (default 2)
@@ -91,6 +92,13 @@ async function main(): Promise<void> {
     dbPath: path.join(DATA_DIR, "world.db"),
     saveEveryTicks: SAVE_EVERY_TICKS,
   });
+  // A world baked from a spec carries its own seed: scatter, navmesh keys,
+  // and anything generated later must agree with its baked terrain.
+  const bakedSeed = store.getMeta("world_seed");
+  const worldSeed = bakedSeed !== null ? BigInt(bakedSeed) : WORLD_SEED;
+  if (bakedSeed !== null && process.env.MMO_WORLD_SEED !== undefined && worldSeed !== WORLD_SEED) {
+    console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
+  }
   const sim = new SimWorld();
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
@@ -154,7 +162,7 @@ async function main(): Promise<void> {
     tiles.putMany(
       area.map(([cx, cz]) => {
         const heights = new Float32Array(procgen.chunkSamples);
-        procgen.generateChunk(WORLD_SEED, cx, cz, 0, heights);
+        procgen.generateChunk(worldSeed, cx, cz, 0, heights);
         return { cx, cz, heights };
       }),
     );
@@ -169,9 +177,9 @@ async function main(): Promise<void> {
     const scatterBinding = makeScatterBinding();
     let scattered = 0;
     for (const [cx, cz] of area) {
-      const { heights } = spawnChunk(sim, procgen, WORLD_SEED, cx, cz, 0);
+      const { heights } = spawnChunk(sim, procgen, worldSeed, cx, cz, 0);
       scattered += scatterChunkToECS(sim, scatterBinding, scatterContent, {
-        worldSeed: WORLD_SEED,
+        worldSeed,
         cx,
         cz,
         heights,
@@ -193,7 +201,7 @@ async function main(): Promise<void> {
       {
         backend: navBackend,
         source: procgen,
-        seed: WORLD_SEED,
+        seed: worldSeed,
         chunkWorldSize: CHUNK_SIZE,
         bakeConfig: { ...DEFAULT_BAKE_CONFIG },
       },
@@ -204,9 +212,9 @@ async function main(): Promise<void> {
     // Keyed to this chunk's exact heights: a sculpted chunk gets a new key
     // (fresh bake); untouched chunks keep reusing their cached tile.
     const chunkHeights = new Float32Array(procgen.chunkSamples);
-    procgen.generateChunk(WORLD_SEED, cx, cz, 0, chunkHeights);
+    procgen.generateChunk(worldSeed, cx, cz, 0, chunkHeights);
     const tileKey: NavmeshTileKey = {
-      worldSeed: WORLD_SEED.toString(),
+      worldSeed: worldSeed.toString(),
       chunkX: cx,
       chunkZ: cz,
       terrainVersion: heightsFingerprint(chunkHeights),
@@ -236,18 +244,16 @@ async function main(): Promise<void> {
     (k.chunkX + 1) * CHUNK_SIZE,
     (k.chunkZ + 1) * CHUNK_SIZE,
   ];
+  // Kinematic character control (gravity/jump/grounding) corrects the
+  // integrated Y in the same tick, before snapshot collection.
+  const character = new CharacterSystem({ chunkSource: procgen, worldSeed });
   const gw = new Gateway({
     port: PORT,
     world: sim,
-    systems: [
-      new IntentSystem(),
-      new IntegrateSystem(),
-      // Kinematic character control (gravity/jump/grounding) corrects
-      // the integrated Y in the same tick, before snapshot collection.
-      new CharacterSystem({ chunkSource: procgen, worldSeed: WORLD_SEED }),
-      physics,
-      navigation,
-    ],
+    systems: [new IntentSystem(), new IntegrateSystem(), character, physics, navigation],
+    // Players spawn standing on the terrain (a baked world's ground is
+    // anywhere from a swamp floor below 0 to mountain tops).
+    groundHeightAt: (x, z) => character.groundHeight(x, z),
     credentialStore,
     startTick: freshBoot ? 1 : restoredTick! + 1,
     // Terrain-height channel (slice 4.1): the gateway attaches authoritative
@@ -353,7 +359,7 @@ async function main(): Promise<void> {
   console.log(`[server] listening on ws://0.0.0.0:${port}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +
-      `seed ${WORLD_SEED} | chunk ${CHUNK_SIZE}u | ` +
+      `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +
       `terrain ${storedTiles > 0 ? `${storedTiles} stored tile(s)` : `amp ${terrain.amplitude} freq ${terrain.frequency} (v${terrainVersion})`} | ` +
       `navmesh ${loadedTileKeys.length} tile(s), ${navPolys} polys | data ${DATA_DIR}`,
   );

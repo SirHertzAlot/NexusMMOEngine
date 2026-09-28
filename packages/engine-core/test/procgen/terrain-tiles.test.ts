@@ -92,12 +92,19 @@ describe("runningServerPid", () => {
 });
 
 describe("terrain-tool (the editor's terrain writer)", () => {
-  const run = (dir: string, args: string[], input = ""): { status: number | null; out: string; err: string } => {
+  // The legacy 3x3-chunk world unless a test passes a world spec.
+  const run = (
+    dir: string,
+    args: string[],
+    input = "",
+    env: Record<string, string> = { MMO_WORLD_SPEC: "none" },
+  ): { status: number | null; out: string; err: string } => {
     const r = spawnSync(process.execPath, [path.join(DIST, args[0]), ...args.slice(1)], {
-      env: { ...process.env, MMO_DATA_DIR: dir },
+      env: { ...process.env, MMO_DATA_DIR: dir, ...env },
       input,
       encoding: "utf8",
       timeout: 60_000,
+      maxBuffer: 64 * 1024 * 1024, // an exported area is a few MB of JSON
     });
     return { status: r.status, out: r.stdout, err: r.stderr };
   };
@@ -152,6 +159,76 @@ describe("terrain-tool (the editor's terrain writer)", () => {
     const r = run(dir, ["terrain-tool.js", "import"], JSON.stringify({ tiles: [tile] }));
     assert.equal(r.status, 1);
     assert.match(r.err, /disagree on shared sample/);
+  });
+
+  test("baked world: export loads one area, import checks its edge against unloaded tiles", { timeout: 180_000 }, () => {
+    const dir = tmpDir();
+    const specFile = path.join(dir, "small.world.json");
+    fs.writeFileSync(
+      specFile,
+      JSON.stringify({
+        name: "small",
+        seed: 77,
+        sizeChunks: 32,
+        erosion: { droplets: 2000, strength: 0.35 },
+        biomes: [
+          { id: "hills", count: 1, pick: "highest", shape: "ridged", base: 10, relief: 60, scale: 200, roughness: 1 },
+          { id: "plains", count: 2, pick: "rest", shape: "rolling", base: 2, relief: 6, scale: 200, roughness: 0.4 },
+        ],
+      }),
+    );
+    const env = { MMO_WORLD_SPEC: specFile, MMO_WORLD_CATALOG: "0" };
+    const bake = run(dir, ["bake-world.js"], "", env);
+    assert.equal(bake.status, 0, bake.err);
+
+    const whole = JSON.parse(run(dir, ["terrain-tool.js", "export"], "", env).out);
+    assert.equal(whole.tiles.length, 17 * 17, "default area: radius 8 around (0,0)");
+    assert.equal(whole.totalTiles, 32 * 32);
+    assert.deepEqual(whole.world, { name: "small", minChunk: -16, maxChunk: 15 });
+    assert.equal(whole.seed, "77");
+
+    // Area: chunks 1..5 x -4..0. Its east edge (world x = 96) is shared
+    // with chunks 6.., which the editor never loaded.
+    const area = { cx: 3, cz: -2, radius: 2 };
+    const exp = JSON.parse(run(dir, ["terrain-tool.js", "export"], JSON.stringify(area), env).out);
+    assert.equal(exp.tiles.length, 25);
+    assert.equal(exp.partial, true);
+    assert.deepEqual(exp.area, area);
+    const tiles = exp.tiles.map((t: { cx: number; cz: number; heights: number[] }) => ({
+      ...t,
+      heights: Float32Array.from(t.heights),
+    }));
+    const sculpt = (pinned: boolean): string => {
+      const grid = HeightGrid.fromTiles(tiles);
+      if (pinned) grid.pinBorders();
+      const touched = new Set<string>();
+      for (let k = 0; k < 3; k++) {
+        for (const key of applyBrush(grid, { tool: "raise", x: 96, z: -24, radius: 10, strength: 1 })) touched.add(key);
+      }
+      return JSON.stringify({
+        tiles: [...touched].map((key) => {
+          const [cx, cz] = key.split(",").map(Number);
+          return { cx, cz, heights: Array.from(grid.tile(cx, cz).heights) };
+        }),
+      });
+    };
+    // Moving the shared edge would open a seam against chunk 6: rejected.
+    const loose = run(dir, ["terrain-tool.js", "import"], sculpt(false), env);
+    assert.equal(loose.status, 1);
+    assert.match(loose.err, /disagree on shared sample/);
+    // With the edge pinned (what the editor does), the same stroke saves.
+    const pinned = run(dir, ["terrain-tool.js", "import"], sculpt(true), env);
+    assert.equal(pinned.status, 0, pinned.err);
+    assert.ok(JSON.parse(pinned.out).saved > 0);
+
+    const outside = { cx: 16, cz: 0, heights: Array.from({ length: 256 }, () => 0) };
+    const r = run(dir, ["terrain-tool.js", "import"], JSON.stringify({ tiles: [outside] }), env);
+    assert.equal(r.status, 1);
+    assert.match(r.err, /outside the world \(chunks -16\.\.15\)/);
+
+    const tooBig = run(dir, ["terrain-tool.js", "export"], JSON.stringify({ radius: 99 }), env);
+    assert.equal(tooBig.status, 1);
+    assert.match(tooBig.err, /area radius/);
   });
 
   test("refuses to save while a server owns the world", () => {

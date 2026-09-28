@@ -14,21 +14,30 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
 - [x] Deterministic generator (FastNoise2 FBm, exact chunk seams),
       amplitude/frequency parameters.
 - [x] Art: 4,080 pack models converted to GLB, previewable in the editor.
-- Current world: 3×3 chunks = **48 m × 48 m**. Heights: 1 KiB per chunk.
+- [x] **Phase 1 done:** `npm run bake:world` bakes a **4 × 4 km** world
+      from `packages/engine-core/worlds/default.world.json` (below). Only
+      the 3×3-chunk spawn area is live in the ECS until streaming
+      (Phase 2) lands.
 
 ## Decisions (2026-09-28)
 
 - **Scale: a 4 × 4 km world for now** — 250 × 250 chunks (62,500), ~61 MB
-  of stored heights. Its full-resolution heightmap is 3,751 × 3,751 samples
-  (~56 MB), small enough for the bake to hold in memory.
+  of heights; world.db is ~92 MB on disk (SQLite page overhead). The bake
+  never holds the full-resolution heightmap: it builds each tile from the
+  coarse survey, in batches.
 - **Vertical range: default ~250 m of relief** in mountain biomes (plains
   stay within a few metres); a world-spec value, easy to change.
 - **LYGIA: not used.** Shading is our own (three.js).
 - **SurrealDB: embedded engine** (`@surrealdb/node` 3.0.3 with the
   `surrealdb` 2.0.8 SDK) — no separate server process. Verified on the dev
-  machine: `rocksdb://` and `mem://` work; `surrealkv://` hangs on Windows,
-  so worlds use `rocksdb://`. Queries are SurrealQL 3 (`type::record`,
-  not `type::thing`). Single writes cost ~2.4 ms, so bulk data is batched.
+  machine: RocksDB and `mem://` work; SurrealKV hangs on Windows, so worlds
+  use RocksDB. The engine's URL parsing mangles paths (drive letters, `..`);
+  only `rocksdb:C:/absolute/path` (no `//`) lands where intended. A store
+  closed in a process can't be reopened by that process, and an open one
+  keeps Node running — so each process shares one connection per store
+  and closes them at shutdown (`closeWorldCatalogs`). Queries are
+  SurrealQL 3 (`type::record`, not `type::thing`). Single writes cost
+  ~2.4 ms, so bulk data is batched (62,500 chunk rows in ~15 s).
 - **ECS: keep bitECS; no rewrite, no EnTT.** The slice 1.5 benchmark ran the
   same C++ kernel over a bitECS world and a pure C++ world: equal at 10k
   entities, bitECS faster at 100k — both under 1% of the tick. What the
@@ -48,7 +57,7 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
    generous biome be? For reference (16 m chunks, 1 KiB of heights each):
 
    | Biome | Chunks | Stored heights |
-   |---|---|---|
+   | --- | --- | --- |
    | 2 × 2 km | 15,625 | ~15 MB |
    | 4 × 4 km | 62,500 | ~61 MB |
    | 8 × 8 km | 250,000 | ~244 MB |
@@ -74,32 +83,46 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
 Terrain is baked once and stored, so the bake only needs to be
 reproducible (same spec → same bytes), not identical across platforms.
 
-- [ ] **World spec** (checked-in JSON): seed, size in chunks (250), coarse
-      cell size (8 m), vertical relief, biome types with finite counts and
-      parameters, region grid.
-- [ ] **Coarse fields** on an 8 m grid (~470 × 470): continental elevation,
-      moisture, temperature.
-- [ ] **Biome regions:** a finite number of Voronoi regions, each assigned
-      a biome type that fits its elevation/moisture/temperature; smooth
-      blending at borders.
-- [ ] **Coarse elevation per biome** (mountains: ridged, high relief;
-      plains: gentle; swamp: near water level; desert: dunes; …).
-- [ ] **Erosion and rivers** on the coarse grid (droplet erosion + flow
-      accumulation → river mask).
-- [ ] **Fine heightmap:** the coarse elevation upsampled to the 16/15 m
-      sample grid plus per-chunk detail noise scaled by biome roughness —
-      one global grid, so chunk seams are exact by construction.
-- [ ] **Storage:** fine tiles → `TerrainTileStore` (world.db, batched
-      transactions); coarse maps → world.db; chunk catalog (region, biome,
-      height range) → SurrealDB (embedded, `rocksdb://`, batched).
-- [ ] **Bounded tools:** the terrain tool and editor load a chunk range
-      around a point, never all 62,500 tiles.
-- [ ] **Spawn area only in the ECS:** the bake still spawns and scatters
-      just the start area; the rest loads with streaming (Phase 2).
-- **Verify:** exact seams everywhere; same spec → identical bytes; every
-      biome type present with its configured count; bake time and peak
-      memory reported; the server boots on the baked world and serves the
-      spawn area from stored tiles.
+- [x] **World spec** (checked-in JSON, zod-validated): seed, size in
+      chunks (250), coarse cell (8 m), relief, region grid (2 × 2), biome
+      types with finite counts and parameters. `MMO_WORLD_SPEC` picks
+      another spec; `none` bakes the legacy 3×3 world.
+- [x] **Coarse fields** on an 8 m grid (507 × 507 with margins):
+      continental elevation and moisture. Temperature → Phase 5.
+- [x] **Biome regions:** a finite number of well-spread region centres,
+      each assigned a biome by its survey (highest → mountains, low and wet
+      → swamp, driest → desert, wettest → forest, the rest → plains);
+      softmax blending across borders. Default world: 2 plains, 2 forest,
+      1 desert, 1 swamp, 1 mountains.
+- [x] **Coarse elevation per biome:** ridged mountains (up to ~285 m),
+      flat swamp below the plains, dunes, rolling forest and plains.
+- [x] **Erosion and rivers:** droplet erosion (mean 1.45 m, capped
+      steps), priority-flood depression filling, D8 flow accumulation,
+      rivers carved where the catchment is large (675 river chunks).
+- [x] **Fine heightmap:** bicubic upsampling of the survey to the 16/15 m
+      sample grid plus native detail noise × biome roughness — a pure
+      function of the global sample, so seams are exact by construction.
+- [x] **Storage:** tiles → `TerrainTileStore` (world.db, 2,500 per
+      transaction; ordinary rowid table — `WITHOUT ROWID` spilled every
+      1 KiB tile into overflow pages, 284 MB → 92 MB; old tables migrate on
+      open); survey maps → world.db `world_maps`; chunk catalog (region,
+      biome, height range, river) → SurrealDB at `<data>/surreal`.
+- [x] **Bounded tools:** the terrain tool exports one area
+      (`{cx, cz, radius}`, radius ≤ 32 chunks) and validates a save against
+      only the edited tiles' stored neighbours; the editor's Terrain tab
+      has an Area box and pins the area's outer edge so edits never open a
+      seam with unloaded tiles.
+- [x] **Spawn area only in the ECS:** the bake spawns and scatters just the
+      3×3 start area; the rest waits for streaming (Phase 2).
+- [x] **Players spawn on the ground** (the gateway asks the terrain; it
+      used to spawn at y = 0, which fell 13 m into the swamp or would land
+      inside a mountain). The server uses the seed recorded by the bake.
+- **Verified (2026-09-28):** exact seams over all chunks (test world) and
+      over the wire (4 km world); same spec → identical survey bytes; every
+      biome at its configured count; bake 4.6 s survey + 11 s tiles + 15 s
+      catalog, peak 329 MB; the server boots on the baked world in < 1 s
+      and the end-to-end probe passes (grounding, jump, walking across
+      chunk borders, scatter on the surface).
 
 ## Phase 2 — Server streaming (region)
 
@@ -108,7 +131,14 @@ reproducible (same spec → same bytes), not identical across platforms.
 - [ ] Scatter placed once, on a chunk's first load, then persisted —
       never duplicated.
 - [ ] A region owns a chunk range; the world server assigns ranges
-      (registration already exists).
+      (registration already exists; the catalog already records them).
+- [ ] **Physics colliders from the terrain:** a Jolt heightfield shape per
+      loaded chunk, built from its stored tile (added and removed with the
+      chunk), so physics bodies rest on the same surface characters
+      walk on. Stay on Jolt (no PhysX): it already runs in the server, and
+      its heightfield shape fits the tile layout directly.
+- [ ] **Spawn point from the world spec** (a biome or a position): the
+      default world's centre, where players spawn, is in the swamp.
 - **Verify:** walk 4 km in a straight line with flat server memory, ticks
   under 33 ms, and no duplicate scatter after restarts.
 
@@ -119,7 +149,14 @@ reproducible (same spec → same bytes), not identical across platforms.
 - [ ] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
       tiles), with no cracks between levels.
 - [ ] Frustum culling, instanced props, far-horizon terrain.
-- [ ] Terrain shading by height, slope, and biome (LYGIA if licensed).
+- [ ] **Terrain texturing by slope, height, and biome** (our own three.js
+      shader; LYGIA is not used): steep faces take a rock-wall texture
+      (triplanar, so cliffs don't stretch), gentle slopes grass or the
+      biome's ground (sand in the desert, mud in the swamp), river banks
+      wet mud/gravel from the river mask, snow above a height line on
+      mountains. Blend by slope/height with noise so borders aren't
+      straight lines. Textures from the licensed packs' ground sets (kept
+      out of git); biome and river masks come from the baked survey maps.
 - [ ] Run the browser on the NVIDIA P1000, not the Intel UHD 630 (Windows
       Settings → Display → Graphics) — the likely cause of the 3 fps.
 - **Verify:** 60 fps with a 2 km view distance on the dev machine; crossing
@@ -128,7 +165,9 @@ reproducible (same spec → same bytes), not identical across platforms.
 ## Phase 4 — Editor at scale
 
 - [ ] World map overview (downsampled height and biome); click to jump.
-- [ ] Sculpt only the loaded area around the camera; large brushes for
+- [x] Sculpt one loaded area at a time (done in Phase 1: Area box, pinned
+      edges).
+- [ ] Load the area around the camera as it moves; large brushes for
       mountain-scale edits.
 - [ ] Regenerate one region from the world spec without touching others.
 - **Verify:** sculpt 3 km from the origin, save, and see it in game.

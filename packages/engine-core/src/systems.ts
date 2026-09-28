@@ -160,7 +160,7 @@ export class CharacterSystem implements SimSystem {
   }
 
   /** Terrain height under world (x, z); y=0 without a source. */
-  private groundHeight(x: number, z: number): number {
+  groundHeight(x: number, z: number): number {
     if (this.source === null) return 0;
     const cx = Math.floor(x / this.chunkSize);
     const cz = Math.floor(z / this.chunkSize);

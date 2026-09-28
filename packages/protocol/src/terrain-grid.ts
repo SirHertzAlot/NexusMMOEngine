@@ -32,6 +32,8 @@ export class HeightGrid {
   /** Samples not covered by any tile are NaN (see has()). */
   readonly heights: Float32Array;
   private readonly chunks = new Set<string>();
+  /** See pinBorders(). */
+  private pinned = false;
 
   private constructor(
     readonly minGX: number,
@@ -127,16 +129,35 @@ export class HeightGrid {
     return { cx, cz, heights };
   }
 
-  /** Every chunk that contains sample (gx, gz) — up to 4 on shared corners. */
+  /** Every chunk of this grid that contains sample (gx, gz) — up to 4 on shared corners. */
   chunksAt(gx: number, gz: number): Array<[number, number]> {
-    const xs = [Math.floor(gx / TILE_CELLS)];
-    if (gx % TILE_CELLS === 0) xs.push(gx / TILE_CELLS - 1);
-    const zs = [Math.floor(gz / TILE_CELLS)];
-    if (gz % TILE_CELLS === 0) zs.push(gz / TILE_CELLS - 1);
-    const out: Array<[number, number]> = [];
-    for (const cx of xs) for (const cz of zs) if (this.hasChunk(cx, cz)) out.push([cx, cz]);
-    return out;
+    return chunksContaining(gx, gz).filter(([cx, cz]) => this.hasChunk(cx, cz));
   }
+
+  /**
+   * Freeze the samples this grid shares with chunks it doesn't hold. For
+   * an area cut out of a larger stored world: those samples also belong to
+   * tiles the editor never loaded, so changing them would open a seam (the
+   * save rejects it). Brushes leave pinned samples alone.
+   */
+  pinBorders(): void {
+    this.pinned = true;
+  }
+
+  isPinned(gx: number, gz: number): boolean {
+    return this.pinned && chunksContaining(gx, gz).some(([cx, cz]) => !this.hasChunk(cx, cz));
+  }
+}
+
+/** Every chunk (loaded or not) containing sample (gx, gz): 1, 2, or 4 on shared corners. */
+function chunksContaining(gx: number, gz: number): Array<[number, number]> {
+  const xs = [Math.floor(gx / TILE_CELLS)];
+  if (gx % TILE_CELLS === 0) xs.push(gx / TILE_CELLS - 1);
+  const zs = [Math.floor(gz / TILE_CELLS)];
+  if (gz % TILE_CELLS === 0) zs.push(gz / TILE_CELLS - 1);
+  const out: Array<[number, number]> = [];
+  for (const cx of xs) for (const cz of zs) out.push([cx, cz]);
+  return out;
 }
 
 function validateTile(t: TerrainTile): void {
@@ -194,7 +215,7 @@ export function applyBrush(grid: HeightGrid, stroke: BrushStroke): Set<string> {
   const updates: Array<[number, number, number]> = [];
   for (let gz = gz0; gz <= gz1; gz++) {
     for (let gx = gx0; gx <= gx1; gx++) {
-      if (!grid.has(gx, gz)) continue;
+      if (!grid.has(gx, gz) || grid.isPinned(gx, gz)) continue;
       const d = Math.hypot(gx / toGrid - stroke.x, gz / toGrid - stroke.z);
       if (d >= r) continue;
       const falloff = 0.5 * (1 + Math.cos((Math.PI * d) / r));

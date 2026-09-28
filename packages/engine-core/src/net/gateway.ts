@@ -145,6 +145,11 @@ export interface GatewayOptions {
    * Never used on the persistence path.
    */
   chunkSource?: ChunkDataSource;
+  /**
+   * Ground height at world (x, z): new players spawn standing on it.
+   * Default: y = 0 (flat test worlds).
+   */
+  groundHeightAt?: (x: number, z: number) => number;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -198,6 +203,7 @@ export class Gateway {
       | "authRateLimit"
       | "debugSource"
       | "chunkSource"
+      | "groundHeightAt"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -223,6 +229,7 @@ export class Gateway {
    * then carry chunk metadata without heights, as before.
    */
   private readonly chunkSource: ChunkDataSource | null;
+  private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
 
@@ -256,6 +263,7 @@ export class Gateway {
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
+    this.groundHeightAt = opts.groundHeightAt ?? null;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -989,8 +997,8 @@ export class Gateway {
     const T = C.Transform;
     const i = this.playerSeq++;
     T.px[eid] = (i % 8) * 4 - 14;
-    T.py[eid] = 0;
     T.pz[eid] = Math.floor(i / 8) * 4 - 14;
+    T.py[eid] = this.groundHeightAt?.(T.px[eid], T.pz[eid]) ?? 0;
     T.qx[eid] = 0; T.qy[eid] = 0; T.qz[eid] = 0; T.qw[eid] = 1;
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;
     C.Health.current[eid] = 100;
