@@ -13,6 +13,11 @@
  * sea and lakes over it. A daylight haze (the scene fog) fades distance
  * into the sky, which is what makes far things read as far.
  *
+ * Characters: an entity with an Appearance (players, enemy humans) is a
+ * modular character wearing its look, once the character kit has loaded
+ * (the art is served by the dev server; without it they stay boxes). It
+ * faces where it is moving.
+ *
  * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
  * BodyConfig shape. The AssetProvider abstraction is the seam where real
  * art plugs in later. Static props without an art-pack model (the
@@ -22,7 +27,9 @@
  */
 
 import * as THREE from "three";
-import { decodeWorldMap, type AssetRefRow, type BodyConfigRow, type WorldInfo } from "@mmo-engine/protocol";
+import { decodeWorldMap, type AssetRefRow, type BodyConfigRow, type VelocityRow, type WorldInfo } from "@mmo-engine/protocol";
+import { parseLook } from "@mmo-engine/art/browser";
+import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { MirrorState } from "@mmo-engine/mirror";
 import type { Interpolator } from "@mmo-engine/mirror";
@@ -59,7 +66,17 @@ interface TrackedMesh {
   object: THREE.Object3D;
   /** True once a BodyConfig row shaped this mesh (else unit-box stand-in). */
   shaped: boolean;
+  /** The modular character this entity is shown as, and the look (JSON) it wears. */
+  character?: ModularCharacter;
+  look?: string;
+  /** Facing (radians about +Y) — characters turn toward their movement. */
+  yaw?: number;
 }
+
+/** Speed (m/s) above which a character turns to face its movement. */
+const FACE_MOVING_SPEED = 0.2;
+/** How fast a character turns toward its movement (1/s). */
+const TURN_RATE = 12;
 
 /** Which WebGL implementation the browser actually gave us. */
 export interface GpuInfo {
@@ -110,6 +127,8 @@ export class WorldView {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
   private readonly onPointerMove: (e: PointerEvent) => void;
+  /** The modular character kit; null until loaded (or when the art isn't served). */
+  private kit: CharacterKit | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -157,6 +176,15 @@ export class WorldView {
         prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hit ? this.pickMap.get(hit.object) ?? null : null;
     };
     this.canvas.addEventListener("pointermove", this.onPointerMove);
+
+    CharacterKit.load()
+      .then((kit) => {
+        if (this.disposed) kit.dispose();
+        else this.kit = kit;
+      })
+      .catch((e: unknown) =>
+        console.info(`[world] characters stay placeholders: ${e instanceof Error ? e.message : e}`),
+      );
 
     this.resize();
   }
@@ -224,10 +252,13 @@ export class WorldView {
       if (!state.entities.has(key)) {
         this.scene.remove(t.object);
         this.pickMap.delete(t.object);
-        disposeObject(t.object);
+        disposeTracked(t);
         this.meshes.delete(key);
       }
     }
+    const now = performance.now() / 1000;
+    const dt = this.lastFrame < 0 ? 1 / 60 : Math.min(0.1, now - this.lastFrame);
+    this.lastFrame = now;
     const gone: bigint[] = [];
     for (const wid of this.terrain.chunkWireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.terrain.removeChunk(wid);
@@ -285,19 +316,29 @@ export class WorldView {
         this.pickMap.set(obj, wid);
       }
 
+      // Appearance: show (or restyle) the entity as its modular character.
+      if (e.appearance && this.kit && tracked.look !== e.appearance.look) {
+        this.dressAsCharacter(wid, tracked, e.appearance.look);
+      }
+
       if (!e.transform) continue;
 
       const sample = interpolator.sample(wid, alpha);
       const t = sample ?? e.transform;
       tracked.object.position.set(t.px, t.py, t.pz);
-      tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
-      tracked.object.scale.set(t.sx, t.sy, t.sz);
-
-      if (playerWireId !== null && wid === playerWireId) {
-        playerPos = tracked.object.position.clone();
-        highlight(tracked.object, "player");
+      if (tracked.character) {
+        turnToward(tracked, e.velocity, dt);
       } else {
-        highlight(tracked.object, wid === this.hoveredWireId ? "hover" : "none");
+        tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
+        tracked.object.scale.set(t.sx, t.sy, t.sz);
+      }
+
+      const isPlayer = playerWireId !== null && wid === playerWireId;
+      if (isPlayer) playerPos = tracked.object.position.clone();
+      if (tracked.character) {
+        highlight(tracked.object, wid === this.hoveredWireId && !isPlayer ? "hover" : "none");
+      } else {
+        highlight(tracked.object, isPlayer ? "player" : wid === this.hoveredWireId ? "hover" : "none");
       }
     }
 
@@ -305,9 +346,6 @@ export class WorldView {
     if (playerPos) this.lastPlayerPos.copy(playerPos);
     this.fx.setPlayerPos(playerPos);
 
-    const now = performance.now() / 1000;
-    const dt = this.lastFrame < 0 ? 1 / 60 : Math.min(0.1, now - this.lastFrame);
-    this.lastFrame = now;
     this.fx.update(dt, now);
     this.showcase.update(now, dt);
 
@@ -316,6 +354,31 @@ export class WorldView {
     this.water.update(now);
     updateTerrainFx(now);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Show the entity as a modular character wearing `lookJson`: the first
+   * time, the character replaces the stand-in; after that the look changes
+   * in place. An unreadable look leaves the entity as it is.
+   */
+  private dressAsCharacter(wid: bigint, tracked: TrackedMesh, lookJson: string): void {
+    const look = parseLook(lookJson);
+    tracked.look = lookJson;
+    if (!look || !this.kit) return;
+    if (tracked.character) {
+      tracked.character.setLook(look).catch((e: unknown) => console.warn(`[world] ${e instanceof Error ? e.message : e}`));
+      return;
+    }
+    const character = this.kit.create(look);
+    character.relaxArms();
+    this.scene.remove(tracked.object);
+    this.pickMap.delete(tracked.object);
+    disposeObject(tracked.object);
+    tracked.object = character.root;
+    tracked.character = character;
+    tracked.shaped = true;
+    this.scene.add(character.root);
+    this.pickMap.set(character.root, wid);
   }
 
   /**
@@ -372,9 +435,11 @@ export class WorldView {
     this.showcase.dispose();
     for (const t of this.meshes.values()) {
       this.scene.remove(t.object);
-      disposeObject(t.object);
+      disposeTracked(t);
     }
     this.meshes.clear();
+    this.kit?.dispose();
+    this.kit = null;
     this.terrain.dispose();
     this.water.dispose();
     this.props.dispose();
@@ -413,6 +478,27 @@ function highlight(obj: THREE.Object3D, mode: "player" | "hover" | "none"): void
       );
     }
   });
+}
+
+/**
+ * Turn a character toward its horizontal movement (it keeps its facing
+ * while standing still). Presentation only: the server moves it.
+ */
+function turnToward(t: TrackedMesh, v: VelocityRow | undefined, dt: number): void {
+  let yaw = t.yaw ?? 0;
+  if (v && Math.hypot(v.lx, v.lz) > FACE_MOVING_SPEED) {
+    const want = Math.atan2(v.lx, v.lz); // the rig faces +Z
+    const delta = Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw));
+    yaw += delta * Math.min(1, TURN_RATE * dt);
+  }
+  t.yaw = yaw;
+  t.object.rotation.set(0, yaw, 0);
+}
+
+/** Dispose what an entity's view owns (a character shares its kit's geometry). */
+function disposeTracked(t: TrackedMesh): void {
+  if (t.character) t.character.dispose();
+  else disposeObject(t.object);
 }
 
 function disposeObject(obj: THREE.Object3D): void {
