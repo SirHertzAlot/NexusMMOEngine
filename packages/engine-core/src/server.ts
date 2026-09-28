@@ -74,6 +74,7 @@ import {
   WebrpcWorldTransport,
   type ChunkBounds,
 } from "./index.js";
+import { worldInfoFor } from "./terrain/world-info.js";
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
@@ -274,6 +275,8 @@ async function main(): Promise<void> {
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),
     spawnPoint: spawn,
+    // Baked worlds: extent + coarse map for the client's far horizon.
+    worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     startTick: freshBoot ? 1 : restoredTick! + 1,
     // Terrain-height channel (slice 4.1): the gateway attaches authoritative

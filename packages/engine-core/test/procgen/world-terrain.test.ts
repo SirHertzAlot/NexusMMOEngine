@@ -11,12 +11,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import Database from "better-sqlite3";
-import { HeightGrid, type TerrainTile } from "@mmo-engine/protocol";
+import { decodeWorldMap, HeightGrid, type TerrainTile } from "@mmo-engine/protocol";
 import { TerrainTileStore } from "../../src/persist/terrain-tiles.js";
 import { closeWorldCatalogs, readCatalogSummary, rocksdbUrl } from "../../src/persist/world-catalog.js";
 import { fillDepressions, surveyWorld, type CoarseGrid } from "../../src/terrain/survey.js";
 import { bakeWorldTerrain, regionOf } from "../../src/terrain/world-bake.js";
 import { WorldHeights } from "../../src/terrain/world-heights.js";
+import { worldInfoFor } from "../../src/terrain/world-info.js";
 import { parseWorldSpec, worldBounds } from "../../src/terrain/world-spec.js";
 
 const tmpDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "mmo-world-"));
@@ -168,6 +169,39 @@ describe("bakeWorldTerrain", () => {
     }
     // After closing, reconnecting fails fast instead of hanging.
     await assert.rejects(readCatalogSummary(rocksdbUrl(catalogDir)), /can't reopen/);
+  });
+});
+
+describe("worldInfoFor (the welcome's world map)", () => {
+  test("16 m map of the baked survey, with bounds and biome ids", { timeout: 120_000 }, async () => {
+    const dbPath = path.join(tmpDir(), "world.db");
+    await bakeWorldTerrain(SMALL, { dbPath, catalogDir: null });
+    const meta = new Map<string, string>([
+      ["world_bounds", JSON.stringify({ minChunk: -16, maxChunk: 15 })],
+      ["world_spec", "small"],
+      ["world_biomes", JSON.stringify(SMALL.biomes.map((b) => b.id))],
+    ]);
+    const store = new TerrainTileStore(dbPath);
+    try {
+      const info = worldInfoFor({ getMeta: (k) => meta.get(k) ?? null }, store, 16);
+      assert.ok(info);
+      assert.deepEqual(info.bounds, { minCx: -16, minCz: -16, maxCx: 15, maxCz: 15 });
+      assert.deepEqual(info.map.biomes, ["mountains", "swamp", "plains"]);
+      const map = decodeWorldMap(info.map);
+      const survey = store.getMap("elevation")!;
+      assert.equal(map.cell, 16);
+      assert.equal(map.width, Math.floor(survey.width / 2));
+      // Cell (u, v) is the mean of survey cells 2u..2u+1, 2v..2v+1, placed at their centre.
+      const [u, v] = [20, 13];
+      const s = (du: number, dv: number): number => survey.data[(2 * v + dv) * survey.width + 2 * u + du];
+      const mean = (s(0, 0) + s(1, 0) + s(0, 1) + s(1, 1)) / 4;
+      assert.ok(Math.abs(map.heights[v * map.width + u] - mean) < 0.01);
+      assert.equal(map.originX + u * map.cell, survey.originX + (2 * u + 0.5) * survey.cell);
+      assert.ok(map.biome.every((b) => b < 3));
+      assert.equal(worldInfoFor({ getMeta: () => null }, store, 16), null, "legacy world: none");
+    } finally {
+      store.close();
+    }
   });
 });
 

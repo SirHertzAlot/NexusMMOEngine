@@ -169,6 +169,8 @@ async function main(): Promise<void> {
     const { minChunk, maxChunk } = worldBounds(spec);
     store.setMeta("world_bounds", JSON.stringify({ minChunk, maxChunk }));
     store.setMeta("spawn_point", JSON.stringify({ x: spawn.x, z: spawn.z }));
+    // Biome map values index this list (clients colour the ground by it).
+    store.setMeta("world_biomes", JSON.stringify(spec.biomes.map((b) => b.id)));
   }
   store.close();
   if (!spec) {

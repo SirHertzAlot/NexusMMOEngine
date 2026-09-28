@@ -52,6 +52,7 @@ import {
   type DebugResponse,
   type ErrorMessage,
   type WelcomeMessage,
+  type WorldInfo,
 } from "@mmo-engine/protocol";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
@@ -152,6 +153,8 @@ export interface GatewayOptions {
   groundHeightAt?: (x: number, z: number) => number;
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
+  /** A baked world's extent and coarse map, sent in every welcome. */
+  worldInfo?: WorldInfo;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -207,6 +210,7 @@ export class Gateway {
       | "chunkSource"
       | "groundHeightAt"
       | "spawnPoint"
+      | "worldInfo"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -234,6 +238,7 @@ export class Gateway {
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly spawnPoint: { x: number; z: number };
+  private readonly worldInfo: WorldInfo | null;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
 
@@ -269,6 +274,7 @@ export class Gateway {
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
+    this.worldInfo = opts.worldInfo ?? null;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -968,6 +974,7 @@ export class Gateway {
       tick_hz: TICK_HZ,
       snapshot_every: this.opts.snapshotEveryTicks,
       session_token: s.token,
+      ...(this.worldInfo ? { world: this.worldInfo } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
   }
