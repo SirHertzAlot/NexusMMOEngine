@@ -65,7 +65,6 @@ export function App(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
-  const assetsRef = useRef<PlaceholderAssets | null>(null);
   const viewRef = useRef<WorldView | null>(null);
   const lastStateAtRef = useRef(0);
 
@@ -153,9 +152,10 @@ export function App(): React.ReactElement {
     if (!canvas || !client) return;
 
     const assets = new PlaceholderAssets();
-    assetsRef.current = assets;
     const view = new WorldView(canvas, assets);
     viewRef.current = view;
+    // A baked world: far horizon and ground colours from the welcome's map.
+    view.setWorld(client.world);
     setGpu(view.gpu);
     if (view.gpu.software) {
       console.warn(
@@ -164,6 +164,9 @@ export function App(): React.ReactElement {
       );
     }
     const input = new InputState();
+    // Debug handle for scripted visual checks (camera aim, HUD stats).
+    // Harmless: the client is untrusted anyway; the server is authoritative.
+    (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { view, input };
     const unbind = bindInput(canvas, input);
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
@@ -224,7 +227,7 @@ export function App(): React.ReactElement {
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("resize", onResize);
       view.dispose();
-      assetsRef.current = null;
+      delete (window as unknown as { __mmoDebug?: unknown }).__mmoDebug;
       viewRef.current = null;
     };
   }, [screen]);
@@ -232,7 +235,7 @@ export function App(): React.ReactElement {
   const toggleWireframe = (): void => {
     const next = !wireframe;
     setWireframe(next);
-    assetsRef.current?.setTerrainWireframe(next);
+    viewRef.current?.setTerrainWireframe(next);
   };
 
   const toggleShowcase = (): void => {

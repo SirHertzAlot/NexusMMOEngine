@@ -256,6 +256,28 @@ export function applyBrush(grid: HeightGrid, stroke: BrushStroke): Set<string> {
   return touched;
 }
 
+/**
+ * Surface height at chunk-local (lx, lz) of one 16x16 tile: interpolated
+ * on the triangle that contains the point, every cell split along its
+ * (i+1, j)-(i, j+1) diagonal — the triangles clients render, the server
+ * grounds characters on, and physics collides with. Positions outside the
+ * chunk clamp to its edge.
+ */
+export function tileHeightAt(heights: Float32Array, lx: number, lz: number, chunkWorldSize: number): number {
+  const gx = Math.min(TILE_CELLS, Math.max(0, (lx * TILE_CELLS) / chunkWorldSize));
+  const gz = Math.min(TILE_CELLS, Math.max(0, (lz * TILE_CELLS) / chunkWorldSize));
+  const i = Math.min(TILE_CELLS - 1, Math.floor(gx));
+  const j = Math.min(TILE_CELLS - 1, Math.floor(gz));
+  const fx = gx - i;
+  const fz = gz - j;
+  const h00 = heights[j * TILE_SAMPLES + i];
+  const h10 = heights[j * TILE_SAMPLES + i + 1];
+  const h01 = heights[(j + 1) * TILE_SAMPLES + i];
+  const h11 = heights[(j + 1) * TILE_SAMPLES + i + 1];
+  if (fx + fz <= 1) return h00 + fx * (h10 - h00) + fz * (h01 - h00);
+  return h11 + (1 - fx) * (h01 - h11) + (1 - fz) * (h10 - h11);
+}
+
 /** Height of the sample nearest to world (x, z); NaN outside the grid. */
 export function sampleNearest(grid: HeightGrid, x: number, z: number, chunkWorldSize = 16): number {
   const toGrid = TILE_CELLS / chunkWorldSize;

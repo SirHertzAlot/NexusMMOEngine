@@ -11,7 +11,12 @@
  *
  * The far-horizon variant discards fragments over loaded chunks (a mask
  * texture with one texel per world chunk), so the detailed chunks show
- * wherever they exist and the coarse map fills in everywhere else.
+ * wherever they exist and the coarse map fills in everywhere else. Near
+ * the camera it also sinks each vertex by its `aDrop` (down to its
+ * neighbourhood's lowest point, and a little more): the coarse map must
+ * meet the streamed area's edge below it, where the chunks' skirts hide
+ * the step — above it, you would see up under the far mesh. Far away the
+ * drop fades out, so distant peaks keep their true height.
  *
  * Colours are linear (three.js colour management): the ground texture is
  * sRGB and decoded on sampling.
@@ -36,8 +41,17 @@ export const NO_SNOW = 1e6;
 const VERTEX_HEAD = /* glsl */ `
   varying vec3 vTerrainPos;
   varying vec3 vTerrainNormal;
+#ifdef TERRAIN_FAR
+  attribute float aDrop;
+#endif
 `;
 const VERTEX_BODY = /* glsl */ `
+#ifdef TERRAIN_FAR
+  {
+    float camDist = distance((modelMatrix * vec4(transformed, 1.0)).xz, cameraPosition.xz);
+    transformed.y -= aDrop * (1.0 - smoothstep(300.0, 600.0, camDist));
+  }
+#endif
   vTerrainPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
   vTerrainNormal = normalize(mat3(modelMatrix) * objectNormal);
 `;
@@ -98,7 +112,7 @@ const FRAGMENT_BODY = /* glsl */ `
 
     float slope = 1.0 - n.y; // 0 flat .. 1 vertical
     float rockNoise = tTriplanar(vTerrainPos * 0.45, n);
-    vec3 rock = mix(vec3(0.155, 0.138, 0.117), vec3(0.305, 0.279, 0.238), rockNoise);
+    vec3 rock = mix(vec3(0.21, 0.19, 0.165), vec3(0.42, 0.39, 0.34), rockNoise);
     float rockAmount = smoothstep(0.22, 0.42, slope + (rockNoise - 0.5) * 0.12);
     vec3 color = mix(ground, rock, rockAmount);
 

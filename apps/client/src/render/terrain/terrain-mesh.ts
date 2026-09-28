@@ -11,12 +11,28 @@
  * row), so both sides of a seam compute the same normal and the lighting
  * has no visible edge. Where a neighbour isn't loaded yet, the difference
  * is one-sided; the renderer recomputes the border when it arrives.
+ *
+ * Skirts: every edge hangs a SKIRT_DEPTH wall straight down, facing into
+ * the chunk. Between two loaded chunks it sits inside the ground, where
+ * nothing can see it; at the edge of the streamed area — seen from inside
+ * it, where the player always is — it closes the step down to the coarser
+ * far horizon, which would otherwise show a hairline of distant sky.
  */
 
 import * as THREE from "three";
 
 export const SIDE = 16;
 const CELLS = SIDE - 1;
+/** How far skirts hang below a chunk's edges, metres. */
+export const SKIRT_DEPTH = 24;
+
+/** The four edges' surface vertex indices, as a loop around the tile. */
+const EDGES: number[][] = [
+  Array.from({ length: SIDE }, (_, i) => i), // z = 0, +x
+  Array.from({ length: SIDE }, (_, j) => j * SIDE + CELLS), // x = max, +z
+  Array.from({ length: SIDE }, (_, i) => CELLS * SIDE + (CELLS - i)), // z = max, -x
+  Array.from({ length: SIDE }, (_, j) => (CELLS - j) * SIDE), // x = 0, -z
+];
 
 /** A loaded neighbour's tile by chunk offset (dx, dz in -1..1), or null. */
 export type NeighbourTiles = (dx: number, dz: number) => Float32Array | null;
@@ -58,9 +74,9 @@ export function chunkNormals(heights: Float32Array, neighbour: NeighbourTiles, s
   }
 }
 
-/** Two triangles per cell, split along (i+1, j)-(i, j+1), facing +Y. */
+/** Two triangles per cell, split along (i+1, j)-(i, j+1), facing +Y; then the skirts. */
 function chunkIndex(): THREE.BufferAttribute {
-  const idx = new Uint16Array(CELLS * CELLS * 6);
+  const idx = new Uint16Array(CELLS * CELLS * 6 + EDGES.length * CELLS * 6);
   let t = 0;
   for (let j = 0; j < CELLS; j++) {
     for (let i = 0; i < CELLS; i++) {
@@ -72,6 +88,14 @@ function chunkIndex(): THREE.BufferAttribute {
       idx[t++] = d; idx[t++] = b; idx[t++] = c;
     }
   }
+  // Skirt quads, wound to face into the tile (toward the player).
+  EDGES.forEach((edge, e) => {
+    const base = SIDE * SIDE + e * SIDE;
+    for (let k = 0; k < CELLS; k++) {
+      idx[t++] = edge[k]; idx[t++] = base + k; idx[t++] = edge[k + 1];
+      idx[t++] = edge[k + 1]; idx[t++] = base + k; idx[t++] = base + k + 1;
+    }
+  });
   return new THREE.BufferAttribute(idx, 1);
 }
 
@@ -82,7 +106,8 @@ function chunkIndex(): THREE.BufferAttribute {
 export function buildChunkGeometry(heights: Float32Array, chunkWorldSize: number): THREE.BufferGeometry {
   if (heights.length !== SIDE * SIDE) throw new Error(`terrain: want ${SIDE * SIDE} heights, got ${heights.length}`);
   const spacing = chunkWorldSize / CELLS;
-  const pos = new Float32Array(SIDE * SIDE * 3);
+  const vertices = SIDE * SIDE + EDGES.length * SIDE;
+  const pos = new Float32Array(vertices * 3);
   for (let j = 0; j < SIDE; j++) {
     for (let i = 0; i < SIDE; i++) {
       const k = 3 * (j * SIDE + i);
@@ -91,9 +116,21 @@ export function buildChunkGeometry(heights: Float32Array, chunkWorldSize: number
       pos[k + 2] = j * spacing;
     }
   }
+  const normals = new Float32Array(vertices * 3);
+  // Skirt bottoms: under each edge vertex, facing into the tile.
+  const inward: Array<[number, number]> = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+  EDGES.forEach((edge, e) => {
+    edge.forEach((top, k) => {
+      const v = 3 * (SIDE * SIDE + e * SIDE + k);
+      pos[v] = pos[3 * top];
+      pos[v + 1] = pos[3 * top + 1] - SKIRT_DEPTH;
+      pos[v + 2] = pos[3 * top + 2];
+      normals[v] = inward[e][0];
+      normals[v + 2] = inward[e][1];
+    });
+  });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const normals = new Float32Array(SIDE * SIDE * 3);
   chunkNormals(heights, () => null, spacing, normals);
   geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
   geometry.setIndex(chunkIndex());

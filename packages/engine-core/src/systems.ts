@@ -29,6 +29,7 @@
  *   addon adapter (createJoltBackend), tests pass a mock.
  */
 
+import { tileHeightAt } from "@mmo-engine/protocol";
 import { createRequire } from "node:module";
 import { defineQuery, Not } from "bitecs";
 import {
@@ -77,13 +78,9 @@ const GROUND_SNAP = 0.08;
 const CHARACTER_HEIGHT_CACHE_CHUNKS = 64;
 
 /**
- * Terrain surface height at chunk-local (lx, lz), matching the mirror's
- * rendered mesh exactly: a THREE.PlaneGeometry with 15x15 segments whose
- * vertex (i, j) sits at local (i, j) * chunkSize/15 with height
- * heights[j*16 + i]. PlaneGeometry splits every cell along the
- * anti-diagonal — triangles (i,j)-(i,j+1)-(i+1,j) and
- * (i,j+1)-(i+1,j+1)-(i+1,j) — so interpolate on whichever triangle
- * contains the point. Positions outside the chunk clamp to its edge.
+ * Terrain surface height at chunk-local (lx, lz) — the one surface the
+ * client renders, characters stand on, and physics collides with (see
+ * @mmo-engine/protocol tileHeightAt). Outside the chunk: its edge.
  */
 export function terrainHeightAt(
   heights: Float32Array,
@@ -91,22 +88,7 @@ export function terrainHeightAt(
   lz: number,
   chunkSize: number,
 ): number {
-  const S = 16;
-  const cells = S - 1;
-  const gx = Math.min(cells, Math.max(0, (lx * cells) / chunkSize));
-  const gz = Math.min(cells, Math.max(0, (lz * cells) / chunkSize));
-  const i = Math.min(cells - 1, Math.floor(gx));
-  const j = Math.min(cells - 1, Math.floor(gz));
-  const fx = gx - i;
-  const fz = gz - j;
-  const h00 = heights[j * S + i];
-  const h10 = heights[j * S + i + 1];
-  const h01 = heights[(j + 1) * S + i];
-  const h11 = heights[(j + 1) * S + i + 1];
-  if (fx + fz <= 1) {
-    return h00 + fx * (h10 - h00) + fz * (h01 - h00);
-  }
-  return h11 + (1 - fx) * (h01 - h11) + (1 - fz) * (h10 - h11);
+  return tileHeightAt(heights, lx, lz, chunkSize);
 }
 
 export interface CharacterOptions {

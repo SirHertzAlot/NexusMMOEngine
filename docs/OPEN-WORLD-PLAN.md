@@ -170,23 +170,33 @@ reproducible (same spec → same bytes), not identical across platforms.
 
 ## Phase 3 — Client streaming, LOD, culling
 
-- [ ] Client requests chunks by distance; the server sends heights only for
-      those (today every chunk ships in every snapshot).
-- [ ] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
-      tiles), with no cracks between levels.
-- [ ] Frustum culling, instanced props, far-horizon terrain.
-- [ ] **Terrain texturing by slope, height, and biome** (our own three.js
-      shader; LYGIA is not used): steep faces take a rock-wall texture
-      (triplanar, so cliffs don't stretch), gentle slopes grass or the
-      biome's ground (sand in the desert, mud in the swamp), river banks
-      wet mud/gravel from the river mask, snow above a height line on
-      mountains. Blend by slope/height with noise so borders aren't
-      straight lines. Textures from the licensed packs' ground sets (kept
-      out of git); biome and river masks come from the baked survey maps.
-- [ ] Run the browser on the NVIDIA P1000, not the Intel UHD 630 (Windows
-      Settings → Display → Graphics) — the likely cause of the 3 fps.
-- **Verify:** 60 fps with a 2 km view distance on the dev machine; crossing
-  biomes with no hitches.
+- [x] **Terrain renderer** (client): streamed chunks as meshes on one
+      shared opaque material (was a transparent material per chunk);
+      normals match across chunk borders; skirts close the step to the
+      far horizon.
+- [x] **Far horizon:** the welcome carries the world's coarse map (16 m
+      cells: elevation, biome, rivers, ~340 KB); the client draws the whole
+      world from it and hides it wherever chunks are loaded.
+- [x] **Texturing by slope, height, and biome** (procedural, no LYGIA):
+      biome ground colours from the map, rock on steep faces (triplanar),
+      snow on flatter ground above the snow line, mud along rivers.
+- [x] **Instanced props:** scatter draws in 3 draw calls (was a mesh,
+      geometry, and material per prop).
+- [x] Camera kept above the ground; daylight sky and 2.6 km fog.
+- [x] **Terrain shape fix** found while looking at it: mountains were 57%
+      steeper than 60° (biome borders walled up, short wavelength). Relief
+      now ramps in from a biome's border (`borderSlope`, default 0.6) and
+      the default mountains/dunes use longer wavelengths: 8.6% of the
+      mountains are steeper than 60°, plains/swamp max out near 55°.
+- **Measured (2026-09-28, headless Edge on the dev machine's Intel UHD
+  630):** 60 fps with 289 chunks, ~1,900 entities, and the full 4 km
+  horizon. (Your 3 fps was likely the per-chunk transparent materials
+  and a mesh per prop, not only the GPU choice.)
+- [ ] Client requests chunks by distance; the server sends each client
+      only its area (today every loaded chunk goes to every client).
+- [ ] LOD rings between the 1 m chunks and the 16 m horizon.
+- [ ] Pack textures (from the licensed art, kept out of git) in place of
+      the procedural colours.
 
 ## Phase 4 — Editor at scale
 

@@ -427,16 +427,38 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const tau = spec.blendWidth / 3;
   const dist = new Float64Array(regions.length);
   const biomeWeight = new Float64Array(spec.biomes.length);
+  // Per biome: how deep inside its territory a point is (metres to the
+  // border, negative outside), and the depth its relief ramps in over.
+  const depth = new Float64Array(spec.biomes.length);
+  const ramp = spec.biomes.map((b) => b.relief / spec.borderSlope);
+  const smoothstep = (a: number, b: number, x: number): number => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
   for (let v = 0; v < grid.depth; v++) {
     const z = grid.originZ + v * grid.cell;
     for (let u = 0; u < W; u++) {
       const x = grid.originX + u * grid.cell;
       const i = v * W + u;
       let dmin = Infinity;
+      let dsecond = Infinity;
       let nearest = 0;
       for (let r = 0; r < regions.length; r++) {
         dist[r] = Math.hypot(x - regions[r].x, z - regions[r].z);
-        if (dist[r] < dmin) [dmin, nearest] = [dist[r], r];
+        if (dist[r] < dmin) {
+          dsecond = dmin;
+          [dmin, nearest] = [dist[r], r];
+        } else if (dist[r] < dsecond) {
+          dsecond = dist[r];
+        }
+      }
+      // Distance to the Voronoi border: inside the nearest region, half the
+      // gap to the runner-up; outside a region, minus half its lead.
+      depth.fill(-Infinity);
+      for (let r = 0; r < regions.length; r++) {
+        const d = r === nearest ? (dsecond - dmin) / 2 : (dmin - dist[r]) / 2;
+        const b = regions[r].biome;
+        if (d > depth[b]) depth[b] = d;
       }
       biomeWeight.fill(0);
       let wsum = 0;
@@ -452,7 +474,8 @@ export function surveyWorld(spec: WorldSpec): Survey {
         const w = biomeWeight[b] / wsum;
         if (w === 0) continue;
         const bs = spec.biomes[b];
-        h += w * (bs.base + bs.relief * shape(bs, biomeNoise[b][i], x, z));
+        const rise = ramp[b] > 0 ? smoothstep(0, ramp[b], depth[b]) : 1;
+        h += w * (bs.base + rise * bs.relief * shape(bs, biomeNoise[b][i], x, z));
         rough += w * bs.roughness;
         if (biomeWeight[b] > biomeWeight[dominant]) dominant = b;
       }

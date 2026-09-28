@@ -53,6 +53,13 @@ export const WorldSpecSchema = z
     continentalScale: z.number().positive().default(1500),
     /** Biome border blend width, metres. */
     blendWidth: z.number().positive().default(120),
+    /**
+     * Steepest average slope (rise/run) a biome's landforms climb at from
+     * its border: relief ramps in over relief/borderSlope metres, so a
+     * 250 m mountain range rises over ~400 m instead of walling up at the
+     * border. Low-relief biomes ramp in within a few metres.
+     */
+    borderSlope: z.number().positive().default(0.6),
     /** Fine detail height at roughness 1, metres. */
     detailAmplitude: z.number().min(0).default(1.5),
     /** Fine detail feature size, metres. */

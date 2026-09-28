@@ -2,26 +2,33 @@
  * WorldView — three.js mirror of authoritative ECS state.
  *
  * Owns the renderer, scene, camera, and lights. `sync()` is called
- * every rAF with the MirrorState + Interpolator: meshes are created
- * lazily per wire id, moved from interpolated transforms, and removed
- * when their entity despawns. Nothing here simulates — positions come
- * from the server, full stop (skill operating rule 1).
+ * every rAF with the MirrorState + Interpolator. Nothing here simulates —
+ * positions come from the server, full stop (skill operating rule 1).
+ *
+ *  - Terrain (Chunk entities + the welcome's world map): TerrainRenderer —
+ *    streamed chunk tiles near the player, the coarse world on the horizon.
+ *  - Scenery (scatter props): PropRenderer — instanced, a few draw calls.
+ *  - Everything else (players, dynamic bodies): a mesh per wire id,
+ *    created lazily, moved from interpolated transforms, removed on
+ *    despawn.
  *
  * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
- * BodyConfig shape, flat terrain planes per Chunk. The AssetProvider
- * abstraction is the seam where real art plugs in later.
+ * BodyConfig shape. The AssetProvider abstraction is the seam where real
+ * art plugs in later (a provider with assetMesh draws props per entity).
  */
 
 import * as THREE from "three";
 import type { MirrorState } from "@mmo-engine/mirror";
 import type { Interpolator } from "@mmo-engine/mirror";
+import { decodeWorldMap, type WorldInfo } from "@mmo-engine/protocol";
 import {
   placeholderColor,
   type AssetProvider,
 } from "./assets.js";
-import { updateTerrainFx } from "./terrain-fx.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
+import { isProp, PropRenderer } from "./props.js";
+import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 
 export interface WorldViewOptions {
   /** Chunk world size in units (server MMO_CHUNK_SIZE, default 16). */
@@ -32,10 +39,13 @@ interface TrackedMesh {
   object: THREE.Object3D;
   /** True once a BodyConfig row shaped this mesh (else unit-box stand-in). */
   shaped: boolean;
-  isTerrain: boolean;
-  /** Terrain only: built from real heights (false = flat stand-in). */
-  displaced?: boolean;
 }
+
+/** Daytime haze: the sky colour, and the fog the far terrain fades into. */
+const SKY = 0x9db4c9;
+/** Fog range, metres: the streamed ring (~270 m) is clear, the horizon hazes out. */
+const FOG_NEAR = 350;
+const FOG_FAR = 2600;
 
 /** Which WebGL implementation the browser actually gave us. */
 export interface GpuInfo {
@@ -72,6 +82,10 @@ export class WorldView {
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
   private readonly chunkWorldSize: number;
+  private readonly terrain: TerrainRenderer;
+  private readonly props: PropRenderer;
+  /** Props go through PropRenderer unless the provider has real per-asset art. */
+  private readonly instancedProps: boolean;
   private camDistance = 9;
   private disposed = false;
   private readonly fx: EntityFxSystem;
@@ -92,12 +106,18 @@ export class WorldView {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.gpu = detectGpu(this.renderer);
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
 
-    this.scene.background = new THREE.Color(0x0b1020);
-    this.scene.fog = new THREE.Fog(0x0b1020, 40, 160);
+    this.scene.background = new THREE.Color(SKY);
+    this.scene.fog = new THREE.Fog(SKY, FOG_NEAR, FOG_FAR);
+    this.terrain = new TerrainRenderer(this.chunkWorldSize);
+    this.scene.add(this.terrain.group);
+    this.props = new PropRenderer();
+    this.scene.add(this.props.group);
+    this.instancedProps = typeof this.assets.assetMesh !== "function";
 
-    const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
+    // Warm bounce light from below: cliffs facing away from the sun stay readable.
+    const hemi = new THREE.HemisphereLight(0xc4d8ff, 0x5c4c3a, 1.1);
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
     sun.position.set(30, 50, 20);
@@ -116,12 +136,31 @@ export class WorldView {
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       this.raycaster.setFromCamera(this.pointerNdc, this.camera);
-      const hits = this.raycaster.intersectObjects([...this.pickMap.keys()], false);
-      this.hoveredWireId = hits.length > 0 ? this.pickMap.get(hits[0].object) ?? null : null;
+      const hits = this.raycaster.intersectObjects([...this.pickMap.keys(), ...this.props.pickTargets()], false);
+      const hit = hits[0];
+      this.hoveredWireId = hit ? this.pickMap.get(hit.object) ?? this.props.wireIdOf(hit) : null;
+      this.props.setHover(this.hoveredWireId);
     };
     this.canvas.addEventListener("pointermove", this.onPointerMove);
 
     this.resize();
+  }
+
+  /**
+   * The world from the welcome (a baked world's extent and coarse map), or
+   * null for a legacy world: far horizon and ground colours.
+   */
+  setWorld(world: WorldInfo | null): void {
+    this.terrain.setWorld(world ? { map: decodeWorldMap(world.map), bounds: world.bounds } : null);
+  }
+
+  setTerrainWireframe(on: boolean): void {
+    this.terrain.setWireframe(on);
+  }
+
+  /** What's on screen (HUD, tests). */
+  get stats(): { chunks: number; props: number; meshes: number; horizon: boolean } {
+    return { chunks: this.terrain.chunkCount, props: this.props.count, meshes: this.meshes.size, horizon: this.terrain.hasFar };
   }
 
   /** Toggle the elemental-orb FX showcase (ring placed ahead of the player). */
@@ -167,7 +206,13 @@ export class WorldView {
     lookYaw: number,
     lookPitch: number,
   ): void {
-    // Remove meshes for despawned entities.
+    // Drop what despawned: terrain chunks, props, and entity meshes.
+    for (const wid of [...this.terrain.chunkWireIds()]) {
+      if (!state.entities.has(wid)) this.terrain.removeChunk(wid);
+    }
+    for (const wid of [...this.props.wireIds()]) {
+      if (!state.entities.has(wid)) this.props.remove(wid);
+    }
     for (const [key, t] of this.meshes) {
       if (!state.entities.has(key)) {
         this.scene.remove(t.object);
@@ -181,44 +226,27 @@ export class WorldView {
 
     for (const [wid, e] of state.entities) {
       const key = wid;
+      // Terrain chunks render without a Transform row.
+      if (e.chunk) {
+        this.terrain.ensureChunk(wid, e.chunk);
+        continue;
+      }
+      if (this.instancedProps && isProp(e)) {
+        this.props.sync(wid, e);
+        continue;
+      }
       let tracked = this.meshes.get(key);
-
-      // Terrain chunks render even without a Transform row.
       if (!tracked) {
-        if (e.chunk) {
-          const obj = this.assets.terrainMesh(e.chunk, this.chunkWorldSize);
-          this.scene.add(obj);
-          this.meshes.set(key, {
-            object: obj,
-            shaped: true,
-            isTerrain: true,
-            displaced: e.chunk.heights !== null,
-          });
-        } else if (e.transform) {
-          const obj = this.makeBodyMesh(wid, e.body, e.asset);
-          this.scene.add(obj);
-          this.meshes.set(key, {
-            object: obj,
-            shaped: e.body !== undefined,
-            isTerrain: false,
-          });
-          this.pickMap.set(obj, wid);
-          // Spawn portal for newly-appearing entities.
-          this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
-        } else {
-          continue;
-        }
+        if (!e.transform) continue;
+        const obj = this.makeBodyMesh(wid, e.body, e.asset);
+        this.scene.add(obj);
+        this.meshes.set(key, { object: obj, shaped: e.body !== undefined });
+        this.pickMap.set(obj, wid);
+        // Spawn portal for players and other newly-appearing actors
+        // (scenery streams in by the thousand; it gets none).
+        if (!e.asset) this.fx.spawnBurst(tmpSpawn.set(e.transform.px, e.transform.py, e.transform.pz));
         tracked = this.meshes.get(key)!;
-      } else if (tracked.isTerrain && !tracked.displaced && e.chunk?.heights) {
-        // The chunk first arrived without heights (flat stand-in); now the
-        // authoritative heightfield is here. Terrain is deterministic, so
-        // this one upgrade is the only rebuild a chunk ever needs.
-        this.scene.remove(tracked.object);
-        disposeObject(tracked.object);
-        tracked.object = this.assets.terrainMesh(e.chunk, this.chunkWorldSize);
-        tracked.displaced = true;
-        this.scene.add(tracked.object);
-      } else if (!tracked.shaped && e.body && !tracked.isTerrain) {
+      } else if (!tracked.shaped && e.body) {
         // BodyConfig arrived after the stand-in: reshape.
         this.scene.remove(tracked.object);
         this.pickMap.delete(tracked.object);
@@ -230,7 +258,7 @@ export class WorldView {
         this.pickMap.set(obj, wid);
       }
 
-      if (tracked.isTerrain || !e.transform) continue;
+      if (!e.transform) continue;
 
       const sample = interpolator.sample(wid, alpha);
       const t = sample ?? e.transform;
@@ -241,7 +269,7 @@ export class WorldView {
       if (playerWireId !== null && wid === playerWireId) {
         playerPos = tracked.object.position.clone();
         highlight(tracked.object, "player");
-      } else if (!tracked.isTerrain) {
+      } else {
         highlight(tracked.object, wid === this.hoveredWireId ? "hover" : "none");
       }
     }
@@ -256,7 +284,7 @@ export class WorldView {
     this.showcase.update(now, dt);
 
     this.updateCamera(playerPos, lookYaw, lookPitch);
-    updateTerrainFx(now);
+    this.terrain.update();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -301,8 +329,11 @@ export class WorldView {
     const sp = Math.sin(lookPitch);
     const cx = target.x - Math.sin(lookYaw) * cp * d;
     const cz = target.z - Math.cos(lookYaw) * cp * d;
-    const cy = target.y + sp * d + 1.2;
-    this.camera.position.set(cx, Math.max(cy, target.y + 0.6), cz);
+    let cy = Math.max(target.y + sp * d + 1.2, target.y + 0.6);
+    // Never inside a hillside: keep the camera above the ground under it.
+    const ground = this.terrain.heightAt(cx, cz);
+    if (ground !== null) cy = Math.max(cy, ground + 0.8);
+    this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(target.x, target.y + 1.0, target.z);
   }
 
@@ -317,6 +348,8 @@ export class WorldView {
       disposeObject(t.object);
     }
     this.meshes.clear();
+    this.terrain.dispose();
+    this.props.dispose();
     this.renderer.dispose();
   }
 }

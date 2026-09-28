@@ -106,6 +106,34 @@ describe("survey", () => {
   });
 });
 
+describe("biome borders", () => {
+  test("relief ramps in from a region's border instead of walling up at it", () => {
+    // Two regions: 200 m ridged peaks next to flat plains, nothing else.
+    const raw = {
+      name: "ramp", seed: 5, sizeChunks: 48, continentalRelief: 0,
+      erosion: { droplets: 0, strength: 0 }, rivers: { minCatchment: 1e12, maxDepth: 0 },
+      biomes: [
+        { id: "peaks", count: 1, pick: "highest", shape: "ridged", base: 0, relief: 200, scale: 300, roughness: 0 },
+        { id: "plains", count: 1, pick: "rest", shape: "flat", base: 0, relief: 0, scale: 100, roughness: 0 },
+      ],
+    };
+    const highestOnBorder = (borderSlope: number): number => {
+      const s = surveyWorld(parseWorldSpec({ ...raw, borderSlope }));
+      const W = s.grid.width;
+      let max = 0;
+      for (let v = 1; v < s.grid.depth - 1; v++) {
+        for (let u = 1; u < W - 1; u++) {
+          const i = v * W + u;
+          if ([1, -1, W, -W].some((o) => s.region[i + o] !== s.region[i])) max = Math.max(max, s.height[i]);
+        }
+      }
+      return max;
+    };
+    assert.ok(highestOnBorder(0.6) < 5, "ramped: the border stays low");
+    assert.ok(highestOnBorder(1e6) > 50, "unramped (the old behaviour): a wall at the border");
+  });
+});
+
 describe("WorldHeights", () => {
   test("every chunk of the world meets its neighbours exactly", () => {
     const heights = new WorldHeights(surveyWorld(SMALL));

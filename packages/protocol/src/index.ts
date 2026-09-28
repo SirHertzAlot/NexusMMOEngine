@@ -26,6 +26,7 @@ export {
   chunkKey,
   HeightGrid,
   sampleNearest,
+  tileHeightAt,
   TILE_CELLS,
   TILE_SAMPLES,
 } from "./terrain-grid.js";
