@@ -26,8 +26,10 @@ import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { defineQuery } from "bitecs";
 import {
+  Ability,
   decodeControl,
   encodeControl,
+  LocomotionMode,
   MessageType,
   PROTOCOL_VERSION,
   type ErrorMessage,
@@ -165,6 +167,20 @@ describe("gateway: hello / welcome / snapshot / deltas", () => {
     }
     await a.client.close();
     await b.client.close();
+  });
+
+  it("players can swim by default; flight is granted by the playerAbilities option", async () => {
+    const swimmer = await connectHello(await startGateway(), "alice", creds("alice"));
+    assert.deepEqual(
+      swimmer.snapshot.locomotions.map((r) => [r.wireId, r.mode, r.abilities, r.breath]),
+      [[swimmer.entity, LocomotionMode.Ground, Ability.Swim, 1]],
+    );
+    await swimmer.client.close();
+    await gw!.close();
+
+    const flyer = await connectHello(await startGateway({ playerAbilities: Ability.Swim | Ability.Fly }), "alice", creds("alice"));
+    assert.equal(flyer.snapshot.locomotions[0].abilities, Ability.Swim | Ability.Fly);
+    await flyer.client.close();
   });
 });
 

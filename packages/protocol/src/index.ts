@@ -18,6 +18,7 @@ export type {
   HealthRow,
   IntentFields,
   IntentRow,
+  LocomotionRow,
   TransformRow,
   VelocityRow,
 } from "./codec.js";
@@ -32,3 +33,4 @@ export {
 export type { BrushStroke, BrushTool, TerrainTile } from "./terrain-grid.js";
 export { decodeWorldMap, encodeWorldMap } from "./world-info.js";
 export type { ChunkRange, WorldInfo, WorldMap, WorldMapWire } from "./world-info.js";
+export { Ability, IntentButton, LocomotionMode } from "./locomotion.js";

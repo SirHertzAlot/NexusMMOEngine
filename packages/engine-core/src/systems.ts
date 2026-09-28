@@ -30,9 +30,12 @@
  */
 
 import { createRequire } from "node:module";
-import { defineQuery, Not } from "bitecs";
+import { defineQuery, hasComponent, Not } from "bitecs";
+import { Ability, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import {
   BodyConfig,
+  Health,
+  Locomotion,
   MotionType,
   PlayerIntent,
   Transform,
@@ -47,8 +50,21 @@ export interface SimSystem {
   step(sim: SimWorld, dtSeconds: number): void;
 }
 
-/** Player movement speed in world units per second. */
+/** Player movement speed in world units per second (walking). */
 export const PLAYER_SPEED = 6;
+/** Horizontal speed swimming and flying, world units per second. */
+export const SWIM_SPEED = 3;
+export const FLY_SPEED = 12;
+/** Rising / diving speed in water and climbing / descending in flight. */
+export const SWIM_VERTICAL_SPEED = 2;
+export const FLY_VERTICAL_SPEED = 6;
+
+/** Horizontal speed for an entity's locomotion mode (walking without one). */
+function modeSpeed(sim: SimWorld, e: number): number {
+  if (!hasComponent(sim.ecs, Locomotion, e)) return PLAYER_SPEED;
+  const mode = Locomotion.mode[e];
+  return mode === LocomotionMode.Swim ? SWIM_SPEED : mode === LocomotionMode.Fly ? FLY_SPEED : PLAYER_SPEED;
+}
 
 export class IntentSystem implements SimSystem {
   readonly name = "intent";
@@ -59,10 +75,11 @@ export class IntentSystem implements SimSystem {
     for (let i = 0; i < eids.length; i++) {
       const e = eids[i] as number;
       // Horizontal axes only — the Y axis belongs to CharacterSystem
-      // (gravity/jump/grounding). Writing ly here would wipe jump
-      // velocity every tick (the client always sends my=0).
-      Velocity.lx[e] = PlayerIntent.mx[e] * PLAYER_SPEED;
-      Velocity.lz[e] = PlayerIntent.mz[e] * PLAYER_SPEED;
+      // (gravity/jump/grounding, swimming, flight). Writing ly here would
+      // wipe jump velocity every tick.
+      const speed = modeSpeed(sim, e);
+      Velocity.lx[e] = PlayerIntent.mx[e] * speed;
+      Velocity.lz[e] = PlayerIntent.mz[e] * speed;
     }
   }
 }
@@ -73,6 +90,23 @@ export const JUMP_SPEED = 8;
 export const GRAVITY = 22;
 /** Distance under which an entity counts as grounded (step tolerance). */
 const GROUND_SNAP = 0.08;
+/** Water at least this deep (surface − ground) lifts you off your feet: swimming. */
+export const SWIM_DEPTH = 1.3;
+/** Afloat, the feet hang this far below the surface (the head stays above it). */
+export const FLOAT_DEPTH = 1.4;
+/** Head height above the feet: under the surface, the breath is held. */
+export const HEAD_HEIGHT = 1.7;
+/** Air in full lungs, seconds; it comes back three times as fast. */
+export const BREATH_SECONDS = 30;
+const BREATH_RECOVERY = 3;
+/** Health lost per second underwater with no air left. */
+export const DROWN_DAMAGE_PER_SECOND = 10;
+/** Highest a flyer can climb above the ground, metres. */
+export const MAX_FLIGHT_HEIGHT = 250;
+
+/** Water surface height at world (x, z), or null where there is no water. */
+export type WaterSurface = (x: number, z: number) => number | null;
+
 /** Heightfields CharacterSystem keeps resident (~1 KiB each). */
 const CHARACTER_HEIGHT_CACHE_CHUNKS = 64;
 
@@ -121,11 +155,28 @@ export interface CharacterOptions {
    * is no terrain to stand on). Default: unbounded.
    */
   bounds?: { minX: number; minZ: number; maxX: number; maxZ: number };
+  /** Where the water is (sea and lakes); absent -> no water, no swimming. */
+  water?: WaterSurface;
 }
 
 /**
  * CharacterSystem: server-authoritative kinematic character control —
- * gravity, jumping, and terrain grounding for player entities.
+ * walking (gravity, jumping, terrain grounding), swimming, and flight for
+ * player entities.
+ *
+ * Entities with a Locomotion component move in its mode:
+ *  - Ground: as below. Walking into water deeper than SWIM_DEPTH (or
+ *    falling into it) starts swimming, for anyone who can swim.
+ *  - Swim: afloat with the head above water, bobbing to the float line;
+ *    the intent's vertical axis (my) swims up (> 0) or dives (< 0), never
+ *    through the bottom or above the float line. Shallow water puts the
+ *    feet back on the ground. Underwater the breath runs down; with none
+ *    left the swimmer is pushed up and loses health until they surface.
+ *  - Fly: for entities with Ability.Fly. The ToggleFlight button (on
+ *    press) takes off and lands; my climbs and descends, no gravity, up
+ *    to MAX_FLIGHT_HEIGHT above the ground. Descending onto the ground
+ *    lands; descending into deep water starts swimming.
+ * Entities without Locomotion just walk.
  *
  * Runs AFTER IntegrateSystem (it corrects the integrated Y position in
  * the same tick, so a landing entity never renders a frame sunk into
@@ -158,12 +209,16 @@ export class CharacterSystem implements SimSystem {
   private readonly heightCache = new Map<number, Float32Array>();
   /** Eids with jump held last tick — jump fires on the rising edge. */
   private readonly jumpHeld = new Set<number>();
+  /** Eids holding ToggleFlight last tick — flight toggles on the press. */
+  private readonly flightHeld = new Set<number>();
+  private readonly water: WaterSurface | null;
 
   constructor(opts: CharacterOptions = {}) {
     this.source = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? 0n;
     this.chunkSize = opts.chunkSize ?? 16;
     this.bounds = opts.bounds ?? null;
+    this.water = opts.water ?? null;
   }
 
   /** Terrain height under world (x, z); y=0 without a source. */
@@ -195,9 +250,10 @@ export class CharacterSystem implements SimSystem {
   step(sim: SimWorld, dtSeconds: number): void {
     const eids = this.query(sim.ecs);
     // Drop held-state for entities that left the query (despawn/slot reuse).
-    if (this.jumpHeld.size > eids.length) {
+    if (this.jumpHeld.size + this.flightHeld.size > eids.length) {
       const live = new Set<number>(eids as unknown as number[]);
       for (const e of this.jumpHeld) if (!live.has(e)) this.jumpHeld.delete(e);
+      for (const e of this.flightHeld) if (!live.has(e)) this.flightHeld.delete(e);
     }
     const b = this.bounds;
     for (let k = 0; k < eids.length; k++) {
@@ -208,24 +264,96 @@ export class CharacterSystem implements SimSystem {
         Transform.pz[e] = Math.min(b.maxZ - 0.01, Math.max(b.minZ, Transform.pz[e]));
       }
       const ground = this.groundHeight(Transform.px[e], Transform.pz[e]);
-      const grounded = Transform.py[e] <= ground + GROUND_SNAP;
       const wantJump = PlayerIntent.jump[e] !== 0;
-      const held = this.jumpHeld.has(e);
-
-      if (wantJump && !held && grounded) {
-        Velocity.ly[e] = JUMP_SPEED;
-      } else if (!grounded) {
-        Velocity.ly[e] -= GRAVITY * dtSeconds;
-      } else {
-        // Grounded: kill downward velocity and glue to the terrain so
-        // landing never hovers inside the snap tolerance and walking
-        // stays planted on slopes.
-        if (Velocity.ly[e] < 0) Velocity.ly[e] = 0;
-        Transform.py[e] = ground;
-      }
-
+      const jumpPressed = wantJump && !this.jumpHeld.has(e);
       if (wantJump) this.jumpHeld.add(e);
       else this.jumpHeld.delete(e);
+
+      if (!hasComponent(sim.ecs, Locomotion, e)) {
+        this.walk(e, ground, jumpPressed, dtSeconds);
+        continue;
+      }
+      const wantFlight = (PlayerIntent.buttons[e] & IntentButton.ToggleFlight) !== 0;
+      const flightPressed = wantFlight && !this.flightHeld.has(e);
+      if (wantFlight) this.flightHeld.add(e);
+      else this.flightHeld.delete(e);
+      this.move(sim, e, ground, jumpPressed, flightPressed, dtSeconds);
+    }
+  }
+
+  /** Ground mode: jump on the press, fall when airborne, stick to the terrain. */
+  private walk(e: number, ground: number, jumpPressed: boolean, dt: number): void {
+    const grounded = Transform.py[e] <= ground + GROUND_SNAP;
+    if (jumpPressed && grounded) {
+      Velocity.ly[e] = JUMP_SPEED;
+    } else if (!grounded) {
+      Velocity.ly[e] -= GRAVITY * dt;
+    } else {
+      // Grounded: kill downward velocity and glue to the terrain so
+      // landing never hovers inside the snap tolerance and walking
+      // stays planted on slopes.
+      if (Velocity.ly[e] < 0) Velocity.ly[e] = 0;
+      Transform.py[e] = ground;
+    }
+  }
+
+  /** Locomotion: pick the mode, move in it, and keep the breath. */
+  private move(sim: SimWorld, e: number, ground: number, jumpPressed: boolean, flightPressed: boolean, dt: number): void {
+    const L = Locomotion;
+    const surface = this.water?.(Transform.px[e], Transform.pz[e]) ?? null;
+    const depth = surface === null ? -Infinity : surface - ground;
+    const canSwim = (L.abilities[e] & Ability.Swim) !== 0;
+    const canFly = (L.abilities[e] & Ability.Fly) !== 0;
+    const my = PlayerIntent.my[e];
+    const py = Transform.py[e];
+    const deepHere = canSwim && depth >= SWIM_DEPTH;
+
+    let mode = L.mode[e];
+    if (mode === LocomotionMode.Fly) {
+      if (!canFly || flightPressed) {
+        // Wings folded: no more lift, start falling from here.
+        mode = deepHere && py < surface! ? LocomotionMode.Swim : LocomotionMode.Ground;
+        Velocity.ly[e] = Math.min(0, Velocity.ly[e]);
+      } else if (my < 0 && py <= ground + GROUND_SNAP) mode = LocomotionMode.Ground; // landed
+      else if (my < 0 && deepHere && py < surface! - FLOAT_DEPTH) mode = LocomotionMode.Swim; // dived in
+    } else if (flightPressed && canFly) {
+      mode = LocomotionMode.Fly;
+      Velocity.ly[e] = 0;
+    } else if (mode === LocomotionMode.Swim) {
+      if (!canSwim || depth < SWIM_DEPTH - 0.3) mode = LocomotionMode.Ground; // shallows: back on your feet
+    } else if (deepHere && py < surface!) {
+      mode = LocomotionMode.Swim; // waded in or fell in
+    }
+    L.mode[e] = mode;
+
+    if (mode === LocomotionMode.Swim) {
+      const floatLine = surface! - FLOAT_DEPTH;
+      const outOfAir = L.breath[e] <= 0;
+      let rise: number;
+      if (my > 0 || outOfAir) rise = SWIM_VERTICAL_SPEED;
+      else if (my < 0) rise = -SWIM_VERTICAL_SPEED;
+      else rise = Math.max(-1, Math.min(1, (floatLine - py) * 2)); // bob to the float line
+      Velocity.ly[e] = rise;
+      // Between the bottom and the float line (the bottom wins where the
+      // water is too shallow to float in).
+      Transform.py[e] = Math.max(ground + 0.05, Math.min(floatLine, py));
+    } else if (mode === LocomotionMode.Fly) {
+      // No flying underwater: taking off from a swim climbs clear of it
+      // first (diving back in is my < 0, handled above).
+      const submerged = surface !== null && py < surface && my >= 0;
+      Velocity.ly[e] = submerged ? FLY_VERTICAL_SPEED : my * FLY_VERTICAL_SPEED;
+      Transform.py[e] = Math.min(ground + MAX_FLIGHT_HEIGHT, Math.max(ground, py));
+      if (Transform.py[e] <= ground && Velocity.ly[e] < 0) Velocity.ly[e] = 0;
+    } else {
+      this.walk(e, ground, jumpPressed, dt);
+    }
+
+    // Breath: held while the head is under the surface, back in the air.
+    const under = surface !== null && Transform.py[e] + HEAD_HEIGHT < surface;
+    const change = under ? -dt / BREATH_SECONDS : (BREATH_RECOVERY * dt) / BREATH_SECONDS;
+    L.breath[e] = Math.min(1, Math.max(0, L.breath[e] + change));
+    if (under && L.breath[e] <= 0 && hasComponent(sim.ecs, Health, e)) {
+      Health.current[e] = Math.max(0, Health.current[e] - DROWN_DAMAGE_PER_SECOND * dt);
     }
   }
 }

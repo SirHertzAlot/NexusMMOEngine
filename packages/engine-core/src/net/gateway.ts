@@ -53,6 +53,8 @@ import {
   type ErrorMessage,
   type WelcomeMessage,
   type WorldInfo,
+  Ability,
+  LocomotionMode,
 } from "@mmo-engine/protocol";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
@@ -155,6 +157,11 @@ export interface GatewayOptions {
   spawnPoint?: { x: number; z: number };
   /** A baked world's extent and coarse map, sent in every welcome. */
   worldInfo?: WorldInfo;
+  /**
+   * What new players can do (protocol Ability bits). Default: swim.
+   * Flight is for expansions to grant (MMO_PLAYER_ABILITIES=swim,fly).
+   */
+  playerAbilities?: number;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -211,6 +218,7 @@ export class Gateway {
       | "groundHeightAt"
       | "spawnPoint"
       | "worldInfo"
+      | "playerAbilities"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -239,6 +247,7 @@ export class Gateway {
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
+  private readonly playerAbilities: number;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
 
@@ -275,6 +284,7 @@ export class Gateway {
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
+    this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -1023,7 +1033,8 @@ export class Gateway {
   }
 
   /**
-   * Spawn a player entity: Transform + Velocity + PlayerIntent + Health.
+   * Spawn a player entity: Transform + Velocity + PlayerIntent + Health +
+   * Locomotion (on foot, with the gateway's player abilities, full breath).
    * Spawn points spread on a grid so N players don't stack. Player
    * entities are ordinary entities — the sim treats N of them identically
    * (multiplayer by construction, no singleton).
@@ -1035,6 +1046,10 @@ export class Gateway {
     addComponent(sim.ecs, C.Velocity, eid);
     addComponent(sim.ecs, C.PlayerIntent, eid);
     addComponent(sim.ecs, C.Health, eid);
+    addComponent(sim.ecs, C.Locomotion, eid);
+    C.Locomotion.mode[eid] = LocomotionMode.Ground;
+    C.Locomotion.abilities[eid] = this.playerAbilities;
+    C.Locomotion.breath[eid] = 1;
     const T = C.Transform;
     const i = this.playerSeq++;
     T.px[eid] = this.spawnPoint.x + (i % 8) * 4 - 14;

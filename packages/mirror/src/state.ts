@@ -15,6 +15,7 @@ import type {
   CollectedState,
   HealthRow,
   IntentRow,
+  LocomotionRow,
   TransformRow,
   VelocityRow,
 } from "@mmo-engine/protocol";
@@ -28,6 +29,7 @@ export interface EntityMirror {
   health?: HealthRow;
   body?: BodyConfigRow;
   asset?: AssetRefRow;
+  locomotion?: LocomotionRow;
 }
 
 function upsert<K extends keyof Omit<EntityMirror, "wireId">>(
@@ -71,6 +73,7 @@ export class MirrorState {
     for (const r of d.healths) upsert(this.entities, r.wireId, "health", r);
     for (const r of d.bodies) upsert(this.entities, r.wireId, "body", r);
     for (const r of d.assets) upsert(this.entities, r.wireId, "asset", r);
+    for (const r of d.locomotions) upsert(this.entities, r.wireId, "locomotion", r);
     this.lastTick = d.tick;
   }
 

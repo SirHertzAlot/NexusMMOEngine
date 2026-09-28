@@ -70,6 +70,13 @@ describe("sanitizeIntent (trust boundary)", () => {
     assert.ok(Math.abs(out.mx - 0.6) < 1e-12 && Math.abs(out.mz - 0.8) < 1e-12, `${out.mx},${out.mz}`);
   });
 
+  it("caps vertical on its own: rising while moving keeps full horizontal speed", () => {
+    const up = { ...base, mx: 0.6, my: 1, mz: 0.8 };
+    assert.equal(sanitizeIntent(up), up, "a unit horizontal move plus full climb is fine");
+    const out = sanitizeIntent({ ...base, mx: 0, my: -50, mz: 0 })!;
+    assert.equal(out.my, -1);
+  });
+
   it("rejects any non-finite number", () => {
     for (const k of ["mx", "my", "mz", "lookYaw", "lookPitch"] as const) {
       for (const v of [Number.NaN, Infinity, -Infinity]) {

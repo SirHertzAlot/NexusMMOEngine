@@ -20,7 +20,7 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * AssetRef=8) for future compact wire formats; the current
+ * Locomotion=9) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -120,6 +120,7 @@ export const COMPONENT_IDS = {
   PathRequest: 6,
   PathState: 7,
   AssetRef: 8,
+  Locomotion: 9,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -200,4 +201,17 @@ export const PathState = defineComponent({
 export const AssetRef = defineComponent({
   assetHash: Types.ui32,
   variant: Types.ui16,
+});
+
+// ---------------------------------------------------------------------------
+// Locomotion (ComponentId 9): how an entity moves — on the ground,
+// swimming, or flying (mode: protocol LocomotionMode), what it can do
+// (abilities: protocol Ability bits), and its breath underwater (1 = full,
+// 0 = drowning). Owned by CharacterSystem; replicated to clients.
+// ---------------------------------------------------------------------------
+
+export const Locomotion = defineComponent({
+  mode: Types.ui8,
+  abilities: Types.ui8,
+  breath: Types.f32,
 });
