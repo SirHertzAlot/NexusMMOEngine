@@ -26,7 +26,7 @@
  * reuse unambiguous.
  */
 
-import { defineQuery, type Query } from "bitecs";
+import { defineQuery, hasComponent, type Query } from "bitecs";
 import * as C from "./components.js";
 import { joinU64 } from "./components.js";
 import { parseWireEntityId } from "./entity-id.js";
@@ -179,6 +179,29 @@ export function collectFullState(sim: SimWorld, tick: number): CollectedState {
     assets: qAssets(sim.ecs).map((e) => readAssetRef(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
+  };
+}
+
+/**
+ * Collect the full rows of just these entities (an unloading chunk's
+ * contents, see ChunkEntityStore). No spawned/despawned lists: this is
+ * stored state, not a change.
+ */
+export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tick: number): CollectedState {
+  const having = (component: Parameters<typeof hasComponent>[1]): number[] =>
+    eids.filter((e) => hasComponent(sim.ecs, component, e));
+  return {
+    tick,
+    baseTick: 0,
+    transforms: having(C.Transform).map((e) => readTransform(sim, e)),
+    velocities: having(C.Velocity).map((e) => readVelocity(sim, e)),
+    intents: having(C.PlayerIntent).map((e) => readIntent(sim, e)),
+    chunks: having(C.Chunk).map((e) => readChunk(sim, e)),
+    healths: having(C.Health).map((e) => readHealth(sim, e)),
+    bodies: having(C.BodyConfig).map((e) => readBodyConfig(sim, e)),
+    assets: having(C.AssetRef).map((e) => readAssetRef(sim, e)),
+    spawned: [],
+    despawned: [],
   };
 }
 

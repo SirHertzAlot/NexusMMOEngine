@@ -22,7 +22,8 @@
  *  - rejects tiles outside the baked world, and tiles that open a seam
  *    against their stored neighbours;
  *  - moves every prop standing in an edited chunk by the ground change
- *    under it, so trees stay planted on sculpted terrain;
+ *    under it, so trees stay planted on sculpted terrain — props in the
+ *    snapshot (loaded chunks) and in the rows of unloaded chunks alike;
  *  - writes tiles and the corrected snapshot in ONE transaction.
  */
 
@@ -35,6 +36,7 @@ import {
   type TerrainTile,
 } from "@mmo-engine/protocol";
 import {
+  ChunkEntityStore,
   decodeSnapshot,
   encodeSnapshot,
   makeProcgenChunkSource,
@@ -127,6 +129,52 @@ function propRows(state: CollectedState): CollectedState["transforms"] {
   return state.transforms.filter((t) => !skip.has(t.wireId));
 }
 
+/**
+ * Rows of the chunks in `range` that were unloaded when the snapshot was
+ * taken (see ChunkEntityStore): a chunk loaded in the snapshot has its
+ * props there, and its row (if any) is stale.
+ */
+function unloadedRows(
+  rows: ChunkEntityStore,
+  state: CollectedState | null,
+  range: ChunkRange,
+): Array<{ cx: number; cz: number; tick: number; state: CollectedState }> {
+  const loaded = new Set((state ? snapshotChunks(state) : []).map(([cx, cz]) => chunkKey(cx, cz)));
+  return rows
+    .getRange(...range)
+    .filter((r) => !loaded.has(chunkKey(r.cx, r.cz)))
+    .map((r) => ({ cx: r.cx, cz: r.cz, tick: r.tick, state: decodeSnapshot(r.bytes) }));
+}
+
+/**
+ * Shift each prop standing in an edited chunk by the change in ground
+ * height under it (keeps any intentional offset). Returns how many moved.
+ */
+function reseat(
+  props: CollectedState["transforms"],
+  edited: Map<string, TerrainTile>,
+  before: Map<string, TerrainTile>,
+): number {
+  let moved = 0;
+  for (const row of props) {
+    const cx = Math.floor(row.px / CHUNK_SIZE);
+    const cz = Math.floor(row.pz / CHUNK_SIZE);
+    const next = edited.get(chunkKey(cx, cz));
+    const prev = before.get(chunkKey(cx, cz));
+    if (!next || !prev) continue;
+    const lx = row.px - cx * CHUNK_SIZE;
+    const lz = row.pz - cz * CHUNK_SIZE;
+    const dy =
+      terrainHeightAt(next.heights, lx, lz, CHUNK_SIZE) -
+      terrainHeightAt(prev.heights, lx, lz, CHUNK_SIZE);
+    if (dy !== 0) {
+      row.py += dy;
+      moved++;
+    }
+  }
+  return moved;
+}
+
 function generatedTiles(
   coords: Array<[number, number]>,
   opts = terrainOptionsFromEnv(),
@@ -175,15 +223,15 @@ function cmdExport(): unknown {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const store = new SnapshotStore({ dbPath: DB_PATH });
   const tileStore = new TerrainTileStore(DB_PATH);
+  const rowStore = new ChunkEntityStore(DB_PATH);
   try {
     const world = openWorld(store, tileStore, range);
     const baked = bakedWorld(store);
     const opts = makeProcgenChunkSource(terrainOptionsFromEnv());
-    const props = world.state
-      ? propRows(world.state).filter((t) =>
-          inRange(range, Math.floor(t.px / CHUNK_SIZE), Math.floor(t.pz / CHUNK_SIZE)),
-        )
-      : [];
+    const props = [
+      ...(world.state ? propRows(world.state) : []),
+      ...unloadedRows(rowStore, world.state, range).flatMap((r) => r.state.transforms),
+    ].filter((t) => inRange(range, Math.floor(t.px / CHUNK_SIZE), Math.floor(t.pz / CHUNK_SIZE)));
     return {
       chunkWorldSize: CHUNK_SIZE,
       seed: baked?.seed ?? WORLD_SEED.toString(),
@@ -200,6 +248,7 @@ function cmdExport(): unknown {
       props: props.map((t) => [t.px, t.py, t.pz]),
     };
   } finally {
+    rowStore.close();
     tileStore.close();
     store.close();
   }
@@ -268,6 +317,9 @@ function cmdImport(): unknown {
     const peek = new TerrainTileStore(DB_PATH);
     const world = openWorld(store, peek, range);
     peek.close();
+    const rowPeek = new ChunkEntityStore(DB_PATH);
+    const rows = unloadedRows(rowPeek, world.state, range);
+    rowPeek.close();
 
     // The saved area = current tiles with the edited ones swapped in. A
     // grid over them rejects any seam between an edited tile and an
@@ -285,34 +337,29 @@ function cmdImport(): unknown {
     // the terrain becomes data everywhere, not just where it was edited.
     const toWrite = world.stored ? changed : [...after.values()];
 
-    // Keep props planted: shift each prop in an edited chunk by the change
-    // in ground height under it (preserves any intentional offset).
+    // Keep props planted, in loaded chunks (the snapshot) and unloaded ones
+    // (their rows).
     let reseated = 0;
     let snapshotBytes: Uint8Array | null = null;
-    if (world.snapshot && world.state && changed.length > 0) {
+    const rowWrites: Array<{ cx: number; cz: number; tick: number; bytes: Uint8Array }> = [];
+    if (changed.length > 0) {
       const edited = new Map(changed.map((t) => [chunkKey(t.cx, t.cz), t]));
-      for (const row of propRows(world.state)) {
-        const cx = Math.floor(row.px / CHUNK_SIZE);
-        const cz = Math.floor(row.pz / CHUNK_SIZE);
-        const next = edited.get(chunkKey(cx, cz));
-        const prev = before.get(chunkKey(cx, cz));
-        if (!next || !prev) continue;
-        const lx = row.px - cx * CHUNK_SIZE;
-        const lz = row.pz - cz * CHUNK_SIZE;
-        const dy =
-          terrainHeightAt(next.heights, lx, lz, CHUNK_SIZE) -
-          terrainHeightAt(prev.heights, lx, lz, CHUNK_SIZE);
-        if (dy !== 0) {
-          row.py += dy;
-          reseated++;
-        }
+      if (world.snapshot && world.state) {
+        const moved = reseat(propRows(world.state), edited, before);
+        if (moved > 0) snapshotBytes = encodeSnapshot(world.state);
+        reseated += moved;
       }
-      if (reseated > 0) snapshotBytes = encodeSnapshot(world.state);
+      for (const row of rows) {
+        const moved = reseat(row.state.transforms, edited, before);
+        if (moved > 0) rowWrites.push({ cx: row.cx, cz: row.cz, tick: row.tick, bytes: encodeSnapshot(row.state).slice() });
+        reseated += moved;
+      }
     }
 
     store.transaction((db) => {
       const tiles = new TerrainTileStore(db);
       tiles.putMany(toWrite);
+      new ChunkEntityStore(db).putMany(rowWrites);
       if (snapshotBytes && world.snapshot) {
         const gens = world.snapshot.generations;
         const table = new Uint32Array(gens.size === 0 ? 0 : Math.max(...gens.keys()) + 1);

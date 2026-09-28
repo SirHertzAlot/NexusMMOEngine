@@ -12,8 +12,9 @@
  *   MMO_WORLD_SPEC  world spec JSON (default worlds/default.world.json: a
  *                   4 x 4 km world); "none" = the legacy 3x3-chunk world
  *   MMO_WORLD_CATALOG=0  skip the SurrealDB catalog (data/surreal)
- *   MMO_BAKE_RADIUS spawn-area chunk radius around (0,0) that gets entities
- *                   and scatter (default 1 = 3x3; the server loads the same)
+ *   MMO_BAKE_RADIUS spawn-area chunk radius around the spawn point that gets
+ *                   entities and scatter (default 1 = 3x3; the server keeps
+ *                   the same area loaded, MMO_WORLD_RADIUS)
  *   MMO_BAKE_FORCE=1 overwrite an existing world.db (default: refuse);
  *                   same as the --force flag / bake:world:force script
  *   MMO_TERRAIN_AMPLITUDE / MMO_TERRAIN_FREQUENCY  terrain shape; the
@@ -26,9 +27,8 @@
  * the spawn area — the rest of the world streams in later. The server reads
  * the stored tiles instead of regenerating, and the editor sculpts them.
  *
- * This runs the exact chunk-load sequence the server uses on a fresh
- * boot (spawnChunk + scatterChunkToECS per chunk), then saves tick 0
- * to SQLite and exits. Start the server afterwards with the same
+ * The spawn area is loaded by the same ChunkStreamer the server streams
+ * with (chunk entity + scatter per chunk), then saved as tick 0. Start the server afterwards with the same
  * MMO_DATA_DIR / MMO_WORLD_SEED and it restores the baked world
  * ("restored at tick 0") instead of generating — so the world players
  * connect to is stable and deterministic. Clients receive it through
@@ -39,22 +39,21 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  ChunkEntityStore,
+  ChunkStreamer,
   SimWorld,
   SnapshotStore,
-  loadScatterContent,
   makeProcgenChunkSource,
-  makeScatterBinding,
-  scatterChunkToECS,
-  spawnChunk,
+  makeScatterPopulator,
   terrainOptionsFromEnv,
   TerrainTileStore,
   makeTileChunkSource,
+  type ChunkBounds,
   type ChunkDataSource,
 } from "./index.js";
 import { closeWorldCatalogs } from "./persist/world-catalog.js";
 import { bakeWorldTerrain } from "./terrain/world-bake.js";
 import { loadWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
-import type { TerrainTile } from "@mmo-engine/protocol";
 
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
@@ -110,6 +109,8 @@ async function main(): Promise<void> {
   const procgen = makeProcgenChunkSource(terrainOptionsFromEnv());
   let terrain: ChunkDataSource = procgen;
   let tiles: TerrainTileStore | null = null;
+  let spawn = { x: 0, z: 0 };
+  let bounds: ChunkBounds | null = null;
   if (spec) {
     const report = await bakeWorldTerrain(spec, {
       dbPath,
@@ -124,33 +125,38 @@ async function main(): Promise<void> {
         `heights ${report.heightRange.min}..${report.heightRange.max} m, ${report.riverChunks} river chunks, ` +
         `erosion mean ${report.erosion.meanM.toFixed(2)} m, peak memory ${report.peakRssMb} MB`,
     );
+    spawn = report.spawn;
+    console.log(`[bake] spawn point (${spawn.x}, ${spawn.z})${report.spawn.biome ? ` in ${report.spawn.biome}` : ""}`);
+    const { minChunk, maxChunk } = worldBounds(spec);
+    bounds = { minCx: minChunk, minCz: minChunk, maxCx: maxChunk, maxCz: maxChunk };
     // Entities are placed on the STORED terrain, exactly as the server reads it.
     tiles = new TerrainTileStore(dbPath);
     terrain = makeTileChunkSource(tiles, procgen);
   }
 
   // ---- entities: only the spawn area (the rest streams in later) ---------
-  const sim = new SimWorld();
-  const scatterContent = loadScatterContent();
-  const scatterBinding = makeScatterBinding();
-
-  let chunks = 0;
-  let scattered = 0;
-  const bakedTiles: TerrainTile[] = [];
-  for (let cz = -RADIUS; cz <= RADIUS; cz++) {
-    for (let cx = -RADIUS; cx <= RADIUS; cx++) {
-      const { heights } = spawnChunk(sim, terrain, worldSeed, cx, cz, 0);
-      bakedTiles.push({ cx, cz, heights });
-      scattered += scatterChunkToECS(sim, scatterBinding, scatterContent, {
-        worldSeed,
-        cx,
-        cz,
-        heights,
-        chunkWorldSize: chunkSize,
-      }).length;
-      chunks++;
-    }
+  // Loaded exactly as the server's streamer loads chunks, then saved as
+  // tick 0; the server adopts these chunks on boot.
+  const scx = Math.floor(spawn.x / chunkSize);
+  const scz = Math.floor(spawn.z / chunkSize);
+  const area: Array<[number, number]> = [];
+  for (let dz = -RADIUS; dz <= RADIUS; dz++) {
+    for (let dx = -RADIUS; dx <= RADIUS; dx++) area.push([scx + dx, scz + dz]);
   }
+  const sim = new SimWorld();
+  const populator = makeScatterPopulator(worldSeed, chunkSize);
+  const chunkStore = new ChunkEntityStore(dbPath);
+  const chunks = new ChunkStreamer({
+    terrain,
+    worldSeed,
+    chunkWorldSize: chunkSize,
+    store: chunkStore,
+    populator,
+    bounds,
+    pinned: area,
+  }).warm(sim);
+  const scattered = sim.liveEntityCount - chunks;
+  chunkStore.close();
   tiles?.close();
 
   const store = new SnapshotStore({ dbPath });
@@ -162,19 +168,26 @@ async function main(): Promise<void> {
     // Chunk range the world covers (the editor loads areas inside it).
     const { minChunk, maxChunk } = worldBounds(spec);
     store.setMeta("world_bounds", JSON.stringify({ minChunk, maxChunk }));
+    store.setMeta("spawn_point", JSON.stringify({ x: spawn.x, z: spawn.z }));
   }
   store.close();
   if (!spec) {
     // Legacy small world: store the spawn area's heights as the world's tiles.
     const legacy = new TerrainTileStore(dbPath);
-    legacy.putMany(bakedTiles);
+    legacy.putMany(
+      area.map(([cx, cz]) => {
+        const heights = new Float32Array(procgen.chunkSamples);
+        procgen.generateChunk(worldSeed, cx, cz, 0, heights);
+        return { cx, cz, heights };
+      }),
+    );
     legacy.close();
   }
 
   console.log(
     `[bake] seed=${worldSeed} ${spec ? `world "${spec.name}"` : `terrain=amp ${procgen.amplitude}/freq ${procgen.frequency} (v${procgen.terrainVersion})`} ` +
       `spawn chunks=${chunks} scattered=${scattered} entities=${sim.liveEntityCount} ` +
-      `plan=${scatterContent.planHash.slice(0, 12)}… ` +
+      `plan=${populator.planHash.slice(0, 12)}… ` +
       `tick=${result.tick} db=${dbPath}`,
   );
 }

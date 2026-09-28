@@ -126,21 +126,47 @@ reproducible (same spec → same bytes), not identical across platforms.
 
 ## Phase 2 — Server streaming (region)
 
-- [ ] Load chunk entities, navmesh tiles, and scatter only around players
-      (area of interest); unload unused chunks; memory stays bounded.
-- [ ] Scatter placed once, on a chunk's first load, then persisted —
-      never duplicated.
+- [x] **ChunkStreamer** (the first system of every tick): chunks load
+      within 8 chunks (`MMO_STREAM_RADIUS`) of any player, nearest first,
+      inside a per-tick time budget; chunks farther than 10 for 5 s
+      unload. The 3×3 spawn area stays loaded. A load is the chunk entity
+      (terrain reaches clients through it) plus its contents; physics
+      bodies follow automatically, navmesh tiles through `ChunkNavmesh`.
+- [x] **Scatter placed once, then persisted, never duplicated:** an
+      unloading chunk's entities are written to its row in world.db
+      (`chunk_entities`, one transaction per pass, before any despawn —
+      an emptied chunk gets an empty row) and come back from it; only a
+      chunk that has never unloaded is scattered. After a restart, chunks
+      in the snapshot are adopted and their stale rows ignored.
+- [x] **Navmesh tiles follow chunks**, baked on a worker thread on first
+      visit (5-40 ms each on Windows) and cached in the registry after;
+      cliff chunks with no walkable surface have no tile. The service
+      holds 8,192 tiles (it held 128).
+- [x] **Entity budget:** the streamer stops loading at 90,000 live
+      entities (bitECS holds 100,000) and warns, instead of failing mid-tick.
+- [x] **Spawn point from the world spec** (`spawn`: a biome or x/z;
+      default the plains region nearest the centre, on its flattest dry
+      spot); players spawn there and are held inside the world's edge.
+- [x] The editor's terrain tool reads and re-seats props in unloaded
+      chunks' rows too.
 - [ ] A region owns a chunk range; the world server assigns ranges
-      (registration already exists; the catalog already records them).
-- [ ] **Physics colliders from the terrain:** a Jolt heightfield shape per
-      loaded chunk, built from its stored tile (added and removed with the
-      chunk), so physics bodies rest on the same surface characters
-      walk on. Stay on Jolt (no PhysX): it already runs in the server, and
-      its heightfield shape fits the tile layout directly.
-- [ ] **Spawn point from the world spec** (a biome or a position): the
-      default world's centre, where players spawn, is in the swamp.
+      (registration exists; the catalog records them; with
+      `REGION_CHUNK_RANGE` set, the streamer loads only inside it).
+- [x] **Physics colliders from the terrain:** a static Jolt height field
+      per loaded chunk, added and removed with it (`addTerrain` in the
+      addon), so physics bodies rest on the surface characters walk on and
+      clients render. Jolt splits cells along the other diagonal, so each
+      field is rotated 90° with its samples re-indexed to match; removing
+      one wakes the bodies resting on it. Stayed on Jolt (no PhysX).
 - **Verify:** walk 4 km in a straight line with flat server memory, ticks
   under 33 ms, and no duplicate scatter after restarts.
+  **Result (2026-09-28, in-process soak on the 4 km world, one player at
+  4× walking speed, all server systems incl. terrain colliders):** 3.8 km
+  across the world: tick p50 ~1.2 ms, p99 under 9 ms; then 20 km back and forth: JS heap flat at 18.5 MB, RSS
+  plateaus at ~290 MB (caches) after the first lap, 19,890 loads, every
+  chunk scattered once, 0 duplicates; after a restart, 731 loads all
+  restored from rows, 0 duplicates. End-to-end: a client sees the full
+  17×17 ring (289 chunks) stream in, scatter on the surface.
 
 ## Phase 3 — Client streaming, LOD, culling
 

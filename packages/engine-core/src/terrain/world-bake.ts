@@ -25,6 +25,8 @@ export interface TerrainBakeReport {
   biomeRegions: Record<string, number>;
   riverChunks: number;
   erosion: { meanM: number; maxM: number };
+  /** Where players spawn (world metres) and the biome it lies in. */
+  spawn: { x: number; z: number; biome: string | null };
 }
 
 export interface TerrainBakeOptions {
@@ -42,6 +44,46 @@ export function regionOf(spec: WorldSpec, cx: number, cz: number): [number, numb
   const { minChunk } = worldBounds(spec);
   const per = spec.sizeChunks / spec.regionsPerSide;
   return [Math.floor((cx - minChunk) / per), Math.floor((cz - minChunk) / per)];
+}
+
+/**
+ * Where players spawn (see WorldSpec.spawn): the given point, or the
+ * flattest dry spot within ~48 m of the centre of the spawn biome's region
+ * nearest the world centre. Falls back to the world centre when that
+ * biome has no regions.
+ */
+export function spawnPoint(spec: WorldSpec, survey: Survey): { x: number; z: number; biome: string | null } {
+  if (spec.spawn?.x !== undefined && spec.spawn.z !== undefined) return { x: spec.spawn.x, z: spec.spawn.z, biome: null };
+  const id = spec.spawn?.biome ?? spec.biomes.find((b) => b.pick === "rest")!.id;
+  const bi = spec.biomes.findIndex((b) => b.id === id);
+  const region = survey.regions
+    .filter((r) => r.biome === bi)
+    .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z) || a.index - b.index)[0];
+  if (!region) return { x: 0, z: 0, biome: null };
+
+  const g = survey.grid;
+  const W = g.width;
+  const cu = Math.round((region.x - g.originX) / g.cell);
+  const cv = Math.round((region.z - g.originZ) / g.cell);
+  const reach = Math.ceil(48 / g.cell);
+  let best = { u: cu, v: cv, slope: Infinity, d: Infinity };
+  for (let v = cv - reach; v <= cv + reach; v++) {
+    for (let u = cu - reach; u <= cu + reach; u++) {
+      if (u < 1 || v < 1 || u >= W - 1 || v >= g.depth - 1) continue;
+      const i = v * W + u;
+      if (survey.river[i]) continue;
+      const h = survey.height[i];
+      const slope = Math.max(
+        Math.abs(h - survey.height[i - 1]),
+        Math.abs(h - survey.height[i + 1]),
+        Math.abs(h - survey.height[i - W]),
+        Math.abs(h - survey.height[i + W]),
+      );
+      const d = Math.hypot(u - cu, v - cv);
+      if (slope < best.slope - 1e-6 || (Math.abs(slope - best.slope) <= 1e-6 && d < best.d)) best = { u, v, slope, d };
+    }
+  }
+  return { x: g.originX + best.u * g.cell, z: g.originZ + best.v * g.cell, biome: id };
 }
 
 /** Survey cells overlapping a chunk: [u0, v0, u1, v1] inclusive. */
@@ -192,5 +234,6 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     biomeRegions,
     riverChunks,
     erosion: { meanM: survey.stats.erodedMeanM, maxM: survey.stats.erodedMaxM },
+    spawn: spawnPoint(spec, survey),
   };
 }

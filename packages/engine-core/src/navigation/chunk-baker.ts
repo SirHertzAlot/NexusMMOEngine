@@ -169,3 +169,12 @@ export function bakeChunkTile(
     config,
   };
 }
+
+/**
+ * True when a bake failed because the tile has no walkable surface (a
+ * cliff steeper than the agent's slope limit): Recast reports 0 spans,
+ * contours, or polys. The chunk simply has no navmesh tile.
+ */
+export function isNothingWalkable(err: unknown): boolean {
+  return /0 spans|0 contours|0 polys/.test((err as Error)?.message ?? "");
+}

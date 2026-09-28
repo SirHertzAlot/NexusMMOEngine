@@ -56,6 +56,16 @@ export declare class PhysicsWorld {
     angVel: Float32Array,
   ): void;
   bodyCount(): number;
+  /**
+   * One static height-field body per terrain chunk, keyed by `key` (its
+   * own id space). samples: side*side heights, row-major, X inner; sample
+   * (x, z) at world (originX + x*spacing, h, originZ + z*spacing). Cells
+   * split along the (x+1, z)-(x, z+1) diagonal, like the engine's terrain
+   * mesh. Re-adding a key replaces it. Returns false on invalid input.
+   */
+  addTerrain(key: bigint, originX: number, originZ: number, spacing: number, samples: Float32Array, friction: number): boolean;
+  removeTerrain(key: bigint): void;
+  terrainCount(): number;
   destroy(): void;
 }
 

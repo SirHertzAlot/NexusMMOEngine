@@ -150,6 +150,8 @@ export interface GatewayOptions {
    * Default: y = 0 (flat test worlds).
    */
   groundHeightAt?: (x: number, z: number) => number;
+  /** Centre of the spawn grid, world units. Default (0, 0). */
+  spawnPoint?: { x: number; z: number };
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -204,6 +206,7 @@ export class Gateway {
       | "debugSource"
       | "chunkSource"
       | "groundHeightAt"
+      | "spawnPoint"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -230,6 +233,7 @@ export class Gateway {
    */
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
+  private readonly spawnPoint: { x: number; z: number };
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
 
@@ -264,6 +268,7 @@ export class Gateway {
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
+    this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -996,8 +1001,8 @@ export class Gateway {
     addComponent(sim.ecs, C.Health, eid);
     const T = C.Transform;
     const i = this.playerSeq++;
-    T.px[eid] = (i % 8) * 4 - 14;
-    T.pz[eid] = Math.floor(i / 8) * 4 - 14;
+    T.px[eid] = this.spawnPoint.x + (i % 8) * 4 - 14;
+    T.pz[eid] = this.spawnPoint.z + Math.floor(i / 8) * 4 - 14;
     T.py[eid] = this.groundHeightAt?.(T.px[eid], T.pz[eid]) ?? 0;
     T.qx[eid] = 0; T.qy[eid] = 0; T.qz[eid] = 0; T.qw[eid] = 1;
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;

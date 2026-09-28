@@ -75,6 +75,73 @@ export class SimEventEmitter {
   }
 }
 
+/**
+ * Attach every component in `state` and write its rows into the SoA
+ * stores; `eidOf` maps a row's wire id to the local entity.
+ */
+function writeComponentRows(ecs: IWorld, state: CollectedState, eidOf: (wireId: bigint) => number): void {
+  const T = C.Transform;
+  for (const r of state.transforms) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, T, eid);
+    T.px[eid] = r.px; T.py[eid] = r.py; T.pz[eid] = r.pz;
+    T.qx[eid] = r.qx; T.qy[eid] = r.qy; T.qz[eid] = r.qz; T.qw[eid] = r.qw;
+    T.sx[eid] = r.sx; T.sy[eid] = r.sy; T.sz[eid] = r.sz;
+  }
+  const V = C.Velocity;
+  for (const r of state.velocities) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, V, eid);
+    V.lx[eid] = r.lx; V.ly[eid] = r.ly; V.lz[eid] = r.lz;
+    V.ax[eid] = r.ax; V.ay[eid] = r.ay; V.az[eid] = r.az;
+  }
+  const I = C.PlayerIntent;
+  for (const r of state.intents) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, I, eid);
+    I.mx[eid] = r.mx; I.my[eid] = r.my; I.mz[eid] = r.mz;
+    I.lookYaw[eid] = r.lookYaw; I.lookPitch[eid] = r.lookPitch;
+    I.jump[eid] = r.jump ? 1 : 0; I.buttons[eid] = r.buttons;
+  }
+  const Ch = C.Chunk;
+  for (const r of state.chunks) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, Ch, eid);
+    const id = splitU64(r.chunkId);
+    const seed = splitU64(r.seed);
+    Ch.chunkIdHi[eid] = id.hi; Ch.chunkIdLo[eid] = id.lo;
+    Ch.seedHi[eid] = seed.hi; Ch.seedLo[eid] = seed.lo;
+    Ch.lod[eid] = r.lod;
+  }
+  const H = C.Health;
+  for (const r of state.healths) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, H, eid);
+    H.current[eid] = r.current;
+    H.max[eid] = r.max;
+  }
+  const Bc = C.BodyConfig;
+  for (const r of state.bodies) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, Bc, eid);
+    Bc.shapeKind[eid] = r.shapeKind;
+    Bc.halfX[eid] = r.halfX; Bc.halfY[eid] = r.halfY; Bc.halfZ[eid] = r.halfZ;
+    Bc.radius[eid] = r.radius;
+    Bc.mass[eid] = r.mass;
+    Bc.motionType[eid] = r.motionType;
+    Bc.layer[eid] = r.layer;
+    Bc.friction[eid] = r.friction;
+    Bc.restitution[eid] = r.restitution;
+  }
+  const Ar = C.AssetRef;
+  for (const r of state.assets) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, Ar, eid);
+    Ar.assetHash[eid] = r.assetHash;
+    Ar.variant[eid] = r.variant;
+  }
+}
+
 export class SimWorld {
   /** The raw bitECS world — systems query and read/write components here. */
   readonly ecs: IWorld;
@@ -266,66 +333,25 @@ export class SimWorld {
     this.liveCount = wanted.size;
 
     // Phase 3: attach components and write the row data into the SoA stores.
-    const T = C.Transform;
-    for (const r of state.transforms) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, T, eid);
-      T.px[eid] = r.px; T.py[eid] = r.py; T.pz[eid] = r.pz;
-      T.qx[eid] = r.qx; T.qy[eid] = r.qy; T.qz[eid] = r.qz; T.qw[eid] = r.qw;
-      T.sx[eid] = r.sx; T.sy[eid] = r.sy; T.sz[eid] = r.sz;
+    writeComponentRows(this.ecs, state, (wireId) => parseWireEntityId(wireId).slot);
+  }
+
+  /**
+   * Spawn fresh entities from stored rows (an unloaded chunk's contents,
+   * see ChunkEntityStore): one new entity per distinct wire id, created in
+   * ascending wire-id order, with every component row written. The stored
+   * wire ids are only row keys — the entities get new slots and ids, like
+   * any spawn, and appear in this tick's spawned list. Returns the eids.
+   */
+  spawnFromState(state: CollectedState): number[] {
+    const ids = new Set<bigint>();
+    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.bodies, state.assets]) {
+      for (const r of block) ids.add(r.wireId);
     }
-    const V = C.Velocity;
-    for (const r of state.velocities) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, V, eid);
-      V.lx[eid] = r.lx; V.ly[eid] = r.ly; V.lz[eid] = r.lz;
-      V.ax[eid] = r.ax; V.ay[eid] = r.ay; V.az[eid] = r.az;
-    }
-    const I = C.PlayerIntent;
-    for (const r of state.intents) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, I, eid);
-      I.mx[eid] = r.mx; I.my[eid] = r.my; I.mz[eid] = r.mz;
-      I.lookYaw[eid] = r.lookYaw; I.lookPitch[eid] = r.lookPitch;
-      I.jump[eid] = r.jump ? 1 : 0; I.buttons[eid] = r.buttons;
-    }
-    const Ch = C.Chunk;
-    for (const r of state.chunks) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, Ch, eid);
-      const id = splitU64(r.chunkId);
-      const seed = splitU64(r.seed);
-      Ch.chunkIdHi[eid] = id.hi; Ch.chunkIdLo[eid] = id.lo;
-      Ch.seedHi[eid] = seed.hi; Ch.seedLo[eid] = seed.lo;
-      Ch.lod[eid] = r.lod;
-    }
-    const H = C.Health;
-    for (const r of state.healths) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, H, eid);
-      H.current[eid] = r.current;
-      H.max[eid] = r.max;
-    }
-    const Bc = C.BodyConfig;
-    for (const r of state.bodies) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, Bc, eid);
-      Bc.shapeKind[eid] = r.shapeKind;
-      Bc.halfX[eid] = r.halfX; Bc.halfY[eid] = r.halfY; Bc.halfZ[eid] = r.halfZ;
-      Bc.radius[eid] = r.radius;
-      Bc.mass[eid] = r.mass;
-      Bc.motionType[eid] = r.motionType;
-      Bc.layer[eid] = r.layer;
-      Bc.friction[eid] = r.friction;
-      Bc.restitution[eid] = r.restitution;
-    }
-    const Ar = C.AssetRef;
-    for (const r of state.assets) {
-      const eid = parseWireEntityId(r.wireId).slot;
-      addComponent(this.ecs, Ar, eid);
-      Ar.assetHash[eid] = r.assetHash;
-      Ar.variant[eid] = r.variant;
-    }
+    const eids = new Map<bigint, number>();
+    for (const wireId of [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) eids.set(wireId, this.spawn());
+    writeComponentRows(this.ecs, state, (wireId) => eids.get(wireId)!);
+    return [...eids.values()];
   }
 
   /**

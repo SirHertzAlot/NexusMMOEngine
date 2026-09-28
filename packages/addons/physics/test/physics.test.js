@@ -196,3 +196,35 @@ test('syncBodies without teleport leaves a dynamic body alone', (t) => {
   const after = readOne(w, 2n).pos[1];
   assert.ok(Math.abs(after - before) < 0.01, `dynamic untouched: ${before} -> ${after}`);
 });
+
+test('terrain: add, replace, and remove height fields by key', () => {
+  const w = createWorld();
+  try {
+    const flat = new Float32Array(16 * 16).fill(1);
+    assert.strictEqual(w.terrainCount(), 0);
+    assert.strictEqual(w.addTerrain(7n, 0, 0, 16 / 15, flat, 0.8), true);
+    assert.strictEqual(w.addTerrain(7n, 0, 0, 16 / 15, flat, 0.8), true, 're-adding replaces');
+    assert.strictEqual(w.addTerrain(8n, 16, 0, 16 / 15, flat, 0.8), true);
+    assert.strictEqual(w.terrainCount(), 2);
+    assert.strictEqual(w.bodyCount(), 0, 'terrain is not an entity body');
+    w.removeTerrain(7n);
+    w.removeTerrain(7n); // idempotent
+    assert.strictEqual(w.terrainCount(), 1);
+  } finally {
+    w.destroy();
+  }
+});
+
+test('terrain: rejects bad input without crashing', () => {
+  const w = createWorld();
+  try {
+    assert.throws(() => w.addTerrain(1, 0, 0, 1, new Float32Array(16), 0.8), /bigint/);
+    assert.throws(() => w.addTerrain(1n, 0, 0, 1, new Float32Array(20), 0.8), /square/);
+    assert.throws(() => w.addTerrain(1n, 0, 0, 1, new Float64Array(16), 0.8), /Float32Array/);
+    assert.strictEqual(w.addTerrain(1n, 0, 0, 1, new Float32Array(25), 0.8), false, 'odd side');
+    assert.strictEqual(w.addTerrain(1n, 0, 0, 0, new Float32Array(16), 0.8), false, 'zero spacing');
+    assert.strictEqual(w.terrainCount(), 0);
+  } finally {
+    w.destroy();
+  }
+});

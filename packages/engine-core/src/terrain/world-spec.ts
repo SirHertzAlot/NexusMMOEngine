@@ -74,6 +74,15 @@ export const WorldSpecSchema = z
       })
       .default({ minCatchment: 400_000, maxDepth: 4 }),
     biomes: z.array(BiomeSpecSchema).min(1),
+    /**
+     * Where players spawn: a point (x, z in metres), or the centre of the
+     * region of `biome` nearest the world centre. Default: the "rest"
+     * biome (plains in the default world).
+     */
+    spawn: z
+      .object({ biome: z.string().optional(), x: z.number().optional(), z: z.number().optional() })
+      .refine((s) => (s.x === undefined) === (s.z === undefined), "spawn: give both x and z, or neither")
+      .optional(),
   })
   .superRefine((w, ctx) => {
     if (w.sizeChunks % w.regionsPerSide !== 0) {
@@ -89,6 +98,10 @@ export const WorldSpecSchema = z
     }
     if (!w.biomes.some((b) => b.pick === "rest")) {
       ctx.addIssue({ code: "custom", message: 'one biome must use pick "rest" (it takes the regions nothing else claims)' });
+    }
+    const spawnBiome = w.spawn?.biome;
+    if (spawnBiome !== undefined && !w.biomes.some((b) => b.id === spawnBiome && b.count > 0)) {
+      ctx.addIssue({ code: "custom", message: `spawn biome "${spawnBiome}" has no regions in this world` });
     }
   });
 

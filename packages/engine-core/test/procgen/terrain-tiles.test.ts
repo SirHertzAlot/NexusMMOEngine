@@ -12,8 +12,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyBrush, HeightGrid } from "@mmo-engine/protocol";
+import { applyBrush, HeightGrid, type TerrainTile } from "@mmo-engine/protocol";
 import {
+  ChunkEntityStore,
+  decodeSnapshot,
+  encodeSnapshot,
+  SnapshotStore,
+  terrainHeightAt,
   heightsFingerprint,
   makeTileChunkSource,
   runningServerPid,
@@ -161,8 +166,8 @@ describe("terrain-tool (the editor's terrain writer)", () => {
     assert.match(r.err, /disagree on shared sample/);
   });
 
-  test("baked world: export loads one area, import checks its edge against unloaded tiles", { timeout: 180_000 }, () => {
-    const dir = tmpDir();
+  /** Bake a small (32x32-chunk) spec world into `dir`; returns the env for the tools. */
+  const bakeSmallWorld = (dir: string): Record<string, string> => {
     const specFile = path.join(dir, "small.world.json");
     fs.writeFileSync(
       specFile,
@@ -180,6 +185,14 @@ describe("terrain-tool (the editor's terrain writer)", () => {
     const env = { MMO_WORLD_SPEC: specFile, MMO_WORLD_CATALOG: "0" };
     const bake = run(dir, ["bake-world.js"], "", env);
     assert.equal(bake.status, 0, bake.err);
+    return env;
+  };
+  const wireTiles = (tiles: Array<{ cx: number; cz: number; heights: number[] }>): TerrainTile[] =>
+    tiles.map((t) => ({ ...t, heights: Float32Array.from(t.heights) }));
+
+  test("baked world: export loads one area, import checks its edge against unloaded tiles", { timeout: 180_000 }, () => {
+    const dir = tmpDir();
+    const env = bakeSmallWorld(dir);
 
     const whole = JSON.parse(run(dir, ["terrain-tool.js", "export"], "", env).out);
     assert.equal(whole.tiles.length, 17 * 17, "default area: radius 8 around (0,0)");
@@ -229,6 +242,63 @@ describe("terrain-tool (the editor's terrain writer)", () => {
     const tooBig = run(dir, ["terrain-tool.js", "export"], JSON.stringify({ radius: 99 }), env);
     assert.equal(tooBig.status, 1);
     assert.match(tooBig.err, /area radius/);
+  });
+
+  test("props of unloaded chunks (their rows) are exported and re-seated", { timeout: 180_000 }, () => {
+    const dir = tmpDir();
+    const env = bakeSmallWorld(dir);
+    const dbPath = path.join(dir, "world.db");
+    // A chunk far from the spawn area (which the bake left loaded).
+    const meta = new SnapshotStore({ dbPath });
+    const spawn = JSON.parse(meta.getMeta("spawn_point")!) as { x: number; z: number };
+    meta.close();
+    const cx = spawn.x >= 0 ? -12 : 12;
+    const cz = spawn.z >= 0 ? -12 : 12;
+    const tiles = new TerrainTileStore(dbPath);
+    const ground = tiles.get(cx, cz)!;
+    tiles.close();
+    const [lx, lz] = [5, 7];
+    const [x, z] = [cx * 16 + lx, cz * 16 + lz];
+    const y = terrainHeightAt(ground, lx, lz, 16);
+    // The chunk unloaded with a tree in it: the tree is only in its row.
+    const rows = new ChunkEntityStore(dbPath);
+    rows.putMany([{
+      cx, cz, tick: 5,
+      bytes: encodeSnapshot({
+        tick: 5, baseTick: 0,
+        transforms: [{ wireId: 77n, px: x, py: y, pz: z, qx: 0, qy: 0, qz: 0, qw: 1, sx: 1, sy: 1, sz: 1 }],
+        velocities: [], intents: [], chunks: [], healths: [], bodies: [], assets: [], spawned: [], despawned: [],
+      }),
+    }]);
+    rows.close();
+
+    const area = { cx, cz, radius: 1 };
+    const exp = JSON.parse(run(dir, ["terrain-tool.js", "export"], JSON.stringify(area), env).out);
+    assert.ok(
+      exp.props.some(([px, py, pz]: number[]) => px === x && pz === z && Math.abs(py - y) < 1e-4),
+      "the row's tree is exported",
+    );
+
+    // Raise the ground under the tree, and save.
+    const grid = HeightGrid.fromTiles(wireTiles(exp.tiles));
+    grid.pinBorders();
+    const touched = applyBrush(grid, { tool: "raise", x, z, radius: 5, strength: 3 });
+    const edit = {
+      tiles: [...touched].map((key) => {
+        const [tx, tz] = key.split(",").map(Number);
+        return { cx: tx, cz: tz, heights: Array.from(grid.tile(tx, tz).heights) };
+      }),
+    };
+    const saved = run(dir, ["terrain-tool.js", "import"], JSON.stringify(edit), env);
+    assert.equal(saved.status, 0, saved.err);
+    assert.equal(JSON.parse(saved.out).reseatedProps, 1);
+
+    const after = new ChunkEntityStore(dbPath);
+    const tree = decodeSnapshot(after.get(cx, cz)!.bytes).transforms[0];
+    after.close();
+    const newGround = terrainHeightAt(grid.tile(cx, cz).heights, lx, lz, 16);
+    assert.ok(newGround > y + 1, "the ground rose");
+    assert.ok(Math.abs(tree.py - newGround) < 1e-3, `the tree stands on it (${tree.py} vs ${newGround})`);
   });
 
   test("refuses to save while a server owns the world", () => {

@@ -123,6 +123,9 @@ public:
             InstanceMethod("step", &PhysicsWorldWrap::Step),
             InstanceMethod("copyResults", &PhysicsWorldWrap::CopyResults),
             InstanceMethod("bodyCount", &PhysicsWorldWrap::BodyCount),
+            InstanceMethod("addTerrain", &PhysicsWorldWrap::AddTerrain),
+            InstanceMethod("removeTerrain", &PhysicsWorldWrap::RemoveTerrain),
+            InstanceMethod("terrainCount", &PhysicsWorldWrap::TerrainCount),
         });
     exports.Set("PhysicsWorld", ctor);
     return exports;
@@ -325,6 +328,74 @@ private:
     if (!requireLive(env))
       return env.Undefined();
     return Napi::Number::New(env, mj_physics_body_count(mWorld));
+  }
+
+  // addTerrain(key: bigint, originX, originZ, spacing, samples: Float32Array, friction) -> boolean
+  Napi::Value AddTerrain(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    uint64_t key = 0;
+    if (!CheckedKey(env, info[0], &key))
+      return env.Undefined();
+    if (!info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsNumber() ||
+        !info[5].IsNumber()) {
+      Napi::TypeError::New(
+          env, "addTerrain(key, originX, originZ, spacing, samples, friction)")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    const float *samples = CheckedF32(env, info[4], "samples", 16);
+    if (!samples)
+      return env.Undefined();
+    const size_t len = info[4].As<Napi::Float32Array>().ElementLength();
+    int side = 0;
+    while (static_cast<size_t>(side + 1) * (side + 1) <= len)
+      ++side;
+    if (static_cast<size_t>(side) * side != len) {
+      Napi::RangeError::New(env, "samples must be a square grid (side*side)")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    const int ok = mj_physics_add_terrain(
+        mWorld, key, info[1].As<Napi::Number>().FloatValue(),
+        info[2].As<Napi::Number>().FloatValue(),
+        info[3].As<Napi::Number>().FloatValue(), side, samples,
+        info[5].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, ok != 0);
+  }
+
+  void RemoveTerrain(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    uint64_t key = 0;
+    if (!CheckedKey(env, info[0], &key))
+      return;
+    mj_physics_remove_terrain(mWorld, key);
+  }
+
+  Napi::Value TerrainCount(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_terrain_count(mWorld));
+  }
+
+  static bool CheckedKey(Napi::Env env, Napi::Value value, uint64_t *out) {
+    if (!value.IsBigInt()) {
+      Napi::TypeError::New(env, "terrain key must be a bigint")
+          .ThrowAsJavaScriptException();
+      return false;
+    }
+    bool lossless = false;
+    *out = value.As<Napi::BigInt>().Uint64Value(&lossless);
+    if (!lossless) {
+      Napi::RangeError::New(env, "terrain key must fit in a u64")
+          .ThrowAsJavaScriptException();
+      return false;
+    }
+    return true;
   }
 
   mj_physics_world_t *mWorld;

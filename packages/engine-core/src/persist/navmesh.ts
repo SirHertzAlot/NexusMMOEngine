@@ -78,6 +78,10 @@ export class NavmeshTileRegistry {
     this.blobDir = join(options.dir, "tiles");
     mkdirSync(this.blobDir, { recursive: true });
     this.db = new Database(join(options.dir, "navmesh.db"));
+    // A rebuildable cache, written while chunks stream in on the tick
+    // thread: WAL + NORMAL skips the per-insert fsync (~14 ms on Windows).
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
     this.db.exec(SCHEMA);
     this.stmtGet = this.db.prepare(`
       SELECT world_seed AS worldSeed, chunk_x AS chunkX, chunk_z AS chunkZ,
