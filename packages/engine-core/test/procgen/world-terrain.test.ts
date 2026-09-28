@@ -24,7 +24,7 @@ import { coastFrame } from "../../src/terrain/landmass.js";
 import { fillDepressions, LAKE, LAND, SEA, surveyWorld, type CoarseGrid, type Survey } from "../../src/terrain/survey.js";
 import { bakeWorldTerrain, regionOf, spawnPoint } from "../../src/terrain/world-bake.js";
 import { WorldHeights } from "../../src/terrain/world-heights.js";
-import { worldInfoFor } from "../../src/terrain/world-info.js";
+import { downsampleWater, worldInfoFor } from "../../src/terrain/world-info.js";
 import { parseWorldSpec, windVector, worldBounds } from "../../src/terrain/world-spec.js";
 
 const tmpDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "mmo-world-"));
@@ -542,6 +542,20 @@ describe("bakeWorldTerrain", () => {
 });
 
 describe("worldInfoFor (the welcome's world map)", () => {
+  test("water blocks: the sea reaches one block onto the shore, lakes only where mostly lake", () => {
+    const grid = { width: 10, depth: 2, cell: 8, originX: 0, originZ: 0 };
+    // Blocks of 2 x 2: a lake at 5 m filling block 0, a lake edge (1 of 4
+    // cells) in block 1, dry land in blocks 2 and 3, the sea in block 4.
+    const L = 5;
+    const level = { ...grid, data: Float32Array.from([L, L, L, NaN, NaN, NaN, NaN, NaN, 0, 0, L, L, NaN, NaN, NaN, NaN, NaN, NaN, NaN, 0]) };
+    const water = { ...grid, data: Uint8Array.from([LAKE, LAKE, LAKE, 0, 0, 0, 0, 0, SEA, SEA, LAKE, LAKE, 0, 0, 0, 0, 0, 0, 0, SEA]) };
+    const out = downsampleWater({ level, water }, 0, 2);
+    assert.deepEqual([...out].map((w) => (Number.isNaN(w) ? null : w)), [5, null, null, 0, 0]);
+    // Worlds without water_level: the sea only.
+    const old = downsampleWater({ level: null, water }, -1, 2);
+    assert.deepEqual([...old].map((w) => (Number.isNaN(w) ? null : w)), [null, null, null, -1, -1]);
+  });
+
   test("16 m map of the baked survey, with bounds and biome ids", { timeout: 120_000 }, async () => {
     const dbPath = path.join(tmpDir(), "world.db");
     await bakeWorldTerrain(SMALL, { dbPath, catalogDir: null });
@@ -549,6 +563,7 @@ describe("worldInfoFor (the welcome's world map)", () => {
       ["world_bounds", JSON.stringify({ minChunk: -16, maxChunk: 15 })],
       ["world_spec", "small"],
       ["world_biomes", JSON.stringify(SMALL.biomes.map((b) => b.id))],
+      ["sea_level", String(SMALL.land.seaLevel)],
     ]);
     const store = new TerrainTileStore(dbPath);
     try {
@@ -567,6 +582,22 @@ describe("worldInfoFor (the welcome's world map)", () => {
       assert.ok(Math.abs(map.heights[v * map.width + u] - mean) < 0.01);
       assert.equal(map.originX + u * map.cell, survey.originX + (2 * u + 0.5) * survey.cell);
       assert.ok(map.biome.every((b) => b < SMALL.biomes.length));
+      // The water surface: every block holding sea is at sea level.
+      assert.equal(info.seaLevel, SMALL.land.seaLevel);
+      assert.ok(map.water, "water layer sent");
+      const water = store.getMap("water")!;
+      let seaBlocks = 0;
+      for (let bv = 0; bv < map.depth; bv++) {
+        for (let bu = 0; bu < map.width; bu++) {
+          const cells = [0, 1].flatMap((dv) => [0, 1].map((du) => water.data[(2 * bv + dv) * water.width + 2 * bu + du]));
+          if (cells.every((c) => c === SEA)) {
+            seaBlocks++;
+            assert.ok(Math.abs(map.water[bv * map.width + bu] - SMALL.land.seaLevel) < 0.01, `block ${bu},${bv}`);
+          }
+        }
+      }
+      assert.ok(seaBlocks > 100, `${seaBlocks} sea blocks`);
+      assert.ok(map.water.some((w) => Number.isNaN(w)), "dry land stays dry");
       assert.equal(worldInfoFor({ getMeta: () => null }, store, 16), null, "legacy world: none");
     } finally {
       store.close();

@@ -14,10 +14,10 @@
  */
 
 import * as THREE from "three";
-import { tileHeightAt, type ChunkRange, type ChunkRow, type WorldMap } from "@mmo-engine/protocol";
+import type { ChunkRange, ChunkRow, WorldMap } from "@mmo-engine/protocol";
 import { groundColors, snowLine } from "./ground.js";
 import { buildChunkGeometry, chunkNormals, SIDE } from "./terrain-mesh.js";
-import { createTerrainMaterial, createTerrainUniforms, NO_SNOW } from "./terrain-material.js";
+import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
 
 /** Decode chunk (cx, cz) from the chunkId u64 (see spawnChunk/chunkIdFor). */
 export function chunkCoords(chunkId: bigint): { cx: number; cz: number } {
@@ -76,13 +76,15 @@ export class TerrainRenderer {
   }
 
   /**
-   * The baked world's coarse map and chunk range (from the welcome), or
-   * null for a legacy world. Replaces any previous world.
+   * The baked world's coarse map, chunk range, and sea level (from the
+   * welcome), or null for a legacy world. Replaces any previous world.
    */
-  setWorld(world: { map: WorldMap; bounds: ChunkRange } | null): void {
+  setWorld(world: { map: WorldMap; bounds: ChunkRange; seaLevel?: number | null } | null): void {
     this.disposeWorld();
     if (!world) return;
     const { map, bounds } = world;
+    this.uniforms.uFarCell.value = map.cell;
+    this.uniforms.uSeaLevel.value = world.seaLevel ?? NO_SEA;
 
     this.ground = new THREE.DataTexture(groundColors(map), map.width, map.depth, THREE.RGBAFormat);
     this.ground.colorSpace = THREE.SRGBColorSpace;
@@ -107,11 +109,12 @@ export class TerrainRenderer {
     const depth = bounds.maxCz - bounds.minCz + 1;
     const data = new Uint8Array(width * depth);
     const texture = new THREE.DataTexture(data, width, depth, THREE.RedFormat, THREE.UnsignedByteType);
+    // One byte per texel: rows are `width` bytes, not padded to WebGL's
+    // default 4-byte alignment (a 250-chunk world would read skewed rows,
+    // cutting the horizon open in the wrong places).
+    texture.unpackAlignment = 1;
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
-    // One byte per texel: rows aren't 4-byte multiples (a 250-chunk world),
-    // and WebGL's default row alignment would read the mask skewed.
-    texture.unpackAlignment = 1;
     texture.needsUpdate = true;
     this.mask = { texture, data, bounds, width };
     this.uniforms.uLoaded.value = texture;
@@ -179,15 +182,6 @@ export class TerrainRenderer {
   setWireframe(on: boolean): void {
     this.nearMaterial.wireframe = on;
     this.farMaterial.wireframe = on;
-  }
-
-  /** Ground height at world (x, z) from the loaded chunks, or null where none is loaded. */
-  heightAt(x: number, z: number): number | null {
-    const cx = Math.floor(x / this.chunkWorldSize);
-    const cz = Math.floor(z / this.chunkWorldSize);
-    const c = this.chunks.get(key(cx, cz));
-    if (!c || !c.displaced) return null;
-    return tileHeightAt(c.heights, x - cx * this.chunkWorldSize, z - cz * this.chunkWorldSize, this.chunkWorldSize);
   }
 
   /** The loaded chunk under world (x, z), or null (tests, tools). */
@@ -268,6 +262,7 @@ export class TerrainRenderer {
     this.uniforms.uHasGround.value = 0;
     this.uniforms.uLoaded.value = null;
     this.uniforms.uSnowLine.value = NO_SNOW;
+    this.uniforms.uSeaLevel.value = NO_SEA;
   }
 }
 
@@ -295,31 +290,10 @@ export function farGeometry(map: WorldMap): THREE.BufferGeometry {
       idx[t++] = d; idx[t++] = b; idx[t++] = c;
     }
   }
-  // How far each vertex may sink near the camera (see terrain-material):
-  // to the lowest point around it, minus a margin for the fine detail the
-  // coarse map smooths away.
-  const drop = new Float32Array(W * D);
-  for (let v = 0; v < D; v++) {
-    for (let u = 0; u < W; u++) {
-      let low = Infinity;
-      for (let dv = -1; dv <= 1; dv++) {
-        for (let du = -1; du <= 1; du++) {
-          const uu = Math.min(W - 1, Math.max(0, u + du));
-          const vv = Math.min(D - 1, Math.max(0, v + dv));
-          low = Math.min(low, map.heights[vv * W + uu]);
-        }
-      }
-      drop[v * W + u] = map.heights[v * W + u] - low + FAR_DROP_MARGIN;
-    }
-  }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geometry.setAttribute("aDrop", new THREE.BufferAttribute(drop, 1));
   geometry.setIndex(new THREE.BufferAttribute(idx, 1));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
 }
-
-/** Metres the far mesh sinks below its neighbourhood's lowest point near the camera. */
-export const FAR_DROP_MARGIN = 2;

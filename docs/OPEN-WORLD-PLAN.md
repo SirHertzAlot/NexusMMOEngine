@@ -207,30 +207,33 @@ reproducible (same spec → same bytes), not identical across platforms.
 
 ## Phase 3 — Client streaming, LOD, culling
 
-- [x] **Terrain renderer** (client): streamed chunks as meshes on one
-      shared opaque material (was a transparent material per chunk);
-      normals match across chunk borders; skirts close the step to the
-      far horizon.
-- [x] **Far horizon:** the welcome carries the world's coarse map (16 m
-      cells: elevation, biome, rivers, ~340 KB); the client draws the whole
-      world from it and hides it wherever chunks are loaded.
-- [x] **Texturing by slope, height, and biome** (procedural, no LYGIA):
-      biome ground colours from the map, rock on steep faces (triplanar),
-      snow on flatter ground above the snow line, mud along rivers.
-- [x] **Instanced props:** scatter draws in 3 draw calls (was a mesh,
-      geometry, and material per prop).
-- [x] Camera kept above the ground; daylight sky and 2.6 km fog.
-- [x] Rendering showed the first bake's mountains as walls on their
-      region borders; fixed by the biome `ramp` retune (Phase 1).
-- **Measured (2026-09-28, headless Edge on the dev machine's Intel UHD
-  630):** 60 fps with 289 chunks, ~1,900 entities, and the full 4 km
-  horizon. (The earlier 3 fps was likely the per-chunk transparent
-  materials and a mesh per prop, not only the GPU choice.)
-- [ ] Client requests chunks by distance; the server sends each client
-      only its area (today every loaded chunk goes to every client).
-- [ ] LOD rings between the 1 m chunks and the 16 m horizon.
-- [ ] Pack textures (from the licensed art, kept out of git) in place of
-      the procedural colours.
+- [ ] Client requests chunks by distance; the server sends heights only for
+      those (today every chunk ships in every snapshot).
+- [ ] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
+      tiles), with no cracks between levels.
+- [x] Far-horizon terrain: the whole world from the welcome's 16 m map,
+      hidden over loaded chunks (a per-chunk mask) and sunk a few metres
+      beside them so no sky shows at the seam; chunk skirts close the rest.
+      Water: the sea and lakes as flat sheets from the map's water layer,
+      the open sea running on past the edge where the edge is sea. A
+      daylight haze (fog 200 m → 3.2 km) makes distance read as distance.
+- [x] Instanced props: static placeholder props (the scatter) drawn as one
+      InstancedMesh per shape instead of a mesh each — 551 → 212 draw calls
+      at the default spawn. Art-pack models and moving bodies stay meshes.
+- [ ] Fewer terrain draw calls (one per streamed chunk today: ~200 on
+      screen); frustum culling beyond three.js's per-mesh test.
+- [ ] **Terrain texturing by slope, height, and biome** (our own three.js
+      shader; LYGIA is not used): steep faces take a rock-wall texture
+      (triplanar, so cliffs don't stretch), gentle slopes grass or the
+      biome's ground (sand in the desert, mud in the swamp), river banks
+      wet mud/gravel from the river mask, snow above a height line on
+      mountains. Blend by slope/height with noise so borders aren't
+      straight lines. Textures from the licensed packs' ground sets (kept
+      out of git); biome and river masks come from the baked survey maps.
+- [ ] Run the browser on the NVIDIA P1000, not the Intel UHD 630 (Windows
+      Settings → Display → Graphics) — the likely cause of the 3 fps.
+- **Verify:** 60 fps with a 2 km view distance on the dev machine; crossing
+  biomes with no hitches.
 
 ## Phase 4 — Editor at scale
 

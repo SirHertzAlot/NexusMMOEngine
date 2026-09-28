@@ -2,33 +2,49 @@
  * WorldView — three.js mirror of authoritative ECS state.
  *
  * Owns the renderer, scene, camera, and lights. `sync()` is called
- * every rAF with the MirrorState + Interpolator. Nothing here simulates —
- * positions come from the server, full stop (skill operating rule 1).
+ * every rAF with the MirrorState + Interpolator: meshes are created
+ * lazily per wire id, moved from interpolated transforms, and removed
+ * when their entity despawns. Nothing here simulates — positions come
+ * from the server, full stop (skill operating rule 1).
  *
- *  - Terrain (Chunk entities + the welcome's world map): TerrainRenderer —
- *    streamed chunk tiles near the player, the coarse world on the horizon.
- *  - Scenery (scatter props): PropRenderer — instanced, a few draw calls.
- *  - Everything else (players, dynamic bodies): a mesh per wire id,
- *    created lazily, moved from interpolated transforms, removed on
- *    despawn.
+ * The ground is TerrainRenderer's: the streamed chunks near the player,
+ * and the whole world far away from the welcome's coarse map, so
+ * mountains stand on the horizon kilometres off; WaterRenderer lays the
+ * sea and lakes over it. A daylight haze (the scene fog) fades distance
+ * into the sky, which is what makes far things read as far.
  *
  * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
  * BodyConfig shape. The AssetProvider abstraction is the seam where real
- * art plugs in later (a provider with assetMesh draws props per entity).
+ * art plugs in later. Static props without an art-pack model (the
+ * scatter, well over a thousand around the player) are batched into
+ * InstancedProps, one draw call per shape; everything else that moves,
+ * and every art-pack model, is its own mesh.
  */
 
 import * as THREE from "three";
+import { decodeWorldMap, type AssetRefRow, type BodyConfigRow, type WorldInfo } from "@mmo-engine/protocol";
+import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { MirrorState } from "@mmo-engine/mirror";
 import type { Interpolator } from "@mmo-engine/mirror";
-import { decodeWorldMap, type WorldInfo } from "@mmo-engine/protocol";
 import {
   placeholderColor,
   type AssetProvider,
 } from "./assets.js";
+import { updateTerrainFx } from "./terrain-fx.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
-import { isProp, PropRenderer } from "./props.js";
+import { InstancedProps } from "./instanced-props.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { WaterRenderer } from "./water.js";
+
+/** Sky and haze colour (the fog fades distance into it). */
+const SKY = 0x9fc0dc;
+/** Haze: clear to FOG_NEAR metres, gone into the sky by FOG_FAR. */
+const FOG_NEAR = 200;
+const FOG_FAR = 3200;
+/** Camera range: the far plane sits just past the haze. */
+const CAMERA_NEAR = 0.5;
+const CAMERA_FAR = FOG_FAR + 800;
 
 export interface WorldViewOptions {
   /** Chunk world size in units (server MMO_CHUNK_SIZE, default 16). */
@@ -40,12 +56,6 @@ interface TrackedMesh {
   /** True once a BodyConfig row shaped this mesh (else unit-box stand-in). */
   shaped: boolean;
 }
-
-/** Daytime haze: the sky colour, and the fog the far terrain fades into. */
-const SKY = 0x9db4c9;
-/** Fog range, metres: the streamed ring (~270 m) is clear, the horizon hazes out. */
-const FOG_NEAR = 350;
-const FOG_FAR = 2600;
 
 /** Which WebGL implementation the browser actually gave us. */
 export interface GpuInfo {
@@ -78,14 +88,13 @@ export class WorldView {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly meshes = new Map<bigint, TrackedMesh>();
+  private readonly terrain: TerrainRenderer;
+  private readonly water = new WaterRenderer();
+  private readonly props = new InstancedProps();
   readonly gpu: GpuInfo;
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
   private readonly chunkWorldSize: number;
-  private readonly terrain: TerrainRenderer;
-  private readonly props: PropRenderer;
-  /** Props go through PropRenderer unless the provider has real per-asset art. */
-  private readonly instancedProps: boolean;
   private camDistance = 9;
   private disposed = false;
   private readonly fx: EntityFxSystem;
@@ -106,18 +115,17 @@ export class WorldView {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.gpu = detectGpu(this.renderer);
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
+    this.camera = new THREE.PerspectiveCamera(60, 1, CAMERA_NEAR, CAMERA_FAR);
 
     this.scene.background = new THREE.Color(SKY);
     this.scene.fog = new THREE.Fog(SKY, FOG_NEAR, FOG_FAR);
+
     this.terrain = new TerrainRenderer(this.chunkWorldSize);
     this.scene.add(this.terrain.group);
-    this.props = new PropRenderer();
+    this.scene.add(this.water.group);
     this.scene.add(this.props.group);
-    this.instancedProps = typeof this.assets.assetMesh !== "function";
 
-    // Warm bounce light from below: cliffs facing away from the sun stay readable.
-    const hemi = new THREE.HemisphereLight(0xc4d8ff, 0x5c4c3a, 1.1);
+    const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
     sun.position.set(30, 50, 20);
@@ -136,10 +144,10 @@ export class WorldView {
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       this.raycaster.setFromCamera(this.pointerNdc, this.camera);
-      const hits = this.raycaster.intersectObjects([...this.pickMap.keys(), ...this.props.pickTargets()], false);
-      const hit = hits[0];
-      this.hoveredWireId = hit ? this.pickMap.get(hit.object) ?? this.props.wireIdOf(hit) : null;
-      this.props.setHover(this.hoveredWireId);
+      const hit = this.raycaster.intersectObjects([...this.pickMap.keys()], false)[0];
+      const prop = this.props.pick(this.raycaster);
+      this.hoveredWireId =
+        prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hit ? this.pickMap.get(hit.object) ?? null : null;
     };
     this.canvas.addEventListener("pointermove", this.onPointerMove);
 
@@ -147,20 +155,18 @@ export class WorldView {
   }
 
   /**
-   * The world from the welcome (a baked world's extent and coarse map), or
-   * null for a legacy world: far horizon and ground colours.
+   * The baked world from the welcome (coarse map, extent, sea level): far
+   * terrain, ground colours, and water. Null (legacy world): chunks only.
    */
   setWorld(world: WorldInfo | null): void {
-    this.terrain.setWorld(world ? { map: decodeWorldMap(world.map), bounds: world.bounds } : null);
+    const map = world ? decodeWorldMap(world.map) : null;
+    this.terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
+    this.water.setWorld(map, world?.seaLevel ?? null);
   }
 
   setTerrainWireframe(on: boolean): void {
     this.terrain.setWireframe(on);
-  }
-
-  /** What's on screen (HUD, tests). */
-  get stats(): { chunks: number; props: number; meshes: number; horizon: boolean } {
-    return { chunks: this.terrain.chunkCount, props: this.props.count, meshes: this.meshes.size, horizon: this.terrain.hasFar };
+    this.water.setWireframe(on);
   }
 
   /** Toggle the elemental-orb FX showcase (ring placed ahead of the player). */
@@ -206,13 +212,7 @@ export class WorldView {
     lookYaw: number,
     lookPitch: number,
   ): void {
-    // Drop what despawned: terrain chunks, props, and entity meshes.
-    for (const wid of [...this.terrain.chunkWireIds()]) {
-      if (!state.entities.has(wid)) this.terrain.removeChunk(wid);
-    }
-    for (const wid of [...this.props.wireIds()]) {
-      if (!state.entities.has(wid)) this.props.remove(wid);
-    }
+    // Remove meshes and terrain for despawned entities.
     for (const [key, t] of this.meshes) {
       if (!state.entities.has(key)) {
         this.scene.remove(t.object);
@@ -221,37 +221,57 @@ export class WorldView {
         this.meshes.delete(key);
       }
     }
+    const gone: bigint[] = [];
+    for (const wid of this.terrain.chunkWireIds()) if (!state.entities.has(wid)) gone.push(wid);
+    for (const wid of gone) this.terrain.removeChunk(wid);
+    gone.length = 0;
+    for (const wid of this.props.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
+    for (const wid of gone) this.props.remove(wid);
 
     let playerPos: THREE.Vector3 | null = null;
 
     for (const [wid, e] of state.entities) {
       const key = wid;
-      // Terrain chunks render without a Transform row.
+      // Terrain chunks: TerrainRenderer (idempotent; rebuilds a flat
+      // stand-in once, when the chunk's heights arrive).
       if (e.chunk) {
         this.terrain.ensureChunk(wid, e.chunk);
         continue;
       }
-      if (this.instancedProps && isProp(e)) {
-        this.props.sync(wid, e);
+      // Batched static props: follow their rows (unchanged rows cost nothing).
+      if (this.props.has(wid)) {
+        if (e.transform && e.body) this.props.update(wid, e.transform, e.body);
         continue;
       }
       let tracked = this.meshes.get(key);
+
       if (!tracked) {
         if (!e.transform) continue;
-        const obj = this.makeBodyMesh(wid, e.body, e.asset);
+        const model = this.modelFor(e.asset);
+        if (!model && isStaticProp(e.body)) {
+          // Scenery: no spawn portal (a streamed ring brings hundreds at once).
+          this.props.add(wid, e.transform, e.body, placeholderColor(wid));
+          continue;
+        }
+        const obj = this.makeBodyMesh(wid, e.body, model);
         this.scene.add(obj);
         this.meshes.set(key, { object: obj, shaped: e.body !== undefined });
         this.pickMap.set(obj, wid);
-        // Spawn portal for players and other newly-appearing actors
-        // (scenery streams in by the thousand; it gets none).
-        if (!e.asset) this.fx.spawnBurst(tmpSpawn.set(e.transform.px, e.transform.py, e.transform.pz));
+        // Spawn portal for newly-appearing entities.
+        this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
         tracked = this.meshes.get(key)!;
       } else if (!tracked.shaped && e.body) {
-        // BodyConfig arrived after the stand-in: reshape.
+        // BodyConfig arrived after the stand-in: reshape (or batch).
         this.scene.remove(tracked.object);
         this.pickMap.delete(tracked.object);
         disposeObject(tracked.object);
-        const obj = this.makeBodyMesh(wid, e.body, e.asset);
+        const model = this.modelFor(e.asset);
+        if (!model && isStaticProp(e.body) && e.transform) {
+          this.meshes.delete(key);
+          this.props.add(wid, e.transform, e.body, placeholderColor(wid));
+          continue;
+        }
+        const obj = this.makeBodyMesh(wid, e.body, model);
         this.scene.add(obj);
         tracked.object = obj;
         tracked.shaped = true;
@@ -274,6 +294,7 @@ export class WorldView {
       }
     }
 
+    this.props.setHovered(this.hoveredWireId);
     if (playerPos) this.lastPlayerPos.copy(playerPos);
     this.fx.setPlayerPos(playerPos);
 
@@ -285,22 +306,24 @@ export class WorldView {
 
     this.updateCamera(playerPos, lookYaw, lookPitch);
     this.terrain.update();
+    this.water.update(now);
+    updateTerrainFx(now);
     this.renderer.render(this.scene, this.camera);
   }
 
-  private makeBodyMesh(
-    wid: bigint,
-    body: import("@mmo-engine/protocol").BodyConfigRow | undefined,
-    asset: import("@mmo-engine/protocol").AssetRefRow | undefined,
-  ): THREE.Object3D {
-    // PCG scatter seam: the art pack maps assetHash -> model. Absent
-    // (placeholder provider) or unresolvable -> shape-based fallback.
-    if (asset && typeof this.assets.assetMesh === "function") {
-      const obj = this.assets.assetMesh(asset);
-      if (obj) {
-        colorize(obj, placeholderColor(wid));
-        return obj;
-      }
+  /**
+   * PCG scatter seam: the art pack maps assetHash -> model. Null when
+   * there's no pack (placeholder provider) or the asset isn't in it.
+   */
+  private modelFor(asset: AssetRefRow | undefined): THREE.Object3D | null {
+    if (!asset || typeof this.assets.assetMesh !== "function") return null;
+    return this.assets.assetMesh(asset) ?? null;
+  }
+
+  private makeBodyMesh(wid: bigint, body: BodyConfigRow | undefined, model: THREE.Object3D | null): THREE.Object3D {
+    if (model) {
+      colorize(model, placeholderColor(wid));
+      return model;
     }
     if (body) {
       const obj = this.assets.bodyMesh(body);
@@ -329,11 +352,8 @@ export class WorldView {
     const sp = Math.sin(lookPitch);
     const cx = target.x - Math.sin(lookYaw) * cp * d;
     const cz = target.z - Math.cos(lookYaw) * cp * d;
-    let cy = Math.max(target.y + sp * d + 1.2, target.y + 0.6);
-    // Never inside a hillside: keep the camera above the ground under it.
-    const ground = this.terrain.heightAt(cx, cz);
-    if (ground !== null) cy = Math.max(cy, ground + 0.8);
-    this.camera.position.set(cx, cy, cz);
+    const cy = target.y + sp * d + 1.2;
+    this.camera.position.set(cx, Math.max(cy, target.y + 0.6), cz);
     this.camera.lookAt(target.x, target.y + 1.0, target.z);
   }
 
@@ -349,9 +369,15 @@ export class WorldView {
     }
     this.meshes.clear();
     this.terrain.dispose();
+    this.water.dispose();
     this.props.dispose();
     this.renderer.dispose();
   }
+}
+
+/** A body that never moves: batched with its shape (see InstancedProps). */
+function isStaticProp(body: BodyConfigRow | undefined): body is BodyConfigRow {
+  return body !== undefined && body.motionType === MotionType.Static;
 }
 
 function colorize(obj: THREE.Object3D, color: THREE.Color): void {
