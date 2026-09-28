@@ -20,7 +20,7 @@
     "minIslandArea": 20000
   },
   "ranges": {
-    "count": 1, "height": 380, "width": 600, "length": 3400,
+    "count": 1, "center": { "x": -32, "z": -712 }, "height": 380, "width": 600, "length": 3400,
     "spurs": 2, "spurLength": 1100, "spurScale": 0.7,
     "ridgeScale": 500, "ridges": 0.45, "coastClearance": 500
   },

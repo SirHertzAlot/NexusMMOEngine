@@ -156,10 +156,11 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
   const W = grid.width;
   const D = grid.depth;
   const toSea = distanceTo(W, D, grid.cell, (i) => land[i] === 0);
+  // Beyond the grid, read the nearest edge cell: a chain may run on past
+  // the world's land edge (the land continues), never out over the sea.
   const coastAt = (x: number, z: number): number => {
-    const u = Math.round((x - grid.originX) / grid.cell);
-    const v = Math.round((z - grid.originZ) / grid.cell);
-    if (u < 0 || v < 0 || u >= W || v >= D) return -1;
+    const u = Math.min(W - 1, Math.max(0, Math.round((x - grid.originX) / grid.cell)));
+    const v = Math.min(D - 1, Math.max(0, Math.round((z - grid.originZ) / grid.cell)));
     return toSea[v * W + u];
   };
   const wind = windVector(spec.climate.wind);
@@ -186,14 +187,16 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
   const eligible: number[] = [];
   for (let i = 0; i < W * D; i++) if (land[i] && toSea[i] >= R.coastClearance) eligible.push(i);
 
-  // Main chains: centred on land, grown both ways across the wind.
+  // Main chains: centred on land (the first where the spec says, if it
+  // does), grown both ways across the wind.
   for (let k = 0; k < R.count && eligible.length > 0; k++) {
     let placed: RangeAxis | null = null;
+    const pinned = k === 0 ? R.center : undefined;
     for (let length = R.length; !placed && length >= R.length * 0.3; length *= 0.85) {
       for (let attempt = 0; attempt < 80 && !placed; attempt++) {
         const c = eligible[Math.floor(rng() * eligible.length)];
-        const cx = grid.originX + (c % W) * grid.cell;
-        const cz = grid.originZ + Math.floor(c / W) * grid.cell;
+        const cx = pinned ? pinned.x : grid.originX + (c % W) * grid.cell;
+        const cz = pinned ? pinned.z : grid.originZ + Math.floor(c / W) * grid.cell;
         const heading = across + (rng() - 0.5) * 0.7;
         const back = walk(cx, cz, heading + Math.PI, length / 2, 0.25).slice(1).reverse();
         const points = [...back, ...walk(cx, cz, heading, length / 2, 0.25)];
@@ -312,18 +315,30 @@ export function rangeUplift(
 }
 
 /**
- * Volcanoes sit on the main chain (the first range), in its middle
- * stretch, spread along it.
+ * Volcanoes sit on the main chain (the first range), spread along its
+ * middle stretch, always inside the world (a chain may run on past the
+ * land edge; its volcanoes don't).
  */
 export function placeVolcanoes(spec: WorldSpec, ranges: RangeAxis[], rng: () => number): Volcano[] {
   const main = ranges.find((r) => !r.spur);
   if (!main || spec.volcano.count === 0) return [];
+  const b = worldBounds(spec);
+  const margin = spec.volcano.radius / 2;
+  const inside = (p: { x: number; z: number }): boolean =>
+    p.x >= b.min + margin && p.x <= b.max - margin && p.z >= b.min + margin && p.z <= b.max - margin;
   const p = main.points;
+  const middle = (p.length - 1) / 2;
+  // Points inside the world, nearest the chain's middle first.
+  const usable = p
+    .map((pt, s) => ({ pt, s }))
+    .filter(({ pt }) => inside(pt))
+    .sort((a, c) => Math.abs(a.s - middle) - Math.abs(c.s - middle));
+  if (usable.length === 0) return [];
+  const span = Math.max(1, Math.round(usable.length * 0.6)); // the middle stretch of what's inside
   const out: Volcano[] = [];
   for (let k = 0; k < spec.volcano.count; k++) {
-    const slot = (k + 0.2 + 0.6 * rng()) / spec.volcano.count; // one per stretch of the chain
-    const s = Math.round((0.3 + 0.4 * slot) * (p.length - 1));
-    out.push({ x: p[s].x, z: p[s].z });
+    const pick = usable[Math.floor(rng() * span)].pt;
+    out.push({ x: pick.x, z: pick.z });
   }
   return out;
 }
