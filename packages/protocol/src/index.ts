@@ -1,6 +1,18 @@
 export { decodeControl, decodeEnvelope, encodeControl, encodeEnvelope } from "./envelope.js";
-export { MessageType, PROTOCOL_VERSION } from "./types.js";
-export type { DebugQuery, DebugResponse, ErrorMessage, HelloMessage, RegisterMessage, WelcomeMessage } from "./types.js";
+export { CHARACTER_NAME_RE, MessageType, PROTOCOL_VERSION } from "./types.js";
+export type {
+  AccountMessage,
+  CharacterEntry,
+  CreateCharacterMessage,
+  DebugQuery,
+  DebugResponse,
+  EnterWorldMessage,
+  ErrorMessage,
+  HelloMessage,
+  RegisterMessage,
+  WelcomeMessage,
+  WireLook,
+} from "./types.js";
 export {
   decodeDelta,
   decodeIntentMessage,
@@ -19,6 +31,7 @@ export type {
   IntentFields,
   IntentRow,
   LocomotionRow,
+  AppearanceRow,
   TransformRow,
   VelocityRow,
 } from "./codec.js";

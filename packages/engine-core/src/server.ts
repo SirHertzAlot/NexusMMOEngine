@@ -12,8 +12,12 @@
  *
  * Environment:
  *   MMO_PORT       WebSocket listen port (default 7777)
- *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv
- *                  (default ./data, relative to the process cwd)
+ *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
+ *                  characters.db (default ./data, relative to the process cwd)
+ *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
+ *                  against (default: the converted pack's catalog.json under
+ *                  the repo's assets/; without it looks are checked
+ *                  structurally only)
  *   MMO_WORLD_SEED procgen world seed (default 1234; a world baked from a
  *                  world spec uses the seed recorded at bake time)
  *   MMO_CHUNK_SIZE chunk world size in units (default 16)
@@ -47,6 +51,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -81,6 +86,7 @@ import {
 import { Ability } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -276,6 +282,18 @@ async function main(): Promise<void> {
   const credentialStore = new CsvCredentialStore(
     path.join(DATA_DIR, "users.csv"),
   );
+  const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
+  // The licensed modular pack is only on machines that have the art
+  // (assets/ is never committed): elsewhere looks are checked structurally.
+  const catalogFile =
+    process.env.MMO_CHARACTER_CATALOG ||
+    fileURLToPath(new URL("../../../../assets/models/glb/modular-fantasy-hero/Rigged/catalog.json", import.meta.url));
+  const characterCatalog = loadCharacterCatalog(catalogFile);
+  console.log(
+    characterCatalog
+      ? `[characters] ${characterCatalog.parts.length} modular parts (${catalogFile})`
+      : `[characters] no part catalog at ${catalogFile}: looks are checked structurally`,
+  );
   // Kinematic character control (gravity/jump/grounding) corrects the
   // integrated Y in the same tick, before snapshot collection. Players are
   // held inside the world's edge.
@@ -310,6 +328,8 @@ async function main(): Promise<void> {
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
+    characterStore,
+    characterCatalog,
     playerAbilities,
     startTick: freshBoot ? 1 : restoredTick! + 1,
     // Terrain-height channel (slice 4.1): the gateway attaches authoritative

@@ -79,7 +79,12 @@ export class SimEventEmitter {
  * Attach every component in `state` and write its rows into the SoA
  * stores; `eidOf` maps a row's wire id to the local entity.
  */
-function writeComponentRows(ecs: IWorld, state: CollectedState, eidOf: (wireId: bigint) => number): void {
+function writeComponentRows(
+  ecs: IWorld,
+  state: CollectedState,
+  eidOf: (wireId: bigint) => number,
+  lookId: (json: string) => number,
+): void {
   const T = C.Transform;
   for (const r of state.transforms) {
     const eid = eidOf(r.wireId);
@@ -148,6 +153,12 @@ function writeComponentRows(ecs: IWorld, state: CollectedState, eidOf: (wireId: 
     Lo.abilities[eid] = r.abilities;
     Lo.breath[eid] = r.breath;
   }
+  const Ap = C.Appearance;
+  for (const r of state.appearances) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, Ap, eid);
+    Ap.look[eid] = lookId(r.look);
+  }
 }
 
 export class SimWorld {
@@ -162,6 +173,9 @@ export class SimWorld {
   private intentQueue = new Map<number, QueuedIntent>();
   private maxSlot = -1;
   private liveCount = 0;
+  /** Look table for the Appearance component: id -> canonical look JSON (0 = none). */
+  private readonly looks: string[] = [""];
+  private readonly lookIds = new Map<string, number>([["", 0]]);
 
   constructor() {
     // Eager slot reuse: bounded eid space for a long-lived server.
@@ -314,6 +328,7 @@ export class SimWorld {
     for (const r of state.bodies) take(r.wireId);
     for (const r of state.assets) take(r.wireId);
     for (const r of state.locomotions) take(r.wireId);
+    for (const r of state.appearances) take(r.wireId);
 
     let maxSlot = -1;
     for (const slot of wanted.keys()) if (slot > maxSlot) maxSlot = slot;
@@ -342,7 +357,7 @@ export class SimWorld {
     this.liveCount = wanted.size;
 
     // Phase 3: attach components and write the row data into the SoA stores.
-    writeComponentRows(this.ecs, state, (wireId) => parseWireEntityId(wireId).slot);
+    writeComponentRows(this.ecs, state, (wireId) => parseWireEntityId(wireId).slot, (json) => this.lookId(json));
   }
 
   /**
@@ -354,13 +369,38 @@ export class SimWorld {
    */
   spawnFromState(state: CollectedState): number[] {
     const ids = new Set<bigint>();
-    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.bodies, state.assets, state.locomotions]) {
+    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.bodies, state.assets, state.locomotions, state.appearances]) {
       for (const r of block) ids.add(r.wireId);
     }
     const eids = new Map<bigint, number>();
     for (const wireId of [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) eids.set(wireId, this.spawn());
-    writeComponentRows(this.ecs, state, (wireId) => eids.get(wireId)!);
+    writeComponentRows(this.ecs, state, (wireId) => eids.get(wireId)!, (json) => this.lookId(json));
     return [...eids.values()];
+  }
+
+  /**
+   * The look table id of a look (canonical JSON), added on first use.
+   * Looks are few (one per distinct character), so the table only grows.
+   */
+  lookId(json: string): number {
+    let id = this.lookIds.get(json);
+    if (id === undefined) {
+      id = this.looks.length;
+      this.looks.push(json);
+      this.lookIds.set(json, id);
+    }
+    return id;
+  }
+
+  /** A look table entry's JSON ("" for none or an unknown id). */
+  lookJson(id: number): string {
+    return this.looks[id] ?? "";
+  }
+
+  /** Give an entity an Appearance with this look (canonical JSON). */
+  setLook(eid: number, json: string): void {
+    addComponent(this.ecs, C.Appearance, eid);
+    C.Appearance.look[eid] = this.lookId(json);
   }
 
   /**

@@ -18,6 +18,7 @@
  */
 
 import type {
+  AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
   ChunkRow,
@@ -38,6 +39,7 @@ export interface EntityState {
   body?: BodyConfigRow;
   asset?: AssetRefRow;
   locomotion?: LocomotionRow;
+  appearance?: AppearanceRow;
 }
 
 export type WorldState = Map<bigint, EntityState>;
@@ -46,7 +48,7 @@ function upsert(
   state: WorldState,
   wid: bigint,
   key: keyof EntityState,
-  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow,
+  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow | AppearanceRow,
 ): void {
   let e = state.get(wid);
   if (!e) {
@@ -77,6 +79,7 @@ export function applyDelta(state: WorldState, delta: CollectedState): WorldState
   for (const r of delta.bodies) upsert(state, r.wireId, "body", r);
   for (const r of delta.assets) upsert(state, r.wireId, "asset", r);
   for (const r of delta.locomotions) upsert(state, r.wireId, "locomotion", r);
+  for (const r of delta.appearances) upsert(state, r.wireId, "appearance", r);
   return state;
 }
 
@@ -95,6 +98,7 @@ const EXACT_FIELDS: Record<string, string[]> = {
   body: ["shapeKind", "motionType", "layer"],
   asset: ["assetHash", "variant"],
   locomotion: ["mode", "abilities"],
+  appearance: ["look"],
 };
 
 function rowsEqual(

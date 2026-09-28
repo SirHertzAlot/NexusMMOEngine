@@ -32,6 +32,15 @@
  * session token. Failed attempts are rate-limited per IP. Tokens,
  * passwords, and hashes are NEVER logged.
  *
+ * Characters (protocol v5): a hello or register with `characters: true`
+ * authenticates, then answers `account` (0x0c) — the account's
+ * characters — and waits: the client creates characters
+ * (`create_character`, 0x0d) and enters the world as one (`enter_world`,
+ * 0x0e), which spawns its avatar with the character's look (the
+ * Appearance component). Without the flag a login joins at once, as the
+ * account's first character or with a default look. A character is in
+ * the world once: entering it again takes it over from the other session.
+ *
  * Tick driving: production calls startTicking() (wall-clock interval);
  * tests drive frame(nowMs) manually with a synthetic clock — pass
  * `clock` in options for deterministic heartbeat/grace math.
@@ -48,6 +57,7 @@ import {
   encodeEnvelope,
   MessageType,
   PROTOCOL_VERSION,
+  type AccountMessage,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -88,6 +98,19 @@ import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import { parseLook, type ModularCatalog } from "@mmo-engine/art/character";
+import {
+  CharacterRefusedError,
+  checkNewLook,
+  CreateCharacterSchema,
+  DEFAULT_LOOK_JSON,
+  DEFAULT_MAX_CHARACTERS,
+  EnterWorldSchema,
+  MAX_CREATE_PAYLOAD_BYTES,
+  MemoryCharacterStore,
+  type CharacterRecord,
+  type CharacterStore,
+} from "../characters/index.js";
 
 export interface GatewayOptions {
   /** Port to bind; 0 = ephemeral (listen() returns the actual port). */
@@ -121,6 +144,18 @@ export interface GatewayOptions {
    * store in tests.
    */
   credentialStore?: CredentialStore;
+  /**
+   * The accounts' characters. Default: in memory (lost on restart) — the
+   * production server passes a SqliteCharacterStore.
+   */
+  characterStore?: CharacterStore;
+  /**
+   * The modular part catalog new characters' looks are checked against;
+   * null/absent = structural checks only (a server without the art).
+   */
+  characterCatalog?: ModularCatalog | null;
+  /** Characters an account may have. Default 8. */
+  maxCharacters?: number;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Auth rate limit: { maxFailures, windowMs }. Defaults 5 / 60_000. */
@@ -217,6 +252,9 @@ export class Gateway {
       | "clock"
       | "world"
       | "credentialStore"
+      | "characterStore"
+      | "characterCatalog"
+      | "maxCharacters"
       | "sessionTtlMs"
       | "authRateLimit"
       | "debugSource"
@@ -238,6 +276,9 @@ export class Gateway {
   /** Per-IP failure budget for auth attempts. */
   private readonly rateLimiter: AuthRateLimiter;
   private readonly credentialStore: CredentialStore;
+  private readonly characterStore: CharacterStore;
+  private readonly characterCatalog: ModularCatalog | null;
+  private readonly maxCharacters: number;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a).
    * Injected by the production server via makeDebugSource(); null →
@@ -290,6 +331,9 @@ export class Gateway {
     this.systems = opts.systems ?? [new IntentSystem(), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
+    this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
+    this.characterCatalog = opts.characterCatalog ?? null;
+    this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
@@ -573,6 +617,9 @@ export class Gateway {
       disconnectedAtMs: null,
       needsResync: false,
       remoteIp: req?.socket?.remoteAddress ?? "unknown",
+      username: "",
+      choosingCharacter: false,
+      character: null,
     };
     this.sessions.set(s.clientId, s);
     socket.on("message", (data: WebSocket.RawData) => this.onMessage(s, data));
@@ -660,6 +707,12 @@ export class Gateway {
       case MessageType.Debug:
         this.onDebug(s, payload);
         break;
+      case MessageType.CreateCharacter:
+        this.contain(s, "create character", this.onCreateCharacter(s, payload));
+        break;
+      case MessageType.EnterWorld:
+        this.contain(s, "enter world", this.onEnterWorld(s, payload));
+        break;
       default:
         this.sendError(s, 4003, `unexpected message type 0x${type.toString(16)}`);
     }
@@ -740,8 +793,8 @@ export class Gateway {
    * being checked would start another argon2 hash. Both are refused.
    */
   private beginJoin(s: ClientSession): boolean {
-    if (s.welcomed || s.joining) {
-      this.sendError(s, 4003, s.welcomed ? "already joined" : "join already in progress");
+    if (s.welcomed || s.joining || s.choosingCharacter) {
+      this.sendError(s, 4003, s.joining ? "join already in progress" : "already joined");
       return false;
     }
     s.joining = true;
@@ -811,7 +864,7 @@ export class Gateway {
       console.log(`[gateway] hello client=${clientLabel} via=token`);
     }
 
-    this.joinWithSession(s, sessionToken);
+    await this.joinWithSession(s, sessionToken, parsed.value.characters === true);
   }
 
   /**
@@ -820,7 +873,7 @@ export class Gateway {
    * spawn a fresh player entity — then welcome + snapshot. Split out of
    * authenticate() so register() reuses the exact same join semantics.
    */
-  private joinWithSession(s: ClientSession, sessionToken: string): void {
+  private async joinWithSession(s: ClientSession, sessionToken: string, choose: boolean): Promise<void> {
     // The client may have disconnected while async auth work ran — the
     // close handler already reaped the pending session.
     if (!this.sessions.has(s.clientId)) return;
@@ -842,12 +895,165 @@ export class Gateway {
     // outlived its grace-period binding (entity was despawned; spawn new).
     s.token = sessionToken;
     this.authSessions.rebind(sessionToken, s.clientId);
-    s.playerEntity = this.spawnPlayerEntity();
+    const auth = this.authSessions.get(sessionToken);
+    if (!auth) {
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    s.username = auth.username;
+    // A session that already entered as a character re-enters as it.
+    if (auth.character) {
+      this.enterWorld(s, auth.character);
+      return;
+    }
+    if (choose) {
+      s.choosingCharacter = true;
+      await this.sendAccount(s);
+      return;
+    }
+    // No choice asked for: the account's first character, if any.
+    const [first] = await this.characterStore.list(s.username);
+    if (!this.sessions.has(s.clientId)) return;
+    this.enterWorld(s, first ? this.remember(s, first) : null);
+  }
+
+  /** Record `c` as the character of the session's token (see AuthSession.character). */
+  private remember(s: ClientSession, c: CharacterRecord): { id: number; name: string; look: string } {
+    const character = { id: c.id, name: c.name, look: c.look };
+    const auth = this.authSessions.get(s.token);
+    if (auth) auth.character = character;
+    return character;
+  }
+
+  /**
+   * Spawn the session's avatar (with the character's look, or the
+   * default) and welcome it into the world.
+   */
+  private enterWorld(s: ClientSession, character: { id: number; name: string; look: string } | null): void {
+    if (character) this.evictCharacter(character.id, s);
+    s.choosingCharacter = false;
+    s.character = character ? { id: character.id, name: character.name } : null;
+    s.playerEntity = this.spawnPlayerEntity(character?.look ?? DEFAULT_LOOK_JSON);
     s.welcomed = true;
     s.lastSeenMs = this.clock();
     this.tokenToClient.set(s.token, s.clientId);
     this.sendWelcome(s);
     this.sendFreshSnapshot(s);
+  }
+
+  /**
+   * A character is in the world once: another session playing it (live
+   * or in its grace period) is ended and its avatar removed.
+   */
+  private evictCharacter(id: number, except: ClientSession): void {
+    for (const other of [...this.sessions.values()]) {
+      if (other === except || other.character?.id !== id) continue;
+      if (other.playerEntity !== null) this.world.despawn(parseWireEntityId(other.playerEntity).slot);
+      other.playerEntity = null;
+      if (this.tokenToClient.get(other.token) === other.clientId) this.tokenToClient.delete(other.token);
+      this.sessions.delete(other.clientId);
+      if (other.socket) {
+        this.sendError(other, 4005, "this character entered the world elsewhere");
+        try {
+          other.socket.close(4000, "superseded by new connection");
+        } catch {
+          /* ignore */
+        }
+        other.socket = null;
+      }
+    }
+  }
+
+  /** Tell a choosing session its account's characters. */
+  private async sendAccount(s: ClientSession, created?: number): Promise<void> {
+    const records = await this.characterStore.list(s.username);
+    if (!this.sessions.has(s.clientId)) return;
+    const msg: AccountMessage = {
+      session_token: s.token,
+      characters: records.map((r) => ({
+        id: r.id,
+        name: r.name,
+        look: parseLook(r.look) ?? parseLook(DEFAULT_LOOK_JSON)!,
+      })),
+      max_characters: this.maxCharacters,
+      ...(created !== undefined ? { created } : {}),
+    };
+    this.sendEnvelope(s, MessageType.Account, encodeControl(msg));
+  }
+
+  /** Run an async handler; a store failure answers 4004 and never kills the pump. */
+  private contain(s: ClientSession, what: string, work: Promise<void>): void {
+    void work.catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error(`[gateway] ${what} error: ${err instanceof Error ? err.message : err}`);
+      this.sendError(s, 4004, `internal error (${what})`);
+    });
+  }
+
+  /** create_character (0x0d): check the name and look, store, answer with the account. */
+  private async onCreateCharacter(s: ClientSession, payload: Uint8Array): Promise<void> {
+    if (!s.choosingCharacter) {
+      this.sendError(s, 4003, "create_character outside character selection");
+      return;
+    }
+    let raw: unknown;
+    try {
+      if (payload.length > MAX_CREATE_PAYLOAD_BYTES) throw new Error("too large");
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed create_character");
+      return;
+    }
+    const parsed = CreateCharacterSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed create_character (name: 3-16 letters, ' or -)");
+      return;
+    }
+    const checked = checkNewLook(this.characterCatalog, parsed.data.look);
+    if ("problems" in checked) {
+      this.sendError(s, 4005, `look refused: ${checked.problems.slice(0, 3).join("; ")}`);
+      return;
+    }
+    let record: CharacterRecord;
+    try {
+      record = await this.characterStore.create(s.username, parsed.data.name, checked.json, this.maxCharacters);
+    } catch (err) {
+      if (err instanceof CharacterRefusedError) {
+        this.sendError(s, 4005, err.message);
+        return;
+      }
+      throw err;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[gateway] character created user=${JSON.stringify(s.username)} name=${JSON.stringify(record.name)}`);
+    await this.sendAccount(s, record.id);
+  }
+
+  /** enter_world (0x0e): spawn as one of the account's characters. */
+  private async onEnterWorld(s: ClientSession, payload: Uint8Array): Promise<void> {
+    if (!s.choosingCharacter) {
+      this.sendError(s, 4003, s.welcomed ? "already in the world" : "enter_world before hello");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed enter_world");
+      return;
+    }
+    const parsed = EnterWorldSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed enter_world");
+      return;
+    }
+    const record = await this.characterStore.get(s.username, parsed.data.character);
+    if (!this.sessions.has(s.clientId) || !s.choosingCharacter) return;
+    if (!record) {
+      this.sendError(s, 4005, "no such character");
+      return;
+    }
+    this.enterWorld(s, this.remember(s, record));
   }
 
   /**
@@ -893,7 +1099,7 @@ export class Gateway {
       this.sendError(s, 4003, "malformed register");
       return;
     }
-    const { protocol, client, username, password } = parsed.data;
+    const { protocol, client, username, password, characters } = parsed.data;
     if (protocol !== PROTOCOL_VERSION) {
       this.sendErrorAndClose(
         s,
@@ -945,7 +1151,7 @@ export class Gateway {
     console.log(
       `[gateway] register client=${JSON.stringify(client)} user=${JSON.stringify(username)}`,
     );
-    this.joinWithSession(s, sessionToken);
+    await this.joinWithSession(s, sessionToken, characters === true);
   }
 
   /**
@@ -1076,6 +1282,7 @@ export class Gateway {
       snapshot_every: this.opts.snapshotEveryTicks,
       session_token: s.token,
       ...(this.worldInfo ? { world: this.worldInfo } : {}),
+      ...(s.character ? { character: s.character } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
   }
@@ -1096,12 +1303,13 @@ export class Gateway {
 
   /**
    * Spawn a player entity: Transform + Velocity + PlayerIntent + Health +
-   * Locomotion (on foot, with the gateway's player abilities, full breath).
+   * Locomotion (on foot, with the gateway's player abilities, full breath)
+   * + Appearance (the character's look, canonical JSON).
    * Spawn points spread on a grid so N players don't stack. Player
    * entities are ordinary entities — the sim treats N of them identically
    * (multiplayer by construction, no singleton).
    */
-  private spawnPlayerEntity(): bigint {
+  private spawnPlayerEntity(look: string): bigint {
     const sim = this.world;
     const eid = sim.spawn();
     addComponent(sim.ecs, C.Transform, eid);
@@ -1121,6 +1329,7 @@ export class Gateway {
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;
     C.Health.current[eid] = 100;
     C.Health.max[eid] = 100;
+    sim.setLook(eid, look);
     return sim.wireId(eid);
   }
 }

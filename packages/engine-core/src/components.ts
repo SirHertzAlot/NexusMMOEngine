@@ -20,7 +20,7 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * Locomotion=9) for future compact wire formats; the current
+ * Appearance=10) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -121,6 +121,7 @@ export const COMPONENT_IDS = {
   PathState: 7,
   AssetRef: 8,
   Locomotion: 9,
+  Appearance: 10,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -214,4 +215,16 @@ export const Locomotion = defineComponent({
   mode: Types.ui8,
   abilities: Types.ui8,
   breath: Types.f32,
+});
+
+// ---------------------------------------------------------------------------
+// Appearance (ComponentId 10): how a modular character looks. `look` is an
+// id into the SimWorld's look table (SimWorld.setLook / lookJson): looks
+// are canonical JSON strings, and SoA stores hold no strings. Equal looks
+// share an id, so the delta diff sees a change only when the look does.
+// Set at spawn (players: their character; enemy humans: a generated look).
+// ---------------------------------------------------------------------------
+
+export const Appearance = defineComponent({
+  look: Types.ui32,
 });

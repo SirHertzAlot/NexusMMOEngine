@@ -92,6 +92,7 @@ table Snapshot {
   despawned: [uint64];
   // Appended (never reorder: persisted snapshots decode by field id).
   locomotions: LocomotionBlock;
+  appearances: AppearanceBlock;
 }
 
 table Delta {
@@ -108,6 +109,7 @@ table Delta {
   despawned: [uint64];
   // Appended (never reorder).
   locomotions: LocomotionBlock;
+  appearances: AppearanceBlock;
 }
 
 // ---- client -> server intent events (slice 1.3, additive) ----
@@ -176,5 +178,18 @@ table Locomotion {
 }
 
 table LocomotionBlock { entities: [uint64]; items: [Locomotion]; }
+
+// ---- appearance (additive; ComponentId 10) ----
+// How a modular character looks: its look as canonical JSON (see
+// @mmo-engine/art CharacterLook — gender, a part per slot, colours).
+// Configuration, like BodyConfig: set at spawn, in every snapshot, and in
+// deltas only when it changes. Players carry their character's look;
+// enemy humans a generated one. Clients assemble the character from it.
+
+table Appearance {
+  look: string;
+}
+
+table AppearanceBlock { entities: [uint64]; items: [Appearance]; }
 
 root_type Snapshot;

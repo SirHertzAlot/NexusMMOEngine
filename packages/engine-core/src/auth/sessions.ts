@@ -26,6 +26,11 @@ export interface AuthSession {
   username: string;
   /** Clock ms after which the session is dead. */
   expiresAt: number;
+  /**
+   * The character this session entered the world as: a reconnect after
+   * the grace period (its avatar gone) enters as it again.
+   */
+  character?: { id: number; name: string; look: string };
 }
 
 export interface SessionManagerOptions {

@@ -76,6 +76,15 @@ export interface ClientSession {
   needsResync: boolean;
   /** Remote IP of the connection (auth rate limiting). */
   remoteIp: string;
+  /** The account, once authenticated ("" before). */
+  username: string;
+  /**
+   * Authenticated and choosing a character (the client asked to): not in
+   * the world yet — no entity, no deltas — until enter_world.
+   */
+  choosingCharacter: boolean;
+  /** The character this session plays, once in the world as one. */
+  character: { id: number; name: string } | null;
 }
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */
