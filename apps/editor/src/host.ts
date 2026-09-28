@@ -42,7 +42,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, normalize, resolve, sep } from "node:path";
+import { join, normalize, posix, resolve, sep, win32 } from "node:path";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -66,6 +66,9 @@ export function npmInvocation(
   execPath: string = process.execPath,
 ): { command: string; args: string[]; shell: boolean } {
   const cli = env.npm_execpath;
+  // The target platform's path rules, not the host's: a Windows path has
+  // no "/" separators, so POSIX basename would return all of it.
+  const { basename } = platform === "win32" ? win32 : posix;
   if (cli && basename(cli) === "npm-cli.js") {
     return { command: execPath, args: [cli, ...args], shell: false };
   }

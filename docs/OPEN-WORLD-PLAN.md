@@ -25,8 +25,9 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
   of heights; world.db is ~92 MB on disk (SQLite page overhead). The bake
   never holds the full-resolution heightmap: it builds each tile from the
   coarse survey, in batches.
-- **Vertical range: default ~250 m of relief** in mountain biomes (plains
-  stay within a few metres); a world-spec value, easy to change.
+- **Vertical range: mountain massifs up to ~440 m** that climb from
+  foothills at their border (`ramp`), rolling plains and forest hills of
+  roughly 20–40 m; world-spec values, easy to change.
 - **LYGIA: not used.** Shading is our own (three.js).
 - **SurrealDB: embedded engine** (`@surrealdb/node` 3.0.3 with the
   `surrealdb` 2.0.8 SDK) — no separate server process. Verified on the dev
@@ -93,9 +94,15 @@ reproducible (same spec → same bytes), not identical across platforms.
       each assigned a biome by its survey (highest → mountains, low and wet
       → swamp, driest → desert, wettest → forest, the rest → plains);
       softmax blending across borders. Default world: 2 plains, 2 forest,
-      1 desert, 1 swamp, 1 mountains.
-- [x] **Coarse elevation per biome:** ridged mountains (up to ~285 m),
+      1 desert, 1 swamp, 2 mountains.
+- [x] **Coarse elevation per biome:** ridged mountains (up to ~440 m),
       flat swamp below the plains, dunes, rolling forest and plains.
+      Retuned 2026-09-28: the first bake's mountains were one wall of
+      spikes on the region border (median slope 63°) and 500 m around the
+      spawn varied by 16 m. A biome `ramp` now raises relief from its
+      border (mountains reach full height 600 m in: median slope 28°),
+      with 2 mountain regions, ±45 m continental swells and 18 m / 40 m
+      plains / forest hills (44 m of relief in view at spawn).
 - [x] **Erosion and rivers:** droplet erosion (mean 1.45 m, capped
       steps), priority-flood depression filling, D8 flow accumulation,
       rivers carved where the catchment is large (675 river chunks).
@@ -183,15 +190,12 @@ reproducible (same spec → same bytes), not identical across platforms.
 - [x] **Instanced props:** scatter draws in 3 draw calls (was a mesh,
       geometry, and material per prop).
 - [x] Camera kept above the ground; daylight sky and 2.6 km fog.
-- [x] **Terrain shape fix** found while looking at it: mountains were 57%
-      steeper than 60° (biome borders walled up, short wavelength). Relief
-      now ramps in from a biome's border (`borderSlope`, default 0.6) and
-      the default mountains/dunes use longer wavelengths: 8.6% of the
-      mountains are steeper than 60°, plains/swamp max out near 55°.
+- [x] Rendering showed the first bake's mountains as walls on their
+      region borders; fixed by the biome `ramp` retune (Phase 1).
 - **Measured (2026-09-28, headless Edge on the dev machine's Intel UHD
   630):** 60 fps with 289 chunks, ~1,900 entities, and the full 4 km
-  horizon. (Your 3 fps was likely the per-chunk transparent materials
-  and a mesh per prop, not only the GPU choice.)
+  horizon. (The earlier 3 fps was likely the per-chunk transparent
+  materials and a mesh per prop, not only the GPU choice.)
 - [ ] Client requests chunks by distance; the server sends each client
       only its area (today every loaded chunk goes to every client).
 - [ ] LOD rings between the 1 m chunks and the 16 m horizon.

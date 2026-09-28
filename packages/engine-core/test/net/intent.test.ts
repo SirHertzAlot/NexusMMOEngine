@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   decodeIntentMessage,
   encodeIntentMessage,
+  sanitizeIntent,
 } from "../../src/net/intent.js";
 
 describe("intent codec", () => {
@@ -53,5 +54,27 @@ describe("intent codec", () => {
     const b = encodeIntentMessage(1n, 1n, { mx: 1, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons: 0 });
     assert.notEqual(a, b);
     assert.deepEqual([...a], [...b]);
+  });
+});
+
+describe("sanitizeIntent (trust boundary)", () => {
+  const base = { mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons: 0 };
+
+  it("passes a normal intent through unchanged", () => {
+    const i = { ...base, mx: Math.SQRT1_2, mz: -Math.SQRT1_2, lookYaw: 3, lookPitch: -0.4, jump: true, buttons: 5 };
+    assert.equal(sanitizeIntent(i), i);
+  });
+
+  it("caps the move vector at length 1, keeping its direction", () => {
+    const out = sanitizeIntent({ ...base, mx: 300, mz: 400 })!;
+    assert.ok(Math.abs(out.mx - 0.6) < 1e-12 && Math.abs(out.mz - 0.8) < 1e-12, `${out.mx},${out.mz}`);
+  });
+
+  it("rejects any non-finite number", () => {
+    for (const k of ["mx", "my", "mz", "lookYaw", "lookPitch"] as const) {
+      for (const v of [Number.NaN, Infinity, -Infinity]) {
+        assert.equal(sanitizeIntent({ ...base, [k]: v }), null, `${k}=${v}`);
+      }
+    }
   });
 });

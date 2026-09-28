@@ -106,31 +106,43 @@ describe("survey", () => {
   });
 });
 
-describe("biome borders", () => {
-  test("relief ramps in from a region's border instead of walling up at it", () => {
-    // Two regions: 200 m ridged peaks next to flat plains, nothing else.
-    const raw = {
-      name: "ramp", seed: 5, sizeChunks: 48, continentalRelief: 0,
-      erosion: { droplets: 0, strength: 0 }, rivers: { minCatchment: 1e12, maxDepth: 0 },
-      biomes: [
-        { id: "peaks", count: 1, pick: "highest", shape: "ridged", base: 0, relief: 200, scale: 300, roughness: 0 },
-        { id: "plains", count: 1, pick: "rest", shape: "flat", base: 0, relief: 0, scale: 100, roughness: 0 },
-      ],
-    };
-    const highestOnBorder = (borderSlope: number): number => {
-      const s = surveyWorld(parseWorldSpec({ ...raw, borderSlope }));
-      const W = s.grid.width;
-      let max = 0;
-      for (let v = 1; v < s.grid.depth - 1; v++) {
-        for (let u = 1; u < W - 1; u++) {
-          const i = v * W + u;
-          if ([1, -1, W, -W].some((o) => s.region[i + o] !== s.region[i])) max = Math.max(max, s.height[i]);
-        }
+describe("survey: ramped biomes", () => {
+  // Erosion and rivers off, so only the mountains' relief term differs.
+  const variant = (mountains: Record<string, number>) =>
+    surveyWorld(
+      parseWorldSpec({
+        ...SMALL_WORLD,
+        erosion: { droplets: 0, strength: 0 },
+        rivers: { minCatchment: 1e12, maxDepth: 0 },
+        biomes: SMALL_WORLD.biomes.map((b) => (b.id === "mountains" ? { ...b, ...mountains } : b)),
+      }),
+    );
+
+  test("relief rises from the region border instead of standing on it", () => {
+    const flat = variant({ relief: 0 });
+    const wall = variant({}); // ramp 0: full relief up to the border
+    const ramped = variant({ ramp: 100 });
+    const { grid } = flat;
+    const W = grid.width;
+    const mountainRegion = flat.regions.find((r) => SMALL.biomes[r.biome].id === "mountains")!.index;
+    const inside = (i: number): boolean => flat.region[i] === mountainRegion;
+    // Border band: mountain cells with a non-mountain neighbour.
+    const border: number[] = [];
+    for (let v = 1; v < grid.depth - 1; v++) {
+      for (let u = 1; u < W - 1; u++) {
+        const i = v * W + u;
+        if (inside(i) && [i - 1, i + 1, i - W, i + W].some((n) => !inside(n))) border.push(i);
       }
-      return max;
-    };
-    assert.ok(highestOnBorder(0.6) < 5, "ramped: the border stays low");
-    assert.ok(highestOnBorder(1e6) > 50, "unramped (the old behaviour): a wall at the border");
+    }
+    assert.ok(border.length > 10, "the mountains have a border");
+    const relief = (s: typeof flat, i: number): number => Math.abs(s.height[i] - flat.height[i]);
+    const maxOver = (s: typeof flat, cells: Iterable<number>): number => Math.max(...[...cells].map((i) => relief(s, i)));
+
+    assert.ok(maxOver(wall, border) > 30, `without a ramp the border is a wall (${maxOver(wall, border).toFixed(1)} m)`);
+    assert.ok(maxOver(ramped, border) < 6, `with one it starts as foothills (${maxOver(ramped, border).toFixed(1)} m)`);
+    const all = Array.from({ length: flat.height.length }, (_, i) => i);
+    for (const i of all) assert.ok(relief(ramped, i) <= relief(wall, i) + 1e-3, `cell ${i}: never above the unramped relief`);
+    assert.ok(maxOver(ramped, all) > 0.5 * maxOver(wall, all), "the massif still reaches most of its height inside");
   });
 });
 

@@ -36,6 +36,13 @@ export const BiomeSpecSchema = z.object({
   scale: z.number().positive(),
   /** Fine detail strength, 0..1 (0 = smooth, 1 = rough ground). */
   roughness: z.number().min(0).max(1),
+  /**
+   * How far inside the biome's territory its relief reaches full height,
+   * metres; 0 = full relief right up to the border. Mountains use it to
+   * climb from foothills into a massif instead of standing as a wall on
+   * the region border.
+   */
+  ramp: z.number().min(0).default(0),
 });
 
 export const WorldSpecSchema = z
@@ -53,13 +60,6 @@ export const WorldSpecSchema = z
     continentalScale: z.number().positive().default(1500),
     /** Biome border blend width, metres. */
     blendWidth: z.number().positive().default(120),
-    /**
-     * Steepest average slope (rise/run) a biome's landforms climb at from
-     * its border: relief ramps in over relief/borderSlope metres, so a
-     * 250 m mountain range rises over ~400 m instead of walling up at the
-     * border. Low-relief biomes ramp in within a few metres.
-     */
-    borderSlope: z.number().positive().default(0.6),
     /** Fine detail height at roughness 1, metres. */
     detailAmplitude: z.number().min(0).default(1.5),
     /** Fine detail feature size, metres. */

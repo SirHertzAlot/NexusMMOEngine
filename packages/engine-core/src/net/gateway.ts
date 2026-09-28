@@ -85,7 +85,7 @@ import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { SimWorld } from "../world.js";
-import { decodeIntentMessage } from "./intent.js";
+import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 
 export interface GatewayOptions {
   /** Port to bind; 0 = ephemeral (listen() returns the actual port). */
@@ -494,6 +494,7 @@ export class Gateway {
       connectedAtMs: now,
       socket,
       welcomed: false,
+      joining: false,
       lastIntentTick: 0n,
       droppedIntents: 0,
       lastSeenMs: now,
@@ -645,14 +646,34 @@ export class Gateway {
    * message pump.
    */
   private onHello(s: ClientSession, payload: Uint8Array): void {
-    void this.authenticate(s, payload).catch((err: unknown) => {
-      // Defense in depth: a store/argon2 failure must not kill the pump.
-      // eslint-disable-next-line no-console
-      console.error(
-        `[gateway] auth error: ${err instanceof Error ? err.message : err}`,
-      );
-      this.sendErrorAndClose(s, 4004, "internal auth error");
-    });
+    if (!this.beginJoin(s)) return;
+    void this.authenticate(s, payload)
+      .catch((err: unknown) => {
+        // Defense in depth: a store/argon2 failure must not kill the pump.
+        // eslint-disable-next-line no-console
+        console.error(
+          `[gateway] auth error: ${err instanceof Error ? err.message : err}`,
+        );
+        this.sendErrorAndClose(s, 4004, "internal auth error");
+      })
+      .finally(() => {
+        s.joining = false;
+      });
+  }
+
+  /**
+   * A connection joins once. Another hello or register after the welcome
+   * would run the fresh-join path again and spawn a second avatar for the
+   * same client (orphaning the first); one sent while the first is still
+   * being checked would start another argon2 hash. Both are refused.
+   */
+  private beginJoin(s: ClientSession): boolean {
+    if (s.welcomed || s.joining) {
+      this.sendError(s, 4003, s.welcomed ? "already joined" : "join already in progress");
+      return false;
+    }
+    s.joining = true;
+    return true;
   }
 
   private async authenticate(
@@ -764,14 +785,19 @@ export class Gateway {
    * not kill the message pump.
    */
   private onRegister(s: ClientSession, payload: Uint8Array): void {
-    void this.registerAccount(s, payload).catch((err: unknown) => {
-      // Defense in depth: a store/argon2 failure must not kill the pump.
-      // eslint-disable-next-line no-console
-      console.error(
-        `[gateway] register error: ${err instanceof Error ? err.message : err}`,
-      );
-      this.sendErrorAndClose(s, 4004, "internal auth error");
-    });
+    if (!this.beginJoin(s)) return;
+    void this.registerAccount(s, payload)
+      .catch((err: unknown) => {
+        // Defense in depth: a store/argon2 failure must not kill the pump.
+        // eslint-disable-next-line no-console
+        console.error(
+          `[gateway] register error: ${err instanceof Error ? err.message : err}`,
+        );
+        this.sendErrorAndClose(s, 4004, "internal auth error");
+      })
+      .finally(() => {
+        s.joining = false;
+      });
   }
 
   private async registerAccount(
@@ -911,8 +937,11 @@ export class Gateway {
       const msg = decodeIntentMessage(payload);
       clientTick = msg.clientTick;
       entity = msg.entity;
-      intent = msg.intent;
+      const clean = sanitizeIntent(msg.intent);
+      if (clean === null) throw new Error("non-finite intent");
+      intent = clean;
     } catch {
+      s.droppedIntents += 1;
       this.sendError(s, 4003, "malformed intent");
       return;
     }
