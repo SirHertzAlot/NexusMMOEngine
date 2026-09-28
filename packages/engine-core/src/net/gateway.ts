@@ -260,6 +260,8 @@ export class Gateway {
 
   private wss: WebSocketServer | null = null;
   private httpServer: Server | null = null;
+  /** Every socket on the port (HTTP and upgraded WebSocket): closed with the gateway. */
+  private readonly portSockets = new Set<import("node:net").Socket>();
   private httpHandler: ((req: IncomingMessage, res: ServerResponse) => boolean) | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -344,6 +346,10 @@ export class Gateway {
       if (handler?.(req, res)) return;
       res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
     });
+    this.httpServer.on("connection", (sock: import("node:net").Socket) => {
+      this.portSockets.add(sock);
+      sock.once("close", () => this.portSockets.delete(sock));
+    });
     this.wss = new WebSocketServer({ server: this.httpServer });
     this.wss.on("connection", (socket: WebSocket, req: IncomingMessage) =>
       this.onConnection(socket, req),
@@ -394,13 +400,24 @@ export class Gateway {
     if (this.wss) {
       const wss = this.wss;
       this.wss = null;
-      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      // Sockets that never joined (no session) aren't closed above.
+      for (const ws of wss.clients) ws.terminate();
+      // Not awaited: on an external HTTP server, ws waits for its client
+      // set to empty, and the session sockets closed above had their
+      // listeners (ws's own bookkeeping among them) removed first. The
+      // port's sockets are destroyed below either way.
+      wss.close();
     }
     if (this.httpServer) {
       const server = this.httpServer;
       this.httpServer = null;
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      // Upgraded sockets aren't HTTP connections any more: server.close()
+      // would wait on them forever. Nothing on the port outlives the gateway.
       server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      for (const sock of this.portSockets) sock.destroy();
+      this.portSockets.clear();
+      await closed;
     }
   }
 
