@@ -20,6 +20,7 @@ import { BrowserSocket } from "@mmo-engine/mirror";
 import { InputState, bindInput } from "./input/input.js";
 import { WorldView, type GpuInfo } from "./render/world-view.js";
 import { PlaceholderAssets } from "./render/assets.js";
+import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import {
   Button,
   Card,
@@ -159,7 +160,9 @@ export function App(): React.ReactElement {
 
     const assets = new PlaceholderAssets();
     assetsRef.current = assets;
-    const view = new WorldView(canvas, assets, { chunkWorldSize: client.world?.chunkWorldSize });
+    // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
+    const pcg = new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken);
+    const view = new WorldView(canvas, assets, { chunkWorldSize: client.world?.chunkWorldSize, pcg });
     view.setWorld(client.world);
     viewRef.current = view;
     setGpu(view.gpu);

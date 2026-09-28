@@ -1,0 +1,78 @@
+// pcg.ridl — the region's PCG asset service (webrpc IDL, v1)
+//
+// Source of truth for the procedural-asset API a region serves to game
+// clients and the editor, next to its WebSocket gateway (same port). The
+// server (src/pcg/pcg-rpc.ts) and the browser client
+// (@mmo-engine/picg rpc-client) are hand-authored to the webrpc JSON
+// wire protocol, like world.ridl:
+//
+//   POST /rpc/Pcg/<Method>   Content-Type: application/json
+//   -> {"argName": ...}      <- {"outName": ...} | {"code": N, "msg": "..."}
+//
+// Auth: every method needs `Authorization: Bearer <session_token>` —
+// the token the gateway's welcome issued. Methods that change the world
+// (marked [edit]) also need the session's user to be an editor
+// (MMO_EDITORS; unset = every account, a dev convenience).
+//
+// Commands and queries travel here; their effects reach every client the
+// usual way (snapshot/delta over the WebSocket). Cooked meshes are binary:
+// GetAssetMesh returns a revision-stamped URL,
+//   GET /pcg/mesh/<assetHash>/<variantIndex>/<revision>  -> PCGM bytes
+// (same Bearer auth), immutable per revision so it caches forever.
+//
+// Slice 2 implements ListAssets, GetAssetMesh. The rest are declared for
+// slices 3-4 (the server answers 501 until then).
+
+webrpc = v1
+
+name = pcg
+version = v0.1.0
+
+service Pcg
+  - ListAssets() => (assets: []PcgAssetInfo)
+  - GetAssetMesh(assetHash: uint32, variant: uint16) => (mesh: PcgMeshRef)
+
+  # Slice 3: editor cards
+  - GetAsset(assetId: string) => (asset: PcgAssetDetail)
+  - SetAssetParameters(assetId: string, values: map<string,any>, opId: string) => (revision: uint32)  # [edit]
+  - GetEntity(entity: string) => (entity: EntityDetail)
+  - SetEntityComponents(entity: string, components: map<string,any>, opId: string) => ()  # [edit]
+
+  # Slice 4: graph editing
+  - SaveAssetGraph(assetId: string, graph: any, opId: string) => (revision: uint32)  # [edit]
+  - CookPreview(graph: any, seed: int32) => (mesh: PcgMeshRef)  # [edit]
+
+struct PcgAssetInfo
+  # Spawn-table asset id; entities carry AssetRef.assetHash = fnv1a32(id)
+  - id: string
+  - assetHash: uint32
+  - displayName: string
+  # Library path of the asset's .pcg graph
+  - graph: string
+  # Cooked shapes; AssetRef.variant % variants picks one
+  - variants: uint16
+  # Bumps whenever the asset's graph or parameters change
+  - revision: uint32
+
+struct PcgMeshRef
+  - assetHash: uint32
+  - variantIndex: uint16
+  - revision: uint32
+  # GET it (Bearer auth) for the PCGM bytes; empty when the asset has no mesh
+  - url: string
+  - vertexCount: uint32
+  - triangleCount: uint32
+
+struct PcgAssetDetail
+  - info: PcgAssetInfo
+  # The authoring graph (.pcg JSON), linked parts unresolved
+  - graph: any
+  # Exposed parameters (PICG parameter records) and their current values
+  - parameters: []any
+  - values: map<string,any>
+
+struct EntityDetail
+  - wireId: string
+  - components: map<string,any>
+  # The PCG asset that generates this entity's look, when there is one
+  - asset?: PcgAssetInfo

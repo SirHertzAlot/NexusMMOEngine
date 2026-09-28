@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "subgraphs": [
+    {
+      "guid": "5f0c2d6e8a9b4c1d9e7f3a2b1c0d4e5f",
+      "file": "parts/trunk.pcgsubgraph",
+      "name": "Trunk"
+    },
+    {
+      "guid": "a3b1c9d7e5f24a6b8c0d1e2f3a4b5c6d",
+      "file": "parts/crown-round.pcgsubgraph",
+      "name": "Round crown"
+    },
+    {
+      "guid": "7e6d5c4b3a2f41e0d9c8b7a6f5e4d3c2",
+      "file": "parts/crown-conifer.pcgsubgraph",
+      "name": "Conifer crown"
+    }
+  ],
+  "assets": [
+    {
+      "id": "oak",
+      "graph": "trees/oak.pcg",
+      "variants": 4,
+      "displayName": "Oak"
+    },
+    {
+      "id": "birch",
+      "graph": "trees/birch.pcg",
+      "variants": 4,
+      "displayName": "Birch"
+    },
+    {
+      "id": "pine",
+      "graph": "trees/pine.pcg",
+      "variants": 4,
+      "displayName": "Pine"
+    }
+  ]
+}

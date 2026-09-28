@@ -49,6 +49,7 @@
     "apps/editor",
     "packages/world-server",
     "packages/scatter",
+    "packages/picg",
     "packages/addons/scatter",
     "packages/addons/picg"
   ],

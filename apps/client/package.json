@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@mmo-engine/art": "0.1.0",
+    "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/schema": "0.1.0",
     "flatbuffers": "^25.9.23",
@@ -25,7 +26,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && npm run build:lib && vite build",
-    "build:deps": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror",
+    "build:deps": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/picg",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",

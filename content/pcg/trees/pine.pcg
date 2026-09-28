@@ -1,0 +1,168 @@
+{
+  "version": "3.0",
+  "name": "Pine",
+  "description": "Conifer: a short trunk inside a tall tiered cone of needles.",
+  "nodes": [
+    {
+      "id": "trunk",
+      "type": "SubgraphAsset",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "assetGuid": "5f0c2d6e8a9b4c1d9e7f3a2b1c0d4e5f",
+        "__nodeTitle": "Trunk"
+      },
+      "subgraphInterface": {
+        "name": "Trunk",
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "mesh",
+            "name": "Mesh",
+            "pinType": "SpatialMesh"
+          }
+        ]
+      }
+    },
+    {
+      "id": "crown",
+      "type": "SubgraphAsset",
+      "position": {
+        "x": 280,
+        "y": 0
+      },
+      "data": {
+        "assetGuid": "7e6d5c4b3a2f41e0d9c8b7a6f5e4d3c2",
+        "__nodeTitle": "Conifer crown"
+      },
+      "subgraphInterface": {
+        "name": "Conifer crown",
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "mesh",
+            "name": "Mesh",
+            "pinType": "SpatialMesh"
+          }
+        ]
+      }
+    },
+    {
+      "id": "merge",
+      "type": "MergeMesh",
+      "position": {
+        "x": 140,
+        "y": 160
+      },
+      "data": {}
+    },
+    {
+      "id": "normals",
+      "type": "ComputeNormals",
+      "position": {
+        "x": 140,
+        "y": 300
+      },
+      "data": {
+        "shadeMode": "auto",
+        "cuspAngle": 40
+      }
+    },
+    {
+      "id": "output",
+      "type": "Output",
+      "position": {
+        "x": 140,
+        "y": 440
+      },
+      "data": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "trunk.mesh->merge.in",
+      "source": "trunk",
+      "target": "merge",
+      "sourceHandle": "mesh",
+      "targetHandle": "in",
+      "sourcePinType": "SpatialMesh",
+      "targetPinType": "SpatialMesh"
+    },
+    {
+      "id": "crown.mesh->merge.in",
+      "source": "crown",
+      "target": "merge",
+      "sourceHandle": "mesh",
+      "targetHandle": "in",
+      "sourcePinType": "SpatialMesh",
+      "targetPinType": "SpatialMesh"
+    },
+    {
+      "id": "merge.out->normals.in",
+      "source": "merge",
+      "target": "normals",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "normals.out->output.in",
+      "source": "normals",
+      "target": "output",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    }
+  ],
+  "parameters": [
+    {
+      "id": "trunk_thickness",
+      "name": "TrunkThickness",
+      "type": "number",
+      "default": 0.2,
+      "exposed": true,
+      "targetNode": "trunk/sweep",
+      "targetProperty": "radiusScale",
+      "hasRange": true,
+      "min": 0.1,
+      "max": 0.5
+    },
+    {
+      "id": "crown_width",
+      "name": "CrownWidth",
+      "type": "number",
+      "default": 1.7,
+      "exposed": true,
+      "targetNode": "crown/tiers",
+      "targetProperty": "radiusScale",
+      "hasRange": true,
+      "min": 0.8,
+      "max": 3
+    },
+    {
+      "id": "ruffle",
+      "name": "Ruffle",
+      "type": "number",
+      "default": 0.12,
+      "exposed": true,
+      "targetNode": "crown/ruffle",
+      "targetProperty": "intensity",
+      "hasRange": true,
+      "min": 0,
+      "max": 0.5
+    },
+    {
+      "id": "needle_green",
+      "name": "NeedleGreen",
+      "type": "number",
+      "default": 0.27,
+      "exposed": true,
+      "targetNode": "crown/needles",
+      "targetProperty": "g",
+      "hasRange": true,
+      "min": 0.1,
+      "max": 0.6
+    }
+  ],
+  "subgraphs": []
+}
