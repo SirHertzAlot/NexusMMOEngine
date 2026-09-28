@@ -34,6 +34,35 @@ describe("world map codec", () => {
     );
   });
 
+  it("carries the water surface: levels within a step, dry ground as NaN", () => {
+    const n = 6;
+    const map: WorldMap = {
+      cell: 16, width: 3, depth: 2, originX: 0, originZ: 0,
+      heights: Float32Array.from([-20, -3, 4, 12, 40, 80]),
+      biome: new Uint8Array(n), biomes: ["sea"], river: new Uint8Array(n),
+      // The sea at 0, a lake at 95 m (above every height), dry cells.
+      water: Float32Array.from([0, 0, NaN, NaN, 95, NaN]),
+    };
+    const back = decodeWorldMap(JSON.parse(JSON.stringify(encodeWorldMap(map))));
+    const step = 115 / 65535;
+    assert.ok(back.water, "water layer decoded");
+    for (let i = 0; i < n; i++) {
+      if (Number.isNaN(map.water![i])) assert.ok(Number.isNaN(back.water[i]), `cell ${i} dry`);
+      else assert.ok(Math.abs(back.water[i] - map.water![i]) <= step, `cell ${i}: ${back.water[i]}`);
+    }
+    for (let i = 0; i < n; i++) assert.ok(Math.abs(back.heights[i] - map.heights[i]) <= step, `height ${i}`);
+  });
+
+  it("maps sent without water decode without it", () => {
+    const map: WorldMap = {
+      cell: 8, width: 1, depth: 1, originX: 0, originZ: 0,
+      heights: new Float32Array(1), biome: new Uint8Array(1), biomes: [], river: new Uint8Array(1),
+    };
+    const wire = encodeWorldMap(map);
+    assert.equal("water" in wire, false);
+    assert.equal(decodeWorldMap(wire).water, undefined);
+  });
+
   it("rejects layers of the wrong size", () => {
     const map: WorldMap = {
       cell: 8, width: 2, depth: 2, originX: 0, originZ: 0,

@@ -159,7 +159,8 @@ export function App(): React.ReactElement {
 
     const assets = new PlaceholderAssets();
     assetsRef.current = assets;
-    const view = new WorldView(canvas, assets);
+    const view = new WorldView(canvas, assets, { chunkWorldSize: client.world?.chunkWorldSize });
+    view.setWorld(client.world);
     viewRef.current = view;
     setGpu(view.gpu);
     if (view.gpu.software) {
@@ -240,7 +241,7 @@ export function App(): React.ReactElement {
   const toggleWireframe = (): void => {
     const next = !wireframe;
     setWireframe(next);
-    assetsRef.current?.setTerrainWireframe(next);
+    viewRef.current?.setTerrainWireframe(next);
   };
 
   const toggleShowcase = (): void => {
@@ -253,7 +254,7 @@ export function App(): React.ReactElement {
     return (
       <div className="relative h-full w-full">
         <canvas ref={canvasRef} className="block h-full w-full" />
-        <div className="absolute left-4 top-4 rounded-md bg-card/90 px-4 py-3 text-sm shadow">
+        <div className="absolute left-4 top-4 rounded-md bg-slate-950/75 px-4 py-3 text-sm shadow backdrop-blur-sm">
           <div className="font-medium text-foreground">mirror client</div>
           <div className="mt-1 space-y-0.5 text-muted-foreground">
             <div>tick <span className="text-foreground">{hud.tick}</span></div>

@@ -6,7 +6,9 @@
  *
  * The map travels inside the JSON welcome, so its arrays are base64:
  * heights as u16 over [minHeight, maxHeight] (~0.5 cm steps over a 300 m
- * range), biome and river as u8. Browser- and Node-safe (atob/btoa).
+ * range), biome and river as u8, and the water surface (sea and lakes) as
+ * u16 over the same range with 0xffff for dry ground. Browser- and
+ * Node-safe (atob/btoa).
  */
 
 /** Inclusive chunk range. */
@@ -31,6 +33,8 @@ export interface WorldMapWire {
   /** Biome ids; biome map values index this list. */
   biomes: string[];
   river: string;
+  /** Water surface height per cell (absent: worlds from before water was sent). */
+  water?: string;
 }
 
 export interface WorldInfo {
@@ -38,6 +42,8 @@ export interface WorldInfo {
   chunkWorldSize: number;
   bounds: ChunkRange;
   map: WorldMapWire;
+  /** Sea level, metres (absent: a world without a sea level on record). */
+  seaLevel?: number;
 }
 
 /** A decoded world map. */
@@ -51,7 +57,12 @@ export interface WorldMap {
   biome: Uint8Array;
   biomes: string[];
   river: Uint8Array;
+  /** Water surface height per cell (sea or lake), NaN on dry ground; absent if not sent. */
+  water?: Float32Array;
 }
+
+/** Water layer value for dry ground. */
+const DRY = 0xffff;
 
 function toBase64(bytes: Uint8Array): string {
   let s = "";
@@ -74,11 +85,18 @@ export function encodeWorldMap(map: WorldMap): WorldMapWire {
   if (map.heights.length !== n || map.biome.length !== n || map.river.length !== n) {
     throw new Error(`world map: every layer needs ${map.width}x${map.depth} cells`);
   }
+  if (map.water && map.water.length !== n) throw new Error(`world map: every layer needs ${map.width}x${map.depth} cells`);
   let min = Infinity;
   let max = -Infinity;
   for (const h of map.heights) {
     if (h < min) min = h;
     if (h > max) max = h;
+  }
+  // Water surfaces share the range (a lake can sit above every mean height).
+  for (const w of map.water ?? []) {
+    if (Number.isNaN(w)) continue;
+    if (w < min) min = w;
+    if (w > max) max = w;
   }
   const span = max > min ? max - min : 1;
   const q = new Uint8Array(n * 2);
@@ -86,6 +104,16 @@ export function encodeWorldMap(map: WorldMap): WorldMapWire {
     const v = Math.round(((map.heights[i] - min) / span) * 65535);
     q[2 * i] = v & 0xff;
     q[2 * i + 1] = v >> 8;
+  }
+  let water: string | undefined;
+  if (map.water) {
+    const w = new Uint8Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const v = Number.isNaN(map.water[i]) ? DRY : Math.min(DRY - 1, Math.round(((map.water[i] - min) / span) * 65535));
+      w[2 * i] = v & 0xff;
+      w[2 * i + 1] = v >> 8;
+    }
+    water = toBase64(w);
   }
   return {
     cell: map.cell,
@@ -99,6 +127,7 @@ export function encodeWorldMap(map: WorldMap): WorldMapWire {
     biome: toBase64(map.biome),
     biomes: map.biomes,
     river: toBase64(map.river),
+    ...(water !== undefined ? { water } : {}),
   };
 }
 
@@ -113,6 +142,16 @@ export function decodeWorldMap(wire: WorldMapWire): WorldMap {
   const span = wire.maxHeight > wire.minHeight ? wire.maxHeight - wire.minHeight : 1;
   const heights = new Float32Array(n);
   for (let i = 0; i < n; i++) heights[i] = wire.minHeight + ((q[2 * i] | (q[2 * i + 1] << 8)) / 65535) * span;
+  let water: Float32Array | undefined;
+  if (wire.water !== undefined) {
+    const w = fromBase64(wire.water);
+    if (w.length !== 2 * n) throw new Error(`world map: layers don't match ${wire.width}x${wire.depth} cells`);
+    water = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = w[2 * i] | (w[2 * i + 1] << 8);
+      water[i] = v === DRY ? Number.NaN : wire.minHeight + (v / 65535) * span;
+    }
+  }
   return {
     cell: wire.cell,
     width: wire.width,
@@ -123,5 +162,6 @@ export function decodeWorldMap(wire: WorldMapWire): WorldMap {
     biome,
     biomes: wire.biomes,
     river,
+    ...(water !== undefined ? { water } : {}),
   };
 }

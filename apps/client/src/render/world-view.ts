@@ -7,12 +7,19 @@
  * when their entity despawns. Nothing here simulates — positions come
  * from the server, full stop (skill operating rule 1).
  *
+ * The ground is TerrainRenderer's: the streamed chunks near the player,
+ * and the whole world far away from the welcome's coarse map, so
+ * mountains stand on the horizon kilometres off; WaterRenderer lays the
+ * sea and lakes over it. A daylight haze (the scene fog) fades distance
+ * into the sky, which is what makes far things read as far.
+ *
  * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
- * BodyConfig shape, flat terrain planes per Chunk. The AssetProvider
- * abstraction is the seam where real art plugs in later.
+ * BodyConfig shape. The AssetProvider abstraction is the seam where real
+ * art plugs in later.
  */
 
 import * as THREE from "three";
+import { decodeWorldMap, type WorldInfo } from "@mmo-engine/protocol";
 import type { MirrorState } from "@mmo-engine/mirror";
 import type { Interpolator } from "@mmo-engine/mirror";
 import {
@@ -22,6 +29,17 @@ import {
 import { updateTerrainFx } from "./terrain-fx.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
+import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { WaterRenderer } from "./water.js";
+
+/** Sky and haze colour (the fog fades distance into it). */
+const SKY = 0x9fc0dc;
+/** Haze: clear to FOG_NEAR metres, gone into the sky by FOG_FAR. */
+const FOG_NEAR = 200;
+const FOG_FAR = 3200;
+/** Camera range: the far plane sits just past the haze. */
+const CAMERA_NEAR = 0.5;
+const CAMERA_FAR = FOG_FAR + 800;
 
 export interface WorldViewOptions {
   /** Chunk world size in units (server MMO_CHUNK_SIZE, default 16). */
@@ -32,9 +50,6 @@ interface TrackedMesh {
   object: THREE.Object3D;
   /** True once a BodyConfig row shaped this mesh (else unit-box stand-in). */
   shaped: boolean;
-  isTerrain: boolean;
-  /** Terrain only: built from real heights (false = flat stand-in). */
-  displaced?: boolean;
 }
 
 /** Which WebGL implementation the browser actually gave us. */
@@ -68,6 +83,8 @@ export class WorldView {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly meshes = new Map<bigint, TrackedMesh>();
+  private readonly terrain: TerrainRenderer;
+  private readonly water = new WaterRenderer();
   readonly gpu: GpuInfo;
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
@@ -92,10 +109,14 @@ export class WorldView {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.gpu = detectGpu(this.renderer);
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(60, 1, CAMERA_NEAR, CAMERA_FAR);
 
-    this.scene.background = new THREE.Color(0x0b1020);
-    this.scene.fog = new THREE.Fog(0x0b1020, 40, 160);
+    this.scene.background = new THREE.Color(SKY);
+    this.scene.fog = new THREE.Fog(SKY, FOG_NEAR, FOG_FAR);
+
+    this.terrain = new TerrainRenderer(this.chunkWorldSize);
+    this.scene.add(this.terrain.group);
+    this.scene.add(this.water.group);
 
     const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
     this.scene.add(hemi);
@@ -122,6 +143,21 @@ export class WorldView {
     this.canvas.addEventListener("pointermove", this.onPointerMove);
 
     this.resize();
+  }
+
+  /**
+   * The baked world from the welcome (coarse map, extent, sea level): far
+   * terrain, ground colours, and water. Null (legacy world): chunks only.
+   */
+  setWorld(world: WorldInfo | null): void {
+    const map = world ? decodeWorldMap(world.map) : null;
+    this.terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
+    this.water.setWorld(map, world?.seaLevel ?? null);
+  }
+
+  setTerrainWireframe(on: boolean): void {
+    this.terrain.setWireframe(on);
+    this.water.setWireframe(on);
   }
 
   /** Toggle the elemental-orb FX showcase (ring placed ahead of the player). */
@@ -167,7 +203,7 @@ export class WorldView {
     lookYaw: number,
     lookPitch: number,
   ): void {
-    // Remove meshes for despawned entities.
+    // Remove meshes and terrain for despawned entities.
     for (const [key, t] of this.meshes) {
       if (!state.entities.has(key)) {
         this.scene.remove(t.object);
@@ -176,49 +212,32 @@ export class WorldView {
         this.meshes.delete(key);
       }
     }
+    const gone: bigint[] = [];
+    for (const wid of this.terrain.chunkWireIds()) if (!state.entities.has(wid)) gone.push(wid);
+    for (const wid of gone) this.terrain.removeChunk(wid);
 
     let playerPos: THREE.Vector3 | null = null;
 
     for (const [wid, e] of state.entities) {
       const key = wid;
+      // Terrain chunks: TerrainRenderer (idempotent; rebuilds a flat
+      // stand-in once, when the chunk's heights arrive).
+      if (e.chunk) {
+        this.terrain.ensureChunk(wid, e.chunk);
+        continue;
+      }
       let tracked = this.meshes.get(key);
 
-      // Terrain chunks render even without a Transform row.
       if (!tracked) {
-        if (e.chunk) {
-          const obj = this.assets.terrainMesh(e.chunk, this.chunkWorldSize);
-          this.scene.add(obj);
-          this.meshes.set(key, {
-            object: obj,
-            shaped: true,
-            isTerrain: true,
-            displaced: e.chunk.heights !== null,
-          });
-        } else if (e.transform) {
-          const obj = this.makeBodyMesh(wid, e.body, e.asset);
-          this.scene.add(obj);
-          this.meshes.set(key, {
-            object: obj,
-            shaped: e.body !== undefined,
-            isTerrain: false,
-          });
-          this.pickMap.set(obj, wid);
-          // Spawn portal for newly-appearing entities.
-          this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
-        } else {
-          continue;
-        }
+        if (!e.transform) continue;
+        const obj = this.makeBodyMesh(wid, e.body, e.asset);
+        this.scene.add(obj);
+        this.meshes.set(key, { object: obj, shaped: e.body !== undefined });
+        this.pickMap.set(obj, wid);
+        // Spawn portal for newly-appearing entities.
+        this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
         tracked = this.meshes.get(key)!;
-      } else if (tracked.isTerrain && !tracked.displaced && e.chunk?.heights) {
-        // The chunk first arrived without heights (flat stand-in); now the
-        // authoritative heightfield is here. Terrain is deterministic, so
-        // this one upgrade is the only rebuild a chunk ever needs.
-        this.scene.remove(tracked.object);
-        disposeObject(tracked.object);
-        tracked.object = this.assets.terrainMesh(e.chunk, this.chunkWorldSize);
-        tracked.displaced = true;
-        this.scene.add(tracked.object);
-      } else if (!tracked.shaped && e.body && !tracked.isTerrain) {
+      } else if (!tracked.shaped && e.body) {
         // BodyConfig arrived after the stand-in: reshape.
         this.scene.remove(tracked.object);
         this.pickMap.delete(tracked.object);
@@ -230,7 +249,7 @@ export class WorldView {
         this.pickMap.set(obj, wid);
       }
 
-      if (tracked.isTerrain || !e.transform) continue;
+      if (!e.transform) continue;
 
       const sample = interpolator.sample(wid, alpha);
       const t = sample ?? e.transform;
@@ -241,7 +260,7 @@ export class WorldView {
       if (playerWireId !== null && wid === playerWireId) {
         playerPos = tracked.object.position.clone();
         highlight(tracked.object, "player");
-      } else if (!tracked.isTerrain) {
+      } else {
         highlight(tracked.object, wid === this.hoveredWireId ? "hover" : "none");
       }
     }
@@ -256,6 +275,8 @@ export class WorldView {
     this.showcase.update(now, dt);
 
     this.updateCamera(playerPos, lookYaw, lookPitch);
+    this.terrain.update();
+    this.water.update(now);
     updateTerrainFx(now);
     this.renderer.render(this.scene, this.camera);
   }
@@ -317,6 +338,8 @@ export class WorldView {
       disposeObject(t.object);
     }
     this.meshes.clear();
+    this.terrain.dispose();
+    this.water.dispose();
     this.renderer.dispose();
   }
 }

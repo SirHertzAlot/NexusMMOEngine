@@ -11,7 +11,11 @@
  *
  * The far-horizon variant discards fragments over loaded chunks (a mask
  * texture with one texel per world chunk), so the detailed chunks show
- * wherever they exist and the coarse map fills in everywhere else.
+ * wherever they exist and the coarse map fills in everywhere else. Next
+ * to loaded chunks it also sinks a few metres (never below the sea):
+ * the coarse map can stand above a chunk's border, and a view ray
+ * skimming the border would then slip between the two into the sky.
+ * Sunk, it's always below the border, where the chunks' skirts meet it.
  *
  * Colours are linear (three.js colour management): the ground texture is
  * sRGB and decoded on sampling.
@@ -28,7 +32,16 @@ export interface TerrainUniforms {
   uLoaded: THREE.IUniform<THREE.Texture | null>;
   /** World rect covered by uLoaded, like uGroundRect. */
   uLoadedRect: THREE.IUniform<THREE.Vector4>;
+  /** Far map cell size, metres: how far "next to a loaded chunk" reaches. */
+  uFarCell: THREE.IUniform<number>;
+  /** Sea level: the far map never sinks below it (NO_SEA: no sea). */
+  uSeaLevel: THREE.IUniform<number>;
 }
+
+/** How far the far map sinks next to loaded chunks, metres (the coarse/fine gap is ~2-3 m). */
+export const FAR_SINK = 4;
+/** "No sea level": nothing to stay above. */
+export const NO_SEA = -1e6;
 
 /** GLSL can't hold Infinity reliably: "no snow" is a line nothing reaches. */
 export const NO_SNOW = 1e6;
@@ -36,8 +49,29 @@ export const NO_SNOW = 1e6;
 const VERTEX_HEAD = /* glsl */ `
   varying vec3 vTerrainPos;
   varying vec3 vTerrainNormal;
+#ifdef TERRAIN_FAR
+  uniform sampler2D uLoaded;
+  uniform vec4 uLoadedRect;
+  uniform float uFarCell;
+  uniform float uSeaLevel;
+  float tLoaded(vec2 xz) {
+    vec2 luv = (xz - uLoadedRect.xy) / uLoadedRect.zw;
+    if (any(lessThan(luv, vec2(0.0))) || any(greaterThan(luv, vec2(1.0)))) return 0.0;
+    return step(0.5, texture2D(uLoaded, luv).r);
+  }
+#endif
 `;
 const VERTEX_BODY = /* glsl */ `
+#ifdef TERRAIN_FAR
+  {
+    vec2 xz = (modelMatrix * vec4(transformed, 1.0)).xz;
+    float near = 0.0;
+    for (int dz = -1; dz <= 1; dz++) {
+      for (int dx = -1; dx <= 1; dx++) near = max(near, tLoaded(xz + vec2(float(dx), float(dz)) * uFarCell));
+    }
+    transformed.y -= near * clamp(transformed.y - uSeaLevel - 0.5, 0.0, ${FAR_SINK.toFixed(1)});
+  }
+#endif
   vTerrainPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
   vTerrainNormal = normalize(mat3(modelMatrix) * objectNormal);
 `;
@@ -117,6 +151,8 @@ export function createTerrainUniforms(): TerrainUniforms {
     uSnowLine: { value: NO_SNOW },
     uLoaded: { value: null },
     uLoadedRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uFarCell: { value: 16 },
+    uSeaLevel: { value: NO_SEA },
   };
 }
 

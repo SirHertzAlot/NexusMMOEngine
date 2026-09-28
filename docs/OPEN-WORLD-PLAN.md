@@ -211,7 +211,13 @@ reproducible (same spec → same bytes), not identical across platforms.
       those (today every chunk ships in every snapshot).
 - [ ] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
       tiles), with no cracks between levels.
-- [ ] Frustum culling, instanced props, far-horizon terrain.
+- [x] Far-horizon terrain: the whole world from the welcome's 16 m map,
+      hidden over loaded chunks (a per-chunk mask) and sunk a few metres
+      beside them so no sky shows at the seam; chunk skirts close the rest.
+      Water: the sea and lakes as flat sheets from the map's water layer,
+      the open sea running on past the edge where the edge is sea. A
+      daylight haze (fog 200 m → 3.2 km) makes distance read as distance.
+- [ ] Frustum culling, instanced props.
 - [ ] **Terrain texturing by slope, height, and biome** (our own three.js
       shader; LYGIA is not used): steep faces take a rock-wall texture
       (triplanar, so cliffs don't stretch), gentle slopes grass or the
