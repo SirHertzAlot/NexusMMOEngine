@@ -229,6 +229,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     store.putMap("rain", map(survey.rain));
     store.putMap("temperature", map(survey.temperature));
     store.putMap("water", map(survey.water));
+    store.putMap("water_level", map(survey.waterLevel));
     store.putMap("ice", map(survey.ice));
     store.putMap("melt", map(survey.meltMm));
     store.putMap("sun", map(survey.sun));

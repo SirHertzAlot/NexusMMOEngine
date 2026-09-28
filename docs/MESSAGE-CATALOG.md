@@ -10,7 +10,7 @@ u64 ids travel as JSON strings (JS number precision).
 |------|------|-----|----------|--------|---------------------|
 | 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 4, client: string, username: string, password: string, want_snapshot: bool}` · token: `{protocol: 4, client: string, token: "64 hex", want_snapshot: bool}` — exactly one variant | Authentication. Once per connection. |
 | 0x02 | `welcome` | S→C | JSON | `{protocol: 4, player_entity: "u64", server_tick: u64, tick_hz: 30, snapshot_every: 300, session_token: "64 hex"}` | Assigns identity, syncs clock/cadence params, issues the session token. Once per connection. |
-| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, 5 SoA component blocks, spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
+| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, BodyConfig, AssetRef, Locomotion), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
 | 0x04 | `delta` | S→C | FlatBuffers `Delta` | tick, base_tick, changed component blocks only, spawned[], despawned[] | Per-tick state-change events (EDA: state out as events). 30 Hz. |
 | 0x05 | `intent` | C→S | FlatBuffers `IntentMessage` | `{client_tick: u64, entity: u64, intent: PlayerIntent}` | Player input events into the sim (EDA: intents in as events). ≤ 1 per tick per client. |
 | 0x06 | `ping` | C↔S | JSON | `{t: client_ms}` | Heartbeat + RTT. Every 5 s. |
@@ -85,11 +85,37 @@ Notes:
   entity: uint64; intent: PlayerIntent; }` (slice 1.3, additive, DRY — one
   schema).
 
+## Movement: walking, swimming, flying
+
+- **`Locomotion` component** (`mode: u8, abilities: u8, breath: f32`),
+  a SoA block appended to `Snapshot` and `Delta` as `locomotions` (older
+  snapshots without it decode with no rows). `mode` is `LocomotionMode`
+  (0 ground, 1 swim, 2 fly); `abilities` is a bit set of `Ability`
+  (0x01 swim, 0x02 fly); `breath` is the air left, 1 = full lungs.
+  Players spawn able to swim; the server grants flight
+  (`MMO_PLAYER_ABILITIES=swim,fly`, or the gateway's `playerAbilities`) —
+  expansions (mounts, spells, gear) set the bits per entity.
+- **Intent fields.** `my` is the up/down wish (−1..1): swim or fly up and
+  down; on the ground it does nothing (jumping is the `jump` flag).
+  `buttons` bit `IntentButton.ToggleFlight` (0x01) takes off or lands on
+  the press (held across ticks it toggles once). The client binds Space
+  (jump / up), C (down) and F (flight).
+- **Swimming** (server, CharacterSystem) starts where the water under you
+  is at least 1.3 m deep and you are below its surface; the water surface
+  comes from the baked world (`water_level` map: sea and lakes). Afloat,
+  the head stays above the surface; `my < 0` dives to the bottom. The
+  breath drains while the head is under (30 s of air) and comes back 3×
+  as fast; with none left the swimmer is pushed up and loses 10 health a
+  second. Back in the shallows you stand and walk. Swim speed 3 m/s.
+- **Flying** has no gravity: `my` climbs or descends at 6 m/s, up to
+  250 m above the ground, at 12 m/s across. Descending onto the ground
+  lands; into deep water, swims; toggling off mid-air falls.
+
 ## Session & reconnect semantics (slice 1.3, auth updated slice 1.4)
 
 - **Identity.** The server-issued session token is the client identity.
   The first credentials `hello` spawns a player entity (Transform +
-  Velocity + PlayerIntent + Health) and binds it to the session; the
+  Velocity + PlayerIntent + Health + Locomotion) and binds it to the session; the
   binding is `session_token → player_entity` for the life of the session.
 - **Authority.** A client drives ONLY its own player entity. Intents naming
   any other entity are rejected with `error` 4003 and never reach the sim.
@@ -97,7 +123,8 @@ Notes:
   counted (`droppedIntents`), so a client sends at most one intent per
   server tick (the mirror client holds a later change for the next tick).
   Intents carrying a non-finite number are rejected with `error` 4003; the
-  move vector is capped at length 1 (the server owns the speed).
+  horizontal move (`mx`, `mz`) is capped at length 1 and `my` at ±1 (the
+  server owns the speed).
 - **One join per connection.** A `hello` or `register` on a connection
   that has joined, or while one is still being checked, is refused with
   `error` 4003 and changes nothing.

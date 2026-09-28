@@ -33,13 +33,35 @@ export {
   PathRequestStatus,
   MAX_PATH_WAYPOINTS,
   AssetRef,
+  Locomotion,
 } from "./components.js";
 
 export { SimWorld, SimEventEmitter } from "./world.js";
 export type { QueuedIntent, SimEventName, SimEventPayload, SimEventHandler } from "./world.js";
 
-export { IntentSystem, IntegrateSystem, CharacterSystem, PhysicsSystem, createJoltBackend, terrainHeightAt, PLAYER_SPEED, JUMP_SPEED, GRAVITY } from "./systems.js";
-export type { SimSystem, PhysicsBackend, PhysicsAddBatch } from "./systems.js";
+export {
+  IntentSystem,
+  IntegrateSystem,
+  CharacterSystem,
+  PhysicsSystem,
+  createJoltBackend,
+  terrainHeightAt,
+  PLAYER_SPEED,
+  JUMP_SPEED,
+  GRAVITY,
+  SWIM_SPEED,
+  FLY_SPEED,
+  SWIM_VERTICAL_SPEED,
+  FLY_VERTICAL_SPEED,
+  SWIM_DEPTH,
+  FLOAT_DEPTH,
+  HEAD_HEIGHT,
+  BREATH_SECONDS,
+  DROWN_DAMAGE_PER_SECOND,
+  MAX_FLIGHT_HEIGHT,
+} from "./systems.js";
+export type { SimSystem, PhysicsBackend, PhysicsAddBatch, WaterSurface } from "./systems.js";
+export { waterSurfaceFromMaps } from "./terrain/water-surface.js";
 
 export {
   collectFullState,
@@ -60,6 +82,7 @@ export type {
   HealthRow,
   BodyConfigRow,
   AssetRefRow,
+  LocomotionRow,
   CollectedState,
   DiffResult,
 } from "./snapshot.js";
