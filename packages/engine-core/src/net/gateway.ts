@@ -40,7 +40,7 @@
 import { addComponent, defineQuery } from "bitecs";
 import { WebSocket, WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
-import type { IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import {
   decodeControl,
   decodeEnvelope,
@@ -162,6 +162,12 @@ export interface GatewayOptions {
    * Flight is for expansions to grant (MMO_PLAYER_ABILITIES=swim,fly).
    */
   playerAbilities?: number;
+  /**
+   * HTTP requests on the game port (webrpc services, binary downloads):
+   * return true when handled. Everything else gets 404; WebSocket
+   * upgrades go to the gateway.
+   */
+  http?: (req: IncomingMessage, res: ServerResponse) => boolean;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -219,6 +225,7 @@ export class Gateway {
       | "spawnPoint"
       | "worldInfo"
       | "playerAbilities"
+      | "http"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -252,6 +259,10 @@ export class Gateway {
   private readonly tokenToClient = new Map<string, string>();
 
   private wss: WebSocketServer | null = null;
+  private httpServer: Server | null = null;
+  /** Every socket on the port (HTTP and upgraded WebSocket): closed with the gateway. */
+  private readonly portSockets = new Set<import("node:net").Socket>();
+  private httpHandler: ((req: IncomingMessage, res: ServerResponse) => boolean) | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
   private playerSeq = 0;
@@ -285,6 +296,7 @@ export class Gateway {
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
+    this.httpHandler = opts.http ?? null;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -327,12 +339,27 @@ export class Gateway {
   /** Bind the WebSocket server. Does NOT start the tick driver. */
   async listen(): Promise<number> {
     if (this.wss) throw new Error("gateway: already listening");
-    this.wss = new WebSocketServer({ port: this.opts.port });
+    // One port: HTTP for webrpc services (opts.http), upgraded to
+    // WebSocket for the game protocol.
+    const handler = this.httpHandler;
+    this.httpServer = createServer((req, res) => {
+      if (handler?.(req, res)) return;
+      res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+    });
+    this.httpServer.on("connection", (sock: import("node:net").Socket) => {
+      this.portSockets.add(sock);
+      sock.once("close", () => this.portSockets.delete(sock));
+    });
+    this.wss = new WebSocketServer({ server: this.httpServer });
     this.wss.on("connection", (socket: WebSocket, req: IncomingMessage) =>
       this.onConnection(socket, req),
     );
-    await new Promise<void>((resolve) => this.wss!.once("listening", resolve));
-    const addr = this.wss.address() as AddressInfo | null;
+    const server = this.httpServer;
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(this.opts.port, () => resolve());
+    });
+    const addr = server.address() as AddressInfo | null;
     return addr ? addr.port : 0;
   }
 
@@ -373,8 +400,43 @@ export class Gateway {
     if (this.wss) {
       const wss = this.wss;
       this.wss = null;
-      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      // Sockets that never joined (no session) aren't closed above.
+      for (const ws of wss.clients) ws.terminate();
+      // Not awaited: on an external HTTP server, ws waits for its client
+      // set to empty, and the session sockets closed above had their
+      // listeners (ws's own bookkeeping among them) removed first. The
+      // port's sockets are destroyed below either way.
+      wss.close();
     }
+    if (this.httpServer) {
+      const server = this.httpServer;
+      this.httpServer = null;
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      // Upgraded sockets aren't HTTP connections any more: server.close()
+      // would wait on them forever. Nothing on the port outlives the gateway.
+      server.closeAllConnections();
+      for (const sock of this.portSockets) sock.destroy();
+      this.portSockets.clear();
+      await closed;
+    }
+  }
+
+  /**
+   * Set the HTTP handler (see GatewayOptions.http) before listen(): for
+   * services that authenticate through this gateway's sessions.
+   */
+  setHttpHandler(handler: (req: IncomingMessage, res: ServerResponse) => boolean): void {
+    if (this.httpServer) throw new Error("gateway: set the HTTP handler before listen()");
+    this.httpHandler = handler;
+  }
+
+  /**
+   * The account behind a live session token (the welcome's
+   * session_token), or null: how HTTP services authenticate callers.
+   */
+  sessionUser(token: string): { username: string } | null {
+    const session = this.authSessions.get(token);
+    return session ? { username: session.username } : null;
   }
 
   // ------------------------------------------------------------ tick

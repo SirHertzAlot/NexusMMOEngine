@@ -1,0 +1,96 @@
+{
+  "version": "1.0",
+  "name": "Round crown",
+  "description": "A broadleaf crown: a lumpy ellipsoid of leaves. Size, height and lumpiness are the knobs.",
+  "inputs": [],
+  "outputs": [
+    {
+      "id": "mesh",
+      "name": "Mesh",
+      "pinType": "SpatialMesh"
+    }
+  ],
+  "parameters": [],
+  "nodes": [
+    {
+      "id": "ball",
+      "type": "Sphere",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "radius": [
+          1.7,
+          1.35,
+          1.7
+        ],
+        "center": [
+          0,
+          3.9,
+          0
+        ],
+        "rows": 9,
+        "columns": 14
+      }
+    },
+    {
+      "id": "lumpy",
+      "type": "MeshNoiseDeform",
+      "position": {
+        "x": 0,
+        "y": 140
+      },
+      "data": {
+        "intensity": 0.38,
+        "scale": 1.2
+      }
+    },
+    {
+      "id": "leaves",
+      "type": "VertexColor",
+      "position": {
+        "x": 0,
+        "y": 280
+      },
+      "data": {
+        "r": 0.2,
+        "g": 0.42,
+        "b": 0.15
+      }
+    },
+    {
+      "id": "subgraph_output",
+      "type": "SubgraphOutput",
+      "position": {
+        "x": 0,
+        "y": 420
+      },
+      "data": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "ball.out->lumpy.in",
+      "source": "ball",
+      "target": "lumpy",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "lumpy.out->leaves.in",
+      "source": "lumpy",
+      "target": "leaves",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "leaves.out->subgraph_output.mesh",
+      "source": "leaves",
+      "target": "subgraph_output",
+      "sourceHandle": "out",
+      "targetHandle": "mesh"
+    }
+  ],
+  "subgraphs": []
+}

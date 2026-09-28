@@ -1,0 +1,220 @@
+{
+  "version": "3.0",
+  "name": "Birch",
+  "description": "Slender pale trunk with a small high crown of light leaves.",
+  "nodes": [
+    {
+      "id": "trunk",
+      "type": "SubgraphAsset",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "assetGuid": "5f0c2d6e8a9b4c1d9e7f3a2b1c0d4e5f",
+        "__nodeTitle": "Trunk"
+      },
+      "subgraphInterface": {
+        "name": "Trunk",
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "mesh",
+            "name": "Mesh",
+            "pinType": "SpatialMesh"
+          }
+        ]
+      }
+    },
+    {
+      "id": "crown",
+      "type": "SubgraphAsset",
+      "position": {
+        "x": 280,
+        "y": 0
+      },
+      "data": {
+        "assetGuid": "a3b1c9d7e5f24a6b8c0d1e2f3a4b5c6d",
+        "__nodeTitle": "Round crown"
+      },
+      "subgraphInterface": {
+        "name": "Round crown",
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "mesh",
+            "name": "Mesh",
+            "pinType": "SpatialMesh"
+          }
+        ]
+      }
+    },
+    {
+      "id": "merge",
+      "type": "MergeMesh",
+      "position": {
+        "x": 140,
+        "y": 160
+      },
+      "data": {}
+    },
+    {
+      "id": "normals",
+      "type": "ComputeNormals",
+      "position": {
+        "x": 140,
+        "y": 300
+      },
+      "data": {
+        "shadeMode": "auto",
+        "cuspAngle": 40
+      }
+    },
+    {
+      "id": "output",
+      "type": "Output",
+      "position": {
+        "x": 140,
+        "y": 440
+      },
+      "data": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "trunk.mesh->merge.in",
+      "source": "trunk",
+      "target": "merge",
+      "sourceHandle": "mesh",
+      "targetHandle": "in",
+      "sourcePinType": "SpatialMesh",
+      "targetPinType": "SpatialMesh"
+    },
+    {
+      "id": "crown.mesh->merge.in",
+      "source": "crown",
+      "target": "merge",
+      "sourceHandle": "mesh",
+      "targetHandle": "in",
+      "sourcePinType": "SpatialMesh",
+      "targetPinType": "SpatialMesh"
+    },
+    {
+      "id": "merge.out->normals.in",
+      "source": "merge",
+      "target": "normals",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "normals.out->output.in",
+      "source": "normals",
+      "target": "output",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    }
+  ],
+  "parameters": [
+    {
+      "id": "trunk_thickness",
+      "name": "TrunkThickness",
+      "type": "number",
+      "default": 0.13,
+      "exposed": true,
+      "targetNode": "trunk/sweep",
+      "targetProperty": "radiusScale",
+      "hasRange": true,
+      "min": 0.05,
+      "max": 0.3
+    },
+    {
+      "id": "bark_r",
+      "name": "BarkR",
+      "type": "number",
+      "default": 0.86,
+      "exposed": true,
+      "targetNode": "trunk/bark",
+      "targetProperty": "r",
+      "hasRange": true,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "id": "bark_g",
+      "name": "BarkG",
+      "type": "number",
+      "default": 0.84,
+      "exposed": true,
+      "targetNode": "trunk/bark",
+      "targetProperty": "g",
+      "hasRange": true,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "id": "bark_b",
+      "name": "BarkB",
+      "type": "number",
+      "default": 0.78,
+      "exposed": true,
+      "targetNode": "trunk/bark",
+      "targetProperty": "b",
+      "hasRange": true,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "id": "crown_size",
+      "name": "CrownSize",
+      "type": "vector3",
+      "default": [
+        1.1,
+        1.5,
+        1.1
+      ],
+      "exposed": true,
+      "targetNode": "crown/ball",
+      "targetProperty": "radius",
+      "hasRange": false
+    },
+    {
+      "id": "crown_center",
+      "name": "CrownCenter",
+      "type": "vector3",
+      "default": [
+        0,
+        4.2,
+        0
+      ],
+      "exposed": true,
+      "targetNode": "crown/ball",
+      "targetProperty": "center",
+      "hasRange": false
+    },
+    {
+      "id": "leaf_green",
+      "name": "LeafGreen",
+      "type": "number",
+      "default": 0.58,
+      "exposed": true,
+      "targetNode": "crown/leaves",
+      "targetProperty": "g",
+      "hasRange": true,
+      "min": 0.2,
+      "max": 0.8
+    },
+    {
+      "id": "lumpiness",
+      "name": "Lumpiness",
+      "type": "number",
+      "default": 0.25,
+      "exposed": true,
+      "targetNode": "crown/lumpy",
+      "targetProperty": "intensity",
+      "hasRange": true,
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "subgraphs": []
+}

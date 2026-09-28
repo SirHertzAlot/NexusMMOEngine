@@ -1,0 +1,92 @@
+{
+  "version": "1.0",
+  "name": "Trunk",
+  "description": "A tapered trunk from the ground (y = 0) up: a swept, slightly leaning spine with bark colour.",
+  "inputs": [],
+  "outputs": [
+    {
+      "id": "mesh",
+      "name": "Mesh",
+      "pinType": "SpatialMesh"
+    }
+  ],
+  "parameters": [],
+  "nodes": [
+    {
+      "id": "spine",
+      "type": "CreateSpline",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "mode": "linear",
+        "closed": false,
+        "subdivisions": 1,
+        "controlPoints": "[{\"x\":0,\"y\":0,\"z\":0},{\"x\":0.05,\"y\":1.4,\"z\":0.02},{\"x\":0,\"y\":2.8,\"z\":0}]"
+      }
+    },
+    {
+      "id": "sweep",
+      "type": "TaperedSweep",
+      "position": {
+        "x": 0,
+        "y": 140
+      },
+      "data": {
+        "radiusScale": 0.24,
+        "radialSegments": 8,
+        "sampleSpacing": 0.7,
+        "capStart": true,
+        "capEnd": true,
+        "stations": "[{\"u\":0,\"rx\":1.35,\"rz\":1.35,\"twist\":0},{\"u\":0.12,\"rx\":1,\"rz\":1,\"twist\":0},{\"u\":1,\"rx\":0.55,\"rz\":0.55,\"twist\":0}]"
+      }
+    },
+    {
+      "id": "bark",
+      "type": "VertexColor",
+      "position": {
+        "x": 0,
+        "y": 280
+      },
+      "data": {
+        "r": 0.33,
+        "g": 0.23,
+        "b": 0.15
+      }
+    },
+    {
+      "id": "subgraph_output",
+      "type": "SubgraphOutput",
+      "position": {
+        "x": 0,
+        "y": 420
+      },
+      "data": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "spine.out->sweep.backbone",
+      "source": "spine",
+      "target": "sweep",
+      "sourceHandle": "out",
+      "targetHandle": "backbone"
+    },
+    {
+      "id": "sweep.out->bark.in",
+      "source": "sweep",
+      "target": "bark",
+      "sourceHandle": "out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "bark.out->subgraph_output.mesh",
+      "source": "bark",
+      "target": "subgraph_output",
+      "sourceHandle": "out",
+      "targetHandle": "mesh"
+    }
+  ],
+  "subgraphs": []
+}
