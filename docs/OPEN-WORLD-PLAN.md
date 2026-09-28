@@ -217,7 +217,11 @@ reproducible (same spec → same bytes), not identical across platforms.
       Water: the sea and lakes as flat sheets from the map's water layer,
       the open sea running on past the edge where the edge is sea. A
       daylight haze (fog 200 m → 3.2 km) makes distance read as distance.
-- [ ] Frustum culling, instanced props.
+- [x] Instanced props: static placeholder props (the scatter) drawn as one
+      InstancedMesh per shape instead of a mesh each — 551 → 212 draw calls
+      at the default spawn. Art-pack models and moving bodies stay meshes.
+- [ ] Fewer terrain draw calls (one per streamed chunk today: ~200 on
+      screen); frustum culling beyond three.js's per-mesh test.
 - [ ] **Terrain texturing by slope, height, and biome** (our own three.js
       shader; LYGIA is not used): steep faces take a rock-wall texture
       (triplanar, so cliffs don't stretch), gentle slopes grass or the
