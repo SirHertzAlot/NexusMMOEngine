@@ -21,6 +21,7 @@
  *                  3x3 around the spawn point; a legacy world IS this area)
  *   MMO_STREAM_RADIUS chunks loaded around each player (default 8 = 17x17,
  *                  272 m: past the client's fog)
+ *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
  *   MMO_TERRAIN_AMPLITUDE  terrain height scale, world units (default 2)
@@ -79,6 +80,7 @@ import {
 } from "./index.js";
 import { Ability } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
+import { startPcgService } from "./pcg/boot.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -398,6 +400,8 @@ async function main(): Promise<void> {
     },
   });
 
+  // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
+  const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
   const port = await gw.listen();
   gw.startTicking();
   // "A server owns this world" marker: offline tools (terrain save) refuse
@@ -413,7 +417,8 @@ async function main(): Promise<void> {
       /* already gone */
     }
   });
-  console.log(`[server] listening on ws://0.0.0.0:${port}`);
+  console.log(`[server] listening on ws://0.0.0.0:${port}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
+  console.log(`[server] ${pcg ? pcg.summary : "no PCG asset library (MMO_PCG_ASSETS)"}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +
       `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +

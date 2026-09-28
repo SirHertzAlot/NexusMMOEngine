@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
+  },
+  "description": "PICG (PCG-AI) native addon: cooks .pcg node graphs into procedural meshes off the tick thread",
+  "gypfile": true,
+  "main": "index.js",
+  "name": "@mmo-engine/addon-picg",
+  "private": true,
+  "scripts": {
+    "install": "node-gyp rebuild -j max",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "types": "index.d.ts",
+  "version": "0.1.0"
+}

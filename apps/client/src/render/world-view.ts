@@ -33,7 +33,9 @@ import {
 import { updateTerrainFx } from "./terrain-fx.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
-import { InstancedProps } from "./instanced-props.js";
+import { InstancedProps, type PropAsset } from "./instanced-props.js";
+import { PcgMeshes } from "./pcg-meshes.js";
+import type { PcgRpcClient } from "@mmo-engine/picg";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { WaterRenderer } from "./water.js";
 
@@ -49,6 +51,8 @@ const CAMERA_FAR = FOG_FAR + 800;
 export interface WorldViewOptions {
   /** Chunk world size in units (server MMO_CHUNK_SIZE, default 16). */
   chunkWorldSize?: number;
+  /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
+  pcg?: PcgRpcClient;
 }
 
 interface TrackedMesh {
@@ -90,7 +94,8 @@ export class WorldView {
   private readonly meshes = new Map<bigint, TrackedMesh>();
   private readonly terrain: TerrainRenderer;
   private readonly water = new WaterRenderer();
-  private readonly props = new InstancedProps();
+  private readonly props: InstancedProps;
+  private readonly pcgMeshes: PcgMeshes | null;
   readonly gpu: GpuInfo;
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
@@ -123,6 +128,8 @@ export class WorldView {
     this.terrain = new TerrainRenderer(this.chunkWorldSize);
     this.scene.add(this.terrain.group);
     this.scene.add(this.water.group);
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged()) : null;
+    this.props = new InstancedProps(this.pcgMeshes);
     this.scene.add(this.props.group);
 
     const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
@@ -240,7 +247,7 @@ export class WorldView {
       }
       // Batched static props: follow their rows (unchanged rows cost nothing).
       if (this.props.has(wid)) {
-        if (e.transform && e.body) this.props.update(wid, e.transform, e.body);
+        if (e.transform) this.props.update(wid, e.transform, e.body ?? null);
         continue;
       }
       let tracked = this.meshes.get(key);
@@ -248,9 +255,9 @@ export class WorldView {
       if (!tracked) {
         if (!e.transform) continue;
         const model = this.modelFor(e.asset);
-        if (!model && isStaticProp(e.body)) {
+        if (!model && isStaticProp(e.body, e.asset)) {
           // Scenery: no spawn portal (a streamed ring brings hundreds at once).
-          this.props.add(wid, e.transform, e.body, placeholderColor(wid));
+          this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
@@ -266,9 +273,9 @@ export class WorldView {
         this.pickMap.delete(tracked.object);
         disposeObject(tracked.object);
         const model = this.modelFor(e.asset);
-        if (!model && isStaticProp(e.body) && e.transform) {
+        if (!model && isStaticProp(e.body, e.asset) && e.transform) {
           this.meshes.delete(key);
-          this.props.add(wid, e.transform, e.body, placeholderColor(wid));
+          this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
@@ -371,13 +378,21 @@ export class WorldView {
     this.terrain.dispose();
     this.water.dispose();
     this.props.dispose();
+    this.pcgMeshes?.dispose();
     this.renderer.dispose();
   }
 }
 
-/** A body that never moves: batched with its shape (see InstancedProps). */
-function isStaticProp(body: BodyConfigRow | undefined): body is BodyConfigRow {
-  return body !== undefined && body.motionType === MotionType.Static;
+/**
+ * Scenery that never moves, batched per model (see InstancedProps): a
+ * static body, or an asset-only entity (scatter without collision).
+ */
+function isStaticProp(body: BodyConfigRow | undefined, asset: AssetRefRow | undefined): boolean {
+  return body !== undefined ? body.motionType === MotionType.Static : asset !== undefined;
+}
+
+function propAsset(asset: AssetRefRow | undefined): PropAsset | null {
+  return asset ? { assetHash: asset.assetHash, variant: asset.variant } : null;
 }
 
 function colorize(obj: THREE.Object3D, color: THREE.Color): void {

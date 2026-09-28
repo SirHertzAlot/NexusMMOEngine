@@ -21,6 +21,8 @@ build/
 
 # SQLite world databases (default ./data/world.db) — never commit
 data/
+# ...but vendored source trees may have a data/ directory of their own
+!packages/addons/picg/third_party/pcg-core/src/data/
 
 # prebuilt native addon tarballs (regenerable via `npm run prebuild`)
 prebuilds/
