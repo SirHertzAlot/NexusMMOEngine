@@ -61,6 +61,10 @@ export class MirrorClient {
   closed = false;
 
   private socket: SocketLike | null = null;
+  /** Server tick the last intent was sent at (-1: none on this connection). */
+  private intentSentAt = -1;
+  /** Newest intent held back until the next authoritative tick. */
+  private pendingIntent: IntentFields | null = null;
   private welcomeResolve: ((w: WelcomeMessage) => void) | null = null;
   private welcomeReject: ((e: Error) => void) | null = null;
   private debugResolve: ((r: DebugResponse) => void) | null = null;
@@ -172,12 +176,21 @@ export class MirrorClient {
   /**
    * Send one PlayerIntent upstream for the local player entity
    * (docs/MESSAGE-CATALOG.md §0x05, EDA: intents in as events).
-   * client_tick = the last authoritative tick seen; the server drops
-   * stale intents, so there is no benefit to sending more than once
-   * per input change — PlayerIntent persists server-side.
+   * client_tick = the last authoritative tick seen, and the server takes
+   * at most one intent per tick (a second at the same tick is dropped as
+   * stale). Input changes faster than that — the render loop runs at 60+
+   * Hz — so a second call in the same tick is held and sent, newest
+   * wins, when the next tick arrives. Otherwise a quick press-and-release
+   * would lose the release and the player would keep running.
    */
   sendIntent(intent: IntentFields): void {
     if (!this.socket || this.playerEntity == null) return;
+    if (this.serverTick <= this.intentSentAt) {
+      this.pendingIntent = intent;
+      return;
+    }
+    this.pendingIntent = null;
+    this.intentSentAt = this.serverTick;
     const payload = encodeIntentMessage(
       BigInt(this.serverTick),
       this.playerEntity,
@@ -291,6 +304,8 @@ export class MirrorClient {
     this.playerEntity = BigInt(w.player_entity);
     this.sessionToken = w.session_token;
     this.serverTick = w.server_tick;
+    this.intentSentAt = -1; // a new connection: nothing sent on it yet
+    this.pendingIntent = null;
     this.tickHz = w.tick_hz;
     this.world = w.world ?? null;
     this.events.onWelcome(w);
@@ -306,6 +321,7 @@ export class MirrorClient {
     this.interpolator.push(s.tick, s.transforms);
     this.serverTick = s.tick;
     this.events.onState(s.tick);
+    this.flushIntent();
   }
 
   private onDelta(payload: Uint8Array): void {
@@ -315,6 +331,12 @@ export class MirrorClient {
     for (const wid of d.despawned) this.interpolator.remove(wid);
     this.serverTick = d.tick;
     this.events.onState(d.tick);
+    this.flushIntent();
+  }
+
+  /** Send an intent held back by sendIntent, now that a new tick arrived. */
+  private flushIntent(): void {
+    if (this.pendingIntent !== null) this.sendIntent(this.pendingIntent);
   }
 
   private onClose(): void {

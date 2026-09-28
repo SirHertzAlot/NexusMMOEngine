@@ -52,6 +52,12 @@ export interface ClientSession {
   /** True once hello is accepted and welcome sent. */
   welcomed: boolean;
   /**
+   * True while a hello/register is being checked (argon2 is async). A
+   * connection joins once: further hellos are refused while this is set
+   * and after `welcomed`.
+   */
+  joining: boolean;
+  /**
    * Highest client_tick applied — older intents are stale, dropped, and
    * counted (never applied out of order).
    */

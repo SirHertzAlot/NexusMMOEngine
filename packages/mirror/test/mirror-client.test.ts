@@ -265,6 +265,35 @@ describe("MirrorClient.sendIntent", () => {
     assert.equal(decoded.intent.jump, true);
   });
 
+  it("sends one intent per server tick; a later change waits for the next tick", async () => {
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    const sentIntents = () =>
+      socket.sent
+        .map((d) => decodeEnvelope(d))
+        .filter((e) => e.type === MessageType.Intent)
+        .map((e) => decodeIntentMessage(e.payload));
+    const walk = (mz: number) => ({
+      mx: 0, my: 0, mz, lookYaw: 0, lookPitch: 0, jump: false, buttons: 0,
+    });
+
+    client.sendIntent(walk(1)); // press W at tick 100
+    client.sendIntent(walk(0.5)); // superseded before the next tick
+    client.sendIntent(walk(0)); // release W, same tick
+    assert.equal(sentIntents().length, 1, "the server takes one intent per tick");
+
+    socket.receive(encodeEnvelope(MessageType.Delta, encodeDelta(emptyState(101, 100))));
+    const sent = sentIntents();
+    assert.equal(sent.length, 2, "the held intent goes out with the next tick");
+    assert.deepEqual(
+      sent.map((i) => [i.clientTick, i.intent.mz]),
+      [[100n, 1], [101n, 0]],
+      "newest wins, stamped with the new tick",
+    );
+
+    socket.receive(encodeEnvelope(MessageType.Delta, encodeDelta(emptyState(102, 101))));
+    assert.equal(sentIntents().length, 2, "nothing held, nothing resent");
+  });
+
   it("sends nothing before the welcome arrives", async () => {
     let socket!: FakeSocket;
     const client = new MirrorClient(() => (socket = new FakeSocket()), {

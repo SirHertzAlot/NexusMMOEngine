@@ -71,7 +71,7 @@ export { Gateway, despawnSessionlessAvatars } from "./net/gateway.js";
 export type { GatewayOptions } from "./net/gateway.js";
 export { makeDebugSource } from "./net/debug-source.js";
 export type { DebugSource, DebugSourceDeps } from "./net/debug-source.js";
-export { encodeIntentMessage, decodeIntentMessage } from "./net/intent.js";
+export { encodeIntentMessage, decodeIntentMessage, sanitizeIntent } from "./net/intent.js";
 export type { DecodedIntentMessage } from "./net/intent.js";
 
 export {

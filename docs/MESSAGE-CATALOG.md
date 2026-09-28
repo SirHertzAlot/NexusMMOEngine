@@ -94,7 +94,13 @@ Notes:
 - **Authority.** A client drives ONLY its own player entity. Intents naming
   any other entity are rejected with `error` 4003 and never reach the sim.
   Stale intents (`client_tick` ≤ last accepted) are silently dropped and
-  counted (`droppedIntents`).
+  counted (`droppedIntents`), so a client sends at most one intent per
+  server tick (the mirror client holds a later change for the next tick).
+  Intents carrying a non-finite number are rejected with `error` 4003; the
+  move vector is capped at length 1 (the server owns the speed).
+- **One join per connection.** A `hello` or `register` on a connection
+  that has joined, or while one is still being checked, is refused with
+  `error` 4003 and changes nothing.
 - **Grace period.** On disconnect the session is parked, not deleted: the
   player entity survives a configurable grace period (default 30 s) so a
   quick reconnect re-attaches seamlessly. Reconnecting with the same
