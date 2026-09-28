@@ -21,6 +21,8 @@
  *                  3x3 around the spawn point; a legacy world IS this area)
  *   MMO_STREAM_RADIUS chunks loaded around each player (default 8 = 17x17,
  *                  272 m: past the client's fog)
+ *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
+ *                  "swim,fly" (flight is for expansions; "none" = walk only)
  *   MMO_TERRAIN_AMPLITUDE  terrain height scale, world units (default 2)
  *   MMO_TERRAIN_FREQUENCY  terrain noise frequency, (0, 1] (default 0.02)
  *                  Must match the values the world was baked with.
@@ -72,9 +74,28 @@ import {
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
+  waterSurfaceFromMaps,
   type ChunkBounds,
 } from "./index.js";
+import { Ability } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
+
+/** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
+function playerAbilitiesFromEnv(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") return Ability.Swim;
+  let bits = 0;
+  for (const word of value.split(",").map((w) => w.trim().toLowerCase())) {
+    if (word === "swim") bits |= Ability.Swim;
+    else if (word === "fly") bits |= Ability.Fly;
+    else if (word !== "none") throw new Error(`MMO_PLAYER_ABILITIES: unknown ability "${word}" (want swim, fly, or none)`);
+  }
+  return bits;
+}
+
+function abilityNames(bits: number): string {
+  const names = [bits & Ability.Swim ? "swim" : "", bits & Ability.Fly ? "fly" : ""].filter(Boolean);
+  return names.length > 0 ? names.join(", ") : "only walk";
+}
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
@@ -225,7 +246,9 @@ async function main(): Promise<void> {
   // background worker already checkpoints world.db after every save, so
   // this connection leaves checkpoints (and their fsync) to it.
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
-  const populator = makeScatterPopulator(worldSeed, CHUNK_SIZE);
+  // Baked worlds have a sea: nothing is scattered below it.
+  const seaLevelMeta = store.getMeta("sea_level");
+  const populator = makeScatterPopulator(worldSeed, CHUNK_SIZE, seaLevelMeta === null ? {} : { seaLevel: Number(seaLevelMeta) });
   const streamer = new ChunkStreamer({
     terrain: procgen,
     worldSeed,
@@ -254,6 +277,12 @@ async function main(): Promise<void> {
   // Kinematic character control (gravity/jump/grounding) corrects the
   // integrated Y in the same tick, before snapshot collection. Players are
   // held inside the world's edge.
+  // Baked worlds have water: swimming happens against its surface.
+  const water =
+    seaLevelMeta === null
+      ? null
+      : waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, Number(seaLevelMeta));
+  const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
   const character = new CharacterSystem({
     chunkSource: procgen,
     worldSeed,
@@ -264,6 +293,7 @@ async function main(): Promise<void> {
       maxX: (bounds.maxCx + 1) * CHUNK_SIZE,
       maxZ: (bounds.maxCz + 1) * CHUNK_SIZE,
     },
+    water: water ?? undefined,
   });
   const gw = new Gateway({
     port: PORT,
@@ -278,6 +308,7 @@ async function main(): Promise<void> {
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
+    playerAbilities,
     startTick: freshBoot ? 1 : restoredTick! + 1,
     // Terrain-height channel (slice 4.1): the gateway attaches authoritative
     // 16x16 heights to chunk rows on network snapshots/deltas. The
@@ -387,7 +418,8 @@ async function main(): Promise<void> {
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +
       `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +
       `terrain ${storedTiles > 0 ? `${storedTiles} stored tile(s)` : `amp ${terrain.amplitude} freq ${terrain.frequency} (v${terrainVersion})`} | ` +
-      `spawn (${spawn.x}, ${spawn.z}) | navmesh ${chunkNavmesh.size} tile(s) | data ${DATA_DIR}`,
+      `spawn (${spawn.x}, ${spawn.z}) | navmesh ${chunkNavmesh.size} tile(s) | ` +
+      `water ${water ? "from the bake" : "none"} | players can ${abilityNames(playerAbilities)} | data ${DATA_DIR}`,
   );
   console.log(
     `[server] no users yet? create one in the client ("Create account" tab), or: MMO_DEV_PASSWORD=<8-128 chars> npm run seed:user --workspace=@mmo-engine/engine-core -- <name>`,

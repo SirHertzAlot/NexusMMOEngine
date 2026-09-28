@@ -35,6 +35,7 @@ export function emptyState(tick: number, baseTick = 0): CollectedState {
     healths: [],
     bodies: [],
     assets: [],
+    locomotions: [],
     spawned: [],
     despawned: [],
   };

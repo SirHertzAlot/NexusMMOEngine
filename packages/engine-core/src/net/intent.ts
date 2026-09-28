@@ -20,15 +20,18 @@ export type { DecodedIntentMessage, IntentFields } from "@mmo-engine/protocol";
 /**
  * Validate a decoded intent at the trust boundary. Every number must be
  * finite (a NaN would reach positions and the native terrain lookups),
- * and the move vector is capped at length 1: the client picks a
- * direction, the server owns the speed (PLAYER_SPEED). Returns null for
- * an intent that can't be used.
+ * and the move is capped: the horizontal (mx, mz) at length 1 and the
+ * vertical (my: swim up/down, climb/descend in flight) at ±1, separately,
+ * so rising while moving doesn't slow you down. The client picks a
+ * direction, the server owns the speed. Returns null for an intent that
+ * can't be used.
  */
 export function sanitizeIntent(intent: IntentFields): IntentFields | null {
   const { mx, my, mz, lookYaw, lookPitch } = intent;
   if (![mx, my, mz, lookYaw, lookPitch].every(Number.isFinite)) return null;
-  const len = Math.hypot(mx, my, mz);
+  const len = Math.hypot(mx, mz);
   // Tolerance: a client's unit diagonal can land a rounding error over 1.
-  if (len <= 1 + 1e-6) return intent;
-  return { ...intent, mx: mx / len, my: my / len, mz: mz / len };
+  if (len <= 1 + 1e-6 && Math.abs(my) <= 1) return intent;
+  const k = len > 1 ? 1 / len : 1;
+  return { ...intent, mx: mx * k, my: Math.max(-1, Math.min(1, my)), mz: mz * k };
 }

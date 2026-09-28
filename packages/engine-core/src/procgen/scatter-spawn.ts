@@ -152,6 +152,8 @@ export interface ScatterChunkOptions {
   heights: Float32Array;
   /** Chunk world size in units (default 16, matches MMO_CHUNK_SIZE). */
   chunkWorldSize?: number;
+  /** Nothing is placed below this height (the sea: no trees on the sea floor). */
+  minHeight?: number;
 }
 
 /**
@@ -262,7 +264,8 @@ export function scatterChunkToECS(
     gridStep: chunkWorldSize / (side - 1),
   });
 
-  const spawns = resolveSpawns(records, content.table);
+  const minHeight = opts.minHeight ?? -Infinity;
+  const spawns = resolveSpawns(records, content.table).filter((s) => s.y >= minHeight);
   return spawns.map((s) => spawnScatterEntity(world, s));
 }
 
@@ -270,7 +273,14 @@ export function scatterChunkToECS(
  * A chunk's first-load contents for the ChunkStreamer: the scatter plan
  * run over its heights. Loads the plan and the native binding once.
  */
-export function makeScatterPopulator(worldSeed: bigint, chunkWorldSize: number): {
+/** Scatter stays this far above the sea (props don't stand in the surf). */
+const SHORE_CLEARANCE_M = 0.2;
+
+export function makeScatterPopulator(
+  worldSeed: bigint,
+  chunkWorldSize: number,
+  opts: { seaLevel?: number } = {},
+): {
   populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
   readonly planHash: string;
 } {
@@ -279,7 +289,14 @@ export function makeScatterPopulator(worldSeed: bigint, chunkWorldSize: number):
   return {
     planHash: content.planHash,
     populate(world, cx, cz, heights) {
-      scatterChunkToECS(world, binding, content, { worldSeed, cx, cz, heights, chunkWorldSize });
+      scatterChunkToECS(world, binding, content, {
+        worldSeed,
+        cx,
+        cz,
+        heights,
+        chunkWorldSize,
+        minHeight: opts.seaLevel === undefined ? undefined : opts.seaLevel + SHORE_CLEARANCE_M,
+      });
     },
   };
 }

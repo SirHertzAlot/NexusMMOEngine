@@ -27,6 +27,8 @@ import {
   HealthBlock,
   IntentBlock,
   IntentMessage,
+  Locomotion,
+  LocomotionBlock,
   PlayerIntent,
   Quat,
   Snapshot,
@@ -95,6 +97,17 @@ export interface AssetRefRow {
   variant: number;
 }
 
+/** Locomotion row (mirrors the FlatBuffers Locomotion table). */
+export interface LocomotionRow {
+  wireId: bigint;
+  /** LocomotionMode: ground, swimming, or flying. */
+  mode: number;
+  /** Ability bits: what the entity can do (swim, fly). */
+  abilities: number;
+  /** Air left, 1 = full, 0 = drowning. */
+  breath: number;
+}
+
 /** Plain-data view of world state for one tick. baseTick is 0 for snapshots. */
 export interface CollectedState {
   tick: number;
@@ -106,6 +119,7 @@ export interface CollectedState {
   healths: HealthRow[];
   bodies: BodyConfigRow[];
   assets: AssetRefRow[];
+  locomotions: LocomotionRow[];
   spawned: bigint[];
   despawned: bigint[];
 }
@@ -258,6 +272,18 @@ function readAssetRefBlock(blk: AssetRefBlock | null): AssetRefRow[] {
   return out;
 }
 
+function readLocomotionBlock(blk: LocomotionBlock | null): LocomotionRow[] {
+  const out: LocomotionRow[] = [];
+  if (!blk) return out; // absent in snapshots saved before locomotion existed
+  const n = blk.itemsLength();
+  for (let i = 0; i < n; i++) {
+    const e = blk.items(i);
+    if (!e) continue;
+    out.push({ wireId: blk.entities(i) ?? 0n, mode: e.mode(), abilities: e.abilities(), breath: e.breath() });
+  }
+  return out;
+}
+
 function readIdList(n: number, at: (i: number) => bigint | null): bigint[] {
   const out: bigint[] = new Array(n);
   for (let i = 0; i < n; i++) out[i] = at(i) ?? 0n;
@@ -278,6 +304,7 @@ export function decodeSnapshot(bytes: Uint8Array): CollectedState {
     healths: readHealthBlock(snap.healths()),
     bodies: readBodyBlock(snap.bodies()),
     assets: readAssetRefBlock(snap.assets()),
+    locomotions: readLocomotionBlock(snap.locomotions()),
     spawned: readIdList(snap.spawnedLength(), (i) => snap.spawned(i)),
     despawned: readIdList(snap.despawnedLength(), (i) => snap.despawned(i) as bigint),
   };
@@ -297,6 +324,7 @@ export function decodeDelta(bytes: Uint8Array): CollectedState {
     healths: readHealthBlock(d.healths()),
     bodies: readBodyBlock(d.bodies()),
     assets: readAssetRefBlock(d.assets()),
+    locomotions: readLocomotionBlock(d.locomotions()),
     spawned: readIdList(d.spawnedLength(), (i) => d.spawned(i)),
     despawned: readIdList(d.despawnedLength(), (i) => d.despawned(i) as bigint),
   };
@@ -527,6 +555,22 @@ function buildAssetRefBlock(b: flatbuffers.Builder, rows: AssetRefRow[]): number
   return AssetRefBlock.endAssetRefBlock(b);
 }
 
+function buildLocomotionBlock(b: flatbuffers.Builder, rows: LocomotionRow[]): number {
+  const items: number[] = new Array(rows.length);
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    items[i] = Locomotion.createLocomotion(b, r.mode, r.abilities, r.breath);
+  }
+  const entities = LocomotionBlock.createEntitiesVector(
+    b, rows.map((r) => r.wireId),
+  );
+  const vec = LocomotionBlock.createItemsVector(b, items);
+  LocomotionBlock.startLocomotionBlock(b);
+  LocomotionBlock.addEntities(b, entities);
+  LocomotionBlock.addItems(b, vec);
+  return LocomotionBlock.endLocomotionBlock(b);
+}
+
 /**
  * Encode a full Snapshot from collected state.
  *
@@ -550,6 +594,7 @@ export function encodeSnapshot(
   const h = buildHealthBlock(b, s.healths);
   const bd = buildBodyBlock(b, s.bodies);
   const ar = buildAssetRefBlock(b, s.assets);
+  const lo = buildLocomotionBlock(b, s.locomotions);
   const spawned = Snapshot.createSpawnedVector(b, s.spawned);
   const despawned = Snapshot.createDespawnedVector(b, s.despawned);
   Snapshot.startSnapshot(b);
@@ -563,6 +608,7 @@ export function encodeSnapshot(
   Snapshot.addAssets(b, ar);
   Snapshot.addSpawned(b, spawned);
   Snapshot.addDespawned(b, despawned);
+  Snapshot.addLocomotions(b, lo);
   const root = Snapshot.endSnapshot(b);
   Snapshot.finishSnapshotBuffer(b, root);
   return b.asUint8Array();
@@ -578,6 +624,7 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   const h = buildHealthBlock(b, s.healths);
   const bd = buildBodyBlock(b, s.bodies);
   const ar = buildAssetRefBlock(b, s.assets);
+  const lo = buildLocomotionBlock(b, s.locomotions);
   const spawned = Delta.createSpawnedVector(b, s.spawned);
   const despawned = Delta.createDespawnedVector(b, s.despawned);
   Delta.startDelta(b);
@@ -592,6 +639,7 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   Delta.addAssets(b, ar);
   Delta.addSpawned(b, spawned);
   Delta.addDespawned(b, despawned);
+  Delta.addLocomotions(b, lo);
   const root = Delta.endDelta(b);
   b.finish(root);
   return b.asUint8Array();

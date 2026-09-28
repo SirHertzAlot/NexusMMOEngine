@@ -24,6 +24,7 @@ import type {
   CollectedState,
   HealthRow,
   IntentRow,
+  LocomotionRow,
   TransformRow,
   VelocityRow,
 } from "./snapshot.js";
@@ -36,6 +37,7 @@ export interface EntityState {
   health?: HealthRow;
   body?: BodyConfigRow;
   asset?: AssetRefRow;
+  locomotion?: LocomotionRow;
 }
 
 export type WorldState = Map<bigint, EntityState>;
@@ -44,7 +46,7 @@ function upsert(
   state: WorldState,
   wid: bigint,
   key: keyof EntityState,
-  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow,
+  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow,
 ): void {
   let e = state.get(wid);
   if (!e) {
@@ -74,6 +76,7 @@ export function applyDelta(state: WorldState, delta: CollectedState): WorldState
   for (const r of delta.healths) upsert(state, r.wireId, "health", r);
   for (const r of delta.bodies) upsert(state, r.wireId, "body", r);
   for (const r of delta.assets) upsert(state, r.wireId, "asset", r);
+  for (const r of delta.locomotions) upsert(state, r.wireId, "locomotion", r);
   return state;
 }
 
@@ -83,6 +86,7 @@ const FLOAT_FIELDS: Record<string, string[]> = {
   intent: ["mx", "my", "mz", "lookYaw", "lookPitch"],
   health: ["current", "max"],
   body: ["halfX", "halfY", "halfZ", "radius", "mass", "friction", "restitution"],
+  locomotion: ["breath"],
 };
 
 const EXACT_FIELDS: Record<string, string[]> = {
@@ -90,6 +94,7 @@ const EXACT_FIELDS: Record<string, string[]> = {
   chunk: ["chunkId", "seed", "lod"],
   body: ["shapeKind", "motionType", "layer"],
   asset: ["assetHash", "variant"],
+  locomotion: ["mode", "abilities"],
 };
 
 function rowsEqual(

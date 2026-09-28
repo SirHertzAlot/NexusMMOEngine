@@ -175,10 +175,14 @@ describe("terrain-tool (the editor's terrain writer)", () => {
         name: "small",
         seed: 77,
         sizeChunks: 32,
-        erosion: { droplets: 2000, strength: 0.35 },
+        // All land (sea only on the south edge, beyond the world): these
+        // tests are about the terrain tool, not the coast.
+        land: { coast: { waterEdge: 0.25, tip: 1 } },
+        ranges: { count: 1, height: 60, width: 140, length: 300, ridgeScale: 120, coastClearance: 0 },
+        erosion: { droplets: 2000, strength: 0.35, thermalPasses: 6, fluvialPasses: 2 },
         biomes: [
-          { id: "hills", count: 1, pick: "highest", shape: "ridged", base: 10, relief: 60, scale: 200, roughness: 1 },
-          { id: "plains", count: 2, pick: "rest", shape: "rolling", base: 2, relief: 6, scale: 200, roughness: 0.4 },
+          { id: "hills", when: { height: { min: 40 } }, surface: { shape: "ridged", relief: 6, scale: 200 }, roughness: 1 },
+          { id: "plains", surface: { shape: "rolling", relief: 6, scale: 200 }, roughness: 0.4 },
         ],
       }),
     );
@@ -267,7 +271,7 @@ describe("terrain-tool (the editor's terrain writer)", () => {
       bytes: encodeSnapshot({
         tick: 5, baseTick: 0,
         transforms: [{ wireId: 77n, px: x, py: y, pz: z, qx: 0, qy: 0, qz: 0, qw: 1, sx: 1, sy: 1, sz: 1 }],
-        velocities: [], intents: [], chunks: [], healths: [], bodies: [], assets: [], spawned: [], despawned: [],
+        velocities: [], intents: [], chunks: [], healths: [], bodies: [], assets: [], locomotions: [], spawned: [], despawned: [],
       }),
     }]);
     rows.close();

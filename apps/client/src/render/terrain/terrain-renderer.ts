@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { ChunkRange, ChunkRow, WorldMap } from "@mmo-engine/protocol";
 import { groundColors, snowLine } from "./ground.js";
 import { buildChunkGeometry, chunkNormals, SIDE } from "./terrain-mesh.js";
-import { createTerrainMaterial, createTerrainUniforms, NO_SNOW } from "./terrain-material.js";
+import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
 
 /** Decode chunk (cx, cz) from the chunkId u64 (see spawnChunk/chunkIdFor). */
 export function chunkCoords(chunkId: bigint): { cx: number; cz: number } {
@@ -76,13 +76,15 @@ export class TerrainRenderer {
   }
 
   /**
-   * The baked world's coarse map and chunk range (from the welcome), or
-   * null for a legacy world. Replaces any previous world.
+   * The baked world's coarse map, chunk range, and sea level (from the
+   * welcome), or null for a legacy world. Replaces any previous world.
    */
-  setWorld(world: { map: WorldMap; bounds: ChunkRange } | null): void {
+  setWorld(world: { map: WorldMap; bounds: ChunkRange; seaLevel?: number | null } | null): void {
     this.disposeWorld();
     if (!world) return;
     const { map, bounds } = world;
+    this.uniforms.uFarCell.value = map.cell;
+    this.uniforms.uSeaLevel.value = world.seaLevel ?? NO_SEA;
 
     this.ground = new THREE.DataTexture(groundColors(map), map.width, map.depth, THREE.RGBAFormat);
     this.ground.colorSpace = THREE.SRGBColorSpace;
@@ -107,6 +109,10 @@ export class TerrainRenderer {
     const depth = bounds.maxCz - bounds.minCz + 1;
     const data = new Uint8Array(width * depth);
     const texture = new THREE.DataTexture(data, width, depth, THREE.RedFormat, THREE.UnsignedByteType);
+    // One byte per texel: rows are `width` bytes, not padded to WebGL's
+    // default 4-byte alignment (a 250-chunk world would read skewed rows,
+    // cutting the horizon open in the wrong places).
+    texture.unpackAlignment = 1;
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
     texture.needsUpdate = true;
@@ -256,6 +262,7 @@ export class TerrainRenderer {
     this.uniforms.uHasGround.value = 0;
     this.uniforms.uLoaded.value = null;
     this.uniforms.uSnowLine.value = NO_SNOW;
+    this.uniforms.uSeaLevel.value = NO_SEA;
   }
 }
 

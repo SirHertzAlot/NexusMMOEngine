@@ -40,7 +40,12 @@ interface HudData {
   px: number;
   py: number;
   pz: number;
+  /** Movement mode (LocomotionMode) and breath (0..1), when the server sends them. */
+  mode: number | null;
+  breath: number;
 }
+
+const MODE_LABEL = ["walking", "swimming", "flying"];
 
 const DEFAULT_URL =
   typeof window !== "undefined" && window.location.protocol === "https:"
@@ -56,7 +61,7 @@ export function App(): React.ReactElement {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [hud, setHud] = useState<HudData>({
-    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0,
+    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1,
   });
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
@@ -154,7 +159,8 @@ export function App(): React.ReactElement {
 
     const assets = new PlaceholderAssets();
     assetsRef.current = assets;
-    const view = new WorldView(canvas, assets);
+    const view = new WorldView(canvas, assets, { chunkWorldSize: client.world?.chunkWorldSize });
+    view.setWorld(client.world);
     viewRef.current = view;
     setGpu(view.gpu);
     if (view.gpu.software) {
@@ -202,9 +208,10 @@ export function App(): React.ReactElement {
         frames = 0;
         fpsAt = now;
         hudAt = now;
-        const p = client.playerEntity !== null
-          ? client.state.get(client.playerEntity)?.transform
+        const me = client.playerEntity !== null
+          ? client.state.get(client.playerEntity)
           : undefined;
+        const p = me?.transform;
         setHud({
           tick: client.serverTick,
           entities: client.state.entityCount,
@@ -212,6 +219,8 @@ export function App(): React.ReactElement {
           px: p?.px ?? 0,
           py: p?.py ?? 0,
           pz: p?.pz ?? 0,
+          mode: me?.locomotion?.mode ?? null,
+          breath: me?.locomotion?.breath ?? 1,
         });
       }
       void hudAt;
@@ -232,7 +241,7 @@ export function App(): React.ReactElement {
   const toggleWireframe = (): void => {
     const next = !wireframe;
     setWireframe(next);
-    assetsRef.current?.setTerrainWireframe(next);
+    viewRef.current?.setTerrainWireframe(next);
   };
 
   const toggleShowcase = (): void => {
@@ -245,7 +254,7 @@ export function App(): React.ReactElement {
     return (
       <div className="relative h-full w-full">
         <canvas ref={canvasRef} className="block h-full w-full" />
-        <div className="absolute left-4 top-4 rounded-md bg-card/90 px-4 py-3 text-sm shadow">
+        <div className="absolute left-4 top-4 rounded-md bg-slate-950/75 px-4 py-3 text-sm shadow backdrop-blur-sm">
           <div className="font-medium text-foreground">mirror client</div>
           <div className="mt-1 space-y-0.5 text-muted-foreground">
             <div>tick <span className="text-foreground">{hud.tick}</span></div>
@@ -256,6 +265,14 @@ export function App(): React.ReactElement {
                 {hud.px.toFixed(1)}, {hud.py.toFixed(1)}, {hud.pz.toFixed(1)}
               </span>
             </div>
+            {hud.mode !== null && (
+              <div>
+                moving <span className="text-foreground">{MODE_LABEL[hud.mode] ?? hud.mode}</span>
+                {hud.breath < 1 && (
+                  <> · air <span className="text-foreground">{Math.round(hud.breath * 100)}%</span></>
+                )}
+              </div>
+            )}
             {gpu && (
               <div className="max-w-64 truncate" title={gpu.renderer}>
                 gpu <span className="text-foreground">{gpu.renderer}</span>
@@ -270,7 +287,7 @@ export function App(): React.ReactElement {
             </div>
           )}
           <div className="mt-2 text-xs text-muted-foreground">
-            WASD move · mouse look (click canvas) · wheel zoom
+            WASD move · Space jump / up · C down · F fly · mouse look (click canvas) · wheel zoom
           </div>
         </div>
         <div className="absolute right-4 top-4 flex gap-2">

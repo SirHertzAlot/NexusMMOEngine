@@ -11,12 +11,29 @@
  * row), so both sides of a seam compute the same normal and the lighting
  * has no visible edge. Where a neighbour isn't loaded yet, the difference
  * is one-sided; the renderer recomputes the border when it arrives.
+ *
+ * Every edge hangs a skirt: a strip SKIRT_DEPTH deep below the border.
+ * Between two chunks it is buried under both; at the edge of the loaded
+ * area it closes the crack where the chunk meets the coarser far-horizon
+ * mesh, which would otherwise show the sky through it. Skirt normals
+ * point up (they shade as the ground they hang from).
  */
 
 import * as THREE from "three";
 
 export const SIDE = 16;
 const CELLS = SIDE - 1;
+/** How far each chunk's skirt hangs below its border, metres. */
+export const SKIRT_DEPTH = 12;
+/** The border samples, edge by edge (north, east, south, west), in order along each. */
+const EDGES: ReadonlyArray<ReadonlyArray<number>> = [
+  Array.from({ length: SIDE }, (_, i) => i),
+  Array.from({ length: SIDE }, (_, j) => j * SIDE + CELLS),
+  Array.from({ length: SIDE }, (_, i) => CELLS * SIDE + i),
+  Array.from({ length: SIDE }, (_, j) => j * SIDE),
+];
+/** Surface vertices, then the skirts' lower vertices. */
+export const CHUNK_VERTICES = SIDE * SIDE + EDGES.length * SIDE;
 
 /** A loaded neighbour's tile by chunk offset (dx, dz in -1..1), or null. */
 export type NeighbourTiles = (dx: number, dz: number) => Float32Array | null;
@@ -58,9 +75,12 @@ export function chunkNormals(heights: Float32Array, neighbour: NeighbourTiles, s
   }
 }
 
-/** Two triangles per cell, split along (i+1, j)-(i, j+1), facing +Y. */
+/**
+ * Two triangles per cell, split along (i+1, j)-(i, j+1), facing +Y; then
+ * each skirt's strip (both faces: it's seen from inside the loaded area).
+ */
 function chunkIndex(): THREE.BufferAttribute {
-  const idx = new Uint16Array(CELLS * CELLS * 6);
+  const idx = new Uint16Array(CELLS * CELLS * 6 + EDGES.length * CELLS * 12);
   let t = 0;
   for (let j = 0; j < CELLS; j++) {
     for (let i = 0; i < CELLS; i++) {
@@ -72,6 +92,16 @@ function chunkIndex(): THREE.BufferAttribute {
       idx[t++] = d; idx[t++] = b; idx[t++] = c;
     }
   }
+  EDGES.forEach((edge, e) => {
+    const low = SIDE * SIDE + e * SIDE;
+    for (let k = 0; k < CELLS; k++) {
+      const [a, b, c, d] = [edge[k], edge[k + 1], low + k, low + k + 1];
+      idx[t++] = a; idx[t++] = c; idx[t++] = b;
+      idx[t++] = b; idx[t++] = c; idx[t++] = d;
+      idx[t++] = a; idx[t++] = b; idx[t++] = c;
+      idx[t++] = b; idx[t++] = d; idx[t++] = c;
+    }
+  });
   return new THREE.BufferAttribute(idx, 1);
 }
 
@@ -82,7 +112,7 @@ function chunkIndex(): THREE.BufferAttribute {
 export function buildChunkGeometry(heights: Float32Array, chunkWorldSize: number): THREE.BufferGeometry {
   if (heights.length !== SIDE * SIDE) throw new Error(`terrain: want ${SIDE * SIDE} heights, got ${heights.length}`);
   const spacing = chunkWorldSize / CELLS;
-  const pos = new Float32Array(SIDE * SIDE * 3);
+  const pos = new Float32Array(CHUNK_VERTICES * 3);
   for (let j = 0; j < SIDE; j++) {
     for (let i = 0; i < SIDE; i++) {
       const k = 3 * (j * SIDE + i);
@@ -91,9 +121,19 @@ export function buildChunkGeometry(heights: Float32Array, chunkWorldSize: number
       pos[k + 2] = j * spacing;
     }
   }
+  const normals = new Float32Array(CHUNK_VERTICES * 3);
+  EDGES.forEach((edge, e) => {
+    edge.forEach((top, k) => {
+      const o = 3 * (SIDE * SIDE + e * SIDE + k);
+      pos[o] = pos[3 * top];
+      pos[o + 1] = pos[3 * top + 1] - SKIRT_DEPTH;
+      pos[o + 2] = pos[3 * top + 2];
+      normals[o + 1] = 1;
+    });
+  });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const normals = new Float32Array(SIDE * SIDE * 3);
+  // chunkNormals fills the surface's normals (the first SIDE * SIDE).
   chunkNormals(heights, () => null, spacing, normals);
   geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
   geometry.setIndex(chunkIndex());

@@ -11,6 +11,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { IntentButton } from "@mmo-engine/protocol";
 import { InputState } from "../src/input/input.js";
 
 function withKeys(...codes: string[]): InputState {
@@ -119,6 +120,41 @@ describe("InputState hygiene", () => {
     input.keyUp("Space");
     assert.equal(input.toIntent().jump, false);
     assert.equal(input.consumeDirty(), true);
+  });
+
+  it("Space and C are the up/down axis (swimming, flight); F holds the flight toggle", () => {
+    const input = new InputState();
+    assert.deepEqual([input.toIntent().my, input.toIntent().buttons], [0, 0]);
+    input.keyDown("Space");
+    assert.equal(input.toIntent().my, 1);
+    input.keyDown("KeyC");
+    assert.equal(input.toIntent().my, 0, "both held cancel out");
+    input.keyUp("Space");
+    assert.equal(input.toIntent().my, -1);
+    assert.equal(input.toIntent().jump, false, "C never jumps");
+    input.keyDown("KeyF");
+    assert.equal(input.toIntent().buttons, IntentButton.ToggleFlight);
+    input.clear();
+    assert.deepEqual([input.toIntent().my, input.toIntent().buttons], [0, 0]);
+  });
+
+  it("a press shorter than a frame still reaches one intent, then the release", () => {
+    const input = new InputState();
+    input.consumeDirty();
+    input.keyDown("KeyF");
+    input.keyUp("KeyF"); // released before the next frame read the input
+    assert.equal(input.consumeDirty(), true);
+    assert.equal(input.toIntent().buttons, IntentButton.ToggleFlight, "the press is sent");
+    assert.equal(input.consumeDirty(), true, "and the release follows");
+    assert.equal(input.toIntent().buttons, 0);
+    input.keyDown("Space");
+    input.keyUp("Space");
+    input.consumeDirty();
+    assert.equal(input.toIntent().jump, true, "a quick tap still jumps");
+    assert.equal(input.toIntent().jump, false);
+    input.keyDown("KeyF");
+    input.clear(); // window blur: nothing latched survives
+    assert.equal(input.toIntent().buttons, 0);
   });
 
   it("reports dirty only when input changed", () => {

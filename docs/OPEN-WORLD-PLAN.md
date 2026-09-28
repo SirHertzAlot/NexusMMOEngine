@@ -25,9 +25,17 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
   of heights; world.db is ~92 MB on disk (SQLite page overhead). The bake
   never holds the full-resolution heightmap: it builds each tile from the
   coarse survey, in batches.
-- **Vertical range: mountain massifs up to ~440 m** that climb from
-  foothills at their border (`ramp`), rolling plains and forest hills of
-  roughly 20–40 m; world-spec values, easy to change.
+- **One landmass, a peninsula (2026-09-28):** the sea opens onto the
+  south edge and the lower 70% of the east and west edges (60% of the
+  world's edge); the land runs off the north edge, and the far north is
+  frozen. One mountain chain runs across the prevailing wind with spurs
+  branching off it (no parallel rows), a volcano on it (the highest peak,
+  ~550 m, with a crater); most peaks hold ice.
+- **Biomes emerge, uncapped:** no biome counts. Climate (wind-carried
+  rain, rain shadows, temperature by height and distance from the sea)
+  and water (sea, lakes, rivers) are simulated, and ordered biome rules
+  read the result — deserts form behind ranges, swamps by lakes, slow
+  rivers and sheltered inlets.
 - **LYGIA: not used.** Shading is our own (three.js).
 - **SurrealDB: embedded engine** (`@surrealdb/node` 3.0.3 with the
   `surrealdb` 2.0.8 SDK) — no separate server process. Verified on the dev
@@ -85,27 +93,49 @@ Terrain is baked once and stored, so the bake only needs to be
 reproducible (same spec → same bytes), not identical across platforms.
 
 - [x] **World spec** (checked-in JSON, zod-validated): seed, size in
-      chunks (250), coarse cell (8 m), relief, region grid (2 × 2), biome
-      types with finite counts and parameters. `MMO_WORLD_SPEC` picks
-      another spec; `none` bakes the legacy 3×3 world.
-- [x] **Coarse fields** on an 8 m grid (507 × 507 with margins):
-      continental elevation and moisture. Temperature → Phase 5.
-- [x] **Biome regions:** a finite number of well-spread region centres,
-      each assigned a biome by its survey (highest → mountains, low and wet
-      → swamp, driest → desert, wettest → forest, the rest → plains);
-      softmax blending across borders. Default world: 2 plains, 2 forest,
-      1 desert, 1 swamp, 2 mountains.
-- [x] **Coarse elevation per biome:** ridged mountains (up to ~440 m),
-      flat swamp below the plains, dunes, rolling forest and plains.
-      Retuned 2026-09-28: the first bake's mountains were one wall of
-      spikes on the region border (median slope 63°) and 500 m around the
-      spawn varied by 16 m. A biome `ramp` now raises relief from its
-      border (mountains reach full height 600 m in: median slope 28°),
-      with 2 mountain regions, ±45 m continental swells and 18 m / 40 m
-      plains / forest hills (44 m of relief in view at spawn).
-- [x] **Erosion and rivers:** droplet erosion (mean 1.45 m, capped
-      steps), priority-flood depression filling, D8 flow accumulation,
-      rivers carved where the catchment is large (675 river chunks).
+      chunks (250), coarse cell (8 m), region grid (2 × 2), then the
+      land (coast side and shape, shelf, rise), ranges, climate, erosion,
+      rivers, lakes, and the ordered biome rules. `MMO_WORLD_SPEC` picks
+      another spec; `none` bakes the legacy 3×3 world. `npm run
+      preview:world -- [spec] [out.png]` draws a spec's biomes, rainfall
+      and temperature in ~10 s without baking — the loop for tuning one.
+- [x] **Climate-driven survey** on an 8 m grid (507 × 507 with margins),
+      rebuilt 2026-09-28 (`src/terrain/`):
+  - *Land* (`landmass.ts`): a peninsula mask from a warped coast frame
+    (bays, headlands; one landmass, tiny islands sink); land rises from
+    the shore with broad swells, the sea floor falls to a shelf. One main
+    chain across the wind (`ranges.center` pins it; it may run on past
+    the land edge), spurs branching off at 35–80° and merging where they
+    join, ridges warped into a network. Volcanoes sit on the chain,
+    raised after erosion (young): a lobed cone, a crater, vent heat.
+  - *Erosion* (`erosion.ts`, `glaciers.ts`): thermal collapse to the
+    angle of repose (38°); glaciers — ice where it's cold and snowy
+    enough, flowing down the drainage, melting with warmth and sunshine
+    (shaded ice lasts), grinding U-shaped valleys, calving at the sea,
+    dropping terminal moraines, feeding rivers and lakes with meltwater;
+    stream-power river incision weighted by rain and meltwater (valleys,
+    up to ~24 m); droplet erosion spawned where it rains (deltas).
+  - *Water* (`hydrology.ts`): sea = below sea level and open to it;
+    lakes in hollows deep, large and wet enough (dry ones stay dry);
+    rivers from rain-weighted drainage.
+  - *Climate* (`climate.ts`, `sun.ts`): sunlight per slope over the day
+    (the sun over the sea edge, an equinox path, cast shadows);
+    temperature from the sea edge, a cooling curve that freezes the far
+    north, a steep lapse rate, sun-facing slopes warmer and vents hot;
+    rain carried off the sea by the wind, falling faster uphill, spent
+    behind ranges; a UV index (sun height, slope, altitude, cloud, snow
+    reflection) stored for gameplay.
+  - *Biomes* (`biomes.ts`): first matching rule wins (temperature, rain,
+    height, slope, distance to sea / any water / fresh water, sea
+    exposure); a majority filter and a minimum patch size make regions;
+    each biome adds surface character (dunes across the wind, flat
+    swamps, rolling or ridged hills).
+  - Default world: a spine down the peninsula (westerly wind: wet west,
+    rain-shadow desert east), the volcano mid-spine, a frozen north.
+    Biomes % of the world: sea 48, forest 8.4, glacier 8.1, snow 7.6,
+    mountains 7.4, tundra 6.8, desert 4.5, beach 3, plains 2.9, volcanic
+    2.1, swamp 0.8, lake 0.4; UV index 2.6–18 over land. Survey ~12 s,
+    full bake ~21 s.
 - [x] **Fine heightmap:** bicubic upsampling of the survey to the 16/15 m
       sample grid plus native detail noise × biome roughness — a pure
       function of the global sample, so seams are exact by construction.
@@ -181,7 +211,17 @@ reproducible (same spec → same bytes), not identical across platforms.
       those (today every chunk ships in every snapshot).
 - [ ] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
       tiles), with no cracks between levels.
-- [ ] Frustum culling, instanced props, far-horizon terrain.
+- [x] Far-horizon terrain: the whole world from the welcome's 16 m map,
+      hidden over loaded chunks (a per-chunk mask) and sunk a few metres
+      beside them so no sky shows at the seam; chunk skirts close the rest.
+      Water: the sea and lakes as flat sheets from the map's water layer,
+      the open sea running on past the edge where the edge is sea. A
+      daylight haze (fog 200 m → 3.2 km) makes distance read as distance.
+- [x] Instanced props: static placeholder props (the scatter) drawn as one
+      InstancedMesh per shape instead of a mesh each — 551 → 212 draw calls
+      at the default spawn. Art-pack models and moving bodies stay meshes.
+- [ ] Fewer terrain draw calls (one per streamed chunk today: ~200 on
+      screen); frustum culling beyond three.js's per-mesh test.
 - [ ] **Terrain texturing by slope, height, and biome** (our own three.js
       shader; LYGIA is not used): steep faces take a rock-wall texture
       (triplanar, so cliffs don't stretch), gentle slopes grass or the
@@ -207,11 +247,10 @@ reproducible (same spec → same bytes), not identical across platforms.
 
 ## Phase 5 — Biomes
 
-- [ ] Biome registry: a finite set (mountains, forest, desert, swamp,
-      plains, rainforest, …), each with terrain parameters, scatter sets,
-      and creature tables.
-- [ ] Biome placement from the coarse fields (elevation, moisture,
-      temperature) with finite counts per world.
+- [ ] Biome registry: each biome's scatter sets and creature tables (its
+      terrain rule and surface character live in the world spec).
+- [x] Biome placement from the coarse fields — done in the climate-driven
+      survey (Phase 1): biomes emerge from climate and water, uncapped.
 - **Verify:** every biome is recognisable on the world map and in game.
 
 ## Later (builds on Phase 5)

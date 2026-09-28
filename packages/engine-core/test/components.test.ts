@@ -7,14 +7,15 @@ import {
   Transform,
 } from "../src/components.js";
 
-test("AssetRef is registered as component id 8", () => {
+test("AssetRef is registered as component id 8, Locomotion as 9", () => {
   assert.equal(COMPONENT_IDS.AssetRef, 8);
+  assert.equal(COMPONENT_IDS.Locomotion, 9);
   // ids remain dense and unique
   const ids = Object.values(COMPONENT_IDS);
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(
     [...ids].sort((a, b) => a - b),
-    [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
   );
 });
 

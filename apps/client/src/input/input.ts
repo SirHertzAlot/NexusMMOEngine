@@ -3,8 +3,10 @@
  *
  * InputState is DOM-free and unit-testable: the App binds DOM listeners
  * and forwards them. WASD/arrows drive wish-move in world space (rotated
- * by look yaw), mouse drag orbits the camera and writes look yaw/pitch,
- * Space jumps.
+ * by look yaw), mouse drag orbits the camera and writes look yaw/pitch.
+ * Space jumps, and swims or flies up (my = +1); C swims or flies down
+ * (my = -1); F toggles flight (for characters that can fly — the server
+ * decides).
  *
  * Convention (matches WorldView's third-person camera rig): forward =
  * (sin(yaw), 0, cos(yaw)), right = (-cos(yaw), 0, sin(yaw)). At yaw 0,
@@ -13,7 +15,7 @@
  * isn't faster.
  */
 
-import type { IntentFields } from "@mmo-engine/protocol";
+import { IntentButton, type IntentFields } from "@mmo-engine/protocol";
 
 const SENSITIVITY = 0.0025; // radians per mouse pixel
 const PITCH_LIMIT = 1.2; // ~69 degrees
@@ -23,50 +25,45 @@ const MOVEMENT_KEYS = new Set([
   "KeyW", "ArrowUp",
   "KeyS", "ArrowDown",
   "KeyA", "ArrowLeft",
-  "KeyD", "ArrowRight"
+  "KeyD", "ArrowRight",
+  "Space", // jump; up when swimming or flying
+  "KeyC", // down when swimming or flying
+  "KeyF", // toggle flight
 ]);
+
+/**
+ * Keys whose press the server acts on (jump, flight toggle). A press is
+ * latched until an intent has carried it: at a low frame rate a key can
+ * go down and up between two reads, and would otherwise never be sent.
+ */
+const PRESS_KEYS = new Set(["Space", "KeyF"]);
 
 export class InputState {
   lookYaw = 0;
   lookPitch = 0;
   private readonly keys = new Set<string>();
-  private jumpHeld = false;
+  /** Presses not yet carried by an intent (see PRESS_KEYS). */
+  private readonly pressed = new Set<string>();
   /** Set when the intent vector changed since the last read. */
   private dirty = true;
 
   keyDown(code: string): void {
-    if (code === "Space") {
-      if (!this.jumpHeld) {
-        this.jumpHeld = true;
-        this.dirty = true;
-      }
-    } else if (MOVEMENT_KEYS.has(code)) {
-      if (!this.keys.has(code)) {
-        this.keys.add(code);
-        this.dirty = true;
-      }
+    if (MOVEMENT_KEYS.has(code) && !this.keys.has(code)) {
+      this.keys.add(code);
+      if (PRESS_KEYS.has(code)) this.pressed.add(code);
+      this.dirty = true;
     }
   }
 
   keyUp(code: string): void {
-    if (code === "Space") {
-      if (this.jumpHeld) {
-        this.jumpHeld = false;
-        this.dirty = true;
-      }
-    } else if (MOVEMENT_KEYS.has(code)) {
-      if (this.keys.has(code)) {
-        this.keys.delete(code);
-        this.dirty = true;
-      }
-    }
+    if (this.keys.delete(code)) this.dirty = true;
   }
 
   /** Clear all keys immediately if the browser loses focus to prevent stuck "ghost" inputs. */
   clear(): void {
-    if (this.keys.size > 0 || this.jumpHeld) {
+    if (this.keys.size > 0 || this.pressed.size > 0) {
       this.keys.clear();
-      this.jumpHeld = false;
+      this.pressed.clear();
       this.dirty = true;
     }
   }
@@ -91,7 +88,12 @@ export class InputState {
   }
 
   toIntent(): IntentFields {
-    const k = this.keys;
+    const held = this.keys;
+    // A latched press reads as held this once; if the key is already up,
+    // the next read sends the release.
+    const k = this.pressed.size > 0 ? new Set([...held, ...this.pressed]) : held;
+    for (const code of this.pressed) if (!held.has(code)) this.dirty = true;
+    this.pressed.clear();
     const fwd = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) -
       (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
     const strafe = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) -
@@ -120,14 +122,14 @@ export class InputState {
       // the wire but noise in the protocol (deepStrictEqual distinguishes
       // -0 from +0).
       mx: mx + 0,
-      // Server IntentSystem ignores my entirely (CharacterSystem owns
-      // vertical velocity); jump is signalled via the jump flag.
-      my: 0, // vertical velocity is server-owned (CharacterSystem); see systems.ts
+      // Up/down wish for swimming and flight; on the ground the server
+      // ignores it (jump is the jump flag).
+      my: (k.has("Space") ? 1 : 0) - (k.has("KeyC") ? 1 : 0),
       mz: mz + 0,
       lookYaw: this.lookYaw,
       lookPitch: this.lookPitch,
-      buttons: 0,
-      jump: this.jumpHeld,
+      buttons: k.has("KeyF") ? IntentButton.ToggleFlight : 0,
+      jump: k.has("Space"),
     };
   }
 }
