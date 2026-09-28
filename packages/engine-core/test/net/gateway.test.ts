@@ -24,13 +24,17 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { defineQuery } from "bitecs";
 import {
   decodeControl,
+  encodeControl,
   MessageType,
   PROTOCOL_VERSION,
   type ErrorMessage,
 } from "@mmo-engine/protocol";
 import { Gateway, type GatewayOptions } from "../../src/net/gateway.js";
+import * as C from "../../src/components.js";
+import { PLAYER_SPEED } from "../../src/systems.js";
 import {
   decodeDelta,
   decodeSnapshot,
@@ -272,6 +276,71 @@ describe("gateway: intents drive the sim", () => {
       finalPx > midPx,
       `stale -x intent dropped, +x motion continued: ${midPx} -> ${finalPx}`,
     );
+    await client.close();
+  });
+});
+
+describe("gateway: untrusted input", () => {
+  const avatars = defineQuery([C.PlayerIntent]);
+  const avatarCount = (): number => avatars(gw!.world.ecs).length;
+  const tokenHello = (token: string): Uint8Array =>
+    encodeControl({ protocol: PROTOCOL_VERSION, client: "x", want_snapshot: true, token });
+
+  it("refuses a second hello on a joined connection (no extra avatar)", async () => {
+    const url = await startGateway();
+    const { client, sessionToken } = await connectHello(url, "alice", creds("alice"));
+    assert.equal(avatarCount(), 1);
+    const errP = client.waitFor(MessageType.Error, 3);
+    for (let i = 0; i < 3; i++) client.sendRaw(MessageType.Hello, tokenHello(sessionToken));
+    const errs = (await errP).map((p) => decodeControl<ErrorMessage>(p));
+    assert.deepEqual(errs.map((e) => [e.code, e.message]), Array(3).fill([4003, "already joined"]));
+    frames(1);
+    assert.equal(avatarCount(), 1, "still one avatar for one client");
+    await client.close();
+  });
+
+  it("refuses hellos pipelined behind one still being checked", async () => {
+    const url = await startGateway();
+    const client = new HeadlessClient();
+    await client.connect(url);
+    const hello = encodeControl({
+      protocol: PROTOCOL_VERSION, client: "x", want_snapshot: true,
+      username: "alice", password: TEST_PASSWORD,
+    });
+    const welcomeP = client.waitFor(MessageType.Welcome, 1);
+    const errP = client.waitFor(MessageType.Error, 2);
+    for (let i = 0; i < 3; i++) client.sendRaw(MessageType.Hello, hello);
+    await welcomeP;
+    const errs = (await errP).map((p) => decodeControl<ErrorMessage>(p));
+    assert.deepEqual(errs.map((e) => e.message), ["join already in progress", "join already in progress"]);
+    assert.equal(avatarCount(), 1);
+    await client.close();
+  });
+
+  it("rejects non-finite intents; the sim keeps running", async () => {
+    const url = await startGateway();
+    const { client, entity } = await connectHello(url, "alice", creds("alice"));
+    const errP = client.waitFor(MessageType.Error, 1);
+    client.sendIntent(1n, entity, move(Number.NaN, 0, 0));
+    const [err] = (await errP).map((p) => decodeControl<ErrorMessage>(p));
+    assert.deepEqual([err.code, err.message], [4003, "malformed intent"]);
+    frames(5);
+    const eid = Number(entity & 0xffffffffn);
+    assert.ok(Number.isFinite(C.Transform.px[eid]), `px ${C.Transform.px[eid]}`);
+    await client.close();
+  });
+
+  it("caps the move vector: no faster than PLAYER_SPEED", async () => {
+    const url = await startGateway();
+    const { client, entity } = await connectHello(url, "alice", creds("alice"));
+    const eid = Number(entity & 0xffffffffn);
+    client.sendIntent(1n, entity, move(1000, 0, 1000));
+    await settle();
+    const x0 = C.Transform.px[eid];
+    const z0 = C.Transform.pz[eid];
+    frames(30); // one second
+    const moved = Math.hypot(C.Transform.px[eid] - x0, C.Transform.pz[eid] - z0);
+    assert.ok(Math.abs(moved - PLAYER_SPEED) < 0.01, `moved ${moved} m in 1 s`);
     await client.close();
   });
 });

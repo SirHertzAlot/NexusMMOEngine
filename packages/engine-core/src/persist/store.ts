@@ -419,10 +419,14 @@ export class SnapshotStore {
    */
   whenCheckpointed(): Promise<void> {
     if (!this.checkpointInFlight) return Promise.resolve();
+    // The worker is unref'd, so a caller awaiting it may be the only thing
+    // left to do: hold the process open until it answers (settleIdle lets go).
+    this.checkpointer?.ref();
     return new Promise((resolve) => this.idleWaiters.push(resolve));
   }
 
   private settleIdle(): void {
+    this.checkpointer?.unref();
     const waiters = this.idleWaiters;
     this.idleWaiters = [];
     for (const resolve of waiters) resolve();

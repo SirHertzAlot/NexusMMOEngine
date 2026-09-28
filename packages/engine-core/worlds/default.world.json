@@ -4,19 +4,19 @@
   "sizeChunks": 250,
   "chunkWorldSize": 16,
   "coarseCell": 8,
-  "continentalRelief": 20,
+  "continentalRelief": 45,
   "continentalScale": 1500,
-  "blendWidth": 120,
+  "blendWidth": 200,
   "detailAmplitude": 1.5,
   "detailScale": 14,
   "regionsPerSide": 2,
   "erosion": { "droplets": 150000, "strength": 0.35 },
   "rivers": { "minCatchment": 400000, "maxDepth": 4 },
   "biomes": [
-    { "id": "mountains", "count": 1, "pick": "highest",    "shape": "ridged",  "base": 20, "relief": 250, "scale": 420, "roughness": 1.0 },
+    { "id": "mountains", "count": 2, "pick": "highest",    "shape": "ridged",  "base": 30, "relief": 380, "scale": 1100, "roughness": 1.0, "ramp": 600 },
     { "id": "swamp",     "count": 1, "pick": "lowest-wet", "shape": "flat",    "base": -3, "relief": 2,   "scale": 60,  "roughness": 0.2 },
     { "id": "desert",    "count": 1, "pick": "driest",     "shape": "dunes",   "base": 4,  "relief": 12,  "scale": 38,  "roughness": 0.3 },
-    { "id": "forest",    "count": 2, "pick": "wettest",    "shape": "rolling", "base": 6,  "relief": 22,  "scale": 260, "roughness": 0.7 },
-    { "id": "plains",    "count": 2, "pick": "rest",       "shape": "rolling", "base": 2,  "relief": 6,   "scale": 340, "roughness": 0.4 }
+    { "id": "forest",    "count": 2, "pick": "wettest",    "shape": "rolling", "base": 6,  "relief": 40,  "scale": 380, "roughness": 0.7 },
+    { "id": "plains",    "count": 2, "pick": "rest",       "shape": "rolling", "base": 2,  "relief": 18,  "scale": 420, "roughness": 0.4 }
   ]
 }
