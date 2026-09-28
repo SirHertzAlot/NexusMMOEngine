@@ -2,8 +2,9 @@
  * Climate — temperature and rainfall over the landform.
  *
  * Temperature: warmest on the sea edge at sea level, cooling toward the
- * far land edge and with height (an exaggerated lapse rate, so a 400 m
- * range can hold snow).
+ * far land edge (evenly, or with the cold held back for a frozen far
+ * edge) and with height (an exaggerated lapse rate, so a 400 m range can
+ * hold ice), warmed near volcano vents.
  *
  * Rainfall: the prevailing wind is marched across the grid from upwind.
  * Over water the air takes up moisture; over land it rains a little all
@@ -19,8 +20,11 @@ import { boxBlur } from "./grid-ops.js";
 import { coastFrame } from "./landmass.js";
 import { windVector, type WorldSpec } from "./world-spec.js";
 
-/** Mean temperature per cell, °C. */
-export function temperature(spec: WorldSpec, grid: CoarseGrid, h: Float32Array): Float32Array {
+/**
+ * Mean temperature per cell, °C. `ventDistance` (metres to the nearest
+ * volcano vent) adds the vents' heat, fading to nothing at the cone's foot.
+ */
+export function temperature(spec: WorldSpec, grid: CoarseGrid, h: Float32Array, ventDistance?: Float32Array): Float32Array {
   const C = spec.climate;
   const sea = spec.land.seaLevel;
   const W = grid.width;
@@ -31,7 +35,12 @@ export function temperature(spec: WorldSpec, grid: CoarseGrid, h: Float32Array):
       const x = grid.originX + u * grid.cell;
       const i = v * W + u;
       const t = Math.min(1, Math.max(0, coastFrame(spec, x, z).t));
-      out[i] = C.seaTempC - C.inlandCoolingC * (1 - t) - (C.lapseCPerKm * Math.max(0, h[i] - sea)) / 1000;
+      const heat = ventDistance ? spec.volcano.heatC * Math.max(0, 1 - ventDistance[i] / spec.volcano.radius) : 0;
+      out[i] =
+        C.seaTempC -
+        C.inlandCoolingC * Math.pow(1 - t, C.inlandCoolingCurve) -
+        (C.lapseCPerKm * Math.max(0, h[i] - sea)) / 1000 +
+        heat;
     }
   }
   return out;

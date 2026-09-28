@@ -16,6 +16,7 @@ import { TerrainTileStore } from "../../src/persist/terrain-tiles.js";
 import { closeWorldCatalogs, readCatalogSummary, rocksdbUrl } from "../../src/persist/world-catalog.js";
 import { classifyBiomes, smoothBiomes, type BiomeInputs } from "../../src/terrain/biomes.js";
 import { thermalErosion } from "../../src/terrain/erosion.js";
+import { glaciate } from "../../src/terrain/glaciers.js";
 import { labelComponents } from "../../src/terrain/grid-ops.js";
 import { findLakes } from "../../src/terrain/hydrology.js";
 import { coastFrame } from "../../src/terrain/landmass.js";
@@ -33,7 +34,7 @@ const SMALL_WORLD = {
   sizeChunks: 32,
   regionsPerSide: 2,
   land: { coast: { wander: 40, wanderScale: 150 }, rise: 15, riseDistance: 200, relief: 6, reliefScale: 300, shelfWidth: 60, minIslandArea: 2000 },
-  ranges: { count: 1, height: 120, width: 140, length: 300, ridgeScale: 120, coastClearance: 60 },
+  ranges: { count: 1, spurs: 0, height: 120, width: 140, length: 300, ridgeScale: 120, coastClearance: 60 },
   climate: { dryDistance: 800, orographic: 0.01 },
   erosion: { droplets: 3000, thermalPasses: 10, fluvialPasses: 4 },
   rivers: { minCatchment: 20_000, maxDepth: 3 },
@@ -190,6 +191,32 @@ describe("survey: land and water", () => {
     assert.equal(findLakes(h, filled, grid, noSea, new Float32Array(400).fill(900), { ...opts, minDepth: 50 }).lake.reduce((a, b) => a + b, 0), 0, "too shallow");
   });
 
+  test("glaciers: ice where it's cold and snowy, melting downhill, carving a valley, leaving a moraine", () => {
+    // A long slope, 200 m high at the north (v = 0) down to the sea at the south.
+    const grid: CoarseGrid = { width: 30, depth: 120, cell: 8, originX: 0, originZ: 0 };
+    const N = 30 * 120;
+    // A V across it so the ice gathers into one valley glacier down the middle.
+    const slope = (): Float32Array => Float32Array.from({ length: N }, (_, i) => 200 - Math.floor(i / 30) * 1.8 + Math.abs((i % 30) - 15) * 3);
+    const h = slope();
+    const tempC = h.map((z) => 10 - z * 0.08); // -6 °C at the top, +8 °C at the bottom
+    const spec = parseWorldSpec({ ...SMALL_WORLD, glaciers: { passes: 3 } });
+    const wet = glaciate(spec, grid, h, tempC, new Float32Array(N).fill(1500), () => false);
+    const iceAt = (row: number): number => wet.ice.slice(row * 30, row * 30 + 30).reduce((a, b) => a + b, 0);
+    assert.ok(iceAt(2) > 0, "ice in the cold, snowy heights");
+    assert.equal(iceAt(110), 0, "none down in the warm lowland");
+    assert.ok(wet.melt.reduce((a, b) => a + b, 0) > 0, "the ice melts on its way down");
+    assert.ok(wet.snouts > 0, "the glacier ends in a snout");
+    assert.ok(wet.deepestCutM > 0.2, `ice carved ${wet.deepestCutM.toFixed(2)} m`);
+    // The valley is cut deepest under the glacier's centre line (column 15).
+    const cutAt = (u: number): number => slope()[10 * 30 + u] - h[10 * 30 + u];
+    assert.ok(cutAt(15) > cutAt(3) + 0.1, `centre cut ${cutAt(15).toFixed(2)} m vs flank ${cutAt(3).toFixed(2)} m`);
+    const raised = h.some((z, i) => z > slope()[i] + 0.5 && !wet.ice[i]);
+    assert.ok(raised, "a moraine stands beyond the ice");
+
+    const dry = glaciate(spec, grid, slope(), tempC, new Float32Array(N).fill(200), () => false);
+    assert.equal(dry.ice.reduce((a, b) => a + b, 0), 0, "too little snow: bare cold ground (tundra), no ice");
+  });
+
   test("thermal erosion relaxes slopes to the angle of repose and keeps the ground", () => {
     const grid: CoarseGrid = { width: 24, depth: 24, cell: 8, originX: 0, originZ: 0 };
     const h = Float32Array.from({ length: 576 }, (_, i) => ((i % 24) - 12) ** 2 + (Math.floor(i / 24) - 12) ** 2 < 9 ? 80 : 0);
@@ -214,8 +241,8 @@ describe("survey: climate and biomes", () => {
     seed: 5,
     sizeChunks: 64,
     land: { ...SMALL_WORLD.land, coast: { wander: 60, wanderScale: 250 }, riseDistance: 400 },
-    ranges: { count: 1, height: 200, width: 260, length: 600, ridgeScale: 200, coastClearance: 100 },
-    climate: { wind: "south", dryDistance: 1500, orographic: 0.012 },
+    ranges: { count: 1, spurs: 0, height: 200, width: 260, length: 600, ridgeScale: 200, coastClearance: 100 },
+    climate: { wind: "south", dryDistance: 1500, orographic: 0.012, inlandCoolingCurve: 2 },
   });
   const mid = surveyWorld(MID);
 
@@ -253,7 +280,8 @@ describe("survey: climate and biomes", () => {
     const C = MID.climate;
     for (const { i, t } of worldCells(mid)) {
       if (mid.water[i] !== LAND) continue;
-      const expected = C.seaTempC - C.inlandCoolingC * (1 - Math.min(1, Math.max(0, t))) - (C.lapseCPerKm * mid.height[i]) / 1000;
+      const inland = Math.pow(1 - Math.min(1, Math.max(0, t)), C.inlandCoolingCurve);
+      const expected = C.seaTempC - C.inlandCoolingC * inland - (C.lapseCPerKm * mid.height[i]) / 1000;
       assert.ok(Math.abs(mid.temperature[i] - expected) < 0.5, `cell ${i}: ${mid.temperature[i]} vs ${expected}`);
     }
   });
@@ -276,6 +304,44 @@ describe("survey: climate and biomes", () => {
     assert.ok(mid.regions.every((r) => r.cells > 0));
   });
 
+  test("ranges connect: spurs grow out of the chain at an angle", () => {
+    const branched = surveyWorld(parseWorldSpec({ ...MID, ranges: { ...MID.ranges, spurs: 3, spurLength: 400 } }));
+    const chains = branched.ranges.filter((r) => !r.spur);
+    const spurs = branched.ranges.filter((r) => r.spur);
+    assert.equal(chains.length, 1);
+    assert.ok(spurs.length >= 2, `${spurs.length} spurs fit`);
+    for (const spur of spurs) {
+      const root = spur.points[0];
+      const parent = branched.ranges.find((r) => r !== spur && r.points.some((p) => p.x === root.x && p.z === root.z));
+      assert.ok(parent, "a spur starts on another range's axis");
+      const k = parent.points.findIndex((p) => p.x === root.x && p.z === root.z);
+      const along = Math.atan2(parent.points[k + 1].z - parent.points[k - 1].z, parent.points[k + 1].x - parent.points[k - 1].x);
+      const out = Math.atan2(spur.points[1].z - root.z, spur.points[1].x - root.x);
+      const angle = Math.abs(((out - along + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+      const off = Math.min(angle, Math.PI - angle);
+      assert.ok(off >= (25 * Math.PI) / 180, `spur leaves at ${((off * 180) / Math.PI).toFixed(0)}°, not along the chain`);
+      assert.ok(spur.height < parent.height && spur.width < parent.width, "spurs are lower and narrower");
+    }
+  });
+
+  test("a volcano: the highest peak, a crater at its top, a warm vent", () => {
+    const withVolcano = parseWorldSpec({ ...MID, volcano: { count: 1, height: 300, radius: 250, craterRadius: 40, craterDepth: 25, heatC: 12 } });
+    const v = surveyWorld(withVolcano);
+    assert.equal(v.volcanoes.length, 1);
+    const { grid } = v;
+    let top = 0;
+    for (let i = 1; i < v.height.length; i++) if (v.height[i] > v.height[top]) top = i;
+    assert.ok(v.ventDistance[top] < 250, `the highest cell is on the cone (${v.ventDistance[top].toFixed(0)} m from the vent)`);
+    const vent = v.volcanoes[0];
+    const at = (x: number, z: number): number =>
+      Math.round((z - grid.originZ) / grid.cell) * grid.width + Math.round((x - grid.originX) / grid.cell);
+    assert.ok(v.height[at(vent.x, vent.z)] < v.height[top] - 10, "the vent sits in a crater below the rim");
+    const noHeat = parseWorldSpec({ ...withVolcano, volcano: { ...withVolcano.volcano, heatC: 0 } });
+    const warm = v.temperature[at(vent.x, vent.z)];
+    const plain = surveyWorld(noHeat).temperature[at(vent.x, vent.z)];
+    assert.ok(Math.abs(warm - plain - 12) < 0.5, `vent heat ${(warm - plain).toFixed(1)} °C`);
+  });
+
   test("spawn: on dry land in the spawn biome, off the rivers", () => {
     const sp = spawnPoint(MID, mid);
     assert.equal(sp.biome, "plains");
@@ -292,6 +358,8 @@ describe("biome rules", () => {
     ...SMALL_WORLD,
     biomes: [
       { id: "sea", when: { water: "sea" }, roughness: 0 },
+      { id: "volcanic", when: { volcanoDistance: { max: 100 } }, roughness: 0 },
+      { id: "glacier", when: { ice: { min: 1 } }, roughness: 0 },
       { id: "swamp", when: [{ freshwaterDistance: { max: 50 }, height: { max: 3 } }, { seaExposure: { max: 0.2 }, coastDistance: { max: 60 } }], roughness: 0 },
       { id: "desert", when: { rainMm: { max: 300 } }, roughness: 0 },
       { id: "plains", roughness: 0 },
@@ -309,31 +377,35 @@ describe("biome rules", () => {
       waterDistance: f("waterDistance", 1000),
       freshwaterDistance: f("freshwaterDistance", 1000),
       seaExposure: f("seaExposure", 0),
+      ice: Uint8Array.from(over.ice ?? new Array(n).fill(0)),
+      volcanoDistance: f("volcanoDistance", Infinity),
     };
   };
   const ids = (b: Uint8Array): string[] => [...b].map((k) => spec.biomes[k].id);
 
   test("first match wins; any alternative is enough; the catch-all takes the rest", () => {
-    const f = inputs(6, {
-      water: [SEA, LAND, LAND, LAND, LAND, LAND],
-      rainMm: [100, 100, 900, 900, 100, 900],
-      freshwaterDistance: [10, 10, 10, 1000, 1000, 1000],
-      height: [0, 2, 10, 2, 20, 20],
-      coastDistance: [0, 1000, 1000, 40, 1000, 1000],
-      seaExposure: [1, 0, 0, 0.1, 0, 0],
+    const f = inputs(8, {
+      water: [SEA, LAND, LAND, LAND, LAND, LAND, LAND, LAND],
+      rainMm: [100, 100, 900, 900, 100, 900, 900, 900],
+      freshwaterDistance: [10, 10, 10, 1000, 1000, 1000, 1000, 1000],
+      height: [0, 2, 10, 2, 20, 20, 20, 20],
+      coastDistance: [0, 1000, 1000, 40, 1000, 1000, 1000, 1000],
+      seaExposure: [1, 0, 0, 0.1, 0, 0, 0, 0],
+      ice: [0, 0, 0, 0, 0, 0, 1, 1],
+      volcanoDistance: [Infinity, Infinity, Infinity, Infinity, Infinity, Infinity, Infinity, 50],
     });
-    assert.deepEqual(ids(classifyBiomes(spec, f)), ["sea", "swamp", "plains", "swamp", "desert", "plains"]);
+    assert.deepEqual(ids(classifyBiomes(spec, f)), ["sea", "swamp", "plains", "swamp", "desert", "plains", "glacier", "volcanic"]);
   });
 
   test("smoothing removes specks and small patches but never touches water", () => {
     const W = 12;
     const D = 12;
-    const biome = new Uint8Array(W * D).fill(3); // plains
+    const biome = new Uint8Array(W * D).fill(5); // plains
     const water = new Uint8Array(W * D);
-    biome[5 * W + 5] = 2; // a one-cell desert speck
+    biome[5 * W + 5] = 4; // a one-cell desert speck
     for (let u = 0; u < W; u++) [biome[u], water[u]] = [0, SEA]; // a sea row
     smoothBiomes(biome, water, W, D, 4);
-    assert.equal(biome[5 * W + 5], 3, "the speck joins the plains");
+    assert.equal(biome[5 * W + 5], 5, "the speck joins the plains");
     for (let u = 0; u < W; u++) assert.equal(biome[u], 0, "the sea stays sea");
   });
 });

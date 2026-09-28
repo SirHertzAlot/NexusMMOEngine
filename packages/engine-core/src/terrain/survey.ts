@@ -4,11 +4,13 @@
  * On a coarse grid (spec.coarseCell metres, ~500 × 500 cells for 4 km) it
  * builds the world the way nature would, in order:
  *
- *  1. land: a landmass with a wandering coast and mountain ranges pushed
- *     up across the prevailing wind (landmass.ts);
- *  2. erosion: slopes collapse to their angle of repose, rivers cut
- *     valleys, and rain washes soil downhill — all driven by a first look
- *     at where it rains (erosion.ts);
+ *  1. land: a landmass with a wandering coast, a mountain chain pushed up
+ *     across the prevailing wind with spurs branching off it, and a
+ *     volcano on the chain (landmass.ts);
+ *  2. erosion, driven by a first look at the climate: slopes collapse to
+ *     their angle of repose, glaciers grind U-shaped valleys and leave
+ *     moraines (glaciers.ts), rivers fed by rain and meltwater cut
+ *     valleys, and rain washes soil downhill (erosion.ts);
  *  3. water: the sea, lakes in the hollows that hold water, and rivers
  *     from the rain-weighted drainage (hydrology.ts);
  *  4. climate: temperature from height and distance to the sea; rainfall
@@ -26,6 +28,7 @@ import { makeProcgenChunkSource } from "../procgen/chunk-source.js";
 import { applySurface, biomeRegions, classifyBiomes, smoothBiomes } from "./biomes.js";
 import { rainfall, temperature } from "./climate.js";
 import { dropletErosion, fluvialErosion, thermalErosion } from "./erosion.js";
+import { glaciate } from "./glaciers.js";
 import { boxBlur, distanceTo, slopeDegrees } from "./grid-ops.js";
 import {
   accumulate,
@@ -38,11 +41,22 @@ import {
   SEA,
   seaMask,
 } from "./hydrology.js";
-import { baseElevation, landMask, placeRanges, rangeUplift, tidyLandmass, type RangeAxis } from "./landmass.js";
+import {
+  baseElevation,
+  landMask,
+  placeRanges,
+  placeVolcanoes,
+  raiseVolcanoes,
+  rangeUplift,
+  ventDistance,
+  tidyLandmass,
+  type RangeAxis,
+  type Volcano,
+} from "./landmass.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
 
 export { fillDepressions, flowAccumulation, LAKE, LAND, SEA } from "./hydrology.js";
-export type { RangeAxis } from "./landmass.js";
+export type { RangeAxis, Volcano } from "./landmass.js";
 
 /** Coarse cell (u, v) sits at world (originX + u*cell, originZ + v*cell). */
 export interface CoarseGrid {
@@ -78,7 +92,7 @@ export interface Survey {
   region: Uint16Array;
   /** Humidity of the wind 0..1. */
   moisture: Float32Array;
-  /** Yearly rainfall, mm. */
+  /** Yearly precipitation (rain, or snow where it's cold), mm. */
   rain: Float32Array;
   /** Mean temperature, °C. */
   temperature: Float32Array;
@@ -86,16 +100,26 @@ export interface Survey {
   water: Uint8Array;
   /** Water surface height on sea and lake cells, NaN on land. */
   waterLevel: Float32Array;
+  /** 1 under glacier ice or an ice cap. */
+  ice: Uint8Array;
+  /** Glacier meltwater released per cell, mm a year over the cell. */
+  meltMm: Float32Array;
+  /** Distance to the nearest volcano vent, metres (Infinity with none). */
+  ventDistance: Float32Array;
   /** Rain-weighted upstream area per cell, m² (at the windward coast's rainfall). */
   flow: Float32Array;
   /** 1 where a river runs. */
   river: Uint8Array;
   regions: BiomeRegion[];
   ranges: RangeAxis[];
+  volcanoes: Volcano[];
   stats: {
     erodedMeanM: number;
     erodedMaxM: number;
     deepestCutM: number;
+    glacierCells: number;
+    glacierSnouts: number;
+    deepestGlacialCutM: number;
     riverCells: number;
     lakeCells: number;
     /** Share of the world (inside its edges) that is land. */
@@ -180,23 +204,36 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const warpT = noiseField(grid, fieldSeed(spec.seed, 4), spec.land.coast.wanderScale);
   const land = landMask(spec, grid, warpA, warpT);
   const height = baseElevation(spec, grid, land, swell);
-  const ranges = placeRanges(spec, grid, land, mulberry32(spec.seed ^ 0x5eed));
+  const baseLevel = Float32Array.from(height);
+  const layout = mulberry32(spec.seed ^ 0x5eed);
+  const ranges = placeRanges(spec, grid, land, layout);
   const uplift = rangeUplift(
     spec,
     grid,
     ranges,
     noiseField(grid, fieldSeed(spec.seed, 5), spec.ranges.ridgeScale),
     noiseField(grid, fieldSeed(spec.seed, 6), spec.ranges.length / 3),
+    noiseField(grid, fieldSeed(spec.seed, 9), spec.ranges.ridgeScale * 0.6),
+    noiseField(grid, fieldSeed(spec.seed, 10), spec.ranges.ridgeScale * 2),
+    noiseField(grid, fieldSeed(spec.seed, 11), spec.ranges.ridgeScale * 2),
   );
   for (let i = 0; i < N; i++) if (land[i]) height[i] += uplift[i];
+  // Volcanoes: placed now (their heat shapes the climate the erosion
+  // sees), raised after erosion (they are young).
+  const volcanoes = placeVolcanoes(spec, ranges, layout);
+  const lobes = noiseField(grid, fieldSeed(spec.seed, 8), spec.volcano.radius / 3);
+  const vents = ventDistance(spec, grid, volcanoes, lobes);
 
   // ---- 2. erosion, driven by a first look at the rain ------------------------
   thermalErosion(height, grid, E.talusDeg, Math.ceil(E.thermalPasses / 2));
   const shaped = Float32Array.from(height);
   const firstSea = seaMask(height, grid, sea);
   const firstRain = rainfall(spec, grid, height, (i) => firstSea[i] === 1).rainMm;
+  const glaciers = glaciate(spec, grid, height, temperature(spec, grid, height, vents), firstRain, (i) => firstSea[i] === 1);
+  const meltMm = glaciers.melt.map((m) => (m / (grid.cell * grid.cell)) * 1000);
   const share = firstRain.map((r) => r / spec.climate.rainMm);
-  const deepestCutM = fluvialErosion(height, grid, sea, share, E.fluvialPasses, E.fluvialStrength);
+  const runoff = firstRain.map((r, i) => (r + meltMm[i]) / spec.climate.rainMm);
+  const deepestCutM = fluvialErosion(height, grid, sea, runoff, E.fluvialPasses, E.fluvialStrength);
   dropletErosion(height, grid, sea, share, E.droplets, E.strength, mulberry32(spec.seed ^ 0xe20d));
   thermalErosion(height, grid, E.talusDeg, Math.floor(E.thermalPasses / 2));
   let erodedSum = 0;
@@ -206,6 +243,7 @@ export function surveyWorld(spec: WorldSpec): Survey {
     erodedSum += change;
     erodedMaxM = Math.max(erodedMaxM, change);
   }
+  raiseVolcanoes(spec, grid, height, baseLevel, volcanoes, lobes);
 
   // ---- 3. water ---------------------------------------------------------------
   // One landmass: islands the erosion cut off, if too small, go under.
@@ -214,7 +252,8 @@ export function surveyWorld(spec: WorldSpec): Survey {
   for (let i = 0; i < N; i++) if (!kept[i] && !seaCells[i]) height[i] = Math.min(height[i], sea - 0.5);
   seaCells = seaMask(height, grid, sea);
   const filled = fillDepressions(height, grid);
-  const lakes = findLakes(height, filled, grid, seaCells, firstRain, spec.lakes);
+  // Meltwater fills lakes too (glacial lakes behind moraines).
+  const lakes = findLakes(height, filled, grid, seaCells, firstRain.map((r, i) => r + meltMm[i]), spec.lakes);
   const water = new Uint8Array(N);
   const waterLevel = new Float32Array(N).fill(Number.NaN);
   for (let i = 0; i < N; i++) {
@@ -224,10 +263,10 @@ export function surveyWorld(spec: WorldSpec): Survey {
 
   // ---- 4. climate --------------------------------------------------------------
   const { rainMm, humidity } = rainfall(spec, grid, height, (i) => water[i] !== LAND);
-  const tempC = temperature(spec, grid, height);
+  const tempC = temperature(spec, grid, height, vents);
 
   // ---- rivers: rain-weighted drainage over the filled surface -----------------
-  const flow = accumulate(drainage(filled, grid), grid, (i) => rainMm[i] / spec.climate.rainMm);
+  const flow = accumulate(drainage(filled, grid), grid, (i) => (rainMm[i] + meltMm[i]) / spec.climate.rainMm);
   const river = new Uint8Array(N);
   let riverCells = 0;
   for (let i = 0; i < N; i++) {
@@ -251,6 +290,8 @@ export function surveyWorld(spec: WorldSpec): Survey {
     waterDistance: distanceTo(W, D, grid.cell, (i) => water[i] !== LAND || river[i] === 1),
     freshwaterDistance: distanceTo(W, D, grid.cell, (i) => water[i] === LAKE || river[i] === 1),
     seaExposure: boxBlur(seaShare, W, D, SEA_EXPOSURE_RADIUS_M / grid.cell / 2),
+    ice: glaciers.ice,
+    volcanoDistance: vents,
   });
   smoothBiomes(biome, water, W, D, spec.minBiomeArea / (grid.cell * grid.cell));
   const { regions, region } = biomeRegions(biome, grid);
@@ -294,14 +335,21 @@ export function surveyWorld(spec: WorldSpec): Survey {
     temperature: tempC,
     water,
     waterLevel,
+    ice: glaciers.ice,
+    meltMm,
+    ventDistance: vents,
     flow,
     river,
     regions,
     ranges,
+    volcanoes,
     stats: {
       erodedMeanM: erodedSum / N,
       erodedMaxM,
       deepestCutM,
+      glacierCells: glaciers.ice.reduce((a, b) => a + b, 0),
+      glacierSnouts: glaciers.snouts,
+      deepestGlacialCutM: glaciers.deepestCutM,
       riverCells,
       lakeCells,
       landFraction: landCells / worldCells,

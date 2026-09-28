@@ -26,6 +26,8 @@ export interface BiomeInputs {
   waterDistance: Float32Array;
   freshwaterDistance: Float32Array;
   seaExposure: Float32Array;
+  ice: Uint8Array;
+  volcanoDistance: Float32Array;
 }
 
 const within = (b: Bound | undefined, x: number): boolean =>
@@ -44,7 +46,9 @@ function matches(c: BiomeCondition, f: BiomeInputs, i: number): boolean {
     within(c.coastDistance, f.coastDistance[i]) &&
     within(c.waterDistance, f.waterDistance[i]) &&
     within(c.freshwaterDistance, f.freshwaterDistance[i]) &&
-    within(c.seaExposure, f.seaExposure[i])
+    within(c.seaExposure, f.seaExposure[i]) &&
+    within(c.ice, f.ice[i]) &&
+    within(c.volcanoDistance, f.volcanoDistance[i])
   );
 }
 

@@ -25,7 +25,10 @@ type RGB = [number, number, number];
 const BIOME_COLOUR: Record<string, RGB> = {
   sea: [38, 78, 128],
   lake: [60, 110, 170],
+  glacier: [196, 226, 244],
   snow: [240, 244, 248],
+  tundra: [150, 156, 128],
+  volcanic: [70, 58, 56],
   mountains: [138, 128, 118],
   beach: [226, 210, 160],
   swamp: [78, 96, 62],

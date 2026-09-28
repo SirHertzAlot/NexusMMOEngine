@@ -128,6 +128,18 @@ export function slopeDegrees(h: Float32Array, W: number, D: number, cell: number
   return out;
 }
 
+/** Bilinear sample of a grid field at fractional (u, v), clamped to the grid. */
+export function sampleBilinear(f: Float32Array, W: number, D: number, u: number, v: number): number {
+  const cu = Math.min(W - 1, Math.max(0, u));
+  const cv = Math.min(D - 1, Math.max(0, v));
+  const u0 = Math.min(W - 2, Math.floor(cu));
+  const v0 = Math.min(D - 2, Math.floor(cv));
+  const tu = cu - u0;
+  const tv = cv - v0;
+  const i = v0 * W + u0;
+  return (f[i] * (1 - tu) + f[i + 1] * tu) * (1 - tv) + (f[i + W] * (1 - tu) + f[i + W + 1] * tu) * tv;
+}
+
 export function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);

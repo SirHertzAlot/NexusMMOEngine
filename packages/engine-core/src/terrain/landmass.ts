@@ -12,12 +12,22 @@
  */
 
 import type { CoarseGrid } from "./survey.js";
-import { distanceTo, labelComponents, smoothstep } from "./grid-ops.js";
+import { distanceTo, labelComponents, sampleBilinear, smoothstep } from "./grid-ops.js";
 import { windVector, worldBounds, type WorldSpec } from "./world-spec.js";
 
-/** A mountain range's axis, world metres. */
+/** A mountain range's axis (world metres) and its size. */
 export interface RangeAxis {
   points: Array<{ x: number; z: number }>;
+  height: number;
+  width: number;
+  /** A spur grows out of another range at its first point: no taper there. */
+  spur: boolean;
+}
+
+/** A volcano's vent, world metres. */
+export interface Volcano {
+  x: number;
+  z: number;
 }
 
 /** Coast frame of a world point: t (land edge 0 → sea edge 1), a (across, -1..1). */
@@ -133,17 +143,20 @@ export function baseElevation(spec: WorldSpec, grid: CoarseGrid, land: Uint8Arra
 }
 
 /**
- * Lay out mountain range axes on the land, roughly across the prevailing
- * wind (so they catch its rain and cast a shadow behind them), clear of
- * the coast and of each other. A range that can't fit is shortened, and
- * dropped if even a short one can't.
+ * Lay out the mountain ranges as one connected system per main chain: a
+ * long chain roughly across the prevailing wind (it catches the rain and
+ * casts a shadow behind it), clear of the coast, and spurs that branch
+ * off it at varied angles on alternating sides and merge into it where
+ * they join — ranges connect instead of standing in parallel rows. A
+ * chain or spur that can't fit is shortened, and dropped if even a short
+ * one can't.
  */
 export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array, rng: () => number): RangeAxis[] {
   const R = spec.ranges;
   const W = grid.width;
   const D = grid.depth;
   const toSea = distanceTo(W, D, grid.cell, (i) => land[i] === 0);
-  const at = (x: number, z: number): number => {
+  const coastAt = (x: number, z: number): number => {
     const u = Math.round((x - grid.originX) / grid.cell);
     const v = Math.round((z - grid.originZ) / grid.cell);
     if (u < 0 || v < 0 || u >= W || v >= D) return -1;
@@ -151,39 +164,68 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
   };
   const wind = windVector(spec.climate.wind);
   const across = Math.atan2(wind.x, -wind.z); // perpendicular to the wind
+  const segments = 16;
+
+  /** A curving polyline of `length` from (x, z) along `heading`. */
+  const walk = (x: number, z: number, heading: number, length: number, bend: number): Array<{ x: number; z: number }> => {
+    const pts = [{ x, z }];
+    const step = length / segments;
+    let a = heading;
+    for (let s = 0; s < segments; s++) {
+      a += (rng() - 0.5) * bend;
+      x += Math.cos(a) * step;
+      z += Math.sin(a) * step;
+      pts.push({ x, z });
+    }
+    return pts;
+  };
+  const onLand = (pts: Array<{ x: number; z: number }>, clearance: number): boolean =>
+    pts.every((p) => coastAt(p.x, p.z) >= clearance);
+
+  const ranges: RangeAxis[] = [];
   const eligible: number[] = [];
   for (let i = 0; i < W * D; i++) if (land[i] && toSea[i] >= R.coastClearance) eligible.push(i);
 
-  const ranges: RangeAxis[] = [];
-  const segments = 16;
+  // Main chains: centred on land, grown both ways across the wind.
   for (let k = 0; k < R.count && eligible.length > 0; k++) {
     let placed: RangeAxis | null = null;
-    for (let length = R.length; !placed && length >= R.length * 0.3; length *= 0.8) {
-      for (let attempt = 0; attempt < 60 && !placed; attempt++) {
+    for (let length = R.length; !placed && length >= R.length * 0.3; length *= 0.85) {
+      for (let attempt = 0; attempt < 80 && !placed; attempt++) {
         const c = eligible[Math.floor(rng() * eligible.length)];
         const cx = grid.originX + (c % W) * grid.cell;
         const cz = grid.originZ + Math.floor(c / W) * grid.cell;
         const heading = across + (rng() - 0.5) * 0.7;
-        const step = length / segments;
-        const half = (dir: number): Array<{ x: number; z: number }> => {
-          const pts: Array<{ x: number; z: number }> = [];
-          let x = cx;
-          let z = cz;
-          let a = heading;
-          for (let s = 0; s < segments / 2; s++) {
-            a += (rng() - 0.5) * 0.25;
-            x += dir * Math.cos(a) * step;
-            z += dir * Math.sin(a) * step;
-            pts.push({ x, z });
-          }
-          return pts;
-        };
-        const points = [...half(-1).reverse(), { x: cx, z: cz }, ...half(1)];
-        const clear = points.every((p) => at(p.x, p.z) >= R.coastClearance * 0.6);
+        const back = walk(cx, cz, heading + Math.PI, length / 2, 0.25).slice(1).reverse();
+        const points = [...back, ...walk(cx, cz, heading, length / 2, 0.25)];
         const apart = ranges.every((r) =>
-          r.points.every((q) => points.every((p) => Math.hypot(p.x - q.x, p.z - q.z) >= R.width * 0.9)),
+          r.points.every((q) => points.every((p) => Math.hypot(p.x - q.x, p.z - q.z) >= R.width)),
         );
-        if (clear && apart) placed = { points };
+        if (onLand(points, R.coastClearance * 0.6) && apart) placed = { points, height: R.height, width: R.width, spur: false };
+      }
+    }
+    if (placed) ranges.push(placed);
+  }
+
+  // Spurs: branch off an existing range, alternating sides, 35–80° out.
+  const chains = ranges.length;
+  for (let k = 0; k < R.spurs && chains > 0; k++) {
+    const side = k % 2 === 0 ? 1 : -1;
+    let placed: RangeAxis | null = null;
+    for (let length = R.spurLength; !placed && length >= R.spurLength * 0.3; length *= 0.85) {
+      for (let attempt = 0; attempt < 60 && !placed; attempt++) {
+        const parent = ranges[Math.floor(rng() * ranges.length)];
+        const p = parent.points;
+        const s = Math.max(1, Math.min(p.length - 2, Math.round((0.15 + 0.7 * rng()) * (p.length - 1))));
+        const along = Math.atan2(p[s + 1].z - p[s - 1].z, p[s + 1].x - p[s - 1].x);
+        const heading = along + side * ((35 + 45 * rng()) * Math.PI) / 180;
+        const points = walk(p[s].x, p[s].z, heading, length, 0.35);
+        // Clear of the other spurs (the parent it grows from is fine).
+        const apart = ranges.every(
+          (r) => r === parent || r.points.every((q) => points.slice(4).every((pt) => Math.hypot(pt.x - q.x, pt.z - q.z) >= parent.width * R.spurScale)),
+        );
+        if (onLand(points.slice(2), R.coastClearance * 0.5) && apart) {
+          placed = { points, height: parent.height * R.spurScale, width: parent.width * R.spurScale, spur: true };
+        }
       }
     }
     if (placed) ranges.push(placed);
@@ -193,8 +235,9 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
 
 /**
  * Uplift from the ranges: a smooth ridge profile across each axis, tapered
- * at its ends and varied along it, broken into ridges and valleys by
- * ridged noise. Overlapping ranges take the higher uplift.
+ * at its ends (a spur not where it joins its parent) and varied along it,
+ * broken into ridges and valleys by ridged noise. Where ranges meet the
+ * higher uplift wins, so they merge into one massif.
  */
 export function rangeUplift(
   spec: WorldSpec,
@@ -202,14 +245,17 @@ export function rangeUplift(
   ranges: RangeAxis[],
   ridgeNoise: Float32Array,
   alongNoise: Float32Array,
+  crossNoise: Float32Array,
+  warpU: Float32Array,
+  warpV: Float32Array,
 ): Float32Array {
   const R = spec.ranges;
   const W = grid.width;
   const D = grid.depth;
   const up = new Float32Array(W * D);
-  const halfW = R.width / 2;
   for (const range of ranges) {
     const p = range.points;
+    const halfW = range.width / 2;
     const cum = [0];
     for (let s = 1; s < p.length; s++) cum.push(cum[s - 1] + Math.hypot(p[s].x - p[s - 1].x, p[s].z - p[s - 1].z));
     const total = cum[cum.length - 1];
@@ -242,16 +288,107 @@ export function rangeUplift(
         if (r >= 1) continue;
         const i = v * W + u;
         const profile = (1 - r * r) * (1 - r * r);
-        const ends = smoothstep(0, 0.2, along) * smoothstep(0, 0.2, 1 - along);
-        const lift = R.height * profile * ends * (0.75 + 0.25 * alongNoise[i]);
+        const ends = (range.spur ? 1 : smoothstep(0, 0.2, along)) * smoothstep(0, 0.2, 1 - along);
+        const lift = range.height * profile * ends * (0.75 + 0.25 * alongNoise[i]);
         if (lift > up[i]) up[i] = lift;
       }
     }
   }
-  for (let i = 0; i < W * D; i++) {
-    if (up[i] === 0) continue;
-    const ridge = (1 - Math.abs(ridgeNoise[i])) ** 2; // 0..1, crests where the noise crosses 0
-    up[i] *= 1 - R.ridges + 2 * R.ridges * ridge;
+  // Ridges: crests where the noise crosses 0. One field alone lines its
+  // crests up in parallel bands, so it is warped (crests meander) and a
+  // smaller field crossing it adds side ridges: a ridge network.
+  const warp = (4 * R.ridgeScale) / 25 / grid.cell;
+  for (let v = 0; v < D; v++) {
+    for (let u = 0; u < W; u++) {
+      const i = v * W + u;
+      if (up[i] === 0) continue;
+      const main = (1 - Math.abs(sampleBilinear(ridgeNoise, W, D, u + warp * warpU[i], v + warp * warpV[i]))) ** 2;
+      const side = (1 - Math.abs(crossNoise[i])) ** 2;
+      const ridge = Math.max(main, 0.8 * side);
+      up[i] *= 1 - R.ridges + 2 * R.ridges * ridge;
+    }
   }
   return up;
+}
+
+/**
+ * Volcanoes sit on the main chain (the first range), in its middle
+ * stretch, spread along it.
+ */
+export function placeVolcanoes(spec: WorldSpec, ranges: RangeAxis[], rng: () => number): Volcano[] {
+  const main = ranges.find((r) => !r.spur);
+  if (!main || spec.volcano.count === 0) return [];
+  const p = main.points;
+  const out: Volcano[] = [];
+  for (let k = 0; k < spec.volcano.count; k++) {
+    const slot = (k + 0.2 + 0.6 * rng()) / spec.volcano.count; // one per stretch of the chain
+    const s = Math.round((0.3 + 0.4 * slot) * (p.length - 1));
+    out.push({ x: p[s].x, z: p[s].z });
+  }
+  return out;
+}
+
+/** How far a lobed cone reaches in the direction of a cell: 1 ± 35%. */
+const lobeAt = (lobes: Float32Array, i: number): number => 1 + 0.35 * lobes[i];
+
+/**
+ * Each cell's distance to the nearest vent (Infinity without volcanoes),
+ * measured through the cones' lobes (lava ran further on some sides), so
+ * vent heat and volcanic ground follow a cone's outline.
+ */
+export function ventDistance(spec: WorldSpec, grid: CoarseGrid, volcanoes: Volcano[], lobes: Float32Array): Float32Array {
+  const W = grid.width;
+  const D = grid.depth;
+  const dist = new Float32Array(W * D).fill(Infinity);
+  for (const vent of volcanoes) {
+    const cu = (vent.x - grid.originX) / grid.cell;
+    const cv = (vent.z - grid.originZ) / grid.cell;
+    const reach = Math.ceil((spec.volcano.radius * 2) / grid.cell);
+    for (let v = Math.max(0, Math.floor(cv - reach)); v <= Math.min(D - 1, Math.ceil(cv + reach)); v++) {
+      for (let u = Math.max(0, Math.floor(cu - reach)); u <= Math.min(W - 1, Math.ceil(cu + reach)); u++) {
+        const i = v * W + u;
+        dist[i] = Math.min(dist[i], (Math.hypot(u - cu, v - cv) * grid.cell) / lobeAt(lobes, i));
+      }
+    }
+  }
+  return dist;
+}
+
+/**
+ * Raise each volcano's cone over whatever stands there: concave flanks
+ * from its lobed foot up to a crater rim `height` above the land's base
+ * level, and a bowl-shaped crater `craterDepth` below the rim. Volcanoes
+ * are young: this runs after erosion, so the cone and crater stand sharp.
+ */
+export function raiseVolcanoes(
+  spec: WorldSpec,
+  grid: CoarseGrid,
+  h: Float32Array,
+  baseLevel: Float32Array,
+  volcanoes: Volcano[],
+  lobes: Float32Array,
+): void {
+  const V = spec.volcano;
+  const W = grid.width;
+  const D = grid.depth;
+  for (const vent of volcanoes) {
+    const cu = (vent.x - grid.originX) / grid.cell;
+    const cv = (vent.z - grid.originZ) / grid.cell;
+    const base = baseLevel[Math.round(cv) * W + Math.round(cu)];
+    const reach = Math.ceil((V.radius * 1.35) / grid.cell);
+    for (let v = Math.max(0, Math.floor(cv - reach)); v <= Math.min(D - 1, Math.ceil(cv + reach)); v++) {
+      for (let u = Math.max(0, Math.floor(cu - reach)); u <= Math.min(W - 1, Math.ceil(cu + reach)); u++) {
+        const i = v * W + u;
+        const r = Math.hypot(u - cu, v - cv) * grid.cell;
+        const reachHere = V.radius * lobeAt(lobes, i);
+        if (r >= reachHere) continue;
+        if (r < V.craterRadius) {
+          h[i] = base + V.height - V.craterDepth * (1 - (r / V.craterRadius) ** 2);
+          continue;
+        }
+        const flank = (reachHere - r) / (reachHere - V.craterRadius);
+        h[i] = Math.max(h[i], base + V.height * Math.pow(flank, 1.6));
+      }
+    }
+  }
 }

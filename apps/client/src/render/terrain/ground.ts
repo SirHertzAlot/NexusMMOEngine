@@ -19,6 +19,9 @@ export const BIOME_GROUND: Record<string, readonly [number, number, number]> = {
   swamp: [76, 82, 56],
   mountains: [112, 104, 94],
   snow: [232, 236, 240],
+  glacier: [190, 218, 236],
+  tundra: [128, 132, 104],
+  volcanic: [62, 52, 50],
   beach: [214, 196, 150],
   // Under water: the sea floor and lake beds (the water surface is drawn over them).
   sea: [150, 138, 104],

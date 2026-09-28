@@ -70,6 +70,10 @@ export const BiomeCondition = z
      * headlands, low in inlets, lagoons, and inland.
      */
     seaExposure: Bound.optional(),
+    /** 1 under glacier ice or an ice cap, 0 elsewhere. */
+    ice: Bound.optional(),
+    /** Distance to the nearest volcano's vent, metres (Infinity with none). */
+    volcanoDistance: Bound.optional(),
   })
   .strict();
 export type BiomeCondition = z.infer<typeof BiomeCondition>;
@@ -158,13 +162,19 @@ export const WorldSpecSchema = z
 
     ranges: z
       .object({
-        count: z.number().int().min(0).default(2),
+        /** Main chains, laid across the wind and kept apart. */
+        count: z.number().int().min(0).default(1),
         /** Crest height above the land, metres. */
         height: z.number().min(0).default(380),
         /** Full width of a range, metres. */
         width: z.number().positive().default(900),
-        /** Length along its axis, metres (shortened when the land is too small). */
-        length: z.number().positive().default(2200),
+        /** Length of a main chain, metres (shortened when the land is too small). */
+        length: z.number().positive().default(3600),
+        /** Spur ranges branching off the chains (they merge where they join). */
+        spurs: z.number().int().min(0).default(3),
+        spurLength: z.number().positive().default(1300),
+        /** Spur height and width as a share of the chain's. */
+        spurScale: z.number().min(0.2).max(1).default(0.75),
         /** Size of the ridges and valleys along a range, metres. */
         ridgeScale: z.number().positive().default(600),
         /** Ridge strength, 0..1 of the range height. */
@@ -183,6 +193,11 @@ export const WorldSpecSchema = z
         seaTempC: z.number().default(20),
         /** How much colder the far (land) edge is at sea level, °C. */
         inlandCoolingC: z.number().default(8),
+        /**
+         * How the cooling spreads toward the far edge: 1 = evenly; > 1 keeps
+         * the middle mild and puts the cold in the far north (a frozen edge).
+         */
+        inlandCoolingCurve: z.number().positive().default(1),
         /** Cooling with height, °C per km (the real ~6.5 is too little for a 400 m world). */
         lapseCPerKm: z.number().min(0).default(40),
         /** Yearly rain on flat ground at the windward coast, mm. */
@@ -210,6 +225,43 @@ export const WorldSpecSchema = z
         /** River incision (stream power): passes and strength. */
         fluvialPasses: z.number().int().min(0).default(12),
         fluvialStrength: z.number().min(0).default(0.004),
+      })
+      .strict()
+      .prefault({}),
+
+    glaciers: z
+      .object({
+        /** Snow turns to ice where the mean temperature is at or below this, °C… */
+        formBelowC: z.number().default(-2),
+        /** …and at least this much of it falls a year, mm (drier cold ground is tundra). */
+        minSnowMm: z.number().min(0).default(500),
+        /** Ice melts where it is warmer than this, °C… */
+        meltAboveC: z.number().default(1),
+        /** …by this many metres of ice a year per °C above it. */
+        meltRate: z.number().min(0).default(1.5),
+        /** Carving passes (ice re-routes over the carved land each pass). */
+        passes: z.number().int().min(0).default(5),
+        /** How hard ice grinds its bed, and the most one pass can cut, metres. */
+        strength: z.number().min(0).default(0.01),
+        maxCutPerPassM: z.number().min(0).default(4),
+        /** Tallest moraine a glacier leaves at its snout, metres. */
+        moraineM: z.number().min(0).default(6),
+      })
+      .strict()
+      .prefault({}),
+
+    volcano: z
+      .object({
+        /** Volcanoes on the main chain (0 = none). */
+        count: z.number().int().min(0).default(0),
+        /** Crater rim height above the surrounding land's base, metres. */
+        height: z.number().min(0).default(520),
+        /** Cone base radius, metres. */
+        radius: z.number().positive().default(650),
+        craterRadius: z.number().min(0).default(70),
+        craterDepth: z.number().min(0).default(45),
+        /** Vent heat at the summit (keeps the crater clear of ice), °C, fading to 0 at the base. */
+        heatC: z.number().min(0).default(10),
       })
       .strict()
       .prefault({}),

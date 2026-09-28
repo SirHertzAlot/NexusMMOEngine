@@ -19,11 +19,17 @@
     "reliefScale": 1500,
     "minIslandArea": 20000
   },
-  "ranges": { "count": 2, "height": 380, "width": 900, "length": 2200, "ridgeScale": 600, "ridges": 0.45, "coastClearance": 350 },
+  "ranges": {
+    "count": 1, "height": 380, "width": 600, "length": 3400,
+    "spurs": 2, "spurLength": 1100, "spurScale": 0.7,
+    "ridgeScale": 500, "ridges": 0.45, "coastClearance": 500
+  },
+  "volcano": { "count": 1, "height": 520, "radius": 650, "craterRadius": 70, "craterDepth": 45, "heatC": 10 },
   "climate": {
-    "wind": "south-west",
-    "seaTempC": 20,
-    "inlandCoolingC": 8,
+    "wind": "west",
+    "seaTempC": 16,
+    "inlandCoolingC": 28,
+    "inlandCoolingCurve": 3,
     "lapseCPerKm": 45,
     "rainMm": 1100,
     "dryDistance": 2500,
@@ -32,15 +38,20 @@
     "inlandHumidity": 0.35
   },
   "erosion": { "droplets": 150000, "strength": 0.35, "talusDeg": 38, "thermalPasses": 30, "fluvialPasses": 12, "fluvialStrength": 0.004 },
+  "glaciers": { "formBelowC": -2, "minSnowMm": 500, "meltAboveC": 1, "meltRate": 2.5, "passes": 5, "strength": 0.01, "maxCutPerPassM": 4, "moraineM": 6 },
   "rivers": { "minCatchment": 250000, "maxDepth": 4 },
   "lakes": { "minDepth": 0.8, "minArea": 12000, "minRainMm": 350 },
   "minBiomeArea": 6000,
   "biomes": [
     { "id": "sea",        "when": { "water": "sea" },  "roughness": 0.2 },
     { "id": "lake",       "when": { "water": "lake" }, "roughness": 0.1 },
-    { "id": "snow",       "when": { "tempC": { "max": 0 } }, "roughness": 0.6 },
+    { "id": "volcanic",   "when": { "volcanoDistance": { "max": 330 } },
+                          "surface": { "shape": "ridged", "relief": 4, "scale": 60 }, "roughness": 0.9 },
+    { "id": "glacier",    "when": { "ice": { "min": 1 } }, "roughness": 0.15 },
+    { "id": "snow",       "when": { "tempC": { "max": -5 } }, "roughness": 0.5 },
     { "id": "mountains",  "when": [{ "slopeDeg": { "min": 30 } }, { "height": { "min": 200 } }],
                           "surface": { "shape": "ridged", "relief": 8, "scale": 90 }, "roughness": 1.0 },
+    { "id": "tundra",     "when": { "tempC": { "max": 2 } }, "roughness": 0.4 },
     { "id": "beach",      "when": { "coastDistance": { "max": 40 }, "height": { "max": 3 }, "seaExposure": { "min": 0.25 } }, "roughness": 0.1 },
     { "id": "swamp",      "when": [
                             { "freshwaterDistance": { "max": 80 }, "height": { "max": 4 }, "slopeDeg": { "max": 3 },
@@ -48,10 +59,10 @@
                             { "coastDistance": { "max": 80 }, "seaExposure": { "max": 0.2 }, "height": { "max": 5 },
                               "slopeDeg": { "max": 4 }, "rainMm": { "min": 700 }, "tempC": { "min": 8 } } ],
                           "surface": { "shape": "flat", "relief": 0.5, "scale": 60 }, "roughness": 0.2 },
-    { "id": "desert",     "when": { "rainMm": { "max": 350 } }, "surface": { "shape": "dunes", "relief": 8, "scale": 40 }, "roughness": 0.3 },
+    { "id": "desert",     "when": { "rainMm": { "max": 330 } }, "surface": { "shape": "dunes", "relief": 8, "scale": 40 }, "roughness": 0.3 },
     { "id": "rainforest", "when": { "rainMm": { "min": 1700 }, "tempC": { "min": 16 } },
                           "surface": { "shape": "rolling", "relief": 6, "scale": 200 }, "roughness": 0.8 },
-    { "id": "forest",     "when": { "rainMm": { "min": 800 } }, "surface": { "shape": "rolling", "relief": 10, "scale": 300 }, "roughness": 0.7 },
+    { "id": "forest",     "when": { "rainMm": { "min": 1000 } }, "surface": { "shape": "rolling", "relief": 10, "scale": 300 }, "roughness": 0.7 },
     { "id": "plains",     "surface": { "shape": "rolling", "relief": 8, "scale": 400 }, "roughness": 0.4 }
   ]
 }
