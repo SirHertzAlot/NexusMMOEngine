@@ -1,0 +1,83 @@
+// world.ridl — region<->world contract (webrpc IDL, v1)
+//
+// This file is the source of truth for the region<->world API. The
+// TypeScript server adapter (src/adapters/webrpc.ts) and the region-side
+// client (engine-core/src/world/webrpc-transport.ts) are hand-authored
+// to the webrpc JSON wire protocol and MUST match this schema:
+//
+//   POST /rpc/World/<Method>  Content-Type: application/json
+//   -> {"argName": ...}       <- {"outName": ...} | {"code": N, "msg": "..."}
+//
+// Auth: RegisterRegion bootstraps with the pre-shared apiKey in the
+// body. Every other method requires:
+//   Authorization: Bearer <lease.token>
+// The adapter rejects unauthenticated callers before validation.
+//
+// Regenerating with webrpc-gen must be a drop-in replacement:
+//   webrpc-gen -schema=world.ridl -target=typescript -out=./gen/
+//
+// Slice A implements: RegisterRegion, Heartbeat, DeregisterRegion,
+// ReportSnapshot. Migration methods are declared for slice B (the
+// server returns UNIMPLEMENTED until then).
+
+webrpc = v1
+
+name = world
+version = v0.1.0
+
+service World
+  - RegisterRegion(input: RegisterRegionInput) => (lease: RegionLease)
+  - Heartbeat(input: HeartbeatInput) => (ack: HeartbeatAck)
+  - DeregisterRegion(regionId: string, opId: string) => ()
+  - ReportSnapshot(input: SnapshotReportInput) => ()
+
+  # Slice B: cross-region entity migration arbitration
+  - BeginMigration(input: BeginMigrationInput) => (migrationId: string)
+  - CommitMigration(migrationId: string, opId: string) => ()
+  - AbortMigration(migrationId: string, opId: string, reason: string) => ()
+
+struct ChunkRange
+  - x0: int32
+  - x1: int32
+  - z0: int32
+  - z1: int32
+
+struct RegisterRegionInput
+  - regionId: string
+  - chunkRange: ChunkRange
+  # Where the region's game gateway listens (for future region->region links)
+  - endpoint: string
+  - capacity: uint32
+  # Pre-shared key; compared (constant-time) against the world's argon2 hash
+  - apiKey: string
+  # Client-generated UUID for idempotent retries
+  - opId: string
+
+struct RegionLease
+  - regionId: string
+  - heartbeatIntervalMs: uint64
+  - registryVersion: uint64
+  # Opaque bearer token for subsequent calls (rotated on re-register)
+  - token: string
+
+struct HeartbeatInput
+  - regionId: string
+  - load: float
+  - tickJitterMs: float
+  - entityCount: uint64
+
+struct HeartbeatAck
+  - ok: bool
+  - registryVersion: uint64
+  # Slice B: outcomes for this region's pending migrations
+  - migrations: []MigrationOutcome
+
+struct MigrationOutcome
+  - migrationId: string
+  - state: string
+
+struct SnapshotReportInput
+  - regionId: string
+  - tick: uint64
+  - entityCount: uint64
+  - digest: string

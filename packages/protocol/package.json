@@ -1,0 +1,17 @@
+{
+  "name": "@mmo-engine/protocol",
+  "version": "0.1.0",
+  "description": "WebSocket envelope + message catalog helpers for the engine protocol",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@mmo-engine/schema": "0.1.0",
+    "flatbuffers": "^25.9.23"
+  },
+  "private": true
+}

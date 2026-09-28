@@ -1,0 +1,1 @@
+{"compilerOptions":{"declaration":true,"module":"NodeNext","moduleResolution":"NodeNext","outDir":"generated/js","rootDir":"generated/ts","skipLibCheck":true,"strict":true,"target":"ES2022"},"include":["generated/ts/**/*"]}

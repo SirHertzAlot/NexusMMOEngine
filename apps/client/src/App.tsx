@@ -1,0 +1,420 @@
+/**
+ * Mirror client app shell (Phase 3).
+ *
+ * Login screen → world screen. The world screen runs the rAF loop:
+ * sample the Interpolator at the current alpha, sync the WorldView,
+ * forward changed input as PlayerIntent events. HUD shows connection
+ * state, server tick, entity count, fps, and player position.
+ *
+ * The session token lives in a ref (memory only) — reconnect presents
+ * it via the token hello variant (docs/MESSAGE-CATALOG.md).
+ *
+ * No client prediction: the mirror renders strictly behind the server
+ * by one tick interval (see mirror/interpolate.ts).
+ */
+
+import { useEffect, useRef, useState } from "react";
+import type { WelcomeMessage } from "@mmo-engine/protocol";
+import { MirrorClient } from "@mmo-engine/mirror";
+import { BrowserSocket } from "@mmo-engine/mirror";
+import { InputState, bindInput } from "./input/input.js";
+import { WorldView, type GpuInfo } from "./render/world-view.js";
+import { PlaceholderAssets } from "./render/assets.js";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+} from "./ui/components.js";
+
+type Screen = "login" | "connecting" | "world";
+type AuthMode = "login" | "register";
+
+interface HudData {
+  tick: number;
+  entities: number;
+  fps: number;
+  px: number;
+  py: number;
+  pz: number;
+}
+
+const DEFAULT_URL =
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? "wss://localhost:7777"
+    : "ws://localhost:7777";
+
+export function App(): React.ReactElement {
+  const [screen, setScreen] = useState<Screen>("login");
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [url, setUrl] = useState(DEFAULT_URL);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [hud, setHud] = useState<HudData>({
+    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0,
+  });
+  const [gpu, setGpu] = useState<GpuInfo | null>(null);
+  const [wireframe, setWireframe] = useState(false);
+  const [showcase, setShowcase] = useState(false);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const clientRef = useRef<MirrorClient | null>(null);
+  const sessionTokenRef = useRef<string | null>(null);
+  const assetsRef = useRef<PlaceholderAssets | null>(null);
+  const viewRef = useRef<WorldView | null>(null);
+  const lastStateAtRef = useRef(0);
+
+  /** Shared MirrorClient construction with the standard callbacks. */
+  const createClient = (): MirrorClient =>
+    new MirrorClient((u) => new BrowserSocket(u), {
+      onWelcome: (_w: WelcomeMessage) => {
+        sessionTokenRef.current = _w.session_token;
+      },
+      onState: (tick: number) => {
+        lastStateAtRef.current = performance.now();
+        void tick;
+      },
+      onError: (e) => setError(`server error ${e.code}: ${e.message}`),
+      onClose: () => {
+        // The server sends an error frame before closing on every
+        // rejection; keep that reason instead of masking it.
+        setError((prev) => prev ?? "connection closed");
+        setScreen("login");
+      },
+    });
+
+  /**
+   * Run one handshake (login, register, or token reconnect) against a
+   * fresh client. The server answers every path with the normal welcome
+   * + snapshot, so everything downstream is identical.
+   */
+  const runHandshake = async (
+    handshake: (client: MirrorClient) => Promise<WelcomeMessage>,
+  ): Promise<void> => {
+    setScreen("connecting");
+    setError(null);
+    const client = createClient();
+    clientRef.current = client;
+    try {
+      await handshake(client);
+      setScreen("world");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setScreen("login");
+      clientRef.current = null;
+    }
+  };
+
+  /**
+   * Launch the mirror: log in with an existing account, or create the
+   * account first (protocol 0x0b `register`) and join with it.
+   */
+  const launch = (): Promise<void> =>
+    runHandshake((client) =>
+      mode === "register"
+        ? client.register(url, username || "mirror", username, password)
+        : client.connect(url, username || "mirror", { username, password }),
+    );
+
+  /** Reconnect with the stored session token (skips the password). */
+  const reconnectWithToken = (): Promise<void> => {
+    const token = sessionTokenRef.current;
+    if (!token) return Promise.resolve();
+    disconnect();
+    return runHandshake((client) =>
+      client.connect(url, username || "mirror", { token }),
+    );
+  };
+
+  const usernameOk = /^[A-Za-z0-9_-]{3,32}$/.test(username);
+  const passwordOk = password.length >= 8;
+  const canSubmit =
+    screen !== "connecting" &&
+    usernameOk &&
+    passwordOk &&
+    (mode === "login" || password === confirmPassword);
+
+  const disconnect = (): void => {
+    clientRef.current?.disconnect();
+    clientRef.current = null;
+    setScreen("login");
+  };
+
+  // ---- world loop -------------------------------------------------------
+  useEffect(() => {
+    if (screen !== "world") return;
+    const canvas = canvasRef.current;
+    const client = clientRef.current;
+    if (!canvas || !client) return;
+
+    const assets = new PlaceholderAssets();
+    assetsRef.current = assets;
+    const view = new WorldView(canvas, assets);
+    viewRef.current = view;
+    setGpu(view.gpu);
+    if (view.gpu.software) {
+      console.warn(
+        `[client] software WebGL (${view.gpu.renderer}): enable hardware acceleration ` +
+          `in browser settings (chrome://gpu shows why it is off).`,
+      );
+    }
+    const input = new InputState();
+    const unbind = bindInput(canvas, input);
+    const onWheel = (e: WheelEvent): void => {
+      e.preventDefault();
+      view.setCamDistance(view.getCamDistance() + e.deltaY * 0.01);
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    const onResize = (): void => view.resize();
+    window.addEventListener("resize", onResize);
+
+    let raf = 0;
+    let frames = 0;
+    let fpsAt = performance.now();
+    let hudAt = 0;
+    const tickInterval = (): number => 1000 / (client.tickHz || 30);
+
+    const loop = (now: number): void => {
+      raf = requestAnimationFrame(loop);
+      frames++;
+      if (input.consumeDirty()) client.sendIntent(input.toIntent());
+
+      const alpha = Math.max(
+        0,
+        Math.min(1, (now - lastStateAtRef.current) / tickInterval()),
+      );
+      view.sync(
+        client.state,
+        client.interpolator,
+        alpha,
+        client.playerEntity,
+        input.lookYaw,
+        input.lookPitch,
+      );
+
+      if (now - fpsAt >= 1000) {
+        const fps = Math.round((frames * 1000) / (now - fpsAt));
+        frames = 0;
+        fpsAt = now;
+        hudAt = now;
+        const p = client.playerEntity !== null
+          ? client.state.get(client.playerEntity)?.transform
+          : undefined;
+        setHud({
+          tick: client.serverTick,
+          entities: client.state.entityCount,
+          fps,
+          px: p?.px ?? 0,
+          py: p?.py ?? 0,
+          pz: p?.pz ?? 0,
+        });
+      }
+      void hudAt;
+    };
+    raf = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      unbind();
+      canvas.removeEventListener("wheel", onWheel);
+      window.removeEventListener("resize", onResize);
+      view.dispose();
+      assetsRef.current = null;
+      viewRef.current = null;
+    };
+  }, [screen]);
+
+  const toggleWireframe = (): void => {
+    const next = !wireframe;
+    setWireframe(next);
+    assetsRef.current?.setTerrainWireframe(next);
+  };
+
+  const toggleShowcase = (): void => {
+    const next = !showcase;
+    setShowcase(next);
+    viewRef.current?.setShowcaseVisible(next);
+  };
+
+  if (screen === "world") {
+    return (
+      <div className="relative h-full w-full">
+        <canvas ref={canvasRef} className="block h-full w-full" />
+        <div className="absolute left-4 top-4 rounded-md bg-card/90 px-4 py-3 text-sm shadow">
+          <div className="font-medium text-foreground">mirror client</div>
+          <div className="mt-1 space-y-0.5 text-muted-foreground">
+            <div>tick <span className="text-foreground">{hud.tick}</span></div>
+            <div>entities <span className="text-foreground">{hud.entities}</span></div>
+            <div>fps <span className="text-foreground">{hud.fps}</span></div>
+            <div>
+              pos <span className="text-foreground">
+                {hud.px.toFixed(1)}, {hud.py.toFixed(1)}, {hud.pz.toFixed(1)}
+              </span>
+            </div>
+            {gpu && (
+              <div className="max-w-64 truncate" title={gpu.renderer}>
+                gpu <span className="text-foreground">{gpu.renderer}</span>
+              </div>
+            )}
+          </div>
+          {gpu?.software && (
+            <div className="mt-2 max-w-64 rounded-md border border-input bg-secondary/50 px-2 py-1 text-xs text-foreground">
+              Software rendering: hardware acceleration is off, so fps will
+              stay in single digits. Enable it in browser settings
+              (see chrome://gpu).
+            </div>
+          )}
+          <div className="mt-2 text-xs text-muted-foreground">
+            WASD move · mouse look (click canvas) · wheel zoom
+          </div>
+        </div>
+        <div className="absolute right-4 top-4 flex gap-2">
+          <Button size="sm" variant="secondary" onClick={toggleWireframe}>
+            {wireframe ? "solid terrain" : "wireframe terrain"}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={toggleShowcase}>
+            {showcase ? "hide FX" : "FX showcase"}
+          </Button>
+          {sessionTokenRef.current && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void reconnectWithToken()}
+            >
+              reconnect (token)
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={disconnect}>
+            disconnect
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full items-center justify-center bg-background">
+      <Card className="w-[380px]">
+        <CardHeader>
+          <CardTitle>MMO Engine — mirror</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {screen === "connecting"
+              ? "connecting…"
+              : mode === "register"
+                ? "Create an account on the server, then mirror the world."
+                : "Log in to mirror the authoritative world."}
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Button
+                variant={mode === "login" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setMode("login");
+                  setError(null);
+                }}
+              >
+                Log in
+              </Button>
+              <Button
+                variant={mode === "register" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => {
+                  setMode("register");
+                  setError(null);
+                }}
+              >
+                Create account
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="url">server URL</Label>
+              <Input
+                id="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="ws://localhost:7777"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username">username</Label>
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={
+                  mode === "register" ? "new-password" : "current-password"
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    void launch();
+                  }
+                }}
+              />
+            </div>
+            {mode === "register" && (
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">confirm password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void launch();
+                    }
+                  }}
+                />
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-xs text-destructive">
+                    passwords don&apos;t match
+                  </p>
+                )}
+              </div>
+            )}
+            {error && (
+              <div className="rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm text-foreground">
+                {error}
+              </div>
+            )}
+            <Button
+              className="w-full"
+              disabled={!canSubmit}
+              onClick={() => void launch()}
+            >
+              {screen === "connecting"
+                ? "connecting…"
+                : mode === "register"
+                  ? "create account & connect"
+                  : "connect"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              {mode === "register"
+                ? "username: 3\u201332 chars (letters, digits, _, -) · password: 8+ chars"
+                : "Prefer the CLI? On the server host run MMO_DEV_PASSWORD=\u2026 npm run seed:user --workspace=@mmo-engine/engine-core -- <name>"}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

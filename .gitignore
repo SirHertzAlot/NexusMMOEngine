@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+
+# FlatBuffers generated code — rebuilt by `npm run codegen`, never hand-edited
+packages/schema/generated/
+
+# compiled output
+dist/
+*.tsbuildinfo
+
+# sim benchmark artifacts (regenerable via `npm run sim`)
+sim-artifacts/
+
+# native addon build output
+build/
+*.node
+
+# misc
+.DS_Store
+.env
+
+# SQLite world databases (default ./data/world.db) — never commit
+data/
+
+# prebuilt native addon tarballs (regenerable via `npm run prebuild`)
+prebuilds/
+
+# vite production bundle (apps/client)
+dist-app/
+
+# Licensed art (served by the editor from <repo>/assets) — CONFIDENTIAL,
+# must never be committed or pushed. Anchored to the repo root so it
+# can't match vendored dirs like JoltPhysics/Assets on case-insensitive
+# filesystems.
+/assets/
+
+# Repo archives and handoff patches can bundle the art above
+/patches/
+*.zip

@@ -1,0 +1,55 @@
+{
+  "description": "Authoritative, data-oriented, ECS-capable procedural-generation MMO engine (slice 1.1 scaffolding)",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "name": "mmo-engine",
+  "private": true,
+  "scripts": {
+    "bench": "npm run bench --workspace=@mmo-engine/bench",
+    "build": "npm run build --workspaces --if-present",
+    "client": "npm run dev --workspace=@mmo-engine/client",
+    "codegen": "bash scripts/codegen.sh",
+    "editor": "npm run dev --workspace=@mmo-engine/editor",
+    "editor:build": "npm run build --workspace=@mmo-engine/editor",
+    "editor:test": "npm test --workspace=@mmo-engine/editor",
+    "server": "npm run server --workspace=@mmo-engine/engine-core",
+    "bake:world": "npm run bake:world --workspace=@mmo-engine/engine-core",
+    "convert:packs": "npm run build --workspace=@mmo-engine/art && npm run convert:packs --workspace=@mmo-engine/art --",
+    "bake:world:force": "npm run bake:world:force --workspace=@mmo-engine/engine-core",
+    "sim": "npm run sim --workspace=@mmo-engine/engine-core",
+    "test": "npm run test --workspaces --if-present",
+    "test:addon-navigation": "npm run test --workspace=@mmo-engine/addon-navigation",
+    "test:addon-physics": "npm run test --workspace=@mmo-engine/addon-physics",
+    "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
+    "world": "npm run server --workspace=@mmo-engine/world-server",
+    "world:db": "npm run db --workspace=@mmo-engine/world-server"
+  },
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/schema",
+    "packages/protocol",
+    "packages/mirror",
+    "packages/art",
+    "packages/engine-core",
+    "packages/bench",
+    "packages/addons/template",
+    "packages/addons/integrate",
+    "packages/addons/procgen",
+    "packages/addons/physics",
+    "packages/addons/navigation",
+    "apps/client",
+    "apps/editor",
+    "packages/world-server",
+    "packages/scatter",
+    "packages/addons/scatter"
+  ],
+  "dependencies": {
+    "@surrealdb/node": "^3.0.3"
+  }
+}

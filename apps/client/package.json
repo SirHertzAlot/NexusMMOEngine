@@ -1,0 +1,38 @@
+{
+  "dependencies": {
+    "@mmo-engine/art": "0.1.0",
+    "@mmo-engine/protocol": "^0.1.0",
+    "@mmo-engine/schema": "0.1.0",
+    "flatbuffers": "^25.9.23",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.170.0",
+    "@mmo-engine/mirror": "0.1.0"
+  },
+  "description": "three.js mirror client: React + shadcn + Tailwind shell, three.js canvas rendering authoritative ECS snapshots/deltas with interpolation (Phase 3)",
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.170.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3"
+  },
+  "name": "@mmo-engine/client",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:deps && npm run build:lib && vite build",
+    "build:deps": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror",
+    "build:lib": "tsc -p tsconfig.json",
+    "predev": "npm run build:deps",
+    "dev": "vite",
+    "preview": "vite preview",
+    "pretest": "npm run build:deps",
+    "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\""
+  },
+  "type": "module",
+  "version": "0.1.0"
+}

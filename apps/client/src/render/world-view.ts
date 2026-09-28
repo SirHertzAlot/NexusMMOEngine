@@ -1,0 +1,353 @@
+/**
+ * WorldView — three.js mirror of authoritative ECS state.
+ *
+ * Owns the renderer, scene, camera, and lights. `sync()` is called
+ * every rAF with the MirrorState + Interpolator: meshes are created
+ * lazily per wire id, moved from interpolated transforms, and removed
+ * when their entity despawns. Nothing here simulates — positions come
+ * from the server, full stop (skill operating rule 1).
+ *
+ * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
+ * BodyConfig shape, flat terrain planes per Chunk. The AssetProvider
+ * abstraction is the seam where real art plugs in later.
+ */
+
+import * as THREE from "three";
+import type { MirrorState } from "@mmo-engine/mirror";
+import type { Interpolator } from "@mmo-engine/mirror";
+import {
+  placeholderColor,
+  type AssetProvider,
+} from "./assets.js";
+import { updateTerrainFx } from "./terrain-fx.js";
+import { EntityFxSystem } from "./entity-fx.js";
+import { FxShowcase } from "./showcase.js";
+
+export interface WorldViewOptions {
+  /** Chunk world size in units (server MMO_CHUNK_SIZE, default 16). */
+  chunkWorldSize?: number;
+}
+
+interface TrackedMesh {
+  object: THREE.Object3D;
+  /** True once a BodyConfig row shaped this mesh (else unit-box stand-in). */
+  shaped: boolean;
+  isTerrain: boolean;
+  /** Terrain only: built from real heights (false = flat stand-in). */
+  displaced?: boolean;
+}
+
+/** Which WebGL implementation the browser actually gave us. */
+export interface GpuInfo {
+  renderer: string;
+  /**
+   * Software rasterizer (SwiftShader / llvmpipe / Microsoft Basic Render
+   * Driver): hardware acceleration is off or the GPU is blocklisted, and
+   * single-digit fps is expected regardless of scene cost.
+   */
+  software: boolean;
+}
+
+function detectGpu(renderer: THREE.WebGLRenderer): GpuInfo {
+  const gl = renderer.getContext();
+  const ext = gl.getExtension("WEBGL_debug_renderer_info");
+  const name = String(
+    ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+  );
+  return {
+    renderer: name,
+    software: /swiftshader|llvmpipe|software|basic render/i.test(name),
+  };
+}
+
+const tmpColor = new THREE.Color();
+const tmpSpawn = new THREE.Vector3();
+
+export class WorldView {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene = new THREE.Scene();
+  private readonly camera: THREE.PerspectiveCamera;
+  private readonly meshes = new Map<bigint, TrackedMesh>();
+  readonly gpu: GpuInfo;
+  /** Root object -> wire id for hover raycasting (non-terrain only). */
+  private readonly pickMap = new Map<THREE.Object3D, bigint>();
+  private readonly chunkWorldSize: number;
+  private camDistance = 9;
+  private disposed = false;
+  private readonly fx: EntityFxSystem;
+  private readonly showcase: FxShowcase;
+  private hoveredWireId: bigint | null = null;
+  private lastFrame = -1;
+  private lastPlayerPos = new THREE.Vector3(8, 2, 8);
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly pointerNdc = new THREE.Vector2();
+  private readonly onPointerMove: (e: PointerEvent) => void;
+
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly assets: AssetProvider,
+    opts: WorldViewOptions = {},
+  ) {
+    this.chunkWorldSize = opts.chunkWorldSize ?? 16;
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.gpu = detectGpu(this.renderer);
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+
+    this.scene.background = new THREE.Color(0x0b1020);
+    this.scene.fog = new THREE.Fog(0x0b1020, 40, 160);
+
+    const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
+    this.scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
+    sun.position.set(30, 50, 20);
+    this.scene.add(sun);
+
+    this.fx = new EntityFxSystem(this.scene, this.camera);
+    this.showcase = new FxShowcase(this.scene, (pos, color) =>
+      this.fx.spawnBurst(pos, color),
+    );
+
+    // Hover highlight (raycast against entity meshes, terrain excluded).
+    this.onPointerMove = (e: PointerEvent) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.pointerNdc.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+      const hits = this.raycaster.intersectObjects([...this.pickMap.keys()], false);
+      this.hoveredWireId = hits.length > 0 ? this.pickMap.get(hits[0].object) ?? null : null;
+    };
+    this.canvas.addEventListener("pointermove", this.onPointerMove);
+
+    this.resize();
+  }
+
+  /** Toggle the elemental-orb FX showcase (ring placed ahead of the player). */
+  setShowcaseVisible(v: boolean): void {
+    const forward = new THREE.Vector3()
+      .subVectors(this.lastPlayerPos, this.camera.position);
+    forward.y = 0;
+    if (forward.lengthSq() > 1e-6) forward.normalize();
+    const center = this.lastPlayerPos.clone().addScaledVector(forward, 7);
+    this.showcase.setVisible(v, center);
+  }
+
+  get showcaseVisible(): boolean {
+    return this.showcase.isVisible;
+  }
+
+  /** Third-person follow distance (mouse wheel). Clamped 4..24. */
+  setCamDistance(d: number): void {
+    this.camDistance = Math.max(4, Math.min(24, d));
+  }
+
+  getCamDistance(): number {
+    return this.camDistance;
+  }
+
+  resize(): void {
+    const w = this.canvas.clientWidth || window.innerWidth;
+    const h = this.canvas.clientHeight || window.innerHeight;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Reconcile the scene with mirror state. Camera follows the player
+   * entity (third-person, mouse-orbit via look yaw/pitch).
+   */
+  sync(
+    state: MirrorState,
+    interpolator: Interpolator,
+    alpha: number,
+    playerWireId: bigint | null,
+    lookYaw: number,
+    lookPitch: number,
+  ): void {
+    // Remove meshes for despawned entities.
+    for (const [key, t] of this.meshes) {
+      if (!state.entities.has(key)) {
+        this.scene.remove(t.object);
+        this.pickMap.delete(t.object);
+        disposeObject(t.object);
+        this.meshes.delete(key);
+      }
+    }
+
+    let playerPos: THREE.Vector3 | null = null;
+
+    for (const [wid, e] of state.entities) {
+      const key = wid;
+      let tracked = this.meshes.get(key);
+
+      // Terrain chunks render even without a Transform row.
+      if (!tracked) {
+        if (e.chunk) {
+          const obj = this.assets.terrainMesh(e.chunk, this.chunkWorldSize);
+          this.scene.add(obj);
+          this.meshes.set(key, {
+            object: obj,
+            shaped: true,
+            isTerrain: true,
+            displaced: e.chunk.heights !== null,
+          });
+        } else if (e.transform) {
+          const obj = this.makeBodyMesh(wid, e.body, e.asset);
+          this.scene.add(obj);
+          this.meshes.set(key, {
+            object: obj,
+            shaped: e.body !== undefined,
+            isTerrain: false,
+          });
+          this.pickMap.set(obj, wid);
+          // Spawn portal for newly-appearing entities.
+          this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
+        } else {
+          continue;
+        }
+        tracked = this.meshes.get(key)!;
+      } else if (tracked.isTerrain && !tracked.displaced && e.chunk?.heights) {
+        // The chunk first arrived without heights (flat stand-in); now the
+        // authoritative heightfield is here. Terrain is deterministic, so
+        // this one upgrade is the only rebuild a chunk ever needs.
+        this.scene.remove(tracked.object);
+        disposeObject(tracked.object);
+        tracked.object = this.assets.terrainMesh(e.chunk, this.chunkWorldSize);
+        tracked.displaced = true;
+        this.scene.add(tracked.object);
+      } else if (!tracked.shaped && e.body && !tracked.isTerrain) {
+        // BodyConfig arrived after the stand-in: reshape.
+        this.scene.remove(tracked.object);
+        this.pickMap.delete(tracked.object);
+        disposeObject(tracked.object);
+        const obj = this.makeBodyMesh(wid, e.body, e.asset);
+        this.scene.add(obj);
+        tracked.object = obj;
+        tracked.shaped = true;
+        this.pickMap.set(obj, wid);
+      }
+
+      if (tracked.isTerrain || !e.transform) continue;
+
+      const sample = interpolator.sample(wid, alpha);
+      const t = sample ?? e.transform;
+      tracked.object.position.set(t.px, t.py, t.pz);
+      tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
+      tracked.object.scale.set(t.sx, t.sy, t.sz);
+
+      if (playerWireId !== null && wid === playerWireId) {
+        playerPos = tracked.object.position.clone();
+        highlight(tracked.object, "player");
+      } else if (!tracked.isTerrain) {
+        highlight(tracked.object, wid === this.hoveredWireId ? "hover" : "none");
+      }
+    }
+
+    if (playerPos) this.lastPlayerPos.copy(playerPos);
+    this.fx.setPlayerPos(playerPos);
+
+    const now = performance.now() / 1000;
+    const dt = this.lastFrame < 0 ? 1 / 60 : Math.min(0.1, now - this.lastFrame);
+    this.lastFrame = now;
+    this.fx.update(dt, now);
+    this.showcase.update(now, dt);
+
+    this.updateCamera(playerPos, lookYaw, lookPitch);
+    updateTerrainFx(now);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private makeBodyMesh(
+    wid: bigint,
+    body: import("@mmo-engine/protocol").BodyConfigRow | undefined,
+    asset: import("@mmo-engine/protocol").AssetRefRow | undefined,
+  ): THREE.Object3D {
+    // PCG scatter seam: the art pack maps assetHash -> model. Absent
+    // (placeholder provider) or unresolvable -> shape-based fallback.
+    if (asset && typeof this.assets.assetMesh === "function") {
+      const obj = this.assets.assetMesh(asset);
+      if (obj) {
+        colorize(obj, placeholderColor(wid));
+        return obj;
+      }
+    }
+    if (body) {
+      const obj = this.assets.bodyMesh(body);
+      colorize(obj, placeholderColor(wid));
+      return obj;
+    }
+    // Stand-in until the BodyConfig row arrives (spawned entities carry
+    // it in the same snapshot/delta, so this is rare and transient).
+    const obj = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }),
+    );
+    colorize(obj, placeholderColor(wid));
+    return obj;
+  }
+
+  private updateCamera(
+    playerPos: THREE.Vector3 | null,
+    lookYaw: number,
+    lookPitch: number,
+  ): void {
+    const target = playerPos ?? new THREE.Vector3(8, 2, 8);
+    // Camera behind the player, orbiting with mouse look.
+    const d = this.camDistance;
+    const cp = Math.cos(lookPitch);
+    const sp = Math.sin(lookPitch);
+    const cx = target.x - Math.sin(lookYaw) * cp * d;
+    const cz = target.z - Math.cos(lookYaw) * cp * d;
+    const cy = target.y + sp * d + 1.2;
+    this.camera.position.set(cx, Math.max(cy, target.y + 0.6), cz);
+    this.camera.lookAt(target.x, target.y + 1.0, target.z);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.canvas.removeEventListener("pointermove", this.onPointerMove);
+    this.fx.dispose();
+    this.showcase.dispose();
+    for (const t of this.meshes.values()) {
+      this.scene.remove(t.object);
+      disposeObject(t.object);
+    }
+    this.meshes.clear();
+    this.renderer.dispose();
+  }
+}
+
+function colorize(obj: THREE.Object3D, color: THREE.Color): void {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+    if (mat && "color" in mat) mat.color.copy(color);
+  });
+}
+
+function highlight(obj: THREE.Object3D, mode: "player" | "hover" | "none"): void {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+    if (mat && "emissive" in mat) {
+      mat.emissive.copy(
+        tmpColor.set(mode === "player" ? 0x224422 : mode === "hover" ? 0x444422 : 0x000000),
+      );
+    }
+  });
+}
+
+function disposeObject(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    const geo = mesh.geometry as THREE.BufferGeometry | undefined;
+    geo?.dispose();
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+    else mat?.dispose();
+  });
+}

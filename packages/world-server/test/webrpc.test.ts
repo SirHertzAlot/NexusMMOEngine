@@ -1,0 +1,185 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import * as argon2 from "argon2";
+import express from "express";
+import type { AddressInfo } from "node:net";
+import { WorldCoreImpl } from "../src/core.js";
+import { MemoryWorldStore } from "../src/fake-store.js";
+import { createWebrpcRouter } from "../src/adapters/webrpc.js";
+
+const API_KEY = "test-bootstrap-key-123";
+
+async function boot() {
+  const store = new MemoryWorldStore();
+  const core = new WorldCoreImpl({
+    store,
+    heartbeatTimeoutMs: 10_000,
+    heartbeatIntervalMs: 1000,
+    apiKeyHash: await argon2.hash(API_KEY),
+  });
+  const app = express();
+  app.use(express.json({ limit: "256kb" }));
+  app.get("/healthz", (_req, res) => res.json({ ok: true }));
+  app.use(createWebrpcRouter(core));
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  const port = (server.address() as AddressInfo).port;
+  const base = `http://127.0.0.1:${port}`;
+  test.after(() => new Promise<void>((r) => server.close(() => r())));
+  return { base };
+}
+
+async function rpc(
+  base: string,
+  method: string,
+  body: unknown,
+  token?: string,
+  contentType = "application/json",
+) {
+  const headers: Record<string, string> = { "Content-Type": contentType };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${base}/rpc/World/${method}`, {
+    method: "POST",
+    headers,
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  const json = (await res.json()) as Record<string, unknown>;
+  return { status: res.status, json };
+}
+
+const REG_INPUT = {
+  regionId: "r1",
+  chunkRange: { x0: 0, x1: 100, z0: 0, z1: 100 },
+  endpoint: "ws://localhost:7777",
+  capacity: 1000,
+  apiKey: API_KEY,
+  opId: "op-1",
+};
+
+test("healthz answers", async () => {
+  const { base } = await boot();
+  const res = await fetch(`${base}/healthz`);
+  assert.equal(res.status, 200);
+});
+
+test("full region lifecycle over the webrpc wire protocol", async () => {
+  const { base } = await boot();
+
+  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
+  assert.equal(reg.status, 200);
+  const lease = reg.json["lease"] as Record<string, unknown>;
+  assert.equal(lease["regionId"], "r1");
+  const token = lease["token"] as string;
+  assert.match(token, /^[0-9a-f]{64}$/);
+
+  const hb = await rpc(
+    base,
+    "Heartbeat",
+    { input: { regionId: "r1", load: 0.1, tickJitterMs: 1, entityCount: 3 } },
+    token,
+  );
+  assert.equal(hb.status, 200);
+  assert.equal((hb.json["ack"] as Record<string, unknown>)["ok"], true);
+
+  const snap = await rpc(
+    base,
+    "ReportSnapshot",
+    { input: { regionId: "r1", tick: 300, entityCount: 3, digest: "deadbeef" } },
+    token,
+  );
+  assert.equal(snap.status, 200);
+
+  const dereg = await rpc(
+    base,
+    "DeregisterRegion",
+    { regionId: "r1", opId: "op-2" },
+    token,
+  );
+  assert.equal(dereg.status, 200);
+
+  const hb2 = await rpc(
+    base,
+    "Heartbeat",
+    { input: { regionId: "r1", load: 0, tickJitterMs: 0, entityCount: 0 } },
+    token,
+  );
+  // The region is gone, so its bearer token is revoked: 401, not 404.
+  assert.equal(hb2.status, 401);
+});
+
+test("register rejects a bad api key with 401 + webrpc error envelope", async () => {
+  const { base } = await boot();
+  const res = await rpc(base, "RegisterRegion", {
+    input: { ...REG_INPUT, apiKey: "nope-nope-nope" },
+  });
+  assert.equal(res.status, 401);
+  assert.equal(res.json["code"], 401);
+  assert.ok(typeof res.json["msg"] === "string");
+});
+
+test("register rejects invalid payloads with 400", async () => {
+  const { base } = await boot();
+  const res = await rpc(base, "RegisterRegion", {
+    input: { ...REG_INPUT, chunkRange: { x0: 10, x1: 5, z0: 0, z1: 1 } },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(res.json["code"], 400);
+});
+
+test("authenticated methods require a bearer token", async () => {
+  const { base } = await boot();
+  const noToken = await rpc(base, "Heartbeat", {
+    input: { regionId: "r1", load: 0, tickJitterMs: 0, entityCount: 0 },
+  });
+  assert.equal(noToken.status, 401);
+
+  const badToken = await rpc(
+    base,
+    "Heartbeat",
+    { input: { regionId: "r1", load: 0, tickJitterMs: 0, entityCount: 0 } },
+    "f".repeat(64),
+  );
+  assert.equal(badToken.status, 401);
+});
+
+test("regionId must match the bearer token", async () => {
+  const { base } = await boot();
+  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
+  const token = (reg.json["lease"] as Record<string, unknown>)["token"] as string;
+  const res = await rpc(
+    base,
+    "Heartbeat",
+    { input: { regionId: "r2", load: 0, tickJitterMs: 0, entityCount: 0 } },
+    token,
+  );
+  assert.equal(res.status, 403);
+});
+
+test("slice B methods authenticate first, then return 501", async () => {
+  const { base } = await boot();
+  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
+  const token = (reg.json["lease"] as Record<string, unknown>)["token"] as string;
+
+  for (const m of ["BeginMigration", "CommitMigration", "AbortMigration"]) {
+    // No token / bad token: 401 before the method is even considered.
+    const noToken = await rpc(base, m, {});
+    assert.equal(noToken.status, 401, m);
+    const badToken = await rpc(base, m, {}, "f".repeat(64));
+    assert.equal(badToken.status, 401, m);
+    // Valid token, unimplemented method: 501 with the webrpc envelope.
+    const res = await rpc(base, m, {}, token);
+    assert.equal(res.status, 501, m);
+    assert.equal(res.json["code"], 501);
+  }
+});
+
+test("non-JSON content-type is rejected with 415", async () => {
+  const { base } = await boot();
+  const res = await fetch(`${base}/rpc/World/RegisterRegion`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: "hello",
+  });
+  assert.equal(res.status, 415);
+});

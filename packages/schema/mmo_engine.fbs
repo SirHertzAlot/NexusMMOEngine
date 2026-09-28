@@ -1,0 +1,161 @@
+// mmo_engine.fbs — MMO Engine shared ECS data model, slice 1 (Phase 0).
+//
+// Single source of truth for the C++ <-> JS contract. Generate both
+// language bindings with:  ./gen.sh   (runs flatc --cpp --js --ts)
+// Do NOT hand-edit the generated code; edit this file and regenerate.
+//
+// Design notes (see skills/mmo-engine/references/architecture.md §2):
+// - Wire framing is SoA: each component block carries an entity-id-aligned
+//   `entities` array parallel to its `items` array, mirroring ECS storage.
+// - Entity id (uint64): high 32 bits = generation, low 32 = slot index.
+//   Server-issued; generation bumps on slot reuse (ABA guard).
+// - Snapshot = full state; Delta = changed components since base_tick.
+
+namespace MmoEngine;
+
+// ---- math primitives (inline structs: no indirection, cache-friendly) ----
+
+struct Vec3 {
+  x: float;
+  y: float;
+  z: float;
+}
+
+struct Quat {
+  x: float;
+  y: float;
+  z: float;
+  w: float;
+}
+
+// ---- component set (ComponentId 0..4 slice 1, BodyConfig = 5 Phase 2,
+// in declaration order) ----
+
+table Transform {
+  position: Vec3;
+  rotation: Quat;
+  scale: Vec3;
+}
+
+table Velocity {
+  linear: Vec3;
+  angular: Vec3;
+}
+
+table PlayerIntent {
+  move: Vec3;
+  look_yaw: float;
+  look_pitch: float;
+  jump: bool;
+  buttons: uint8;
+}
+
+table Chunk {
+  chunk_id: uint64;
+  seed: uint64;
+  lod: uint8;
+  // Authoritative 16x16 heightfield (row-major, X inner loop), written by
+  // the region server on network snapshots/deltas ONLY. Never persisted:
+  // heights are deterministically regenerable from (seed, chunk_id, lod),
+  // so the SnapshotStore omits them and the client re-receives them on
+  // every (re)connect. Absent (null) on persisted snapshots and when the
+  // server has no chunk source (tests).
+  heights: [float];
+}
+
+table Health {
+  current: float;
+  max: float;
+}
+
+// ---- SoA blocks: entities[i] owns items[i] ----
+
+table TransformBlock { entities: [uint64]; items: [Transform]; }
+table VelocityBlock  { entities: [uint64]; items: [Velocity]; }
+table IntentBlock    { entities: [uint64]; items: [PlayerIntent]; }
+table ChunkBlock     { entities: [uint64]; items: [Chunk]; }
+table HealthBlock    { entities: [uint64]; items: [Health]; }
+table AssetRefBlock  { entities: [uint64]; items: [AssetRef]; }
+
+// ---- top-level messages ----
+
+table Snapshot {
+  tick: uint64;
+  transforms: TransformBlock;
+  velocities: VelocityBlock;
+  intents: IntentBlock;
+  chunks: ChunkBlock;
+  healths: HealthBlock;
+  bodies: BodyConfigBlock;
+  assets: AssetRefBlock;
+  spawned: [uint64];
+  despawned: [uint64];
+}
+
+table Delta {
+  tick: uint64;
+  base_tick: uint64;
+  transforms: TransformBlock;
+  velocities: VelocityBlock;
+  intents: IntentBlock;
+  chunks: ChunkBlock;
+  healths: HealthBlock;
+  bodies: BodyConfigBlock;
+  assets: AssetRefBlock;
+  spawned: [uint64];
+  despawned: [uint64];
+}
+
+// ---- client -> server intent events (slice 1.3, additive) ----
+// A client never touches the wire Snapshot/Delta tables; it only sends
+// IntentMessage events, which the gateway translates into sim intent
+// events (EDA). Additive: existing tables/fields are untouched.
+
+table IntentMessage {
+  client_tick: uint64;
+  entity: uint64;
+  intent: PlayerIntent;
+}
+
+// ---- physics bodies (Phase 2, additive; ComponentId 5) ----
+// BodyConfig is configuration, not per-tick state: it is set at spawn
+// and (practically) never changes. It rides the Snapshot in full and
+// appears in Deltas only for spawned entities — the DeltaTracker's
+// changed-only diff naturally excludes unchanged rows — so newly
+// spawned bodies carry their collision config to fresh clients and to
+// SQLite persistence (bodies are rebuilt natively from this on
+// restore). Field convention: Box uses half_extents (radius unused);
+// Sphere uses radius (half_extents unused).
+
+enum ShapeKind : uint8 { Box = 0, Sphere = 1 }
+
+enum MotionType : uint8 { Static = 0, Kinematic = 1, Dynamic = 2 }
+
+table BodyConfig {
+  shape_kind: ShapeKind;
+  half_extents: Vec3;
+  radius: float;
+  mass: float;
+  motion_type: MotionType;
+  layer: uint8;
+  friction: float;
+  restitution: float;
+}
+
+table BodyConfigBlock { entities: [uint64]; items: [BodyConfig]; }
+
+// ---- scatter / PCG (additive; ComponentId 8) ----
+// AssetRef is configuration, not per-tick state: set at spawn from the
+// scatter spawn table and (practically) never changed. asset_hash is
+// fnv1a32 of the art-manifest model id (see @mmo-engine/scatter);
+// variant is a u16 art-variant selector. Snapshot/delta/persistence
+// wiring follows the BodyConfig pattern and lands with region
+// integration (PCG slice 4); the component id is reserved here so the
+// spawn-table schema can target the real registry id now.
+
+table AssetRef {
+  asset_hash: uint32;
+  variant: uint16;
+}
+
+root_type Snapshot;

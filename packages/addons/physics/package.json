@@ -1,0 +1,1 @@
+{"dependencies":{"node-addon-api":"^8.5.0"},"description":"Jolt Physics native addon for the MMO engine: authoritative rigid-body simulation behind a bulk SoA N-API boundary","gypfile":true,"main":"index.js","name":"@mmo-engine/addon-physics","scripts":{"install":"node-gyp rebuild","test":"node --test \"test/*.test.js\""},"type":"commonjs","types":"index.d.ts","version":"0.1.0"}

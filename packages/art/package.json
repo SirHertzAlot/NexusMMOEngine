@@ -1,0 +1,35 @@
+{
+  "dependencies": {
+    "@mmo-engine/protocol": "^0.1.0",
+    "@mmo-engine/schema": "0.1.0",
+    "three": "^0.170.0",
+    "zod": "^4.6.5"
+  },
+  "description": "Art asset pipeline contract: manifest schema + validation, pack directory scanning, and a manifest-backed THREE.js AssetProvider with placeholder fallback",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/three": "^0.170.0",
+    "typescript": "^5.6.3"
+  },
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/art",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "convert:packs": "node dist/src/convert/convert-packs.js"
+  },
+  "type": "module",
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./browser": {
+      "types": "./dist/src/browser.d.ts",
+      "default": "./dist/src/browser.js"
+    }
+  }
+}

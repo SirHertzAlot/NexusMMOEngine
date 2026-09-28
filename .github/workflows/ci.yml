@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Codegen
+        run: npm run codegen
+
+      - name: Codegen reproducibility check
+        # generated/ is gitignored; drift = "not reproducible from the .fbs"
+        run: |
+          OUT_DIR=/tmp/gen-check npm run codegen
+          diff -r packages/schema/generated /tmp/gen-check \
+            && echo "codegen reproducible"
+
+      - name: Test
+        run: npm test

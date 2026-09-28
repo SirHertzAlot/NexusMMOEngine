@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
+  },
+  "description": "Native PCG scatter addon: executes cooked scatter plans per chunk (bit-exact with the JS reference evaluator)",
+  "devDependencies": {
+    "node-gyp": "^12.0.0",
+    "@mmo-engine/scatter": "0.1.0"
+  },
+  "gypfile": true,
+  "main": "index.js",
+  "name": "@mmo-engine/addon-scatter",
+  "private": true,
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "version": "0.1.0"
+}

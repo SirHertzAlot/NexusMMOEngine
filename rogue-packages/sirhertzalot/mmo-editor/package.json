@@ -1,0 +1,11 @@
+{
+  "description": "Public-API bridge between a Rogue Engine scene and the standalone MMO Engine editor companion (ECS inspector, play mode, art pipeline).",
+  "name": "@sirhertzalot/mmo-editor",
+  "rogue": {
+    "installPath": "rogue-packages/sirhertzalot/mmo-editor",
+    "packageId": "mmo-editor",
+    "publisher": "sirhertzalot"
+  },
+  "type": "module",
+  "version": "0.1.0"
+}

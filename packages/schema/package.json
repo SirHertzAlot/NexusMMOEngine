@@ -1,0 +1,10 @@
+{
+  "description": "Shared ECS data model: the single source of truth (mmo_engine.fbs). Generated bindings are gitignored.",
+  "name": "@mmo-engine/schema",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "type": "module"
+}
