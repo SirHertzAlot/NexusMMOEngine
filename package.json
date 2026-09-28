@@ -27,6 +27,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:addon-navigation": "npm run test --workspace=@mmo-engine/addon-navigation",
     "test:addon-physics": "npm run test --workspace=@mmo-engine/addon-physics",
+    "test:addon-picg": "npm run test --workspace=@mmo-engine/addon-picg",
     "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
     "world": "npm run server --workspace=@mmo-engine/world-server",
     "world:db": "npm run db --workspace=@mmo-engine/world-server"
@@ -48,7 +49,8 @@
     "apps/editor",
     "packages/world-server",
     "packages/scatter",
-    "packages/addons/scatter"
+    "packages/addons/scatter",
+    "packages/addons/picg"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.0.3"
