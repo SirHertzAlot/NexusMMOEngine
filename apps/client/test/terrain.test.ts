@@ -10,8 +10,8 @@ import * as THREE from "three";
 import type { ChunkRow, WorldMap } from "@mmo-engine/protocol";
 import { BIOME_GROUND, DEFAULT_GROUND, groundColors, snowLine } from "../src/render/terrain/ground.js";
 import { buildChunkGeometry, chunkNormals, SIDE, SKIRT_DEPTH } from "../src/render/terrain/terrain-mesh.js";
-import { createTerrainMaterial, createTerrainUniforms } from "../src/render/terrain/terrain-material.js";
-import { FAR_DROP_MARGIN, farGeometry, TerrainRenderer } from "../src/render/terrain/terrain-renderer.js";
+import { createTerrainMaterial, createTerrainUniforms, FAR_SINK } from "../src/render/terrain/terrain-material.js";
+import { farGeometry, TerrainRenderer } from "../src/render/terrain/terrain-renderer.js";
 
 const SIZE = 16;
 const STEP = SIZE / 15;
@@ -44,22 +44,25 @@ describe("chunk geometry", () => {
     assert.equal(pos.getX(15), 16, "the tile spans the chunk edge to edge");
   });
 
-  it("hangs inward-facing skirts below all four edges", () => {
+  it("hangs double-sided skirts below all four edges", () => {
     const g = buildChunkGeometry(tile(0, 0), SIZE);
     const pos = g.getAttribute("position");
     assert.equal(pos.count, 256 + 64);
     const idx = g.getIndex()!.array;
     const centre = new THREE.Vector3(8, 0, 8);
-    let skirts = 0;
+    let inward = 0;
+    let outward = 0;
     for (let t = 15 * 15 * 6; t < idx.length; t += 3) {
       const [a, b, c] = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(pos, idx[t + k]));
       const n = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a));
       const out = a.clone().add(b).add(c).divideScalar(3).sub(centre).setY(0);
-      assert.ok(n.dot(out) < 0, `skirt triangle ${t / 3} faces into the tile`);
       assert.ok(Math.abs(n.y) < 1e-6, "vertical");
-      skirts++;
+      if (n.dot(out) < 0) inward++;
+      else outward++;
     }
-    assert.equal(skirts, 4 * 15 * 2);
+    // Both faces of every strip: seen from inside the loaded area (where
+    // the camera is) and from outside alike.
+    assert.deepEqual([inward, outward], [4 * 15 * 2, 4 * 15 * 2]);
     assert.ok(Math.abs(pos.getY(256) - (pos.getY(0) - SKIRT_DEPTH)) < 1e-4, "hangs SKIRT_DEPTH below its edge");
   });
 
@@ -146,8 +149,12 @@ describe("TerrainRenderer", () => {
     assert.equal(pos.count, m.width * m.depth);
     const k = 3 * m.width + 5;
     assert.deepEqual([pos.getX(k), pos.getY(k), pos.getZ(k)], [-160 + 5 * 16, 5 * 12, -160 + 3 * 16]);
-    // Near the camera it sinks to its neighbourhood's low point (heights rise 12 m per cell in u).
-    assert.equal(g.getAttribute("aDrop").getX(k), 12 + FAR_DROP_MARGIN);
+    // Beside loaded chunks it sinks (in the vertex shader) up to FAR_SINK metres, never below the sea.
+    const far = createTerrainMaterial(createTerrainUniforms(), true);
+    const shader = { uniforms: {}, vertexShader: "#include <common>\n#include <begin_vertex>", fragmentShader: "#include <common>\n#include <color_fragment>" } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    far.onBeforeCompile(shader, undefined as unknown as THREE.WebGLRenderer);
+    assert.match(shader.vertexShader, new RegExp(`clamp\\(transformed\\.y - uSeaLevel - 0\\.5, 0\\.0, ${FAR_SINK}\\.0\\)`));
+    assert.ok("uSeaLevel" in shader.uniforms && "uFarCell" in shader.uniforms);
   });
 });
 
