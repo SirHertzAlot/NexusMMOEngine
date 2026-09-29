@@ -220,7 +220,7 @@ function MirrorWorld({
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);
   }, [showcase, camera]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const r = rt.current;
     if (!r) return;
     const now = performance.now();
@@ -245,6 +245,7 @@ function MirrorWorld({
 
     const timeOfDay = client.day ? timeOfDayAt(client.day, client.serverTick, client.tickHz || 30) : FIXED_TIME;
     r.sky.update(timeOfDay, scene.fog instanceof THREE.Fog ? scene.fog : null);
+    r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
     // Weather where the camera is, the same on every client (biome + tick).
     const tick = client.serverTick;

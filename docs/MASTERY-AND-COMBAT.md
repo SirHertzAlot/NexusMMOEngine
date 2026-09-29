@@ -342,7 +342,7 @@ its own PR, with tests.
 
 | # | Slice | Needs |
 |---|---|---|
-| M0 | Rules loader: `content/rules/*.json`, Zod schemas, the hook registry, engine defaults plus our game's rules | — |
+| M0 | Rules loader: `content/rules/*.json`, Zod schemas, the hook registry, engine defaults plus our game's rules (**built**: `packages/rules`, `content/rules`) | — |
 | M1 | Mastery core: use-based gain with challenge, anti-farming, related skills, deterioration; first uses wired (Swimming, Athletics, Exposure); character sheet | M0, C2 |
 | M2 | Body parts: `Body` and `Injury`, harm and maim from falls, drowning and exposure, bleeding, healing, penalties, death and respawn; injury display on the client | M1 |
 | M3 | Items and melee: physical item properties, holding items, `Combat` phases, fit and power, precision and landing, defence contests, damage kinds and dismemberment; the attack and defend controls | M2 |
