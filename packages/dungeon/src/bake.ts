@@ -4,7 +4,8 @@
  * adds to the pool already in the folder; a layout already in it (same
  * content hash) is skipped and another seed tried, so every dungeon in the
  * pool is unique. The same options on an empty folder always bake the
- * same pool.
+ * same pool. Each dungeon can be dressed (dress.ts) and populated
+ * (populate.ts) as it is baked, at a rank picked per dungeon.
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
@@ -15,6 +16,8 @@ import { deriveSeed } from "./rng.js";
 import { autoTheme, type Themes } from "./themes.js";
 import { dressDungeon } from "./dress.js";
 import type { Dressing } from "./dressing.js";
+import { populateDungeon } from "./populate.js";
+import type { Roster } from "@mmo-engine/species";
 
 export const INDEX_FORMAT = "mmo-dungeon-index/1";
 
@@ -35,6 +38,8 @@ export interface BakeOptions {
   fresh?: boolean;
   /** Dress each dungeon (room archetypes, contents, resource veins) at a rank in this range; omit to leave them bare. */
   dress?: { dressing: Dressing; rank: [number, number] };
+  /** Populate each dungeon from a roster (which species holds each room), at the dressing's rank, else one in `rank` (default 1). */
+  populate?: { roster: Roster; rank?: [number, number] };
 }
 
 export interface IndexEntry {
@@ -49,6 +54,10 @@ export interface IndexEntry {
   rank?: number;
   /** Resource veins in its walls. */
   veins?: number;
+  /** The species leading the boss room (absent: not populated). */
+  boss?: string;
+  /** Spawn points given a species. */
+  dwellers?: number;
   floorTiles: number;
   width: number;
   height: number;
@@ -99,18 +108,18 @@ export function bakeDungeons(o: BakeOptions): BakeResult {
     const hash = layoutHash(d);
     if (known.has(hash)) { duplicates++; continue; }
     known.add(hash);
-    let dressing;
-    if (o.dress) {
-      const [r0, r1] = o.dress.rank;
-      const rank = r0 + (deriveSeed(seed, 0x52414e4b) % (r1 - r0 + 1));
-      dressing = dressDungeon(d, o.dress.dressing, rank, deriveSeed(seed, 0x44524553));
-    }
-    const f = encodeDungeon(d, dressing);
+    const [r0, r1] = o.dress?.rank ?? o.populate?.rank ?? [1, 1];
+    const rank = r0 + (deriveSeed(seed, 0x52414e4b) % (r1 - r0 + 1));
+    const dressing = o.dress ? dressDungeon(d, o.dress.dressing, rank, deriveSeed(seed, 0x44524553)) : undefined;
+    const population = o.populate ? populateDungeon(d, o.populate.roster, rank, dressing?.archetypes ?? null, deriveSeed(seed, 0x504f5055)) : undefined;
+    const f = encodeDungeon(d, dressing, population);
     const file = `${f.id}.dungeon.json`;
     writeFileSync(join(o.out, file), JSON.stringify(f));
     const entry: IndexEntry = {
       id: f.id, file, hash, name: d.name, theme, seed: d.seed, rooms,
-      ...(dressing ? { rank: dressing.rank, veins: dressing.resources.length } : {}),
+      ...(dressing || population ? { rank } : {}),
+      ...(dressing ? { veins: dressing.resources.length } : {}),
+      ...(population ? { boss: population.rooms[d.boss] || undefined, dwellers: population.spawns.length } : {}),
       floorTiles: d.stats.floorTiles, width: d.width, height: d.height,
     };
     index.dungeons.push(entry);

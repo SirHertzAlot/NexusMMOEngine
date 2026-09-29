@@ -21,7 +21,9 @@
  *   --rank <n|min-max>     dress each dungeon at a rank (default 1-5: room
  *                          archetypes, their contents, resource veins)
  *   --dressing <file.json> add or replace archetypes and veins
- *   --bare                 don't dress (layouts only)
+ *   --species <file.json>  add or replace species (who lives in the rooms)
+ *   --empty                don't populate
+ *   --bare                 don't dress or populate (layouts only)
  */
 
 import { dirname, join, resolve } from "node:path";
@@ -32,9 +34,10 @@ import { decodeDungeon, type DungeonFile } from "./format.js";
 import { dungeonPng } from "./preview.js";
 import { loadThemes } from "./themes.js";
 import { loadDressing } from "./dressing.js";
+import { loadSpecies } from "@mmo-engine/species";
 
-const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "bare"] as const;
-const FLAGS: readonly string[] = ["fresh", "png", "bare"];
+const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "species", "empty", "bare"] as const;
+const FLAGS: readonly string[] = ["fresh", "png", "empty", "bare"];
 type Option = (typeof OPTIONS)[number];
 
 /**
@@ -92,6 +95,7 @@ function main(): void {
   const rank: [number, number] = rm ? [Number(rm[1]), Number(rm[2] ?? rm[1])] : [NaN, NaN];
   if (!(rank[0] >= 1 && rank[1] >= rank[0] && rank[1] <= 99)) throw new Error(`--rank must be a rank or min-max, from 1 (got "${rankText}")`);
   const bare = o.bare !== undefined && o.bare !== "false";
+  const empty = bare || (o.empty !== undefined && o.empty !== "false");
   const t0 = performance.now();
   const r = bakeDungeons({
     count, seed, rooms, out,
@@ -101,6 +105,7 @@ function main(): void {
     themes: loadThemes(o.themes),
     fresh: o.fresh !== undefined && o.fresh !== "false",
     ...(bare ? {} : { dress: { dressing: loadDressing(o.dressing), rank } }),
+    ...(empty ? {} : { populate: { roster: loadSpecies(o.species), rank } }),
   });
   if (o.png !== undefined && o.png !== "false") {
     for (const d of r.added) {
@@ -109,7 +114,7 @@ function main(): void {
     }
   }
   for (const d of r.added) {
-    const dressed = d.rank !== undefined ? `, rank ${d.rank}, ${d.veins} veins` : "";
+    const dressed = (d.rank !== undefined ? `, rank ${d.rank}` : "") + (d.veins !== undefined ? `, ${d.veins} veins` : "") + (d.boss ? `, ${d.dwellers} dwellers, boss ${d.boss}` : "");
     console.log(`  ${d.id}  ${d.name}  (${d.rooms} rooms${dressed}, ${d.floorTiles} tiles, ${d.width}x${d.height})`);
   }
   console.log(
