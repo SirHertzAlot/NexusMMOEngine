@@ -2,7 +2,7 @@
  * Entity FX — spawn portals, selection ring, hover glow, motion trails.
  *
  * Purely visual, client-side only: positions come from the authoritative
- * mirror state, effects never simulate. One system per WorldView; call
+ * mirror state, effects never simulate. One system per EntityLayer; call
  * `update(dt)` every frame from the render loop.
  */
 

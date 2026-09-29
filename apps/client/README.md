@@ -35,11 +35,14 @@ src/
   input/
     input.ts     WASD/mouse-look → PlayerIntent fields (DOM-free, tested)
   render/
-    world-view.ts  three.js scene: lazy meshes per wire id, follow camera
+    world-canvas.tsx  React Three Fiber <Canvas>: renderer, camera, lights,
+                 fog, and the frame loop that drives the pieces below
+    entity-layer.ts  lazy meshes per wire id, batched scenery, FX (plain three.js)
+    follow-camera.ts  third-person camera rig (mouse look + wheel distance)
     assets.ts    AssetProvider — THE seam for Joey's future art pipeline
   ui/
     components.tsx shadcn-style Button/Input/Card/Label (no CLI scaffold)
-  App.tsx        login screen + world screen + HUD + rAF loop
+  App.tsx        login screen + world screen (WorldCanvas) + HUD
 ```
 
 ## Tests
@@ -53,6 +56,8 @@ npm test --workspace=@mmo-engine/client   # tsc build + node --test
 - `test/mirror-client.test.ts` — hello variants, welcome, snapshot/delta
   folding, ping→pong, intent encoding, error/close (fake socket)
 - `test/input.test.ts` — WASD vector math, yaw rotation, normalization
+- `test/entity-layer.test.ts` — mirror state to meshes, batching, chunks,
+  despawn, hover, and the follow camera
 
 ## Placeholder visuals (Joey's Phase 3 choice)
 

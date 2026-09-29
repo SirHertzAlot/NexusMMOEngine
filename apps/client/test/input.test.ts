@@ -4,7 +4,7 @@
  * auto-repeat guards, -0 normalization).
  *
  * Locks the camera convention: yaw = 0 faces world +Z (matching
- * WorldView's third-person rig), forward = (sin yaw, 0, cos yaw),
+ * the follow camera rig), forward = (sin yaw, 0, cos yaw),
  * right = (-cos yaw, 0, sin yaw) — the camera sits at -Z looking +Z,
  * so its right hand points at world -X.
  */

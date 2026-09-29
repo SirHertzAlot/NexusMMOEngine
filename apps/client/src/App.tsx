@@ -1,10 +1,11 @@
 /**
  * Mirror client app shell (Phase 3).
  *
- * Login screen → world screen. The world screen runs the rAF loop:
- * sample the Interpolator at the current alpha, sync the WorldView,
- * forward changed input as PlayerIntent events. HUD shows connection
- * state, server tick, entity count, fps, and player position.
+ * Login screen → world screen. The world screen is WorldCanvas (a React
+ * Three Fiber scene whose frame loop samples the Interpolator, syncs the
+ * world, and forwards changed input as PlayerIntent events) under the
+ * HUD: connection state, server tick, entity count, fps, and player
+ * position.
  *
  * The session token lives in a ref (memory only) — reconnect presents
  * it via the token hello variant (docs/MESSAGE-CATALOG.md).
@@ -13,12 +14,12 @@
  * by one tick interval (see mirror/interpolate.ts).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { WelcomeMessage } from "@mmo-engine/protocol";
 import { MirrorClient } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
-import { InputState, bindInput } from "./input/input.js";
-import { WorldView, type GpuInfo } from "./render/world-view.js";
+import { WorldCanvas, type HudData } from "./render/world-canvas.js";
+import type { GpuInfo } from "./render/gpu.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import {
@@ -33,18 +34,6 @@ import {
 
 type Screen = "login" | "connecting" | "world";
 type AuthMode = "login" | "register";
-
-interface HudData {
-  tick: number;
-  entities: number;
-  fps: number;
-  px: number;
-  py: number;
-  pz: number;
-  /** Movement mode (LocomotionMode) and breath (0..1), when the server sends them. */
-  mode: number | null;
-  breath: number;
-}
 
 const MODE_LABEL = ["walking", "swimming", "flying"];
 
@@ -68,12 +57,10 @@ export function App(): React.ReactElement {
   const [wireframe, setWireframe] = useState(false);
   const [showcase, setShowcase] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
-  const assetsRef = useRef<PlaceholderAssets | null>(null);
-  const viewRef = useRef<WorldView | null>(null);
   const lastStateAtRef = useRef(0);
+  const [assets] = useState(() => new PlaceholderAssets());
 
   /** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient =>
@@ -151,112 +138,40 @@ export function App(): React.ReactElement {
     setScreen("login");
   };
 
-  // ---- world loop -------------------------------------------------------
-  useEffect(() => {
-    if (screen !== "world") return;
-    const canvas = canvasRef.current;
-    const client = clientRef.current;
-    if (!canvas || !client) return;
-
-    const assets = new PlaceholderAssets();
-    assetsRef.current = assets;
-    // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
-    const pcg = new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken);
-    const view = new WorldView(canvas, assets, { chunkWorldSize: client.world?.chunkWorldSize, pcg });
-    view.setWorld(client.world);
-    viewRef.current = view;
-    setGpu(view.gpu);
-    if (view.gpu.software) {
+  // ---- world -------------------------------------------------------------
+  const client = screen === "world" ? clientRef.current : null;
+  // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
+  const pcg = useMemo(
+    () => (client ? new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken) : undefined),
+    // One service per joined client (the URL it joined with).
+    [client],
+  );
+  const onGpu = (info: GpuInfo): void => {
+    setGpu(info);
+    if (info.software) {
       console.warn(
-        `[client] software WebGL (${view.gpu.renderer}): enable hardware acceleration ` +
+        `[client] software WebGL (${info.renderer}): enable hardware acceleration ` +
           `in browser settings (chrome://gpu shows why it is off).`,
       );
     }
-    const input = new InputState();
-    const unbind = bindInput(canvas, input);
-    const onWheel = (e: WheelEvent): void => {
-      e.preventDefault();
-      view.setCamDistance(view.getCamDistance() + e.deltaY * 0.01);
-    };
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    const onResize = (): void => view.resize();
-    window.addEventListener("resize", onResize);
-
-    let raf = 0;
-    let frames = 0;
-    let fpsAt = performance.now();
-    let hudAt = 0;
-    const tickInterval = (): number => 1000 / (client.tickHz || 30);
-
-    const loop = (now: number): void => {
-      raf = requestAnimationFrame(loop);
-      frames++;
-      if (input.consumeDirty()) client.sendIntent(input.toIntent());
-
-      const alpha = Math.max(
-        0,
-        Math.min(1, (now - lastStateAtRef.current) / tickInterval()),
-      );
-      view.sync(
-        client.state,
-        client.interpolator,
-        alpha,
-        client.playerEntity,
-        input.lookYaw,
-        input.lookPitch,
-      );
-
-      if (now - fpsAt >= 1000) {
-        const fps = Math.round((frames * 1000) / (now - fpsAt));
-        frames = 0;
-        fpsAt = now;
-        hudAt = now;
-        const me = client.playerEntity !== null
-          ? client.state.get(client.playerEntity)
-          : undefined;
-        const p = me?.transform;
-        setHud({
-          tick: client.serverTick,
-          entities: client.state.entityCount,
-          fps,
-          px: p?.px ?? 0,
-          py: p?.py ?? 0,
-          pz: p?.pz ?? 0,
-          mode: me?.locomotion?.mode ?? null,
-          breath: me?.locomotion?.breath ?? 1,
-        });
-      }
-      void hudAt;
-    };
-    raf = requestAnimationFrame(loop);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      unbind();
-      canvas.removeEventListener("wheel", onWheel);
-      window.removeEventListener("resize", onResize);
-      view.dispose();
-      assetsRef.current = null;
-      viewRef.current = null;
-    };
-  }, [screen]);
-
-  const toggleWireframe = (): void => {
-    const next = !wireframe;
-    setWireframe(next);
-    viewRef.current?.setTerrainWireframe(next);
   };
 
-  const toggleShowcase = (): void => {
-    const next = !showcase;
-    setShowcase(next);
-    viewRef.current?.setShowcaseVisible(next);
-  };
+  const toggleWireframe = (): void => setWireframe((w) => !w);
+  const toggleShowcase = (): void => setShowcase((v) => !v);
 
-  if (screen === "world") {
+  if (client) {
     return (
       <div className="relative h-full w-full">
-        <canvas ref={canvasRef} className="block h-full w-full" />
+        <WorldCanvas
+          client={client}
+          assets={assets}
+          pcg={pcg}
+          lastStateAt={() => lastStateAtRef.current}
+          wireframe={wireframe}
+          showcase={showcase}
+          onGpu={onGpu}
+          onHud={setHud}
+        />
         <div className="absolute left-4 top-4 rounded-md bg-slate-950/75 px-4 py-3 text-sm shadow backdrop-blur-sm">
           <div className="font-medium text-foreground">mirror client</div>
           <div className="mt-1 space-y-0.5 text-muted-foreground">
