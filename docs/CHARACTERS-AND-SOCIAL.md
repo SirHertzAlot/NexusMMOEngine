@@ -6,8 +6,10 @@ and `docs/MESSAGE-CATALOG.md` (the wire protocol this extends).
 
 ## 1. Decisions taken (2026-09-29)
 
-- **Progression is skill-based and classless.** Skills rise by use; there
-  are no classes and no character levels.
+- **Progression is classless mastery.** Characters get better at what
+  they do by doing it; skill belongs to the technique, not the item, and
+  characters take damage to individual body parts. Designed in
+  `docs/MASTERY-AND-COMBAT.md`.
 - **Several characters per account, names unique across the whole
   world.** Default limit 8 per account (configurable).
 - **The first social release has chat (say, yell, whisper), parties,
@@ -122,6 +124,7 @@ world-server slice B needs for border crossings.
 | `Appearance` (new) | `body: u8, skin: u8, hair: u8, hairColour: u32, accent: u32` | Everyone |
 | `Health` (exists) | `current, max` | Everyone |
 | `Locomotion` (exists) | `mode, abilities, breath` | Everyone |
+| `Body`, `Injury`, `Combat`, `Held` | see `MASTERY-AND-COMBAT.md` §5 | `Body` owner only, the rest everyone |
 | `Skills` (not a component) | per-character map, server-only | Owner only |
 
 - **Names are not in the snapshot.** Strings don't belong in the SoA
@@ -150,28 +153,15 @@ world-server slice B needs for border crossings.
   migration payload when crossing regions. A save with a stale `version`
   is refused and logged: it means two regions thought they owned the
   character, which the lease should prevent.
-- What is saved: location, vitals, abilities, skills, appearance.
+- What is saved: location, vitals and body, abilities, skills, appearance.
 
-### 4.6 Skill-based progression
+### 4.6 Progression
 
-- **Skills** are 0–100.0, stored in tenths. There are no classes or
-  levels; what a character is good at is the sum of what it has done.
-- **Total cap** of 700 points across all skills, so characters
-  specialise. When a gain would exceed the cap, a skill the player has
-  marked "lower" drops by the same amount; if none is marked, there is no
-  gain.
-- **Gain by use**, decided on the server when an action succeeds: the
-  chance falls as the skill rises, and actions far below the skill's
-  level (trivial for it) give nothing.
-- **First skills**, chosen to fit what the world already simulates:
-  - Swimming (breath lasts longer, swim speed)
-  - Climbing, Foraging, Woodcutting, Mining, Fishing
-  - Survival (cold and heat from the climate model: exposure resistance)
-  - Combat and crafting skills arrive with those systems.
-- **Unlocks** can set ability bits: e.g. flight stays a granted ability
-  (mounts, spells, gear), not a skill.
-- Skill definitions are data (`content/skills.json`: id, name, category,
-  gain curve), so designers tune them without code changes.
+Classless mastery, body parts and combat have their own design:
+`docs/MASTERY-AND-COMBAT.md`. What matters here is what the character
+record stores for them: `skills` (value, peak, and last use per skill,
+for rust), familiarity per item family, earned disciplines, and the
+body's part health, blood and injuries (saved with the vitals).
 
 ## 5. Social systems
 
@@ -291,8 +281,8 @@ All React, in the client (and, for inspection, the editor):
 - **Social window**: friends (with presence), blocks, guild roster and
   message of the day.
 - **Party frames**: each member's name and health.
-- **Character sheet**: skills with values, the total against the cap,
-  and the raise/lower/lock marker per skill.
+- **Character sheet**: skills with values and their peaks, disciplines
+  earned, and the body with each part's state.
 - **Editor**: the selection card (PICG slice 3) shows character
   components like any other entity, and gains a read-only character
   record view.
@@ -321,7 +311,7 @@ Each slice is its own PR, with tests.
 | C1 | Accounts and characters on the world server: tables, name rules, create/list/delete/load/save, leases; the SQLite backing for standalone regions | World-server slice C (accounts move) is folded in here |
 | C2 | Protocol v5 sign-in: `account` and `character` messages, spawn from the record, saving, single login; the client's select and create screens | C1 |
 | C3 | Identity on screen: `CharacterRef`, `Appearance`, `names` message, nameplates | C2 |
-| C4 | Skills: definitions, use-based gain, cap and lock markers, first skills (swimming, survival), `self` message, character sheet | C2 |
+| M1–M4 | Mastery, body parts, items and melee, disciplines: see `MASTERY-AND-COMBAT.md` §6 | C2 |
 | S1 | Say, yell and emote on the region; the chat panel; rate limits and the text filter hook | C3 |
 | S2 | Region↔world event stream, presence, whispers, friends and blocks, the social window | C3, S1 |
 | S3 | Parties and party frames | S2 |
@@ -336,8 +326,7 @@ single-region setup covers every slice.
 1. **Appearance**: what the character model is (the art packs' rigs, or
    a PICG-generated body) decides what the `Appearance` fields are. The
    fields above are placeholders.
-2. **Death**: what happens on death (respawn point, skill loss or none)
-   belongs with combat, but it touches saving.
-3. **Skill list**: the first skills above are a proposal to confirm.
-4. **World-wide channels** (trade, help, global): left out of v1 on
+2. **Death**: see `MASTERY-AND-COMBAT.md` §7; whatever is chosen
+   touches saving.
+3. **World-wide channels** (trade, help, global): left out of v1 on
    purpose. Adding one is a channel on the world server's stream.

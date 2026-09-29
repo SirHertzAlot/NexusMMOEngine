@@ -3,8 +3,13 @@
 Every entry: date, decision, rationale. Newest first.
 
 - **2026-09-29 — Characters and social systems (Joey's decisions; spec:
-  docs/CHARACTERS-AND-SOCIAL.md).** Skill-based, classless progression
-  (skills rise by use, 700-point total cap). Several characters per
+  docs/CHARACTERS-AND-SOCIAL.md, docs/MASTERY-AND-COMBAT.md).** Classless
+  mastery: characters improve at what they do by doing it. Skill belongs
+  to the technique, not the item, so anything can be used as any kind of
+  weapon and a master with a stick beats a novice with a sword; items
+  keep physical properties (mass, edge, point, hardness) instead of damage
+  numbers. Characters are made of body parts that take damage separately
+  (limb injuries slow, weaken and disarm). Several characters per
   account, names unique world-wide. First social release: say/yell/whisper
   chat, parties, friends with presence, guilds. Characters, names, friends,
   blocks and guilds live on the world server; say and yell stay on the
