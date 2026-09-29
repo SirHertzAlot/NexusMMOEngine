@@ -14,6 +14,8 @@ A problem is **slots** (graph nodes), **options** (weighted, tagged), and constr
 | counts | min/max of a group overall | exactly 10% legendary; one shrine |
 | budgets | a cost per option, a total to stay within | a rank's power budget |
 | pins | slots already decided | a neighbouring chunk's border; an editor override |
+| settled | slots solved elsewhere, brought in as context (their needs aren't rechecked) | a neighbouring tile's points |
+| onDecided | a propagator run when a slot is decided, returning removals | sparse long-range rules without edges |
 
 ```ts
 import { solve, gridProblem, pointsProblem } from "@mmo-engine/wfc";
@@ -37,8 +39,15 @@ golden vector in the tests guards that, since every bake depends on it.
 **Adapters** turn a problem into a graph:
 
 - `gridProblem`: 2D/3D tiles, with sockets and/or an `allow` rule per axis.
-- `pointsProblem`: scatter candidates linked within distances, with `avoid`,
-  `needs`, `counts` by tag, and a per-point `weight` (biome, slope, depth).
+- `pointsProblem`: scatter candidates with `avoid`, `needs`, `counts` by tag,
+  a per-point `weight` (biome, slope, depth), and `settled` context points.
+  Needs read neighbours through edges within the need distances, one per pair,
+  under a distance-band rule. Avoids are an `onDecided` propagator on a spatial
+  grid, so "no two camps within 45 m" costs a grid lookup per decided camp,
+  not an edge per pair of points 45 m apart.
+
+For large graphs, `edges` can be given as parallel `Int32Array`s (`a`, `b`,
+`rule` index) rather than one object per edge.
 
 Room graphs, component trees and progression graphs use `solve` directly (see
 the tests). More adapters arrive with the slices that need them
@@ -50,5 +59,7 @@ budgets. We need both for room graphs, component trees and exact loot shares.
 If we later want WFC to learn patterns from an example map, that can be a
 separate adapter.
 
-Performance: a 128 × 128 grid solves in well under a second (a lazy entropy
-heap, flat typed arrays). This is bake-time code and never runs on the tick path.
+Performance: a 128 × 128 grid solves in about 60 ms (a lazy entropy heap,
+flat typed arrays). Edge checks that can't prune are skipped: a rule that
+refuses few pairs can't strip a neighbour while this slot keeps more options.
+Needs scan only the edges of their own distance bands. This is bake-time code and never runs on the tick path.

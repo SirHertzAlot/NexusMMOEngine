@@ -88,6 +88,34 @@ describe("solve", () => {
     for (let i = 1; i < n - 1; i++) if (r.ids[i] === "tower") assert.ok(r.ids[i - 1] === "wall" && r.ids[i + 1] === "wall");
   });
 
+  it("takes edges as arrays, and a propagator on decided slots (undone on backtrack)", () => {
+    const n = 40;
+    const objects = ring(n, ["a", "b", "c"]);
+    const arrays: WfcProblem = {
+      ...objects,
+      edges: {
+        a: Int32Array.from({ length: n }, (_, i) => i),
+        b: Int32Array.from({ length: n }, (_, i) => (i + 1) % n),
+        rule: new Int32Array(n), // rule 0: "differ"
+      },
+    };
+    assert.deepEqual(solve(arrays, { seed: 8 }).assignment, solve(objects, { seed: 8 }).assignment);
+    // The propagator: an "a" forbids "a" two slots on (a rule no edge carries).
+    let calls = 0;
+    const r = solve(
+      {
+        ...objects,
+        onDecided: (slot, option) => {
+          calls++;
+          return option === 0 ? [(slot + 2) % n, 0] : null;
+        },
+      },
+      { seed: 8 },
+    );
+    assert.ok(calls >= n);
+    for (let i = 0; i < n; i++) if (r.ids[i] === "a") assert.notEqual(r.ids[(i + 2) % n], "a");
+  });
+
   it("builds a progression from 0% to 100% (a quest)", () => {
     const steps = ["hook", "travel", "ambush", "puzzle", "ally", "twist", "boss", "reward"];
     const options = steps.map((id) => ({ id }));

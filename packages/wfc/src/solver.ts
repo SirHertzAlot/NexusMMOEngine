@@ -43,6 +43,16 @@ export interface WfcEdge {
   rule?: string;
 }
 
+/**
+ * Edges as parallel arrays (for large graphs: no object per edge). `rule`
+ * indexes the problem's rule names in insertion order; -1: no rule.
+ */
+export interface WfcEdgeArrays {
+  a: Int32Array;
+  b: Int32Array;
+  rule: Int32Array;
+}
+
 /** May option `x` at an edge's `a` end sit with option `y` at its `b` end? */
 export type WfcRule = (x: WfcOption, y: WfcOption, xi: number, yi: number) => boolean;
 
@@ -53,14 +63,16 @@ export interface WfcNeed {
   from: readonly number[];
   /** Neighbours needed (default 1). */
   count?: number;
-  /** Only neighbours across edges under this rule (default: any edge). */
-  rule?: string;
+  /** Only neighbours across edges under this rule, or these rules (default: any edge). */
+  rule?: string | readonly string[];
 }
 
 export interface WfcCount {
   options: readonly number[];
   min?: number;
   max?: number;
+  /** Only these slots count toward it (default: all). */
+  slots?: readonly number[];
 }
 
 export interface WfcBudget {
@@ -79,13 +91,27 @@ export interface WfcProblem {
   domains?: readonly (readonly number[] | null | undefined)[];
   /** Per-slot weight multipliers, slots × options (0 removes the option there). */
   weights?: Float64Array;
-  edges?: readonly WfcEdge[];
+  edges?: readonly WfcEdge[] | WfcEdgeArrays;
   rules?: Record<string, WfcRule>;
   needs?: readonly WfcNeed[];
   counts?: readonly WfcCount[];
   budgets?: readonly WfcBudget[];
   /** slot -> option. */
   pins?: ReadonlyMap<number, number> | Readonly<Record<number, number>>;
+  /**
+   * Slots solved elsewhere and brought in as context (a neighbouring
+   * tile's border): their own needs aren't checked, since what meets
+   * them may lie outside this problem. Pin or restrict them as well.
+   */
+  settled?: readonly number[];
+  /**
+   * A propagator run whenever a slot is decided (down to one option):
+   * returns [slot, option, slot, option, …] to remove. For sparse,
+   * long-range rules that would need too many edges, like "no two camps
+   * within 45 m" (see pointsProblem). Removals go on the same trail, so
+   * backtracking undoes them.
+   */
+  onDecided?: (slot: number, option: number) => ArrayLike<number> | null;
 }
 
 export interface WfcSettings {
@@ -137,17 +163,34 @@ interface Compiled {
   /** Effective weight per slot × option (0: not allowed there). */
   w: Float64Array;
   wlogw: Float64Array;
-  /** CSR adjacency: neighbours of slot s are adjNb[adjStart[s] .. adjStart[s+1]). */
-  adjStart: Int32Array;
+  /** Rules; index R stands for "no rule". */
+  R: number;
+  /**
+   * CSR adjacency, each slot's entries grouped by rule: slot s's entries
+   * under rule r are adjNb[ruleOff[s*(R+2)+r] .. ruleOff[s*(R+2)+r+1]).
+   */
+  ruleOff: Int32Array;
   adjNb: Int32Array;
-  /** Rule id per adjacency entry (-1: none). */
+  /** Rule index per entry (R: none). */
   adjRule: Int32Array;
   /** Compatibility matrix per entry, oriented self → neighbour (null: no rule). */
   adjMat: (Uint8Array | null)[];
-  needsByOption: { from: Uint8Array; count: number; rule: number }[][];
-  counts: { member: Uint8Array; min: number; max: number }[];
+  /**
+   * Per entry: the most options of this slot a neighbour's option can be
+   * incompatible with. While the slot keeps more options than that, every
+   * neighbour option still has a partner and the edge needn't be revised.
+   */
+  adjSkip: Int32Array;
+  /** Rule indices a need reads (null: every edge). */
+  needsByOption: { from: Uint8Array; count: number; rules: number[] | null }[][];
+  /** Rule indices across which a change can affect a need (all: some need reads every edge). */
+  needTrigger: Uint8Array;
+  counts: { member: Uint8Array; min: number; max: number; inSlot: Uint8Array | null }[];
+  /** 1: a settled slot (needs not checked). */
+  settled: Uint8Array;
   budgets: { cost: Float64Array; min: number; max: number; inSlot: Uint8Array | null }[];
   pins: [number, number][];
+  onDecided: ((slot: number, option: number) => ArrayLike<number> | null) | null;
 }
 
 function compile(p: WfcProblem): Compiled {
@@ -190,54 +233,112 @@ function compile(p: WfcProblem): Compiled {
     mats.push(m);
     matsT.push(t);
   }
-  const edges = p.edges ?? [];
-  const degree = new Int32Array(N + 1);
-  for (const e of edges) {
-    if (!(e.a >= 0 && e.a < N && e.b >= 0 && e.b < N) || e.a === e.b) throw new WfcError(`edge ${e.a}-${e.b}: not two different slots`);
-    if (e.rule !== undefined && !ruleId.has(e.rule)) throw new WfcError(`edge ${e.a}-${e.b}: no rule "${e.rule}"`);
-    degree[e.a]++;
-    degree[e.b]++;
+  // The most zeros in any column (oriented matrices): see Compiled.adjSkip.
+  const maxZeros = (m: Uint8Array): number => {
+    let most = 0;
+    for (let y = 0; y < K; y++) {
+      let z = 0;
+      for (let x = 0; x < K; x++) if (!m[x * K + y]) z++;
+      most = Math.max(most, z);
+    }
+    return most;
+  };
+  const skipM = mats.map(maxZeros), skipT = matsT.map(maxZeros);
+  const R = ruleNames.length;
+  const S = R + 2;
+  // Edges as arrays, rule indices (R: none).
+  let ea: Int32Array, eb: Int32Array, er: Int32Array;
+  const given = p.edges ?? [];
+  if (Array.isArray(given)) {
+    const list = given as readonly WfcEdge[];
+    ea = new Int32Array(list.length);
+    eb = new Int32Array(list.length);
+    er = new Int32Array(list.length);
+    list.forEach((e, i) => {
+      if (e.rule !== undefined && !ruleId.has(e.rule)) throw new WfcError(`edge ${e.a}-${e.b}: no rule "${e.rule}"`);
+      ea[i] = e.a;
+      eb[i] = e.b;
+      er[i] = e.rule === undefined ? R : (ruleId.get(e.rule) as number);
+    });
+  } else {
+    const arrays = given as WfcEdgeArrays;
+    if (arrays.b.length !== arrays.a.length || arrays.rule.length !== arrays.a.length) throw new WfcError("edge arrays differ in length");
+    ea = arrays.a;
+    eb = arrays.b;
+    er = new Int32Array(arrays.rule.length);
+    for (let i = 0; i < er.length; i++) {
+      const r = arrays.rule[i];
+      if (!(r >= -1 && r < R)) throw new WfcError(`edge ${ea[i]}-${eb[i]}: no rule ${r}`);
+      er[i] = r < 0 ? R : r;
+    }
   }
-  const adjStart = new Int32Array(N + 1);
-  for (let s = 0; s < N; s++) adjStart[s + 1] = adjStart[s] + degree[s];
-  const fill = adjStart.slice(0, N);
-  const adjNb = new Int32Array(adjStart[N]);
-  const adjRule = new Int32Array(adjStart[N]);
-  const adjMat: (Uint8Array | null)[] = new Array(adjStart[N]);
-  for (const e of edges) {
-    const r = e.rule === undefined ? -1 : (ruleId.get(e.rule) as number);
-    let i = fill[e.a]++;
-    adjNb[i] = e.b; adjRule[i] = r; adjMat[i] = r < 0 ? null : mats[r];
-    i = fill[e.b]++;
-    adjNb[i] = e.a; adjRule[i] = r; adjMat[i] = r < 0 ? null : matsT[r];
+  const E = ea.length;
+  const ruleOff = new Int32Array(N * S + 1);
+  for (let i = 0; i < E; i++) {
+    const a = ea[i], b = eb[i];
+    if (!(a >= 0 && a < N && b >= 0 && b < N) || a === b) throw new WfcError(`edge ${a}-${b}: not two different slots`);
+    ruleOff[a * S + er[i] + 1]++;
+    ruleOff[b * S + er[i] + 1]++;
+  }
+  // Counts to offsets: slot s's block starts where slot s-1's ends.
+  let run = 0;
+  for (let s = 0; s < N; s++) {
+    ruleOff[s * S] = run;
+    for (let r = 0; r <= R; r++) {
+      run += ruleOff[s * S + r + 1];
+      ruleOff[s * S + r + 1] = run;
+    }
+  }
+  const fill = new Int32Array(N * S);
+  for (let s = 0; s < N; s++) for (let r = 0; r <= R; r++) fill[s * S + r] = ruleOff[s * S + r];
+  const adjNb = new Int32Array(run);
+  const adjRule = new Int32Array(run);
+  const adjSkip = new Int32Array(run);
+  const adjMat: (Uint8Array | null)[] = new Array(run);
+  for (let k = 0; k < E; k++) {
+    const r = er[k], a = ea[k], b = eb[k];
+    let i = fill[a * S + r]++;
+    adjNb[i] = b; adjRule[i] = r; adjMat[i] = r === R ? null : mats[r]; adjSkip[i] = r === R ? -1 : skipM[r];
+    i = fill[b * S + r]++;
+    adjNb[i] = a; adjRule[i] = r; adjMat[i] = r === R ? null : matsT[r]; adjSkip[i] = r === R ? -1 : skipT[r];
   }
 
   const needsByOption: Compiled["needsByOption"] = Array.from({ length: K }, () => []);
+  const needTrigger = new Uint8Array(R + 1);
   for (const n of p.needs ?? []) {
     if (!(n.option >= 0 && n.option < K)) throw new WfcError(`need: no option ${n.option}`);
-    if (n.rule !== undefined && !ruleId.has(n.rule)) throw new WfcError(`need: no rule "${n.rule}"`);
+    const names = n.rule === undefined ? null : typeof n.rule === "string" ? [n.rule] : n.rule;
+    for (const name of names ?? []) if (!ruleId.has(name)) throw new WfcError(`need: no rule "${name}"`);
+    const rules = names ? names.map((name) => ruleId.get(name) as number) : null;
+    for (let r = 0; r <= R; r++) if (!rules || rules.includes(r)) needTrigger[r] = 1;
     const from = new Uint8Array(K);
     for (const y of n.from) from[y] = 1;
-    needsByOption[n.option].push({ from, count: n.count ?? 1, rule: n.rule === undefined ? -1 : (ruleId.get(n.rule) as number) });
+    needsByOption[n.option].push({ from, count: n.count ?? 1, rules });
   }
+  const slotSet = (list: readonly number[] | undefined, what: string): Uint8Array | null => {
+    if (!list) return null;
+    const set = new Uint8Array(N);
+    for (const s of list) {
+      if (!(s >= 0 && s < N)) throw new WfcError(`${what}: no slot ${s}`);
+      set[s] = 1;
+    }
+    return set;
+  };
   const counts = (p.counts ?? []).map((c) => {
     const member = new Uint8Array(K);
     for (const x of c.options) member[x] = 1;
-    return { member, min: c.min ?? 0, max: c.max ?? Infinity };
+    return { member, min: c.min ?? 0, max: c.max ?? Infinity, inSlot: slotSet(c.slots, "count") };
   });
+  const settled = slotSet(p.settled, "settled") ?? new Uint8Array(N);
   const budgets = (p.budgets ?? []).map((b) => {
     if (b.cost.length !== K) throw new WfcError(`budget: ${b.cost.length} costs for ${K} options`);
-    let inSlot: Uint8Array | null = null;
-    if (b.slots) {
-      inSlot = new Uint8Array(N);
-      for (const s of b.slots) inSlot[s] = 1;
-    }
+    const inSlot = slotSet(b.slots, "budget");
     return { cost: Float64Array.from(b.cost), min: b.min ?? -Infinity, max: b.max ?? Infinity, inSlot };
   });
   const pinEntries: [number, number][] =
     p.pins instanceof Map ? [...p.pins.entries()] : Object.entries(p.pins ?? {}).map(([s, x]) => [Number(s), x as number]);
   for (const [s, x] of pinEntries) if (!(s >= 0 && s < N && x >= 0 && x < K)) throw new WfcError(`pin ${s} -> ${x}: out of range`);
-  return { N, K, w, wlogw, adjStart, adjNb, adjRule, adjMat, needsByOption, counts, budgets, pins: pinEntries };
+  return { N, K, w, wlogw, R, ruleOff, adjNb, adjRule, adjMat, adjSkip, needsByOption, needTrigger, counts, budgets, pins: pinEntries, settled, onDecided: p.onDecided ?? null };
 }
 
 /** A binary min-heap of (key, slot), ties broken by slot. Entries may be stale: the reader checks. */
@@ -315,6 +416,8 @@ class Search {
   private dirty = false;
   /** Undecided slots by entropy (lazily: stale entries are skipped). */
   private readonly heap = new Heap();
+  /** Slots decided since the last onDecided pass. */
+  private decidedQueue: number[] = [];
   contradiction = -1;
 
   constructor(private readonly c: Compiled, readonly rng: () => number) {
@@ -339,6 +442,7 @@ class Search {
       this.noise[s] = rng() * 1e-6;
       if (this.size[s] === 0) this.contradiction = s;
       if (this.size[s] > 1) this.heap.push(this.entropy(s), s);
+      else if (this.size[s] === 1 && c.onDecided) this.decidedQueue.push(s);
     }
   }
 
@@ -371,6 +475,7 @@ class Search {
       return false;
     }
     if (this.size[s] > 1) this.heap.push(this.entropy(s), s);
+    else if (this.c.onDecided) this.decidedQueue.push(s);
     if (!this.queued[s]) {
       this.queued[s] = 1;
       this.queue[(this.qHead + this.qLen++) % this.c.N] = s;
@@ -396,6 +501,7 @@ class Search {
       this.qHead = (this.qHead + 1) % this.c.N;
       this.qLen--;
     }
+    this.decidedQueue = [];
     this.contradiction = -1;
   }
 
@@ -412,6 +518,10 @@ class Search {
   propagate(): boolean {
     for (;;) {
       if (!this.propagateLocal()) return false;
+      if (this.decidedQueue.length > 0) {
+        if (!this.runDecided()) return false;
+        continue;
+      }
       if (!this.dirty || (this.c.counts.length === 0 && this.c.budgets.length === 0)) return true;
       this.dirty = false;
       if (!this.globals()) return false;
@@ -419,19 +529,37 @@ class Search {
     }
   }
 
+  /** The onDecided propagator on every slot decided since the last pass. */
+  private runDecided(): boolean {
+    const { K } = this.c;
+    const hook = this.c.onDecided as NonNullable<Compiled["onDecided"]>;
+    while (this.decidedQueue.length > 0) {
+      const s = this.decidedQueue.shift() as number;
+      if (this.size[s] !== 1) continue;
+      let x = 0;
+      while (!this.dom[s * K + x]) x++;
+      const out = hook(s, x);
+      if (!out) continue;
+      for (let i = 0; i + 1 < out.length; i += 2) if (!this.remove(out[i], out[i + 1])) return false;
+    }
+    return true;
+  }
+
   private propagateLocal(): boolean {
-    const { K, adjStart, adjNb, adjMat } = this.c;
+    const { K, R, ruleOff, adjNb, adjMat, adjSkip, adjRule, needTrigger } = this.c;
     const dom = this.dom;
+    const S = R + 2;
     while (this.qLen > 0) {
       const s = this.queue[this.qHead];
       this.qHead = (this.qHead + 1) % this.c.N;
       this.qLen--;
       this.queued[s] = 0;
-      for (let e = adjStart[s]; e < adjStart[s + 1]; e++) {
+      for (let e = ruleOff[s * S]; e < ruleOff[s * S + R + 1]; e++) {
         const t = adjNb[e];
         const m = adjMat[e];
-        // Edge rule: every option left at t needs a partner left at s.
-        if (m) {
+        // Edge rule: every option left at t needs a partner left at s
+        // (certain while s keeps more options than any of t's can refuse).
+        if (m && this.size[s] <= adjSkip[e]) {
           for (let y = 0; y < K; y++) {
             if (!dom[t * K + y]) continue;
             let ok = false;
@@ -444,7 +572,7 @@ class Search {
           }
         }
         // Needs: s changed, so t's needy options may have lost their support.
-        if (!this.checkNeeds(t)) return false;
+        if (needTrigger[adjRule[e]] && !this.checkNeeds(t)) return false;
       }
     }
     return true;
@@ -455,32 +583,44 @@ class Search {
    * it needs is removed; and once t is decided, if only just enough
    * neighbours can still supply it, they must.
    */
+  /** Slot t's entries a need reads: [start, end) ranges. */
+  private needRanges(t: number, rules: number[] | null): number[] {
+    const { R, ruleOff } = this.c;
+    const S = R + 2;
+    if (!rules) return [ruleOff[t * S], ruleOff[t * S + R + 1]];
+    const out: number[] = [];
+    for (const r of rules) out.push(ruleOff[t * S + r], ruleOff[t * S + r + 1]);
+    return out;
+  }
+
   private checkNeeds(t: number): boolean {
-    const { K, adjStart, adjNb, adjRule, needsByOption } = this.c;
+    const { K, adjNb, needsByOption } = this.c;
     const dom = this.dom;
+    if (this.c.settled[t]) return true;
     const decided = this.size[t] === 1;
     for (let x = 0; x < K; x++) {
       if (!dom[t * K + x]) continue;
       for (const n of needsByOption[x]) {
+        const ranges = this.needRanges(t, n.rules);
         let have = 0;
-        for (let e = adjStart[t]; e < adjStart[t + 1]; e++) {
-          if (n.rule >= 0 && adjRule[e] !== n.rule) continue;
-          const u = adjNb[e];
-          for (let y = 0; y < K; y++)
-            if (n.from[y] && dom[u * K + y]) {
-              have++;
-              break;
-            }
-          if (have > n.count) break;
-        }
+        for (let k = 0; k < ranges.length && have <= n.count; k += 2)
+          for (let e = ranges[k]; e < ranges[k + 1]; e++) {
+            const u = adjNb[e];
+            for (let y = 0; y < K; y++)
+              if (n.from[y] && dom[u * K + y]) {
+                have++;
+                break;
+              }
+            if (have > n.count) break;
+          }
         if (have < n.count) {
           if (!this.remove(t, x)) return false;
           break;
         }
         if (decided && have === n.count) {
           // Every remaining supporter must supply it.
-          for (let e = adjStart[t]; e < adjStart[t + 1]; e++) {
-            if (n.rule >= 0 && adjRule[e] !== n.rule) continue;
+          for (let k = 0; k < ranges.length; k += 2)
+          for (let e = ranges[k]; e < ranges[k + 1]; e++) {
             const u = adjNb[e];
             let can = false;
             for (let y = 0; y < K; y++) if (n.from[y] && dom[u * K + y]) can = true;
@@ -500,6 +640,7 @@ class Search {
     for (const g of counts) {
       let fixed = 0, possible = 0;
       for (let s = 0; s < N; s++) {
+        if (g.inSlot && !g.inSlot[s]) continue;
         let any = false, all = true;
         for (let x = 0; x < K; x++) {
           if (!dom[s * K + x]) continue;
@@ -516,6 +657,7 @@ class Search {
       if (fixed === g.max && possible > fixed) {
         // Full: nothing else may take the group.
         for (let s = 0; s < N; s++) {
+          if (g.inSlot && !g.inSlot[s]) continue;
           let all = true;
           for (let x = 0; x < K; x++) if (dom[s * K + x] && !g.member[x]) all = false;
           if (all) continue;
@@ -524,6 +666,7 @@ class Search {
       } else if (possible === g.min && fixed < possible) {
         // Exactly enough candidates left: every one of them must take the group.
         for (let s = 0; s < N; s++) {
+          if (g.inSlot && !g.inSlot[s]) continue;
           let any = false;
           for (let x = 0; x < K; x++) if (dom[s * K + x] && g.member[x]) any = true;
           if (!any) continue;
@@ -582,15 +725,16 @@ class Search {
    * pairs to decide alongside.
    */
   supporters(s: number, x: number): [number, number][] {
-    const { K, w, adjStart, adjNb, adjRule, needsByOption } = this.c;
+    const { K, w, adjNb, needsByOption } = this.c;
     const dom = this.dom;
     const out: [number, number][] = [];
     const taken = new Set<number>();
     for (const n of needsByOption[x]) {
       let met = 0;
       const open: number[] = [];
-      for (let e = adjStart[s]; e < adjStart[s + 1]; e++) {
-        if (n.rule >= 0 && adjRule[e] !== n.rule) continue;
+      const ranges = this.needRanges(s, n.rules);
+      for (let k = 0; k < ranges.length; k += 2)
+      for (let e = ranges[k]; e < ranges[k + 1]; e++) {
         const u = adjNb[e];
         let can = false, only = true;
         for (let y = 0; y < K; y++) {
