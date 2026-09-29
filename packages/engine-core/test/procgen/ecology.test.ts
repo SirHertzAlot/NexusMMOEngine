@@ -41,11 +41,14 @@ describe("ecology placement", () => {
     const file = fileURLToPath(new URL("../../../content/ecology/wilds.ecology.json", import.meta.url));
     const { plan: wilds } = loadEcologyPlan(file);
     const hilly = (x: number, z: number): number => 5 + Math.sin(x / 7) * 2 + Math.cos(z / 5) * 1.5;
-    const a = planChunk(wilds, ctx(3, -2, hilly));
-    const b = planChunk(wilds, ctx(3, -2, hilly));
+    // Its formation layers read neighbouring chunks through heightsOf.
+    const heightsOf = (cx: number, cz: number): Float32Array => heights(cx, cz, hilly);
+    const a = planChunk(wilds, ctx(3, -2, hilly, { heightsOf }));
+    const b = planChunk(wilds, ctx(3, -2, hilly, { heightsOf }));
     assert.ok(a.length > 0);
     assert.deepEqual(a, b);
-    assert.notDeepEqual(planChunk(wilds, ctx(4, -2, hilly)).map((p) => p.x), a.map((p) => p.x));
+    assert.notDeepEqual(planChunk(wilds, ctx(4, -2, hilly, { heightsOf })).map((p) => p.x), a.map((p) => p.x));
+    assert.throws(() => planChunk(wilds, ctx(3, -2, hilly)), /formation, which needs the terrain/);
   });
 
   it("field cells are world-space: one candidate per cell, owned by exactly one chunk", () => {

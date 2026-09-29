@@ -64,7 +64,9 @@ import {
   type SpawnRecord,
   type SpawnTable,
 } from "@mmo-engine/scatter";
-import { planChunk, type EcologyPlan } from "./ecology.js";
+import { ecologySeed32, planChunk, type EcologyPlan } from "./ecology.js";
+import { bakeFormations, FormationCache, type FormationTileBacking } from "./formation.js";
+import type { ChunkDataSource } from "./chunk-source.js";
 
 /** Narrow interface for the native scatter addon. */
 export interface ScatterBinding {
@@ -316,13 +318,44 @@ export function makeEcologyPopulator(
     biomeAt?: (x: number, z: number) => string | null;
     waterAt?: (x: number, z: number) => number | null;
     seaLevel?: number;
+    /** The terrain, for formation layers (their tiles span and border other chunks). */
+    terrain?: ChunkDataSource;
+    /** Where solved formation tiles persist (world.db): the bake fills it, the server reads it. */
+    formationTiles?: FormationTileBacking;
   },
 ): {
   populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
   readonly planHash: string;
+  /** Solve every formation tile over chunks [minChunk, maxChunk]; returns the tiles covered and how many were solved (not already stored). */
+  bakeFormations(minChunk: { x: number; z: number }, maxChunk: { x: number; z: number }, onTile?: (done: number, total: number) => void): { tiles: number; solved: number };
 } {
+  // Formations read neighbouring chunks' heights and reuse solved tiles across chunks.
+  const heightCache = new Map<string, Float32Array>();
+  const terrain = opts.terrain;
+  const heightsOf = terrain
+    ? (cx: number, cz: number): Float32Array => {
+        const key = `${cx},${cz}`;
+        let h = heightCache.get(key);
+        if (!h) {
+          h = new Float32Array(terrain.chunkSamples);
+          terrain.generateChunk(worldSeed, cx, cz, 0, h);
+          heightCache.set(key, h);
+          if (heightCache.size > 4096) heightCache.delete(heightCache.keys().next().value as string);
+        }
+        return h;
+      }
+    : undefined;
+  const formations = new FormationCache(1024, opts.formationTiles ?? null);
   return {
     planHash: opts.planHash,
+    bakeFormations(minChunk, maxChunk, onTile) {
+      if (!opts.plan.layers.some((l) => l.place.kind === "formation")) return { tiles: 0, solved: 0 };
+      if (!heightsOf) throw new Error("ecology: baking formations needs the terrain");
+      const before = formations.solved;
+      const env = { seed32: ecologySeed32(worldSeed), chunkWorldSize, heightsOf, biomeAt: opts.biomeAt, waterAt: opts.waterAt, seaLevel: opts.seaLevel };
+      const tiles = bakeFormations(opts.plan, env, formations, minChunk, maxChunk, onTile);
+      return { tiles, solved: formations.solved - before };
+    },
     populate(world, cx, cz, heights) {
       const points = planChunk(opts.plan, {
         worldSeed,
@@ -333,6 +366,8 @@ export function makeEcologyPopulator(
         biomeAt: opts.biomeAt,
         waterAt: opts.waterAt,
         seaLevel: opts.seaLevel,
+        heightsOf,
+        formations,
       });
       for (const p of points) spawnScatterEntity(world, p);
     },

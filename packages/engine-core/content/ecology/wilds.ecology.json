@@ -180,6 +180,131 @@
  },
  "layers": [
   {
+   "id": "stoneCircles",
+   "place": {
+    "kind": "formation",
+    "spacing": 2.5,
+    "tileChunks": 4
+   },
+   "chance": 1,
+   "density": [
+    {
+     "field": "meadow",
+     "ramp": [
+      0.42,
+      0.55
+     ]
+    }
+   ],
+   "biome": "open",
+   "slope": [
+    0,
+    0.3
+   ],
+   "aboveWater": [
+    1.0,
+    null
+   ],
+   "formation": {
+    "options": [
+     {
+      "id": "ground",
+      "weight": 60
+     },
+     {
+      "id": "centre",
+      "weight": 0.25,
+      "tags": [
+       "centre"
+      ]
+     },
+     {
+      "id": "stone",
+      "weight": 3,
+      "tags": [
+       "stone"
+      ],
+      "assets": [
+       {
+        "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_01",
+        "weight": 2,
+        "scale": [
+         1.1,
+         1.5
+        ]
+       },
+       {
+        "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_02",
+        "weight": 2,
+        "scale": [
+         0.9,
+         1.3
+        ]
+       },
+       {
+        "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_05",
+        "weight": 1,
+        "scale": [
+         0.55,
+         0.75
+        ]
+       }
+      ]
+     }
+    ],
+    "avoid": [
+     {
+      "a": "centre",
+      "b": "centre",
+      "distance": 45
+     },
+     {
+      "a": "stone",
+      "b": "stone",
+      "distance": 2.4
+     },
+     {
+      "a": "stone",
+      "b": "centre",
+      "distance": 3.5
+     }
+    ],
+    "needs": [
+     {
+      "tag": "stone",
+      "near": "centre",
+      "distance": 6.5
+     },
+     {
+      "tag": "centre",
+      "near": "stone",
+      "distance": 6.5,
+      "count": 6
+     }
+    ],
+    "counts": [
+     {
+      "tag": "centre",
+      "max": 1
+     }
+    ]
+   },
+   "assets": [],
+   "scale": [
+    1,
+    1
+   ],
+   "collision": {
+    "shape": "box",
+    "halfExtents": [
+     1.0,
+     0.8,
+     1.0
+    ],
+    "motion": "static"
+   }
+  },
+  {
    "id": "trees",
    "place": {
     "kind": "field",
@@ -212,7 +337,8 @@
     null
    ],
    "avoid": {
-    "trees": 2.6
+    "trees": 2.6,
+    "stoneCircles": 4.0
    },
    "assets": [
     {
@@ -641,6 +767,9 @@
      0.4
     ],
     "motion": "static"
+   },
+   "avoid": {
+    "stoneCircles": 4.0
    }
   },
   {
@@ -669,7 +798,8 @@
     null
    ],
    "avoid": {
-    "trees": 2.5
+    "trees": 2.5,
+    "stoneCircles": 4.0
    },
    "assets": [
     {
@@ -813,7 +943,8 @@
    ],
    "avoid": {
     "trees": 2.2,
-    "loneTrees": 2.2
+    "loneTrees": 2.2,
+    "stoneCircles": 4.0
    },
    "assets": [
     {
@@ -986,7 +1117,8 @@
    ],
    "avoid": {
     "trees": 3.0,
-    "outcrops": 5.0
+    "outcrops": 5.0,
+    "stoneCircles": 4.0
    },
    "assets": [
     {
