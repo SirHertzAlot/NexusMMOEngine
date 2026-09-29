@@ -9,6 +9,9 @@ import type * as THREE from "three";
 import type { WorldMap } from "@mmo-engine/protocol";
 import { waterGeometry, waterSurfaceAt, WaterRenderer } from "../src/render/water.js";
 import { underwaterAmount } from "../src/render/effects/underwater-effect.js";
+import * as THREE_ from "three";
+import { waterDepthRect, waterDepthTexture } from "../src/render/water-material.js";
+import { createSkyUniforms } from "../src/render/sky/sky-glsl.js";
 
 /** 3 x 2 cells of 16 m centred at (0, 0), (16, 0), …: sea in the south row, a lake up north-east. */
 function map(water?: number[]): WorldMap {
@@ -104,5 +107,36 @@ describe("underwaterAmount", () => {
     assert.equal(underwaterAmount(3), 1);
     const mid = underwaterAmount(0.1);
     assert.ok(mid > 0.3 && mid < 0.7, `halfway through the band: ${mid}`);
+  });
+});
+
+describe("water depth for the shader", () => {
+  it("is the surface above the ground per cell, 0 on dry ground, as half floats", () => {
+    const m = map([NaN, NaN, 7, 0, 0, NaN]);
+    m.heights.set([3, 3, 2, -4, -0.5, 1]);
+    const tex = waterDepthTexture(m)!;
+    const depth = [...(tex.image.data as Uint16Array)].map((h) => THREE_.DataUtils.fromHalfFloat(h));
+    assert.deepEqual(depth, [0, 0, 5, 4, 0.5, 0]);
+    assert.equal(tex.type, THREE_.HalfFloatType);
+    assert.equal(tex.magFilter, THREE_.LinearFilter, "filtered, so the shallows grade smoothly");
+    assert.equal(waterDepthTexture(map()), null, "no water layer, no depth");
+    tex.dispose();
+  });
+
+  it("covers the map's cells edge to edge", () => {
+    assert.deepEqual(waterDepthRect(map()).toArray(), [-8, -8, 48, 32]);
+  });
+
+  it("the water shares the sky's uniforms, so reflections follow the time of day", () => {
+    const sky = createSkyUniforms();
+    const w = new WaterRenderer(sky);
+    w.setWorld(map([NaN, NaN, 7, 0, 0, NaN]), 0);
+    const mesh = w.group.children[0] as THREE_.Mesh;
+    const material = mesh.material as THREE_.ShaderMaterial;
+    assert.equal(material.uniforms.uSunDir, sky.uSunDir, "the same uniform object, not a copy");
+    assert.equal(material.uniforms.uHasDepth.value, 1);
+    w.setWorld(null, null);
+    assert.equal(material.uniforms.uHasDepth.value, 0, "cleared with the world");
+    w.dispose();
   });
 });

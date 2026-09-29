@@ -7,14 +7,16 @@
  *    at chunk detail near the player and map detail far away.
  *  - Past the world's edge the sea runs on to the horizon, wherever the
  *    map's edge is sea (the land running off the north stays open).
- *  - Small moving ripples in the normals catch the sun; the colour
- *    deepens toward the horizon's haze through the scene fog.
+ *  - The look (waves, sky reflection, sun glint, depth colour, shore foam,
+ *    fog) is water-material.ts, reflecting the DaySky's own sky.
  *
  * Worlds without a water layer (older servers) get no water.
  */
 
 import * as THREE from "three";
 import type { WorldMap } from "@mmo-engine/protocol";
+import { createSkyUniforms, type SkyUniforms } from "./sky/sky-glsl.js";
+import { createWaterMaterial, waterDepthRect, waterDepthTexture, type WaterUniforms } from "./water-material.js";
 
 /** How far the open sea runs past the world's edge, metres. */
 export const SEA_REACH = 12_000;
@@ -73,30 +75,6 @@ export function waterGeometry(map: WorldMap, seaLevel: number | null, reach = SE
   return geometry;
 }
 
-const RIPPLE_VERTEX_HEAD = /* glsl */ `
-  varying vec3 vWaterPos;
-`;
-const RIPPLE_VERTEX_BODY = /* glsl */ `
-  vWaterPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-`;
-const RIPPLE_FRAGMENT_HEAD = /* glsl */ `
-  varying vec3 vWaterPos;
-  uniform float uTime;
-`;
-// Tilt the view-space normal by a few crossing wave trains (world metres).
-const RIPPLE_FRAGMENT_BODY = /* glsl */ `
-  {
-    vec2 p = vWaterPos.xz;
-    float t = uTime;
-    vec2 slope =
-        vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 0.9 + t * 1.3) * 0.06
-      + vec2(-0.5, 0.85) * cos(dot(p, vec2(-0.5, 0.85)) * 1.7 + t * 1.9) * 0.04
-      + vec2(0.95, -0.3) * cos(dot(p, vec2(0.95, -0.3)) * 3.1 + t * 2.6) * 0.025;
-    vec3 tilted = normalize(vec3(-slope.x, 1.0, -slope.y));
-    normal = normalize((viewMatrix * vec4(tilted, 0.0)).xyz);
-  }
-`;
-
 /**
  * The water surface height at world (x, z), from the map cell under it;
  * null on dry ground. Beyond the map's edge the open sea continues where
@@ -117,31 +95,18 @@ export function waterSurfaceAt(map: WorldMap, seaLevel: number | null, x: number
 
 export class WaterRenderer {
   readonly group = new THREE.Group();
-  private readonly uniforms = { uTime: { value: 0 } };
-  private readonly material: THREE.MeshStandardMaterial;
+  private readonly uniforms: WaterUniforms;
+  private readonly material: THREE.ShaderMaterial;
   private mesh: THREE.Mesh | null = null;
+  private depthMap: THREE.DataTexture | null = null;
   private world: { map: WorldMap; seaLevel: number | null } | null = null;
 
-  constructor() {
+  /** @param sky the DaySky's uniforms, so the water reflects that sky (default: a fixed midday). */
+  constructor(sky: SkyUniforms = createSkyUniforms()) {
     this.group.name = "water";
-    this.material = new THREE.MeshStandardMaterial({
-      color: 0x1f5a78,
-      roughness: 0.08,
-      metalness: 0.1,
-      transparent: true,
-      opacity: 0.82,
-      side: THREE.DoubleSide,
-    });
-    this.material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, this.uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", `#include <common>\n${RIPPLE_VERTEX_HEAD}`)
-        .replace("#include <begin_vertex>", `#include <begin_vertex>\n${RIPPLE_VERTEX_BODY}`);
-      shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", `#include <common>\n${RIPPLE_FRAGMENT_HEAD}`)
-        .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${RIPPLE_FRAGMENT_BODY}`);
-    };
-    this.material.customProgramCacheKey = () => "mmo-water";
+    const { material, uniforms } = createWaterMaterial(sky);
+    this.material = material;
+    this.uniforms = uniforms;
   }
 
   /** Whether any water is on screen (tests, HUD). */
@@ -154,7 +119,11 @@ export class WaterRenderer {
     this.clear();
     this.world = map ? { map, seaLevel } : null;
     const geometry = map ? waterGeometry(map, seaLevel) : null;
-    if (!geometry) return;
+    if (!geometry || !map) return;
+    this.depthMap = waterDepthTexture(map);
+    this.uniforms.uDepthMap.value = this.depthMap;
+    this.uniforms.uDepthRect.value = waterDepthRect(map);
+    this.uniforms.uHasDepth.value = this.depthMap ? 1 : 0;
     this.mesh = new THREE.Mesh(geometry, this.material);
     this.mesh.name = "water-surface";
     // Drawn after the opaque world; the ground under it shows through.
@@ -167,7 +136,7 @@ export class WaterRenderer {
     return this.world ? waterSurfaceAt(this.world.map, this.world.seaLevel, x, z) : null;
   }
 
-  /** Once per frame: move the ripples. */
+  /** Once per frame: move the waves. */
   update(timeSeconds: number): void {
     this.uniforms.uTime.value = timeSeconds;
   }
@@ -182,6 +151,10 @@ export class WaterRenderer {
   }
 
   private clear(): void {
+    this.depthMap?.dispose();
+    this.depthMap = null;
+    this.uniforms.uDepthMap.value = null;
+    this.uniforms.uHasDepth.value = 0;
     if (!this.mesh) return;
     this.group.remove(this.mesh);
     this.mesh.geometry.dispose();

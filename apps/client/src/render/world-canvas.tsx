@@ -136,7 +136,8 @@ function MirrorWorld({
   useEffect(() => {
     const sky = new DaySky();
     const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16);
-    const water = new WaterRenderer();
+    // The water reflects this sky (same uniform objects).
+    const water = new WaterRenderer(sky.uniforms);
     const layer = new EntityLayer(scene, camera, assets, terrain, { pcg });
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
