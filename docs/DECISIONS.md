@@ -2,6 +2,16 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-09-29 — Characters and social systems (Joey's decisions; spec:
+  docs/CHARACTERS-AND-SOCIAL.md).** Skill-based, classless progression
+  (skills rise by use, 700-point total cap). Several characters per
+  account, names unique world-wide. First social release: say/yell/whisper
+  chat, parties, friends with presence, guilds. Characters, names, friends,
+  blocks and guilds live on the world server; say and yell stay on the
+  region; parties and presence are world-server memory. Clients still talk
+  only to their region, which forwards social traffic over a new
+  region-facing event stream. Characters are built before social.
+
 - **2026-09-27 — Editor customization slice: standalone companion + public
   Rogue bridge (Joey's decision: all three surfaces).** The Rogue Engine
   Editor customization ships as three inspectors — read-only ECS inspector,
