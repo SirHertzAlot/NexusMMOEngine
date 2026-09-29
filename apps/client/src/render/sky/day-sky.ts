@@ -20,6 +20,7 @@ import * as THREE from "three";
 import { createSkyUniforms, SKY_EVAL_GLSL, SKY_UNIFORMS_GLSL, type SkyUniforms } from "./sky-glsl.js";
 import { StarField } from "./star-field.js";
 import { evaluateTimeOfDay, sunDirection, type TimeOfDayLook } from "./time-of-day.js";
+import { setToonDay, toonDayFromSun } from "../toon/toon-material.js";
 
 /** Light scale: noon (light 1.5, ambient 0.5) matches the fixed lighting the client had before. */
 const SUN_SCALE = 1.6 / 1.5;
@@ -98,6 +99,8 @@ export class DaySky {
     u.uSunDir.value.copy(dir);
     u.uLight.value = look.lightIntensity;
     this.stars.update(time, dir.y, u.uStars.value);
+    // Toon shadows take their night colours as the sun sets.
+    setToonDay(toonDayFromSun(dir.y));
 
     // Direct light: the sun above the horizon, the moon below it.
     const sunUp = THREE.MathUtils.smoothstep(dir.y, -0.05, 0.08);

@@ -65,6 +65,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## ToonShading
+
+Source: https://github.com/KallkaGo/ToonShading (commit 0d0755e, 2026-03-18).
+Adapted: the toon body and face shading (`src/render/toon/toon-material.ts`),
+ported onto three's own lighting; the inverted-hull outline
+(`src/render/toon/outline.ts`); and the Gran Turismo tone curve
+(`src/render/effects/gt-tonemap-effect.ts`). Only the code was taken: the
+demo's character model and textures are not in this repository.
+
+```
+MIT License
+
+Copyright (c) 2024 KallkaGo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Terrain surface textures (not in this repository)
 
 `npm run surfaces:fetch` downloads CC0-1.0 ground textures (Poly Haven,
