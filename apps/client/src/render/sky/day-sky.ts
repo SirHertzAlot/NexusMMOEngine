@@ -1,10 +1,12 @@
 /**
  * DaySky — the sky dome, the sun (and moon) light, the sky light, and the
- * haze colour, all set from one time of day.
+ * haze colour, all set from one time of day, and the stars at night
+ * (star-field.ts).
  *
  * The dome is a large sphere drawn behind everything at the far plane; its
  * shader draws a zenith-to-horizon gradient, a sun disc with glow (bright
- * enough for bloom), horizon haze in the fog colour, and stars at night.
+ * enough for bloom), and horizon haze in the fog colour; the stars are
+ * their own layer in front of it.
  * The scene fog takes the same colour as the haze, so far terrain fades
  * into the horizon seamlessly at every hour.
  *
@@ -16,6 +18,7 @@
 
 import * as THREE from "three";
 import { createSkyUniforms, SKY_EVAL_GLSL, SKY_UNIFORMS_GLSL, type SkyUniforms } from "./sky-glsl.js";
+import { StarField } from "./star-field.js";
 import { evaluateTimeOfDay, sunDirection, type TimeOfDayLook } from "./time-of-day.js";
 
 /** Light scale: noon (light 1.5, ambient 0.5) matches the fixed lighting the client had before. */
@@ -42,7 +45,8 @@ ${SKY_EVAL_GLSL}
 varying vec3 vDirection;
 
 void main() {
-  gl_FragColor = vec4(evaluateSky(vDirection, 1.0, 1.0), 1.0);
+  // No hashed stars on the dome: the StarField draws them.
+  gl_FragColor = vec4(evaluateSky(vDirection, 1.0, 0.0), 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -54,6 +58,8 @@ export class DaySky {
   /** Direct light: the sun by day, the moon (opposite it) by night. */
   readonly sunLight = new THREE.DirectionalLight(0xffffff, 1);
   readonly skyLight = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
+  /** The night sky: call `stars.setFrame` each frame for its size and twinkle. */
+  readonly stars = new StarField();
   /** The current look (after the last update). */
   look: TimeOfDayLook = evaluateTimeOfDay(0.5);
   private readonly dome: THREE.Mesh;
@@ -76,7 +82,7 @@ export class DaySky {
     this.dome.name = "sky-dome";
     this.dome.renderOrder = -1000;
     this.dome.frustumCulled = false;
-    this.group.add(this.dome, this.sunLight, this.skyLight);
+    this.group.add(this.dome, this.stars.mesh, this.sunLight, this.skyLight);
   }
 
   /** Set the sky, the lights, and the haze for a time of day (0..1, 0 = midnight). */
@@ -91,6 +97,7 @@ export class DaySky {
     u.uFogColor.value.setRGB(...look.fogColor);
     u.uSunDir.value.copy(dir);
     u.uLight.value = look.lightIntensity;
+    this.stars.update(time, dir.y, u.uStars.value);
 
     // Direct light: the sun above the horizon, the moon below it.
     const sunUp = THREE.MathUtils.smoothstep(dir.y, -0.05, 0.08);
@@ -112,6 +119,7 @@ export class DaySky {
     this.group.removeFromParent();
     this.dome.geometry.dispose();
     this.material.dispose();
+    this.stars.dispose();
     this.sunLight.dispose();
     this.skyLight.dispose();
   }
