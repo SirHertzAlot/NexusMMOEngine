@@ -150,8 +150,8 @@ export function discoverPacks(sourceRoot: string): Pack[] {
 
 /** Headless three.js: no image decoding, and GLTFExporter's binary path needs FileReader. */
 function installNodeShims(): void {
-  THREE.TextureLoader.prototype.load = function load(): THREE.Texture {
-    return new THREE.Texture();
+  THREE.TextureLoader.prototype.load = function load(): THREE.Texture<HTMLImageElement> {
+    return new THREE.Texture() as THREE.Texture<HTMLImageElement>;
   };
   const g = globalThis as { FileReader?: unknown };
   g.FileReader ??= class {
