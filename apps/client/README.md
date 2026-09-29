@@ -41,6 +41,10 @@ src/
     world-canvas.tsx  React Three Fiber <Canvas>: renderer, camera, lights,
                  fog, and the frame loop that drives the pieces below
     entity-layer.ts  lazy meshes per wire id, batched scenery, FX (plain three.js)
+    toon/        toon shading for characters and creatures (cel bands with
+                 day/night ramps, light maps, SDF face shadows, rim light)
+                 and inverted-hull outlines; on by default in CharacterKit
+    effects/     screen effects: underwater, the Gran Turismo tone curve
     follow-camera.ts  third-person camera rig (mouse look + wheel distance)
     assets.ts    AssetProvider — THE seam for Joey's future art pipeline
   ui/
@@ -61,6 +65,8 @@ npm test --workspace=@mmo-engine/client   # tsc build + node --test
 - `test/input.test.ts` — WASD vector math, yaw rotation, normalization
 - `test/entity-layer.test.ts` — mirror state to meshes, batching, chunks,
   despawn, hover, and the follow camera
+- `test/toon.test.ts` — the toon patch and its variants, the ramp, the
+  day/night fade, outline normals and skinning, the tone curve
 
 ## Placeholder visuals (Joey's Phase 3 choice)
 

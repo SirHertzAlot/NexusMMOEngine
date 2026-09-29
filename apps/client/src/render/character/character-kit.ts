@@ -7,6 +7,9 @@
  * mixer drives the whole character). Part files are fetched once and
  * shared: a character instance reuses their geometry and bind data.
  *
+ * Characters are toon-shaded and outlined by default (see ../toon);
+ * `CharacterStyle` turns either off.
+ *
  * The art comes from <repo>/assets via the dev server (see
  * vite-local-assets); it is never bundled.
  */
@@ -15,6 +18,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { effectiveColours, resolveLook, type CharacterLook, type RiggedCatalog } from "@mmo-engine/art/browser";
 import { CharacterMaterial, type CharacterTextures } from "./character-material.js";
+import { applyToon, type ToonOptions } from "../toon/toon-material.js";
+import { addOutline, OutlineMaterial, type OutlineOptions } from "../toon/outline.js";
 
 export const DEFAULT_KIT_URL = "/assets/models/glb/modular-fantasy-hero/Rigged/";
 
@@ -52,22 +57,39 @@ function asBones(scene: THREE.Object3D): THREE.Object3D {
   return root;
 }
 
+/** How a kit's characters are drawn. */
+export interface CharacterStyle {
+  /** Toon shading (false: the standard PBR material). Default on. */
+  toon: ToonOptions | false;
+  /** Outlines (false: none). Default on. */
+  outline: OutlineOptions | false;
+}
+
+export const DEFAULT_CHARACTER_STYLE: CharacterStyle = {
+  toon: { row: "cloth" },
+  outline: { width: 1.6 },
+};
+
 export class CharacterKit {
   private readonly parts = new Map<string, Promise<PartTemplate>>();
   private readonly loader: GLTFLoader;
+  /** Shared by every character's outlines (null: no outlines). */
+  readonly outlineMaterial: OutlineMaterial | null;
 
   private constructor(
     readonly baseUrl: string,
     readonly catalog: RiggedCatalog,
     private readonly rig: THREE.Object3D,
     readonly textures: CharacterTextures,
+    readonly style: CharacterStyle,
   ) {
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((url) => (/\.(png|jpe?g|webp)$/i.test(url) ? BLANK_PNG : url));
     this.loader = new GLTFLoader(manager);
+    this.outlineMaterial = style.outline ? new OutlineMaterial({ map: textures.base, ...style.outline }) : null;
   }
 
-  static async load(baseUrl = DEFAULT_KIT_URL): Promise<CharacterKit> {
+  static async load(baseUrl = DEFAULT_KIT_URL, style: CharacterStyle = DEFAULT_CHARACTER_STYLE): Promise<CharacterKit> {
     const res = await fetch(`${baseUrl}catalog.json`);
     if (!res.ok) throw new Error(`character kit: ${baseUrl}catalog.json (${res.status}) — run npm run convert:modular -w @mmo-engine/art`);
     const catalog = (await res.json()) as RiggedCatalog;
@@ -84,7 +106,7 @@ export class CharacterKit {
       load(catalog.textures.base, true),
       ...catalog.textures.masks.map((m) => load(m, false)),
     ]);
-    return new CharacterKit(baseUrl, catalog, rig, { base, masks });
+    return new CharacterKit(baseUrl, catalog, rig, { base, masks }, style);
   }
 
   /** A part's template, fetched once. */
@@ -127,7 +149,9 @@ export class CharacterKit {
    * appear as they load. Load failures are reported, not thrown.
    */
   create(look: CharacterLook): ModularCharacter {
-    const character = new ModularCharacter(this, this.rig.clone(true), new CharacterMaterial(this.textures, effectiveColours(look)));
+    const material = new CharacterMaterial(this.textures, effectiveColours(look));
+    if (this.style.toon) applyToon(material, this.style.toon);
+    const character = new ModularCharacter(this, this.rig.clone(true), material);
     character.setLook(look).catch((e: unknown) => console.warn(`[character] ${e instanceof Error ? e.message : e}`));
     return character;
   }
@@ -140,6 +164,7 @@ export class CharacterKit {
   /** Release the textures and part geometry (after every character built from the kit is gone). */
   dispose(): void {
     this.textures.base.dispose();
+    this.outlineMaterial?.dispose();
     for (const m of this.textures.masks) m.dispose();
     for (const p of this.parts.values()) {
       p.then((t) => t.mesh.geometry.dispose()).catch(() => {});
@@ -205,6 +230,7 @@ export class ModularCharacter {
       });
       mesh.bind(new THREE.Skeleton(bones, template.skeleton.boneInverses), template.bindMatrix);
       mesh.frustumCulled = false; // skinned bounds don't follow the pose
+      if (this.kit.outlineMaterial) addOutline(mesh, this.kit.outlineMaterial);
       this.rig.add(mesh);
       this.meshes.set(name, mesh);
     });
