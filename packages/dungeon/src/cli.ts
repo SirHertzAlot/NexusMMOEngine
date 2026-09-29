@@ -18,6 +18,10 @@
  *   --out <dir>            the pool folder
  *   --fresh                remove the existing pool first
  *   --png                  also write a top-down map (<id>.png) of each new dungeon
+ *   --rank <n|min-max>     dress each dungeon at a rank (default 1-5: room
+ *                          archetypes, their contents, resource veins)
+ *   --dressing <file.json> add or replace archetypes and veins
+ *   --bare                 don't dress (layouts only)
  */
 
 import { dirname, join, resolve } from "node:path";
@@ -27,9 +31,10 @@ import { bakeDungeons } from "./bake.js";
 import { decodeDungeon, type DungeonFile } from "./format.js";
 import { dungeonPng } from "./preview.js";
 import { loadThemes } from "./themes.js";
+import { loadDressing } from "./dressing.js";
 
-const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png"] as const;
-const FLAGS: readonly string[] = ["fresh", "png"];
+const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "bare"] as const;
+const FLAGS: readonly string[] = ["fresh", "png", "bare"];
 type Option = (typeof OPTIONS)[number];
 
 /**
@@ -82,6 +87,11 @@ function main(): void {
   const rooms: [number, number] = m ? [Number(m[1]), Number(m[2] ?? m[1])] : [NaN, NaN];
   if (!(rooms[0] >= 3 && rooms[1] >= rooms[0] && rooms[1] <= 200)) throw new Error(`--rooms must be a count or min-max within 3-200 (got "${roomsText}")`);
   const out = o.out ? resolve(o.out) : defaultOut;
+  const rankText = o.rank ?? "1-5";
+  const rm = /^(\d+)(?:-(\d+))?$/.exec(rankText);
+  const rank: [number, number] = rm ? [Number(rm[1]), Number(rm[2] ?? rm[1])] : [NaN, NaN];
+  if (!(rank[0] >= 1 && rank[1] >= rank[0] && rank[1] <= 99)) throw new Error(`--rank must be a rank or min-max, from 1 (got "${rankText}")`);
+  const bare = o.bare !== undefined && o.bare !== "false";
   const t0 = performance.now();
   const r = bakeDungeons({
     count, seed, rooms, out,
@@ -90,14 +100,18 @@ function main(): void {
     decorDensity: num("decor", o.decor, 0.6, 0, 1),
     themes: loadThemes(o.themes),
     fresh: o.fresh !== undefined && o.fresh !== "false",
+    ...(bare ? {} : { dress: { dressing: loadDressing(o.dressing), rank } }),
   });
   if (o.png !== undefined && o.png !== "false") {
     for (const d of r.added) {
       const file = JSON.parse(readFileSync(join(out, d.file), "utf8")) as DungeonFile;
-      writeFileSync(join(out, `${d.id}.png`), dungeonPng(decodeDungeon(file)));
+      writeFileSync(join(out, `${d.id}.png`), dungeonPng(decodeDungeon(file), 4, file.dressing));
     }
   }
-  for (const d of r.added) console.log(`  ${d.id}  ${d.name}  (${d.rooms} rooms, ${d.floorTiles} tiles, ${d.width}x${d.height})`);
+  for (const d of r.added) {
+    const dressed = d.rank !== undefined ? `, rank ${d.rank}, ${d.veins} veins` : "";
+    console.log(`  ${d.id}  ${d.name}  (${d.rooms} rooms${dressed}, ${d.floorTiles} tiles, ${d.width}x${d.height})`);
+  }
   console.log(
     `[dungeon:bake] ${r.added.length} new dungeon(s) in ${((performance.now() - t0) / 1000).toFixed(1)} s; the pool holds ${r.index.dungeons.length} ` +
       `(${out})${r.duplicates ? `; ${r.duplicates} duplicate layout(s) skipped` : ""}${r.failed ? `; ${r.failed} unconnected seed(s) skipped` : ""}; base seed ${seed}`,

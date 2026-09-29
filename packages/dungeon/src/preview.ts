@@ -6,6 +6,7 @@
 
 import { deflateSync } from "node:zlib";
 import { CELL, type Dungeon, type RoomType } from "./generate.js";
+import type { DungeonDressing } from "./dress.js";
 
 type Rgb = [number, number, number];
 
@@ -63,8 +64,11 @@ export function encodePng(w: number, h: number, rgb: Uint8Array): Buffer {
   ]);
 }
 
-/** The dungeon's map, `scale` pixels a cell. */
-export function dungeonPng(d: Dungeon, scale = 4): Buffer {
+/** Resource tiers, 1 common … 5 legendary. */
+const TIER: Rgb[] = [[170, 170, 170], [120, 220, 90], [70, 150, 255], [190, 90, 255], [255, 170, 30]];
+
+/** The dungeon's map, `scale` pixels a cell (with its dressing's props and veins, when given). */
+export function dungeonPng(d: Dungeon, scale = 4, dressing?: DungeonDressing): Buffer {
   const W = d.width * scale, H = d.height * scale;
   const img = new Uint8Array(W * H * 3);
   const fill = (cx: number, cy: number, c: Rgb, inset = 0): void => {
@@ -88,5 +92,15 @@ export function dungeonPng(d: Dungeon, scale = 4): Buffer {
   for (const p of d.props) if (p.kind !== "debris" && p.kind !== "moss" && p.kind !== "crack") fill(p.x, p.y, [30, 30, 36], inset);
   for (const t of d.torches) fill(t.x, t.y, [255, 170, 60], inset);
   for (const s of d.spawns) fill(s.x, s.y, s.tier === 3 ? [255, 40, 60] : s.tier === 2 ? [230, 90, 40] : [200, 140, 60], inset);
+  if (dressing) {
+    // Continuous positions: a dot `size` pixels across.
+    const dot = (x: number, y: number, c: Rgb, size: number): void => {
+      const px = Math.round(x * scale), py = Math.round(y * scale), h = Math.floor(size / 2);
+      for (let yy = py - h; yy < py - h + size; yy++)
+        for (let xx = px - h; xx < px - h + size; xx++) if (xx >= 0 && yy >= 0 && xx < W && yy < H) img.set(c, (yy * W + xx) * 3);
+    };
+    for (const p of dressing.props) dot(p.x, p.y, [70, 50, 35], Math.max(2, Math.round(scale * 0.6)));
+    for (const v of dressing.resources) dot(v.x, v.y, TIER[Math.min(4, v.tier - 1)], Math.max(2, Math.round(scale * 0.8)));
+  }
   return encodePng(W, H, img);
 }

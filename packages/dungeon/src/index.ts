@@ -5,3 +5,5 @@ export { mulberry32, makeRng, deriveSeed, type Rng } from "./rng.js";
 export { delaunay } from "./delaunay.js";
 export { bakeDungeons, readIndex, INDEX_FORMAT, type BakeOptions, type BakeResult, type DungeonIndex, type IndexEntry } from "./bake.js";
 export { dungeonPng, encodePng } from "./preview.js";
+export { dressDungeon, type DungeonDressing, type DressedProp, type Resource } from "./dress.js";
+export { BUILTIN_DRESSING, DressingSchema, loadDressing, type Dressing, type Archetype, type Content, type Vein } from "./dressing.js";

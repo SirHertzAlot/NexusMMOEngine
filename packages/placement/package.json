@@ -1,0 +1,14 @@
+{
+  "name": "@mmo-engine/placement",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Where things go, once WFC has decided what: signed distance fields (grids, heightfields), a sphere-tracing raymarcher, Poisson-disc scatter, and placement on floors, walls, corners and terrain. Bake-time.",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "devDependencies": { "@types/node": "^25.0.0", "typescript": "^5.6.3" }
+}
