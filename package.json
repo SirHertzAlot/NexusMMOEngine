@@ -53,6 +53,7 @@
     "packages/world-server",
     "packages/scatter",
     "packages/dungeon",
+    "packages/wfc",
     "packages/picg",
     "packages/addons/scatter",
     "packages/addons/picg"
