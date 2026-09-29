@@ -1,0 +1,25 @@
+{
+  "parts": [
+    { "id": "torso", "name": "Torso", "parent": null, "share": 0.26, "hitMultiplier": 1.0, "atZero": "death", "slot": "torso" },
+    { "id": "head", "name": "Head", "parent": "torso", "share": 0.12, "hitMultiplier": 2.0, "atZero": "death", "slot": "head" },
+    { "id": "hips", "name": "Hips", "parent": "torso", "share": 0.12, "hitMultiplier": 1.0, "atZero": "cannotStand", "slot": "hips" },
+    { "id": "armUpperLeft", "name": "Left upper arm", "parent": "torso", "share": 0.06, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armUpperLeft" },
+    { "id": "armUpperRight", "name": "Right upper arm", "parent": "torso", "share": 0.06, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armUpperRight" },
+    { "id": "armLowerLeft", "name": "Left forearm", "parent": "armUpperLeft", "share": 0.05, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armLowerLeft" },
+    { "id": "armLowerRight", "name": "Right forearm", "parent": "armUpperRight", "share": 0.05, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armLowerRight" },
+    { "id": "handLeft", "name": "Left hand", "parent": "armLowerLeft", "share": 0.03, "hitMultiplier": 0.7, "atZero": "drop", "slot": "handLeft" },
+    { "id": "handRight", "name": "Right hand", "parent": "armLowerRight", "share": 0.03, "hitMultiplier": 0.7, "atZero": "drop", "slot": "handRight" },
+    { "id": "legLeft", "name": "Left leg", "parent": "hips", "share": 0.11, "hitMultiplier": 0.8, "atZero": "cannotStand", "slot": "legLeft" },
+    { "id": "legRight", "name": "Right leg", "parent": "hips", "share": 0.11, "hitMultiplier": 0.8, "atZero": "cannotStand", "slot": "legRight" }
+  ],
+  "harmedBelow": 0.4,
+  "severity": {
+    "cut": { "maim": 0.5, "dismember": 0.9, "dismemberMaimed": 0.4 },
+    "blunt": { "maim": 0.4, "dismember": null, "dismemberMaimed": null },
+    "thrust": { "maim": 0.6, "dismember": null, "dismemberMaimed": null }
+  },
+  "blood": {
+    "max": 100,
+    "bleedPerSecond": { "cut": 0.4, "thrust": 0.8, "dismember": 2.5 }
+  }
+}

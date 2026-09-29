@@ -1,0 +1,5 @@
+{
+  "respawn": { "delaySeconds": 10, "at": "nearestVisited" },
+  "keep": { "skills": true, "items": "keep", "partialLoss": 0.25, "injuries": false },
+  "recordDeaths": true
+}

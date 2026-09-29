@@ -1,0 +1,11 @@
+{
+  "techniques": {
+    "cut": { "property": "edge", "damageKind": "cut", "skill": "cutting" },
+    "thrust": { "property": "point", "damageKind": "thrust", "skill": "thrusting" },
+    "bludgeon": { "property": "hardness", "damageKind": "blunt", "skill": "bludgeoning" }
+  },
+  "fit": { "closes": 0.8, "masteryPower": 2 },
+  "power": { "novice": 0.4, "masterBonus": 1.6, "curve": 1.5 },
+  "damage": { "base": 10, "massPower": 0.5 },
+  "precision": { "novice": 0.3, "masterBonus": 0.65 }
+}
