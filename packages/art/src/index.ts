@@ -15,3 +15,4 @@ export * from "./provider.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
 export * from "./character/look.js";
+export * from "./character/animations.js";

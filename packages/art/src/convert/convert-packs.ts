@@ -25,8 +25,9 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
@@ -197,6 +198,50 @@ export function loadFbx(file: string): THREE.Group {
   const buf = fs.readFileSync(file);
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   return new FBXLoader().parse(ab, `${path.dirname(file)}/`);
+}
+
+type FbxLoaderClass = new () => FBXLoader;
+let tolerantLoader: Promise<FbxLoaderClass> | null = null;
+
+/**
+ * three's FBXLoader with one fix: an animation curve that isn't connected
+ * to a property of any model (some FBX 7.3 exports carry these) is skipped
+ * as unused, where stock three.js throws. Built once, from three's own
+ * source, into a temporary module — node_modules stays untouched.
+ */
+function tolerantFbxLoader(): Promise<FbxLoaderClass> {
+  tolerantLoader ??= (async () => {
+    const file = fileURLToPath(import.meta.resolve("three/examples/jsm/loaders/FBXLoader.js"));
+    let src = fs.readFileSync(file, "utf8");
+    const orphan =
+      /const modelID = connections\.get\( child\.ID \)\.parents\.filter\( function \( parent \) \{\s*return parent\.relationship !== undefined;\s*\} \)\[ 0 \]\.ID;/;
+    if (!orphan.test(src)) throw new Error("tolerant FBXLoader: three.js changed — update the patch in convert-packs.ts");
+    src = src
+      .replace(orphan, "const modelID = connections.get( child.ID ).parents.find( ( parent ) => parent.relationship !== undefined )?.ID; if ( modelID === undefined ) return;")
+      .replace(/from '(\.[^']+)'/g, (_m, rel: string) => `from '${pathToFileURL(path.resolve(path.dirname(file), rel)).href}'`)
+      .replace(/from 'three'/g, `from '${import.meta.resolve("three")}'`);
+    const out = path.join(os.tmpdir(), `mmo-fbxloader-${process.pid}.mjs`);
+    fs.writeFileSync(out, src);
+    try {
+      return ((await import(pathToFileURL(out).href)) as { FBXLoader: FbxLoaderClass }).FBXLoader;
+    } finally {
+      fs.rmSync(out, { force: true });
+    }
+  })();
+  return tolerantLoader;
+}
+
+/** loadFbx, falling back to the tolerant loader for files stock three.js rejects. */
+export async function loadFbxTolerant(file: string): Promise<THREE.Group> {
+  try {
+    return loadFbx(file);
+  } catch (err) {
+    if (!/reading 'ID'/.test(String(err))) throw err;
+  }
+  const Loader = await tolerantFbxLoader();
+  const buf = fs.readFileSync(file);
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  return new Loader().parse(ab, `${path.dirname(file)}/`);
 }
 
 /** Largest bounding-box dimension of an FBX in its own raw units. */
