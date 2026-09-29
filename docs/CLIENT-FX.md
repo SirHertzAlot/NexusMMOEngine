@@ -13,6 +13,7 @@ mirrored positions and never feeds back into simulation.
 | Entity FX | `entity-fx.ts` | Spawn portal (expanding shockwave ring + vertical beam), persistent player selection ring, pulsing player aura sprite, camera-facing motion-trail ribbon, hover emissive highlight. |
 | Elemental orbs | `element-fx.ts` | Six procedural `ShaderMaterial` orbs — water, fire, wind, earth, snow, lava — plus runtime canvas textures (soft glow, spark, text labels). No downloaded assets. |
 | Showcase | `showcase.ts` | Toggleable in-world ring of the six labeled orbs with bob animation and periodic element-colored spawn bursts. Local/decorative; not server entities. |
+| Screen effects | `post-fx.tsx`, `effects/underwater-effect.ts` | pmndrs postprocessing over the whole frame: multisampled antialiasing, bloom (only light above the threshold glows: orbs, beams, lava, not the sky), a light vignette, and the underwater look (tint, murk by depth, wobble) faded in by the camera's depth below the water surface (`WaterRenderer.surfaceAt`). The HUD's "effects off" renders the scene directly for weak GPUs. |
 
 `entity-layer.ts` owns lifecycle (driven by `world-canvas.tsx`, the React
 Three Fiber scene): constructs FX systems, routes authoritative

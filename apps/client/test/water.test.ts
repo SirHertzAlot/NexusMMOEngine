@@ -7,7 +7,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type * as THREE from "three";
 import type { WorldMap } from "@mmo-engine/protocol";
-import { waterGeometry, WaterRenderer } from "../src/render/water.js";
+import { waterGeometry, waterSurfaceAt, WaterRenderer } from "../src/render/water.js";
+import { underwaterAmount } from "../src/render/effects/underwater-effect.js";
 
 /** 3 x 2 cells of 16 m centred at (0, 0), (16, 0), …: sea in the south row, a lake up north-east. */
 function map(water?: number[]): WorldMap {
@@ -64,5 +65,44 @@ describe("waterGeometry", () => {
     r.setWorld(null, null);
     assert.equal(r.hasWater, false);
     r.dispose();
+  });
+});
+
+describe("waterSurfaceAt", () => {
+  // Sea (0) in the south row, a lake (7) at cell (2, 0), dry elsewhere.
+  const m = map([NaN, NaN, 7, 0, 0, NaN]);
+
+  it("reads the surface of the cell under the point, null on dry ground", () => {
+    assert.equal(waterSurfaceAt(m, 0, 32, 0), 7, "the lake");
+    assert.equal(waterSurfaceAt(m, 0, 20, 14), 0, "the sea");
+    assert.equal(waterSurfaceAt(m, 0, 0, 0), null, "dry");
+    assert.equal(waterSurfaceAt(map(), 0, 0, 0), null, "no water layer");
+  });
+
+  it("continues the open sea past a sea edge, never past a lake or dry edge", () => {
+    assert.equal(waterSurfaceAt(m, 0, -500, 900), 0, "beyond the sea corner");
+    assert.equal(waterSurfaceAt(m, 0, 900, -500), null, "beyond the lake: lakes don't spill");
+    assert.equal(waterSurfaceAt(m, null, -500, 900), null, "no sea level: no open sea");
+  });
+
+  it("WaterRenderer answers for the world it was given", () => {
+    const w = new WaterRenderer();
+    assert.equal(w.surfaceAt(32, 0), null);
+    w.setWorld(m, 0);
+    assert.equal(w.surfaceAt(32, 0), 7);
+    w.setWorld(null, null);
+    assert.equal(w.surfaceAt(32, 0), null);
+    w.dispose();
+  });
+});
+
+describe("underwaterAmount", () => {
+  it("is off above the surface, full a little below, and smooth between", () => {
+    assert.equal(underwaterAmount(-1), 0);
+    assert.equal(underwaterAmount(-0.05), 0);
+    assert.equal(underwaterAmount(0.25), 1);
+    assert.equal(underwaterAmount(3), 1);
+    const mid = underwaterAmount(0.1);
+    assert.ok(mid > 0.3 && mid < 0.7, `halfway through the band: ${mid}`);
   });
 });
