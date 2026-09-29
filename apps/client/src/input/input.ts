@@ -8,7 +8,7 @@
  * (my = -1); F toggles flight (for characters that can fly — the server
  * decides).
  *
- * Convention (matches WorldView's third-person camera rig): forward =
+ * Convention (matches the third-person follow camera, follow-camera.ts): forward =
  * (sin(yaw), 0, cos(yaw)), right = (-cos(yaw), 0, sin(yaw)). At yaw 0,
  * D maps to world -X, which is camera-right because the camera sits at
  * -Z looking toward +Z. Wish-move is normalized so diagonal movement

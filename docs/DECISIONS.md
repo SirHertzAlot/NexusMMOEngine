@@ -2,6 +2,21 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-09-29 — The client is React all the way down: React Three Fiber
+  for the 3D world (Joey's decision).** The HUD and menus stay React DOM;
+  the world is a React Three Fiber `<Canvas>` in the same React tree, so
+  UI and scene share state and components (nameplates, the character
+  creator's preview, editor viewports, selection cards). React 19 and
+  three 0.186 are the base (R3F 9 needs React 19; Spark needs three
+  >= 0.180; postprocessing supports < 0.187). The existing renderers are
+  wrapped, not rewritten: R3F owns the WebGL renderer, camera, resizing
+  and frame loop; TerrainRenderer, WaterRenderer and EntityLayer stay
+  plain three.js classes driven from one `useFrame`, created and disposed
+  in the same effect (StrictMode-safe). Mirror state never goes through
+  React state; it is read in the frame loop, and React re-renders only on
+  prop changes. Canvas is `flat` (no tone mapping) so the picture matches
+  plain three.js. New 3D UI is written as R3F components from the start.
+
 - **2026-09-29 — Characters and social systems (Joey's decisions; spec:
   docs/CHARACTERS-AND-SOCIAL.md, docs/MASTERY-AND-COMBAT.md).** Classless
   mastery: characters improve at what they do by doing it. Skill belongs

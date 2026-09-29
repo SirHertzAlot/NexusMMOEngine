@@ -13,7 +13,7 @@
  *  - water shimmer: low-mask pools with animated sparkle
  *
  * `applyTerrainFx()` hooks a material once; `updateTerrainFx()` must be
- * called every frame (WorldView.sync does this) to advance `uTime`.
+ * called every frame (WorldCanvas does this) to advance `uTime`.
  */
 
 import * as THREE from "three";

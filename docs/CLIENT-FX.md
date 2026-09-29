@@ -14,7 +14,8 @@ mirrored positions and never feeds back into simulation.
 | Elemental orbs | `element-fx.ts` | Six procedural `ShaderMaterial` orbs — water, fire, wind, earth, snow, lava — plus runtime canvas textures (soft glow, spark, text labels). No downloaded assets. |
 | Showcase | `showcase.ts` | Toggleable in-world ring of the six labeled orbs with bob animation and periodic element-colored spawn bursts. Local/decorative; not server entities. |
 
-`world-view.ts` owns lifecycle: constructs FX systems, routes authoritative
+`entity-layer.ts` owns lifecycle (driven by `world-canvas.tsx`, the React
+Three Fiber scene): constructs FX systems, routes authoritative
 player/entity transforms into them, raycasts hover, and disposes everything.
 
 ## Gotchas
