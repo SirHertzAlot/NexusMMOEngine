@@ -8,8 +8,12 @@ and `docs/MESSAGE-CATALOG.md` (the wire protocol this extends).
 
 - **Progression is classless mastery.** Characters get better at what
   they do by doing it; skill belongs to the technique, not the item, and
-  characters take damage to individual body parts. Designed in
-  `docs/MASTERY-AND-COMBAT.md`.
+  characters take damage to individual body parts (harmed, maimed or
+  dismembered). Unused skills deteriorate slowly. Characters respawn, as
+  part of the world's lore. Designed in `docs/MASTERY-AND-COMBAT.md`.
+- **Every rule is the game's to change.** The engine ships defaults; a
+  game's rules (skills, body parts, injuries, death, appearance options)
+  are data files and hooks, and ours are one such set.
 - **Several characters per account, names unique across the whole
   world.** Default limit 8 per account (configurable).
 - **The first social release has chat (say, yell, whisper), parties,
@@ -121,10 +125,10 @@ world-server slice B needs for border crossings.
 | Component | Fields | Sent to |
 |---|---|---|
 | `CharacterRef` (new) | `idHi, idLo` (u64 character id) | Everyone |
-| `Appearance` (new) | `body: u8, skin: u8, hair: u8, hairColour: u32, accent: u32` | Everyone |
+| `Appearance` (new) | one piece index per slot, and the colour-mask colours (§4.7) | Everyone |
 | `Health` (exists) | `current, max` | Everyone |
 | `Locomotion` (exists) | `mode, abilities, breath` | Everyone |
-| `Body`, `Injury`, `Combat`, `Held` | see `MASTERY-AND-COMBAT.md` §5 | `Body` owner only, the rest everyone |
+| `Body`, `Injury`, `Combat`, `Held` | see `MASTERY-AND-COMBAT.md` §6 | `Body` owner only, the rest everyone |
 | `Skills` (not a component) | per-character map, server-only | Owner only |
 
 - **Names are not in the snapshot.** Strings don't belong in the SoA
@@ -162,6 +166,37 @@ Classless mastery, body parts and combat have their own design:
 record stores for them: `skills` (value, peak, and last use per skill,
 for rust), familiarity per item family, earned disciplines, and the
 body's part health, blood and injuries (saved with the vitals).
+
+### 4.7 Character customisation
+
+Our characters are built from the art packs' modular hero: the character
+creator picks one piece for each slot, and colours them through the
+pack's colour-mask shader. The slots, and which of them are body parts
+(`MASTERY-AND-COMBAT.md` §4), are rules (`content/rules/appearance.json`
+and `body.json`), so a game with other art defines its own.
+
+| Slot | Body part (takes damage) | Notes |
+|---|---|---|
+| Head | Head | Face shape; the base for the cosmetic slots below |
+| Hair | — | Or none |
+| Eyebrows | — | |
+| Facial hair | — | Or none |
+| Torso | Torso | |
+| Hips | Hips | |
+| Upper arm, left and right | Upper arm | |
+| Lower arm, left and right | Lower arm | |
+| Hand, left and right | Hand | |
+| Leg, left and right | Leg | |
+| Attachments (helmet, shoulders, elbows, knees, back, hips) | — | Worn over a part; armour later covers that part |
+
+Colours: skin, hair, eyes, stubble, scar, body art, and the primary,
+secondary and metal colours, all from palettes in the rules.
+
+`Appearance` stores one u8 piece index per slot and a u32 colour per
+colour channel. The creator's 3D preview uses the same pieces as the
+game, and missing (dismembered) body parts simply hide their piece.
+The exact slot list follows the pack's own parts and is checked against
+it when the art pipeline converts the character pieces.
 
 ## 5. Social systems
 
@@ -311,7 +346,7 @@ Each slice is its own PR, with tests.
 | C1 | Accounts and characters on the world server: tables, name rules, create/list/delete/load/save, leases; the SQLite backing for standalone regions | World-server slice C (accounts move) is folded in here |
 | C2 | Protocol v5 sign-in: `account` and `character` messages, spawn from the record, saving, single login; the client's select and create screens | C1 |
 | C3 | Identity on screen: `CharacterRef`, `Appearance`, `names` message, nameplates | C2 |
-| M1–M4 | Mastery, body parts, items and melee, disciplines: see `MASTERY-AND-COMBAT.md` §6 | C2 |
+| M0–M4 | Rules loader, mastery, body parts, items and melee, disciplines: see `MASTERY-AND-COMBAT.md` §7 (M0–M4) | C2 |
 | S1 | Say, yell and emote on the region; the chat panel; rate limits and the text filter hook | C3 |
 | S2 | Region↔world event stream, presence, whispers, friends and blocks, the social window | C3, S1 |
 | S3 | Parties and party frames | S2 |
@@ -323,10 +358,9 @@ single-region setup covers every slice.
 
 ## 9. Open questions
 
-1. **Appearance**: what the character model is (the art packs' rigs, or
-   a PICG-generated body) decides what the `Appearance` fields are. The
-   fields above are placeholders.
-2. **Death**: see `MASTERY-AND-COMBAT.md` §7; whatever is chosen
+1. **Appearance**: the slot list in §4.7 is taken from the modular
+   hero pack and must be checked against its converted pieces.
+2. **Death and respawn**: see `MASTERY-AND-COMBAT.md` §5; whatever is chosen
    touches saving.
 3. **World-wide channels** (trade, help, global): left out of v1 on
    purpose. Adding one is a channel on the world server's stream.

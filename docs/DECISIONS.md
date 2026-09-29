@@ -9,7 +9,11 @@ Every entry: date, decision, rationale. Newest first.
   weapon and a master with a stick beats a novice with a sword; items
   keep physical properties (mass, edge, point, hardness) instead of damage
   numbers. Characters are made of body parts that take damage separately
-  (limb injuries slow, weaken and disarm). Several characters per
+  (harmed, maimed or dismembered by severity and kind of damage; the parts
+  are the modular character's body pieces). Unused skills deteriorate
+  slowly, with no hard cap. Characters respawn, as part of the lore.
+  Every one of these rules is data plus hooks the game can change: the
+  engine ships defaults, and our game is one rule set. Several characters per
   account, names unique world-wide. First social release: say/yell/whisper
   chat, parties, friends with presence, guilds. Characters, names, friends,
   blocks and guilds live on the world server; say and yell stay on the
