@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/rules && tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/wfc && tsc -p tsconfig.json",
     "test": "npm run build && node --expose-gc --test --test-skip-pattern=\"latency budget\" \"dist/test/**/*.test.js\" && npm run test:perf",
     "test:perf": "node --expose-gc --test --test-name-pattern=\"latency budget\" dist/test/persist/store.test.js",
     "sim": "npm run build && node dist/src/sim.js",
@@ -28,6 +28,7 @@
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/schema": "0.1.0",
     "@mmo-engine/scatter": "0.1.0",
+    "@mmo-engine/wfc": "0.1.0",
     "@mmo-engine/picg": "0.1.0",
     "argon2": "^0.45.1",
     "better-sqlite3": "^13.0.3",
