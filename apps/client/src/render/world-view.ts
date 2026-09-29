@@ -16,7 +16,8 @@
  * Characters: an entity with an Appearance (players, enemy humans) is a
  * modular character wearing its look, once the character kit has loaded
  * (the art is served by the dev server; without it they stay boxes). It
- * faces where it is moving.
+ * faces where it is moving and is animated from how it moves (see
+ * CharacterAnimator) once the animation library has loaded.
  *
  * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
  * BodyConfig shape. The AssetProvider abstraction is the seam where real
@@ -27,9 +28,18 @@
  */
 
 import * as THREE from "three";
-import { decodeWorldMap, type AssetRefRow, type BodyConfigRow, type VelocityRow, type WorldInfo } from "@mmo-engine/protocol";
+import {
+  combatMove,
+  decodeWorldMap,
+  type ActionRow,
+  type AssetRefRow,
+  type BodyConfigRow,
+  type VelocityRow,
+  type WorldInfo,
+} from "@mmo-engine/protocol";
 import { parseLook } from "@mmo-engine/art/browser";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
+import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { MirrorState } from "@mmo-engine/mirror";
 import type { Interpolator } from "@mmo-engine/mirror";
@@ -69,6 +79,11 @@ interface TrackedMesh {
   /** The modular character this entity is shown as, and the look (JSON) it wears. */
   character?: ModularCharacter;
   look?: string;
+  /** Plays the character's clips (once the animation library is in). */
+  animator?: CharacterAnimator;
+  female?: boolean;
+  /** The combat move on show: "seq:move" of its Action row. */
+  actionKey?: string;
   /** Facing (radians about +Y) — characters turn toward their movement. */
   yaw?: number;
 }
@@ -129,6 +144,8 @@ export class WorldView {
   private readonly onPointerMove: (e: PointerEvent) => void;
   /** The modular character kit; null until loaded (or when the art isn't served). */
   private kit: CharacterKit | null = null;
+  /** The characters' clips; null until loaded (or when none are served). */
+  private animations: AnimationLibrary | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -185,6 +202,11 @@ export class WorldView {
       .catch((e: unknown) =>
         console.info(`[world] characters stay placeholders: ${e instanceof Error ? e.message : e}`),
       );
+    AnimationLibrary.load()
+      .then((lib) => {
+        if (!this.disposed) this.animations = lib;
+      })
+      .catch((e: unknown) => console.info(`[world] characters stay unanimated: ${e instanceof Error ? e.message : e}`));
 
     this.resize();
   }
@@ -246,6 +268,8 @@ export class WorldView {
     playerWireId: bigint | null,
     lookYaw: number,
     lookPitch: number,
+    /** The server clock: combat moves play from their start tick. */
+    clock: { tick: number; tickHz: number } = { tick: 0, tickHz: 30 },
   ): void {
     // Remove meshes and terrain for despawned entities.
     for (const [key, t] of this.meshes) {
@@ -327,7 +351,17 @@ export class WorldView {
       const t = sample ?? e.transform;
       tracked.object.position.set(t.px, t.py, t.pz);
       if (tracked.character) {
-        turnToward(tracked, e.velocity, dt);
+        const acting = e.action && e.action.move !== 0 ? e.action : null;
+        turnToward(tracked, e.velocity, dt, acting?.yaw);
+        if (!tracked.animator && this.animations) {
+          tracked.animator = new CharacterAnimator(tracked.character.root, this.animations, { female: tracked.female });
+        }
+        if (tracked.animator) playAction(tracked, e.action, clock);
+        tracked.animator?.update(dt, {
+          speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
+          vy: e.velocity?.ly ?? 0,
+          mode: e.locomotion?.mode ?? 0,
+        });
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
         tracked.object.scale.set(t.sx, t.sy, t.sz);
@@ -365,6 +399,7 @@ export class WorldView {
     const look = parseLook(lookJson);
     tracked.look = lookJson;
     if (!look || !this.kit) return;
+    tracked.female = look.gender === "female";
     if (tracked.character) {
       tracked.character.setLook(look).catch((e: unknown) => console.warn(`[world] ${e instanceof Error ? e.message : e}`));
       return;
@@ -481,12 +516,40 @@ function highlight(obj: THREE.Object3D, mode: "player" | "hover" | "none"): void
 }
 
 /**
- * Turn a character toward its horizontal movement (it keeps its facing
- * while standing still). Presentation only: the server moves it.
+ * Play the combat move the server says the character is in, from the
+ * moment it started; back to locomotion when it's over. A guard is on the
+ * upper body (the legs keep walking); other moves are whole-body.
  */
-function turnToward(t: TrackedMesh, v: VelocityRow | undefined, dt: number): void {
+function playAction(t: TrackedMesh, row: ActionRow | undefined, clock: { tick: number; tickHz: number }): void {
+  const key = row && row.move !== 0 ? `${row.seq}:${row.move}` : undefined;
+  if (key === t.actionKey) return;
+  t.actionKey = key;
+  const move = row ? combatMove(row.move) : undefined;
+  if (!row || !move) {
+    t.animator!.stop(0.25);
+    return;
+  }
+  const offset = Math.max(0, (clock.tick - row.started) / clock.tickHz);
+  t.animator!.play(move.clip, {
+    offset: move.held ? offset % move.duration : offset,
+    loop: move.held === true,
+    mask: move.kind === "guard" ? "upper" : "full",
+    fadeIn: 0.08,
+    fadeOut: 0.15,
+  });
+}
+
+/**
+ * Turn a character toward its horizontal movement (it keeps its facing
+ * while standing still) — or, in a combat move, toward the move's facing.
+ * Presentation only: the server moves it.
+ */
+function turnToward(t: TrackedMesh, v: VelocityRow | undefined, dt: number, actionYaw?: number): void {
   let yaw = t.yaw ?? 0;
-  if (v && Math.hypot(v.lx, v.lz) > FACE_MOVING_SPEED) {
+  if (actionYaw !== undefined) {
+    const delta = Math.atan2(Math.sin(actionYaw - yaw), Math.cos(actionYaw - yaw));
+    yaw += delta * Math.min(1, TURN_RATE * 2 * dt);
+  } else if (v && Math.hypot(v.lx, v.lz) > FACE_MOVING_SPEED) {
     const want = Math.atan2(v.lx, v.lz); // the rig faces +Z
     const delta = Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw));
     yaw += delta * Math.min(1, TURN_RATE * dt);
@@ -497,6 +560,7 @@ function turnToward(t: TrackedMesh, v: VelocityRow | undefined, dt: number): voi
 
 /** Dispose what an entity's view owns (a character shares its kit's geometry). */
 function disposeTracked(t: TrackedMesh): void {
+  t.animator?.dispose();
   if (t.character) t.character.dispose();
   else disposeObject(t.object);
 }

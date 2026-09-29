@@ -96,33 +96,44 @@ The art itself stays in `<repo>/assets` (git-ignored, never published).
 
 ## Phase D — Animation from open motion capture
 
-- **⚑ Source and licence.** Recommended: Quaternius *Universal Animation
-  Library* (CC0: idle, walk, run, jump, swim, combat, on a humanoid rig)
-  as the base set, and the CMU Graphics Lab database (free for commercial
-  products, the raw data may not be resold) for anything more. Not
-  suitable: Mixamo (not open; its files may not be redistributed) and the
-  Bandai Namco research set (non-commercial licence).
-- [ ] Retarget the clips to the Synty skeleton offline (bone map + rest
-      pose correction) into an animation GLB. Every clip is normalised the
-      same way (in place, same facing, marked foot contacts) so any clip
-      can follow any other.
-- [ ] **Chaining — fluid transitions between any clips**, so a few dozen
-      clips cover far more actions:
-  - an animation graph per character: states (idle, locomotion, jump,
-    swim, fly, actions) and transitions with crossfades timed to the
-    clips (a walk hands over to a run on the matching footfall);
-  - blend spaces: walk / jog / run blended by speed, strafes by
-    direction, instead of one clip per speed;
-  - layers: the upper body plays an action (swing, cast, wave) while the
-    legs keep walking, masked by bone;
-  - sequences: chain clips into combos and emotes (wind-up → strike →
-    recover), where each link can branch (the next attack, or a return to
-    idle) — data, not code, so new moves are authored, not programmed;
-  - inertial blending when an interruption can't wait for a crossfade
-    (hit, stagger), so nothing ever snaps.
-- [ ] The server stays authoritative for *what* happens (state, action,
-      timing); clients choose how it looks. An action carries its state
-      and start tick, so every client plays the same chain in step.
+Sources in use (all under the ignored `assets/animations/`; the converted
+library is `assets/models/glb/modular-fantasy-hero/Rigged/animations/`):
+
+| Source | Licence | What it gives |
+| --- | --- | --- |
+| Quaternius *Universal Animation Library* 1 + 2, Standard (OpenGameArt) | CC0 | locomotion, jump, swim, the 3-hit sword combo in parts (hits + recoveries), block, shield guard / break / bash, roll, punches, hits, death, emotes, zombie set |
+| Kevin Iglesias's free packs (melee, basic motions, spellcasting, archer, throwing; itch.io) | Unity Asset Store EULA: royalty-free in games, **no redistribution** | one- and two-handed, polearm and shield attacks, combat idles, 8-way runs and strafes, bow load / hold / release, spell load / cast, throws; male and female takes (`.F`) |
+| CMU mocap via RancidMilk's FBX conversion (itch.io) | CMU: free in commercial products, not to be sold as animations; credit mocap.cs.cmu.edu | 53 raw combat takes: karate kicks / punches / blocks, boxing, swordplay, lunges, dodges, ducks (reference: moves still to be cut from them) |
+| Rokoko free packs | commercial use allowed | not fetched: the download form asks for a name and email — the user downloads them, then they go in as a source |
+
+Not suitable: Bandai Namco's research set (non-commercial). Mixamo is
+free for games but can't be redistributed and needs an Adobe login.
+
+- [x] `npm run convert:animations -w @mmo-engine/art`: every source
+      retargeted onto the Synty rig (`Retargeter`): each bone turns in the
+      world as its source bone turns from its rest pose, after our rest
+      bone is aligned to point where the source's does (so A-pose, T-pose,
+      Z-up and centimetre sources all work); hips scaled by hip height.
+      Clips play in place — horizontal root motion (a root bone, or the
+      hips for raw mocap) is taken out and recorded as `travel` for the
+      server to apply. One GLB per source plus `animations.json`.
+- [x] The client animator: a base layer of locomotion (idle / walk / jog /
+      sprint by speed with playback scaled to it, swimming, in the air),
+      crossfaded in step, and an action layer over it — whole-body or
+      upper-body only (the legs keep walking) — started part-way in to
+      match the server's start tick. Women use the `.F` takes when there
+      are any. Characters animate in the world and on the creation stage.
+- [x] Combat, server-authoritative (`CombatSystem`, `COMBAT_MOVES`): the
+      3-hit sword combo with chain windows and recoveries, the held guard
+      and shield bash, the dodge roll; moves move the character (lunges,
+      the roll) and slow the walk; the Action component (protocol v6)
+      tells every client which move, from which tick, facing where.
+- [ ] Cut single moves from the CMU takes (kicks, blocks, punches) and
+      offer Kevin Iglesias's weapon styles as alternative movesets.
+- [ ] Damage and hit reactions: hits land at a moment of the move, the
+      guard and the roll defend, `Hit_*`, knockback and death play.
+- [ ] Blend spaces for strafing (Kevin Iglesias's 8-way runs), foot
+      locking, inertial blending for interruptions.
 
 ## Phase E — Enemies
 

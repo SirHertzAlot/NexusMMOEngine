@@ -5,7 +5,11 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import * as THREE from "three";
+import { COMBAT_MOVES } from "@mmo-engine/protocol";
+import type { AnimationManifest } from "@mmo-engine/art/browser";
 import { COLOUR_SLOTS, DEFAULT_COLOURS, MASK_CHANNELS } from "@mmo-engine/art/browser";
 import { CharacterMaterial } from "../src/render/character/character-material.js";
 import { ModularCharacter, type CharacterKit } from "../src/render/character/character-kit.js";
@@ -96,6 +100,22 @@ describe("ModularCharacter rest pose", () => {
       assert.ok(shoulder.distanceTo(before[side]) < 1e-6, `${side} shoulder stays`);
       const arm = world(`Elbow_${side}`).sub(shoulder);
       assert.ok(arm.distanceTo(new THREE.Vector3(0, -0.15, 0)) < 1e-6, `${side} arm hangs straight down (${arm.toArray().map((v) => v.toFixed(4))})`);
+    }
+  });
+});
+
+describe("combat moves and the animation library", () => {
+  // Converted on machines with the art (assets/ is never committed).
+  const file = fileURLToPath(new URL("../../../../assets/models/glb/modular-fantasy-hero/Rigged/animations.json", import.meta.url));
+  const manifest = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, "utf8")) as AnimationManifest) : null;
+
+  it("every move's clip exists, as long as the move", { skip: manifest ? false : "no converted animations here" }, () => {
+    const clips = new Map(manifest!.clips.map((c) => [c.name, c]));
+    for (const move of COMBAT_MOVES) {
+      const clip = clips.get(move.clip);
+      assert.ok(clip, `${move.name}: no clip ${move.clip}`);
+      assert.ok(Math.abs(clip.duration - move.duration) < 0.02, `${move.name}: ${move.duration} s, clip ${clip.duration} s`);
+      assert.ok(!manifest!.sources.find((s) => s.id === clip.source)?.reference, `${move.name}: ${move.clip} is a reference take`);
     }
   });
 });

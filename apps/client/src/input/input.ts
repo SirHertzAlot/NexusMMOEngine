@@ -6,7 +6,8 @@
  * by look yaw), mouse drag orbits the camera and writes look yaw/pitch.
  * Space jumps, and swims or flies up (my = +1); C swims or flies down
  * (my = -1); F toggles flight (for characters that can fly — the server
- * decides).
+ * decides). Combat: left mouse attacks (again in rhythm for the combo),
+ * right mouse held guards, Q dodges — while the pointer is locked.
  *
  * Convention (matches WorldView's third-person camera rig): forward =
  * (sin(yaw), 0, cos(yaw)), right = (-cos(yaw), 0, sin(yaw)). At yaw 0,
@@ -29,6 +30,9 @@ const MOVEMENT_KEYS = new Set([
   "Space", // jump; up when swimming or flying
   "KeyC", // down when swimming or flying
   "KeyF", // toggle flight
+  "Mouse0", // attack
+  "Mouse2", // guard (held)
+  "KeyQ", // dodge
 ]);
 
 /**
@@ -36,7 +40,7 @@ const MOVEMENT_KEYS = new Set([
  * latched until an intent has carried it: at a low frame rate a key can
  * go down and up between two reads, and would otherwise never be sent.
  */
-const PRESS_KEYS = new Set(["Space", "KeyF"]);
+const PRESS_KEYS = new Set(["Space", "KeyF", "Mouse0", "KeyQ"]);
 
 export class InputState {
   lookYaw = 0;
@@ -128,7 +132,11 @@ export class InputState {
       mz: mz + 0,
       lookYaw: this.lookYaw,
       lookPitch: this.lookPitch,
-      buttons: k.has("KeyF") ? IntentButton.ToggleFlight : 0,
+      buttons:
+        (k.has("KeyF") ? IntentButton.ToggleFlight : 0) |
+        (k.has("Mouse0") ? IntentButton.Attack : 0) |
+        (k.has("Mouse2") ? IntentButton.Block : 0) |
+        (k.has("KeyQ") ? IntentButton.Dodge : 0),
       jump: k.has("Space"),
     };
   }
@@ -169,6 +177,17 @@ export function bindInput(
     el.requestPointerLock?.();
   };
 
+  // Mouse buttons fight only while the pointer is locked (the first click
+  // locks it); right-click never opens the context menu on the canvas.
+  const onMouseDown = (e: MouseEvent): void => {
+    if (document.pointerLockElement !== el || (e.button !== 0 && e.button !== 2)) return;
+    input.keyDown(`Mouse${e.button}`);
+  };
+  const onMouseUp = (e: MouseEvent): void => {
+    if (e.button === 0 || e.button === 2) input.keyUp(`Mouse${e.button}`);
+  };
+  const onContextMenu = (e: Event): void => e.preventDefault();
+
   const onMouseMove = (e: MouseEvent): void => {
     if (document.pointerLockElement === el) {
       input.addLookDelta(e.movementX, e.movementY);
@@ -184,6 +203,9 @@ export function bindInput(
   window.addEventListener("blur", onWindowBlur);
   el.addEventListener("click", onClick);
   document.addEventListener("mousemove", onMouseMove);
+  el.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("mouseup", onMouseUp);
+  el.addEventListener("contextmenu", onContextMenu);
 
   return () => {
     window.removeEventListener("keydown", onKeyDown);
@@ -191,5 +213,8 @@ export function bindInput(
     window.removeEventListener("blur", onWindowBlur);
     el.removeEventListener("click", onClick);
     document.removeEventListener("mousemove", onMouseMove);
+    el.removeEventListener("mousedown", onMouseDown);
+    window.removeEventListener("mouseup", onMouseUp);
+    el.removeEventListener("contextmenu", onContextMenu);
   };
 }

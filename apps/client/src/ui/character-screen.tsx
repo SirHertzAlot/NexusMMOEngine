@@ -37,6 +37,10 @@ export interface CharacterScreenProps {
   onEnter(id: number): Promise<void>;
   /** Back to the login screen. */
   onLeave(): void;
+  /** Dev preview: a clip to play on the character (repeating). */
+  previewClip?: string | null;
+  /** Dev preview: also load the raw reference takes (long mocap). */
+  referenceClips?: boolean;
 }
 
 interface Category {
@@ -201,7 +205,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
     if (!canvas) return;
     let made: CharacterStage | null = null;
     let cancelled = false;
-    CharacterStage.create(canvas)
+    CharacterStage.create(canvas, undefined, { referenceClips: props.referenceClips })
       .then((s) => {
         if (cancelled) return s.dispose();
         made = s;
@@ -227,6 +231,10 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
   }, [stage, shown]);
 
   useEffect(() => stage?.focus(framing), [stage, framing]);
+
+  useEffect(() => {
+    if (stage && props.previewClip !== undefined) stage.playClip(props.previewClip);
+  }, [stage, props.previewClip]);
 
   const run = async (work: () => Promise<void>): Promise<void> => {
     setBusy(true);

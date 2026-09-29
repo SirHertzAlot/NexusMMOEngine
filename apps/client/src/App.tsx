@@ -228,6 +228,7 @@ export function App(): React.ReactElement {
         client.playerEntity,
         input.lookYaw,
         input.lookPitch,
+        { tick: client.serverTick, tickHz: client.tickHz || 30 },
       );
 
       if (now - fpsAt >= 1000) {
@@ -333,6 +334,8 @@ export function App(): React.ReactElement {
           )}
           <div className="mt-2 text-xs text-muted-foreground">
             WASD move · Space jump / up · C down · F fly · mouse look (click canvas) · wheel zoom
+            <br />
+            left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
           </div>
         </div>
         <div className="absolute right-4 top-4 flex gap-2">

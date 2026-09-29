@@ -1,13 +1,17 @@
 /**
  * CharacterStage — a small lit scene showing one modular character, with
  * orbit and zoom: the viewport of character creation (and the dev
- * preview). The character stands at the origin, facing the camera.
+ * preview). The character stands at the origin, facing the camera, idling
+ * when the animation library is there.
  */
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CharacterLook } from "@mmo-engine/art/browser";
 import { CharacterKit, type ModularCharacter } from "./character-kit.js";
+import { AnimationLibrary, CharacterAnimator } from "./character-animator.js";
+
+const STILL = { speed: 0, vy: 0, mode: 0 };
 
 export class CharacterStage {
   private readonly renderer: THREE.WebGLRenderer;
@@ -16,6 +20,8 @@ export class CharacterStage {
   private readonly controls: OrbitControls;
   private readonly resizeObserver: ResizeObserver;
   private character: ModularCharacter | null = null;
+  private animator: CharacterAnimator | null = null;
+  private readonly clock = new THREE.Clock();
   private disposed = false;
 
   private constructor(
@@ -23,6 +29,8 @@ export class CharacterStage {
     readonly kit: CharacterKit,
     /** The stage loaded the kit itself, so it releases it. */
     private readonly ownsKit: boolean,
+    /** Clips to animate the character with (null: it stands still). */
+    readonly animations: AnimationLibrary | null,
   ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -52,13 +60,20 @@ export class CharacterStage {
     this.resizeObserver.observe(canvas);
     this.resize();
     this.renderer.setAnimationLoop(() => {
+      this.animator?.update(Math.min(0.1, this.clock.getDelta()), STILL);
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     });
   }
 
-  static async create(canvas: HTMLCanvasElement, kit?: CharacterKit): Promise<CharacterStage> {
-    return kit ? new CharacterStage(canvas, kit, false) : new CharacterStage(canvas, await CharacterKit.load(), true);
+  static async create(canvas: HTMLCanvasElement, kit?: CharacterKit, opts: { referenceClips?: boolean } = {}): Promise<CharacterStage> {
+    const animations = AnimationLibrary.load(undefined, { reference: opts.referenceClips }).catch((e: unknown) => {
+      console.info(`[character] no animations: ${e instanceof Error ? e.message : e}`);
+      return null;
+    });
+    return kit
+      ? new CharacterStage(canvas, kit, false, await animations)
+      : new CharacterStage(canvas, await CharacterKit.load(), true, await animations);
   }
 
   /** Show `look` (the first call builds the character; later calls restyle it). */
@@ -72,10 +87,18 @@ export class CharacterStage {
       character.relaxArms();
       this.character = character;
       this.scene.add(character.root);
+      if (this.animations) this.animator = new CharacterAnimator(character.root, this.animations);
     } else {
       await this.character.setLook(look);
     }
     return this.character;
+  }
+
+  /** Play a clip over the idle, repeating (dev preview); null goes back to idling. */
+  playClip(name: string | null): void {
+    if (!this.animator) return;
+    if (name === null) this.animator.stop();
+    else this.animator.play(name, { loop: true });
   }
 
   /** Frame the head (closer) or the whole body. */
@@ -102,6 +125,8 @@ export class CharacterStage {
     this.renderer.setAnimationLoop(null);
     this.resizeObserver.disconnect();
     this.controls.dispose();
+    this.animator?.dispose();
+    this.animator = null;
     this.character?.dispose();
     this.character = null;
     if (this.ownsKit) this.kit.dispose();
