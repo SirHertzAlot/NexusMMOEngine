@@ -2,13 +2,13 @@
   "dependencies": {
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/schema": "0.1.0",
-    "three": "^0.170.0",
+    "three": "^0.186.1",
     "zod": "^4.6.5"
   },
   "description": "Art asset pipeline contract: manifest schema + validation, pack directory scanning, and a manifest-backed THREE.js AssetProvider with placeholder fallback",
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "@types/three": "^0.170.0",
+    "@types/three": "^0.186.0",
     "typescript": "^5.6.3"
   },
   "main": "dist/src/index.js",
