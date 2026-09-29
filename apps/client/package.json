@@ -11,7 +11,8 @@
     "postprocessing": "^6.39.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "three-nebula": "^13.3.0"
   },
   "description": "three.js mirror client: React + shadcn + Tailwind shell, three.js canvas rendering authoritative ECS snapshots/deltas with interpolation (Phase 3)",
   "devDependencies": {

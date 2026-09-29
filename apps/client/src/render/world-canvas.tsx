@@ -23,7 +23,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { decodeWorldMap, formatTimeOfDay, timeOfDayAt } from "@mmo-engine/protocol";
+import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type WorldMap } from "@mmo-engine/protocol";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
@@ -34,6 +34,8 @@ import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
 import { DaySky } from "./sky/day-sky.js";
+import { ParticleFx, WEATHER_RULES } from "./fx/particle-fx.js";
+import { biomeAt, weatherAt } from "./fx/weather.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { WaterRenderer } from "./water.js";
@@ -49,6 +51,8 @@ const FOG_FAR = 3200;
 const CAMERA_NEAR = 0.5;
 const CAMERA_FAR = FOG_FAR + 800;
 
+const splashAt = new THREE.Vector3();
+
 /** Once-a-second numbers for the HUD. */
 export interface HudData {
   tick: number;
@@ -62,6 +66,8 @@ export interface HudData {
   breath: number;
   /** World time of day as HH:MM (null: the server runs no day cycle). */
   time: string | null;
+  /** What is falling where the camera is (null: clear). */
+  weather: string | null;
 }
 
 export interface WorldCanvasProps {
@@ -102,6 +108,8 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
 
 interface Runtime {
   sky: DaySky;
+  particles: ParticleFx;
+  map: WorldMap | null;
   terrain: TerrainRenderer;
   water: WaterRenderer;
   layer: EntityLayer;
@@ -135,6 +143,7 @@ function MirrorWorld({
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
   useEffect(() => {
     const sky = new DaySky();
+    const particles = new ParticleFx(camera);
     const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
@@ -145,7 +154,7 @@ function MirrorWorld({
     water.setWorld(map, world?.seaLevel ?? null);
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
-    scene.add(sky.group, terrain.group, water.group, layer.group);
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group);
 
     const canvas = gl.domElement;
     const input = new InputState();
@@ -165,7 +174,7 @@ function MirrorWorld({
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);
 
-    rt.current = { sky, terrain, water, layer, input };
+    rt.current = { sky, particles, map, terrain, water, layer, input };
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
       rt.current = null;
@@ -174,6 +183,7 @@ function MirrorWorld({
       canvas.removeEventListener("pointermove", onPointerMove);
       scene.remove(terrain.group, water.group);
       sky.dispose();
+      particles.dispose();
       layer.dispose();
       terrain.dispose();
       water.dispose();
@@ -189,7 +199,7 @@ function MirrorWorld({
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);
   }, [showcase, camera]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     const r = rt.current;
     if (!r) return;
     const now = performance.now();
@@ -212,6 +222,21 @@ function MirrorWorld({
     const timeOfDay = client.day ? timeOfDayAt(client.day, client.serverTick, client.tickHz || 30) : FIXED_TIME;
     r.sky.update(timeOfDay, scene.fog instanceof THREE.Fog ? scene.fog : null);
 
+    // Weather where the camera is, the same on every client (biome + tick).
+    const tick = client.serverTick;
+    const hz = client.tickHz || 30;
+    const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
+    const weather = weatherAt(WEATHER_RULES, biome, tick, hz);
+    // Splashes where the player swims and moves.
+    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
+    const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
+    const v = me?.velocity;
+    if (swimming && r.layer.player && v && Math.hypot(v.lx, v.lz) > 0.5) {
+      const surface = r.water.surfaceAt(r.layer.player.x, r.layer.player.z);
+      if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
+    }
+    r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+
     const seconds = now / 1000;
     r.terrain.update();
     r.water.update(seconds);
@@ -221,7 +246,6 @@ function MirrorWorld({
       const fps = Math.round((l.frames * 1000) / (now - l.fpsAt));
       l.frames = 0;
       l.fpsAt = now;
-      const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
       const p = me?.transform;
       latest.current.onHud?.({
         tick: client.serverTick,
@@ -233,6 +257,7 @@ function MirrorWorld({
         mode: me?.locomotion?.mode ?? null,
         breath: me?.locomotion?.breath ?? 1,
         time: client.day ? formatTimeOfDay(timeOfDay) : null,
+        weather: weather.intensity > 0 ? weather.kind : null,
       });
     }
   });
