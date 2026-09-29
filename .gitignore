@@ -42,3 +42,6 @@ dist-app/
 
 # preview:world output (regenerable)
 world-preview.png
+
+# Terrain surface textures (CC0, fetched by `npm run surfaces:fetch`, never committed)
+apps/client/public/surfaces/

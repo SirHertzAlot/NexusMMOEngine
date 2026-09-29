@@ -33,3 +33,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Terrain surface textures (not in this repository)
+
+`npm run surfaces:fetch` downloads CC0-1.0 ground textures (Poly Haven,
+ambientCG) as prepared by ProceduralTerrains into `public/surfaces/`, which
+is git-ignored. The script writes their credits to
+`public/surfaces/ATTRIBUTION.md`. CC0 needs no notice; the credit is a courtesy.

@@ -18,6 +18,9 @@ npm run server --workspace=@mmo-engine/engine-core
 
 # 3. start the client dev server (http://localhost:5173)
 npm run dev --workspace=@mmo-engine/client
+
+# optional, one-time: textured ground (CC0, ~23 MB, git-ignored)
+npm run surfaces:fetch
 ```
 
 Log in with the seeded credentials. Session tokens live in memory only;
