@@ -8,6 +8,9 @@
  * re-renders only when a prop changes (the HUD toggles). The HUD gets one
  * `onHud` call a second.
  *
+ * PostFx draws the screen effects (bloom, antialiasing, underwater); the
+ * frame loop tells it how far the camera is under water.
+ *
  * The ground is TerrainRenderer's: the streamed chunks near the player,
  * and the whole world far away from the welcome's coarse map, so
  * mountains stand on the horizon kilometres off; WaterRenderer lays the
@@ -25,7 +28,9 @@ import { InputState, bindInput } from "../input/input.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
+import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
+import { PostFx, type ScreenState } from "./post-fx.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { WaterRenderer } from "./water.js";
@@ -62,12 +67,15 @@ export interface WorldCanvasProps {
   lastStateAt: () => number;
   wireframe: boolean;
   showcase: boolean;
+  /** Screen effects (bloom, antialiasing, underwater); off renders the scene directly. */
+  effects: boolean;
   onGpu?: (gpu: GpuInfo) => void;
   onHud?: (hud: HudData) => void;
 }
 
 export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
-  const { onGpu } = props;
+  const { onGpu, effects } = props;
+  const screen = useRef<ScreenState>({ underwater: 0 });
   return (
     <Canvas
       className="block h-full w-full"
@@ -82,7 +90,8 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       <fog attach="fog" args={[SKY, FOG_NEAR, FOG_FAR]} />
       <hemisphereLight args={[0xbdd4ff, 0x2a2118, 0.9]} />
       <directionalLight color={0xfff2dd} intensity={1.6} position={[30, 50, 20]} />
-      <MirrorWorld {...props} />
+      <MirrorWorld {...props} screen={screen} />
+      <PostFx enabled={effects} screen={screen} />
     </Canvas>
   );
 }
@@ -95,7 +104,16 @@ interface Runtime {
 }
 
 /** The world's content and frame loop (inside the Canvas). */
-function MirrorWorld({ client, assets, pcg, lastStateAt, wireframe, showcase, onHud }: WorldCanvasProps): null {
+function MirrorWorld({
+  client,
+  assets,
+  pcg,
+  lastStateAt,
+  wireframe,
+  showcase,
+  onHud,
+  screen,
+}: WorldCanvasProps & { screen: { current: ScreenState } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -180,6 +198,8 @@ function MirrorWorld({ client, assets, pcg, lastStateAt, wireframe, showcase, on
       r.layer.hover(raycaster.current);
     }
     followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
+    screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
     const seconds = now / 1000;
     r.terrain.update();

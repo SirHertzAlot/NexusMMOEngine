@@ -97,11 +97,30 @@ const RIPPLE_FRAGMENT_BODY = /* glsl */ `
   }
 `;
 
+/**
+ * The water surface height at world (x, z), from the map cell under it;
+ * null on dry ground. Beyond the map's edge the open sea continues where
+ * the edge cell is sea, as waterGeometry draws it.
+ */
+export function waterSurfaceAt(map: WorldMap, seaLevel: number | null, x: number, z: number): number | null {
+  const water = map.water;
+  if (!water) return null;
+  const { width: W, depth: D, cell } = map;
+  const u = Math.round((x - map.originX) / cell);
+  const v = Math.round((z - map.originZ) / cell);
+  const inside = u >= 0 && u < W && v >= 0 && v < D;
+  const y = water[Math.min(D - 1, Math.max(0, v)) * W + Math.min(W - 1, Math.max(0, u))];
+  if (Number.isNaN(y)) return null;
+  if (inside) return y;
+  return seaLevel !== null && Math.abs(y - seaLevel) <= SEA_TOLERANCE ? seaLevel : null;
+}
+
 export class WaterRenderer {
   readonly group = new THREE.Group();
   private readonly uniforms = { uTime: { value: 0 } };
   private readonly material: THREE.MeshStandardMaterial;
   private mesh: THREE.Mesh | null = null;
+  private world: { map: WorldMap; seaLevel: number | null } | null = null;
 
   constructor() {
     this.group.name = "water";
@@ -133,6 +152,7 @@ export class WaterRenderer {
   /** The world's water (replaces any previous world); null clears it. */
   setWorld(map: WorldMap | null, seaLevel: number | null): void {
     this.clear();
+    this.world = map ? { map, seaLevel } : null;
     const geometry = map ? waterGeometry(map, seaLevel) : null;
     if (!geometry) return;
     this.mesh = new THREE.Mesh(geometry, this.material);
@@ -140,6 +160,11 @@ export class WaterRenderer {
     // Drawn after the opaque world; the ground under it shows through.
     this.mesh.renderOrder = 1;
     this.group.add(this.mesh);
+  }
+
+  /** The water surface height at world (x, z), or null on dry ground (see waterSurfaceAt). */
+  surfaceAt(x: number, z: number): number | null {
+    return this.world ? waterSurfaceAt(this.world.map, this.world.seaLevel, x, z) : null;
   }
 
   /** Once per frame: move the ripples. */

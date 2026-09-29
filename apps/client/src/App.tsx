@@ -56,6 +56,7 @@ export function App(): React.ReactElement {
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
   const [showcase, setShowcase] = useState(false);
+  const [effects, setEffects] = useState(true);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -158,6 +159,7 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleShowcase = (): void => setShowcase((v) => !v);
+  const toggleEffects = (): void => setEffects((v) => !v);
 
   if (client) {
     return (
@@ -169,6 +171,7 @@ export function App(): React.ReactElement {
           lastStateAt={() => lastStateAtRef.current}
           wireframe={wireframe}
           showcase={showcase}
+          effects={effects}
           onGpu={onGpu}
           onHud={setHud}
         />
@@ -211,6 +214,9 @@ export function App(): React.ReactElement {
         <div className="absolute right-4 top-4 flex gap-2">
           <Button size="sm" variant="secondary" onClick={toggleWireframe}>
             {wireframe ? "solid terrain" : "wireframe terrain"}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={toggleEffects}>
+            {effects ? "effects off" : "effects on"}
           </Button>
           <Button size="sm" variant="secondary" onClick={toggleShowcase}>
             {showcase ? "hide FX" : "FX showcase"}
