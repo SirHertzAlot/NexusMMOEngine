@@ -45,10 +45,11 @@ describe("world map codec", () => {
     };
     const back = decodeWorldMap(JSON.parse(JSON.stringify(encodeWorldMap(map))));
     const step = 115 / 65535;
-    assert.ok(back.water, "water layer decoded");
+    const water = back.water;
+    assert.ok(water, "water layer decoded");
     for (let i = 0; i < n; i++) {
-      if (Number.isNaN(map.water![i])) assert.ok(Number.isNaN(back.water[i]), `cell ${i} dry`);
-      else assert.ok(Math.abs(back.water[i] - map.water![i]) <= step, `cell ${i}: ${back.water[i]}`);
+      if (Number.isNaN(map.water![i])) assert.ok(Number.isNaN(water[i]), `cell ${i} dry`);
+      else assert.ok(Math.abs(water[i] - map.water![i]) <= step, `cell ${i}: ${water[i]}`);
     }
     for (let i = 0; i < n; i++) assert.ok(Math.abs(back.heights[i] - map.heights[i]) <= step, `height ${i}`);
   });
