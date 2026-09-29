@@ -16,7 +16,7 @@ import Database from "better-sqlite3";
 import type { FormationPoint, FormationTileBacking } from "../procgen/formation.js";
 
 const DDL = `
-CREATE TABLE IF NOT EXISTS formation_tiles (
+CREATE TABLE IF NOT EXISTS formation_tiles_v2 (
   world_seed      TEXT    NOT NULL,
   terrain_version TEXT    NOT NULL,
   plan_hash       TEXT    NOT NULL,
@@ -28,26 +28,37 @@ CREATE TABLE IF NOT EXISTS formation_tiles (
 );
 `;
 
-/** A tile's points as bytes: per point x, z (float64), i, j (int32), option (int32). */
+/** Bytes per point: x, y, z (float64), i, j, option (int32). */
+const POINT_BYTES = 36;
+
+/** A tile's points as bytes. */
 export function encodeFormationPoints(points: readonly FormationPoint[]): Buffer {
-  const b = Buffer.alloc(points.length * 28);
+  const b = Buffer.alloc(points.length * POINT_BYTES);
   points.forEach((p, k) => {
-    const o = k * 28;
+    const o = k * POINT_BYTES;
     b.writeDoubleLE(p.x, o);
-    b.writeDoubleLE(p.z, o + 8);
-    b.writeInt32LE(p.i, o + 16);
-    b.writeInt32LE(p.j, o + 20);
-    b.writeInt32LE(p.option, o + 24);
+    b.writeDoubleLE(p.y, o + 8);
+    b.writeDoubleLE(p.z, o + 16);
+    b.writeInt32LE(p.i, o + 24);
+    b.writeInt32LE(p.j, o + 28);
+    b.writeInt32LE(p.option, o + 32);
   });
   return b;
 }
 
 export function decodeFormationPoints(b: Uint8Array): FormationPoint[] {
-  if (b.byteLength % 28 !== 0) throw new Error(`formation tile: ${b.byteLength} bytes is not a whole number of points`);
+  if (b.byteLength % POINT_BYTES !== 0) throw new Error(`formation tile: ${b.byteLength} bytes is not a whole number of points`);
   const buf = Buffer.from(b.buffer, b.byteOffset, b.byteLength);
   const out: FormationPoint[] = [];
-  for (let o = 0; o < buf.length; o += 28) {
-    out.push({ x: buf.readDoubleLE(o), z: buf.readDoubleLE(o + 8), i: buf.readInt32LE(o + 16), j: buf.readInt32LE(o + 20), option: buf.readInt32LE(o + 24) });
+  for (let o = 0; o < buf.length; o += POINT_BYTES) {
+    out.push({
+      x: buf.readDoubleLE(o),
+      y: buf.readDoubleLE(o + 8),
+      z: buf.readDoubleLE(o + 16),
+      i: buf.readInt32LE(o + 24),
+      j: buf.readInt32LE(o + 28),
+      option: buf.readInt32LE(o + 32),
+    });
   }
   return out;
 }
@@ -72,13 +83,13 @@ export class FormationTileStore {
     }
     this.db.exec(DDL);
     this.getStmt = this.db.prepare(
-      "SELECT points FROM formation_tiles WHERE world_seed = ? AND terrain_version = ? AND plan_hash = ? AND layer = ? AND ti = ? AND tj = ?",
+      "SELECT points FROM formation_tiles_v2 WHERE world_seed = ? AND terrain_version = ? AND plan_hash = ? AND layer = ? AND ti = ? AND tj = ?",
     );
     this.putStmt = this.db.prepare(
-      "INSERT INTO formation_tiles (world_seed, terrain_version, plan_hash, layer, ti, tj, points) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+      "INSERT INTO formation_tiles_v2 (world_seed, terrain_version, plan_hash, layer, ti, tj, points) VALUES (?, ?, ?, ?, ?, ?, ?) " +
         "ON CONFLICT (world_seed, terrain_version, plan_hash, layer, ti, tj) DO UPDATE SET points = excluded.points",
     );
-    this.countStmt = this.db.prepare("SELECT COUNT(*) AS n FROM formation_tiles WHERE world_seed = ? AND terrain_version = ? AND plan_hash = ?");
+    this.countStmt = this.db.prepare("SELECT COUNT(*) AS n FROM formation_tiles_v2 WHERE world_seed = ? AND terrain_version = ? AND plan_hash = ?");
   }
 
   /** The store as a formation cache's backing, for one world, terrain and plan. */

@@ -36,7 +36,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fnv1a32, type EntitySpawn, type SpawnArchetype } from "@mmo-engine/scatter";
 import { terrainHeightAt } from "../systems.js";
-import { checkFormation, FormationCache, formationTile, pickAsset, tileOfChunk, type FormationSpec } from "./formation.js";
+import { checkFormation, FormationCache, formationExtent, formationPieces, formationTile, pickAsset, tileOfChunk, type FormationSpec } from "./formation.js";
 
 // ---------------------------------------------------------------- plan
 
@@ -356,9 +356,11 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
       const env = { seed32, chunkWorldSize: W, heightsOf: ctx.heightsOf, biomeAt: ctx.biomeAt, waterAt: ctx.waterAt, seaLevel: ctx.seaLevel };
       const f = layer.formation as FormationSpec;
       const cache = ctx.formations ?? new FormationCache();
-      // Later layers avoid this one across chunk borders too: gather its points
-      // within their farthest avoid distance of the chunk (spawning only our own).
-      let margin = 0;
+      const pieces = formationPieces(f);
+      // Pieces of a formation sited in a neighbouring tile can land in this chunk,
+      // and later layers avoid this one across chunk borders: gather its points
+      // within both reaches of the chunk (spawning only our own).
+      let margin = formationExtent(f);
       for (const other of plan.layers) margin = Math.max(margin, other.avoid?.[layer.id] ?? 0);
       const [ta, tb] = tileOfChunk(layer, Math.floor((x0 - margin) / W), Math.floor((z0 - margin) / W));
       const [tc, td] = tileOfChunk(layer, Math.floor((x0 + W + margin) / W), Math.floor((z0 + W + margin) / W));
@@ -368,17 +370,18 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
       for (const fp of tilePoints) {
         if (fp.x < x0 - margin || fp.x >= x0 + W + margin || fp.z < z0 - margin || fp.z >= z0 + W + margin) continue;
         const own = fp.x >= x0 && fp.x < x0 + W && fp.z >= z0 && fp.z < z0 + W;
-        const opt = f.options[fp.option];
+        // A piece, or a site's unseen centre (option < 0: avoided, never spawned).
+        const piece = fp.option >= 0 ? pieces[fp.option].piece : null;
         const r = (k: number): number => unit(hash(layerSeed, fp.i, fp.j, k));
-        const chosen = opt.assets?.length ? pickAsset(opt.assets, r(1)) : null;
+        const chosen = piece ? pickAsset(piece.assets, r(1)) : null;
         const asset = chosen?.asset ?? "";
-        const [s0, s1] = chosen?.scale ?? opt.scale ?? layer.scale;
+        const [s0, s1] = chosen?.scale ?? piece?.scale ?? layer.scale;
         const scale = s0 + (s1 - s0) * r(2);
         const pt: EcologyPoint = {
           layer: layer.id,
           x: fp.x,
-          // Outside the chunk only its position matters (for avoidance).
-          y: own ? ground(fp.x, fp.z) : 0,
+          // Where the raymarcher set it on the ground.
+          y: fp.y,
           z: fp.z,
           yaw: r(3) * Math.PI * 2,
           pitch: 0,
