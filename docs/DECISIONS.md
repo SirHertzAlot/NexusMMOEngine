@@ -17,6 +17,25 @@ Every entry: date, decision, rationale. Newest first.
   prop changes. Canvas is `flat` (no tone mapping) so the picture matches
   plain three.js. New 3D UI is written as R3F components from the start.
 
+- **2026-09-29 — Characters and social systems (Joey's decisions; spec:
+  docs/CHARACTERS-AND-SOCIAL.md, docs/MASTERY-AND-COMBAT.md).** Classless
+  mastery: characters improve at what they do by doing it. Skill belongs
+  to the technique, not the item, so anything can be used as any kind of
+  weapon and a master with a stick beats a novice with a sword; items
+  keep physical properties (mass, edge, point, hardness) instead of damage
+  numbers. Characters are made of body parts that take damage separately
+  (harmed, maimed or dismembered by severity and kind of damage; the parts
+  are the modular character's body pieces). Unused skills deteriorate
+  slowly, with no hard cap. Characters respawn, as part of the lore.
+  Every one of these rules is data plus hooks the game can change: the
+  engine ships defaults, and our game is one rule set. Several characters per
+  account, names unique world-wide. First social release: say/yell/whisper
+  chat, parties, friends with presence, guilds. Characters, names, friends,
+  blocks and guilds live on the world server; say and yell stay on the
+  region; parties and presence are world-server memory. Clients still talk
+  only to their region, which forwards social traffic over a new
+  region-facing event stream. Characters are built before social.
+
 - **2026-09-27 — Editor customization slice: standalone companion + public
   Rogue bridge (Joey's decision: all three surfaces).** The Rogue Engine
   Editor customization ships as three inspectors — read-only ECS inspector,
