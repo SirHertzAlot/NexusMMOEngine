@@ -1,0 +1,34 @@
+{
+  "max": 100,
+  "families": ["weapon", "defence", "body", "survival", "work"],
+  "skills": [
+    { "id": "cutting", "name": "Cutting", "family": "weapon", "related": { "woodcutting": 0.15 } },
+    { "id": "thrusting", "name": "Thrusting", "family": "weapon", "related": { "throwing": 0.1 } },
+    { "id": "bludgeoning", "name": "Bludgeoning", "family": "weapon", "related": { "mining": 0.1 } },
+    { "id": "throwing", "name": "Throwing", "family": "weapon", "related": { "thrusting": 0.1 } },
+    { "id": "striking", "name": "Striking", "family": "weapon", "related": { "grappling": 0.15 } },
+    { "id": "grappling", "name": "Grappling", "family": "weapon", "related": { "striking": 0.15 } },
+    { "id": "parrying", "name": "Parrying", "family": "defence", "related": { "blocking": 0.2 } },
+    { "id": "blocking", "name": "Blocking", "family": "defence", "related": { "parrying": 0.2 } },
+    { "id": "evading", "name": "Evading", "family": "defence", "related": { "athletics": 0.15 } },
+    { "id": "athletics", "name": "Athletics", "family": "body", "related": { "endurance": 0.1 } },
+    { "id": "swimming", "name": "Swimming", "family": "body", "related": { "endurance": 0.1 } },
+    { "id": "endurance", "name": "Endurance", "family": "body" },
+    { "id": "foraging", "name": "Foraging", "family": "survival" },
+    { "id": "exposure", "name": "Exposure", "family": "survival", "related": { "endurance": 0.1 } },
+    { "id": "medicine", "name": "Medicine", "family": "survival", "related": { "foraging": 0.1 } },
+    { "id": "woodcutting", "name": "Woodcutting", "family": "work", "related": { "cutting": 0.15 } },
+    { "id": "mining", "name": "Mining", "family": "work", "related": { "bludgeoning": 0.1 } },
+    { "id": "fishing", "name": "Fishing", "family": "work" }
+  ],
+  "gain": {
+    "base": 0.5,
+    "trivialBelow": -0.3,
+    "fullAt": 0,
+    "topSlowdown": 2,
+    "repeatFalloff": 0.8,
+    "repeatRecoverMinutes": 60
+  },
+  "familiarity": { "maxFitBonus": 0.1, "perUse": 0.002 },
+  "decay": { "graceDays": 14, "ratePerWeek": 0.01, "floorOfPeak": 0.6, "relearnMultiplier": 3 }
+}
