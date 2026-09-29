@@ -283,13 +283,32 @@ export interface GatewayOptions {
    * return true when handled. Everything else gets 404; WebSocket
    * upgrades go to the gateway.
    */
-  http?: HttpHandler;
+<  http?: HttpHandler;
   /**
    * The socket library behind the port (see ./transport.ts): "uws"
    * (uWebSockets.js), "ws", or "auto" (uws when it loads). Default:
    * MMO_TRANSPORT, else auto.
    */
   transport?: TransportKind;
+  /**
+   * Largest inbound WebSocket frame accepted, bytes. Default 64 KiB
+   * (see MAX_CLIENT_PAYLOAD_BYTES).
+   *
+   * Every message a client sends is small: an intent is a few dozen bytes
+   * of FlatBuffers, and the largest control frame (a character look) is
+   * capped at MAX_CREATE_PAYLOAD_BYTES = 4 KiB. Without a cap, a socket
+   * library buffers the whole frame before any handler runs (`ws`
+   * defaults to 100 MiB), so one unauthenticated peer could spend tens of
+   * MiB of server memory per connection with a single oversized frame.
+   * The transports refuse an oversized frame at the protocol layer: the
+   * connection closes (ws: 1009) without the payload being buffered, so
+   * onMessage never even runs. See the "untrusted input" tests.
+   *
+   * Operators: keep this above ~8 KiB — a character look alone may be 4
+   * KiB plus its envelope. content/rules/ingress.json tunes it without a
+   * code change (see GatewayOptions.ingress); this option overrides it.
+   */
+  maxClientPayloadBytes?: number;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -327,8 +346,17 @@ const MAX_MISSED_HEARTBEATS = 3;
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
-/** Admin command log keeps the last N entries (roadmap A1). */
+</** Admin command log keeps the last N entries (roadmap A1). */
 const ADMIN_LOG_SIZE = 200;
+/**
+ * Largest inbound frame accepted, bytes. 64 KiB is ~16x the largest
+ * legitimate client message (a character look, capped at 4 KiB) and ~1000x
+ * a typical intent, so it cannot reject valid traffic — but it stops a
+ * single unauthenticated frame from costing tens of MiB of buffered
+ * memory. The transports close a connection whose frame exceeds this
+ * (ws: code 1009) before allocating the payload.
+ */
+const MAX_CLIENT_PAYLOAD_BYTES = 64 * 1024;
 
 /**
  * Usernames from MMO_ADMINS (comma-separated). Invalid names are dropped
@@ -370,6 +398,7 @@ export class Gateway {
       | "textFilter"
       | "debugSource"
       | "chunkSource"
+      | "maxClientPayloadBytes"
       | "groundHeightAt"
       | "mastery"
       | "creatures"
@@ -430,6 +459,8 @@ export class Gateway {
   private readonly items: ItemService | null;
   /** Bag owners for sessions that play no character: one negative id per account. */
   private readonly accountHolders = new Map<string, number>();
+  /** Largest inbound frame accepted, bytes (see GatewayOptions). */
+  private readonly maxClientPayloadBytes: number;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
   /** The stats version last sent to each session (see sendStats). */
@@ -476,6 +507,16 @@ export class Gateway {
       );
     }
     this.world = opts.world ?? new SimWorld();
+    this.maxClientPayloadBytes =
+      opts.maxClientPayloadBytes ?? MAX_CLIENT_PAYLOAD_BYTES;
+    if (
+      !Number.isInteger(this.maxClientPayloadBytes) ||
+      this.maxClientPayloadBytes <= 0
+    ) {
+      throw new RangeError(
+        `gateway: maxClientPayloadBytes must be a positive integer (got ${opts.maxClientPayloadBytes})`,
+      );
+    }
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
@@ -546,6 +587,9 @@ export class Gateway {
     return transport.listen(this.opts.port, {
       connection: (socket) => this.onConnection(socket),
       http: this.httpHandler,
+      // Refuse an oversized frame at the protocol layer: the transports
+      // close the connection (ws: 1009) instead of buffering the payload.
+      maxMessageBytes: this.maxClientPayloadBytes,
     });
   }
 

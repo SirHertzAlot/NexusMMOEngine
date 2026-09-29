@@ -84,6 +84,13 @@ export class HttpBodyTooLarge extends Error {
 export interface TransportHandlers {
   connection(socket: WireSocket): void;
   http: HttpHandler | null;
+  /**
+   * Largest inbound WebSocket frame accepted, bytes. The transports
+   * enforce it at the protocol layer (ws: maxPayload, uWS:
+   * maxPayloadLength): an oversized frame closes the connection without
+   * the payload ever being buffered. Default MAX_MESSAGE_BYTES.
+   */
+  maxMessageBytes?: number;
 }
 
 export interface Transport {
@@ -249,7 +256,7 @@ export class WsTransport implements Transport {
       this.sockets.add(sock);
       sock.once("close", () => this.sockets.delete(sock));
     });
-    const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
+    const wss = new WebSocketServer({ server, maxPayload: handlers.maxMessageBytes ?? MAX_MESSAGE_BYTES });
     wss.on("connection", (ws: WebSocket, req: IncomingMessage) =>
       handlers.connection(new WsSocket(ws, req.socket.remoteAddress ?? "unknown")),
     );
@@ -497,7 +504,7 @@ export class UwsTransport implements Transport {
     const app = this.uws.App();
     app.ws("/*", {
       compression: 0,
-      maxPayloadLength: MAX_MESSAGE_BYTES,
+      maxPayloadLength: handlers.maxMessageBytes ?? MAX_MESSAGE_BYTES,
       // The gateway runs its own heartbeat (ping/pong in the protocol).
       idleTimeout: 0,
       // Deltas queue in the kernel/uWS buffer for slow readers; the
