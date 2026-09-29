@@ -46,6 +46,7 @@ import {
 // on the sim. Imported for local use and re-exported so existing
 // engine-core imports keep working (DRY: one definition).
 import type {
+  ActionRow,
   AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
@@ -58,6 +59,7 @@ import type {
   VelocityRow,
 } from "@mmo-engine/protocol";
 export type {
+  ActionRow,
   AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
@@ -80,6 +82,7 @@ const qBody: Query = defineQuery([C.BodyConfig]);
 const qAssets: Query = defineQuery([C.AssetRef]);
 const qLocomotion: Query = defineQuery([C.Locomotion]);
 const qAppearance: Query = defineQuery([C.Appearance]);
+const qAction: Query = defineQuery([C.Action]);
 
 function readTransform(sim: SimWorld, eid: number): TransformRow {
   const T = C.Transform;
@@ -180,6 +183,11 @@ function readAppearance(sim: SimWorld, eid: number): AppearanceRow {
   return { wireId: sim.wireId(eid), look: sim.lookJson(C.Appearance.look[eid]) };
 }
 
+function readAction(sim: SimWorld, eid: number): ActionRow {
+  const A = C.Action;
+  return { wireId: sim.wireId(eid), move: A.move[eid], started: A.started[eid], seq: A.seq[eid], yaw: A.yaw[eid] };
+}
+
 /** Collect the full state of every entity carrying each component. */
 export function collectFullState(sim: SimWorld, tick: number): CollectedState {
   return {
@@ -194,6 +202,7 @@ export function collectFullState(sim: SimWorld, tick: number): CollectedState {
     assets: qAssets(sim.ecs).map((e) => readAssetRef(sim, e)),
     locomotions: qLocomotion(sim.ecs).map((e) => readLocomotion(sim, e)),
     appearances: qAppearance(sim.ecs).map((e) => readAppearance(sim, e)),
+    actions: qAction(sim.ecs).map((e) => readAction(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -219,6 +228,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
     assets: having(C.AssetRef).map((e) => readAssetRef(sim, e)),
     locomotions: having(C.Locomotion).map((e) => readLocomotion(sim, e)),
     appearances: having(C.Appearance).map((e) => readAppearance(sim, e)),
+    actions: having(C.Action).map((e) => readAction(sim, e)),
     spawned: [],
     despawned: [],
   };
@@ -226,7 +236,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
 
 // ---------------------------------------------------------- delta diff
 
-type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "bodies" | "assets" | "locomotions" | "appearances";
+type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "bodies" | "assets" | "locomotions" | "appearances" | "actions";
 
 interface TrackedComponent {
   key: DiffKey;
@@ -285,6 +295,11 @@ const TRACKED: TrackedComponent[] = [
     stores: C.Appearance as unknown as Record<string, ArrayLike<number>>,
     fields: ["look"],
   },
+  {
+    key: "actions", query: qAction,
+    stores: C.Action as unknown as Record<string, ArrayLike<number>>,
+    fields: ["move", "started", "seq", "yaw"],
+  },
 ];
 
 export interface DiffResult {
@@ -297,6 +312,7 @@ export interface DiffResult {
   assets: number[];
   locomotions: number[];
   appearances: number[];
+  actions: number[];
 }
 
 /**
@@ -337,7 +353,7 @@ export class DeltaTracker {
     const bound = sim.maxSlotSeen + 1;
     const out: DiffResult = {
       transforms: [], velocities: [], intents: [], chunks: [], healths: [],
-      bodies: [], assets: [], locomotions: [], appearances: [],
+      bodies: [], assets: [], locomotions: [], appearances: [], actions: [],
     };
     for (let ti = 0; ti < TRACKED.length; ti++) {
       const t = TRACKED[ti];
@@ -412,6 +428,7 @@ export function collectDeltaState(
     assets: d.assets.map((e) => readAssetRef(sim, e)),
     locomotions: d.locomotions.map((e) => readLocomotion(sim, e)),
     appearances: d.appearances.map((e) => readAppearance(sim, e)),
+    actions: d.actions.map((e) => readAction(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };

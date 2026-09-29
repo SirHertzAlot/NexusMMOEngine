@@ -4,13 +4,13 @@ Mirrors Phase 1 plan §2. Envelope for every message: `[u8 type][payload]`.
 Control plane = JSON (debuggable); data plane = FlatBuffers (hot path).
 u64 ids travel as JSON strings (JS number precision).
 
-**Protocol version: 5** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component).
+**Protocol version: 6** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons).
 
 | Type | Name | Dir | Encoding | Fields | Purpose / frequency |
 |------|------|-----|----------|--------|---------------------|
 | 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 5, client: string, username: string, password: string, want_snapshot: bool, characters?: bool}` · token: `{protocol: 5, client: string, token: "64 hex", want_snapshot: bool, characters?: bool}` — exactly one variant | Authentication. Once per connection. `characters: true`: choose a character before entering the world (answered with `account`, see [Characters](#characters-protocol-v5)). |
 | 0x02 | `welcome` | S→C | JSON | `{protocol: 5, player_entity: "u64", server_tick: u64, tick_hz: 30, snapshot_every: 300, session_token: "64 hex", world?: {name, chunkWorldSize, bounds, map, seaLevel?}, character?: {id, name}}` — `character` when the player entered as one; — `world` for baked worlds: the chunk range and a coarse (16 m) map of the whole world, base64 layers: `heights` (u16 over min/maxHeight), `biome` + `biomes` ids, `river`, and `water` (u16 surface of the sea and lakes, 0xffff dry; optional) | Assigns identity, syncs clock/cadence params, issues the session token; the world map draws the far horizon, ground colours and water. Once per connection. |
-| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, BodyConfig, AssetRef, Locomotion, Appearance), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
+| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, BodyConfig, AssetRef, Locomotion, Appearance, Action), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
 | 0x04 | `delta` | S→C | FlatBuffers `Delta` | tick, base_tick, changed component blocks only, spawned[], despawned[] | Per-tick state-change events (EDA: state out as events). 30 Hz. |
 | 0x05 | `intent` | C→S | FlatBuffers `IntentMessage` | `{client_tick: u64, entity: u64, intent: PlayerIntent}` | Player input events into the sim (EDA: intents in as events). ≤ 1 per tick per client. |
 | 0x06 | `ping` | C↔S | JSON | `{t: client_ms}` | Heartbeat + RTT. Every 5 s. |
@@ -131,6 +131,30 @@ look JSON. Configuration, like BodyConfig: in every snapshot, in deltas
 only when it changes (the server interns looks, so the diff compares
 ids). Clients assemble the modular character from it — players now, enemy
 humans later.
+
+## Combat (protocol v6)
+
+Intent buttons (PlayerIntent.buttons): `Attack` 0x02 and `Dodge` 0x08 act
+on the press, `Block` 0x04 while held (with `ToggleFlight` 0x01). The
+client sends left mouse as Attack, right mouse held as Block, Q as Dodge.
+
+The server's CombatSystem runs each character's move — the moves, their
+clips, timings, chain windows and travel are shared data
+(`@mmo-engine/protocol` `COMBAT_MOVES`) — and sends it as the **Action**
+component (ComponentId 11): `{move: u16, started: u32 tick, seq: u8, yaw:
+f32}`. `move` 0 is none; `seq` changes with every new move (the same move
+again restarts); `yaw` is the move's facing. Clients play the move's clip
+from `started` and face `yaw`; the server alone moves the character (the
+walk slowed to the move's `moveScale`, plus its `advance` — a lunge, the
+roll's 4.5 m).
+
+The sword combo is three hits: an attack pressed in a hit's chain window
+queues the next hit, which starts when the hit lands (facing where the
+player then looks); with nothing queued, the hit's recovery plays (and a
+press early in it still continues the combo). Block held raises the
+guard (walking at 35%); attack while guarding bashes with the shield.
+Dodge rolls the way you move (or look). Moves start only on the ground.
+Damage and hit reactions are a later step.
 
 ## Movement: walking, swimming, flying
 

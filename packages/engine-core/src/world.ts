@@ -159,6 +159,15 @@ function writeComponentRows(
     addComponent(ecs, Ap, eid);
     Ap.look[eid] = lookId(r.look);
   }
+  const Ac = C.Action;
+  for (const r of state.actions) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, Ac, eid);
+    Ac.move[eid] = r.move;
+    Ac.started[eid] = r.started;
+    Ac.seq[eid] = r.seq;
+    Ac.yaw[eid] = r.yaw;
+  }
 }
 
 export class SimWorld {
@@ -173,6 +182,8 @@ export class SimWorld {
   private intentQueue = new Map<number, QueuedIntent>();
   private maxSlot = -1;
   private liveCount = 0;
+  /** The tick being simulated (beginTick sets it): systems stamp events with it. */
+  currentTick = 0;
   /** Look table for the Appearance component: id -> canonical look JSON (0 = none). */
   private readonly looks: string[] = [""];
   private readonly lookIds = new Map<string, number>([["", 0]]);
@@ -329,6 +340,7 @@ export class SimWorld {
     for (const r of state.assets) take(r.wireId);
     for (const r of state.locomotions) take(r.wireId);
     for (const r of state.appearances) take(r.wireId);
+    for (const r of state.actions) take(r.wireId);
 
     let maxSlot = -1;
     for (const slot of wanted.keys()) if (slot > maxSlot) maxSlot = slot;
@@ -369,7 +381,7 @@ export class SimWorld {
    */
   spawnFromState(state: CollectedState): number[] {
     const ids = new Set<bigint>();
-    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.bodies, state.assets, state.locomotions, state.appearances]) {
+    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.bodies, state.assets, state.locomotions, state.appearances, state.actions]) {
       for (const r of block) ids.add(r.wireId);
     }
     const eids = new Map<bigint, number>();
@@ -412,8 +424,12 @@ export class SimWorld {
     this.intentQueue.set(eid, intent);
   }
 
-  /** Start-of-tick: drain queued intent events into components. */
-  beginTick(): void {
+  /**
+   * Start-of-tick: record the tick (the next one when not given) and drain
+   * queued intent events into components.
+   */
+  beginTick(tick?: number): void {
+    this.currentTick = tick ?? this.currentTick + 1;
     if (this.intentQueue.size === 0) return;
     for (const [eid, intent] of this.intentQueue) {
       if (entityExists(this.ecs, eid) && hasComponent(this.ecs, C.PlayerIntent, eid)) {

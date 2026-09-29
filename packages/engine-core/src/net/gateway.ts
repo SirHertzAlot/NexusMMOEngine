@@ -96,6 +96,7 @@ import {
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { CombatSystem } from "../combat.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import { parseLook, type ModularCatalog } from "@mmo-engine/art/character";
@@ -123,7 +124,7 @@ export interface GatewayOptions {
   disconnectGraceMs?: number;
   /** Full snapshot broadcast cadence, in ticks. Default 300. */
   snapshotEveryTicks?: number;
-  /** Sim systems; default [IntentSystem, IntegrateSystem]. */
+  /** Sim systems; default [IntentSystem, CombatSystem, IntegrateSystem]. */
   systems?: SimSystem[];
   /** Clock for heartbeat/grace math; default Date.now. Inject in tests. */
   clock?: () => number;
@@ -328,7 +329,7 @@ export class Gateway {
       );
     }
     this.world = opts.world ?? new SimWorld();
-    this.systems = opts.systems ?? [new IntentSystem(), new IntegrateSystem()];
+    this.systems = opts.systems ?? [new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
@@ -488,7 +489,7 @@ export class Gateway {
   private onTick(tick: number): void {
     this.tick = tick;
     const sim = this.world;
-    sim.beginTick(); // drain intent events into PlayerIntent components
+    sim.beginTick(tick); // drain intent events into PlayerIntent components
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
@@ -1304,7 +1305,7 @@ export class Gateway {
   /**
    * Spawn a player entity: Transform + Velocity + PlayerIntent + Health +
    * Locomotion (on foot, with the gateway's player abilities, full breath)
-   * + Appearance (the character's look, canonical JSON).
+   * + Appearance (the character's look, canonical JSON) + Action (no move).
    * Spawn points spread on a grid so N players don't stack. Player
    * entities are ordinary entities — the sim treats N of them identically
    * (multiplayer by construction, no singleton).
@@ -1330,6 +1331,8 @@ export class Gateway {
     C.Health.current[eid] = 100;
     C.Health.max[eid] = 100;
     sim.setLook(eid, look);
+    addComponent(sim.ecs, C.Action, eid);
+    C.Action.move[eid] = 0;
     return sim.wireId(eid);
   }
 }

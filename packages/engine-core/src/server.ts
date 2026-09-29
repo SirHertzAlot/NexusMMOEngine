@@ -86,6 +86,7 @@ import {
 import { Ability } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { CombatSystem } from "./combat.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
@@ -320,7 +321,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [streamer, new IntentSystem(), new IntegrateSystem(), character, physics, navigation],
+    systems: [streamer, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

@@ -9,6 +9,7 @@
  */
 
 import type {
+  ActionRow,
   AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
@@ -32,6 +33,7 @@ export interface EntityMirror {
   asset?: AssetRefRow;
   locomotion?: LocomotionRow;
   appearance?: AppearanceRow;
+  action?: ActionRow;
 }
 
 function upsert<K extends keyof Omit<EntityMirror, "wireId">>(
@@ -77,6 +79,7 @@ export class MirrorState {
     for (const r of d.assets) upsert(this.entities, r.wireId, "asset", r);
     for (const r of d.locomotions) upsert(this.entities, r.wireId, "locomotion", r);
     for (const r of d.appearances) upsert(this.entities, r.wireId, "appearance", r);
+    for (const r of d.actions) upsert(this.entities, r.wireId, "action", r);
     this.lastTick = d.tick;
   }
 

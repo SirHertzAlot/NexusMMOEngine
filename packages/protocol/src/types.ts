@@ -150,9 +150,10 @@ export interface EnterWorldMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 5; // v5 (2026-09-28): characters — 0x0c
-// account, 0x0d create_character, 0x0e enter_world, hello/register
-// `characters`, error 4005, and the Appearance component on the wire.
+export const PROTOCOL_VERSION = 6; // v6 (2026-09-28): combat — the Action
+// component on the wire and the Attack/Block/Dodge intent buttons.
+// v5: characters — 0x0c account, 0x0d create_character, 0x0e enter_world,
+// hello/register `characters`, error 4005, the Appearance component.
 
 /**
  * Editor-only read-only debug query (0x0a, C→S, JSON).

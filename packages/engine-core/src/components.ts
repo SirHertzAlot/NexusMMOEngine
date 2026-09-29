@@ -122,6 +122,7 @@ export const COMPONENT_IDS = {
   AssetRef: 8,
   Locomotion: 9,
   Appearance: 10,
+  Action: 11,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -227,4 +228,18 @@ export const Locomotion = defineComponent({
 
 export const Appearance = defineComponent({
   look: Types.ui32,
+});
+
+// ---------------------------------------------------------------------------
+// Action (ComponentId 11): the combat move an entity is in — protocol Move
+// id (0 = none), the server tick it started, a sequence bumped with every
+// new move, and the facing it was made in (radians about +Y). Owned by
+// CombatSystem; clients play the move's clip from its start tick.
+// ---------------------------------------------------------------------------
+
+export const Action = defineComponent({
+  move: Types.ui16,
+  started: Types.ui32,
+  seq: Types.ui8,
+  yaw: Types.f32,
 });

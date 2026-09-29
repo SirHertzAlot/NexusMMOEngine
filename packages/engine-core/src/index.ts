@@ -35,6 +35,7 @@ export {
   AssetRef,
   Locomotion,
   Appearance,
+  Action,
 } from "./components.js";
 
 export { SimWorld, SimEventEmitter } from "./world.js";
@@ -85,6 +86,7 @@ export type {
   AssetRefRow,
   LocomotionRow,
   AppearanceRow,
+  ActionRow,
   CollectedState,
   DiffResult,
 } from "./snapshot.js";
@@ -237,3 +239,5 @@ export {
   SqliteCharacterStore,
 } from "./characters/index.js";
 export type { CharacterRecord, CharacterStore } from "./characters/index.js";
+
+export { CombatSystem } from "./combat.js";

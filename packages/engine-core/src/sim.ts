@@ -176,7 +176,7 @@ function main(): void {
 
   const doTick = (tick: number): void => {
     const t0 = performance.now();
-    sim.beginTick();
+    sim.beginTick(tick);
     randomizeIntents(tick);
     if (tick === 150 && !churned.done) churn();
     const dt = STEP_MS / 1000;
