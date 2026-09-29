@@ -36,6 +36,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fnv1a32, type EntitySpawn, type SpawnArchetype } from "@mmo-engine/scatter";
 import { terrainHeightAt } from "../systems.js";
+import { checkFormation, FormationCache, formationTile, pickAsset, tileOfChunk, type FormationSpec } from "./formation.js";
 
 // ---------------------------------------------------------------- plan
 
@@ -79,6 +80,14 @@ export type Placement =
       scaleWithParent?: boolean;
       /** 0–1: how strongly satellites drift down the slope (scree). */
       downhill?: number;
+    }
+  | {
+      /** Points decided together by WFC (see formation.ts). */
+      kind: "formation";
+      /** Cell size, metres: one candidate per cell. */
+      spacing: number;
+      /** A tile is this many chunks square (default 4); every constraint must be shorter than a tile. */
+      tileChunks?: number;
     };
 
 export interface EcologyLayer {
@@ -108,6 +117,8 @@ export interface EcologyLayer {
   /** Not spawned: only a parent for other layers (a patch centre). */
   hidden?: boolean;
   collision?: SpawnArchetype["collision"];
+  /** A formation layer's options and constraints (place.kind "formation"). */
+  formation?: FormationSpec;
 }
 
 export interface EcologyPlan {
@@ -135,7 +146,8 @@ export function parseEcologyPlan(json: unknown): EcologyPlan {
     for (const other of Object.keys(l.avoid ?? {})) {
       if (!seen.has(other) && other !== l.id) throw new Error(`ecology plan: layer "${l.id}" avoids "${other}", which must come before it`);
     }
-    if (l.assets.length === 0 && !l.hidden) throw new Error(`ecology plan: layer "${l.id}" has no assets`);
+    if (l.place.kind === "formation") checkFormation(l);
+    else if (l.assets.length === 0 && !l.hidden) throw new Error(`ecology plan: layer "${l.id}" has no assets`);
     seen.add(l.id);
   }
   return plan;
@@ -162,6 +174,11 @@ export function hash(...ns: number[]): number {
   let h = 0x9e3779b9;
   for (const n of ns) h = mix((h ^ (n | 0)) >>> 0) ^ Math.imul(h, 0x27d4eb2d);
   return mix(h >>> 0);
+}
+
+/** The 32-bit seed every layer's randomness derives from. */
+export function ecologySeed32(worldSeed: bigint): number {
+  return mix((Number(worldSeed & 0xffffffffn) ^ Number((worldSeed >> 32n) & 0xffffffffn)) >>> 0);
 }
 
 /** A hash as a number in [0, 1). */
@@ -224,6 +241,10 @@ export interface EcologyContext {
   waterAt?: (x: number, z: number) => number | null;
   /** Sea level, when there's no water lookup. */
   seaLevel?: number;
+  /** Heights of any chunk: formation layers read the chunks their tiles span and border. */
+  heightsOf?: (cx: number, cz: number) => Float32Array;
+  /** Solved formation tiles, kept across chunks (default: a fresh cache per call). */
+  formations?: FormationCache;
 }
 
 /** A placed point: the spawn plus what later layers read. */
@@ -248,7 +269,7 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
   const W = ctx.chunkWorldSize;
   const x0 = ctx.cx * W;
   const z0 = ctx.cz * W;
-  const seed32 = mix((Number(ctx.worldSeed & 0xffffffffn) ^ Number((ctx.worldSeed >> 32n) & 0xffffffffn)) >>> 0);
+  const seed32 = ecologySeed32(ctx.worldSeed);
   const ground = (x: number, z: number): number => terrainHeightAt(ctx.heights, x - x0, z - z0, W);
   const slopeAt = (x: number, z: number): { slope: number; dx: number; dz: number } => {
     const e = 0.5;
@@ -330,6 +351,56 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
     };
 
     const place = layer.place;
+    if (place.kind === "formation") {
+      if (!ctx.heightsOf) throw new Error(`ecology plan: layer "${layer.id}" is a formation, which needs the terrain (heightsOf) to read neighbouring chunks`);
+      const env = { seed32, chunkWorldSize: W, heightsOf: ctx.heightsOf, biomeAt: ctx.biomeAt, waterAt: ctx.waterAt, seaLevel: ctx.seaLevel };
+      const f = layer.formation as FormationSpec;
+      const cache = ctx.formations ?? new FormationCache();
+      // Later layers avoid this one across chunk borders too: gather its points
+      // within their farthest avoid distance of the chunk (spawning only our own).
+      let margin = 0;
+      for (const other of plan.layers) margin = Math.max(margin, other.avoid?.[layer.id] ?? 0);
+      const [ta, tb] = tileOfChunk(layer, Math.floor((x0 - margin) / W), Math.floor((z0 - margin) / W));
+      const [tc, td] = tileOfChunk(layer, Math.floor((x0 + W + margin) / W), Math.floor((z0 + W + margin) / W));
+      const near: typeof mine = [];
+      const tilePoints = [];
+      for (let tj = tb; tj <= td; tj++) for (let ti = ta; ti <= tc; ti++) tilePoints.push(...formationTile(plan, layer, env, cache, ti, tj));
+      for (const fp of tilePoints) {
+        if (fp.x < x0 - margin || fp.x >= x0 + W + margin || fp.z < z0 - margin || fp.z >= z0 + W + margin) continue;
+        const own = fp.x >= x0 && fp.x < x0 + W && fp.z >= z0 && fp.z < z0 + W;
+        const opt = f.options[fp.option];
+        const r = (k: number): number => unit(hash(layerSeed, fp.i, fp.j, k));
+        const chosen = opt.assets?.length ? pickAsset(opt.assets, r(1)) : null;
+        const asset = chosen?.asset ?? "";
+        const [s0, s1] = chosen?.scale ?? opt.scale ?? layer.scale;
+        const scale = s0 + (s1 - s0) * r(2);
+        const pt: EcologyPoint = {
+          layer: layer.id,
+          x: fp.x,
+          // Outside the chunk only its position matters (for avoidance).
+          y: own ? ground(fp.x, fp.z) : 0,
+          z: fp.z,
+          yaw: r(3) * Math.PI * 2,
+          pitch: 0,
+          roll: 0,
+          sx: scale,
+          sy: scale,
+          sz: scale,
+          scale,
+          assetId: asset,
+          assetHash: fnv1a32(asset),
+          variant: 0,
+          seed: hash(layerSeed, fp.i, fp.j),
+          archetype: { asset, ...(layer.collision ? { collision: layer.collision } : {}) },
+        };
+        // Every point is there for later layers to avoid; only this chunk's, with art, are spawned.
+        if (own) mine.push(pt);
+        else near.push(pt);
+        if (own && asset && !layer.hidden) out.push(pt);
+      }
+      mine.push(...near);
+      continue;
+    }
     if (place.kind === "field") {
       const s = place.spacing;
       for (let i = Math.ceil(x0 / s - 1e-9); i * s < x0 + W - 1e-9; i++) {

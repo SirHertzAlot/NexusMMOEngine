@@ -36,6 +36,7 @@
  */
 
 import { makeWorldPopulator } from "./procgen/world-populator.js";
+import { FormationTileStore } from "./persist/formation-tiles.js";
 import { biomeAtFromMap } from "./terrain/biome-lookup.js";
 import { waterSurfaceFromMaps } from "./terrain/water-surface.js";
 import * as fs from "node:fs";
@@ -150,6 +151,7 @@ async function main(): Promise<void> {
   const sim = new SimWorld();
   // What grows (see world-populator): on a spec world by biome and water.
   const biomeMap = tiles?.getMap("biome") ?? null;
+  const formationTiles = new FormationTileStore(dbPath);
   const populator = makeWorldPopulator({
     worldSeed,
     chunkWorldSize: chunkSize,
@@ -159,8 +161,29 @@ async function main(): Promise<void> {
       spec && tiles
         ? (waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, spec.land.seaLevel) ?? undefined)
         : undefined,
+    terrain: terrain,
+    formationTiles: { store: formationTiles, terrainVersion: String(procgen.terrainVersion) },
     log: (l) => console.log(l),
   });
+  // Formations (WFC-placed groups, see procgen/formation.ts): solved for the
+  // whole world now, so the server only reads them.
+  if (populator.bakeFormations) {
+    const t0 = performance.now();
+    const whole = spec ? worldBounds(spec) : null;
+    const lo = whole ? { x: whole.minChunk, z: whole.minChunk } : { x: scx - RADIUS, z: scz - RADIUS };
+    const hi = whole ? { x: whole.maxChunk, z: whole.maxChunk } : { x: scx + RADIUS, z: scz + RADIUS };
+    let result = { tiles: 0, solved: 0 };
+    let lastLog = t0;
+    formationTiles.transaction(() => {
+      result = (populator.bakeFormations as NonNullable<typeof populator.bakeFormations>)(lo, hi, (done, total) => {
+        if (performance.now() - lastLog > 5000) {
+          lastLog = performance.now();
+          console.log(`[bake] formations: ${done}/${total} tiles`);
+        }
+      });
+    });
+    if (result.tiles > 0) console.log(`[bake] formations: ${result.tiles} tiles (${result.solved} solved) in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+  }
   const chunkStore = new ChunkEntityStore(dbPath);
   const chunks = new ChunkStreamer({
     terrain,
@@ -173,6 +196,7 @@ async function main(): Promise<void> {
   }).warm(sim);
   const scattered = sim.liveEntityCount - chunks;
   chunkStore.close();
+  formationTiles.close();
   tiles?.close();
 
   const store = new SnapshotStore({ dbPath });

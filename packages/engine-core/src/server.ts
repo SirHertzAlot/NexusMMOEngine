@@ -102,6 +102,7 @@ import { CombatSystem } from "./combat.js";
 import { BotSystem } from "./bots.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
+import { FormationTileStore } from "./persist/formation-tiles.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
@@ -279,6 +280,7 @@ async function main(): Promise<void> {
   // background worker already checkpoints world.db after every save, so
   // this connection leaves checkpoints (and their fsync) to it.
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  const formationTiles = new FormationTileStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   // Baked worlds have a sea: nothing is scattered below it.
   const seaLevelMeta = store.getMeta("sea_level");
   // Baked worlds have water: swimming happens against its surface, and
@@ -294,6 +296,9 @@ async function main(): Promise<void> {
     seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
     biomeAt: biomeLookup(store, tiles) ?? undefined,
     waterAt: water ?? undefined,
+    terrain: procgen,
+    // Formation tiles the bake solved (any it didn't are solved on demand and stored).
+    formationTiles: { store: formationTiles, terrainVersion },
     log: (l) => console.log(l),
   });
   const streamer = new ChunkStreamer({

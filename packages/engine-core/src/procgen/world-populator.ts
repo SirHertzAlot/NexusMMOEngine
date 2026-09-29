@@ -17,11 +17,22 @@ import { fileURLToPath } from "node:url";
 import { loadEcologyPlan } from "./ecology.js";
 import { makeEcologyPopulator, makeScatterPopulator } from "./scatter-spawn.js";
 import type { SimWorld } from "../world.js";
+import type { ChunkDataSource } from "./chunk-source.js";
+import type { FormationTileStore } from "../persist/formation-tiles.js";
 
 export interface WorldPopulator {
   populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
   readonly planHash: string;
   readonly kind: "ecology" | "pcg";
+  /**
+   * Solve every formation tile over chunks [minChunk, maxChunk] into the
+   * formation store (the bake); the server then only reads them.
+   */
+  bakeFormations?(
+    minChunk: { x: number; z: number },
+    maxChunk: { x: number; z: number },
+    onTile?: (done: number, total: number) => void,
+  ): { tiles: number; solved: number };
 }
 
 /** The art packs' manifest in this checkout (present only where the art is). */
@@ -34,6 +45,10 @@ export function makeWorldPopulator(opts: {
   seaLevel?: number;
   biomeAt?: (x: number, z: number) => string | null;
   waterAt?: (x: number, z: number) => number | null;
+  /** The terrain the chunks are generated from (formation layers read neighbouring chunks). */
+  terrain?: ChunkDataSource;
+  /** world.db's formation tiles, and the terrain version they're solved on. */
+  formationTiles?: { store: FormationTileStore; terrainVersion: string };
   log?: (line: string) => void;
 }): WorldPopulator {
   const kind = process.env.MMO_SCATTER || (fs.existsSync(ART_MANIFEST) ? "ecology" : "pcg");
@@ -55,6 +70,12 @@ export function makeWorldPopulator(opts: {
     biomeAt: opts.biomeAt,
     waterAt: opts.waterAt,
     seaLevel: opts.seaLevel,
+    terrain: opts.terrain,
+    formationTiles: opts.formationTiles?.store.backing({
+      worldSeed: opts.worldSeed,
+      terrainVersion: opts.formationTiles.terrainVersion,
+      planHash: hash,
+    }),
   });
-  return { populate: p.populate, planHash: p.planHash, kind };
+  return { populate: p.populate, planHash: p.planHash, kind, bakeFormations: p.bakeFormations };
 }

@@ -216,6 +216,7 @@ export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
 
 export { ChunkEntityStore } from "./persist/chunk-entities.js";
 export type { ChunkEntitiesRow } from "./persist/chunk-entities.js";
+export { FormationTileStore, encodeFormationPoints, decodeFormationPoints } from "./persist/formation-tiles.js";
 export { ChunkNavmesh } from "./navigation/chunk-navmesh.js";
 export type { ChunkNavmeshOptions, ChunkNavmeshLoad } from "./navigation/chunk-navmesh.js";
 export { ChunkStreamer, packChunk, unpackChunk } from "./streaming/chunk-streamer.js";
