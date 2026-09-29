@@ -51,7 +51,7 @@ export function App(): React.ReactElement {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [hud, setHud] = useState<HudData>({
-    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null,
+    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null,
   });
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
@@ -180,6 +180,7 @@ export function App(): React.ReactElement {
           <div className="mt-1 space-y-0.5 text-muted-foreground">
             <div>tick <span className="text-foreground">{hud.tick}</span></div>
             {hud.time && <div>time <span className="text-foreground">{hud.time}</span></div>}
+            {hud.weather && <div>weather <span className="text-foreground">{hud.weather}</span></div>}
             <div>entities <span className="text-foreground">{hud.entities}</span></div>
             <div>fps <span className="text-foreground">{hud.fps}</span></div>
             <div>
