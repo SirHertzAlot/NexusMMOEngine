@@ -147,6 +147,10 @@ export interface Dungeon {
 
 /** Generate a dungeon; if a seed fails to connect, re-roll it (up to 5 tries), as the original does. */
 export function generateDungeon(params: DungeonParams, theme: Theme): Dungeon {
+  // At least 3 rooms: two are promoted to large ones, plus an entrance distinct from the boss.
+  if (!Number.isInteger(params.rooms) || params.rooms < 3) throw new RangeError(`rooms must be a whole number >= 3 (got ${params.rooms})`);
+  if (!(params.loopChance >= 0 && params.loopChance <= 1)) throw new RangeError(`loopChance must be in [0, 1] (got ${params.loopChance})`);
+  if (!(params.decorDensity >= 0 && params.decorDensity <= 1)) throw new RangeError(`decorDensity must be in [0, 1] (got ${params.decorDensity})`);
   let seed = params.seed >>> 0;
   let d: Dungeon | null = null;
   let attempt = 0;

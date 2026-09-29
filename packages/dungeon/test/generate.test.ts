@@ -20,6 +20,14 @@ describe("generateDungeon", () => {
     assert.equal(layoutHash(d), "7e1660dcd95c911e1513da1abaa1ed84ffca53713ba6c38298ea133aec1a2530");
   });
 
+  it("refuses parameters it can't build from (fewer than 3 rooms would never finish)", () => {
+    const t = BUILTIN_THEMES.ancient;
+    for (const rooms of [0, 1, 2, 2.5]) assert.throws(() => generateDungeon({ seed: 1, rooms, loopChance: 0.1, decorDensity: 0.5, theme: "ancient" }, t), /rooms must be a whole number >= 3/);
+    assert.throws(() => generateDungeon({ seed: 1, rooms: 10, loopChance: 2, decorDensity: 0.5, theme: "ancient" }, t), /loopChance/);
+    assert.throws(() => generateDungeon({ seed: 1, rooms: 10, loopChance: 0.1, decorDensity: -1, theme: "ancient" }, t), /decorDensity/);
+    assert.ok(generateDungeon({ seed: 1, rooms: 3, loopChance: 0.1, decorDensity: 0.5, theme: "ancient" }, t).valid, "3 rooms works");
+  });
+
   it("gives the same layout for the same seed and a different one for another", () => {
     assert.equal(layoutHash(make(7)), layoutHash(make(7)));
     assert.notEqual(layoutHash(make(7)), layoutHash(make(8)));
