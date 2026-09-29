@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/rules && tsc -p tsconfig.json",
     "test": "npm run build && node --expose-gc --test --test-skip-pattern=\"latency budget\" \"dist/test/**/*.test.js\" && npm run test:perf",
     "test:perf": "node --expose-gc --test --test-name-pattern=\"latency budget\" dist/test/persist/store.test.js",
     "sim": "npm run build && node dist/src/sim.js",
@@ -37,7 +37,8 @@
     "zod": "^4.6.5",
     "@mmo-engine/world-server": "0.1.0",
     "surrealdb": "^2.0.8",
-    "@surrealdb/node": "^3.0.3"
+    "@surrealdb/node": "^3.0.3",
+    "@mmo-engine/rules": "0.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0"

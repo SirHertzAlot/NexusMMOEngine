@@ -39,6 +39,7 @@
     "packages/protocol",
     "packages/mirror",
     "packages/art",
+    "packages/rules",
     "packages/engine-core",
     "packages/bench",
     "packages/addons/template",

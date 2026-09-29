@@ -1,0 +1,29 @@
+{
+  "slots": [
+    { "id": "head", "part": "head", "required": true },
+    { "id": "torso", "part": "torso", "required": true },
+    { "id": "hips", "part": "hips", "required": true },
+    { "id": "armUpperLeft", "part": "armUpperLeft", "required": true },
+    { "id": "armUpperRight", "part": "armUpperRight", "required": true },
+    { "id": "armLowerLeft", "part": "armLowerLeft", "required": true },
+    { "id": "armLowerRight", "part": "armLowerRight", "required": true },
+    { "id": "handLeft", "part": "handLeft", "required": true },
+    { "id": "handRight", "part": "handRight", "required": true },
+    { "id": "legLeft", "part": "legLeft", "required": true },
+    { "id": "legRight", "part": "legRight", "required": true },
+    { "id": "hair" },
+    { "id": "eyebrows" },
+    { "id": "facialHair" },
+    { "id": "ears" },
+    { "id": "headCovering", "part": "head" },
+    { "id": "helmet", "part": "head" },
+    { "id": "back", "part": "torso" },
+    { "id": "shoulderLeft", "part": "armUpperLeft" },
+    { "id": "shoulderRight", "part": "armUpperRight" },
+    { "id": "elbowLeft", "part": "armLowerLeft" },
+    { "id": "elbowRight", "part": "armLowerRight" },
+    { "id": "hipsAttachment", "part": "hips" },
+    { "id": "kneeLeft", "part": "legLeft" },
+    { "id": "kneeRight", "part": "legRight" }
+  ]
+}

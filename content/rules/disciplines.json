@@ -1,0 +1,9 @@
+{
+  "disciplines": [
+    { "id": "staffMaster", "name": "Staff Master", "requires": { "bludgeoning": 80, "parrying": 70, "evading": 50 }, "unlocks": ["sweep"] },
+    { "id": "bladeMaster", "name": "Blade Master", "requires": { "cutting": 80, "parrying": 70 }, "unlocks": ["disarm"] },
+    { "id": "spearman", "name": "Spearman", "requires": { "thrusting": 70, "blocking": 50 }, "unlocks": ["lunge"] },
+    { "id": "brawler", "name": "Brawler", "requires": { "striking": 70, "grappling": 60, "endurance": 40 }, "unlocks": ["throwDown"] },
+    { "id": "fieldSurgeon", "name": "Field Surgeon", "requires": { "medicine": 75, "foraging": 40 }, "unlocks": ["reattach"] }
+  ]
+}
