@@ -412,8 +412,8 @@ class Search {
   private readonly queued: Uint8Array;
   private qHead = 0;
   private qLen = 0;
-  /** A removal happened since the last global pass. */
-  private dirty = false;
+  /** A removal happened since the last global pass (true at the start: counts and budgets are checked at least once). */
+  private dirty = true;
   /** Undecided slots by entropy (lazily: stale entries are skipped). */
   private readonly heap = new Heap();
   /** Slots decided since the last onDecided pass. */
@@ -512,6 +512,12 @@ class Search {
         this.queued[s] = 1;
         this.queue[(this.qHead + this.qLen++) % this.c.N] = s;
       }
+  }
+
+  /** Every slot's needs, once at the start (a slot with no neighbours is never reached through one). */
+  checkAllNeeds(): boolean {
+    for (let s = 0; s < this.c.N; s++) if (!this.checkNeeds(s)) return false;
+    return true;
   }
 
   /** Propagate to a fixed point. False on a contradiction. */
@@ -795,7 +801,7 @@ export function solve(problem: WfcProblem, settings: WfcSettings): WfcSolution {
       for (let y = 0; y < c.K; y++) if (y !== x && !search.remove(s, y)) throw new WfcError(`slot ${s}: pin contradiction`, s);
     }
     search.enqueueAll();
-    if (!search.propagate()) {
+    if (!search.checkAllNeeds() || !search.propagate()) {
       throw new WfcError(`no solution: the constraints contradict before any choice (at slot ${search.contradiction})`, search.contradiction);
     }
     // Decisions: [trail mark, slot, option].
