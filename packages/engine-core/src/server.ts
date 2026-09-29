@@ -24,6 +24,10 @@
  *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
+ *   MMO_DAY_SECONDS real seconds in one game day (default 2400 = 40 min;
+ *                  0 = no day cycle: clients keep a fixed midday)
+ *   MMO_DAY_OFFSET time of day at tick 0, 0..1 (0 midnight, 0.25 dawn,
+ *                  0.5 noon; default 0.35, mid-morning)
  *   MMO_TERRAIN_AMPLITUDE  terrain height scale, world units (default 2)
  *   MMO_TERRAIN_FREQUENCY  terrain noise frequency, (0, 1] (default 0.02)
  *                  Must match the values the world was baked with.
@@ -78,7 +82,7 @@ import {
   waterSurfaceFromMaps,
   type ChunkBounds,
 } from "./index.js";
-import { Ability } from "@mmo-engine/protocol";
+import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 
@@ -92,6 +96,15 @@ function playerAbilitiesFromEnv(value: string | undefined): number {
     else if (word !== "none") throw new Error(`MMO_PLAYER_ABILITIES: unknown ability "${word}" (want swim, fly, or none)`);
   }
   return bits;
+}
+
+/** MMO_DAY_SECONDS / MMO_DAY_OFFSET as the welcome's day clock (null: no day cycle). */
+function dayClockFromEnv(seconds: string | undefined, offset: string | undefined): DayClock | null {
+  const s = Number(seconds ?? 2400);
+  const o = Number(offset ?? 0.35);
+  if (!Number.isFinite(s) || s < 0) throw new Error(`MMO_DAY_SECONDS must be a number of seconds >= 0 (got ${seconds})`);
+  if (!Number.isFinite(o) || o < 0 || o >= 1) throw new Error(`MMO_DAY_OFFSET must be in [0, 1) (got ${offset})`);
+  return s === 0 ? null : { seconds: s, offset: o };
 }
 
 function abilityNames(bits: number): string {
@@ -285,6 +298,7 @@ async function main(): Promise<void> {
       ? null
       : waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, Number(seaLevelMeta));
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
+  const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
   const character = new CharacterSystem({
     chunkSource: procgen,
     worldSeed,
@@ -311,6 +325,7 @@ async function main(): Promise<void> {
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     playerAbilities,
+    dayClock: dayClock ?? undefined,
     startTick: freshBoot ? 1 : restoredTick! + 1,
     // Terrain-height channel (slice 4.1): the gateway attaches authoritative
     // 16x16 heights to chunk rows on network snapshots/deltas. The
@@ -424,7 +439,7 @@ async function main(): Promise<void> {
       `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +
       `terrain ${storedTiles > 0 ? `${storedTiles} stored tile(s)` : `amp ${terrain.amplitude} freq ${terrain.frequency} (v${terrainVersion})`} | ` +
       `spawn (${spawn.x}, ${spawn.z}) | navmesh ${chunkNavmesh.size} tile(s) | ` +
-      `water ${water ? "from the bake" : "none"} | players can ${abilityNames(playerAbilities)} | data ${DATA_DIR}`,
+      `water ${water ? "from the bake" : "none"} | players can ${abilityNames(playerAbilities)} | ${dayClock ? `a day lasts ${dayClock.seconds} s` : "no day cycle"} | data ${DATA_DIR}`,
   );
   console.log(
     `[server] no users yet? create one in the client ("Create account" tab), or: MMO_DEV_PASSWORD=<8-128 chars> npm run seed:user --workspace=@mmo-engine/engine-core -- <name>`,

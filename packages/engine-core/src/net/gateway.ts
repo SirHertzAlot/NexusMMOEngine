@@ -52,6 +52,7 @@ import {
   type DebugResponse,
   type ErrorMessage,
   type WelcomeMessage,
+  type DayClock,
   type WorldInfo,
   Ability,
   LocomotionMode,
@@ -157,6 +158,8 @@ export interface GatewayOptions {
   spawnPoint?: { x: number; z: number };
   /** A baked world's extent and coarse map, sent in every welcome. */
   worldInfo?: WorldInfo;
+  /** The world's day clock, sent in every welcome (clients derive the time of day from the tick). */
+  dayClock?: DayClock;
   /**
    * What new players can do (protocol Ability bits). Default: swim.
    * Flight is for expansions to grant (MMO_PLAYER_ABILITIES=swim,fly).
@@ -224,6 +227,7 @@ export class Gateway {
       | "groundHeightAt"
       | "spawnPoint"
       | "worldInfo"
+      | "dayClock"
       | "playerAbilities"
       | "http"
     >
@@ -254,6 +258,7 @@ export class Gateway {
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
+  private readonly dayClock: DayClock | null;
   private readonly playerAbilities: number;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
@@ -295,6 +300,7 @@ export class Gateway {
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
+    this.dayClock = opts.dayClock ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
     this.httpHandler = opts.http ?? null;
     this.authSessions = new SessionManager({
@@ -1076,6 +1082,7 @@ export class Gateway {
       snapshot_every: this.opts.snapshotEveryTicks,
       session_token: s.token,
       ...(this.worldInfo ? { world: this.worldInfo } : {}),
+      ...(this.dayClock ? { day: this.dayClock } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
   }

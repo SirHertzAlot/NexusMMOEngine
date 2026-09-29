@@ -1,5 +1,7 @@
 export { decodeControl, decodeEnvelope, encodeControl, encodeEnvelope } from "./envelope.js";
 export { MessageType, PROTOCOL_VERSION } from "./types.js";
+export { formatTimeOfDay, timeOfDayAt } from "./day-clock.js";
+export type { DayClock } from "./day-clock.js";
 export type { DebugQuery, DebugResponse, ErrorMessage, HelloMessage, RegisterMessage, WelcomeMessage } from "./types.js";
 export {
   decodeDelta,
