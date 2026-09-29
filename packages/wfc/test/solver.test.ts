@@ -52,6 +52,18 @@ describe("solve", () => {
     assert.throws(() => solve({ ...p, domains: [[0]], pins: { 0: 1 } }, { seed: 1 }), /pinned option b isn't allowed/);
   });
 
+  it("checks counts, budgets and needs even when nothing is ever removed", () => {
+    const only: WfcOption[] = [{ id: "only" }];
+    assert.throws(() => solve({ options: only, slots: 1, counts: [{ options: [0], max: 0 }] }, { seed: 1 }), WfcError);
+    assert.throws(() => solve({ options: only, slots: 2, budgets: [{ cost: [1], max: 1 }] }, { seed: 1 }), WfcError);
+    assert.throws(() => solve({ options: only, slots: 1, budgets: [{ cost: [1], min: 2 }] }, { seed: 1 }), WfcError);
+    // An isolated slot whose only option needs a neighbour it doesn't have.
+    assert.throws(() => solve({ options: only, slots: 1, needs: [{ option: 0, from: [0] }] }, { seed: 1 }), WfcError);
+    // …and one that has an option without the need falls back to it.
+    const two: WfcOption[] = [{ id: "needy", weight: 100 }, { id: "plain" }];
+    assert.deepEqual(solve({ options: two, slots: 3, needs: [{ option: 0, from: [0] }] }, { seed: 1 }).ids, ["plain", "plain", "plain"]);
+  });
+
   it("hits exact counts: 10% legendary across a pool", () => {
     const options: WfcOption[] = [{ id: "common", weight: 50 }, { id: "rare", weight: 10 }, { id: "legendary", weight: 1 }];
     const r = solve({ options, slots: 500, counts: [{ options: [2], min: 50, max: 50 }, { options: [1], max: 100 }] }, { seed: 21 });

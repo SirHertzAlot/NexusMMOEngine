@@ -1,0 +1,20 @@
+{
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "description": "Game rules as data: Zod schemas for skills, disciplines, combat, body parts, death and appearance; the engine's neutral defaults; a loader for content/rules/*.json with field-precise errors; and the hook registry (computeDamage, resolveLanding, skillGain, onInjury, onDeath, onRespawn) with default implementations",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/rules",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "type": "module",
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0"
+}

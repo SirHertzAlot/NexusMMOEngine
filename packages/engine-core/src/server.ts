@@ -26,6 +26,8 @@
  *   MMO_STREAM_RADIUS chunks loaded around each player (default 8 = 17x17,
  *                  272 m: past the client's fog)
  *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
+ *   MMO_RULES      game rules dir (default: the repo's content/rules); a
+ *                  bad rules file stops the server with every problem named
  *   MMO_SCATTER    what grows on new chunks: "ecology" (natural placement of
  *                  the Synty nature set, content/ecology/wilds.ecology.json)
  *                  or "pcg" (the PCG forest graph with PICG trees). Default:
@@ -98,6 +100,8 @@ import {
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { RulesError } from "@mmo-engine/rules";
+import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { CombatSystem } from "./combat.js";
 import { BotSystem } from "./bots.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
@@ -148,6 +152,19 @@ if (!Number.isInteger(STREAM_RADIUS) || STREAM_RADIUS < 0) {
 }
 
 async function main(): Promise<void> {
+  // ---- rules first: a bad rules file stops us before the world loads ----
+  let game: GameRules;
+  try {
+    game = loadGameRules(process.env.MMO_RULES || undefined);
+  } catch (err) {
+    if (err instanceof RulesError) {
+      console.error(`[server] ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+  console.log(`[server] ${game.summary}`);
+
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
   // ---- persistence: restore the world if a snapshot exists --------------
