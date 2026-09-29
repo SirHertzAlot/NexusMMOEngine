@@ -1,0 +1,17 @@
+{
+  "name": "@mmo-engine/dungeon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Procedural dungeon layouts, baked offline: scatter, separate, Delaunay, MST + loops, room roles, carve, decorate. Deterministic per seed; a port of Dungeon Forge (MIT).",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "bin": { "mmo-dungeon-bake": "dist/src/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "dungeon:bake": "npm run build && node dist/src/cli.js"
+  },
+  "dependencies": { "zod": "^4.6.5" },
+  "devDependencies": { "@types/node": "^25.0.0", "typescript": "^5.6.3" }
+}
