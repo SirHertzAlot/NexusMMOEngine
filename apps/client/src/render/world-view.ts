@@ -52,6 +52,7 @@ import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
 import { PcgMeshes } from "./pcg-meshes.js";
+import { ChainedPropModels, SyntyProps } from "./synty-props.js";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { WaterRenderer } from "./water.js";
@@ -128,6 +129,7 @@ export class WorldView {
   private readonly water = new WaterRenderer();
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
+  private readonly syntyProps: SyntyProps;
   readonly gpu: GpuInfo;
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
@@ -165,7 +167,9 @@ export class WorldView {
     this.scene.add(this.terrain.group);
     this.scene.add(this.water.group);
     this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged()) : null;
-    this.props = new InstancedProps(this.pcgMeshes);
+    // Scenery shows the art packs' models when the art is served, else PICG meshes.
+    this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
+    this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
     this.scene.add(this.props.group);
 
     const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x2a2118, 0.9);
@@ -219,6 +223,17 @@ export class WorldView {
     const map = world ? decodeWorldMap(world.map) : null;
     this.terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
     this.water.setWorld(map, world?.seaLevel ?? null);
+  }
+
+  /** Scenery counts (dev tools, probes). */
+  get stats(): { props: number; propDrawCalls: number; propsWithModels: number; artModels: number; meshes: number } {
+    return {
+      props: this.props.count,
+      propDrawCalls: this.props.drawCalls,
+      propsWithModels: this.props.cookedCount,
+      artModels: this.syntyProps.size,
+      meshes: this.meshes.size,
+    };
   }
 
   setTerrainWireframe(on: boolean): void {
@@ -479,6 +494,7 @@ export class WorldView {
     this.water.dispose();
     this.props.dispose();
     this.pcgMeshes?.dispose();
+    this.syntyProps.dispose();
     this.renderer.dispose();
   }
 }

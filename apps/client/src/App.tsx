@@ -197,6 +197,10 @@ export function App(): React.ReactElement {
       );
     }
     const input = new InputState();
+    // Dev builds: a handle for probes and the console (never in production).
+    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { view, input, client };
+    }
     const unbind = bindInput(canvas, input);
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
