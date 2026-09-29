@@ -135,10 +135,17 @@ const Severity = z.strictObject({
   dismemberMaimed: share.nullable().default(null),
 });
 
+/**
+ * Most parts a body can have: the Injury component packs 2 bits of state
+ * per part into 32 bits, keeping one for bleeding (docs/MASTERY-AND-COMBAT.md §6).
+ */
+export const MAX_BODY_PARTS = 15;
+
 export const BodySchema = z.strictObject({
   parts: z
     .array(BodyPartSchema)
     .min(1)
+    .max(MAX_BODY_PARTS, `at most ${MAX_BODY_PARTS} parts (the Injury component holds 2 bits of state per part in 32 bits, one kept for bleeding)`)
     .default([{ id: "body", name: "Body", parent: null, share: 1, hitMultiplier: 1, atZero: "death" }]),
   /** Harmed-part penalties apply below this share of the part's health. */
   harmedBelow: share.default(0.4),

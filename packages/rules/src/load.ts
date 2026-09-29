@@ -47,18 +47,29 @@ function pathString(p: ReadonlyArray<PropertyKey>): string {
  * Absent keys are the engine default. Throws RulesError listing every issue.
  */
 export function parseRules(sources: Partial<Record<RuleFile, unknown>>): Rules {
-  const issues: RulesIssue[] = [];
+  return validate(sources, []);
+}
+
+/**
+ * parseRules, adding to `known` issues found before parsing (a file that
+ * wasn't valid JSON: it counts as failed, like a schema failure).
+ */
+function validate(sources: Partial<Record<RuleFile, unknown>>, known: RulesIssue[]): Rules {
+  const issues: RulesIssue[] = [...known];
   const out: Partial<Rules> = {};
   for (const name of Object.keys(RULE_FILES) as RuleFile[]) {
     const schema = RULE_FILES[name] as z.ZodType;
-    const result = schema.safeParse(sources[name] ?? {});
+    // Only an absent file means "the defaults"; a file holding null is an error.
+    const result = schema.safeParse(name in sources ? sources[name] : {});
     if (result.success) (out as Record<string, unknown>)[name] = result.data;
     else for (const i of result.error.issues) issues.push({ file: `${name}.json`, path: pathString(i.path), message: i.message });
   }
   // Cross-file checks run even when some files failed (on defaults in their
   // place), so every problem is reported at once; checks that lean on a
   // failed file are skipped rather than reported as false alarms.
-  const failed = new Set(issues.map((i) => i.file.slice(0, -".json".length) as RuleFile));
+  const failed = new Set(
+    issues.map((i) => i.file.slice(0, -".json".length) as RuleFile).filter((f) => f in RULE_FILES),
+  );
   if (failed.size > 0) {
     const defaults = engineDefaults();
     for (const name of failed) (out as Record<string, unknown>)[name] = defaults[name];
@@ -117,8 +128,8 @@ export function loadRules(dir: string): Rules {
       issues.push({ file: entry, path: "", message: `not valid JSON: ${(e as Error).message}` });
     }
   }
-  if (issues.length > 0) throw new RulesError(issues);
-  return parseRules(sources);
+  // Parse and check the rest too, so every problem is reported at once.
+  return validate(sources, issues);
 }
 
 /** Checks that span fields or files: ids that must exist, a sound body tree. */

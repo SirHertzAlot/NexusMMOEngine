@@ -192,14 +192,35 @@ describe("bad rules", () => {
     assert.ok(!issues.some((i) => i.startsWith("disciplines.json")), "no false alarm about skills a broken skills.json would have defined");
   });
 
-  it("reject unknown and unreadable files in the folder", () => {
+  it("reject unknown and unreadable files in the folder, alongside every other problem", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rules-"));
     fs.writeFileSync(path.join(dir, "skils.json"), "{}");
     fs.writeFileSync(path.join(dir, "body.json"), "{ nope");
+    fs.writeFileSync(path.join(dir, "combat.json"), JSON.stringify({ damage: { base: -1 } }));
+    fs.writeFileSync(path.join(dir, "appearance.json"), JSON.stringify({ slots: [{ id: "helmet", part: "head" }] }));
     const issues = issuesOf(() => loadRules(dir));
     assert.ok(issues.some((i) => i.startsWith("skils.json: not a rules file")), issues.join("\n"));
     assert.ok(issues.some((i) => i.startsWith("body.json: not valid JSON")), issues.join("\n"));
+    assert.ok(issues.some((i) => i.startsWith("combat.json: damage.base")), "schema problems reported in the same run");
+    assert.ok(!issues.some((i) => i.startsWith("appearance.json")), "no false alarm about parts an unreadable body.json would have defined");
     assert.deepEqual(issuesOf(() => loadRules(path.join(dir, "missing"))).length, 1);
+  });
+
+  it("a file holding null is an error, not the defaults", () => {
+    const issues = issuesOf(() => parseRules({ skills: null }));
+    assert.ok(issues.some((i) => i.startsWith("skills.json:")), issues.join("\n"));
+  });
+
+  it("a body can't have more parts than the Injury component holds", () => {
+    const parts = Array.from({ length: 16 }, (_, i) => ({
+      id: `p${i}`,
+      name: `Part ${i}`,
+      parent: i === 0 ? null : "p0",
+      share: 1 / 16,
+    }));
+    const issues = issuesOf(() => parseRules({ body: { parts } }));
+    assert.ok(issues.some((i) => i.startsWith("body.json: parts: ") && /at most 15 parts/.test(i)), issues.join("\n"));
+    assert.doesNotThrow(() => parseRules({ body: { parts: parts.slice(0, 15).map((p) => ({ ...p, share: 1 / 15 })) } }));
   });
 
   it("an empty folder is the engine default", () => {
