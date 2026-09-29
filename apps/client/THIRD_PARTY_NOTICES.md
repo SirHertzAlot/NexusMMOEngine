@@ -6,8 +6,9 @@ file names its source in its header comment.
 ## ProceduralTerrains
 
 Source: https://github.com/ZyFou/ProceduralTerrains (commit 96c094e, 2026-09-24).
-Adapted: the procedural sky dome shader and the time-of-day keyframes
-(`src/render/sky/`).
+Adapted: the procedural sky shader and the time-of-day keyframes
+(`src/render/sky/`), and the water's wave field, Fresnel and GGX sun
+specular (`src/render/water-material.ts`).
 
 ```
 MIT License
