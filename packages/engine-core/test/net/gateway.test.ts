@@ -96,6 +96,7 @@ interface JoinedClient {
   entity: bigint;
   snapshot: CollectedState;
   sessionToken: string;
+  welcome: Awaited<ReturnType<HeadlessClient["hello"]>>;
 }
 
 const creds = (username: string): HelloAuth => ({
@@ -126,6 +127,7 @@ async function connectHello(
     entity: BigInt(welcome.player_entity),
     snapshot: decodeSnapshot(snapPayload),
     sessionToken: welcome.session_token,
+    welcome,
   };
 }
 
@@ -181,6 +183,18 @@ describe("gateway: hello / welcome / snapshot / deltas", () => {
     const flyer = await connectHello(await startGateway({ playerAbilities: Ability.Swim | Ability.Fly }), "alice", creds("alice"));
     assert.equal(flyer.snapshot.locomotions[0].abilities, Ability.Swim | Ability.Fly);
     await flyer.client.close();
+  });
+
+  it("the welcome carries the day clock when the server runs one", async () => {
+    const plain = await connectHello(await startGateway(), "alice", creds("alice"));
+    assert.equal(plain.welcome.day, undefined, "no day clock configured: none sent");
+    await plain.client.close();
+    await gw!.close();
+
+    const day = { seconds: 1200, offset: 0.25 };
+    const withDay = await connectHello(await startGateway({ dayClock: day }), "alice", creds("alice"));
+    assert.deepEqual(withDay.welcome.day, day);
+    await withDay.client.close();
   });
 });
 

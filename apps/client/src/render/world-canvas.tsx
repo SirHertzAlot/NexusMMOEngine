@@ -14,14 +14,16 @@
  * The ground is TerrainRenderer's: the streamed chunks near the player,
  * and the whole world far away from the welcome's coarse map, so
  * mountains stand on the horizon kilometres off; WaterRenderer lays the
- * sea and lakes over it. A daylight haze (the scene fog) fades distance
- * into the sky, which is what makes far things read as far.
+ * sea and lakes over it. DaySky draws the sky and sets the sun, the sky
+ * light and the haze (the scene fog, which fades distance into the sky)
+ * for the world's time of day, derived from the server tick and the
+ * welcome's day clock, so every client sees the same hour.
  */
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { decodeWorldMap } from "@mmo-engine/protocol";
+import { decodeWorldMap, formatTimeOfDay, timeOfDayAt } from "@mmo-engine/protocol";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
@@ -31,12 +33,15 @@ import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-c
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
+import { DaySky } from "./sky/day-sky.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { WaterRenderer } from "./water.js";
 
-/** Sky and haze colour (the fog fades distance into it). */
+/** Haze colour before the first frame sets it from the time of day. */
 const SKY = 0x9fc0dc;
+/** Time of day on servers without a day cycle: late morning. */
+const FIXED_TIME = 0.42;
 /** Haze: clear to FOG_NEAR metres, gone into the sky by FOG_FAR. */
 const FOG_NEAR = 200;
 const FOG_FAR = 3200;
@@ -55,6 +60,8 @@ export interface HudData {
   /** Movement mode (LocomotionMode) and breath (0..1), when the server sends them. */
   mode: number | null;
   breath: number;
+  /** World time of day as HH:MM (null: the server runs no day cycle). */
+  time: string | null;
 }
 
 export interface WorldCanvasProps {
@@ -86,10 +93,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
       onCreated={({ gl }) => onGpu?.(detectGpu(gl))}
     >
-      <color attach="background" args={[SKY]} />
       <fog attach="fog" args={[SKY, FOG_NEAR, FOG_FAR]} />
-      <hemisphereLight args={[0xbdd4ff, 0x2a2118, 0.9]} />
-      <directionalLight color={0xfff2dd} intensity={1.6} position={[30, 50, 20]} />
       <MirrorWorld {...props} screen={screen} />
       <PostFx enabled={effects} screen={screen} />
     </Canvas>
@@ -97,6 +101,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
 }
 
 interface Runtime {
+  sky: DaySky;
   terrain: TerrainRenderer;
   water: WaterRenderer;
   layer: EntityLayer;
@@ -129,6 +134,7 @@ function MirrorWorld({
   // Create the world's renderers and bind input; the same effect disposes
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
   useEffect(() => {
+    const sky = new DaySky();
     const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16);
     const water = new WaterRenderer();
     const layer = new EntityLayer(scene, camera, assets, terrain, { pcg });
@@ -138,7 +144,7 @@ function MirrorWorld({
     water.setWorld(map, world?.seaLevel ?? null);
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
-    scene.add(terrain.group, water.group, layer.group);
+    scene.add(sky.group, terrain.group, water.group, layer.group);
 
     const canvas = gl.domElement;
     const input = new InputState();
@@ -158,7 +164,7 @@ function MirrorWorld({
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);
 
-    rt.current = { terrain, water, layer, input };
+    rt.current = { sky, terrain, water, layer, input };
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
       rt.current = null;
@@ -166,6 +172,7 @@ function MirrorWorld({
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointermove", onPointerMove);
       scene.remove(terrain.group, water.group);
+      sky.dispose();
       layer.dispose();
       terrain.dispose();
       water.dispose();
@@ -201,6 +208,9 @@ function MirrorWorld({
     const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
+    const timeOfDay = client.day ? timeOfDayAt(client.day, client.serverTick, client.tickHz || 30) : FIXED_TIME;
+    r.sky.update(timeOfDay, scene.fog instanceof THREE.Fog ? scene.fog : null);
+
     const seconds = now / 1000;
     r.terrain.update();
     r.water.update(seconds);
@@ -221,6 +231,7 @@ function MirrorWorld({
         pz: p?.pz ?? 0,
         mode: me?.locomotion?.mode ?? null,
         breath: me?.locomotion?.breath ?? 1,
+        time: client.day ? formatTimeOfDay(timeOfDay) : null,
       });
     }
   });

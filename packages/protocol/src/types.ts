@@ -6,6 +6,7 @@
  * u64 ids travel as JSON strings — JS numbers can't hold 64 bits.
  */
 
+import type { DayClock } from "./day-clock.js";
 import type { WorldInfo } from "./world-info.js";
 
 /** Message type byte. Values are the catalog contract — never renumber. */
@@ -52,6 +53,8 @@ export interface WelcomeMessage {
   session_token: string; // opaque token: reconnect identity from here on
   /** A baked world's extent and coarse map (see world-info.ts); absent for legacy worlds. */
   world?: WorldInfo;
+  /** The world's day clock (see day-clock.ts); absent: no day cycle. */
+  day?: DayClock;
 }
 
 /** S→C on protocol/auth/server errors. */
