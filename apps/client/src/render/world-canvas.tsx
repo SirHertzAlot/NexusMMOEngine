@@ -38,6 +38,7 @@ import { ParticleFx, WEATHER_RULES } from "./fx/particle-fx.js";
 import { biomeAt, weatherAt } from "./fx/weather.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 
 /** Haze colour before the first frame sets it from the time of day. */
@@ -174,6 +175,19 @@ function MirrorWorld({
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);
 
+    // Textured ground, when the surfaces were fetched (npm run surfaces:fetch); flat colours until then.
+    let surfaces: Surfaces | null = null;
+    let closed = false;
+    loadSurfaces()
+      .then((s) => {
+        if (closed) s?.dispose();
+        else if (s) {
+          surfaces = s;
+          terrain.setSurfaces(s);
+        }
+      })
+      .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
+
     rt.current = { sky, particles, map, terrain, water, layer, input };
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
@@ -182,6 +196,9 @@ function MirrorWorld({
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointermove", onPointerMove);
       scene.remove(terrain.group, water.group);
+      closed = true;
+      terrain.setSurfaces(null);
+      surfaces?.dispose();
       sky.dispose();
       particles.dispose();
       layer.dispose();

@@ -18,6 +18,7 @@ import type { ChunkRange, ChunkRow, WorldMap } from "@mmo-engine/protocol";
 import { groundColors, snowLine } from "./ground.js";
 import { buildChunkGeometry, chunkNormals, SIDE } from "./terrain-mesh.js";
 import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
+import { surfaceLayerMap, type Surfaces } from "./surfaces.js";
 
 /** Decode chunk (cx, cz) from the chunkId u64 (see spawnChunk/chunkIdFor). */
 export function chunkCoords(chunkId: bigint): { cx: number; cz: number } {
@@ -60,6 +61,9 @@ export class TerrainRenderer {
   private mask: LoadedMask | null = null;
   private maskDirty = false;
   private readonly spacing: number;
+  private map: WorldMap | null = null;
+  private surfaces: Surfaces | null = null;
+  private layerMap: THREE.DataTexture | null = null;
 
   constructor(private readonly chunkWorldSize: number) {
     this.spacing = chunkWorldSize / (SIDE - 1);
@@ -81,8 +85,12 @@ export class TerrainRenderer {
    */
   setWorld(world: { map: WorldMap; bounds: ChunkRange; seaLevel?: number | null } | null): void {
     this.disposeWorld();
-    if (!world) return;
+    if (!world) {
+      this.applySurfaces();
+      return;
+    }
     const { map, bounds } = world;
+    this.map = map;
     this.uniforms.uFarCell.value = map.cell;
     this.uniforms.uSeaLevel.value = world.seaLevel ?? NO_SEA;
 
@@ -125,6 +133,21 @@ export class TerrainRenderer {
     this.far = new THREE.Mesh(farGeometry(map), this.farMaterial);
     this.far.name = "terrain-far";
     this.group.add(this.far);
+    this.applySurfaces();
+  }
+
+  /**
+   * Textured ground (surfaces.ts), or null for the flat biome colours.
+   * The terrain doesn't own them: the caller disposes them.
+   */
+  setSurfaces(surfaces: Surfaces | null): void {
+    this.surfaces = surfaces;
+    this.applySurfaces();
+  }
+
+  /** Whether the ground is textured now (tests, HUD). */
+  get textured(): boolean {
+    return this.layerMap !== null;
   }
 
   /**
@@ -248,7 +271,50 @@ export class TerrainRenderer {
     c.mesh.geometry.dispose();
   }
 
+  /** Bind the surfaces to the materials when there are both surfaces and a world map. */
+  private applySurfaces(): void {
+    this.layerMap?.dispose();
+    this.layerMap = null;
+    const s = this.surfaces;
+    const on = s !== null && this.map !== null;
+    if (s && this.map) {
+      const map = this.map;
+      const tex = new THREE.DataTexture(surfaceLayerMap(map, s.manifest), map.width, map.depth, THREE.RedFormat, THREE.UnsignedByteType);
+      tex.unpackAlignment = 1;
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.needsUpdate = true;
+      this.layerMap = tex;
+      const u = this.uniforms;
+      u.uSurfAlbedo.value = s.albedo;
+      u.uSurfProps.value = s.props;
+      u.uSurfLayers.value = tex;
+      u.uSurfLayersSize.value.set(map.width, map.depth);
+      s.manifest.layers.forEach((l, i) => {
+        u.uSurfTile.value[i] = l.tileMetres;
+        u.uSurfTint.value[i].set(...l.tint);
+      });
+      const index = (id: string): number => s.manifest.layers.findIndex((l) => l.id === id);
+      u.uSurfRock.value = index(s.manifest.rock);
+      u.uSurfSnow.value = index(s.manifest.snow);
+    } else {
+      this.uniforms.uSurfAlbedo.value = null;
+      this.uniforms.uSurfProps.value = null;
+      this.uniforms.uSurfLayers.value = null;
+    }
+    for (const m of [this.nearMaterial, this.farMaterial]) {
+      const defines = { ...(m.defines ?? {}) };
+      if (on) defines.TERRAIN_SURFACES = "";
+      else delete defines.TERRAIN_SURFACES;
+      m.defines = defines;
+      m.needsUpdate = true;
+    }
+  }
+
   private disposeWorld(): void {
+    this.map = null;
+    this.layerMap?.dispose();
+    this.layerMap = null;
     if (this.far) {
       this.group.remove(this.far);
       this.far.geometry.dispose();
@@ -263,6 +329,7 @@ export class TerrainRenderer {
     this.uniforms.uLoaded.value = null;
     this.uniforms.uSnowLine.value = NO_SNOW;
     this.uniforms.uSeaLevel.value = NO_SEA;
+    this.uniforms.uSurfLayers.value = null;
   }
 }
 

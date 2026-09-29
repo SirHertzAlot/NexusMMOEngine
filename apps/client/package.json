@@ -36,7 +36,8 @@
     "dev": "vite",
     "preview": "vite preview",
     "pretest": "npm run build:deps",
-    "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\""
+    "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",
+    "surfaces:fetch": "node scripts/fetch-surfaces.mjs"
   },
   "type": "module",
   "version": "0.1.0"
