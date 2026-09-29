@@ -183,7 +183,7 @@
    "id": "stoneCircles",
    "place": {
     "kind": "formation",
-    "spacing": 2.5,
+    "spacing": 8,
     "tileChunks": 4
    },
    "chance": 1,
@@ -206,85 +206,131 @@
     null
    ],
    "formation": {
-    "options": [
+    "kinds": [
      {
-      "id": "ground",
-      "weight": 60
-     },
-     {
-      "id": "centre",
-      "weight": 0.25,
+      "id": "stone-circle",
+      "weight": 1,
       "tags": [
-       "centre"
+       "circle"
+      ],
+      "pieces": [
+       {
+        "id": "standing-stone",
+        "assets": [
+         {
+          "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_01",
+          "weight": 2,
+          "scale": [
+           1.1,
+           1.5
+          ]
+         },
+         {
+          "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_02",
+          "weight": 2,
+          "scale": [
+           0.9,
+           1.3
+          ]
+         },
+         {
+          "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_05",
+          "weight": 1,
+          "scale": [
+           0.55,
+           0.75
+          ]
+         }
+        ],
+        "count": [
+         6,
+         9
+        ],
+        "pattern": "ring",
+        "radius": [
+         4.5,
+         5.5
+        ],
+        "clearance": 1.2,
+        "maxSlope": 0.35
+       },
+       {
+        "id": "altar-stone",
+        "assets": [
+         {
+          "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_03",
+          "weight": 1,
+          "scale": [
+           0.35,
+           0.6
+          ]
+         }
+        ],
+        "count": [
+         0,
+         1
+        ],
+        "pattern": "centre",
+        "radius": [
+         0,
+         0
+        ],
+        "clearance": 0.8,
+        "maxSlope": 0.35
+       }
       ]
      },
      {
-      "id": "stone",
-      "weight": 3,
+      "id": "cairn",
+      "weight": 1.5,
       "tags": [
-       "stone"
+       "cairn"
       ],
-      "assets": [
+      "maxPieces": 6,
+      "pieces": [
        {
-        "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_01",
-        "weight": 2,
-        "scale": [
-         1.1,
-         1.5
-        ]
-       },
-       {
-        "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_02",
-        "weight": 2,
-        "scale": [
-         0.9,
-         1.3
-        ]
-       },
-       {
-        "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_05",
-        "weight": 1,
-        "scale": [
-         0.55,
-         0.75
-        ]
+        "id": "cairn-stone",
+        "assets": [
+         {
+          "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_03",
+          "weight": 1,
+          "scale": [
+           0.35,
+           0.6
+          ]
+         }
+        ],
+        "count": [
+         3,
+         6
+        ],
+        "pattern": "cluster",
+        "radius": [
+         0,
+         1.6
+        ],
+        "clearance": 0.5,
+        "maxSlope": 0.5
        }
       ]
      }
     ],
+    "emptyWeight": 40,
     "avoid": [
      {
-      "a": "centre",
-      "b": "centre",
+      "a": "circle",
+      "b": "circle",
       "distance": 45
      },
      {
-      "a": "stone",
-      "b": "stone",
-      "distance": 2.4
-     },
-     {
-      "a": "stone",
-      "b": "centre",
-      "distance": 3.5
-     }
-    ],
-    "needs": [
-     {
-      "tag": "stone",
-      "near": "centre",
-      "distance": 6.5
-     },
-     {
-      "tag": "centre",
-      "near": "stone",
-      "distance": 6.5,
-      "count": 6
+      "a": "cairn",
+      "b": "cairn",
+      "distance": 18
      }
     ],
     "counts": [
      {
-      "tag": "centre",
+      "tag": "circle",
       "max": 1
      }
     ]
