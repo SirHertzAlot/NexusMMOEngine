@@ -13,6 +13,8 @@ import { encodeDungeon, layoutHash } from "./format.js";
 import { generateDungeon } from "./generate.js";
 import { deriveSeed } from "./rng.js";
 import { autoTheme, type Themes } from "./themes.js";
+import { dressDungeon } from "./dress.js";
+import type { Dressing } from "./dressing.js";
 
 export const INDEX_FORMAT = "mmo-dungeon-index/1";
 
@@ -31,6 +33,8 @@ export interface BakeOptions {
   out: string;
   /** Remove the pool already in `out` first. */
   fresh?: boolean;
+  /** Dress each dungeon (room archetypes, contents, resource veins) at a rank in this range; omit to leave them bare. */
+  dress?: { dressing: Dressing; rank: [number, number] };
 }
 
 export interface IndexEntry {
@@ -41,6 +45,10 @@ export interface IndexEntry {
   theme: string;
   seed: number;
   rooms: number;
+  /** The dressing's rank (absent: not dressed). */
+  rank?: number;
+  /** Resource veins in its walls. */
+  veins?: number;
   floorTiles: number;
   width: number;
   height: number;
@@ -91,10 +99,20 @@ export function bakeDungeons(o: BakeOptions): BakeResult {
     const hash = layoutHash(d);
     if (known.has(hash)) { duplicates++; continue; }
     known.add(hash);
-    const f = encodeDungeon(d);
+    let dressing;
+    if (o.dress) {
+      const [r0, r1] = o.dress.rank;
+      const rank = r0 + (deriveSeed(seed, 0x52414e4b) % (r1 - r0 + 1));
+      dressing = dressDungeon(d, o.dress.dressing, rank, deriveSeed(seed, 0x44524553));
+    }
+    const f = encodeDungeon(d, dressing);
     const file = `${f.id}.dungeon.json`;
     writeFileSync(join(o.out, file), JSON.stringify(f));
-    const entry: IndexEntry = { id: f.id, file, hash, name: d.name, theme, seed: d.seed, rooms, floorTiles: d.stats.floorTiles, width: d.width, height: d.height };
+    const entry: IndexEntry = {
+      id: f.id, file, hash, name: d.name, theme, seed: d.seed, rooms,
+      ...(dressing ? { rank: dressing.rank, veins: dressing.resources.length } : {}),
+      floorTiles: d.stats.floorTiles, width: d.width, height: d.height,
+    };
     index.dungeons.push(entry);
     added.push(entry);
   }
