@@ -21,6 +21,8 @@ const helloBase = z.object({
   protocol: z.number().int(),
   client: z.string().min(1).max(64),
   want_snapshot: z.boolean(),
+  // Choose a character before entering the world (catalog §0x0c).
+  characters: z.boolean().optional(),
 });
 
 /** First contact: prove who you are with a password. */
@@ -55,6 +57,7 @@ export const RegisterSchema = z
     client: z.string().min(1).max(64),
     username: z.string().regex(USERNAME_RE),
     password: z.string().min(8).max(128),
+    characters: z.boolean().optional(),
   })
   .strict();
 

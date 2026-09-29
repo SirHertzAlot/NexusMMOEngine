@@ -2,7 +2,10 @@
  * MirrorClient — the browser-side protocol driver (docs/MESSAGE-CATALOG.md).
  *
  * Flow: connect → hello (credentials or session token) → welcome +
- * snapshot → per-tick deltas → intents upstream. It owns the
+ * snapshot → per-tick deltas → intents upstream. A game client that lets
+ * the player choose a character uses join() instead: hello answers with
+ * the account's characters, then createCharacter() / enterWorld()
+ * (docs/MESSAGE-CATALOG.md §0x0c–0x0e) lead to the same welcome. It owns the
  * MirrorState and Interpolator but performs no simulation itself:
  * the browser mirrors; the server simulates (skill operating rule 1).
  *
@@ -20,6 +23,8 @@ import {
   encodeIntentMessage,
   MessageType,
   PROTOCOL_VERSION,
+  type AccountMessage,
+  type CreateCharacterMessage,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -28,6 +33,7 @@ import {
   type RegisterMessage,
   type WelcomeMessage,
   type DayClock,
+  type WireLook,
   type WorldInfo,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -37,6 +43,17 @@ import type { SocketLike } from "./socket.js";
 export type HelloAuth =
   | { username: string; password: string }
   | { token: string };
+
+/** How join() logs in: an existing account (or session token), or a new account. */
+export type JoinAuth = HelloAuth | { register: { username: string; password: string } };
+
+/**
+ * The server's answer to a join: the account's characters to choose from,
+ * or the welcome (a reconnect that re-enters as its character).
+ */
+export type JoinReply =
+  | { kind: "account"; account: AccountMessage }
+  | { kind: "welcome"; welcome: WelcomeMessage };
 
 export interface MirrorEvents {
   onWelcome(w: WelcomeMessage): void;
@@ -70,14 +87,17 @@ export class MirrorClient {
   day: DayClock | null = null;
   lastError: ErrorMessage | null = null;
   closed = false;
+  /** The account's characters, from the last account message (join()). */
+  account: AccountMessage | null = null;
 
   private socket: SocketLike | null = null;
   /** Server tick the last intent was sent at (-1: none on this connection). */
   private intentSentAt = -1;
   /** Intents held back for the next authoritative ticks, oldest first (one goes per tick). */
   private pendingIntents: IntentFields[] = [];
-  private welcomeResolve: ((w: WelcomeMessage) => void) | null = null;
-  private welcomeReject: ((e: Error) => void) | null = null;
+  /** The outstanding request's answer (hello, register, create, enter): one at a time. */
+  private replyResolve: ((r: JoinReply) => void) | null = null;
+  private replyReject: ((e: Error) => void) | null = null;
   private debugResolve: ((r: DebugResponse) => void) | null = null;
   private debugReject: ((e: Error) => void) | null = null;
 
@@ -101,7 +121,94 @@ export class MirrorClient {
       want_snapshot: true,
       ...auth,
     };
+    return this.welcomeOf(this.openAndHandshake(url, MessageType.Hello, hello));
+  }
+
+  /**
+   * Log in (or create the account) and choose a character before
+   * entering the world: resolves with the account's characters — or with
+   * the welcome, when a session token re-enters as its character. Then
+   * createCharacter() and enterWorld().
+   */
+  async join(url: string, clientName: string, auth: JoinAuth): Promise<JoinReply> {
+    if ("register" in auth) {
+      const payload: RegisterMessage = {
+        protocol: PROTOCOL_VERSION,
+        client: clientName,
+        ...auth.register,
+        characters: true,
+      };
+      return this.openAndHandshake(url, MessageType.Register, payload);
+    }
+    const hello: HelloMessage = {
+      protocol: PROTOCOL_VERSION,
+      client: clientName,
+      want_snapshot: true,
+      ...auth,
+      characters: true,
+    };
     return this.openAndHandshake(url, MessageType.Hello, hello);
+  }
+
+  /**
+   * Create a character (while choosing, after join()): resolves with the
+   * updated account (`created` is the new one's id); rejects with the
+   * server's reason (a taken name, a refused look) — the connection stays
+   * open for another try.
+   */
+  async createCharacter(name: string, look: WireLook): Promise<AccountMessage> {
+    const msg: CreateCharacterMessage = { name, look };
+    const reply = await this.request(MessageType.CreateCharacter, encodeControl(msg));
+    if (reply.kind !== "account") throw new Error("mirror-client: expected the account");
+    return reply.account;
+  }
+
+  /** Enter the world as one of the account's characters: resolves with the welcome. */
+  async enterWorld(character: number): Promise<WelcomeMessage> {
+    return this.welcomeOf(this.request(MessageType.EnterWorld, encodeControl({ character })));
+  }
+
+  private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {
+    const r = await reply;
+    if (r.kind !== "welcome") throw new Error("mirror-client: expected a welcome");
+    return r.welcome;
+  }
+
+  /** Send one request on the open socket and wait for its reply. */
+  private request(type: MessageType, payload: Uint8Array): Promise<JoinReply> {
+    if (!this.socket || this.closed) return Promise.reject(new Error("mirror-client: not connected"));
+    if (this.replyResolve) return Promise.reject(new Error("mirror-client: a request is already in flight"));
+    const reply = this.awaitReply();
+    this.socket.send(encodeEnvelope(type, payload));
+    return reply;
+  }
+
+  private awaitReply(): Promise<JoinReply> {
+    return new Promise<JoinReply>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.replyResolve = null;
+        this.replyReject = null;
+        reject(new Error("mirror-client: welcome timeout"));
+      }, CONNECT_TIMEOUT_MS);
+      this.replyResolve = (r) => {
+        clearTimeout(timer);
+        resolve(r);
+      };
+      this.replyReject = (e) => {
+        clearTimeout(timer);
+        reject(e);
+      };
+    });
+  }
+
+  /** Settle the outstanding request. */
+  private settle(result: JoinReply | Error): void {
+    const resolve = this.replyResolve;
+    const reject = this.replyReject;
+    this.replyResolve = null;
+    this.replyReject = null;
+    if (result instanceof Error) reject?.(result);
+    else resolve?.(result);
   }
 
   /**
@@ -122,7 +229,7 @@ export class MirrorClient {
       username,
       password,
     };
-    return this.openAndHandshake(url, MessageType.Register, payload);
+    return this.welcomeOf(this.openAndHandshake(url, MessageType.Register, payload));
   }
 
   /**
@@ -134,7 +241,7 @@ export class MirrorClient {
     url: string,
     type: MessageType.Hello | MessageType.Register,
     payload: HelloMessage | RegisterMessage,
-  ): Promise<WelcomeMessage> {
+  ): Promise<JoinReply> {
     if (this.socket) throw new Error("mirror-client: already connected");
     const socket = this.createSocket(url);
     this.socket = socket;
@@ -166,22 +273,9 @@ export class MirrorClient {
     socket.onclose = () => this.onClose();
     socket.onerror = (err) => this.onSocketError(err);
 
-    const welcomePromise = new Promise<WelcomeMessage>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("mirror-client: welcome timeout")),
-        CONNECT_TIMEOUT_MS,
-      );
-      this.welcomeResolve = (w) => {
-        clearTimeout(timer);
-        resolve(w);
-      };
-      this.welcomeReject = (e) => {
-        clearTimeout(timer);
-        reject(e);
-      };
-    });
+    const reply = this.awaitReply();
     socket.send(encodeEnvelope(type, encodeControl(payload)));
-    return welcomePromise;
+    return reply;
   }
 
   /**
@@ -275,6 +369,13 @@ export class MirrorClient {
       case MessageType.Welcome:
         this.onWelcome(decodeControl<WelcomeMessage>(payload));
         break;
+      case MessageType.Account: {
+        const account = decodeControl<AccountMessage>(payload);
+        this.account = account;
+        this.sessionToken = account.session_token;
+        this.settle({ kind: "account", account });
+        break;
+      }
       case MessageType.Snapshot:
         this.onSnapshot(payload);
         break;
@@ -289,11 +390,7 @@ export class MirrorClient {
         const err = decodeControl<ErrorMessage>(payload);
         this.lastError = err;
         this.events.onError(err);
-        this.welcomeReject?.(
-          new Error(`hello rejected: ${err.code} ${err.message}`),
-        );
-        this.welcomeResolve = null;
-        this.welcomeReject = null;
+        this.settle(new Error(`hello rejected: ${err.code} ${err.message}`));
         this.debugReject?.(
           new Error(`debug rejected: ${err.code} ${err.message}`),
         );
@@ -318,11 +415,7 @@ export class MirrorClient {
 
   private onWelcome(w: WelcomeMessage): void {
     if (w.protocol !== PROTOCOL_VERSION) {
-      this.welcomeReject?.(
-        new Error(`protocol mismatch: server=${w.protocol}`),
-      );
-      this.welcomeResolve = null;
-      this.welcomeReject = null;
+      this.settle(new Error(`protocol mismatch: server=${w.protocol}`));
       return;
     }
     this.playerEntity = BigInt(w.player_entity);
@@ -334,9 +427,7 @@ export class MirrorClient {
     this.world = w.world ?? null;
     this.day = w.day ?? null;
     this.events.onWelcome(w);
-    this.welcomeResolve?.(w);
-    this.welcomeResolve = null;
-    this.welcomeReject = null;
+    this.settle({ kind: "welcome", welcome: w });
   }
 
   private onSnapshot(payload: Uint8Array): void {
@@ -368,17 +459,11 @@ export class MirrorClient {
   private onClose(): void {
     this.closed = true;
     this.socket = null;
-    this.welcomeReject?.(new Error("mirror-client: connection closed"));
-    this.welcomeResolve = null;
-    this.welcomeReject = null;
+    this.settle(new Error("mirror-client: connection closed"));
     this.events.onClose();
   }
 
   private onSocketError(err: unknown): void {
-    this.welcomeReject?.(
-      new Error(`mirror-client: socket error: ${String(err)}`),
-    );
-    this.welcomeResolve = null;
-    this.welcomeReject = null;
+    this.settle(new Error(`mirror-client: socket error: ${String(err)}`));
   }
 }

@@ -1,0 +1,1724 @@
+{
+ "version": 1,
+ "name": "wilds",
+ "description": "Natural placement for the Synty Fantasy Kingdom nature set. Trees grow in groves (large-scale forest noise \u00d7 small-scale clumping) with glades between; forest edges carry the shrub belt; ferns, saplings and leaf litter cluster in the shade at tree feet; deadfall lies inside old stands. Boulders crop out where the ground is rocky and steep, with scree and pebbles strewn around them and down the fall line, and grass collars at their bases. Wildflowers bloom in single-species patches in open ground; grass is densest on the plains. Reeds stand in clumps at the water line and lily pads float in freshwater shallows.",
+ "fields": {
+  "forest": {
+   "scale": 170,
+   "octaves": 3,
+   "seed": 101
+  },
+  "grove": {
+   "scale": 38,
+   "octaves": 2,
+   "seed": 202
+  },
+  "meadow": {
+   "scale": 55,
+   "octaves": 2,
+   "seed": 303
+  },
+  "rocky": {
+   "scale": 95,
+   "octaves": 3,
+   "seed": 404
+  }
+ },
+ "biomes": {
+  "default": {
+   "trees": 1.0,
+   "open": 0.6,
+   "deadwood": 1.0,
+   "understory": 1.0,
+   "shrubs": 1.0,
+   "rocks": 0.8,
+   "flowers": 1.0,
+   "grass": 0.8,
+   "reeds": 1.0,
+   "lilies": 1.0
+  },
+  "forest": {
+   "trees": 1.0,
+   "open": 0.5,
+   "deadwood": 1.0,
+   "understory": 1.0,
+   "shrubs": 1.0,
+   "rocks": 0.7,
+   "flowers": 0.8,
+   "grass": 0.6,
+   "reeds": 1.0,
+   "lilies": 1.0
+  },
+  "rainforest": {
+   "trees": 1.35,
+   "open": 0.3,
+   "deadwood": 0.8,
+   "understory": 1.7,
+   "shrubs": 1.4,
+   "rocks": 0.4,
+   "flowers": 0.5,
+   "grass": 0.3,
+   "reeds": 1.2,
+   "lilies": 1.4
+  },
+  "plains": {
+   "trees": 0.2,
+   "open": 1.4,
+   "deadwood": 0.2,
+   "understory": 0.5,
+   "shrubs": 0.8,
+   "rocks": 0.7,
+   "flowers": 1.5,
+   "grass": 1.5,
+   "reeds": 1.0,
+   "lilies": 1.0
+  },
+  "swamp": {
+   "trees": 0.6,
+   "open": 0.3,
+   "deadwood": 3.0,
+   "understory": 1.2,
+   "shrubs": 0.8,
+   "rocks": 0.3,
+   "flowers": 0.4,
+   "grass": 1.1,
+   "reeds": 2.0,
+   "lilies": 2.0
+  },
+  "tundra": {
+   "trees": 0.25,
+   "open": 0.4,
+   "deadwood": 1.5,
+   "understory": 0.3,
+   "shrubs": 0.5,
+   "rocks": 1.6,
+   "flowers": 0.4,
+   "grass": 0.8,
+   "reeds": 0.4,
+   "lilies": 0.2
+  },
+  "mountains": {
+   "trees": 0.35,
+   "open": 0.3,
+   "deadwood": 0.8,
+   "understory": 0.4,
+   "shrubs": 0.4,
+   "rocks": 2.4,
+   "flowers": 0.4,
+   "grass": 0.6,
+   "reeds": 0.3,
+   "lilies": 0.2
+  },
+  "snow": {
+   "trees": 0.08,
+   "open": 0.0,
+   "deadwood": 0.3,
+   "understory": 0.0,
+   "shrubs": 0.0,
+   "rocks": 1.1,
+   "flowers": 0.0,
+   "grass": 0.0,
+   "reeds": 0.0,
+   "lilies": 0.0
+  },
+  "glacier": {
+   "trees": 0.0,
+   "open": 0.0,
+   "deadwood": 0.0,
+   "understory": 0.0,
+   "shrubs": 0.0,
+   "rocks": 0.7,
+   "flowers": 0.0,
+   "grass": 0.0,
+   "reeds": 0.0,
+   "lilies": 0.0
+  },
+  "desert": {
+   "trees": 0.03,
+   "open": 0.05,
+   "deadwood": 0.6,
+   "understory": 0.05,
+   "shrubs": 0.25,
+   "rocks": 1.4,
+   "flowers": 0.05,
+   "grass": 0.12,
+   "reeds": 0.6,
+   "lilies": 0.2
+  },
+  "beach": {
+   "trees": 0.1,
+   "open": 0.2,
+   "deadwood": 0.3,
+   "understory": 0.1,
+   "shrubs": 0.3,
+   "rocks": 0.6,
+   "flowers": 0.2,
+   "grass": 0.35,
+   "reeds": 0.1,
+   "lilies": 0.0
+  },
+  "volcanic": {
+   "trees": 0.0,
+   "open": 0.0,
+   "deadwood": 0.4,
+   "understory": 0.0,
+   "shrubs": 0.0,
+   "rocks": 2.0,
+   "flowers": 0.0,
+   "grass": 0.0,
+   "reeds": 0.0,
+   "lilies": 0.0
+  },
+  "sea": {
+   "lilies": 0.0,
+   "reeds": 0.1
+  },
+  "lake": {
+   "lilies": 1.0,
+   "reeds": 1.0
+  }
+ },
+ "layers": [
+  {
+   "id": "trees",
+   "place": {
+    "kind": "field",
+    "spacing": 4
+   },
+   "chance": 0.75,
+   "density": [
+    {
+     "field": "forest",
+     "ramp": [
+      0.44,
+      0.56
+     ]
+    },
+    {
+     "field": "grove",
+     "ramp": [
+      0.3,
+      0.52
+     ]
+    }
+   ],
+   "biome": "trees",
+   "slope": [
+    0,
+    0.55
+   ],
+   "aboveWater": [
+    0.8,
+    null
+   ],
+   "avoid": {
+    "trees": 2.6
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_01",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_02",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_03",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_04",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Thin_01",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Thin_02",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Large_01",
+     "weight": 0.6,
+     "scale": [
+      0.7,
+      0.95
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Large_02",
+     "weight": 0.6,
+     "scale": [
+      0.7,
+      0.95
+     ]
+    }
+   ],
+   "biomeAssets": {
+    "tundra": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_01",
+      "weight": 2,
+      "scale": [
+       0.45,
+       0.7
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_02",
+      "weight": 1,
+      "scale": [
+       0.4,
+       0.6
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_04",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_05",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+      "weight": 1
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+      "weight": 1
+     }
+    ],
+    "mountains": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_01",
+      "weight": 2,
+      "scale": [
+       0.45,
+       0.7
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_02",
+      "weight": 1,
+      "scale": [
+       0.4,
+       0.6
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_04",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_05",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+      "weight": 1
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+      "weight": 1
+     }
+    ],
+    "snow": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_01",
+      "weight": 2,
+      "scale": [
+       0.45,
+       0.7
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_02",
+      "weight": 1,
+      "scale": [
+       0.4,
+       0.6
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_04",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_05",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+      "weight": 1
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+      "weight": 1
+     }
+    ],
+    "rainforest": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Large_01",
+      "weight": 2,
+      "scale": [
+       0.8,
+       1.1
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Large_02",
+      "weight": 2,
+      "scale": [
+       0.8,
+       1.1
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Round_02",
+      "weight": 2,
+      "scale": [
+       1.0,
+       1.35
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Round_03",
+      "weight": 2,
+      "scale": [
+       1.0,
+       1.35
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Round_04",
+      "weight": 2,
+      "scale": [
+       1.0,
+       1.35
+      ]
+     }
+    ],
+    "swamp": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Dead_01",
+      "weight": 2
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Dead_02",
+      "weight": 2
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Dead_03",
+      "weight": 1
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_01",
+      "weight": 2
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_02",
+      "weight": 2
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+      "weight": 2
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+      "weight": 2
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Round_01",
+      "weight": 1
+     }
+    ]
+   },
+   "scale": [
+    0.8,
+    1.2
+   ],
+   "collision": {
+    "shape": "box",
+    "halfExtents": [
+     0.4,
+     2.5,
+     0.4
+    ],
+    "motion": "static"
+   }
+  },
+  {
+   "id": "loneTrees",
+   "place": {
+    "kind": "field",
+    "spacing": 16
+   },
+   "chance": 0.18,
+   "density": [
+    {
+     "field": "forest",
+     "ramp": [
+      0.26,
+      0.34,
+      0.42,
+      0.46
+     ]
+    }
+   ],
+   "biome": "open",
+   "slope": [
+    0,
+    0.45
+   ],
+   "aboveWater": [
+    0.8,
+    null
+   ],
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_01",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_02",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_03",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Round_04",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Large_01",
+     "weight": 1,
+     "scale": [
+      0.75,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Large_02",
+     "weight": 1,
+     "scale": [
+      0.75,
+      1.0
+     ]
+    }
+   ],
+   "biomeAssets": {
+    "tundra": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_01",
+      "weight": 2,
+      "scale": [
+       0.45,
+       0.7
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_02",
+      "weight": 1,
+      "scale": [
+       0.4,
+       0.6
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_04",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_05",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+      "weight": 1
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+      "weight": 1
+     }
+    ],
+    "mountains": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_01",
+      "weight": 2,
+      "scale": [
+       0.45,
+       0.7
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_02",
+      "weight": 1,
+      "scale": [
+       0.4,
+       0.6
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_04",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Pine_Cluster_05",
+      "weight": 2,
+      "scale": [
+       0.5,
+       0.75
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_03",
+      "weight": 1
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Tree_Thin_04",
+      "weight": 1
+     }
+    ]
+   },
+   "scale": [
+    0.9,
+    1.3
+   ],
+   "collision": {
+    "shape": "box",
+    "halfExtents": [
+     0.4,
+     2.5,
+     0.4
+    ],
+    "motion": "static"
+   }
+  },
+  {
+   "id": "deadfall",
+   "place": {
+    "kind": "field",
+    "spacing": 8
+   },
+   "chance": 0.14,
+   "density": [
+    {
+     "field": "forest",
+     "ramp": [
+      0.5,
+      0.62
+     ]
+    }
+   ],
+   "biome": "deadwood",
+   "slope": [
+    0,
+    0.6
+   ],
+   "aboveWater": [
+    0.5,
+    null
+   ],
+   "avoid": {
+    "trees": 2.5
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Dead_01",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Dead_02",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Tree_Dead_03",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Generic_TreeStump_01",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Leaves_01",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Leaves_02",
+     "weight": 2
+    }
+   ],
+   "scale": [
+    0.8,
+    1.1
+   ]
+  },
+  {
+   "id": "understory",
+   "place": {
+    "kind": "around",
+    "parent": "trees",
+    "chance": 0.7,
+    "count": [
+     1,
+     3
+    ],
+    "radius": [
+     1.1,
+     3.4
+    ]
+   },
+   "biome": "understory",
+   "slope": [
+    0,
+    0.8
+   ],
+   "aboveWater": [
+    0.4,
+    null
+   ],
+   "avoid": {
+    "trees": 0.9
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Fern_01",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Fern_02",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Fern_03",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Fern_04",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_01",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_02",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_03",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_04",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_05",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Leaves_01",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Leaves_02",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Leaves_03",
+     "weight": 1.5
+    }
+   ],
+   "scale": [
+    0.8,
+    1.3
+   ]
+  },
+  {
+   "id": "edgeShrubs",
+   "place": {
+    "kind": "field",
+    "spacing": 4
+   },
+   "chance": 0.4,
+   "density": [
+    {
+     "field": "forest",
+     "ramp": [
+      0.36,
+      0.42,
+      0.47,
+      0.53
+     ]
+    }
+   ],
+   "biome": "shrubs",
+   "slope": [
+    0,
+    0.6
+   ],
+   "aboveWater": [
+    0.6,
+    null
+   ],
+   "avoid": {
+    "trees": 2.2,
+    "loneTrees": 2.2
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_01",
+     "weight": 3,
+     "scale": [
+      0.35,
+      0.6
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_02",
+     "weight": 3,
+     "scale": [
+      0.35,
+      0.6
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_03",
+     "weight": 3,
+     "scale": [
+      0.35,
+      0.6
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_04",
+     "weight": 3,
+     "scale": [
+      0.35,
+      0.6
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_05",
+     "weight": 3,
+     "scale": [
+      0.35,
+      0.6
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_06",
+     "weight": 3,
+     "scale": [
+      0.35,
+      0.6
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Flowers_01",
+     "weight": 1.5,
+     "scale": [
+      0.7,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Flowers_02",
+     "weight": 1.5,
+     "scale": [
+      0.7,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Flowers_03",
+     "weight": 1.5,
+     "scale": [
+      0.7,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Flowers_04",
+     "weight": 1.5,
+     "scale": [
+      0.7,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Flowers_05",
+     "weight": 1.5,
+     "scale": [
+      0.7,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Flowers_06",
+     "weight": 1.5,
+     "scale": [
+      0.7,
+      1.0
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_01",
+     "weight": 2,
+     "scale": [
+      0.9,
+      1.4
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_02",
+     "weight": 2,
+     "scale": [
+      0.9,
+      1.4
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_03",
+     "weight": 2,
+     "scale": [
+      0.9,
+      1.4
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_04",
+     "weight": 2,
+     "scale": [
+      0.9,
+      1.4
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Bush_Small_05",
+     "weight": 2,
+     "scale": [
+      0.9,
+      1.4
+     ]
+    }
+   ],
+   "scale": [
+    0.8,
+    1.2
+   ]
+  },
+  {
+   "id": "outcrops",
+   "place": {
+    "kind": "field",
+    "spacing": 8
+   },
+   "chance": 0.3,
+   "density": [
+    {
+     "field": "rocky",
+     "ramp": [
+      0.54,
+      0.68
+     ]
+    }
+   ],
+   "biome": "rocks",
+   "slope": [
+    0,
+    2.5
+   ],
+   "slopeBoost": 2.5,
+   "aboveWater": [
+    0.2,
+    null
+   ],
+   "avoid": {
+    "trees": 3.0,
+    "outcrops": 5.0
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_01",
+     "weight": 3,
+     "scale": [
+      0.9,
+      1.4
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_02",
+     "weight": 3,
+     "scale": [
+      0.7,
+      1.1
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_03",
+     "weight": 2,
+     "scale": [
+      0.6,
+      0.9
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_05",
+     "weight": 1,
+     "scale": [
+      0.5,
+      0.75
+     ]
+    }
+   ],
+   "biomeAssets": {
+    "mountains": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_02",
+      "weight": 2,
+      "scale": [
+       0.9,
+       1.3
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_03",
+      "weight": 2,
+      "scale": [
+       0.8,
+       1.2
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_05",
+      "weight": 2,
+      "scale": [
+       0.7,
+       1.0
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_03",
+      "weight": 0.5,
+      "scale": [
+       0.35,
+       0.5
+      ]
+     }
+    ],
+    "volcanic": [
+     {
+      "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_03",
+      "weight": 2,
+      "scale": [
+       0.8,
+       1.3
+      ]
+     },
+     {
+      "asset": "fantasy-kingdom/SM_Env_Rock_Cliff_05",
+      "weight": 2,
+      "scale": [
+       0.7,
+       1.0
+      ]
+     }
+    ]
+   },
+   "scale": [
+    0.8,
+    1.2
+   ],
+   "collision": {
+    "shape": "box",
+    "halfExtents": [
+     1.0,
+     0.8,
+     1.0
+    ],
+    "motion": "static"
+   }
+  },
+  {
+   "id": "scree",
+   "place": {
+    "kind": "around",
+    "parent": "outcrops",
+    "chance": 1.0,
+    "count": [
+     3,
+     8
+    ],
+    "radius": [
+     1.0,
+     2.8
+    ],
+    "scaleWithParent": true,
+    "downhill": 0.75
+   },
+   "slope": [
+    0,
+    2.5
+   ],
+   "aboveWater": [
+    0.0,
+    null
+   ],
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_01",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_02",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_03",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_04",
+     "weight": 4
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_Chunk_01",
+     "weight": 1,
+     "scale": [
+      0.25,
+      0.45
+     ]
+    }
+   ],
+   "scale": [
+    0.7,
+    1.8
+   ]
+  },
+  {
+   "id": "rockGrass",
+   "place": {
+    "kind": "around",
+    "parent": "outcrops",
+    "chance": 0.8,
+    "count": [
+     2,
+     5
+    ],
+    "radius": [
+     0.8,
+     2.0
+    ],
+    "scaleWithParent": true
+   },
+   "biome": "grass",
+   "slope": [
+    0,
+    0.9
+   ],
+   "aboveWater": [
+    0.3,
+    null
+   ],
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Grass_Tuft_01",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Grass_Tuft_02",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Grass_Tuft_03",
+     "weight": 2
+    }
+   ],
+   "scale": [
+    0.9,
+    1.4
+   ]
+  },
+  {
+   "id": "pebbles",
+   "place": {
+    "kind": "field",
+    "spacing": 8
+   },
+   "chance": 0.16,
+   "density": [
+    {
+     "field": "rocky",
+     "ramp": [
+      0.44,
+      0.58
+     ]
+    }
+   ],
+   "biome": "rocks",
+   "slope": [
+    0,
+    1.2
+   ],
+   "aboveWater": [
+    0.1,
+    null
+   ],
+   "avoid": {
+    "trees": 1.5
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Generic_Small_Rocks_01",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Generic_Small_Rocks_02",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_01",
+     "weight": 1,
+     "scale": [
+      1.2,
+      2.2
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_02",
+     "weight": 1,
+     "scale": [
+      1.2,
+      2.2
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_03",
+     "weight": 1,
+     "scale": [
+      1.2,
+      2.2
+     ]
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Rock_04",
+     "weight": 1,
+     "scale": [
+      1.2,
+      2.2
+     ]
+    }
+   ],
+   "scale": [
+    0.8,
+    1.3
+   ]
+  },
+  {
+   "id": "meadowPatch",
+   "place": {
+    "kind": "field",
+    "spacing": 8
+   },
+   "chance": 0.6,
+   "density": [
+    {
+     "field": "meadow",
+     "ramp": [
+      0.48,
+      0.6
+     ]
+    },
+    {
+     "field": "forest",
+     "ramp": [
+      0.2,
+      0.3,
+      0.46,
+      0.52
+     ]
+    }
+   ],
+   "biome": "flowers",
+   "slope": [
+    0,
+    0.45
+   ],
+   "aboveWater": [
+    0.6,
+    null
+   ],
+   "hidden": true,
+   "assets": [],
+   "scale": [
+    1,
+    1
+   ]
+  },
+  {
+   "id": "wildflowers",
+   "place": {
+    "kind": "around",
+    "parent": "meadowPatch",
+    "chance": 1.0,
+    "count": [
+     5,
+     12
+    ],
+    "radius": [
+     0.3,
+     2.8
+    ]
+   },
+   "slope": [
+    0,
+    0.55
+   ],
+   "aboveWater": [
+    0.5,
+    null
+   ],
+   "avoid": {
+    "trees": 1.6,
+    "loneTrees": 1.6,
+    "outcrops": 1.4
+   },
+   "samePick": true,
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_01",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_02",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_03",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_04",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_05",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_06",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_07",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_08",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_09",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_10",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_11",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_12",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_13",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_14",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_15",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_16",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_17",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_18",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_19",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_20",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_21",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_22",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_23",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_24",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Sunflower_01",
+     "weight": 0.3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Sunflower_02",
+     "weight": 0.3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Sunflower_03",
+     "weight": 0.3
+    }
+   ],
+   "scale": [
+    0.8,
+    1.15
+   ]
+  },
+  {
+   "id": "strayFlowers",
+   "place": {
+    "kind": "field",
+    "spacing": 4
+   },
+   "chance": 0.05,
+   "density": [
+    {
+     "field": "meadow",
+     "ramp": [
+      0.42,
+      0.52
+     ]
+    }
+   ],
+   "biome": "flowers",
+   "slope": [
+    0,
+    0.5
+   ],
+   "aboveWater": [
+    0.5,
+    null
+   ],
+   "avoid": {
+    "trees": 1.6,
+    "outcrops": 1.4
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_01",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_02",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_03",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_04",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_05",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_06",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_07",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_08",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_09",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_10",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_11",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_12",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_13",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_14",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_15",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_16",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_17",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_18",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_19",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_20",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_21",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_22",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_23",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Flowers_24",
+     "weight": 1
+    }
+   ],
+   "scale": [
+    0.8,
+    1.1
+   ]
+  },
+  {
+   "id": "grass",
+   "place": {
+    "kind": "field",
+    "spacing": 2
+   },
+   "chance": 0.2,
+   "density": [
+    {
+     "field": "meadow",
+     "ramp": [
+      0.34,
+      0.46
+     ]
+    }
+   ],
+   "biome": "grass",
+   "slope": [
+    0,
+    0.7
+   ],
+   "aboveWater": [
+    0.3,
+    null
+   ],
+   "avoid": {
+    "trees": 1.0,
+    "outcrops": 1.2
+   },
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Grass_Tuft_01",
+     "weight": 3
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Grass_Tuft_02",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Grass_Tuft_03",
+     "weight": 2
+    }
+   ],
+   "scale": [
+    0.9,
+    1.5
+   ]
+  },
+  {
+   "id": "reedbed",
+   "place": {
+    "kind": "field",
+    "spacing": 4
+   },
+   "chance": 0.55,
+   "biome": "reeds",
+   "aboveWater": [
+    -0.4,
+    0.4
+   ],
+   "hidden": true,
+   "assets": [],
+   "scale": [
+    1,
+    1
+   ]
+  },
+  {
+   "id": "reeds",
+   "place": {
+    "kind": "around",
+    "parent": "reedbed",
+    "chance": 1.0,
+    "count": [
+     3,
+     9
+    ],
+    "radius": [
+     0.2,
+     1.8
+    ]
+   },
+   "aboveWater": [
+    -0.5,
+    0.5
+   ],
+   "samePick": true,
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Reeds_01",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Reeds_02",
+     "weight": 1
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Reeds_03",
+     "weight": 1
+    }
+   ],
+   "scale": [
+    0.8,
+    1.25
+   ]
+  },
+  {
+   "id": "lilies",
+   "place": {
+    "kind": "field",
+    "spacing": 4
+   },
+   "chance": 0.35,
+   "biome": "lilies",
+   "aboveWater": [
+    -1.6,
+    -0.3
+   ],
+   "onWater": true,
+   "assets": [
+    {
+     "asset": "fantasy-kingdom/SM_Env_Lily_01",
+     "weight": 2
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Lily_02",
+     "weight": 1.5
+    },
+    {
+     "asset": "fantasy-kingdom/SM_Env_Lily_03",
+     "weight": 1
+    }
+   ],
+   "scale": [
+    0.8,
+    1.2
+   ]
+  }
+ ]
+}

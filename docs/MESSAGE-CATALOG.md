@@ -4,21 +4,24 @@ Mirrors Phase 1 plan §2. Envelope for every message: `[u8 type][payload]`.
 Control plane = JSON (debuggable); data plane = FlatBuffers (hot path).
 u64 ids travel as JSON strings (JS number precision).
 
-**Protocol version: 4** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration).
+**Protocol version: 6** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons).
 
 | Type | Name | Dir | Encoding | Fields | Purpose / frequency |
 |------|------|-----|----------|--------|---------------------|
-| 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 4, client: string, username: string, password: string, want_snapshot: bool}` · token: `{protocol: 4, client: string, token: "64 hex", want_snapshot: bool}` — exactly one variant | Authentication. Once per connection. |
-| 0x02 | `welcome` | S→C | JSON | `{protocol: 4, player_entity: "u64", server_tick: u64, tick_hz: 30, snapshot_every: 300, session_token: "64 hex", world?: {name, chunkWorldSize, bounds, map, seaLevel?}}` — `world` for baked worlds: the chunk range and a coarse (16 m) map of the whole world, base64 layers: `heights` (u16 over min/maxHeight), `biome` + `biomes` ids, `river`, and `water` (u16 surface of the sea and lakes, 0xffff dry; optional) · `day?: {seconds, offset}` — the world's day clock (optional; absent = no day cycle) | Assigns identity, syncs clock/cadence params, issues the session token; the world map draws the far horizon, ground colours and water; the day clock gives every client the same time of day (`timeOfDayAt(day, tick, tick_hz)` = `offset + tick / tick_hz / seconds`, wrapped to 0..1, 0 = midnight). Once per connection. |
-| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, BodyConfig, AssetRef, Locomotion), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
+| 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 6, client: string, username: string, password: string, want_snapshot: bool, characters?: bool}` · token: `{protocol: 6, client: string, token: "64 hex", want_snapshot: bool, characters?: bool}` — exactly one variant | Authentication. Once per connection. `characters: true`: choose a character before entering the world (answered with `account`, see [Characters](#characters-protocol-v5)). |
+| 0x02 | `welcome` | S→C | JSON | `{protocol: 6, player_entity: "u64", server_tick: u64, tick_hz: 30, snapshot_every: 300, session_token: "64 hex", world?: {name, chunkWorldSize, bounds, map, seaLevel?}, character?: {id, name}, day?: {seconds, offset}}` — `character` when the player entered as one; — `world` for baked worlds: the chunk range and a coarse (16 m) map of the whole world, base64 layers: `heights` (u16 over min/maxHeight), `biome` + `biomes` ids, `river`, and `water` (u16 surface of the sea and lakes, 0xffff dry; optional) · `day` — the world's day clock (optional; absent = no day cycle) | Assigns identity, syncs clock/cadence params, issues the session token; the world map draws the far horizon, ground colours and water; the day clock gives every client the same time of day (`timeOfDayAt(day, tick, tick_hz)` = `offset + tick / tick_hz / seconds`, wrapped to 0..1, 0 = midnight). Once per connection. |
+| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, BodyConfig, AssetRef, Locomotion, Appearance, Action), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
 | 0x04 | `delta` | S→C | FlatBuffers `Delta` | tick, base_tick, changed component blocks only, spawned[], despawned[] | Per-tick state-change events (EDA: state out as events). 30 Hz. |
 | 0x05 | `intent` | C→S | FlatBuffers `IntentMessage` | `{client_tick: u64, entity: u64, intent: PlayerIntent}` | Player input events into the sim (EDA: intents in as events). ≤ 1 per tick per client. |
 | 0x06 | `ping` | C↔S | JSON | `{t: client_ms}` | Heartbeat + RTT. Every 5 s. |
 | 0x07 | `pong` | C↔S | JSON | `{t: client_ms}` | Heartbeat reply. |
-| 0x08 | `error` | S→C | JSON | `{code: int, message: string}` | Protocol/auth/server errors. Codes: 4001 bad-protocol, 4002 auth-failed, 4003 malformed, 4004 server-error. As needed. |
+| 0x08 | `error` | S→C | JSON | `{code: int, message: string}` | Protocol/auth/server errors. Codes: 4001 bad-protocol, 4002 auth-failed, 4003 malformed, 4004 server-error, 4005 refused (a well-formed request the server declines — a taken character name, a refused look; the connection stays open). As needed. |
 | 0x09 | `bye` | either | JSON | `{reason: string}` | Graceful disconnect notice. |
 | 0x0a | `debug` | C→S / S→C | JSON | query: `{kind:"debug", query:"waypoints", entity:"u64"}` or `{kind:"debug", query:"tiles"}` · response: `{kind:"debug", query:"waypoints", entity, status:"active"\|"idle"\|"failed"\|"unknown", waypoints:[[x,y,z]…]}` or `{kind:"debug", query:"tiles", tiles:[[x0,z0,x1,z1]…]}` | **Editor-only, read-only.** Live answers the delta stream doesn't carry (path waypoints live server-side; navmesh tile bounds). Requires a welcomed session; malformed/unknown → 4003. Never touches sim state. |
-| 0x0b | `register` | C→S | JSON | `{protocol: 4, client: string, username: string, password: string}` — username 3–32 chars `[A-Za-z0-9_-]`, password 8–128 chars | **In-client account creation.** Creates the account (argon2id-hashed, never stored/logged in plaintext), mints a session, then joins exactly like a credentials hello: `welcome` + snapshot. Once per connection. Failures: 4002 username-taken / registration-disabled / too-many-attempts, 4003 malformed, 4001 protocol mismatch. Registration attempts share the per-IP auth budget with logins. Disable server-side with `MMO_ALLOW_REGISTER=0` (do this before any public deployment). |
+| 0x0b | `register` | C→S | JSON | `{protocol: 6, client: string, username: string, password: string, characters?: bool}` — username 3–32 chars `[A-Za-z0-9_-]`, password 8–128 chars | **In-client account creation.** Creates the account (argon2id-hashed, never stored/logged in plaintext), mints a session, then joins exactly like a credentials hello: `welcome` + snapshot. Once per connection. Failures: 4002 username-taken / registration-disabled / too-many-attempts, 4003 malformed, 4001 protocol mismatch. Registration attempts share the per-IP auth budget with logins. Disable server-side with `MMO_ALLOW_REGISTER=0` (do this before any public deployment). |
+| 0x0c | `account` | S→C | JSON | `{session_token: "64 hex", characters: [{id: int, name: string, look: Look}], max_characters: int, created?: int}` | The account's characters, after a hello/register with `characters: true` and after each `create_character` (`created` = the new one's id). |
+| 0x0d | `create_character` | C→S | JSON | `{name: string, look: Look}` — name 3–16 chars `[A-Za-z'-]`, starting with a letter | Creates a character while choosing (answered with `account`). Refusals are 4005 (name taken, account full, look refused); a bad shape is 4003. |
+| 0x0e | `enter_world` | C→S | JSON | `{character: int}` | Enters the world as one of the account's characters: `welcome` + snapshot. Someone else's or an unknown id is 4005. |
 
 ## Authentication (slice 1.4)
 
@@ -84,6 +87,74 @@ Notes:
 - Schema addition for `intent`: `table IntentMessage { client_tick: uint64;
   entity: uint64; intent: PlayerIntent; }` (slice 1.3, additive, DRY — one
   schema).
+
+## Characters (protocol v5)
+
+A player plays a **character**: a name and a look, owned by the account
+(stored in `characters.db`, SQLite, next to `users.csv`). A client that
+lets the player choose sends `characters: true` in its `hello` or
+`register`. After authenticating, the server answers `account` (0x0c) —
+the account's characters — and waits: the session is authenticated but
+not in the world (no entity, no deltas). The client then sends:
+
+- `create_character` (0x0d) `{name, look}`: the server checks the name
+  (3–16 letters, `'` or `-`, starting with a letter; unique on the
+  server, ignoring case), the account's limit (8), and the look, stores
+  the character, and answers `account` again with `created` set.
+- `enter_world` (0x0e) `{character}`: the server spawns the avatar with
+  the character's look and answers `welcome` (with `character`) +
+  snapshot, exactly as a join.
+
+**Look** (`@mmo-engine/art` `CharacterLook`): `{gender: "male" |
+"female", parts: {slot: partName}, colours: {slot: "#rrggbb"}}`. Parts
+are the Modular Fantasy Hero pack's (`Chr_Head_Female_04`, `Chr_Hair_12`,
+…); a missing body slot is the starter armour (set 01), a missing detail
+slot is empty. A **new** character wears the starter armour and no
+attachments; only its appearance is chosen: face (which brings the eyes),
+hair, eyebrows, facial hair (men), ears, and the colours of skin, hair,
+stubble, scars and body art. The server validates against the pack's part
+catalog when it has the art (`MMO_CHARACTER_CATALOG`, default the
+converted pack under `assets/`), and structurally otherwise, then stores
+the look in canonical JSON.
+
+A **character is in the world once**: entering it while another session
+plays it ends that session (4005 "entered the world elsewhere", then
+close) and removes its avatar. A session remembers its character, so a
+token reconnect after the grace period re-enters as it directly
+(`welcome`, no `account`). Without `characters: true` (the editor, tools,
+older flows) a login joins at once as the account's first character, or
+with a default look when it has none.
+
+**Appearance on the wire.** Every entity with a look carries the
+`Appearance` component (ComponentId 10): `{look: string}`, the canonical
+look JSON. Configuration, like BodyConfig: in every snapshot, in deltas
+only when it changes (the server interns looks, so the diff compares
+ids). Clients assemble the modular character from it — players now, enemy
+humans later.
+
+## Combat (protocol v6)
+
+Intent buttons (PlayerIntent.buttons): `Attack` 0x02 and `Dodge` 0x08 act
+on the press, `Block` 0x04 while held (with `ToggleFlight` 0x01). The
+client sends left mouse as Attack, right mouse held as Block, Q as Dodge.
+
+The server's CombatSystem runs each character's move — the moves, their
+clips, timings, chain windows and travel are shared data
+(`@mmo-engine/protocol` `COMBAT_MOVES`) — and sends it as the **Action**
+component (ComponentId 11): `{move: u16, started: u32 tick, seq: u8, yaw:
+f32}`. `move` 0 is none; `seq` changes with every new move (the same move
+again restarts); `yaw` is the move's facing. Clients play the move's clip
+from `started` and face `yaw`; the server alone moves the character (the
+walk slowed to the move's `moveScale`, plus its `advance` — a lunge, the
+roll's 4.5 m).
+
+The sword combo is three hits: an attack pressed in a hit's chain window
+queues the next hit, which starts when the hit lands (facing where the
+player then looks); with nothing queued, the hit's recovery plays (and a
+press early in it still continues the combo). Block held raises the
+guard (walking at 35%); attack while guarding bashes with the shield.
+Dodge rolls the way you move (or look). Moves start only on the ground.
+Damage and hit reactions are a later step.
 
 ## Movement: walking, swimming, flying
 

@@ -34,6 +34,8 @@ export {
   MAX_PATH_WAYPOINTS,
   AssetRef,
   Locomotion,
+  Appearance,
+  Action,
 } from "./components.js";
 
 export { SimWorld, SimEventEmitter } from "./world.js";
@@ -83,6 +85,8 @@ export type {
   BodyConfigRow,
   AssetRefRow,
   LocomotionRow,
+  AppearanceRow,
+  ActionRow,
   CollectedState,
   DiffResult,
 } from "./snapshot.js";
@@ -223,3 +227,17 @@ export type {
   ChunkStreamerOptions,
   ChunkStreamerStats,
 } from "./streaming/chunk-streamer.js";
+
+export {
+  CharacterRefusedError,
+  CHARACTER_NAME_RE,
+  checkNewLook,
+  DEFAULT_LOOK_JSON,
+  DEFAULT_MAX_CHARACTERS,
+  loadCharacterCatalog,
+  MemoryCharacterStore,
+  SqliteCharacterStore,
+} from "./characters/index.js";
+export type { CharacterRecord, CharacterStore } from "./characters/index.js";
+
+export { CombatSystem } from "./combat.js";

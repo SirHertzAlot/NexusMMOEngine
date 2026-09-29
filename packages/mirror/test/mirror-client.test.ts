@@ -19,6 +19,7 @@ import {
   encodeSnapshot,
   MessageType,
   PROTOCOL_VERSION,
+  type AccountMessage,
   type HelloMessage,
   type RegisterMessage,
   type WelcomeMessage,
@@ -414,5 +415,68 @@ describe("MirrorClient.debug (0x0a)", () => {
       client.debug({ kind: "debug", query: "tiles" }),
       /not connected/,
     );
+  });
+});
+
+describe("MirrorClient characters", () => {
+  const LOOK = { gender: "female", parts: { head: "Chr_Head_Female_02" }, colours: { skin: "#8d5524" } };
+  const account = (characters: AccountMessage["characters"], created?: number): Uint8Array =>
+    encodeEnvelope(
+      MessageType.Account,
+      encodeControl({ session_token: "cd".repeat(32), characters, max_characters: 8, ...(created ? { created } : {}) } satisfies AccountMessage),
+    );
+  const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+  it("join → account, createCharacter → account, enterWorld → welcome", async () => {
+    let socket!: FakeSocket;
+    const client = new MirrorClient(() => (socket = new FakeSocket()), {
+      onWelcome: () => {}, onState: () => {}, onError: () => {}, onClose: () => {},
+    });
+    const joined = client.join("ws://localhost:7777", "game", { username: "joey", password: "secretpw" });
+    socket.open();
+    await tick();
+    const hello = decodeControl<HelloMessage>(decodeEnvelope(socket.lastOf(MessageType.Hello)).payload);
+    assert.equal(hello.characters, true);
+    socket.receive(account([]));
+    const first = await joined;
+    assert.equal(first.kind, "account");
+    assert.equal(client.sessionToken, "cd".repeat(32));
+    assert.equal(client.playerEntity, null, "not in the world yet");
+
+    const created = client.createCharacter("Arya", LOOK);
+    await tick();
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.CreateCharacter)).payload), { name: "Arya", look: LOOK });
+    socket.receive(account([{ id: 7, name: "Arya", look: LOOK }], 7));
+    assert.equal((await created).created, 7);
+    assert.equal(client.account?.characters.length, 1);
+
+    const entered = client.enterWorld(7);
+    await tick();
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.EnterWorld)).payload), { character: 7 });
+    socket.receive(welcomeBytes());
+    assert.equal((await entered).player_entity, PLAYER.toString());
+    assert.equal(client.playerEntity, PLAYER);
+  });
+
+  it("a refused create rejects with the reason and the connection stays usable", async () => {
+    let socket!: FakeSocket;
+    const client = new MirrorClient(() => (socket = new FakeSocket()), {
+      onWelcome: () => {}, onState: () => {}, onError: () => {}, onClose: () => {},
+    });
+    const joined = client.join("ws://localhost:7777", "game", { register: { username: "joey", password: "secretpw" } });
+    socket.open();
+    await tick();
+    assert.equal(decodeControl<RegisterMessage>(decodeEnvelope(socket.lastOf(MessageType.Register)).payload).characters, true);
+    socket.receive(account([]));
+    await joined;
+
+    const refused = client.createCharacter("Hodor", LOOK);
+    await tick();
+    socket.receive(encodeEnvelope(MessageType.Error, encodeControl({ code: 4005, message: "that name is taken" })));
+    await assert.rejects(refused, /4005 that name is taken/);
+    const again = client.createCharacter("Hodora", LOOK);
+    await tick();
+    socket.receive(account([{ id: 2, name: "Hodora", look: LOOK }], 2));
+    assert.equal((await again).created, 2);
   });
 });

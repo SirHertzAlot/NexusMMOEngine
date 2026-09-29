@@ -12,8 +12,12 @@
  *
  * Environment:
  *   MMO_PORT       WebSocket listen port (default 7777)
- *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv
- *                  (default ./data, relative to the process cwd)
+ *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
+ *                  characters.db (default ./data, relative to the process cwd)
+ *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
+ *                  against (default: the converted pack's catalog.json under
+ *                  the repo's assets/; without it looks are checked
+ *                  structurally only)
  *   MMO_WORLD_SEED procgen world seed (default 1234; a world baked from a
  *                  world spec uses the seed recorded at bake time)
  *   MMO_CHUNK_SIZE chunk world size in units (default 16)
@@ -22,6 +26,15 @@
  *   MMO_STREAM_RADIUS chunks loaded around each player (default 8 = 17x17,
  *                  272 m: past the client's fog)
  *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
+ *   MMO_SCATTER    what grows on new chunks: "ecology" (natural placement of
+ *                  the Synty nature set, content/ecology/wilds.ecology.json)
+ *                  or "pcg" (the PCG forest graph with PICG trees). Default:
+ *                  ecology when the art is on this machine, else pcg.
+ *   MMO_ECOLOGY    an ecology plan file (default: content/ecology/wilds.ecology.json)
+ *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
+ *                  sparring pairs and wanderers, with random looks
+ *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
+ *   MMO_BOTS_RADIUS how far from home they roam, metres (default 18)
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
  *   MMO_DAY_SECONDS real seconds in one game day (default 2400 = 40 min;
@@ -51,6 +64,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -68,7 +82,6 @@ import {
   terrainOptionsFromEnv,
   TerrainTileStore,
   SERVER_PID_FILE,
-  makeScatterPopulator,
   ChunkEntityStore,
   ChunkNavmesh,
   ChunkStreamer,
@@ -85,6 +98,11 @@ import {
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { CombatSystem } from "./combat.js";
+import { BotSystem } from "./bots.js";
+import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
+import { makeWorldPopulator } from "./procgen/world-populator.js";
+import { biomeLookup } from "./terrain/biome-lookup.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -263,7 +281,21 @@ async function main(): Promise<void> {
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   // Baked worlds have a sea: nothing is scattered below it.
   const seaLevelMeta = store.getMeta("sea_level");
-  const populator = makeScatterPopulator(worldSeed, CHUNK_SIZE, seaLevelMeta === null ? {} : { seaLevel: Number(seaLevelMeta) });
+  // Baked worlds have water: swimming happens against its surface, and
+  // shorelines grow reeds.
+  const water =
+    seaLevelMeta === null
+      ? null
+      : waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, Number(seaLevelMeta));
+  // What grows on new chunks (see world-populator: ecology or PCG).
+  const populator = makeWorldPopulator({
+    worldSeed,
+    chunkWorldSize: CHUNK_SIZE,
+    seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
+    biomeAt: biomeLookup(store, tiles) ?? undefined,
+    waterAt: water ?? undefined,
+    log: (l) => console.log(l),
+  });
   const streamer = new ChunkStreamer({
     terrain: procgen,
     worldSeed,
@@ -289,14 +321,21 @@ async function main(): Promise<void> {
   const credentialStore = new CsvCredentialStore(
     path.join(DATA_DIR, "users.csv"),
   );
+  const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
+  // The licensed modular pack is only on machines that have the art
+  // (assets/ is never committed): elsewhere looks are checked structurally.
+  const catalogFile =
+    process.env.MMO_CHARACTER_CATALOG ||
+    fileURLToPath(new URL("../../../../assets/models/glb/modular-fantasy-hero/Rigged/catalog.json", import.meta.url));
+  const characterCatalog = loadCharacterCatalog(catalogFile);
+  console.log(
+    characterCatalog
+      ? `[characters] ${characterCatalog.parts.length} modular parts (${catalogFile})`
+      : `[characters] no part catalog at ${catalogFile}: looks are checked structurally`,
+  );
   // Kinematic character control (gravity/jump/grounding) corrects the
   // integrated Y in the same tick, before snapshot collection. Players are
   // held inside the world's edge.
-  // Baked worlds have water: swimming happens against its surface.
-  const water =
-    seaLevelMeta === null
-      ? null
-      : waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, Number(seaLevelMeta));
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
   const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
   const character = new CharacterSystem({
@@ -311,12 +350,29 @@ async function main(): Promise<void> {
     },
     water: water ?? undefined,
   });
+  // Bots: they live in the world through the same systems as players.
+  const botCount = Number(process.env.MMO_BOTS ?? 0);
+  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number);
+  const bots =
+    botCount > 0
+      ? [
+          new BotSystem({
+            count: botCount,
+            home: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
+            radius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
+            catalog: characterCatalog,
+            groundHeightAt: (x, z) => character.groundHeight(x, z),
+            abilities: playerAbilities,
+          }),
+        ]
+      : [];
+  if (botCount > 0) console.log(`[bots] ${botCount} bots (sparring pairs and wanderers)`);
   const gw = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [streamer, new IntentSystem(), new IntegrateSystem(), character, physics, navigation],
+    systems: [streamer, ...bots, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),
@@ -324,6 +380,8 @@ async function main(): Promise<void> {
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
+    characterStore,
+    characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
     startTick: freshBoot ? 1 : restoredTick! + 1,

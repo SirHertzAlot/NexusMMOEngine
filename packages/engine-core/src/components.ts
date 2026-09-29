@@ -20,7 +20,7 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * Locomotion=9) for future compact wire formats; the current
+ * Appearance=10) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -121,6 +121,8 @@ export const COMPONENT_IDS = {
   PathState: 7,
   AssetRef: 8,
   Locomotion: 9,
+  Appearance: 10,
+  Action: 11,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -214,4 +216,30 @@ export const Locomotion = defineComponent({
   mode: Types.ui8,
   abilities: Types.ui8,
   breath: Types.f32,
+});
+
+// ---------------------------------------------------------------------------
+// Appearance (ComponentId 10): how a modular character looks. `look` is an
+// id into the SimWorld's look table (SimWorld.setLook / lookJson): looks
+// are canonical JSON strings, and SoA stores hold no strings. Equal looks
+// share an id, so the delta diff sees a change only when the look does.
+// Set at spawn (players: their character; enemy humans: a generated look).
+// ---------------------------------------------------------------------------
+
+export const Appearance = defineComponent({
+  look: Types.ui32,
+});
+
+// ---------------------------------------------------------------------------
+// Action (ComponentId 11): the combat move an entity is in — protocol Move
+// id (0 = none), the server tick it started, a sequence bumped with every
+// new move, and the facing it was made in (radians about +Y). Owned by
+// CombatSystem; clients play the move's clip from its start tick.
+// ---------------------------------------------------------------------------
+
+export const Action = defineComponent({
+  move: Types.ui16,
+  started: Types.ui32,
+  seq: Types.ui8,
+  yaw: Types.f32,
 });

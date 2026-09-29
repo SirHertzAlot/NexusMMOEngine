@@ -25,4 +25,10 @@ export const Ability = {
 export const IntentButton = {
   /** Take off / land (edge-triggered: press, not hold). Needs Ability.Fly. */
   ToggleFlight: 0x01,
+  /** Attack (press; a press in a hit's chain window continues the combo). */
+  Attack: 0x02,
+  /** Guard (held). */
+  Block: 0x04,
+  /** Dodge roll (press). */
+  Dodge: 0x08,
 } as const;

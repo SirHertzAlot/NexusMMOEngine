@@ -149,7 +149,7 @@ export function discoverPacks(sourceRoot: string): Pack[] {
 }
 
 /** Headless three.js: no image decoding, and GLTFExporter's binary path needs FileReader. */
-function installNodeShims(): void {
+export function installNodeShims(): void {
   THREE.TextureLoader.prototype.load = function load(): THREE.Texture<HTMLImageElement> {
     return new THREE.Texture() as THREE.Texture<HTMLImageElement>;
   };
@@ -193,7 +193,7 @@ interface Converted {
   folder: string | null;
 }
 
-function loadFbx(file: string): THREE.Group {
+export function loadFbx(file: string): THREE.Group {
   const buf = fs.readFileSync(file);
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   return new FBXLoader().parse(ab, `${path.dirname(file)}/`);

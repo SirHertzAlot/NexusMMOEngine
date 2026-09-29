@@ -1,8 +1,20 @@
 export { decodeControl, decodeEnvelope, encodeControl, encodeEnvelope } from "./envelope.js";
-export { MessageType, PROTOCOL_VERSION } from "./types.js";
+export { CHARACTER_NAME_RE, MessageType, PROTOCOL_VERSION } from "./types.js";
 export { formatTimeOfDay, timeOfDayAt } from "./day-clock.js";
 export type { DayClock } from "./day-clock.js";
-export type { DebugQuery, DebugResponse, ErrorMessage, HelloMessage, RegisterMessage, WelcomeMessage } from "./types.js";
+export type {
+  AccountMessage,
+  CharacterEntry,
+  CreateCharacterMessage,
+  DebugQuery,
+  DebugResponse,
+  EnterWorldMessage,
+  ErrorMessage,
+  HelloMessage,
+  RegisterMessage,
+  WelcomeMessage,
+  WireLook,
+} from "./types.js";
 export {
   decodeDelta,
   decodeIntentMessage,
@@ -21,6 +33,8 @@ export type {
   IntentFields,
   IntentRow,
   LocomotionRow,
+  AppearanceRow,
+  ActionRow,
   TransformRow,
   VelocityRow,
 } from "./codec.js";
@@ -37,3 +51,5 @@ export type { BrushStroke, BrushTool, TerrainTile } from "./terrain-grid.js";
 export { decodeWorldMap, encodeWorldMap } from "./world-info.js";
 export type { ChunkRange, WorldInfo, WorldMap, WorldMapWire } from "./world-info.js";
 export { Ability, IntentButton, LocomotionMode } from "./locomotion.js";
+export { COMBAT_MOVES, Move, combatMove, moveTravel } from "./combat.js";
+export type { CombatMove, MoveKind } from "./combat.js";

@@ -1,11 +1,13 @@
 /**
  * Mirror client app shell (Phase 3).
  *
- * Login screen → world screen. The world screen is WorldCanvas (a React
- * Three Fiber scene whose frame loop samples the Interpolator, syncs the
- * world, and forwards changed input as PlayerIntent events) under the
- * HUD: connection state, server tick, entity count, fps, and player
- * position.
+ * Login screen → character screen → world screen. After login the player
+ * chooses (or creates) a character, then enters the world as it
+ * (docs/MESSAGE-CATALOG.md §0x0c–0x0e). The world screen is WorldCanvas
+ * (a React Three Fiber scene whose frame loop samples the Interpolator,
+ * syncs the world, and forwards changed input as PlayerIntent events)
+ * under the HUD: connection state, server tick, entity count, fps, and
+ * player position.
  *
  * The session token lives in a ref (memory only) — reconnect presents
  * it via the token hello variant (docs/MESSAGE-CATALOG.md).
@@ -15,13 +17,14 @@
  */
 
 import { useMemo, useRef, useState } from "react";
-import type { WelcomeMessage } from "@mmo-engine/protocol";
-import { MirrorClient } from "@mmo-engine/mirror";
+import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
+import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type HudData } from "./render/world-canvas.js";
 import type { GpuInfo } from "./render/gpu.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
+import { CharacterScreen } from "./ui/character-screen.js";
 import {
   Button,
   Card,
@@ -32,7 +35,7 @@ import {
   Label,
 } from "./ui/components.js";
 
-type Screen = "login" | "connecting" | "world";
+type Screen = "login" | "connecting" | "characters" | "world";
 type AuthMode = "login" | "register";
 
 const MODE_LABEL = ["walking", "swimming", "flying"];
@@ -57,6 +60,8 @@ export function App(): React.ReactElement {
   const [wireframe, setWireframe] = useState(false);
   const [showcase, setShowcase] = useState(false);
   const [effects, setEffects] = useState(true);
+  const [account, setAccount] = useState<AccountMessage | null>(null);
+  const [characterName, setCharacterName] = useState<string | null>(null);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -68,6 +73,7 @@ export function App(): React.ReactElement {
     new MirrorClient((u) => new BrowserSocket(u), {
       onWelcome: (_w: WelcomeMessage) => {
         sessionTokenRef.current = _w.session_token;
+        setCharacterName(_w.character?.name ?? null);
       },
       onState: (tick: number) => {
         lastStateAtRef.current = performance.now();
@@ -84,19 +90,26 @@ export function App(): React.ReactElement {
 
   /**
    * Run one handshake (login, register, or token reconnect) against a
-   * fresh client. The server answers every path with the normal welcome
-   * + snapshot, so everything downstream is identical.
+   * fresh client. The server answers with the account's characters (the
+   * character screen) — or, for a token that already entered as a
+   * character, the welcome straight into the world.
    */
   const runHandshake = async (
-    handshake: (client: MirrorClient) => Promise<WelcomeMessage>,
+    handshake: (client: MirrorClient) => Promise<JoinReply>,
   ): Promise<void> => {
     setScreen("connecting");
     setError(null);
     const client = createClient();
     clientRef.current = client;
     try {
-      await handshake(client);
-      setScreen("world");
+      const reply = await handshake(client);
+      if (reply.kind === "account") {
+        sessionTokenRef.current = reply.account.session_token;
+        setAccount(reply.account);
+        setScreen("characters");
+      } else {
+        setScreen("world");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setScreen("login");
@@ -110,10 +123,20 @@ export function App(): React.ReactElement {
    */
   const launch = (): Promise<void> =>
     runHandshake((client) =>
-      mode === "register"
-        ? client.register(url, username || "mirror", username, password)
-        : client.connect(url, username || "mirror", { username, password }),
+      client.join(
+        url,
+        username || "mirror",
+        mode === "register" ? { register: { username, password } } : { username, password },
+      ),
     );
+
+  /** Enter the world as a character (the character screen). */
+  const enterWorld = async (id: number): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error("not connected");
+    await client.enterWorld(id);
+    setScreen("world");
+  };
 
   /** Reconnect with the stored session token (skips the password). */
   const reconnectWithToken = (): Promise<void> => {
@@ -121,7 +144,7 @@ export function App(): React.ReactElement {
     if (!token) return Promise.resolve();
     disconnect();
     return runHandshake((client) =>
-      client.connect(url, username || "mirror", { token }),
+      client.join(url, username || "mirror", { token }),
     );
   };
 
@@ -136,6 +159,7 @@ export function App(): React.ReactElement {
   const disconnect = (): void => {
     clientRef.current?.disconnect();
     clientRef.current = null;
+    setAccount(null);
     setScreen("login");
   };
 
@@ -161,6 +185,24 @@ export function App(): React.ReactElement {
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const toggleEffects = (): void => setEffects((v) => !v);
 
+  if (screen === "characters" && account) {
+    return (
+      <CharacterScreen
+        characters={account.characters}
+        maxCharacters={account.max_characters}
+        onCreate={async (name, look) => {
+          const client = clientRef.current;
+          if (!client) throw new Error("not connected");
+          const updated = await client.createCharacter(name, look);
+          setAccount(updated);
+          if (updated.created !== undefined) await enterWorld(updated.created);
+        }}
+        onEnter={enterWorld}
+        onLeave={disconnect}
+      />
+    );
+  }
+
   if (client) {
     return (
       <div className="relative h-full w-full">
@@ -176,7 +218,7 @@ export function App(): React.ReactElement {
           onHud={setHud}
         />
         <div className="absolute left-4 top-4 rounded-md bg-slate-950/75 px-4 py-3 text-sm shadow backdrop-blur-sm">
-          <div className="font-medium text-foreground">mirror client</div>
+          <div className="font-medium text-foreground">{characterName ?? "mirror client"}</div>
           <div className="mt-1 space-y-0.5 text-muted-foreground">
             <div>tick <span className="text-foreground">{hud.tick}</span></div>
             {hud.time && <div>time <span className="text-foreground">{hud.time}</span></div>}
@@ -211,6 +253,8 @@ export function App(): React.ReactElement {
           )}
           <div className="mt-2 text-xs text-muted-foreground">
             WASD move · Space jump / up · C down · F fly · mouse look (click canvas) · wheel zoom
+            <br />
+            left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
           </div>
         </div>
         <div className="absolute right-4 top-4 flex gap-2">

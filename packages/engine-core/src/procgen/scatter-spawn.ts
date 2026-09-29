@@ -64,6 +64,7 @@ import {
   type SpawnRecord,
   type SpawnTable,
 } from "@mmo-engine/scatter";
+import { planChunk, type EcologyPlan } from "./ecology.js";
 
 /** Narrow interface for the native scatter addon. */
 export interface ScatterBinding {
@@ -297,6 +298,43 @@ export function makeScatterPopulator(
         chunkWorldSize,
         minHeight: opts.seaLevel === undefined ? undefined : opts.seaLevel + SHORE_CLEARANCE_M,
       });
+    },
+  };
+}
+
+/**
+ * A chunk's first-load contents from an ecology plan (natural placement,
+ * see ecology.ts) instead of a scatter graph: same entities (Transform,
+ * AssetRef, collision), placed by the plan's formations.
+ */
+export function makeEcologyPopulator(
+  worldSeed: bigint,
+  chunkWorldSize: number,
+  opts: {
+    plan: EcologyPlan;
+    planHash: string;
+    biomeAt?: (x: number, z: number) => string | null;
+    waterAt?: (x: number, z: number) => number | null;
+    seaLevel?: number;
+  },
+): {
+  populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
+  readonly planHash: string;
+} {
+  return {
+    planHash: opts.planHash,
+    populate(world, cx, cz, heights) {
+      const points = planChunk(opts.plan, {
+        worldSeed,
+        cx,
+        cz,
+        heights,
+        chunkWorldSize,
+        biomeAt: opts.biomeAt,
+        waterAt: opts.waterAt,
+        seaLevel: opts.seaLevel,
+      });
+      for (const p of points) spawnScatterEntity(world, p);
     },
   };
 }

@@ -35,6 +35,9 @@
  * the normal welcome snapshot on connect.
  */
 
+import { makeWorldPopulator } from "./procgen/world-populator.js";
+import { biomeAtFromMap } from "./terrain/biome-lookup.js";
+import { waterSurfaceFromMaps } from "./terrain/water-surface.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,7 +47,6 @@ import {
   SimWorld,
   SnapshotStore,
   makeProcgenChunkSource,
-  makeScatterPopulator,
   terrainOptionsFromEnv,
   TerrainTileStore,
   makeTileChunkSource,
@@ -146,7 +148,19 @@ async function main(): Promise<void> {
     for (let dx = -RADIUS; dx <= RADIUS; dx++) area.push([scx + dx, scz + dz]);
   }
   const sim = new SimWorld();
-  const populator = makeScatterPopulator(worldSeed, chunkSize, spec ? { seaLevel: spec.land.seaLevel } : {});
+  // What grows (see world-populator): on a spec world by biome and water.
+  const biomeMap = tiles?.getMap("biome") ?? null;
+  const populator = makeWorldPopulator({
+    worldSeed,
+    chunkWorldSize: chunkSize,
+    seaLevel: spec?.land.seaLevel,
+    biomeAt: spec && biomeMap ? biomeAtFromMap(biomeMap, spec.biomes.map((b) => b.id)) : undefined,
+    waterAt:
+      spec && tiles
+        ? (waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, spec.land.seaLevel) ?? undefined)
+        : undefined,
+    log: (l) => console.log(l),
+  });
   const chunkStore = new ChunkEntityStore(dbPath);
   const chunks = new ChunkStreamer({
     terrain,

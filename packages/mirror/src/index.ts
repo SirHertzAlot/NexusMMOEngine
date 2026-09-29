@@ -8,7 +8,7 @@
  * (0x0a) ride the same connection.
  */
 export { MirrorClient } from "./client.js";
-export type { HelloAuth, MirrorEvents } from "./client.js";
+export type { HelloAuth, JoinAuth, JoinReply, MirrorEvents } from "./client.js";
 export { Interpolator } from "./interpolate.js";
 export { MirrorState } from "./state.js";
 export type { EntityMirror } from "./state.js";

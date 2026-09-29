@@ -189,6 +189,10 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     rt.current = { sky, particles, map, terrain, water, layer, input };
+    // Dev builds: a handle for probes (layer stats, scenery, input, client).
+    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { layer, input, client };
+    }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
       rt.current = null;
@@ -226,7 +230,10 @@ function MirrorWorld({
 
     const tickInterval = 1000 / (client.tickHz || 30);
     const alpha = Math.max(0, Math.min(1, (now - latest.current.lastStateAt()) / tickInterval));
-    r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity);
+    r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
+      tick: client.serverTick,
+      tickHz: client.tickHz || 30,
+    });
     if (l.pointerMoved) {
       l.pointerMoved = false;
       raycaster.current.setFromCamera(pointer.current, camera);

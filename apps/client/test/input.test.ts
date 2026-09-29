@@ -167,3 +167,24 @@ describe("InputState hygiene", () => {
     assert.equal(input.consumeDirty(), false);
   });
 });
+
+describe("InputState combat buttons", () => {
+  it("left mouse attacks, right mouse guards while held, Q dodges", () => {
+    const s = new InputState();
+    s.keyDown("Mouse2");
+    assert.equal(s.toIntent().buttons, IntentButton.Block);
+    s.keyDown("Mouse0");
+    s.keyDown("KeyQ");
+    assert.equal(s.toIntent().buttons, IntentButton.Block | IntentButton.Attack | IntentButton.Dodge);
+    s.keyUp("Mouse2");
+    assert.equal(s.toIntent().buttons, IntentButton.Attack | IntentButton.Dodge);
+  });
+
+  it("a click too quick for one frame still reaches the server as a press", () => {
+    const s = new InputState();
+    s.keyDown("Mouse0");
+    s.keyUp("Mouse0");
+    assert.equal(s.toIntent().buttons, IntentButton.Attack, "latched until an intent carries it");
+    assert.equal(s.toIntent().buttons, 0, "then released");
+  });
+});

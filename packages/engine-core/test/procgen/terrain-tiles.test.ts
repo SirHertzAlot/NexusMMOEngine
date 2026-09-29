@@ -271,7 +271,7 @@ describe("terrain-tool (the editor's terrain writer)", () => {
       bytes: encodeSnapshot({
         tick: 5, baseTick: 0,
         transforms: [{ wireId: 77n, px: x, py: y, pz: z, qx: 0, qy: 0, qz: 0, qw: 1, sx: 1, sy: 1, sz: 1 }],
-        velocities: [], intents: [], chunks: [], healths: [], bodies: [], assets: [], locomotions: [], spawned: [], despawned: [],
+        velocities: [], intents: [], chunks: [], healths: [], bodies: [], assets: [], locomotions: [], appearances: [], actions: [], spawned: [], despawned: [],
       }),
     }]);
     rows.close();
