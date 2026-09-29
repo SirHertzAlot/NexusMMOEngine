@@ -55,6 +55,7 @@
     "packages/wfc",
     "packages/dungeon",
     "packages/placement",
+    "packages/species",
     "packages/compose",
     "packages/picg",
     "packages/addons/scatter",

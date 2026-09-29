@@ -19,8 +19,9 @@ The pool lives in `$MMO_DATA_DIR/dungeons`, else `packages/engine-core/data/dung
 
 - `index.json`: every dungeon in the pool, with its id, name, theme, seed,
   size, and content hash.
-- `<id>.dungeon.json`: the layout (format `mmo-dungeon/1`) and its dressing: the
-  rank, room archetypes, their contents, and resource veins.
+- `<id>.dungeon.json`: the layout (format `mmo-dungeon/1`), its dressing (the
+  rank, room archetypes, their contents, and resource veins) and its population
+  (the species in each room and at each spawn point).
 - `<id>.png`: a top-down map, with `--png`.
 
 A bake **adds** to the pool, and a layout already in it (same content hash)
@@ -41,7 +42,9 @@ same pool.
 | `--png` | | also write a map of each new dungeon, with its contents and veins |
 | `--rank` | 1-5 | the dressing's rank, `n` or `min-max` (picked per dungeon) |
 | `--dressing` | | a JSON file adding or replacing archetypes and veins (see `DressingSchema`) |
-| `--bare` | | layouts only, no dressing |
+| `--species` | | a JSON file adding or replacing species (see `SpeciesSchema` in `@mmo-engine/species`) |
+| `--empty` | | don't populate |
+| `--bare` | | layouts only, no dressing or population |
 
 ## The pipeline
 
@@ -84,9 +87,32 @@ archetypes and veins with `--dressing file.json`. If a custom dressing is too
 strict for a layout, its rules are loosened rather than the dungeon failing,
 and `dressing.relaxed` says which.
 
+## Population: who lives there
+
+`populateDungeon(dungeon, roster, rank, archetypes)` decides which species
+holds each room, by WFC over the room graph. The layout's spawn points are
+where they stand. The species come from `@mmo-engine/species`.
+
+- A room's species must haunt the dungeon's theme, appear at its rank, live
+  at the room's depth and fill its spawn tier.
+- Bosses lead the boss room and no other. Higher-rank bosses are favoured.
+- Room archetypes draw species: demons to a ritual chamber, the undead to a
+  crypt.
+- Kinds that can't coexist never share a doorway. The living shun demons and
+  the undead.
+- If the roster is too thin for a room, that room steps down: first it drops
+  depth and the boss role, then tier, then takes any dweller of the theme.
+  Only if the whole dungeon still can't be solved are the rules loosened
+  (`population.relaxed`).
+
+The bake stores the population in each file (`population.rooms`, and
+`population.spawns` with a species on every spawn point). It adds the boss and
+the dweller count to the index. `--species file.json` adds or replaces species,
+`--empty` skips population, and `--bare` skips both dressing and population.
+
 What comes next (design: `docs/DUNGEONS-AND-LOOT.md`):
 
 - traps and puzzles as slots of the same kind
-- species and ranks for the spawn points
+- entity ranks (auras, runes, abilities) for the spawns
 - the editor's dungeon view
 - instances started from the pool

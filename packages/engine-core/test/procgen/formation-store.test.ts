@@ -29,16 +29,19 @@ const plan: EcologyPlan = parseEcologyPlan({
   layers: [
     {
       id: "circles",
-      place: { kind: "formation", spacing: 2.5, tileChunks: 4 },
+      place: { kind: "formation", spacing: 7, tileChunks: 4 },
       chance: 1,
       formation: {
-        options: [
-          { id: "ground", weight: 40 },
-          { id: "centre", weight: 0.3, tags: ["centre"] },
-          { id: "stone", weight: 3, tags: ["stone"], assets: [{ asset: "rock", weight: 1 }] },
+        kinds: [
+          {
+            id: "circle",
+            weight: 1,
+            tags: ["circle"],
+            pieces: [{ id: "stone", assets: [{ asset: "rock", weight: 1 }], count: [5, 7], pattern: "ring", radius: [4, 5], clearance: 1.2 }],
+          },
         ],
-        avoid: [{ a: "centre", b: "centre", distance: 30 }, { a: "stone", b: "stone", distance: 2.4 }],
-        needs: [{ tag: "stone", near: "centre", distance: 6.5 }, { tag: "centre", near: "stone", distance: 6.5, count: 4 }],
+        emptyWeight: 4,
+        avoid: [{ a: "circle", b: "circle", distance: 30 }],
       },
       assets: [],
       scale: [1, 1],
@@ -51,7 +54,7 @@ const db = (): string => join(mkdtempSync(join(tmpdir(), "formations-")), "world
 
 describe("formation tile store", () => {
   it("round-trips points exactly", () => {
-    const pts = [{ x: 1.25, z: -3.5, i: -2, j: 7, option: 2 }, { x: 1e-9, z: 1e6, i: 0, j: 0, option: 1 }];
+    const pts = [{ x: 1.25, y: 4.5, z: -3.5, i: -2, j: 7, option: 2 }, { x: 1e-9, y: -0.25, z: 1e6, i: 0, j: 0, option: -1 }];
     assert.deepEqual(decodeFormationPoints(encodeFormationPoints(pts)), pts);
     assert.throws(() => decodeFormationPoints(new Uint8Array(5)), /not a whole number of points/);
   });
