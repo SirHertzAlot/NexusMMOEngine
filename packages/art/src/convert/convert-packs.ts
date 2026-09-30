@@ -32,6 +32,7 @@ import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { ManifestSchema, type AssetManifest } from "../manifest.js";
 import { withExternalTextures } from "./glb-textures.js";
+import { toPng } from "./image-decode.js";
 import {
   indexMeshes,
   parseMaterialList,
@@ -42,7 +43,8 @@ import {
 } from "./material-list.js";
 
 /** Bump to force a full reconvert when the output format changes. */
-export const CONVERTER_VERSION = 3;
+// 4: TGA/PSD atlases converted to PNG, atlases found in Textures subfolders.
+export const CONVERTER_VERSION = 4;
 /**
  * A source folder whose median model would be smaller than this many
  * centimetres is authored in metres (its FBX headers claim centimetres
@@ -53,6 +55,8 @@ const METRES_IF_MEDIAN_UNDER_CM = 5;
 /** Files sampled per folder to decide its unit. */
 const UNIT_SAMPLE = 12;
 const WEB_TEXTURE = /\.(png|jpe?g|webp)$/i;
+/** Atlas formats the converter turns into PNG (browsers can't load them). */
+const CONVERTIBLE_TEXTURE = /\.(tga|psd)$/i;
 
 export interface CatalogModel {
   id: string;
@@ -114,8 +118,30 @@ interface Pack {
   materials: Map<string, PrefabMaterials>;
   meshIndex: Map<string, MeshMaterials>;
   defaultTexture: string | null;
-  texturesDir: string | null;
+  /**
+   * The pack's atlases by lower-case name (no extension): the best source
+   * file for each, from any Textures folder (subfolders too). A web format
+   * wins over TGA, TGA over PSD, a shallower file over a deeper one.
+   */
+  textures: Map<string, string>;
   fbx: string[];
+}
+
+const TEXTURE_RANK = (f: string): number => (WEB_TEXTURE.test(f) ? 0 : /\.tga$/i.test(f) ? 1 : 2);
+
+/** Every atlas under the pack's Textures folders, best source per name. */
+export function packTextures(files: readonly string[], packDir: string): Map<string, string> {
+  const best = new Map<string, string>();
+  for (const f of files) {
+    if (!WEB_TEXTURE.test(f) && !CONVERTIBLE_TEXTURE.test(f)) continue;
+    const rel = path.relative(packDir, f).split(path.sep);
+    if (!rel.slice(0, -1).some((seg) => /^_?textures?$/i.test(seg))) continue;
+    const key = path.basename(f, path.extname(f)).toLowerCase();
+    const prev = best.get(key);
+    const depth = (x: string): number => path.relative(packDir, x).split(path.sep).length;
+    if (!prev || TEXTURE_RANK(f) < TEXTURE_RANK(prev) || (TEXTURE_RANK(f) === TEXTURE_RANK(prev) && depth(f) < depth(prev))) best.set(key, f);
+  }
+  return best;
 }
 
 export function discoverPacks(sourceRoot: string): Pack[] {
@@ -128,17 +154,13 @@ export function discoverPacks(sourceRoot: string): Pack[] {
     const list = files.find((f) => /^MaterialList_.*\.txt$/i.test(path.basename(f)));
     if (!list) continue;
     const materials = parseMaterialList(fs.readFileSync(list, "utf8"));
-    const texturesDir =
-      walk(dir, (n) => n.startsWith("."))
-        .map((f) => path.dirname(f))
-        .find((d) => path.basename(d).toLowerCase() === "textures") ?? null;
     packs.push({
       slug: packSlug(e.name),
       dir,
       materials,
       meshIndex: indexMeshes(materials),
       defaultTexture: primaryTexture(materials),
-      texturesDir,
+      textures: packTextures(files, dir),
       fbx: walk(dir, skipSourceDir)
         .filter((f) => /\.fbx$/i.test(f) && !/fixedscale/i.test(path.basename(f)))
         // Main folders before Bonus* ones, so duplicate names keep the main file.
@@ -363,26 +385,33 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
       const texOut = path.join(assetsRoot, "textures", pack.slug);
       fs.mkdirSync(texOut, { recursive: true });
 
-      // Copy the pack's web-loadable atlases (a few dozen files per pack).
+      // Copy the pack's atlases (a few dozen files per pack); TGA and PSD
+      // ones, which browsers can't load, become PNG.
       const available = new Set<string>();
+      const outByName = new Map<string, string>();
       let texCount = 0;
-      if (pack.texturesDir) {
-        for (const f of fs.readdirSync(pack.texturesDir)) {
-          if (!WEB_TEXTURE.test(f)) continue;
-          const dst = path.join(texOut, f);
-          if (!isFresh(dst, path.join(pack.texturesDir, f)) || opts.force) {
-            fs.copyFileSync(path.join(pack.texturesDir, f), dst);
+      let texConverted = 0;
+      for (const [key, src] of pack.textures) {
+        const web = WEB_TEXTURE.test(src);
+        const dst = path.join(texOut, web ? path.basename(src) : `${path.basename(src, path.extname(src))}.png`);
+        try {
+          if (opts.force || !isFresh(dst, src)) {
+            if (web) fs.copyFileSync(src, dst);
+            else {
+              fs.writeFileSync(dst, toPng(src, new Uint8Array(fs.readFileSync(src))));
+              texConverted++;
+            }
           }
-          available.add(path.basename(f, path.extname(f)).toLowerCase());
-          texCount++;
+        } catch (err) {
+          catalog.diagnostics.push(`${pack.slug}: atlas ${posix(path.relative(pack.dir, src))} couldn't be made web-loadable: ${err instanceof Error ? err.message : String(err)}`);
+          continue;
         }
+        available.add(key);
+        outByName.set(key, dst);
+        texCount++;
       }
-      const textureFile = (name: string): string | null => {
-        const f = pack.texturesDir
-          ? fs.readdirSync(pack.texturesDir).find((x) => WEB_TEXTURE.test(x) && path.basename(x, path.extname(x)).toLowerCase() === name.toLowerCase())
-          : undefined;
-        return f ? path.join(texOut, f) : null;
-      };
+      if (texConverted > 0) log(`[convert]   ${pack.slug}: ${texConverted} TGA/PSD atlas(es) converted to PNG`);
+      const textureFile = (name: string): string | null => outByName.get(name.toLowerCase()) ?? null;
       const textureCache = new Map<string, string | null>();
 
       let converted = 0;
@@ -429,7 +458,7 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
             if (!textureCache.has(texture)) textureCache.set(texture, textureFile(texture));
             const abs = textureCache.get(texture) ?? null;
             if (!abs) {
-              const note = `atlas "${texture}" has no web-loadable file (.png/.jpg/.webp)`;
+              const note = `atlas "${texture}" has no image in the pack's Textures folders (.png/.jpg/.webp/.tga/.psd)`;
               if (!available.has(texture.toLowerCase()) && !notes.includes(note)) notes.push(note);
               return null;
             }

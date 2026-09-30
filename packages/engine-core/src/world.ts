@@ -41,8 +41,15 @@ import {
 import * as bitECS from "bitecs";
 import * as C from "./components.js";
 import { splitU64 } from "./components.js";
+import type { StatsRules } from "@mmo-engine/rules";
 import { makeWireEntityId, parseWireEntityId } from "./entity-id.js";
 import type { CollectedState } from "./snapshot.js";
+import { StatBook } from "./stats/stat-book.js";
+
+export interface SimWorldOptions {
+  /** The game's stats (rules stats.json). Default: none, and every drive keeps the engine's built-in behaviour. */
+  stats?: StatsRules;
+}
 
 export interface QueuedIntent {
   mx: number;
@@ -187,12 +194,15 @@ export class SimWorld {
   /** Look table for the Appearance component: id -> canonical look JSON (0 = none). */
   private readonly looks: string[] = [""];
   private readonly lookIds = new Map<string, number>([["", 0]]);
+  /** Every entity's stats (server state; see StatBook). */
+  readonly stats: StatBook;
 
-  constructor() {
+  constructor(opts: SimWorldOptions = {}) {
     // Eager slot reuse: bounded eid space for a long-lived server.
     // Identity across reuse is preserved by the generation counter.
     setRemovedRecycleThreshold(0);
     this.ecs = createWorld();
+    this.stats = new StatBook(opts.stats);
   }
 
   /**
@@ -270,6 +280,8 @@ export class SimWorld {
     this.despawned.push(wid);
     this.events.emit("despawned", wid);
     removeEntity(this.ecs, eid);
+    // The slot is reused: its next entity must not inherit these stats.
+    this.stats.detach(eid);
     this.freed.add(eid);
     this.liveCount--;
   }

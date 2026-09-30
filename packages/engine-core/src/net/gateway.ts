@@ -61,6 +61,7 @@ import {
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
+  type StatsMessage,
   type WelcomeMessage,
   type DayClock,
   type WorldInfo,
@@ -98,6 +99,7 @@ import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
+import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import { parseLook, type ModularCatalog } from "@mmo-engine/art/character";
@@ -125,7 +127,7 @@ export interface GatewayOptions {
   disconnectGraceMs?: number;
   /** Full snapshot broadcast cadence, in ticks. Default 300. */
   snapshotEveryTicks?: number;
-  /** Sim systems; default [IntentSystem, CombatSystem, IntegrateSystem]. */
+  /** Sim systems; default [StatsSystem, IntentSystem, CombatSystem, IntegrateSystem]. */
   systems?: SimSystem[];
   /** Clock for heartbeat/grace math; default Date.now. Inject in tests. */
   clock?: () => number;
@@ -304,6 +306,8 @@ export class Gateway {
   private readonly playerAbilities: number;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
+  /** The stats version last sent to each session (see sendStats). */
+  private readonly statsSent = new WeakMap<ClientSession, number>();
 
   private wss: WebSocketServer | null = null;
   private httpServer: Server | null = null;
@@ -334,7 +338,7 @@ export class Gateway {
       );
     }
     this.world = opts.world ?? new SimWorld();
-    this.systems = opts.systems ?? [new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
+    this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
@@ -529,7 +533,32 @@ export class Gateway {
       } else {
         this.deliver(s, deltaEnv, tick);
       }
+      this.sendStats(s, tick);
     }
+  }
+
+  /**
+   * The player's own stats (catalog §0x0f), when they changed since they
+   * were last sent to this session; `force` sends them regardless (on
+   * joining or re-attaching, the client has none yet).
+   */
+  private sendStats(s: ClientSession, tick: number, force = false): void {
+    if (s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return;
+    const version = this.world.stats.version(eid);
+    if (version === 0 || (!force && this.statsSent.get(s) === version)) return;
+    this.statsSent.set(s, version);
+    const sheet = this.world.stats.sheet(eid)!;
+    // Display values: 4 decimals is plenty, and keeps float noise off the wire.
+    const round = (v: number): number => Math.round(v * 1e4) / 1e4;
+    const line = (l: (typeof sheet)[number]) => ({ id: l.id, name: l.name, value: round(l.value), base: round(l.base) });
+    const msg: StatsMessage = {
+      entity: s.playerEntity.toString(),
+      attributes: sheet.filter((l) => l.attribute).map(line),
+      stats: sheet.filter((l) => !l.attribute).map(line),
+    };
+    this.deliver(s, encodeEnvelope(MessageType.Stats, encodeControl(msg)), tick);
   }
 
   /** Queue-or-send one enveloped message, preserving order, bounded. */
@@ -895,6 +924,7 @@ export class Gateway {
       this.attachSocket(known, s.socket!);
       this.sendWelcome(known);
       this.sendFreshSnapshot(known);
+      this.sendStats(known, this.tick, true);
       return;
     }
 
@@ -946,6 +976,7 @@ export class Gateway {
     this.tokenToClient.set(s.token, s.clientId);
     this.sendWelcome(s);
     this.sendFreshSnapshot(s);
+    this.sendStats(s, this.tick, true);
   }
 
   /**
@@ -1312,7 +1343,9 @@ export class Gateway {
   /**
    * Spawn a player entity: Transform + Velocity + PlayerIntent + Health +
    * Locomotion (on foot, with the gateway's player abilities, full breath)
-   * + Appearance (the character's look, canonical JSON) + Action (no move).
+   * + Appearance (the character's look, canonical JSON) + Action (no move),
+   * and stats at the rules' bases when the game has any (StatsSystem then
+   * sets Health.max from them on the next tick).
    * Spawn points spread on a grid so N players don't stack. Player
    * entities are ordinary entities — the sim treats N of them identically
    * (multiplayer by construction, no singleton).
@@ -1340,6 +1373,7 @@ export class Gateway {
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;
+    if (!sim.stats.empty) sim.stats.attach(eid);
     return sim.wireId(eid);
   }
 }

@@ -103,6 +103,7 @@ import { startPcgService } from "./pcg/boot.js";
 import { RulesError } from "@mmo-engine/rules";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { CombatSystem } from "./combat.js";
+import { StatsSystem } from "./stats/stats-system.js";
 import { BotSystem } from "./bots.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
@@ -179,7 +180,7 @@ async function main(): Promise<void> {
   if (bakedSeed !== null && process.env.MMO_WORLD_SEED !== undefined && worldSeed !== WORLD_SEED) {
     console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
   }
-  const sim = new SimWorld();
+  const sim = new SimWorld({ stats: game.rules.stats });
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
   if (!freshBoot) {
@@ -394,7 +395,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [streamer, ...bots, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, physics, navigation],
+    systems: [new StatsSystem(), streamer, ...bots, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),
