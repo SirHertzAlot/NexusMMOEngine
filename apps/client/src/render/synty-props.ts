@@ -141,7 +141,7 @@ export class SyntyProps implements PropModels {
         const part = groups.length === 1 ? g : subset(g, grp.start, grp.count);
         part.clearGroups();
         parts.push(stripTo(part, ["position", "normal", "uv"]));
-        materials.push(this.shared(mats[grp.materialIndex ?? 0] ?? mats[0], atlases));
+        materials.push(this.shared(mats[grp.materialIndex ?? 0] ?? mats[0], atlases, entry.id));
       }
     });
     const geometry = mergeGeometries(parts, true);
@@ -150,27 +150,27 @@ export class SyntyProps implements PropModels {
     return { key: `synty:${entry.id}`, geometry, material: materials.length === 1 ? materials[0] : materials };
   }
 
-  private shared(m: THREE.Material, atlases: Map<string, string>): THREE.Material {
-    const known = this.materials.get(m.name);
+  private shared(m: THREE.Material, atlases: Map<string, string>, modelId: string): THREE.Material {
+    const url = atlases.get(m.name) ?? null;
+    // Shared by atlas and name: packs can reuse a material name for different atlases.
+    // A material without an external atlas (a texture embedded in the file) stays the model's own.
+    const key = sharedMaterialKey(m.name, url, modelId);
+    const known = this.materials.get(key);
     if (known) return known;
-    const std = m as THREE.MeshStandardMaterial;
-    if ("roughness" in std) {
-      std.roughness = 0.9;
-      std.metalness = 0;
-      // The file's own map is a blank stand-in: use the shared atlas.
-      std.map?.dispose();
-      const url = atlases.get(m.name);
-      std.map = url ? this.texture(url) : null;
-      std.needsUpdate = true;
-    }
-    this.materials.set(m.name, m);
+    prepareMaterial(m, url, (u) => this.texture(u));
+    this.materials.set(key, m);
     return m;
   }
 
   private texture(url: string): THREE.Texture {
     let t = this.textures.get(url);
     if (!t) {
-      t = this.textureLoader.load(url, () => this.onChange());
+      t = this.textureLoader.load(
+        url,
+        () => this.onChange(),
+        undefined,
+        () => console.warn(`[props] atlas failed to load: ${url} (the models using it stay untextured)`),
+      );
       t.flipY = false; // glTF UVs
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 4;
@@ -188,6 +188,37 @@ export class SyntyProps implements PropModels {
     for (const t of this.textures.values()) t.dispose();
     this.textures.clear();
   }
+}
+
+/** Where a prop material is shared: by atlas and name, or (embedded texture, no atlas) per model. */
+export function sharedMaterialKey(name: string, atlasUrl: string | null, modelId: string): string {
+  return atlasUrl ? `${atlasUrl}|${name}` : `${modelId}|${name}`;
+}
+
+/**
+ * Ready a model's material for the merged, instanced prop:
+ * - its atlas: the shared one when the file names an external atlas (the
+ *   file's own map is only a blank stand-in then); otherwise the file's
+ *   embedded texture is kept, never dropped
+ * - no vertex colours: the merge keeps position, normal and uv only, and a
+ *   material still asking for colours would read the missing attribute as
+ *   black
+ * - matte, as the packs are painted
+ */
+export function prepareMaterial(m: THREE.Material, atlasUrl: string | null, texture: (url: string) => THREE.Texture): void {
+  const std = m as THREE.MeshStandardMaterial;
+  std.vertexColors = false;
+  if ("roughness" in std) {
+    std.roughness = 0.9;
+    std.metalness = 0;
+    if (atlasUrl) {
+      std.map?.dispose();
+      std.map = texture(atlasUrl);
+    }
+    // A textured material shows its atlas unmodified.
+    if (std.map) std.color.set(0xffffff);
+  }
+  std.needsUpdate = true;
 }
 
 /** Material name → absolute atlas URL, read from a GLB's own JSON chunk. */
