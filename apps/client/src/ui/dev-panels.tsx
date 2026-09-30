@@ -29,6 +29,8 @@ import {
 export interface DevPanelSpec {
   id: string;
   title: string;
+  /** Its name in the dev menu (default: the title). */
+  label?: string;
   /** Shown in the title bar next to the title (a warning badge). */
   badge?: React.ReactNode;
   content: React.ReactNode;
@@ -86,7 +88,7 @@ export function DevHud({ panels, defaults }: { panels: DevPanelSpec[]; defaults:
                   checked={layout.panels[p.id]?.open ?? false}
                   onChange={(e) => update(p.id, { open: e.target.checked, collapsed: false })}
                 />
-                {p.title}
+                {p.label ?? p.title}
               </label>
             ))}
             <div className="mt-1 flex items-center justify-between border-t border-slate-700/60 pt-1 text-muted-foreground">
@@ -101,6 +103,8 @@ export function DevHud({ panels, defaults }: { panels: DevPanelSpec[]; defaults:
           className="rounded bg-slate-950/70 px-2 py-0.5 text-muted-foreground shadow hover:text-foreground"
           onClick={() => setMenu((m) => !m)}
           title="Dev panels"
+          aria-label="Dev panels"
+          aria-expanded={menu}
         >
           dev {menu ? "▾" : "▸"}
         </button>
