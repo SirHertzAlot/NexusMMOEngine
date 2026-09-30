@@ -29,6 +29,7 @@ import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
+import { PlayerFrame } from "./ui/player-frame.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
@@ -79,6 +80,7 @@ export function App(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [hud, setHud] = useState<HudData>({
     tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null, perf: [],
+    hp: null, maxHp: null,
   });
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
@@ -245,6 +247,7 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
         />
+        <PlayerFrame name={characterName} hp={hud.hp} maxHp={hud.maxHp} />
         {DEV_TOOLS ? (
           <DevHud
             defaults={devLayoutDefaults}

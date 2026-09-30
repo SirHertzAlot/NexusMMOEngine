@@ -82,6 +82,9 @@ export interface HudData {
   time: string | null;
   /** What is falling where the camera is (null: clear). */
   weather: string | null;
+  /** The player's own HP from the mirror's Health rows (null: no row yet). */
+  hp: number | null;
+  maxHp: number | null;
   /** The last minute of performance samples, oldest first (perf-stats.ts). */
   perf: PerfSample[];
 }
@@ -425,6 +428,8 @@ function MirrorWorld({
         breath: me?.locomotion?.breath ?? 1,
         time: client.day ? formatTimeOfDay(timeOfDay) : null,
         weather: weather.intensity > 0 ? weather.kind : null,
+        hp: me?.health?.current ?? null,
+        maxHp: me?.health?.max ?? null,
         perf: perf.current.history(),
       });
     }
