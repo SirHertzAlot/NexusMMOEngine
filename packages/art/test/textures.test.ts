@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 import { decodePsd, decodeTga, encodePng, type Rgba } from "../src/convert/image-decode.js";
-import { packTextures } from "../src/convert/convert-packs.js";
+import { packTextures, staleGlbs } from "../src/convert/convert-packs.js";
 
 // A 3×2 image, top row first: red, green, blue / white, half-transparent grey, black.
 const W = 3, H = 2;
@@ -158,5 +158,25 @@ describe("pack atlases", () => {
     assert.equal(t.get("kingdom_texture_03"), join(dir, "Source_Files/Textures/Deep/Kingdom_Texture_03.psd"));
     assert.equal(t.get("ground_01"), join(dir, "_Textures/Ground_01.jpg"));
     assert.equal(t.has("not_a_texture"), false, "only Textures folders");
+  });
+});
+
+describe("stale GLB cleanup", () => {
+  it("drops pack GLBs no model maps to, never the rigged parts or animation clips", () => {
+    const root = mkdtempSync(join(tmpdir(), "glb-"));
+    const files = [
+      "kingdom/Props/SM_Barrel.glb",
+      "kingdom/Props/SM_Old.glb",
+      "modular-fantasy-hero/Rigged/parts/Chr_Head_Male_00.glb",
+      "modular-fantasy-hero/Rigged/animations/Idle.glb",
+      "modular-fantasy-hero/Rigged/catalog.json",
+      "other/Rigged/rig.glb",
+    ];
+    for (const f of files) {
+      mkdirSync(join(root, f, ".."), { recursive: true });
+      writeFileSync(join(root, f), "x");
+    }
+    const keep = new Set([join(root, "kingdom/Props/SM_Barrel.glb")]);
+    assert.deepEqual(staleGlbs(root, keep), [join(root, "kingdom/Props/SM_Old.glb")]);
   });
 });
