@@ -3,8 +3,9 @@
  * player so the FX can be inspected live in the client.
  *
  * With a QuarksFx, each orb also wears one of the entity composer's
- * signal effects (particles and an aura in its colour), and a blade tip
- * circles the ring drawing a trail.
+ * signal effects (particles and an aura in its colour), a blade tip
+ * circles the ring drawing a trail, and a row of composed legendary and
+ * epic creatures and items (prefab/gallery.ts) stands behind the ring.
  *
  * Strictly visual and local: the orbs are decorative preview objects,
  * not authoritative entities (the server never hears about them).
@@ -20,6 +21,7 @@ import {
   type ElementKind,
 } from "./element-fx.js";
 import type { QuarksFx, VfxHandle } from "./vfx/quarks-fx.js";
+import { PrefabGallery } from "./prefab/gallery.js";
 
 /** The composer signal each orb wears in the showcase. */
 const ORB_SIGNALS: Record<ElementKind, { particles: string; aura: string }> = {
@@ -97,6 +99,7 @@ export class FxShowcase {
 
   private readonly blade = new THREE.Object3D();
   private effects: VfxHandle[] = [];
+  private gallery: PrefabGallery | null = null;
 
   get isVisible(): boolean {
     return this.visible;
@@ -110,6 +113,8 @@ export class FxShowcase {
     // The composer's signal effects on the orbs, and a blade trail round the ring, while shown.
     for (const e of this.effects) e.dispose();
     this.effects = [];
+    this.gallery?.dispose();
+    this.gallery = null;
     if (v && this.vfx) {
       for (const o of this.orbs) {
         const s = ORB_SIGNALS[o.kind];
@@ -119,6 +124,8 @@ export class FxShowcase {
       }
       if (!this.blade.parent) this.group.add(this.blade);
       this.effects.push(this.vfx.attachTrail(this.blade, "#9fe0ff", 0.18, 24));
+      this.gallery = new PrefabGallery(this.vfx, labelSprite);
+      this.group.add(this.gallery.group);
     }
   }
 
@@ -126,6 +133,7 @@ export class FxShowcase {
     if (!this.visible) return;
     // The blade tip sweeps round inside the ring, rising and falling like a swing.
     this.blade.position.set(Math.cos(time * 2.2) * 3, 1.5 + Math.sin(time * 4.4) * 0.6, Math.sin(time * 2.2) * 3);
+    this.gallery?.update(dt, time);
     for (const o of this.orbs) {
       tickElementMaterial(o.mat, time + o.phase);
       o.group.position.y = o.baseY + Math.sin(time * 1.3 + o.phase) * 0.35;
@@ -148,6 +156,8 @@ export class FxShowcase {
   dispose(): void {
     for (const e of this.effects) e.dispose();
     this.effects = [];
+    this.gallery?.dispose();
+    this.gallery = null;
     this.scene.remove(this.group);
     this.group.traverse((child) => {
       const mesh = child as THREE.Mesh;
