@@ -109,6 +109,27 @@ function walk(dir: string, skipDir: (name: string) => boolean, out: string[] = [
   return out;
 }
 
+/**
+ * GLBs under `glbRoot` that no pack model maps to. Folders other
+ * converters own are never touched: any folder with its own catalog.json
+ * (convert:modular's rigged character parts and convert:animations' clips,
+ * in models/glb/<pack>/Rigged/). Deleting those broke characters and their
+ * animations after a full pack run.
+ */
+export function staleGlbs(glbRoot: string, keep: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  const visit = (dir: string): void => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!fs.existsSync(path.join(full, "catalog.json")) && e.name !== "Rigged") visit(full);
+      } else if (e.isFile() && full.endsWith(".glb") && !keep.has(full)) out.push(full);
+    }
+  };
+  visit(glbRoot);
+  return out;
+}
+
 const skipSourceDir = (name: string): boolean =>
   /^(obj|bonusobj)$/i.test(name) || /unreal/i.test(name) || name.startsWith(".");
 
@@ -520,18 +541,16 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
   // Never write a manifest the editor/client would reject.
   ManifestSchema.parse(manifest);
 
-  // A full run owns models/glb: drop GLBs no model maps to any more (a
+  // A full run owns the pack GLBs: drop those no model maps to any more (a
   // model that changed category, a duplicate now won by another file).
   if (!opts.only && !opts.limit) {
     const glbRoot = path.join(assetsRoot, "models", "glb");
     const keep = new Set(catalog.models.map((m) => path.join(assetsRoot, m.file)));
     let removed = 0;
     if (fs.existsSync(glbRoot)) {
-      for (const f of walk(glbRoot, () => false)) {
-        if (f.endsWith(".glb") && !keep.has(f)) {
-          fs.rmSync(f);
-          removed++;
-        }
+      for (const f of staleGlbs(glbRoot, keep)) {
+        fs.rmSync(f);
+        removed++;
       }
     }
     if (removed > 0) log(`[convert] removed ${removed} stale GLB(s)`);
