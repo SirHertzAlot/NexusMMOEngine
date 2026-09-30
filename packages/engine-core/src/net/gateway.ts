@@ -70,6 +70,7 @@ import {
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
+import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import {
   MAX_QUEUED_DELTAS,
@@ -858,7 +859,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami",
+        message: "commands: help, whoami, inspect",
       };
     } else if (cmd.command === "whoami") {
       res = {
@@ -867,6 +868,13 @@ export class Gateway {
         ok: true,
         message: `admin ${s.username}${this.devServer ? " (dev server)" : ""}`,
       };
+    } else if (cmd.command === "inspect") {
+      res = this.runInspect(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else {
       this.logAdmin(s.username, cmd.command, false);
       this.sendError(s, 4003, `unknown admin command ${JSON.stringify(cmd.command)}`);
@@ -874,6 +882,39 @@ export class Gateway {
     }
     this.logAdmin(s.username, cmd.command, true);
     this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
+  }
+
+  /**
+   * `inspect` (roadmap A2, read path): dump one entity's components.
+   * `{entity: "<u64>"}` or `{entity: "me"}` (the caller's own avatar).
+   * Unknown entities and bad args read as errors, never throws.
+   */
+  private runInspect(s: ClientSession, args: unknown): AdminResult {
+    const parsed = InspectArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "inspect", ok: false, message: "usage: inspect {entity: <u64> | me}" };
+    }
+    let wireId: bigint;
+    if (parsed.data.entity === "me") {
+      if (s.playerEntity === null) {
+        return { kind: "admin", command: "inspect", ok: false, message: "no player entity (not in the world)" };
+      }
+      wireId = s.playerEntity;
+    } else {
+      try {
+        wireId = BigInt(parsed.data.entity);
+      } catch {
+        return { kind: "admin", command: "inspect", ok: false, message: `unknown entity ${JSON.stringify(parsed.data.entity)}` };
+      }
+      if (wireId < 0n || wireId > 0xffffffffffffffffn) {
+        return { kind: "admin", command: "inspect", ok: false, message: `unknown entity ${JSON.stringify(parsed.data.entity)}` };
+      }
+    }
+    const dump = inspectEntity(this.world, wireId);
+    if (dump === null) {
+      return { kind: "admin", command: "inspect", ok: false, message: `unknown entity ${parsed.data.entity}` };
+    }
+    return { kind: "admin", command: "inspect", ok: true, message: dump };
   }
 
   /** Record one answered admin command (ring: the last ADMIN_LOG_SIZE). */

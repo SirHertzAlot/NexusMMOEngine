@@ -20,18 +20,33 @@ export function AdminConsole({ client }: { client: MirrorClient }): React.ReactE
   const [busy, setBusy] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const run = (): void => {
-    const name = command.trim().toLowerCase();
-    if (!name || busy) return;
+    const text = command.trim();
+    if (!text || busy) return;
+    // First word is the command; the rest is its args — a JSON object
+    // when it parses as one (`spawn {"what":"tree"}`), else the entity
+    // shorthand (`inspect me` sends {entity:"me"}).
+    const space = text.search(/\s/);
+    const name = (space < 0 ? text : text.slice(0, space)).toLowerCase();
+    const rest = space < 0 ? "" : text.slice(space + 1).trim();
+    let args: unknown;
+    if (rest !== "") {
+      try {
+        const parsed: unknown = JSON.parse(rest);
+        args = typeof parsed === "object" && parsed !== null ? parsed : { entity: rest };
+      } catch {
+        args = { entity: rest };
+      }
+    }
     setBusy(true);
     client
-      .admin(name)
+      .admin(name, args)
       .then((res) => {
-        setEntries((prev) => [...prev.slice(-7), { command: res.command, ok: res.ok, message: res.message }]);
+        setEntries((prev) => [...prev.slice(-7), { command: text, ok: res.ok, message: res.message }]);
       })
       .catch((err: unknown) => {
         setEntries((prev) => [
           ...prev.slice(-7),
-          { command: name, ok: false, message: err instanceof Error ? err.message : String(err) },
+          { command: text, ok: false, message: err instanceof Error ? err.message : String(err) },
         ]);
       })
       .finally(() => {
@@ -48,15 +63,15 @@ export function AdminConsole({ client }: { client: MirrorClient }): React.ReactE
           onKeyDown={(e) => {
             if (e.key === "Enter") run();
           }}
-          placeholder="admin command (help)"
-          aria-label="admin command"
+          placeholder="admin command (help · inspect me)"
+          aria-label="admin command: a command, optionally followed by JSON args"
         />
         <Button size="sm" variant="secondary" disabled={busy || command.trim() === ""} onClick={run}>
           run
         </Button>
       </div>
       {entries.map((e, i) => (
-        <div key={i} className="text-muted-foreground tabular-nums">
+        <div key={i} className="whitespace-pre-wrap text-muted-foreground tabular-nums">
           <span className="text-foreground">{e.command}</span>
           {" → "}
           <span className={e.ok ? "text-foreground" : "text-destructive"}>{e.message}</span>

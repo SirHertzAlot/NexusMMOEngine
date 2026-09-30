@@ -39,18 +39,22 @@ const creds = (username: string): HelloAuth => ({
   password: TEST_PASSWORD,
 });
 
-async function join(url: string, username: string): Promise<HeadlessClient> {
+async function join(url: string, username: string): Promise<{ client: HeadlessClient; entity: bigint }> {
   const client = new HeadlessClient();
   await client.connect(url);
   const snapP = client.waitFor(MessageType.Snapshot, 1);
-  await client.hello(username, creds(username));
+  const welcome = await client.hello(username, creds(username));
   await snapP;
-  return client;
+  return { client, entity: BigInt(welcome.player_entity) };
 }
 
-async function admin(client: HeadlessClient, command: string): Promise<AdminResult> {
+async function joinClient(url: string, username: string): Promise<HeadlessClient> {
+  return (await join(url, username)).client;
+}
+
+async function admin(client: HeadlessClient, command: string, args?: unknown): Promise<AdminResult> {
   const resP = client.waitFor(MessageType.Admin, 1);
-  client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command }));
+  client.sendRaw(MessageType.Admin, encodeControl(args === undefined ? { kind: "admin", command } : { kind: "admin", command, args }));
   const [payload] = await resP;
   return decodeControl<AdminResult>(payload);
 }
@@ -65,7 +69,7 @@ afterEach(async () => {
 describe("gateway: admin console", () => {
   it("a named admin runs help and whoami", async () => {
     const url = await startGateway({ admins: ["alice"] });
-    const client = await join(url, "alice");
+    const client = await joinClient(url, "alice");
     const help = await admin(client, "help");
     assert.equal(help.ok, true);
     assert.match(help.message, /whoami/);
@@ -82,7 +86,7 @@ describe("gateway: admin console", () => {
 
   it("a non-admin is rejected and logged", async () => {
     const url = await startGateway({ admins: ["alice"] });
-    const client = await join(url, "user-a");
+    const client = await joinClient(url, "user-a");
     const errP = client.waitFor(MessageType.Error, 1);
     client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "whoami" }));
     const [payload] = await errP;
@@ -96,7 +100,7 @@ describe("gateway: admin console", () => {
 
   it("unknown and malformed commands are rejected", async () => {
     const url = await startGateway({ admins: ["alice"] });
-    const client = await join(url, "alice");
+    const client = await joinClient(url, "alice");
     const errP = client.waitFor(MessageType.Error, 2);
     client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "nuke" }));
     client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin" }));
@@ -118,10 +122,34 @@ describe("gateway: admin console", () => {
 
   it("a dev server treats every account as admin", async () => {
     const url = await startGateway({ devServer: true });
-    const client = await join(url, "user-b");
+    const client = await joinClient(url, "user-b");
     const who = await admin(client, "whoami");
     assert.equal(who.ok, true);
     assert.match(who.message, /dev server/);
+    await client.close();
+  });
+
+  it("inspect dumps the caller's own avatar as me", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const client = await joinClient(url, "alice");
+    const res = await admin(client, "inspect", { entity: "me" });
+    assert.equal(res.ok, true);
+    assert.match(res.message, /Transform: pos /);
+    assert.match(res.message, /Health: /);
+    assert.match(res.message, /Locomotion: /);
+    await client.close();
+  });
+
+  it("inspect reads an arbitrary entity id and rejects unknown ones", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const { client, entity } = await join(url, "alice");
+    const res = await admin(client, "inspect", { entity: entity.toString() });
+    assert.equal(res.ok, true);
+    assert.match(res.message, new RegExp(`entity ${entity}`));
+    const errP = client.waitFor(MessageType.Error, 1);
+    client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "inspect", args: { entity: "999999999999" } }));
+    const [payload] = await errP;
+    assert.equal(decodeControl<ErrorMessage>(payload).code, 4003);
     await client.close();
   });
 });
