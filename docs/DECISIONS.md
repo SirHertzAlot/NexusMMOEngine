@@ -439,3 +439,19 @@ Every entry: date, decision, rationale. Newest first.
   editor, where play mode gains an embedded game view to host it. The
   debug overlays still in the client move there and are removed. The
   work is tracked in `docs/ROADMAP.md`, which every PR updates.
+- **2026-09-30 — Dungeon shells are carved with manifold and Clipper2, and
+  prebaked.** A new addon, `@mmo-engine/addon-geometry`, vendors manifold
+  (v3.5.4, Apache-2.0) and Clipper2 (2.0.1, BSL-1.0), manifold using
+  Clipper2 for its 2D cross-sections, built by node-gyp without TBB. It
+  exposes cell outlines, polygon Booleans and offsets, and one-call CSG
+  trees whose leaves' tags follow their faces through the Booleans.
+  PICG's own Blender-style Booleans stay as they are (they cook graphs
+  well); the engine's gap was dungeon geometry. `dungeonShell` merges
+  the walkable cells into polygons, extrudes them (corridors 4 m, rooms
+  5 / 6 / 8 m by size, basins 1.2 m deep), subtracts them from a block of
+  rock and keeps the closed inside surface, tagged floor, wall, ceiling
+  or basin. `dungeon:bake` writes it next to each layout as PCGM (a new
+  `encodePcgMesh` in `@mmo-engine/picg`), so an instance, a sandbox
+  apart from the world that players are moved into and whose results go
+  back through its region to the world server, loads its geometry as one
+  buffer. A cell is 2 m.

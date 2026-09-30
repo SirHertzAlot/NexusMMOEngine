@@ -14,6 +14,12 @@ import {
   type BakeOptions, type DungeonFile,
 } from "../src/index.js";
 import { readOptions } from "../src/cli.js";
+import { dungeonShell, SHELL_PARTS, type GeometryOps } from "../src/index.js";
+import { decodePcgMesh } from "@mmo-engine/picg";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+
+const geo = createRequire(import.meta.url)("@mmo-engine/addon-geometry") as GeometryOps;
 
 const options = (out: string, over: Partial<BakeOptions> = {}): BakeOptions => ({
   count: 6, seed: 1, theme: "auto", rooms: [14, 24], loopChance: 0.15, decorDensity: 0.6, themes: BUILTIN_THEMES, out, ...over,
@@ -39,6 +45,26 @@ describe("bakeDungeons", () => {
     assert.equal(new Set(more.index.dungeons.map((d) => d.hash)).size, 10);
     const again = bakeDungeons(options(out, { count: 2, fresh: true }));
     assert.equal(again.index.dungeons.length, 2);
+  });
+
+  it("prebakes each dungeon's shell as one PCGM buffer, and fresh removes it", () => {
+    const out = tmp();
+    const r = bakeDungeons(options(out, { count: 2, shell: { geo } }));
+    for (const e of r.added) {
+      assert.ok(e.shell, "the index records the shell");
+      const bytes = readFileSync(join(out, e.shell.file));
+      assert.equal(bytes.byteLength, e.shell.bytes);
+      const mesh = decodePcgMesh(bytes);
+      assert.deepEqual(mesh.materials, [...SHELL_PARTS]);
+      assert.equal(mesh.indices.length / 3, e.shell.triangles);
+      assert.equal(mesh.positions.length / 3, e.shell.vertices);
+      // The same shell dungeonShell builds from the layout file.
+      const d = decodeDungeon(JSON.parse(readFileSync(join(out, e.file), "utf8")) as DungeonFile);
+      assert.deepEqual(mesh.indices, dungeonShell(d, geo).indices);
+    }
+    assert.equal(bakeDungeons(options(tmp(), { count: 1 })).added[0].shell, undefined, "no shell unless asked");
+    bakeDungeons(options(out, { count: 1, fresh: true }));
+    assert.equal(readdirSync(out).filter((f) => f.endsWith(".shell.pcgm")).length, 0);
   });
 
   it("uses one theme when asked, and rejects an unknown one", () => {
@@ -95,5 +121,7 @@ describe("the bake command's options", () => {
     assert.equal(readOptions(["--fresh", "--png"], {}).png, "true");
     assert.throws(() => readOptions(["--count", "3"], {}), /unknown option --count/);
     assert.throws(() => readOptions(["10", "11"], {}), /unexpected argument "11"/);
+    assert.equal(readOptions(["--no-shell"], {})["no-shell"], "true");
+    assert.equal(readOptions([], { npm_config_no_shell: "true" })["no-shell"], "true", "npm's --no-shell");
   });
 });

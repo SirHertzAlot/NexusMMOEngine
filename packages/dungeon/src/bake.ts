@@ -8,6 +8,8 @@
  * (populate.ts) as it is baked, at a rank picked per dungeon.
  */
 
+import { encodePcgMesh } from "@mmo-engine/picg";
+import { dungeonShell, SHELL_PARTS, type GeometryOps, type ShellOptions } from "./shell.js";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { encodeDungeon, layoutHash } from "./format.js";
@@ -40,6 +42,11 @@ export interface BakeOptions {
   dress?: { dressing: Dressing; rank: [number, number] };
   /** Populate each dungeon from a roster (which species holds each room), at the dressing's rank, else one in `rank` (default 1). */
   populate?: { roster: Roster; rank?: [number, number] };
+  /**
+   * Prebake each dungeon's shell (shell.ts) as `<id>.shell.pcgm`, so an
+   * instance loads its geometry as one buffer instead of building it.
+   */
+  shell?: { geo: GeometryOps; options?: ShellOptions };
 }
 
 export interface IndexEntry {
@@ -61,6 +68,8 @@ export interface IndexEntry {
   floorTiles: number;
   width: number;
   height: number;
+  /** The prebaked shell (absent: baked without one). */
+  shell?: { file: string; triangles: number; vertices: number; bytes: number };
 }
 
 export interface DungeonIndex {
@@ -88,7 +97,7 @@ export interface BakeResult {
 export function bakeDungeons(o: BakeOptions): BakeResult {
   if (o.theme !== "auto" && !o.themes[o.theme]) throw new Error(`no theme "${o.theme}" (have: auto, ${Object.keys(o.themes).join(", ")})`);
   if (o.fresh && existsSync(o.out)) {
-    for (const f of readdirSync(o.out)) if (f.endsWith(".dungeon.json") || f.endsWith(".png") || f === "index.json") rmSync(join(o.out, f));
+    for (const f of readdirSync(o.out)) if (f.endsWith(".dungeon.json") || f.endsWith(".shell.pcgm") || f.endsWith(".png") || f === "index.json") rmSync(join(o.out, f));
   }
   mkdirSync(o.out, { recursive: true });
   const index = readIndex(o.out);
@@ -115,12 +124,20 @@ export function bakeDungeons(o: BakeOptions): BakeResult {
     const f = encodeDungeon(d, dressing, population);
     const file = `${f.id}.dungeon.json`;
     writeFileSync(join(o.out, file), JSON.stringify(f));
+    let shell: IndexEntry["shell"];
+    if (o.shell) {
+      const sh = dungeonShell(d, o.shell.geo, o.shell.options);
+      const bytes = encodePcgMesh({ positions: sh.positions, indices: sh.indices, materials: [...SHELL_PARTS], triangleMaterials: Uint32Array.from(sh.parts) });
+      shell = { file: `${f.id}.shell.pcgm`, triangles: sh.stats.triangles, vertices: sh.stats.vertices, bytes: bytes.byteLength };
+      writeFileSync(join(o.out, shell.file), bytes);
+    }
     const entry: IndexEntry = {
       id: f.id, file, hash, name: d.name, theme, seed: d.seed, rooms,
       ...(dressing || population ? { rank } : {}),
       ...(dressing ? { veins: dressing.resources.length } : {}),
       ...(population ? { boss: population.rooms[d.boss] || undefined, dwellers: population.spawns.length } : {}),
       floorTiles: d.stats.floorTiles, width: d.width, height: d.height,
+      ...(shell ? { shell } : {}),
     };
     index.dungeons.push(entry);
     added.push(entry);

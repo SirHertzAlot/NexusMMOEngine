@@ -57,6 +57,24 @@ Doc: [`EDITOR.md`](EDITOR.md)
 | E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | 📋 | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 4 |
 | E10 | Character record view (read-only) | 📋 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
 
+## 1b. Admin console: control the running game
+
+The development client's (`npm run dev`) control over the live world, to
+test every part of the engine: then with the rest of the developer tools
+in the editor's play mode (E4). Every change goes through the server,
+which accepts admin commands only from admin accounts or a development
+server, and logs them. Source definitions (prefabs, species, rules files)
+stay read-only here; this edits the running game.
+
+| # | Item | Status | Needs |
+|---|---|---|---|
+| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | ⏭️ | |
+| A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 📋 | A1 |
+| A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 📋 | A1 |
+| A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 📋 | A1 |
+| A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 📋 | A1, M3 (items), U10 (inventory) |
+| A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
+
 ## 2. Game client: the player's interface
 
 Everything here is React DOM over the world canvas, fed by the server
@@ -116,7 +134,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | R2 | Prefab builder | ✅ | 〃 |
 | L1 | Loot pool bake | ✅ | 〃 |
 | C1 (crafting) | Materials, recipes, tradability | ✅ | 〃 |
-| D4 | Dungeon instances | 📋 | 〃 §3.4 |
+| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 📋 | 〃 §3.4. Shells are prebaked (`dungeon:bake`, `<id>.shell.pcgm`) ✅ |
 | PCG1 | PICG native cook addon | ✅ | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 
@@ -130,7 +148,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | DetourTileCache: static bodies cut the navmesh | ✅ | #42 |
 | — | meshoptimizer: optimised cooked meshes, LOD chains for every prop | ✅ | #43 |
 | — | Performance instrumentation: frame, renderer, GPU memory and network counters | 🚧 | Feeds E5 |
-| — | manifold + Clipper2: mesh and polygon booleans for dungeon and PICG geometry | ⏭️ | |
+| — | manifold + Clipper2 (`addon-geometry`): cell outlines, polygon Booleans, CSG solids; prebaked dungeon shells | ✅ | |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
 ## 6. World server
@@ -149,6 +167,10 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-09-30**: manifold + Clipper2 (`addon-geometry`) and prebaked
+  dungeon shells. Added the admin console (A1–A6) and the dungeon instance
+  model (D4).
 
 - **2026-09-30**: Roadmap published. Decided: the client shows only the
   player's interface; all developer tooling, the debugger included,

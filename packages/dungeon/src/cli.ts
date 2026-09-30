@@ -24,6 +24,9 @@
  *   --species <file.json>  add or replace species (who lives in the rooms)
  *   --empty                don't populate
  *   --bare                 don't dress or populate (layouts only)
+ *   --no-shell             don't prebake shells (by default each dungeon's
+ *                          walls, floors and ceilings are baked into
+ *                          <id>.shell.pcgm with @mmo-engine/addon-geometry)
  */
 
 import { dirname, join, resolve } from "node:path";
@@ -35,9 +38,11 @@ import { dungeonPng } from "./preview.js";
 import { loadThemes } from "./themes.js";
 import { loadDressing } from "./dressing.js";
 import { loadSpecies } from "@mmo-engine/species";
+import { createRequire } from "node:module";
+import type { GeometryOps } from "./shell.js";
 
-const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "species", "empty", "bare"] as const;
-const FLAGS: readonly string[] = ["fresh", "png", "empty", "bare"];
+const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "species", "empty", "bare", "no-shell"] as const;
+const FLAGS: readonly string[] = ["fresh", "png", "empty", "bare", "no-shell"];
 type Option = (typeof OPTIONS)[number];
 
 /**
@@ -48,7 +53,7 @@ type Option = (typeof OPTIONS)[number];
 export function readOptions(argv: string[], env: NodeJS.ProcessEnv): Partial<Record<Option, string>> {
   const out: Partial<Record<Option, string>> = {};
   for (const name of OPTIONS) {
-    const npm = env[`npm_config_${name}`];
+    const npm = env[`npm_config_${name.replace(/-/g, "_")}`];
     // "true" is npm reading `--n 10` as a bare flag; the 10 arrives in argv.
     if (npm !== undefined && npm !== "" && (npm !== "true" || FLAGS.includes(name))) out[name] = npm;
   }
@@ -69,6 +74,15 @@ export function readOptions(argv: string[], env: NodeJS.ProcessEnv): Partial<Rec
     out[key as Option] = value;
   }
   return out;
+}
+
+/** The native geometry addon (manifold + Clipper2), which the shells need. */
+function loadGeometry(): GeometryOps {
+  try {
+    return createRequire(import.meta.url)("@mmo-engine/addon-geometry") as GeometryOps;
+  } catch (e) {
+    throw new Error(`prebaking shells needs @mmo-engine/addon-geometry built (npm install at the repo root), or pass --no-shell: ${(e as Error).message}`);
+  }
 }
 
 function num(name: string, v: string | undefined, fallback: number, min: number, max: number): number {
@@ -96,6 +110,7 @@ function main(): void {
   if (!(rank[0] >= 1 && rank[1] >= rank[0] && rank[1] <= 99)) throw new Error(`--rank must be a rank or min-max, from 1 (got "${rankText}")`);
   const bare = o.bare !== undefined && o.bare !== "false";
   const empty = bare || (o.empty !== undefined && o.empty !== "false");
+  const noShell = o["no-shell"] !== undefined && o["no-shell"] !== "false";
   const t0 = performance.now();
   const r = bakeDungeons({
     count, seed, rooms, out,
@@ -106,6 +121,7 @@ function main(): void {
     fresh: o.fresh !== undefined && o.fresh !== "false",
     ...(bare ? {} : { dress: { dressing: loadDressing(o.dressing), rank } }),
     ...(empty ? {} : { populate: { roster: loadSpecies(o.species), rank } }),
+    ...(noShell ? {} : { shell: { geo: loadGeometry() } }),
   });
   if (o.png !== undefined && o.png !== "false") {
     for (const d of r.added) {
@@ -115,7 +131,8 @@ function main(): void {
   }
   for (const d of r.added) {
     const dressed = (d.rank !== undefined ? `, rank ${d.rank}` : "") + (d.veins !== undefined ? `, ${d.veins} veins` : "") + (d.boss ? `, ${d.dwellers} dwellers, boss ${d.boss}` : "");
-    console.log(`  ${d.id}  ${d.name}  (${d.rooms} rooms${dressed}, ${d.floorTiles} tiles, ${d.width}x${d.height})`);
+    const shell = d.shell ? `, shell ${d.shell.triangles} tris ${(d.shell.bytes / 1024).toFixed(0)} KB` : "";
+    console.log(`  ${d.id}  ${d.name}  (${d.rooms} rooms${dressed}, ${d.floorTiles} tiles, ${d.width}x${d.height}${shell})`);
   }
   console.log(
     `[dungeon:bake] ${r.added.length} new dungeon(s) in ${((performance.now() - t0) / 1000).toFixed(1)} s; the pool holds ${r.index.dungeons.length} ` +

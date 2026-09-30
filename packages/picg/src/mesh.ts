@@ -98,3 +98,63 @@ export function decodePcgMesh(buffer: ArrayBuffer | Uint8Array): PcgMesh {
   }
   return { positions, indices, normals, colors, uvs, materials, triangleMaterials };
 }
+
+/**
+ * A mesh as PCGM v3 (the layout above): what the engine's own generators
+ * (dungeon shells) write, so their meshes take the same path as cooked
+ * ones (optimizeMesh, the Pcg service, the client's decoder).
+ */
+export function encodePcgMesh(mesh: Partial<PcgMesh> & Pick<PcgMesh, "positions" | "indices">): Uint8Array {
+  const vertexCount = mesh.positions.length / 3;
+  const indexCount = mesh.indices.length;
+  if (!Number.isInteger(vertexCount)) throw new Error("PCGM: positions must be xyz triples");
+  if (indexCount % 3 !== 0) throw new Error("PCGM: indices must be triangles");
+  for (const i of mesh.indices) if (i >= vertexCount) throw new Error(`PCGM: index ${i} out of range (${vertexCount} vertices)`);
+  const check = (a: Float32Array | null | undefined, per: number, name: string): Float32Array | null => {
+    if (!a) return null;
+    if (a.length !== vertexCount * per) throw new Error(`PCGM: ${name} must have ${per} values per vertex`);
+    return a;
+  };
+  const normals = check(mesh.normals, 3, "normals");
+  const colors = check(mesh.colors, 4, "colors");
+  const uvs = check(mesh.uvs, 2, "uvs");
+  const materials = mesh.triangleMaterials ? mesh.materials ?? [] : [];
+  if (mesh.triangleMaterials) {
+    if (mesh.triangleMaterials.length !== indexCount / 3) throw new Error("PCGM: one material slot per triangle");
+    for (const m of mesh.triangleMaterials) if (m >= materials.length) throw new Error(`PCGM: material slot ${m} has no name`);
+  }
+  const names = materials.map((n) => new TextEncoder().encode(n));
+  const materialBytes = mesh.triangleMaterials ? 4 + names.reduce((n, b) => n + 4 + b.length, 0) + (indexCount / 3) * 4 : 0;
+  const flags = (normals ? 1 : 0) | (colors ? 2 : 0) | (uvs ? 4 : 0) | (mesh.triangleMaterials ? 8 : 0);
+  const size = 24 + vertexCount * 12 + indexCount * 4 + (normals ? vertexCount * 12 : 0) + (colors ? vertexCount * 16 : 0) + (uvs ? vertexCount * 8 : 0) + materialBytes;
+  const out = new Uint8Array(size);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, PCGM_MAGIC, true);
+  view.setUint32(4, 3, true);
+  view.setUint32(8, vertexCount, true);
+  view.setUint32(12, indexCount, true);
+  view.setUint32(16, flags, true);
+  view.setUint32(20, materialBytes, true);
+  let offset = 24;
+  const put = (a: Float32Array | Uint32Array): void => {
+    out.set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength), offset);
+    offset += a.byteLength;
+  };
+  put(mesh.positions);
+  put(mesh.indices);
+  if (normals) put(normals);
+  if (colors) put(colors);
+  if (uvs) put(uvs);
+  if (mesh.triangleMaterials) {
+    view.setUint32(offset, names.length, true);
+    offset += 4;
+    for (const b of names) {
+      view.setUint32(offset, b.length, true);
+      offset += 4;
+      out.set(b, offset);
+      offset += b.length;
+    }
+    put(mesh.triangleMaterials);
+  }
+  return out;
+}

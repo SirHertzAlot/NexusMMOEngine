@@ -22,6 +22,8 @@ The pool lives in `$MMO_DATA_DIR/dungeons`, else `packages/engine-core/data/dung
 - `<id>.dungeon.json`: the layout (format `mmo-dungeon/1`), its dressing (the
   rank, room archetypes, their contents, and resource veins) and its population
   (the species in each room and at each spawn point).
+- `<id>.shell.pcgm`: its walls, floors and ceilings as one mesh buffer
+  (below), unless `--no-shell`.
 - `<id>.png`: a top-down map, with `--png`.
 
 A bake **adds** to the pool, and a layout already in it (same content hash)
@@ -45,6 +47,7 @@ same pool.
 | `--species` | | a JSON file adding or replacing species (see `SpeciesSchema` in `@mmo-engine/species`) |
 | `--empty` | | don't populate |
 | `--bare` | | layouts only, no dressing or population |
+| `--no-shell` | | don't prebake the shells |
 
 ## The pipeline
 
@@ -57,6 +60,28 @@ and parameters it produces the original's layout exactly (checked against
 200 dungeons across all five themes). The test suite pins the original's
 default dungeon (seed 1337, 42 rooms) as a golden vector. Any change to the
 order of random draws changes every baked dungeon, and that test catches it.
+
+## The shell: the walls you walk between
+
+Each dungeon's geometry is prebaked with its layout, so an instance loads
+it as one buffer: `<id>.shell.pcgm` (PCGM, the engine's mesh format; its
+material slots are `floor`, `wall`, `ceiling`, `basin`), recorded in the
+index as `shell`. `--no-shell` skips it.
+
+`dungeonShell(dungeon, geo)` (`src/shell.ts`) builds it with
+`@mmo-engine/addon-geometry`:
+
+- the walkable cells (floor and pools) are merged into polygons
+  (Clipper2) and extruded to corridor height (4 m);
+- each room's cells are extruded again to its ceiling by size (5 / 6 / 8 m);
+- pool cells sink 1.2 m as basins;
+- everything is subtracted from a block of rock round the dungeon
+  (manifold), and the block's outside is dropped.
+
+What remains is the inside surface, closed, every triangle facing into the
+space you walk in: a Jolt mesh collider, a Recast input, and what the
+client draws. A cell is 2 m (`DUNGEON_CELL`). A 40-room dungeon's shell is
+about 3-6 thousand triangles and 60-130 KB, and takes about 0.1 s to build.
 
 ## Dressing: WFC decides what, scatter and the raymarcher decide where
 

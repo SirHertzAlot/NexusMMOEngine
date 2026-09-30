@@ -24,7 +24,8 @@ packages/schema/        # mmo_engine.fbs — the SINGLE SOURCE OF TRUTH for the
 packages/protocol/      # WS envelope + message catalog helpers (TS)
 packages/engine-core/   # authoritative server: tick loop, world, net, persist (TS)
 packages/addons/        # C++ N-API addons: template, integrate (bench), procgen (FastNoise2),
-                        # physics (Jolt), navigation (Recast/Detour)
+                        # physics (Jolt), navigation (Recast/Detour), picg (PICG cook,
+                        # meshoptimizer), geometry (manifold + Clipper2 Booleans)
 packages/bench/         # tick-budget validation benchmark (slice 1.5)
 apps/client/            # three.js mirror client (Phase 3 placeholder)
 docs/                   # message catalog, decision log

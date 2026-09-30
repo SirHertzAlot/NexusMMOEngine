@@ -28,6 +28,7 @@
     "preview:world": "npm run preview:world --workspace=@mmo-engine/engine-core --",
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
     "test": "npm run test --workspaces --if-present",
+    "test:addon-geometry": "npm run test --workspace=@mmo-engine/addon-geometry",
     "test:addon-navigation": "npm run test --workspace=@mmo-engine/addon-navigation",
     "test:addon-physics": "npm run test --workspace=@mmo-engine/addon-physics",
     "test:addon-picg": "npm run test --workspace=@mmo-engine/addon-picg",
@@ -62,7 +63,8 @@
     "packages/crafting",
     "packages/picg",
     "packages/addons/scatter",
-    "packages/addons/picg"
+    "packages/addons/picg",
+    "packages/addons/geometry"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.0.3"
