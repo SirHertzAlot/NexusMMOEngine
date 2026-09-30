@@ -208,6 +208,13 @@ export async function convertModular(assetsRoot: string, log: (line: string) => 
   const textureUri = (from: string, file: string): string =>
     path.relative(from, path.join(assetsRoot, TEXTURE_DIR, file)).split(path.sep).join("/");
 
+  // The atlas and masks come from the pack conversion (convert:packs, which
+  // also turns TGA/PSD atlases into PNG): without them characters draw untextured.
+  const missing = [BASE_TEXTURE, ...MASK_TEXTURES].filter((f) => !fs.existsSync(path.join(assetsRoot, TEXTURE_DIR, f)));
+  if (missing.length) {
+    log(`[modular] WARNING: ${missing.join(", ")} missing from ${TEXTURE_DIR}: run \`npm run convert:packs\` first, or characters will be untextured`);
+  }
+
   const material = new THREE.MeshStandardMaterial({ name: "FantasyHero", roughness: 1, metalness: 0 });
   const uris = new Map([["FantasyHero", textureUri(partsDir, BASE_TEXTURE)]]);
   const files: Record<string, string> = {};
