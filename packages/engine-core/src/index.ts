@@ -39,11 +39,14 @@ export {
 } from "./components.js";
 
 export { SimWorld, SimEventEmitter } from "./world.js";
-export type { QueuedIntent, SimEventName, SimEventPayload, SimEventHandler } from "./world.js";
+export type { QueuedIntent, SimEventName, SimEventPayload, SimEventHandler, SimWorldOptions } from "./world.js";
+export { StatBook, type ModifierSpec, type StatLine } from "./stats/stat-book.js";
+export { StatsSystem } from "./stats/stats-system.js";
 
 export {
   IntentSystem,
   IntegrateSystem,
+  moveSpeedFactor,
   CharacterSystem,
   PhysicsSystem,
   createJoltBackend,

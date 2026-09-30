@@ -31,6 +31,7 @@ import {
   type HelloMessage,
   type IntentFields,
   type RegisterMessage,
+  type StatsMessage,
   type WelcomeMessage,
   type DayClock,
   type WireLook,
@@ -61,6 +62,8 @@ export interface MirrorEvents {
   onState(tick: number): void;
   onError(e: ErrorMessage): void;
   onClose(): void;
+  /** The player's own stats changed (also on joining). */
+  onStats?(s: StatsMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -89,6 +92,8 @@ export class MirrorClient {
   closed = false;
   /** The account's characters, from the last account message (join()). */
   account: AccountMessage | null = null;
+  /** The player's own attributes and stats, from the last stats message; null until one arrives. */
+  stats: StatsMessage | null = null;
 
   private socket: SocketLike | null = null;
   /** Server tick the last intent was sent at (-1: none on this connection). */
@@ -403,6 +408,12 @@ export class MirrorClient {
         this.debugResolve?.(res);
         this.debugResolve = null;
         this.debugReject = null;
+        break;
+      }
+      case MessageType.Stats: {
+        const stats = decodeControl<StatsMessage>(payload);
+        this.stats = stats;
+        this.events.onStats?.(stats);
         break;
       }
       case MessageType.Bye:

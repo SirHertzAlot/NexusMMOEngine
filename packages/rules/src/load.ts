@@ -91,6 +91,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   body: [],
   death: [],
   appearance: ["body"],
+  stats: [],
 };
 
 let defaults: Rules | null = null;
@@ -195,6 +196,38 @@ function crossCheck(r: Rules): RulesIssue[] {
   dupes("appearance", r.appearance.slots, "slots");
   r.appearance.slots.forEach((s, i) => {
     if (s.part !== undefined && !byId.has(s.part)) add("appearance", `slots[${i}].part`, `no body part "${s.part}"`);
+  });
+
+  // Stats: one id space for attributes and derived stats (a modifier
+  // names either), `from` reads attributes only (so there are no loops),
+  // each engine drive bound at most once, and bounds that make sense.
+  const attributes = new Set(r.stats.attributes.map((a) => a.id));
+  const statIds = new Set<string>();
+  const drives = new Map<string, string>();
+  const checkStat = (
+    s: { id: string; min: number | null; max: number | null; drives?: string },
+    where: string,
+  ): void => {
+    if (statIds.has(s.id)) add("stats", `${where}.id`, `"${s.id}" is used twice (attributes and stats share ids)`);
+    statIds.add(s.id);
+    if (s.min !== null && s.max !== null && s.min > s.max) add("stats", `${where}.min`, `above max (${s.max})`);
+    if (s.drives !== undefined) {
+      const other = drives.get(s.drives);
+      if (other !== undefined) add("stats", `${where}.drives`, `"${s.drives}" is already driven by "${other}"`);
+      else drives.set(s.drives, s.id);
+    }
+  };
+  r.stats.attributes.forEach((a, i) => {
+    checkStat(a, `attributes[${i}]`);
+    if ((a.min !== null && a.base < a.min) || (a.max !== null && a.base > a.max)) {
+      add("stats", `attributes[${i}].base`, `outside its bounds (${a.min ?? "-∞"}..${a.max ?? "∞"})`);
+    }
+  });
+  r.stats.stats.forEach((s, i) => {
+    checkStat(s, `stats[${i}]`);
+    for (const attr of Object.keys(s.from)) {
+      if (!attributes.has(attr)) add("stats", `stats[${i}].from.${attr}`, `no attribute "${attr}"`);
+    }
   });
   return issues;
 }

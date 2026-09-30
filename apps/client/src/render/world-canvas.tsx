@@ -11,6 +11,13 @@
  * PostFx draws the screen effects (bloom, antialiasing, underwater); the
  * frame loop tells it how far the camera is under water.
  *
+ * Quality (quality.ts): the GPU is classified once the renderer exists,
+ * and its preset sets the resolution range, the screen effects, the
+ * particle budget, outlines and the sky. A frame-rate governor (drei's
+ * PerformanceMonitor) lowers the resolution, then the preset, when frames
+ * drop, and raises them back when there's headroom; a preset the player
+ * pins keeps its effects and only the resolution moves.
+ *
  * The ground is TerrainRenderer's: the streamed chunks near the player,
  * and the whole world far away from the welcome's coarse map, so
  * mountains stand on the horizon kilometres off; WaterRenderer lays the
@@ -20,9 +27,11 @@
  * welcome's day clock, so every client sees the same hour.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import type { Effect } from "postprocessing";
+import { PerformanceMonitor } from "@react-three/drei";
 import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type WorldMap } from "@mmo-engine/protocol";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
@@ -33,7 +42,10 @@ import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-c
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
+import { installBvh } from "./bvh.js";
+import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
 import { DaySky } from "./sky/day-sky.js";
+import type { PhysicalSky } from "./sky/physical-sky.js";
 import { ParticleFx, WEATHER_RULES } from "./fx/particle-fx.js";
 import { biomeAt, weatherAt } from "./fx/weather.js";
 import { updateTerrainFx } from "./terrain-fx.js";
@@ -81,30 +93,115 @@ export interface WorldCanvasProps {
   lastStateAt: () => number;
   wireframe: boolean;
   showcase: boolean;
-  /** Screen effects (bloom, antialiasing, underwater); off renders the scene directly. */
-  effects: boolean;
+  /** "auto": the preset for this GPU, stepped down (and back up) by the frame-rate governor; else a pinned preset. */
+  quality: "auto" | QualityTier;
   onGpu?: (gpu: GpuInfo) => void;
+  /** The preset running now, and the one detected for the GPU (null until known). */
+  onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
 }
 
+installBvh();
+
 export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
-  const { onGpu, effects } = props;
+  const { onGpu, onQuality, quality } = props;
   const screen = useRef<ScreenState>({ underwater: 0 });
+  const physicalSky = useRef<PhysicalSky | null>(null);
+  const [skyEffects, setSkyEffects] = useState<Effect[]>([]);
+  // The GPU's preset (null until detected), the preset running, and the resolution.
+  const [detected, setDetected] = useState<QualityTier | null>(null);
+  const cap: QualityTier = quality === "auto" ? (detected ?? "medium") : quality;
+  const [active, setActive] = useState<QualityTier>(cap);
+  const settings = QUALITY_PRESETS[active];
+  const [dpr, setDpr] = useState(settings.dpr[1]);
+  useEffect(() => {
+    setActive(cap);
+  }, [cap]);
+  useEffect(() => {
+    setDpr(QUALITY_PRESETS[active].dpr[1]);
+  }, [active]);
+  useEffect(() => {
+    onQuality?.(active, detected);
+  }, [active, detected, onQuality]);
+
+  const decline = (): void => {
+    const [lo] = QUALITY_PRESETS[active].dpr;
+    if (dpr > lo + 1e-3) setDpr(Math.max(lo, dpr - 0.25));
+    else if (quality === "auto") setActive((t) => stepTier(t, -1) ?? t);
+  };
+  const incline = (): void => {
+    const [, hi] = QUALITY_PRESETS[active].dpr;
+    if (dpr < hi - 1e-3) setDpr(Math.min(hi, dpr + 0.25));
+    else if (quality === "auto") setActive((t) => stepTier(t, 1, cap) ?? t);
+  };
+
   return (
     <Canvas
       className="block h-full w-full"
       // Plain three.js colour output (no tone mapping), as before R3F.
       flat
-      dpr={[1, 2]}
+      dpr={dpr}
       gl={{ antialias: true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
-      onCreated={({ gl }) => onGpu?.(detectGpu(gl))}
+      onCreated={({ gl }) => {
+        const gpu = detectGpu(gl);
+        onGpu?.(gpu);
+        void detectQuality(gl, gpu.software).then((r) => setDetected(r.tier));
+      }}
     >
+      {/* Settles after flipping between better and worse a few times: then the current setting stays. */}
+      <PerformanceMonitor onDecline={decline} onIncline={incline} flipflops={4} />
       <fog attach="fog" args={[SKY, FOG_NEAR, FOG_FAR]} />
-      <MirrorWorld {...props} screen={screen} />
-      <PostFx enabled={effects} screen={screen} />
+      <PhysicalSkyHost settings={settings} skyRef={physicalSky} onEffects={setSkyEffects} />
+      <MirrorWorld {...props} quality={quality} settings={settings} screen={screen} physicalSky={physicalSky} />
+      <PostFx quality={settings} screen={screen}>
+        {skyEffects.map((e) => (
+          <primitive key={e.name} object={e} />
+        ))}
+      </PostFx>
     </Canvas>
   );
+}
+
+/**
+ * The physical sky (quality "physical"): created with the renderer and
+ * camera, its dome added to the scene, its effects handed to PostFx.
+ * Loaded on demand: the low and medium presets never download it.
+ */
+function PhysicalSkyHost({
+  settings,
+  skyRef,
+  onEffects,
+}: {
+  settings: QualitySettings;
+  skyRef: { current: PhysicalSky | null };
+  onEffects: (effects: Effect[]) => void;
+}): null {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
+  const on = settings.sky === "physical" && settings.effects;
+  useEffect(() => {
+    if (!on) return;
+    let sky: PhysicalSky | null = null;
+    let closed = false;
+    import("./sky/physical-sky.js")
+      .then(({ PhysicalSky }) => {
+        if (closed) return;
+        sky = new PhysicalSky(gl, camera);
+        scene.add(sky.dome);
+        skyRef.current = sky;
+        onEffects([...sky.effects]);
+      })
+      .catch((e: unknown) => console.warn(`[sky] physical sky unavailable: ${e instanceof Error ? e.message : String(e)}`));
+    return () => {
+      closed = true;
+      skyRef.current = null;
+      onEffects([]);
+      sky?.dispose();
+    };
+  }, [on, gl, camera, scene, skyRef, onEffects]);
+  return null;
 }
 
 interface Runtime {
@@ -126,19 +223,22 @@ function MirrorWorld({
   wireframe,
   showcase,
   onHud,
+  settings,
   screen,
-}: WorldCanvasProps & { screen: { current: ScreenState } }): null {
+  physicalSky,
+}: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, lastStateAt });
-  latest.current = { wireframe, showcase, onHud, lastStateAt };
+  const latest = useRef({ wireframe, showcase, onHud, lastStateAt, settings });
+  latest.current = { wireframe, showcase, onHud, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   const loop = useRef({ frames: 0, fpsAt: performance.now(), pointerMoved: false });
   const pointer = useRef(new THREE.Vector2());
-  const raycaster = useRef(new THREE.Raycaster());
+  // Nearest hit only: with BVHs (bvh.ts) a ray stops at its first triangle.
+  const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
 
   // Create the world's renderers and bind input; the same effect disposes
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
@@ -189,6 +289,8 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     rt.current = { sky, particles, map, terrain, water, layer, input };
+    particles.setBudget(latest.current.settings.particles);
+    layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
       (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { layer, input, client };
@@ -210,6 +312,11 @@ function MirrorWorld({
       water.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);
+
+  useEffect(() => {
+    rt.current?.particles.setBudget(settings.particles);
+    rt.current?.layer.setQuality(settings);
+  }, [settings]);
 
   useEffect(() => {
     rt.current?.terrain.setWireframe(wireframe);
@@ -244,7 +351,16 @@ function MirrorWorld({
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
     const timeOfDay = client.day ? timeOfDayAt(client.day, client.serverTick, client.tickHz || 30) : FIXED_TIME;
-    r.sky.update(timeOfDay, scene.fog instanceof THREE.Fog ? scene.fog : null);
+    const fog = scene.fog instanceof THREE.Fog ? scene.fog : null;
+    r.sky.update(timeOfDay, fog);
+    // The physical sky, once its tables are ready, draws the sky and the haze (aerial perspective) instead.
+    const physical = physicalSky.current?.ready ? physicalSky.current : null;
+    r.sky.setDomeVisible(!physical);
+    physical?.setSun(r.sky.sunDir);
+    if (fog) {
+      fog.near = physical ? CAMERA_FAR * 10 : FOG_NEAR;
+      fog.far = physical ? CAMERA_FAR * 20 : FOG_FAR;
+    }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
     // Weather where the camera is, the same on every client (biome + tick).

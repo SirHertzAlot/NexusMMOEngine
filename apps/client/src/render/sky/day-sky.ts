@@ -67,7 +67,8 @@ export class DaySky {
   private readonly material: THREE.ShaderMaterial;
   /** The sky's uniforms: the water binds the same objects to reflect this sky. */
   readonly uniforms: SkyUniforms = createSkyUniforms();
-  private readonly sunDir = new THREE.Vector3();
+  /** Unit vector toward the sun at the time last set (physical-sky.ts follows it). */
+  readonly sunDir = new THREE.Vector3();
 
   constructor() {
     this.group.name = "day-sky";
@@ -116,6 +117,11 @@ export class DaySky {
     }
     this.skyLight.intensity = Math.max(look.ambientIntensity * SKY_LIGHT_SCALE, MIN_SKY_LIGHT);
     if (fog) fog.color.setRGB(...look.fogColor);
+  }
+
+  /** Hide the keyframed dome (the physical sky draws the sky instead); stars, lights and haze stay. */
+  setDomeVisible(v: boolean): void {
+    this.dome.visible = v;
   }
 
   dispose(): void {

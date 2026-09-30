@@ -16,12 +16,13 @@
  * by one tick interval (see mirror/interpolate.ts).
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type HudData } from "./render/world-canvas.js";
 import type { GpuInfo } from "./render/gpu.js";
+import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
@@ -39,6 +40,7 @@ type Screen = "login" | "connecting" | "characters" | "world";
 type AuthMode = "login" | "register";
 
 const MODE_LABEL = ["walking", "swimming", "flying"];
+const QUALITY_CYCLE: ("auto" | QualityTier)[] = ["auto", ...QUALITY_TIERS];
 
 const DEFAULT_URL =
   typeof window !== "undefined" && window.location.protocol === "https:"
@@ -59,7 +61,9 @@ export function App(): React.ReactElement {
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
   const [showcase, setShowcase] = useState(false);
-  const [effects, setEffects] = useState(true);
+  // Graphics quality: "auto" follows the GPU and the frame rate; a preset pins it.
+  const [quality, setQuality] = useState<"auto" | QualityTier>("auto");
+  const [activeQuality, setActiveQuality] = useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   const [account, setAccount] = useState<AccountMessage | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
 
@@ -183,7 +187,8 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleShowcase = (): void => setShowcase((v) => !v);
-  const toggleEffects = (): void => setEffects((v) => !v);
+  const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
+  const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
 
   if (screen === "characters" && account) {
     return (
@@ -213,7 +218,8 @@ export function App(): React.ReactElement {
           lastStateAt={() => lastStateAtRef.current}
           wireframe={wireframe}
           showcase={showcase}
-          effects={effects}
+          quality={quality}
+          onQuality={onQuality}
           onGpu={onGpu}
           onHud={setHud}
         />
@@ -261,8 +267,13 @@ export function App(): React.ReactElement {
           <Button size="sm" variant="secondary" onClick={toggleWireframe}>
             {wireframe ? "solid terrain" : "wireframe terrain"}
           </Button>
-          <Button size="sm" variant="secondary" onClick={toggleEffects}>
-            {effects ? "effects off" : "effects on"}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={cycleQuality}
+            title={activeQuality?.detected ? `this GPU's preset: ${activeQuality.detected}` : "detecting the GPU…"}
+          >
+            quality: {quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
           </Button>
           <Button size="sm" variant="secondary" onClick={toggleShowcase}>
             {showcase ? "hide FX" : "FX showcase"}

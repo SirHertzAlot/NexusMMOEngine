@@ -118,6 +118,8 @@ export class ParticleFx {
   private readonly textures: Record<"soft" | "streak", THREE.Texture>;
   private readonly weather: WeatherEmitter[] = [];
   private splashCooldown = 0;
+  /** The quality preset's particle multiplier. */
+  private budget = 1;
   private disposed = false;
 
   constructor(camera: THREE.Camera) {
@@ -164,6 +166,11 @@ export class ParticleFx {
     }
   }
 
+  /** Scale every emission by the quality preset's particle budget (1 as designed). */
+  setBudget(multiplier: number): void {
+    this.budget = Math.max(0, multiplier);
+  }
+
   /** Particles alive now (tests, HUD). */
   get count(): number {
     return this.system.getCount();
@@ -187,7 +194,7 @@ export class ParticleFx {
       const target = weather.kind === w.kind ? weather.intensity : 0;
       w.level += Math.sign(target - w.level) * Math.min(Math.abs(target - w.level), step);
       // Rate changes only when the particle count per step actually changes.
-      const count = Math.round(w.preset.rate * w.level * EMIT_EVERY);
+      const count = Math.round(w.preset.rate * w.level * EMIT_EVERY * Math.min(this.budget, MAX_PARTICLES / (w.preset.rate * w.preset.life * 1.2)));
       if (count !== w.count) {
         w.count = count;
         w.emitter.setRate(new Rate(new Span(count, count), new Span(EMIT_EVERY)));
@@ -205,10 +212,11 @@ export class ParticleFx {
   splash(at: THREE.Vector3, force = false): boolean {
     if (this.disposed || (!force && this.splashCooldown > 0)) return false;
     this.splashCooldown = SPLASH.everySeconds;
+    const splashCount = Math.max(1, Math.round(SPLASH.count * this.budget));
     const emitter = new Emitter();
     emitter.damping = 0;
     emitter
-      .setRate(new Rate(new Span(SPLASH.count, SPLASH.count), new Span(1)))
+      .setRate(new Rate(new Span(splashCount, splashCount), new Span(1)))
       .setInitializers([
         new Position(new PointZone(0, 0, 0)),
         new Mass(1),

@@ -31,6 +31,8 @@ export enum MessageType {
   CreateCharacter = 0x0d,
   /** C→S: enter the world as a character (catalog §0x0e); answered with welcome + snapshot. */
   EnterWorld = 0x0e,
+  /** S→C: the player's own stats (catalog §0x0f), after joining and whenever they change. */
+  Stats = 0x0f,
 }
 
 /**
@@ -152,9 +154,33 @@ export interface EnterWorldMessage {
   character: number;
 }
 
+/** One line of a character sheet (catalog §0x0f). */
+export interface StatLineMessage {
+  id: string;
+  name: string;
+  /** With every modifier (buffs, debuffs, items, injuries). */
+  value: number;
+  /** Without any: the difference is what modifiers add or take away. */
+  base: number;
+}
+
+/**
+ * S→C (catalog §0x0f): the player's own stats, owner only. Sent after the
+ * welcome and snapshot, then at most once per tick while they change.
+ * Attributes are the broad umbrellas (strength, agility, …); stats are
+ * derived from them. The lists are whatever the game's stats.json defines.
+ */
+export interface StatsMessage {
+  entity: string;
+  attributes: StatLineMessage[];
+  stats: StatLineMessage[];
+}
+
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 6; // v6 (2026-09-28): combat — the Action
-// component on the wire and the Attack/Block/Dodge intent buttons.
+export const PROTOCOL_VERSION = 7; // v7 (2026-09-29): stats — 0x0f, the
+// player's own attributes and derived stats.
+// v6: combat — the Action component on the wire and the
+// Attack/Block/Dodge intent buttons.
 // v5: characters — 0x0c account, 0x0d create_character, 0x0e enter_world,
 // hello/register `characters`, error 4005, the Appearance component.
 

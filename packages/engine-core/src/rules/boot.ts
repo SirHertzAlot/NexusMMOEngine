@@ -25,6 +25,7 @@ export function loadGameRules(dir = DEFAULT_RULES_DIR, overrides: HookOverrides 
   const n = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
   const summary =
     `rules: ${n(rules.skills.skills.length, "skill")}, ${n(rules.disciplines.disciplines.length, "discipline")}, ` +
-    `${n(rules.body.parts.length, "body part")}, respawn after ${rules.death.respawn.delaySeconds} s (${dir})`;
+    `${n(rules.body.parts.length, "body part")}, ${n(rules.stats.attributes.length, "attribute")}, ` +
+    `${n(rules.stats.stats.length, "stat")}, respawn after ${rules.death.respawn.delaySeconds} s (${dir})`;
   return { rules, hooks: createHooks(rules, overrides), dir, summary };
 }
