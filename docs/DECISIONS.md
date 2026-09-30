@@ -361,6 +361,26 @@ Every entry: date, decision, rationale. Newest first.
   sessions dying with the server process). Acceptance is a stress
   harness reporting how many regions one micro server holds before p99
   migration latency or tick jitter degrades.
+- **2026-09-30 — uWebSockets.js serves the game port (ws stays as the
+  fallback).** The gateway talks to a small `Transport` interface
+  (`packages/engine-core/src/net/transport.ts`): a `WireSocket` per
+  connection and transport-neutral HTTP requests, so webrpc and binary
+  downloads share the port either way. uWebSockets.js (C++ event loop,
+  HTTP parser and framing) is the default whenever its prebuilt binary
+  loads; `ws` on node:http is the fallback and the reference. It is an
+  optional dependency pinned to a release tag over git+https (the project
+  isn't on npm); `MMO_TRANSPORT=uws|ws|auto` or the gateway's `transport`
+  option picks. Measured with `npm run bench:transport` (30 Hz, 1.2 KB
+  deltas out, 48 B intents in, transport alone): 25–35% less server CPU
+  at 100–2000 clients and a faster median fan-out; at 2000 clients ws
+  saturated a core and fell behind (57k of 60k messages/s) while uWS held
+  at 69%. uWS writes to the kernel inside the send loop where ws defers,
+  so its p99 loop time reads a little higher at 1000+; CPU is the fair
+  measure. Constraints it brings: a closed uWS socket must never be
+  touched (the adapter guards every call), message buffers are only valid
+  inside the callback (the adapter copies), and a uWS listener can't
+  rebind its own port in the same process after dropping live
+  connections (a restarted process can).
 - **2026-09-30 — DetourCrowd steers characters; the simulation stays the
   authority.** The navigation addon now compiles `DetourCrowd` (vendored
   since Phase 2) and exposes a crowd per service, agents keyed by wire id,

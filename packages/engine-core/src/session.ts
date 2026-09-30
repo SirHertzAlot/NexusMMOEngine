@@ -15,7 +15,7 @@
  * consumers, and later interest filtering have somewhere to live.
  */
 
-import type { WebSocket } from "ws";
+import type { WireSocket } from "./net/transport.js";
 
 export interface ClientSession {
   /** Opaque connection handle, assigned by the gateway. */
@@ -48,7 +48,7 @@ export interface ClientSession {
   lastPingMs: number;
   connectedAtMs: number;
   /** Live socket; null while the session is parked in the disconnect grace period. */
-  socket: WebSocket | null;
+  socket: WireSocket | null;
   /** True once hello is accepted and welcome sent. */
   welcomed: boolean;
   /**
