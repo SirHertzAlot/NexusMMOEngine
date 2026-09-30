@@ -12,6 +12,8 @@ export type {
   ErrorMessage,
   HelloMessage,
   RegisterMessage,
+  StatLineMessage,
+  StatsMessage,
   WelcomeMessage,
   WireLook,
 } from "./types.js";

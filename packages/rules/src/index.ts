@@ -1,5 +1,6 @@
 export * from "./schemas.js";
 export { engineDefaults, formatIssue, loadRules, parseRules, RulesError, type RulesIssue } from "./load.js";
+export { computeStats, ModifierTotals, StatLayout, type StatModifier } from "./stats.js";
 export {
   createHooks,
   decaySkill,
