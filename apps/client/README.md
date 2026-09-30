@@ -55,9 +55,17 @@ src/
                  scattering and aerial perspective (@takram/three-atmosphere)
     follow-camera.ts  third-person camera rig (mouse look + wheel distance)
     assets.ts    AssetProvider — THE seam for Joey's future art pipeline
+    perf-stats.ts  once-a-second performance samples (frame time, draw
+                 calls, triangles over every pass, GPU memory, props by
+                 level of detail, network rates, heap), a minute kept
   ui/
     components.tsx shadcn-style Button/Input/Card/Label (no CLI scaffold)
-  App.tsx        login screen + world screen (WorldCanvas) + HUD
+    dev-panels.tsx the dev HUD: panels you drag (title bar), resize
+                 (corner), fade, fold or close; the "dev" menu reopens
+                 them; ` hides them all (layout: dev-layout.ts, localStorage)
+    perf-hud.tsx   the performance panel: a sparkline per measure with one
+                 crosshair across all of them, and the props' LOD split
+  App.tsx        login screen + world screen (WorldCanvas) + dev HUD
 ```
 
 ## Tests

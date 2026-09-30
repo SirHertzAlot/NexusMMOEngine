@@ -430,3 +430,16 @@ Every entry: date, decision, rationale. Newest first.
   InstancedMesh per level and moves each prop to the level where its
   simplification error projects to at most 4 px (never nearer than 18 m
   per level), with 10 % hysteresis; one draw call per level in use.
+- **2026-09-30 — The HUD is a set of dev panels, and measures what costs
+  frames.** Performance first: a sparkline a measure for the last minute
+  (fps, mean and worst frame time, draw calls and triangles a frame, the
+  props' share, network in and out, JS heap), a bar of props by level of
+  detail with the triangles LOD saves, and what the GPU holds
+  (geometries, textures, shader programs). Draw calls and triangles are
+  summed over every pass of a frame (`renderer.info.autoReset` off, reset
+  by the frame loop), since the screen effects render several; the
+  network rates come from byte counters on MirrorClient. Character stats
+  stay out. Every panel (status, performance, tools, controls) can be
+  dragged, resized, faded, folded or closed, and ` hides them all so the
+  game can be watched as a player sees it; the layout is per browser
+  (localStorage), pulled back on screen when the window shrinks.
