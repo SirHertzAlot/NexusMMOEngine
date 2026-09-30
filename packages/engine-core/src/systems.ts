@@ -60,6 +60,15 @@ export const FLY_SPEED = 12;
 export const SWIM_VERTICAL_SPEED = 2;
 export const FLY_VERTICAL_SPEED = 6;
 
+/**
+ * The entity's movement speed as a factor on every speed it moves itself
+ * at: its stat bound to the `moveSpeed` drive (haste, slows, a limp), or
+ * 1 when the rules bind none or it has no stats. Never negative.
+ */
+export function moveSpeedFactor(sim: SimWorld, e: number): number {
+  return Math.max(0, sim.stats.drive(e, "moveSpeed") ?? 1);
+}
+
 /** Horizontal speed for an entity's locomotion mode (walking without one). */
 function modeSpeed(sim: SimWorld, e: number): number {
   if (!hasComponent(sim.ecs, Locomotion, e)) return PLAYER_SPEED;
@@ -78,7 +87,7 @@ export class IntentSystem implements SimSystem {
       // Horizontal axes only — the Y axis belongs to CharacterSystem
       // (gravity/jump/grounding, swimming, flight). Writing ly here would
       // wipe jump velocity every tick.
-      const speed = modeSpeed(sim, e);
+      const speed = modeSpeed(sim, e) * moveSpeedFactor(sim, e);
       Velocity.lx[e] = PlayerIntent.mx[e] * speed;
       Velocity.lz[e] = PlayerIntent.mz[e] * speed;
     }
@@ -312,8 +321,11 @@ export class CharacterSystem implements SimSystem {
       const floatLine = surface! - FLOAT_DEPTH;
       const outOfAir = L.breath[e] <= 0;
       let rise: number;
-      if (my > 0 || outOfAir) rise = SWIM_VERTICAL_SPEED;
-      else if (my < 0) rise = -SWIM_VERTICAL_SPEED;
+      // Swimming up or down is the swimmer's own speed; out of air, the
+      // rise to the surface is not slowed.
+      if (outOfAir) rise = SWIM_VERTICAL_SPEED;
+      else if (my > 0) rise = SWIM_VERTICAL_SPEED * moveSpeedFactor(sim, e);
+      else if (my < 0) rise = -SWIM_VERTICAL_SPEED * moveSpeedFactor(sim, e);
       else rise = Math.max(-1, Math.min(1, (floatLine - py) * 2)); // bob to the float line
       Velocity.ly[e] = rise;
       // Between the bottom and the float line (the bottom wins where the
@@ -323,7 +335,7 @@ export class CharacterSystem implements SimSystem {
       // No flying underwater: taking off from a swim climbs clear of it
       // first (diving back in is my < 0, handled above).
       const submerged = surface !== null && py < surface && my >= 0;
-      Velocity.ly[e] = submerged ? FLY_VERTICAL_SPEED : my * FLY_VERTICAL_SPEED;
+      Velocity.ly[e] = submerged ? FLY_VERTICAL_SPEED : my * FLY_VERTICAL_SPEED * moveSpeedFactor(sim, e);
       Transform.py[e] = Math.min(ground + MAX_FLIGHT_HEIGHT, Math.max(ground, py));
       if (Transform.py[e] <= ground && Velocity.ly[e] < 0) Velocity.ly[e] = 0;
     } else {

@@ -204,6 +204,64 @@ export const AppearanceSchema = z.strictObject({
   palettes: z.record(id, z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/))).default({}),
 });
 
+// ----------------------------------------------------------------- stats
+
+/**
+ * What the engine itself reads a stat for. A game binds at most one stat
+ * to each; an unbound drive keeps the engine's built-in behaviour.
+ *
+ * - `moveSpeed`: a multiplier on every locomotion speed (1 = normal).
+ * - `maxHealth`: the Health component's maximum (current keeps its share).
+ */
+export const StatDrive = z.enum(["moveSpeed", "maxHealth"]);
+
+/**
+ * How a modifier changes a stat. A stat's value is
+ * `(base + Σ add) × (1 + Σ percent) × Π multiply`, then clamped:
+ * `add` is flat (+5 strength), `percent` sums before it applies
+ * (+10 % and +20 % make +30 %), and `multiply` compounds (×0.5 halves).
+ */
+export const ModifierOp = z.enum(["add", "percent", "multiply"]);
+
+/** Optional bound; JSON has no infinity, so an absent bound is null. */
+const bound = z.number().nullable().default(null);
+
+/**
+ * A primary attribute: a broad umbrella (strength, agility, …) that
+ * derived stats read from. A game may have none.
+ */
+export const AttributeSchema = z.strictObject({
+  id,
+  name: z.string().min(1),
+  /** A new character's value. */
+  base: z.number().default(10),
+  min: bound,
+  max: bound,
+  drives: StatDrive.optional(),
+});
+
+/**
+ * A derived stat: what systems actually use (move speed, max health, …),
+ * its own base plus a share of each attribute it reads.
+ */
+export const DerivedStatSchema = z.strictObject({
+  id,
+  name: z.string().min(1),
+  base: z.number().default(0),
+  /** Attribute id -> amount added per point of that attribute. */
+  from: z.record(id, z.number()).default({}),
+  min: bound,
+  max: bound,
+  drives: StatDrive.optional(),
+});
+
+export const StatsSchema = z.strictObject({
+  /** Primary attributes (optional: a game can use derived stats only). */
+  attributes: z.array(AttributeSchema).default([]),
+  /** Derived stats (optional: a game can drive the engine from attributes only). */
+  stats: z.array(DerivedStatSchema).default([]),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -214,6 +272,7 @@ export const RULE_FILES = {
   body: BodySchema,
   death: DeathSchema,
   appearance: AppearanceSchema,
+  stats: StatsSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -227,6 +286,11 @@ export type DeathRules = z.infer<typeof DeathSchema>;
 export type AppearanceRules = z.infer<typeof AppearanceSchema>;
 export type DamageKind = z.infer<typeof DamageKind>;
 export type ItemProperty = z.infer<typeof ItemProperty>;
+export type StatsRules = z.infer<typeof StatsSchema>;
+export type AttributeDef = z.infer<typeof AttributeSchema>;
+export type DerivedStatDef = z.infer<typeof DerivedStatSchema>;
+export type StatDrive = z.infer<typeof StatDrive>;
+export type ModifierOp = z.infer<typeof ModifierOp>;
 
 export interface Rules {
   skills: SkillsRules;
@@ -235,4 +299,5 @@ export interface Rules {
   body: BodyRules;
   death: DeathRules;
   appearance: AppearanceRules;
+  stats: StatsRules;
 }
