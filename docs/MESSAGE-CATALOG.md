@@ -4,7 +4,7 @@ Mirrors Phase 1 plan §2. Envelope for every message: `[u8 type][payload]`.
 Control plane = JSON (debuggable); data plane = FlatBuffers (hot path).
 u64 ids travel as JSON strings (JS number precision).
 
-**Protocol version: 6** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons).
+**Protocol version: 8** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons; v7 adds stats 0x0f; v8 adds the admin console 0x10).
 
 | Type | Name | Dir | Encoding | Fields | Purpose / frequency |
 |------|------|-----|----------|--------|---------------------|
@@ -22,6 +22,7 @@ u64 ids travel as JSON strings (JS number precision).
 | 0x0c | `account` | S→C | JSON | `{session_token: "64 hex", characters: [{id: int, name: string, look: Look}], max_characters: int, created?: int}` | The account's characters, after a hello/register with `characters: true` and after each `create_character` (`created` = the new one's id). |
 | 0x0d | `create_character` | C→S | JSON | `{name: string, look: Look}` — name 3–16 chars `[A-Za-z'-]`, starting with a letter | Creates a character while choosing (answered with `account`). Refusals are 4005 (name taken, account full, look refused); a bad shape is 4003. |
 | 0x0e | `enter_world` | C→S | JSON | `{character: int}` | Enters the world as one of the account's characters: `welcome` + snapshot. Someone else's or an unknown id is 4005. |
+| 0x10 | `admin` | C→S / S→C | JSON | command: `{kind:"admin", command: string, args?: unknown}` (A1: `help`, `whoami`) · result: `{kind:"admin", command, ok: bool, message: string}` | **Admin console (A1).** Welcomed admins only (named in `MMO_ADMINS`, or every account with `MMO_DEV_SERVER=1`); anything else is answered 4003 and logged. Every answered command lands in the server's command log. |
 
 ## Authentication (slice 1.4)
 

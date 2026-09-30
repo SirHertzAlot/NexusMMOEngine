@@ -429,6 +429,57 @@ describe("MirrorClient.debug (0x0a)", () => {
   });
 });
 
+describe("MirrorClient.admin (0x10)", () => {
+  it("sends the command and resolves with the server's result", async () => {
+    const { client, socket } = await connectClient({
+      username: "u",
+      password: "p",
+    });
+    const p = client.admin("whoami");
+    const sent = socket.lastOf(MessageType.Admin);
+    assert.deepEqual(decodeControl(decodeEnvelope(sent).payload), {
+      kind: "admin",
+      command: "whoami",
+    });
+    socket.receive(
+      encodeEnvelope(
+        MessageType.Admin,
+        encodeControl({ kind: "admin", command: "whoami", ok: true, message: "admin u" }),
+      ),
+    );
+    const res = await p;
+    assert.equal(res.ok, true);
+    assert.equal(res.message, "admin u");
+  });
+
+  it("rejects when the server answers with an error", async () => {
+    const { client, socket } = await connectClient({
+      username: "u",
+      password: "p",
+    });
+    const p = client.admin("whoami");
+    socket.receive(
+      encodeEnvelope(
+        MessageType.Error,
+        encodeControl({ code: 4003, message: "admin only" }),
+      ),
+    );
+    await assert.rejects(p, /admin rejected: 4003/);
+  });
+
+  it("rejects a second command while one is in flight, and rejects when disconnected", async () => {
+    const { client } = await connectClient({
+      username: "u",
+      password: "p",
+    });
+    const first = client.admin("help");
+    await assert.rejects(client.admin("help"), /already in flight/);
+    client.disconnect();
+    await assert.rejects(first, /disconnected/);
+    await assert.rejects(client.admin("help"), /not connected/);
+  });
+});
+
 describe("MirrorClient characters", () => {
   const LOOK = { gender: "female", parts: { head: "Chr_Head_Female_02" }, colours: { skin: "#8d5524" } };
   const account = (characters: AccountMessage["characters"], created?: number): Uint8Array =>

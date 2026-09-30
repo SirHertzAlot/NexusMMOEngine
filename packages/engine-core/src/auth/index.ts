@@ -23,12 +23,13 @@ export {
 } from "./passwords.js";
 
 export {
+  AdminCommandSchema,
   HelloCredentialsSchema,
   HelloTokenSchema,
   RegisterSchema,
   parseHello,
 } from "./schemas.js";
-export type { HelloCredentials, HelloToken, RegisterPayload } from "./schemas.js";
+export type { AdminCommandPayload, HelloCredentials, HelloToken, RegisterPayload } from "./schemas.js";
 
 export { SessionManager } from "./sessions.js";
 export type { AuthSession, SessionManagerOptions } from "./sessions.js";

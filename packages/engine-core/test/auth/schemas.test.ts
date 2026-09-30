@@ -8,7 +8,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseHello } from "../../src/auth/index.js";
+import { AdminCommandSchema, parseHello } from "../../src/auth/index.js";
 
 const base = { protocol: 2, client: "test-client", want_snapshot: true };
 
@@ -64,5 +64,22 @@ describe("auth: hello schemas", () => {
     assert.equal(parseHello(null), null);
     assert.equal(parseHello("hello"), null);
     assert.equal(parseHello(42), null);
+  });
+});
+
+describe("auth: admin command schema", () => {
+  it("accepts kind + lowercase command, with optional args", () => {
+    const help = AdminCommandSchema.safeParse({ kind: "admin", command: "help" });
+    assert.equal(help.success, true);
+    const withArgs = AdminCommandSchema.safeParse({ kind: "admin", command: "spawn", args: { what: "tree" } });
+    assert.equal(withArgs.success, true);
+  });
+
+  it("rejects wrong kind, bad names, and extra fields", () => {
+    assert.equal(AdminCommandSchema.safeParse({ kind: "debug", command: "help" }).success, false);
+    assert.equal(AdminCommandSchema.safeParse({ kind: "admin", command: "Help" }).success, false);
+    assert.equal(AdminCommandSchema.safeParse({ kind: "admin", command: "a b" }).success, false);
+    assert.equal(AdminCommandSchema.safeParse({ kind: "admin" }).success, false);
+    assert.equal(AdminCommandSchema.safeParse({ kind: "admin", command: "help", admin: true }).success, false);
   });
 });

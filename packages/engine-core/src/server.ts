@@ -39,6 +39,10 @@
  *   MMO_BOTS_RADIUS how far from home they roam, metres (default 18)
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
+ *   MMO_ADMINS     comma-separated admin usernames for the admin console
+ *                  (protocol 0x10, roadmap A1; default empty = nobody)
+ *   MMO_DEV_SERVER=1 makes every account an admin (development servers
+ *                  only — never on a public deployment)
  *   MMO_DAY_SECONDS real seconds in one game day (default 2400 = 40 min;
  *                  0 = no day cycle: clients keep a fixed midday)
  *   MMO_DAY_OFFSET time of day at tick 0, 0..1 (0 midnight, 0.25 dawn,

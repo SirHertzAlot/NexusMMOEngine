@@ -79,6 +79,12 @@ export interface ClientSession {
   /** The account, once authenticated ("" before). */
   username: string;
   /**
+   * May send admin commands (protocol 0x10): named in GatewayOptions.admins
+   * or every account on a dev server. Decided once at join, from the
+   * authenticated username — never from anything the client claims later.
+   */
+  isAdmin: boolean;
+  /**
    * Authenticated and choosing a character (the client asked to): not in
    * the world yet — no entity, no deltas — until enter_world.
    */
