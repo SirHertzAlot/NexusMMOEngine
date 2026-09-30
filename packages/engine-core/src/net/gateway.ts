@@ -47,9 +47,6 @@
  */
 
 import { addComponent, defineQuery } from "bitecs";
-import { WebSocket, WebSocketServer } from "ws";
-import type { AddressInfo } from "node:net";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import {
   decodeControl,
   decodeEnvelope,
@@ -71,6 +68,7 @@ import {
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
+import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -208,7 +206,13 @@ export interface GatewayOptions {
    * return true when handled. Everything else gets 404; WebSocket
    * upgrades go to the gateway.
    */
-  http?: (req: IncomingMessage, res: ServerResponse) => boolean;
+  http?: HttpHandler;
+  /**
+   * The socket library behind the port (see ./transport.ts): "uws"
+   * (uWebSockets.js), "ws", or "auto" (uws when it loads). Default:
+   * MMO_TRANSPORT, else auto.
+   */
+  transport?: TransportKind;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -234,13 +238,6 @@ const MAX_MISSED_HEARTBEATS = 3;
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
-
-function toBytes(data: WebSocket.RawData): Uint8Array {
-  if (data instanceof Uint8Array) return data; // Buffer extends Uint8Array
-  if (data instanceof ArrayBuffer) return new Uint8Array(data);
-  if (Array.isArray(data)) return Buffer.concat(data);
-  throw new Error("gateway: unsupported ws frame type");
-}
 
 export class Gateway {
   /**
@@ -271,6 +268,7 @@ export class Gateway {
       | "dayClock"
       | "playerAbilities"
       | "http"
+      | "transport"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -309,11 +307,9 @@ export class Gateway {
   /** The stats version last sent to each session (see sendStats). */
   private readonly statsSent = new WeakMap<ClientSession, number>();
 
-  private wss: WebSocketServer | null = null;
-  private httpServer: Server | null = null;
-  /** Every socket on the port (HTTP and upgraded WebSocket): closed with the gateway. */
-  private readonly portSockets = new Set<import("node:net").Socket>();
-  private httpHandler: ((req: IncomingMessage, res: ServerResponse) => boolean) | null;
+  private readonly transportKind: TransportKind | undefined;
+  private transport: Transport | null = null;
+  private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
   private playerSeq = 0;
@@ -352,6 +348,7 @@ export class Gateway {
     this.dayClock = opts.dayClock ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
     this.httpHandler = opts.http ?? null;
+    this.transportKind = opts.transport;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -391,31 +388,20 @@ export class Gateway {
     return this.sessions.size;
   }
 
-  /** Bind the WebSocket server. Does NOT start the tick driver. */
+  /** Bind the port (WebSocket + HTTP). Does NOT start the tick driver. */
   async listen(): Promise<number> {
-    if (this.wss) throw new Error("gateway: already listening");
-    // One port: HTTP for webrpc services (opts.http), upgraded to
-    // WebSocket for the game protocol.
-    const handler = this.httpHandler;
-    this.httpServer = createServer((req, res) => {
-      if (handler?.(req, res)) return;
-      res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+    if (this.transport) throw new Error("gateway: already listening");
+    const transport = createTransport(this.transportKind);
+    this.transport = transport;
+    return transport.listen(this.opts.port, {
+      connection: (socket) => this.onConnection(socket),
+      http: this.httpHandler,
     });
-    this.httpServer.on("connection", (sock: import("node:net").Socket) => {
-      this.portSockets.add(sock);
-      sock.once("close", () => this.portSockets.delete(sock));
-    });
-    this.wss = new WebSocketServer({ server: this.httpServer });
-    this.wss.on("connection", (socket: WebSocket, req: IncomingMessage) =>
-      this.onConnection(socket, req),
-    );
-    const server = this.httpServer;
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(this.opts.port, () => resolve());
-    });
-    const addr = server.address() as AddressInfo | null;
-    return addr ? addr.port : 0;
+  }
+
+  /** Which socket library serves the port ("uws" or "ws"), once listening. */
+  get transportName(): string | null {
+    return this.transport?.kind ?? null;
   }
 
   /**
@@ -442,7 +428,7 @@ export class Gateway {
     }
     for (const s of this.sessions.values()) {
       try {
-        s.socket?.removeAllListeners();
+        s.socket?.listen({ message() {}, close() {} });
         s.socket?.close(1000, "server shutdown");
       } catch {
         /* ignore teardown errors */
@@ -452,36 +438,18 @@ export class Gateway {
     this.sessions.clear();
     this.tokenToClient.clear();
     this.authSessions.clear();
-    if (this.wss) {
-      const wss = this.wss;
-      this.wss = null;
-      // Sockets that never joined (no session) aren't closed above.
-      for (const ws of wss.clients) ws.terminate();
-      // Not awaited: on an external HTTP server, ws waits for its client
-      // set to empty, and the session sockets closed above had their
-      // listeners (ws's own bookkeeping among them) removed first. The
-      // port's sockets are destroyed below either way.
-      wss.close();
-    }
-    if (this.httpServer) {
-      const server = this.httpServer;
-      this.httpServer = null;
-      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-      // Upgraded sockets aren't HTTP connections any more: server.close()
-      // would wait on them forever. Nothing on the port outlives the gateway.
-      server.closeAllConnections();
-      for (const sock of this.portSockets) sock.destroy();
-      this.portSockets.clear();
-      await closed;
-    }
+    // Sockets that never joined (no session) and HTTP keep-alives go with the port.
+    const transport = this.transport;
+    this.transport = null;
+    await transport?.close();
   }
 
   /**
    * Set the HTTP handler (see GatewayOptions.http) before listen(): for
    * services that authenticate through this gateway's sessions.
    */
-  setHttpHandler(handler: (req: IncomingMessage, res: ServerResponse) => boolean): void {
-    if (this.httpServer) throw new Error("gateway: set the HTTP handler before listen()");
+  setHttpHandler(handler: HttpHandler): void {
+    if (this.transport) throw new Error("gateway: set the HTTP handler before listen()");
     this.httpHandler = handler;
   }
 
@@ -563,7 +531,7 @@ export class Gateway {
 
   /** Queue-or-send one enveloped message, preserving order, bounded. */
   private deliver(s: ClientSession, env: Uint8Array, tick: number): void {
-    if (s.socket && s.socket.readyState === WebSocket.OPEN) {
+    if (s.socket && s.socket.isOpen) {
       for (const q of s.sendQueue) s.socket.send(q);
       s.sendQueue.length = 0;
       s.socket.send(env);
@@ -632,7 +600,7 @@ export class Gateway {
 
   // ------------------------------------------------------------ sessions
 
-  private onConnection(socket: WebSocket, req?: IncomingMessage): void {
+  private onConnection(socket: WireSocket): void {
     const now = this.clock();
     const s: ClientSession = {
       clientId: `c${++this.clientSeq}`,
@@ -652,19 +620,23 @@ export class Gateway {
       lastSeenMs: now,
       disconnectedAtMs: null,
       needsResync: false,
-      remoteIp: req?.socket?.remoteAddress ?? "unknown",
+      remoteIp: socket.remoteIp,
       username: "",
       choosingCharacter: false,
       character: null,
     };
     this.sessions.set(s.clientId, s);
-    socket.on("message", (data: WebSocket.RawData) => this.onMessage(s, data));
-    socket.on("close", () => {
-      // Ignore closes from a superseded socket after takeover.
-      if (s.socket === socket) this.onClose(s);
-    });
-    socket.on("error", () => {
-      /* close handler does the cleanup */
+    this.route(s, socket);
+  }
+
+  /** Send `socket`'s events to session `s` (replacing any earlier routing). */
+  private route(s: ClientSession, socket: WireSocket): void {
+    socket.listen({
+      message: (data) => this.onMessage(s, data),
+      close: () => {
+        // Ignore closes from a superseded socket after takeover.
+        if (s.socket === socket) this.onClose(s);
+      },
     });
   }
 
@@ -700,15 +672,8 @@ export class Gateway {
     }
   }
 
-  private onMessage(s: ClientSession, data: WebSocket.RawData): void {
+  private onMessage(s: ClientSession, buf: Uint8Array): void {
     s.lastSeenMs = this.clock();
-    let buf: Uint8Array;
-    try {
-      buf = toBytes(data);
-    } catch {
-      this.sendError(s, 4003, "unreadable frame");
-      return;
-    }
     let type: MessageType;
     let payload: Uint8Array;
     try {
@@ -1213,7 +1178,7 @@ export class Gateway {
    * The old socket, if any, is superseded — its close event is ignored
    * by the guard in onConnection.
    */
-  private attachSocket(s: ClientSession, socket: WebSocket): void {
+  private attachSocket(s: ClientSession, socket: WireSocket): void {
     const old = s.socket;
     s.socket = socket;
     s.disconnectedAtMs = null;
@@ -1222,17 +1187,10 @@ export class Gateway {
     s.lastSeenMs = this.clock();
     s.sendQueue.length = 0;
     s.needsResync = false;
-    // The socket arrived with listeners bound to a discarded pending
-    // session — rewire them to the re-attached session.
-    socket.removeAllListeners();
-    socket.on("message", (data: WebSocket.RawData) => this.onMessage(s, data));
-    socket.on("close", () => {
-      if (s.socket === socket) this.onClose(s);
-    });
-    socket.on("error", () => {
-      /* close handler does the cleanup */
-    });
-    if (old && old.readyState === WebSocket.OPEN) {
+    // The socket arrived routed to a discarded pending session — rewire
+    // it to the re-attached session.
+    this.route(s, socket);
+    if (old && old.isOpen) {
       try {
         old.close(4000, "superseded by new connection");
       } catch {
@@ -1285,7 +1243,7 @@ export class Gateway {
     type: MessageType,
     payload: Uint8Array,
   ): void {
-    if (s.socket && s.socket.readyState === WebSocket.OPEN) {
+    if (s.socket && s.socket.isOpen) {
       s.socket.send(encodeEnvelope(type, payload));
     }
   }

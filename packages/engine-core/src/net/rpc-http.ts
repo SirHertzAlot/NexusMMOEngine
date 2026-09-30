@@ -1,5 +1,6 @@
 /**
- * A small webrpc server on node:http for the region (the world server's
+ * A small webrpc server on the gateway's port (either transport, see
+ * ./transport.ts) for the region (the world server's
  * Express adapter speaks the same wire protocol, see world.ridl):
  *
  *   POST /rpc/<Service>/<Method>   Content-Type: application/json
@@ -12,7 +13,7 @@
  * `Authorization: Bearer <session token>`: `authenticate` resolves it.
  */
 
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { HttpBodyTooLarge, type HttpRequest, type HttpResponse } from "./transport.js";
 
 export class RpcError extends Error {
   constructor(readonly code: number, message: string) {
@@ -65,21 +66,21 @@ export class RpcServer {
   }
 
   /** Handle a request if it is ours; false leaves it to the caller (404, upgrade…). */
-  handle(req: IncomingMessage, res: ServerResponse): boolean {
-    const url = (req.url ?? "").split("?")[0];
+  handle(req: HttpRequest, res: HttpResponse): boolean {
+    const url = req.url.split("?")[0];
     const isRpc = url.startsWith("/rpc/");
     const get = this.gets.find((g) => url.startsWith(g.prefix));
     if (!isRpc && !get) return false;
     if (req.method === "OPTIONS") {
-      res.writeHead(204, CORS).end();
+      res.send(204, CORS);
       return true;
     }
     void this.dispatch(req, res, url, get?.handler ?? null, get?.prefix ?? "").catch((err: unknown) => this.fail(res, err));
     return true;
   }
 
-  private async dispatch(req: IncomingMessage, res: ServerResponse, url: string, get: RpcGet | null, prefix: string): Promise<void> {
-    const token = BEARER.exec((req.headers.authorization ?? "").trim())?.[1];
+  private async dispatch(req: HttpRequest, res: HttpResponse, url: string, get: RpcGet | null, prefix: string): Promise<void> {
+    const token = BEARER.exec(req.header("authorization").trim())?.[1];
     if (!token) throw new RpcError(401, "missing bearer token");
     const caller = this.opts.authenticate(token);
     if (!caller) throw new RpcError(401, "invalid or expired session token");
@@ -88,18 +89,23 @@ export class RpcServer {
       if (req.method !== "GET") throw new RpcError(405, "use GET");
       const params = url.slice(prefix.length).split("/").filter(Boolean).map(decodeURIComponent);
       const out = await get(params, caller);
-      res.writeHead(out.status ?? 200, { ...CORS, "Content-Type": out.contentType, "Content-Length": String(out.body.byteLength), ...out.headers });
-      res.end(out.body);
+      res.send(out.status ?? 200, { ...CORS, "Content-Type": out.contentType, "Content-Length": String(out.body.byteLength), ...out.headers }, out.body);
       return;
     }
 
     if (req.method !== "POST") throw new RpcError(405, "use POST");
     const fn = this.methods.get(url);
     if (!fn) throw new RpcError(404, `unknown method ${url.slice(5)}`);
-    if (!(req.headers["content-type"] ?? "").startsWith("application/json")) {
+    if (!req.header("content-type").startsWith("application/json")) {
       throw new RpcError(415, "content-type must be application/json");
     }
-    const body = await readBody(req, this.opts.maxBodyBytes ?? 4 << 20);
+    const limit = this.opts.maxBodyBytes ?? 4 << 20;
+    let body: string;
+    try {
+      body = new TextDecoder().decode(await req.readBody(limit));
+    } catch (err) {
+      throw err instanceof HttpBodyTooLarge ? new RpcError(413, err.message) : err;
+    }
     let args: unknown;
     try {
       args = body.length === 0 ? {} : JSON.parse(body);
@@ -108,38 +114,17 @@ export class RpcServer {
     }
     if (!args || typeof args !== "object" || Array.isArray(args)) throw new RpcError(400, "body must be a JSON object");
     const out = await fn(args as Record<string, unknown>, caller);
-    const json = JSON.stringify(out);
-    res.writeHead(200, { ...CORS, "Content-Type": "application/json" });
-    res.end(json);
+    res.send(200, { ...CORS, "Content-Type": "application/json" }, JSON.stringify(out));
   }
 
-  private fail(res: ServerResponse, err: unknown): void {
+  private fail(res: HttpResponse, err: unknown): void {
     const code = err instanceof RpcError ? err.code : 500;
     const msg = err instanceof RpcError ? err.message : "internal error";
     if (code === 500) console.error("[rpc] internal error", err);
-    if (res.headersSent) {
-      res.destroy();
+    if (res.done) {
+      res.abort();
       return;
     }
-    res.writeHead(code, { ...CORS, "Content-Type": "application/json" });
-    res.end(JSON.stringify({ code, msg }));
+    res.send(code, { ...CORS, "Content-Type": "application/json" }, JSON.stringify({ code, msg }));
   }
-}
-
-function readBody(req: IncomingMessage, limit: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > limit) {
-        reject(new RpcError(413, `body over ${limit} bytes`));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
 }
