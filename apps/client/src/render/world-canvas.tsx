@@ -85,6 +85,9 @@ export interface HudData {
   /** The player's own HP from the mirror's Health rows (null: no row yet). */
   hp: number | null;
   maxHp: number | null;
+  /** The player's own stamina from the mirror's Stamina rows (null: no row yet). */
+  sp: number | null;
+  maxSp: number | null;
   /** The last minute of performance samples, oldest first (perf-stats.ts). */
   perf: PerfSample[];
 }
@@ -430,6 +433,8 @@ function MirrorWorld({
         weather: weather.intensity > 0 ? weather.kind : null,
         hp: me?.health?.current ?? null,
         maxHp: me?.health?.max ?? null,
+        sp: me?.stamina?.current ?? null,
+        maxSp: me?.stamina?.max ?? null,
         perf: perf.current.history(),
       });
     }

@@ -80,7 +80,7 @@ export function App(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [hud, setHud] = useState<HudData>({
     tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null, perf: [],
-    hp: null, maxHp: null,
+    hp: null, maxHp: null, sp: null, maxSp: null,
   });
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
@@ -247,7 +247,7 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
         />
-        <PlayerFrame name={characterName} hp={hud.hp} maxHp={hud.maxHp} />
+        <PlayerFrame name={characterName} hp={hud.hp} maxHp={hud.maxHp} sp={hud.sp} maxSp={hud.maxSp} />
         {DEV_TOOLS ? (
           <DevHud
             defaults={devLayoutDefaults}

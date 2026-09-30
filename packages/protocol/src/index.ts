@@ -37,6 +37,7 @@ export type {
   LocomotionRow,
   AppearanceRow,
   ActionRow,
+  StaminaRow,
   TransformRow,
   VelocityRow,
 } from "./codec.js";

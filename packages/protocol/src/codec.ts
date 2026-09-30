@@ -36,6 +36,8 @@ import {
   PlayerIntent,
   Quat,
   Snapshot,
+  Stamina,
+  StaminaBlock,
   Transform,
   TransformBlock,
   Vec3,
@@ -77,6 +79,12 @@ export interface ChunkRow {
 }
 
 export interface HealthRow {
+  wireId: bigint;
+  current: number; max: number;
+}
+
+/** Stamina pool row (mirrors the FlatBuffers Stamina table). */
+export interface StaminaRow {
   wireId: bigint;
   current: number; max: number;
 }
@@ -144,6 +152,7 @@ export interface CollectedState {
   intents: IntentRow[];
   chunks: ChunkRow[];
   healths: HealthRow[];
+  staminas: StaminaRow[];
   bodies: BodyConfigRow[];
   assets: AssetRefRow[];
   locomotions: LocomotionRow[];
@@ -262,6 +271,21 @@ function readHealthBlock(blk: HealthBlock | null): HealthRow[] {
   return out;
 }
 
+function readStaminaBlock(blk: StaminaBlock | null): StaminaRow[] {
+  const out: StaminaRow[] = [];
+  if (!blk) return out;
+  const n = blk.itemsLength();
+  for (let i = 0; i < n; i++) {
+    const e = blk.items(i);
+    if (!e) continue;
+    out.push({
+      wireId: blk.entities(i) ?? 0n,
+      current: e.current(), max: e.max(),
+    });
+  }
+  return out;
+}
+
 function readBodyBlock(blk: BodyConfigBlock | null): BodyConfigRow[] {
   const out: BodyConfigRow[] = [];
   if (!blk) return out;
@@ -360,6 +384,7 @@ export function decodeSnapshot(bytes: Uint8Array): CollectedState {
     locomotions: readLocomotionBlock(snap.locomotions()),
     appearances: readAppearanceBlock(snap.appearances()),
     actions: readActionBlock(snap.actions()),
+    staminas: readStaminaBlock(snap.staminas()),
     spawned: readIdList(snap.spawnedLength(), (i) => snap.spawned(i)),
     despawned: readIdList(snap.despawnedLength(), (i) => snap.despawned(i) as bigint),
   };
@@ -382,6 +407,7 @@ export function decodeDelta(bytes: Uint8Array): CollectedState {
     locomotions: readLocomotionBlock(d.locomotions()),
     appearances: readAppearanceBlock(d.appearances()),
     actions: readActionBlock(d.actions()),
+    staminas: readStaminaBlock(d.staminas()),
     spawned: readIdList(d.spawnedLength(), (i) => d.spawned(i)),
     despawned: readIdList(d.despawnedLength(), (i) => d.despawned(i) as bigint),
   };
@@ -569,6 +595,22 @@ function buildHealthBlock(b: flatbuffers.Builder, rows: HealthRow[]): number {
   return HealthBlock.endHealthBlock(b);
 }
 
+function buildStaminaBlock(b: flatbuffers.Builder, rows: StaminaRow[]): number {
+  const items: number[] = new Array(rows.length);
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    items[i] = Stamina.createStamina(b, r.current, r.max);
+  }
+  const entities = StaminaBlock.createEntitiesVector(
+    b, rows.map((r) => r.wireId),
+  );
+  const vec = StaminaBlock.createItemsVector(b, items);
+  StaminaBlock.startStaminaBlock(b);
+  StaminaBlock.addEntities(b, entities);
+  StaminaBlock.addItems(b, vec);
+  return StaminaBlock.endStaminaBlock(b);
+}
+
 function buildBodyBlock(b: flatbuffers.Builder, rows: BodyConfigRow[]): number {
   const items: number[] = new Array(rows.length);
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -683,6 +725,7 @@ export function encodeSnapshot(
   const lo = buildLocomotionBlock(b, s.locomotions);
   const ap = buildAppearanceBlock(b, s.appearances);
   const ac = buildActionBlock(b, s.actions);
+  const st = buildStaminaBlock(b, s.staminas);
   const spawned = Snapshot.createSpawnedVector(b, s.spawned);
   const despawned = Snapshot.createDespawnedVector(b, s.despawned);
   Snapshot.startSnapshot(b);
@@ -699,6 +742,7 @@ export function encodeSnapshot(
   Snapshot.addLocomotions(b, lo);
   Snapshot.addAppearances(b, ap);
   Snapshot.addActions(b, ac);
+  Snapshot.addStaminas(b, st);
   const root = Snapshot.endSnapshot(b);
   Snapshot.finishSnapshotBuffer(b, root);
   return b.asUint8Array();
@@ -717,6 +761,7 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   const lo = buildLocomotionBlock(b, s.locomotions);
   const ap = buildAppearanceBlock(b, s.appearances);
   const ac = buildActionBlock(b, s.actions);
+  const st = buildStaminaBlock(b, s.staminas);
   const spawned = Delta.createSpawnedVector(b, s.spawned);
   const despawned = Delta.createDespawnedVector(b, s.despawned);
   Delta.startDelta(b);
@@ -734,6 +779,7 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   Delta.addLocomotions(b, lo);
   Delta.addAppearances(b, ap);
   Delta.addActions(b, ac);
+  Delta.addStaminas(b, st);
   const root = Delta.endDelta(b);
   b.finish(root);
   return b.asUint8Array();

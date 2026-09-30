@@ -105,6 +105,7 @@ import { RulesError } from "@mmo-engine/rules";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { CombatSystem } from "./combat.js";
 import { StatsSystem } from "./stats/stats-system.js";
+import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
@@ -404,12 +405,15 @@ async function main(): Promise<void> {
   // Crowd steering: every character is an agent; bots with targets are steered round walls and each other.
   const crowd = navBackend.crowd ? [new CrowdSystem(navBackend.crowd)] : [];
   if (botCount > 0) console.log(`[bots] ${botCount} bots (sparring pairs and wanderers)`);
+  // Stamina gating: CombatSystem spends move costs through it; the pool
+  // itself drains and regens the tick after combat ran.
+  const stamina = new StaminaSystem();
   const gw = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation],
+    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(30, stamina), stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

@@ -21,7 +21,8 @@
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
-import { Action, Locomotion, PlayerIntent, Velocity } from "./components.js";
+import { Action, Locomotion, PlayerIntent, Stamina, Velocity } from "./components.js";
+import { ATTACK_COST, DODGE_COST, type StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 
@@ -33,7 +34,11 @@ export class CombatSystem implements SimSystem {
   /** Entities with a follow-up attack queued. */
   private readonly queued = new Set<number>();
 
-  constructor(private readonly tickHz = 30) {}
+  constructor(
+    private readonly tickHz = 30,
+    /** Stamina gate (absent in unit tests: every move fires). */
+    private readonly stamina?: StaminaSystem,
+  ) {}
 
   step(sim: SimWorld, dt: number): void {
     const eids = this.query(sim.ecs);
@@ -102,6 +107,16 @@ export class CombatSystem implements SimSystem {
   }
 
   private start(sim: SimWorld, e: number, id: number, yaw: number): CombatMove | undefined {
+    // Stamina gate (U2): dodges and attacks spend at move start — every
+    // start funnels through here, chains and recoveries included, while
+    // guards stay free. A denied start fires nothing (returns undefined).
+    const def = combatMove(id);
+    // Entities without a pool (bots) fence nothing: gating is for stamina
+    // bearers only, so bot behaviour is unchanged.
+    if (def && this.stamina && hasComponent(sim.ecs, Stamina, e)) {
+      const cost = def.kind === "dodge" ? DODGE_COST : def.kind === "attack" ? ATTACK_COST : 0;
+      if (cost > 0 && !this.stamina.spend(sim, e, cost)) return undefined;
+    }
     Action.move[e] = id;
     Action.started[e] = sim.currentTick;
     Action.seq[e] = (Action.seq[e] + 1) & 0xff;

@@ -33,6 +33,7 @@ export function emptyState(tick: number, baseTick = 0): CollectedState {
     intents: [],
     chunks: [],
     healths: [],
+    staminas: [],
     bodies: [],
     assets: [],
     locomotions: [],

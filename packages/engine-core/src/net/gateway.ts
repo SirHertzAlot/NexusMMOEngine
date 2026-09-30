@@ -1300,6 +1300,7 @@ export class Gateway {
 
   /**
    * Spawn a player entity: Transform + Velocity + PlayerIntent + Health +
+   * Stamina (full; StatsSystem sets the maxima from the rules next tick) +
    * Locomotion (on foot, with the gateway's player abilities, full breath)
    * + Appearance (the character's look, canonical JSON) + Action (no move),
    * and stats at the rules' bases when the game has any (StatsSystem then
@@ -1315,6 +1316,7 @@ export class Gateway {
     addComponent(sim.ecs, C.Velocity, eid);
     addComponent(sim.ecs, C.PlayerIntent, eid);
     addComponent(sim.ecs, C.Health, eid);
+    addComponent(sim.ecs, C.Stamina, eid);
     addComponent(sim.ecs, C.Locomotion, eid);
     C.Locomotion.mode[eid] = LocomotionMode.Ground;
     C.Locomotion.abilities[eid] = this.playerAbilities;
@@ -1328,6 +1330,8 @@ export class Gateway {
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;
     C.Health.current[eid] = 100;
     C.Health.max[eid] = 100;
+    C.Stamina.current[eid] = 100;
+    C.Stamina.max[eid] = 100;
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;

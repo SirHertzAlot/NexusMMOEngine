@@ -20,6 +20,7 @@ const empty = (tick: number): CollectedState => ({
   intents: [],
   chunks: [],
   healths: [],
+  staminas: [],
   bodies: [],
   assets: [],
   spawned: [],

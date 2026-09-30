@@ -8,6 +8,8 @@
   ],
   "stats": [
     { "id": "maxHealth", "name": "Max health", "base": 50, "from": { "vitality": 5 }, "min": 1, "drives": "maxHealth" },
+    { "id": "maxStamina", "name": "Max stamina", "base": 100, "from": { "vitality": 2 }, "min": 1, "drives": "maxStamina" },
+    { "id": "staminaRegen", "name": "Stamina regeneration", "base": 12, "min": 0 },
     { "id": "healthRegen", "name": "Health regeneration", "base": 0, "from": { "vitality": 0.05 }, "min": 0 },
     { "id": "moveSpeed", "name": "Movement speed", "base": 0.95, "from": { "agility": 0.005 }, "min": 0, "max": 2, "drives": "moveSpeed" },
     { "id": "attackSpeed", "name": "Attack speed", "base": 0.9, "from": { "agility": 0.01 }, "min": 0.25, "max": 2 },

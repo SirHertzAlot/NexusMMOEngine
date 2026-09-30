@@ -68,6 +68,12 @@ table Health {
   max: float;
 }
 
+/** Stamina pool (U2): current/max, drained by exertion, back on a cooldown. */
+table Stamina {
+  current: float;
+  max: float;
+}
+
 // ---- SoA blocks: entities[i] owns items[i] ----
 
 table TransformBlock { entities: [uint64]; items: [Transform]; }
@@ -75,6 +81,7 @@ table VelocityBlock  { entities: [uint64]; items: [Velocity]; }
 table IntentBlock    { entities: [uint64]; items: [PlayerIntent]; }
 table ChunkBlock     { entities: [uint64]; items: [Chunk]; }
 table HealthBlock    { entities: [uint64]; items: [Health]; }
+table StaminaBlock   { entities: [uint64]; items: [Stamina]; }
 table AssetRefBlock  { entities: [uint64]; items: [AssetRef]; }
 
 // ---- top-level messages ----
@@ -94,6 +101,7 @@ table Snapshot {
   locomotions: LocomotionBlock;
   appearances: AppearanceBlock;
   actions: ActionBlock;
+  staminas: StaminaBlock;
 }
 
 table Delta {
@@ -112,6 +120,7 @@ table Delta {
   locomotions: LocomotionBlock;
   appearances: AppearanceBlock;
   actions: ActionBlock;
+  staminas: StaminaBlock;
 }
 
 // ---- client -> server intent events (slice 1.3, additive) ----
