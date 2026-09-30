@@ -1,10 +1,10 @@
 /**
- * PlayerFrame: bar fill math (pure, no DOM needed).
+ * Meter: the shared bar's fill math (pure, no DOM needed).
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { barFraction } from "../src/ui/player-frame.js";
+import { barFraction } from "../src/ui/meter.js";
 
 describe("barFraction", () => {
   it("fills proportionally", () => {
