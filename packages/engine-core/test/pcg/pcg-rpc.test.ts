@@ -88,6 +88,25 @@ describe("Pcg webrpc service", () => {
     assert.ok(decoded.colors && decoded.normals, "vertex colours and normals");
   });
 
+  it("serves the mesh optimised, with a level-of-detail chain at its own URLs", async () => {
+    const res = await rpc("GetAssetMesh", { assetHash: fnv1a32("oak"), variant: 0 });
+    const { mesh } = (await res.json()) as { mesh: { url: string; triangleCount: number; lods: Array<{ url: string; triangleCount: number; vertexCount: number; error: number }> } };
+    assert.equal(mesh.lods.length, 3);
+    let prev = mesh.triangleCount;
+    for (const [i, lod] of mesh.lods.entries()) {
+      assert.equal(lod.url, `${mesh.url}/${i + 1}`);
+      assert.ok(lod.triangleCount < prev, `level ${i + 1} is lighter (${lod.triangleCount} < ${prev})`);
+      assert.ok(lod.error >= 0 && lod.error <= 0.05 + 1e-6, `within the error allowed (${lod.error})`);
+      prev = lod.triangleCount;
+      const got = await fetch(base + lod.url, { headers: { Authorization: `Bearer ${token}` } });
+      assert.equal(got.status, 200);
+      const decoded = decodePcgMesh(await got.arrayBuffer());
+      assert.equal(decoded.indices.length / 3, lod.triangleCount);
+      assert.equal(decoded.positions.length / 3, lod.vertexCount, "each level keeps only the vertices it uses");
+    }
+    assert.equal((await fetch(`${base}${mesh.url}/9`, { headers: { Authorization: `Bearer ${token}` } })).status, 404);
+  });
+
   it("answers preflights and refuses bad calls with webrpc errors", async () => {
     const pre = await fetch(`${base}/rpc/Pcg/ListAssets`, { method: "OPTIONS" });
     assert.equal(pre.status, 204);

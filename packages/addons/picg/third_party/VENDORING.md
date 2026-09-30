@@ -10,6 +10,7 @@
 | `pcg-core/include/`, `pcg-core/src/` | `pcg-core/include`, `pcg-core/src` | Apache-2.0 |
 | `pcg-core/node-manifest.json` | `schema/node-manifest.json` (node types, pins, properties) | Apache-2.0 |
 | `CDT/include/` | `pcg-core/third_party/CDT` submodule @ `7bd85e4` (header-only use) | MPL-2.0, `CDT/LICENSE` |
+| `meshoptimizer/src/` | github.com/zeux/meshoptimizer `v1.3` (`src/`) | MIT, `meshoptimizer/LICENSE.md` |
 | `nlohmann/nlohmann/json.hpp`, `json_fwd.hpp` | nlohmann/json `v3.11.3` single_include (upstream's pinned FetchContent tag) | MIT, `nlohmann/LICENSE.MIT` |
 
 Not vendored: the Web editor, pcg-server, Unity plugin, FBX exporter,

@@ -6,14 +6,17 @@
  * null, and `onChange` fires when the geometry is ready so the props move
  * from their placeholder to the real shape.
  *
- * One geometry per (asset, variant index, revision). An asset that isn't a
- * PCG asset, or a fetch that fails, stays a placeholder (a failure is
- * retried after RETRY_MS).
+ * One geometry per (asset, variant index, revision), with the level-of-
+ * detail chain the server simplified (meshoptimizer) when it has one: the
+ * levels download with the full mesh, and InstancedProps switches between
+ * them with distance (lod.ts). An asset that isn't a PCG asset, or a fetch
+ * that fails, stays a placeholder (a failure is retried after RETRY_MS).
  */
 
 import * as THREE from "three";
 import { decodePcgMesh, type PcgAssetInfo, type PcgRpcClient } from "@mmo-engine/picg";
 import type { PropModels } from "./instanced-props.js";
+import { lodDistance, modelScale, type LodLevel } from "./lod.js";
 
 const RETRY_MS = 30_000;
 
@@ -44,7 +47,7 @@ export function pcgGeometry(bytes: ArrayBuffer): THREE.BufferGeometry {
 export class PcgMeshes implements PropModels {
   private assets: Map<number, PcgAssetInfo> | null = null;
   private listing: Promise<void> | null = null;
-  private readonly ready = new Map<string, THREE.BufferGeometry>();
+  private readonly ready = new Map<string, { geometry: THREE.BufferGeometry; lods: LodLevel[] }>();
   private readonly pending = new Set<string>();
   private readonly failedAt = new Map<string, number>();
   private disposed = false;
@@ -60,7 +63,7 @@ export class PcgMeshes implements PropModels {
     return this.ready.size;
   }
 
-  model(assetHash: number, variant: number): { key: string; geometry: THREE.BufferGeometry } | null {
+  model(assetHash: number, variant: number): { key: string; geometry: THREE.BufferGeometry; lods: LodLevel[] } | null {
     if (this.disposed) return null;
     if (!this.assets) {
       this.list();
@@ -70,15 +73,18 @@ export class PcgMeshes implements PropModels {
     if (!info) return null;
     const vi = (variant >>> 0) % Math.max(1, info.variants);
     const key = `${info.assetHash}:${vi}:${info.revision}`;
-    const geometry = this.ready.get(key);
-    if (geometry) return { key, geometry };
+    const ready = this.ready.get(key);
+    if (ready) return { key, ...ready };
     this.fetchMesh(key, info.assetHash, vi);
     return null;
   }
 
   dispose(): void {
     this.disposed = true;
-    for (const g of this.ready.values()) g.dispose();
+    for (const r of this.ready.values()) {
+      r.geometry.dispose();
+      for (const l of r.lods) l.geometry.dispose();
+    }
     this.ready.clear();
   }
 
@@ -106,11 +112,21 @@ export class PcgMeshes implements PropModels {
         const ref = await this.rpc.getAssetMesh(assetHash, vi);
         if (!ref.url) throw new Error("the server has no mesh for it (no cooker?)");
         const geometry = pcgGeometry(await this.rpc.download(ref));
+        // The LOD chain, most detailed first; its errors are relative to the model's size.
+        const scale = modelScale(geometry);
+        const lods = await Promise.all(
+          (ref.lods ?? []).map(async (l, i): Promise<LodLevel> => ({
+            geometry: pcgGeometry(await this.rpc.download(l)),
+            distance: lodDistance(l.error * scale, i + 1),
+            error: l.error * scale,
+          })),
+        );
         if (this.disposed) {
           geometry.dispose();
+          for (const l of lods) l.geometry.dispose();
           return;
         }
-        this.ready.set(key, geometry);
+        this.ready.set(key, { geometry, lods });
         this.failedAt.delete(key);
         this.onChange();
       } catch (err) {

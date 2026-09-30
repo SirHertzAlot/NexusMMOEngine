@@ -11,6 +11,12 @@
  *
  * A revision counts changes to an asset (parameters now, the graph itself
  * later); a mesh is immutable per revision, so clients cache it forever.
+ *
+ * When the cooker can (the native addon's meshoptimizer), each cooked mesh
+ * is optimised before anyone sees it: vertices welded, triangles ordered
+ * for the GPU's vertex cache and for overdraw, vertices for fetch; and a
+ * level-of-detail chain simplified from it (MESH_LODS) that clients switch
+ * to with distance.
  */
 
 import { readFileSync } from "node:fs";
@@ -34,6 +40,27 @@ export interface PcgCooker {
   cook(graph: object, seed: number): Promise<
     { kind: "mesh"; mesh: ArrayBuffer; vertexCount: number; indexCount: number } | { kind: "json"; json: string } | { kind: "none" }
   >;
+  /** meshoptimizer over PCGM bytes (the addon's optimizeMesh); without it meshes go out as cooked. */
+  optimizeMesh?(pcgm: Uint8Array, opts: { lods: number[]; maxError: number }): OptimizedMesh;
+}
+
+export interface OptimizedMesh {
+  mesh: ArrayBuffer;
+  lods: Array<{ mesh: ArrayBuffer; ratio: number; vertices: number; triangles: number; error: number }>;
+  stats: { vertices: [number, number]; triangles: number; acmr: [number, number] };
+}
+
+/** The LOD chain: fractions of the full mesh's triangles, and the error allowed (of the mesh's size). */
+export const MESH_LODS = { lods: [0.5, 0.25, 0.1], maxError: 0.05 };
+
+export interface MeshLod {
+  bytes: Uint8Array;
+  /** Fraction of the full mesh's triangles asked for. */
+  ratio: number;
+  vertexCount: number;
+  triangleCount: number;
+  /** Deviation from the full mesh, relative to its size. */
+  error: number;
 }
 
 export interface PcgAssetInfo {
@@ -53,6 +80,10 @@ export interface CookedMesh {
   bytes: Uint8Array;
   vertexCount: number;
   triangleCount: number;
+  /** Simplified levels, most detailed first (empty without meshoptimizer). */
+  lods: MeshLod[];
+  /** Average vertex-shader runs per triangle before and after optimising (null: not optimised). */
+  acmr: [number, number] | null;
 }
 
 interface Entry {
@@ -144,10 +175,22 @@ export class PcgAssetLibrary {
     let pending = this.meshes.get(key);
     if (!pending) {
       const cooker = this.cooker;
-      pending = cooker.cook(this.prepared(e), variantSeed(e.asset, vi)).then((r) => {
+      pending = cooker.cook(this.prepared(e), variantSeed(e.asset, vi)).then((r): CookedMesh | null => {
         if (r.kind !== "mesh") return null;
         const bytes = new Uint8Array(r.mesh);
-        return { assetHash: e.info.assetHash, variantIndex: vi, revision, bytes, vertexCount: r.vertexCount, triangleCount: Math.floor(r.indexCount / 3) };
+        const base = { assetHash: e.info.assetHash, variantIndex: vi, revision };
+        if (!cooker.optimizeMesh) {
+          return { ...base, bytes, vertexCount: r.vertexCount, triangleCount: Math.floor(r.indexCount / 3), lods: [], acmr: null };
+        }
+        const o = cooker.optimizeMesh(bytes, MESH_LODS);
+        return {
+          ...base,
+          bytes: new Uint8Array(o.mesh),
+          vertexCount: o.stats.vertices[1],
+          triangleCount: o.stats.triangles,
+          lods: o.lods.map((l) => ({ bytes: new Uint8Array(l.mesh), ratio: l.ratio, vertexCount: l.vertices, triangleCount: l.triangles, error: l.error })),
+          acmr: o.stats.acmr,
+        };
       });
       // A failed cook isn't cached: the next request tries again.
       pending.catch(() => this.meshes.delete(key));

@@ -62,6 +62,16 @@ struct PcgMeshRef
   - url: string
   - vertexCount: uint32
   - triangleCount: uint32
+  # Simplified levels (meshoptimizer), most detailed first; switch with distance
+  - lods: []PcgMeshLod
+
+struct PcgMeshLod
+  # GET it like url (the full mesh's url plus /<level>)
+  - url: string
+  - vertexCount: uint32
+  - triangleCount: uint32
+  # Deviation from the full mesh, relative to its size
+  - error: float32
 
 struct PcgAssetDetail
   - info: PcgAssetInfo

@@ -33,16 +33,19 @@ export function registerPcgRpc(rpc: RpcServer, library: PcgAssetLibrary): void {
       throw new RpcError(422, `cook failed for '${info.id}': ${(err as Error).message}`);
     }
     if (!mesh) {
-      return { mesh: { assetHash, variantIndex: 0, revision: info.revision, url: "", vertexCount: 0, triangleCount: 0 } };
+      return { mesh: { assetHash, variantIndex: 0, revision: info.revision, url: "", vertexCount: 0, triangleCount: 0, lods: [] } };
     }
+    const url = `${PCG_MESH_PATH}/${assetHash}/${mesh.variantIndex}/${mesh.revision}`;
     return {
       mesh: {
         assetHash,
         variantIndex: mesh.variantIndex,
         revision: mesh.revision,
-        url: `${PCG_MESH_PATH}/${assetHash}/${mesh.variantIndex}/${mesh.revision}`,
+        url,
         vertexCount: mesh.vertexCount,
         triangleCount: mesh.triangleCount,
+        // Simplified levels, most detailed first: same URL plus the level (1..n).
+        lods: mesh.lods.map((l, i) => ({ url: `${url}/${i + 1}`, vertexCount: l.vertexCount, triangleCount: l.triangleCount, error: l.error })),
       },
     };
   });
@@ -53,13 +56,16 @@ export function registerPcgRpc(rpc: RpcServer, library: PcgAssetLibrary): void {
     });
   }
 
-  rpc.get(PCG_MESH_PATH, async ([hash, vi, rev]) => {
+  rpc.get(PCG_MESH_PATH, async ([hash, vi, rev, lod]) => {
     const pending = library.cachedMesh(Number(hash), Number(vi), Number(rev));
     const mesh = pending ? await pending : null;
     if (!mesh) throw new RpcError(404, "no such mesh (ask GetAssetMesh for the current URL)");
+    const level = lod === undefined ? 0 : Number(lod);
+    const body = level === 0 ? mesh.bytes : mesh.lods[level - 1]?.bytes;
+    if (!body) throw new RpcError(404, `no level ${lod} for this mesh`);
     return {
       contentType: "application/octet-stream",
-      body: mesh.bytes,
+      body,
       headers: { "Cache-Control": "private, max-age=31536000, immutable" },
     };
   });

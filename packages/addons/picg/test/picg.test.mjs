@@ -91,3 +91,28 @@ test("mesh-file import is compiled out and says so", async () => {
   };
   await assert.rejects(picg.cook(graph, 1), /needs a build with Assimp/);
 });
+
+test("optimizeMesh: welds, reorders for the vertex cache, and builds a lighter LOD chain", async () => {
+  const cooked = await picg.cook(staircase, 7);
+  const before = header(cooked.mesh);
+  const r = picg.optimizeMesh(new Uint8Array(cooked.mesh), { lods: [0.5, 0.25], maxError: 0.05 });
+  const after = header(r.mesh);
+  assert.equal(after.magic, "PCGM");
+  assert.equal(after.indices, before.indices, "no triangles lost at full detail");
+  assert.ok(after.vertices <= before.vertices, `welded (${before.vertices} -> ${after.vertices})`);
+  assert.deepEqual(r.stats.vertices, [before.vertices, after.vertices]);
+  assert.ok(r.stats.acmr[1] < r.stats.acmr[0], `fewer vertex-shader runs per triangle (${r.stats.acmr.map((v) => v.toFixed(2))})`);
+  assert.equal(r.lods.length, 2);
+  assert.ok(r.lods[0].triangles < after.indices / 3 && r.lods[1].triangles <= r.lods[0].triangles, "each level is lighter");
+  for (const lod of r.lods) {
+    const h = header(lod.mesh);
+    assert.equal(h.indices / 3, lod.triangles);
+    assert.equal(h.vertices, lod.vertices);
+    assert.ok(lod.error <= 0.05 + 1e-6);
+  }
+  // The same input optimises to the same bytes.
+  const again = picg.optimizeMesh(new Uint8Array(cooked.mesh), { lods: [0.5, 0.25], maxError: 0.05 });
+  assert.deepEqual(new Uint8Array(again.mesh), new Uint8Array(r.mesh));
+  assert.throws(() => picg.optimizeMesh(new Uint8Array(8)), /not a PCGM mesh/);
+  assert.throws(() => picg.optimizeMesh(new Uint8Array(cooked.mesh), { lods: [1.5] }), /each in \(0, 1\)/);
+});
