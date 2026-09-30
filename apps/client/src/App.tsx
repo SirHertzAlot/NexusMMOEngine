@@ -252,6 +252,7 @@ export function App(): React.ReactElement {
               {
                 id: "status",
                 title: characterName ?? "mirror client",
+                label: "status",
                 badge: gpu?.software && (
                   <span
                     className="shrink-0 rounded border border-amber-400/60 px-1 text-[10px] text-amber-300"
