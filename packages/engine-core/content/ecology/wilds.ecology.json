@@ -876,7 +876,16 @@
    "scale": [
     0.8,
     1.1
-   ]
+   ],
+   "collision": {
+    "shape": "box",
+    "halfExtents": [
+     0.35,
+     2.2,
+     0.35
+    ],
+    "motion": "static"
+   }
   },
   {
    "id": "understory",
@@ -958,7 +967,11 @@
    "scale": [
     0.8,
     1.3
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "edgeShrubs",
@@ -1133,7 +1146,11 @@
    "scale": [
     0.8,
     1.2
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "outcrops",
@@ -1322,7 +1339,16 @@
    "scale": [
     0.7,
     1.8
-   ]
+   ],
+   "collision": {
+    "shape": "box",
+    "halfExtents": [
+     0.45,
+     0.35,
+     0.45
+    ],
+    "motion": "static"
+   }
   },
   {
    "id": "rockGrass",
@@ -1366,7 +1392,11 @@
    "scale": [
     0.9,
     1.4
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "pebbles",
@@ -1441,7 +1471,11 @@
    "scale": [
     0.8,
     1.3
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "meadowPatch",
@@ -1482,7 +1516,11 @@
    "scale": [
     1,
     1
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "wildflowers",
@@ -1626,7 +1664,11 @@
    "scale": [
     0.8,
     1.15
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "strayFlowers",
@@ -1758,7 +1800,11 @@
    "scale": [
     0.8,
     1.1
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "grass",
@@ -1806,7 +1852,11 @@
    "scale": [
     0.9,
     1.5
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "reedbed",
@@ -1825,7 +1875,11 @@
    "scale": [
     1,
     1
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "reeds",
@@ -1864,7 +1918,11 @@
    "scale": [
     0.8,
     1.25
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   },
   {
    "id": "lilies",
@@ -1896,7 +1954,11 @@
    "scale": [
     0.8,
     1.2
-   ]
+   ],
+   "collision": {
+    "shape": "none",
+    "motion": "static"
+   }
   }
  ]
 }

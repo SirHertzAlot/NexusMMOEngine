@@ -7,8 +7,14 @@
  * circles the ring drawing a trail, and a row of composed legendary and
  * epic creatures and items (prefab/gallery.ts) stands behind the ring.
  *
+ * Everything stands on the ground under it: each orb, the blade and each
+ * gallery stand read the terrain height where they are, every frame (the
+ * terrain can stream in after the showcase opens), and their particles
+ * land on it (QuarksFx.setGround).
+ *
  * Strictly visual and local: the orbs are decorative preview objects,
- * not authoritative entities (the server never hears about them).
+ * not authoritative entities (the server never hears about them, so they
+ * have no physics bodies; everything the server spawns does).
  */
 
 import * as THREE from "three";
@@ -48,8 +54,12 @@ interface Orb {
   mat: THREE.ShaderMaterial;
   kind: ElementKind;
   phase: number;
-  baseY: number;
+  /** Height above the ground it hovers at. */
+  hover: number;
 }
+
+/** Ground height at world (x, z), or null where the terrain isn't loaded. */
+export type GroundAt = (x: number, z: number) => number | null;
 
 export class FxShowcase {
   private readonly group = new THREE.Group();
@@ -66,6 +76,7 @@ export class FxShowcase {
     private readonly scene: THREE.Scene,
     private readonly onPulse?: (pos: THREE.Vector3, color: number) => void,
     private readonly vfx?: QuarksFx,
+    private readonly ground: GroundAt = () => null,
   ) {
     this.group.visible = false;
     const radius = 5.5;
@@ -89,10 +100,9 @@ export class FxShowcase {
       label.scale.multiplyScalar(1.15);
       const g = new THREE.Group();
       g.add(orb, halo, label);
-      const baseY = 1.7;
-      g.position.set(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius);
+      g.position.set(Math.cos(angle) * radius, 1.7, Math.sin(angle) * radius);
       this.group.add(g);
-      this.orbs.push({ group: g, mesh: orb, mat, kind, phase: (i / ELEMENTS.length) * Math.PI * 2, baseY });
+      this.orbs.push({ group: g, mesh: orb, mat, kind, phase: (i / ELEMENTS.length) * Math.PI * 2, hover: 1.7 });
     });
     scene.add(this.group);
   }
@@ -100,6 +110,8 @@ export class FxShowcase {
   private readonly blade = new THREE.Object3D();
   private effects: VfxHandle[] = [];
   private gallery: PrefabGallery | null = null;
+  /** Where the ground is when the terrain there isn't known: the centre's height. */
+  private fallbackY = 0;
 
   get isVisible(): boolean {
     return this.visible;
@@ -109,7 +121,11 @@ export class FxShowcase {
   setVisible(v: boolean, center?: THREE.Vector3): void {
     this.visible = v;
     this.group.visible = v;
-    if (v && center) this.group.position.set(center.x, 0, center.z);
+    if (v && center) {
+      // The group sits at height 0, so children's heights are world heights.
+      this.group.position.set(center.x, 0, center.z);
+      this.fallbackY = this.ground(center.x, center.z) ?? center.y;
+    }
     // The composer's signal effects on the orbs, and a blade trail round the ring, while shown.
     for (const e of this.effects) e.dispose();
     this.effects = [];
@@ -132,11 +148,15 @@ export class FxShowcase {
   update(time: number, dt: number): void {
     if (!this.visible) return;
     // The blade tip sweeps round inside the ring, rising and falling like a swing.
-    this.blade.position.set(Math.cos(time * 2.2) * 3, 1.5 + Math.sin(time * 4.4) * 0.6, Math.sin(time * 2.2) * 3);
+    const bx = Math.cos(time * 2.2) * 3;
+    const bz = Math.sin(time * 2.2) * 3;
+    this.blade.position.set(bx, this.groundAt(bx, bz) + 1.5 + Math.sin(time * 4.4) * 0.6, bz);
+    this.gallery?.settle((x, z) => this.groundAt(x, z));
     this.gallery?.update(dt, time);
     for (const o of this.orbs) {
       tickElementMaterial(o.mat, time + o.phase);
-      o.group.position.y = o.baseY + Math.sin(time * 1.3 + o.phase) * 0.35;
+      const ground = this.groundAt(o.group.position.x, o.group.position.z);
+      o.group.position.y = ground + o.hover + Math.sin(time * 1.3 + o.phase) * 0.35;
       // Spin the orb mesh only — labels stay pinned above their orb.
       o.mesh.rotation.y = time * 0.4 + o.phase;
     }
@@ -148,9 +168,14 @@ export class FxShowcase {
       this.pulseIndex++;
       const p = new THREE.Vector3();
       o.group.getWorldPosition(p);
-      p.y = 0;
+      p.y = this.groundAt(o.group.position.x, o.group.position.z);
       this.onPulse(p, ORB_BURST_COLOR[o.kind]);
     }
+  }
+
+  /** The ground under a point in the ring's local (x, z). */
+  groundAt(x: number, z: number): number {
+    return this.ground(this.group.position.x + x, this.group.position.z + z) ?? this.fallbackY;
   }
 
   dispose(): void {

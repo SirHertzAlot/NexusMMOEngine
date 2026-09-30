@@ -10,12 +10,18 @@
  * covered by test/physics-jolt.test.ts and the addon's own tests.
  */
 
-import test from "node:test";
+import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { addComponent } from "bitecs";
+import { addComponent, hasComponent } from "bitecs";
 import {
+  AssetRef,
   BodyConfig,
+  CHARACTER_CAPSULE,
+  Chunk,
+  ColliderSystem,
+  Locomotion,
   MotionType,
+  PlayerIntent,
   ShapeKind,
   IntegrateSystem,
   PhysicsSystem,
@@ -257,4 +263,68 @@ test("integrate skips BodyConfig entities (no double-stepping)", () => {
   new IntegrateSystem().step(sim, dt);
   assert.equal(Transform.py[phys], yPhysBefore); // untouched: physics owns it
   assert.ok(Math.abs(Transform.py[plain] - (yPlainBefore - 3 * dt)) < 1e-6);
+});
+
+test("integrate: kinematic bodies move with their velocity (the game drives them; physics follows)", () => {
+  const sim = new SimWorld();
+  const e = spawnBody(sim, ShapeKind.Box, MotionType.Kinematic, 0, 0, 0);
+  Velocity.lx[e] = 2;
+  new IntegrateSystem().step(sim, dt);
+  assert.ok(Math.abs(Transform.px[e] - 2 * dt) < 1e-6);
+  // Physics syncs the body to it and leaves Transform where the game put it.
+  const backend = new MockBackend();
+  const sys = new PhysicsSystem(backend);
+  sys.step(sim, dt);
+  assert.ok(Math.abs(Transform.px[e] - 2 * dt) < 1e-6);
+  assert.equal(Velocity.lx[e], 2, "velocity isn't overwritten by the backend");
+});
+
+describe("colliders: every entity is a physics body", () => {
+  it("characters get a kinematic capsule on their feet; movers a kinematic box; still things a static one", () => {
+    const sim = new SimWorld();
+    const character = sim.spawn();
+    for (const c of [Transform, Velocity, PlayerIntent]) addComponent(sim.ecs, c, character);
+    const bot = sim.spawn();
+    for (const c of [Transform, Velocity, Locomotion]) addComponent(sim.ecs, c, bot);
+    const mover = sim.spawn();
+    for (const c of [Transform, Velocity]) addComponent(sim.ecs, c, mover);
+    Transform.sx[mover] = 2; Transform.sy[mover] = 1; Transform.sz[mover] = 4;
+    const crate = sim.spawn();
+    addComponent(sim.ecs, Transform, crate);
+    const scenery = sim.spawn();
+    addComponent(sim.ecs, Transform, scenery);
+    addComponent(sim.ecs, AssetRef, scenery);
+    const chunk = sim.spawn();
+    addComponent(sim.ecs, Chunk, chunk);
+
+    new ColliderSystem().step(sim);
+    for (const e of [character, bot]) {
+      assert.equal(BodyConfig.shapeKind[e], ShapeKind.Capsule);
+      assert.equal(BodyConfig.motionType[e], MotionType.Kinematic);
+      assert.ok(Math.abs(BodyConfig.radius[e] - CHARACTER_CAPSULE.radius) < 1e-6);
+    }
+    assert.equal(BodyConfig.shapeKind[mover], ShapeKind.Box);
+    assert.equal(BodyConfig.motionType[mover], MotionType.Kinematic);
+    assert.deepEqual([BodyConfig.halfX[mover], BodyConfig.halfY[mover], BodyConfig.halfZ[mover]], [1, 0.5, 2]);
+    assert.equal(BodyConfig.motionType[crate], MotionType.Static);
+    assert.ok(hasComponent(sim.ecs, Velocity, crate), "physics owns [Transform, Velocity, BodyConfig]");
+    assert.ok(!hasComponent(sim.ecs, BodyConfig, scenery), "scenery's collider is its archetype's call");
+    assert.ok(!hasComponent(sim.ecs, BodyConfig, chunk), "terrain is a height field, not an entity body");
+
+    // All of them reach the physics world, keyed by wire id.
+    const backend = new MockBackend();
+    new PhysicsSystem(backend).step(sim, dt);
+    assert.deepEqual(
+      [...backend.bodies.keys()].sort(),
+      [character, bot, mover, crate].map((e) => sim.wireId(e)).sort(),
+    );
+  });
+
+  it("leaves a body the spawn code set alone", () => {
+    const sim = new SimWorld();
+    const e = spawnBody(sim, ShapeKind.Sphere, MotionType.Dynamic, 0, 5, 0);
+    new ColliderSystem().step(sim);
+    assert.equal(BodyConfig.shapeKind[e], ShapeKind.Sphere);
+    assert.equal(BodyConfig.motionType[e], MotionType.Dynamic);
+  });
 });

@@ -133,9 +133,11 @@ table IntentMessage {
 // spawned bodies carry their collision config to fresh clients and to
 // SQLite persistence (bodies are rebuilt natively from this on
 // restore). Field convention: Box uses half_extents (radius unused);
-// Sphere uses radius (half_extents unused).
+// Sphere uses radius (half_extents unused); Capsule uses radius and
+// half_extents.y (half the straight section), standing upright with its
+// base at the body's origin (a character's feet).
 
-enum ShapeKind : uint8 { Box = 0, Sphere = 1 }
+enum ShapeKind : uint8 { Box = 0, Sphere = 1, Capsule = 2 }
 
 enum MotionType : uint8 { Static = 0, Kinematic = 1, Dynamic = 2 }
 

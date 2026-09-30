@@ -122,7 +122,9 @@ export class EntityLayer {
     this.group.add(this.props.group);
     this.fx = new EntityFxSystem(scene, camera);
     this.group.add(this.vfx.renderer);
-    this.showcase = new FxShowcase(scene, (pos, color) => this.fx.spawnBurst(pos, color), this.vfx);
+    const ground = (x: number, z: number): number | null => this.terrain.heightAt(x, z);
+    this.vfx.setGround(ground);
+    this.showcase = new FxShowcase(scene, (pos, color) => this.fx.spawnBurst(pos, color), this.vfx, ground);
     CharacterKit.load()
       .then((kit) => {
         if (this.disposed) kit.dispose();

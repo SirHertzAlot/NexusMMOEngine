@@ -46,6 +46,9 @@ export { StatsSystem } from "./stats/stats-system.js";
 export {
   IntentSystem,
   IntegrateSystem,
+  ColliderSystem,
+  attachDefaultCollider,
+  CHARACTER_CAPSULE,
   moveSpeedFactor,
   CharacterSystem,
   PhysicsSystem,

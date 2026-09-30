@@ -17,8 +17,11 @@
  *   N such entities are handled identically (multiplayer by
  *   construction, no single-player assumption).
  * - IntegrateSystem: semi-implicit Euler — position += velocity * dt for
- *   Transform+Velocity entities WITHOUT BodyConfig. Entities carrying
- *   BodyConfig are owned by PhysicsSystem instead (never double-stepped).
+ *   Transform+Velocity entities without a simulated body: no BodyConfig,
+ *   or a kinematic one (the game moves it; physics follows). Dynamic
+ *   bodies are owned by PhysicsSystem instead (never double-stepped).
+ * - ColliderSystem: every entity with a Transform gets a collider, so
+ *   everything in the world is a physics body, keyed by its wire id.
  * - PhysicsSystem (Phase 2): drives the Jolt native addon behind the
  *   narrow PhysicsBackend interface. JS owns Transform, Velocity and
  *   BodyConfig; the native world owns the PhysicsSystem, the
@@ -31,14 +34,16 @@
 
 import { tileHeightAt } from "@mmo-engine/protocol";
 import { createRequire } from "node:module";
-import { defineQuery, hasComponent, Not } from "bitecs";
+import { addComponent, defineQuery, hasComponent, Not } from "bitecs";
 import { Ability, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import {
+  AssetRef,
   BodyConfig,
   Health,
   Locomotion,
   MotionType,
   PlayerIntent,
+  ShapeKind,
   Transform,
   Velocity,
 } from "./components.js";
@@ -354,21 +359,97 @@ export class CharacterSystem implements SimSystem {
 
 export class IntegrateSystem implements SimSystem {
   readonly name = "integrate";
-  // Physics-owned entities (BodyConfig) are stepped by PhysicsSystem;
-  // integrating them here too would double-apply their motion.
-  private readonly query = defineQuery([Transform, Velocity, Not(BodyConfig)]);
+  private readonly free = defineQuery([Transform, Velocity, Not(BodyConfig)]);
+  // Dynamic and static bodies are PhysicsSystem's; integrating them here
+  // too would double-apply their motion. Kinematic bodies are moved by
+  // the game, and physics follows them.
+  private readonly bodied = defineQuery([Transform, Velocity, BodyConfig]);
 
   step(sim: SimWorld, dtSeconds: number): void {
-    const eids = this.query(sim.ecs);
-    const P = Transform;
-    const V = Velocity;
-    for (let i = 0; i < eids.length; i++) {
-      const e = eids[i] as number;
-      P.px[e] += V.lx[e] * dtSeconds;
-      P.py[e] += V.ly[e] * dtSeconds;
-      P.pz[e] += V.lz[e] * dtSeconds;
+    const free = this.free(sim.ecs);
+    for (let i = 0; i < free.length; i++) integrate(free[i] as number, dtSeconds);
+    const bodied = this.bodied(sim.ecs);
+    for (let i = 0; i < bodied.length; i++) {
+      const e = bodied[i] as number;
+      if (BodyConfig.motionType[e] === MotionType.Kinematic) integrate(e, dtSeconds);
     }
   }
+}
+
+function integrate(e: number, dt: number): void {
+  Transform.px[e] += Velocity.lx[e] * dt;
+  Transform.py[e] += Velocity.ly[e] * dt;
+  Transform.pz[e] += Velocity.lz[e] * dt;
+}
+
+// ------------------------------------------------------------ colliders
+
+/** A character's collider: an upright capsule 1.8 m tall, standing on its feet. */
+export const CHARACTER_CAPSULE = { radius: 0.35, halfHeight: 0.55, mass: 80 } as const;
+
+/**
+ * Every entity with a Transform gets a collider, so everything in the
+ * world is a physics body and its physics id is its wire id (the key
+ * PhysicsSystem hands Jolt). Spawn code that knows better sets its own
+ * BodyConfig; this fills in the rest on the next tick, before physics:
+ *
+ * - characters (PlayerIntent or Locomotion): a kinematic capsule. The
+ *   game moves them (intent, locomotion, grounding); physics follows, so
+ *   dynamic bodies bump into them.
+ * - anything else that moves (has Velocity): a kinematic box the size of
+ *   its scale.
+ * - anything that doesn't: a static box the size of its scale.
+ *
+ * Scenery (AssetRef) is left to its spawn archetype, which gives a
+ * collider unless the data says `"shape": "none"` (grass, flowers).
+ */
+export class ColliderSystem implements SimSystem {
+  readonly name = "colliders";
+  private readonly query = defineQuery([Transform, Not(BodyConfig), Not(AssetRef)]);
+
+  step(sim: SimWorld): void {
+    const found = this.query(sim.ecs);
+    if (found.length === 0) return;
+    // Adding BodyConfig takes the entity out of the query's live array.
+    for (const e of [...found] as number[]) attachDefaultCollider(sim, e);
+  }
+}
+
+/** Give `eid` the collider ColliderSystem would (see there). Exported for spawn code and tests. */
+export function attachDefaultCollider(sim: SimWorld, eid: number): void {
+  const ecs = sim.ecs;
+  const moves = hasComponent(ecs, Velocity, eid);
+  if (!moves) {
+    // PhysicsSystem owns [Transform, Velocity, BodyConfig]; a still one rides along zeroed.
+    addComponent(ecs, Velocity, eid);
+    Velocity.lx[eid] = 0; Velocity.ly[eid] = 0; Velocity.lz[eid] = 0;
+    Velocity.ax[eid] = 0; Velocity.ay[eid] = 0; Velocity.az[eid] = 0;
+  }
+  addComponent(ecs, BodyConfig, eid);
+  const B = BodyConfig;
+  const half = (s: number): number => (s !== 0 ? Math.max(Math.abs(s) * 0.5, 0.05) : 0.5);
+  if (hasComponent(ecs, PlayerIntent, eid) || hasComponent(ecs, Locomotion, eid)) {
+    B.shapeKind[eid] = ShapeKind.Capsule;
+    B.halfX[eid] = CHARACTER_CAPSULE.radius;
+    B.halfY[eid] = CHARACTER_CAPSULE.halfHeight;
+    B.halfZ[eid] = CHARACTER_CAPSULE.radius;
+    B.radius[eid] = CHARACTER_CAPSULE.radius;
+    B.mass[eid] = CHARACTER_CAPSULE.mass;
+    B.motionType[eid] = MotionType.Kinematic;
+    B.layer[eid] = 1;
+    B.friction[eid] = 0.5;
+  } else {
+    B.shapeKind[eid] = ShapeKind.Box;
+    B.halfX[eid] = half(Transform.sx[eid]);
+    B.halfY[eid] = half(Transform.sy[eid]);
+    B.halfZ[eid] = half(Transform.sz[eid]);
+    B.radius[eid] = 0;
+    B.mass[eid] = moves ? 1 : 0;
+    B.motionType[eid] = moves ? MotionType.Kinematic : MotionType.Static;
+    B.layer[eid] = moves ? 1 : 0;
+    B.friction[eid] = 0.8;
+  }
+  B.restitution[eid] = 0;
 }
 
 // ------------------------------------------------------------ physics
@@ -455,8 +536,8 @@ const SYNC_FLAG_TELEPORT = 0x01;
  *   reposition: respawns, restores),
  * - static: never synced, never copied.
  * After step(), results are copied back into Transform (position +
- * quaternion) and Velocity (linear + angular) for dynamic and
- * kinematic bodies.
+ * quaternion) and Velocity (linear + angular) for dynamic bodies;
+ * kinematic ones are where the game put them already.
  */
 export class PhysicsSystem implements SimSystem {
   readonly name = "physics";
@@ -678,11 +759,13 @@ export class PhysicsSystem implements SimSystem {
 
     this.backend.step(dtSeconds, this.subSteps);
 
-    // Copy results back into Transform + Velocity for simulated bodies.
+    // Copy results back into Transform + Velocity for simulated
+    // (dynamic) bodies. Static ones never move; kinematic ones went where
+    // the game put them, which Transform already says.
     let copyN = 0;
     for (let w = 0; w < nextIds.length; w++) {
       const e = nextEids[w];
-      if (B.motionType[e] === MotionType.Static) continue;
+      if (B.motionType[e] !== MotionType.Dynamic) continue;
       this.copyIds[copyN] = nextIds[w];
       this.copyEids[copyN] = e;
       copyN++;

@@ -55,6 +55,12 @@ export class PlaceholderAssets implements AssetProvider {
     let geometry: THREE.BufferGeometry;
     if (body.shapeKind === ShapeKind.Sphere) {
       geometry = new THREE.SphereGeometry(Math.max(body.radius, 0.05), 24, 18);
+    } else if (body.shapeKind === ShapeKind.Capsule) {
+      // Upright, standing on the entity's position (a character's feet), as the physics body does.
+      const r = Math.max(body.radius, 0.05);
+      const half = Math.max(body.halfY, 0);
+      geometry = new THREE.CapsuleGeometry(r, half * 2, 6, 16);
+      geometry.translate(0, half + r, 0);
     } else {
       geometry = new THREE.BoxGeometry(
         Math.max(body.halfX * 2, 0.05),

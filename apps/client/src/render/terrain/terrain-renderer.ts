@@ -15,6 +15,7 @@
 
 import * as THREE from "three";
 import type { ChunkRange, ChunkRow, WorldMap } from "@mmo-engine/protocol";
+import { tileHeightAt } from "@mmo-engine/protocol";
 import { groundColors, snowLine } from "./ground.js";
 import { buildChunkGeometry, chunkNormals, SIDE } from "./terrain-mesh.js";
 import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
@@ -212,6 +213,19 @@ export class TerrainRenderer {
     const cx = Math.floor(x / this.chunkWorldSize);
     const cz = Math.floor(z / this.chunkWorldSize);
     return this.chunks.has(key(cx, cz)) ? { cx, cz } : null;
+  }
+
+  /**
+   * The ground height at world (x, z) on the loaded terrain (the same
+   * triangles the server's height field and the mesh use), or null
+   * where no chunk with heights is loaded.
+   */
+  heightAt(x: number, z: number): number | null {
+    const cx = Math.floor(x / this.chunkWorldSize);
+    const cz = Math.floor(z / this.chunkWorldSize);
+    const c = this.chunks.get(key(cx, cz));
+    if (!c || !c.displaced) return null;
+    return tileHeightAt(c.heights, x - cx * this.chunkWorldSize, z - cz * this.chunkWorldSize, this.chunkWorldSize);
   }
 
   /** The normals of a loaded chunk's mesh (tests). */
