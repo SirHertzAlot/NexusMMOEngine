@@ -191,6 +191,39 @@ export const PathState = defineComponent({
 });
 
 // ---------------------------------------------------------------------------
+// Crowd steering (DetourCrowd, navigation/crowd-system.ts).
+//
+// Every character (Locomotion) is an agent in the navigation crowd, so
+// the ones that steer keep clear of it. An entity that also has NavAgent
+// steers: it walks to (tx, ty, tz) at `speed` along the navmesh, round
+// what's in the way, and CrowdSystem turns the crowd's velocity into its
+// PlayerIntent. To give a new target, write it and bump `seq`; a NaN tx
+// stops it. `state` is the crowd's answer (NavAgentState). Server-only:
+// never replicated or persisted (a brain sets targets again).
+// ---------------------------------------------------------------------------
+
+/** NavAgent.state (mirrors the addon's CrowdAgentState). */
+export const NavAgentState = {
+  /** Not on the navmesh (no tile loaded under it, swimming, flying). */
+  Invalid: 0,
+  Idle: 1,
+  Moving: 2,
+  Arrived: 3,
+  NoPath: 4,
+} as const;
+
+export const NavAgent = defineComponent({
+  tx: Types.f32,
+  ty: Types.f32,
+  tz: Types.f32,
+  /** Bumped on every new target. */
+  seq: Types.ui16,
+  /** Walking speed, m/s. */
+  speed: Types.f32,
+  state: Types.ui8,
+});
+
+// ---------------------------------------------------------------------------
 // PCG scatter (slice 1+2): AssetRef component.
 //
 // Set at spawn from the scatter spawn table (@mmo-engine/scatter), then

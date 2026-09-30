@@ -361,3 +361,20 @@ Every entry: date, decision, rationale. Newest first.
   sessions dying with the server process). Acceptance is a stress
   harness reporting how many regions one micro server holds before p99
   migration latency or tick jitter degrades.
+- **2026-09-30 — DetourCrowd steers characters; the simulation stays the
+  authority.** The navigation addon now compiles `DetourCrowd` (vendored
+  since Phase 2) and exposes a crowd per service, agents keyed by wire id,
+  bulk calls only (`crowdAdd/crowdTarget/crowdRemove/crowdStep`). The crowd
+  is a steering service, not a movement authority: every `crowdStep` snaps
+  agents to the simulation's positions, runs `dtCrowd::update`, and hands
+  back each agent's move for the tick (steering plus the separation push
+  dtCrowd applies to positions) as a velocity. Engine side, every
+  character (Transform + Locomotion) is an agent, so the ones that steer
+  keep clear of players and each other; characters with the server-only
+  `NavAgent` component steer, and `CrowdSystem` (after brains, before
+  IntentSystem) turns the crowd's velocity into `PlayerIntent`, so
+  locomotion, swimming, grounding and combat treat them exactly like a
+  player. Bots' wanderers walk this way (straight at the target where no
+  navmesh is loaded; a new target when stuck, which the crowd leaves to
+  its caller). `dtTileCache` (dynamic obstacles) is the next, separate
+  change: it changes how tiles are baked and stored.

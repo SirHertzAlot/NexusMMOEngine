@@ -32,6 +32,8 @@ export interface NavServiceOptions {
   maxTiles?: number;
   maxPolys?: number;
   profiles: NavAgentProfile[];
+  /** The crowd's capacity (default 1024 agents up to 1 m radius). */
+  crowd?: { maxAgents?: number; maxAgentRadius?: number };
 }
 
 /** Bake parameters — one tile. See the addon README for semantics. */
@@ -83,6 +85,32 @@ export interface FindPathsOutput {
   waypoints: Float32Array;
 }
 
+/** Agents to add or update, SoA (see the addon's crowdAdd). */
+export interface CrowdAddInput {
+  count: number;
+  entityIds: BigUint64Array;
+  pos: Float32Array;
+  radius: Float32Array;
+  height: Float32Array;
+  maxSpeed: Float32Array;
+  maxAcceleration: Float32Array;
+}
+
+/** Crowd steering (DetourCrowd): agents keyed by wire id, bulk calls only. */
+export interface CrowdBackend {
+  add(input: CrowdAddInput): Int32Array;
+  remove(entityIds: BigUint64Array): void;
+  /** A NaN target x clears the agent's target. */
+  target(input: { count: number; entityIds: BigUint64Array; target: Float32Array }): Int32Array;
+  /** Snap agents to `sync.pos`, update the crowd, write steering into `out`. */
+  step(
+    dt: number,
+    sync: { count: number; entityIds: BigUint64Array; pos: Float32Array },
+    out: { vel: Float32Array; pos: Float32Array; state: Uint8Array },
+  ): void;
+  count(): number;
+}
+
 /**
  * Narrow navigation backend. Bulk in, bulk out, no per-entity calls on
  * the hot path (DOD/EDA: the sim emits one batch per tick).
@@ -97,6 +125,8 @@ export interface NavigationBackend {
   unloadTiles(tileRefs: BigUint64Array): void;
   tileCount(): number;
   findPaths(input: FindPathsInput, output: FindPathsOutput): void;
+  /** Crowd steering, when the backend has it. */
+  crowd?: CrowdBackend;
   destroy(): void;
 }
 
@@ -110,6 +140,15 @@ interface NativeNavService {
   unloadTiles(tileRefs: BigUint64Array): void;
   tileCount(): number;
   findPaths(input: FindPathsInput, output: FindPathsOutput): void;
+  crowdAdd(input: CrowdAddInput): Int32Array;
+  crowdRemove(entityIds: BigUint64Array): void;
+  crowdTarget(input: { count: number; entityIds: BigUint64Array; target: Float32Array }): Int32Array;
+  crowdStep(
+    dt: number,
+    sync: { count: number; entityIds: BigUint64Array; pos: Float32Array },
+    out: { vel: Float32Array; pos: Float32Array; state: Uint8Array },
+  ): void;
+  crowdCount(): number;
   destroy(): void;
 }
 
@@ -141,6 +180,13 @@ export function createNavigationBackend(
     unloadTiles: (tileRefs) => svc.unloadTiles(tileRefs),
     tileCount: () => svc.tileCount(),
     findPaths: (input, output) => svc.findPaths(input, output),
+    crowd: {
+      add: (input) => svc.crowdAdd(input),
+      remove: (ids) => svc.crowdRemove(ids),
+      target: (input) => svc.crowdTarget(input),
+      step: (dt, sync, out) => svc.crowdStep(dt, sync, out),
+      count: () => svc.crowdCount(),
+    },
     destroy: () => svc.destroy(),
   };
 }

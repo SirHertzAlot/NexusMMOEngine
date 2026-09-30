@@ -55,6 +55,34 @@ svc.destroy();  // explicit; the finalizer is a backstop
 `DT_PARTIAL_RESULT` (the end poly was unreachable): a corridor that
 leads somewhere else is not a valid answer to the request.
 
+## Crowd steering (DetourCrowd)
+
+One `dtCrowd` per service (`config.crowd = { maxAgents: 1024,
+maxAgentRadius: 1 }`), agents keyed by the engine's u64 entity id:
+
+```js
+svc.crowdAdd({ count, entityIds, pos, radius, height, maxSpeed, maxAcceleration });
+//   -> Int32Array of CrowdAddStatus: Added | Updated (already an agent) | Full
+svc.crowdTarget({ count, entityIds, target });   // NaN x clears a target
+//   -> Int32Array of CrowdTargetStatus: Ok | UnknownAgent | NoPoly | Cleared
+svc.crowdStep(dt, { count, entityIds, pos }, { vel, pos, state });
+svc.crowdRemove(entityIds);
+svc.crowdCount();
+```
+
+The crowd **steers; the simulation decides where things are.** Each
+`crowdStep` first snaps the listed agents to the positions the game gives
+(sliding each corridor along the mesh, or re-placing an agent that moved
+further than steering could: teleports, knockback), then runs
+`dtCrowd::update` (path following, corridor optimisation, separation,
+velocity-obstacle avoidance at the highest-quality preset) and writes each
+agent's move for the tick over `dt` into `out.vel`. That includes the push
+that separates agents that got too close, which dtCrowd applies to
+positions rather than velocities. The game acts on it as intent. `state`
+is a `CrowdAgentState`: Invalid (off the mesh: no tile under it,
+swimming), Idle, Moving, Arrived (within its radius of the target) or
+NoPath. Stuck agents are left to the caller (a brain picks another target).
+
 ## Bake ownership
 
 The **server** bakes, from the same geometry its procgen/chunk pipeline
@@ -62,7 +90,8 @@ generates — at chunk-gen/load time, never per tick. `bakeTile` is
 synchronous; production should move it onto a worker thread or bake
 ahead of time (the boundary is already shaped for it: pure function,
 config + geometry in, blob out). Dynamic obstacles are future work
-(`dtTileCache`/local avoidance, not rebakes — see EVALUATION.md §2).
+(`dtTileCache`, not rebakes — see EVALUATION.md §2); local avoidance
+is the crowd above.
 
 Geometry contract: triangles must use **counter-clockwise winding when
 viewed from above (+Y)** and overlap the tile bounds. Violations fail

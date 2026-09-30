@@ -12,15 +12,20 @@
  *    trade roles every few seconds — the attacker presses the sword combo
  *    in rhythm, the defender holds its guard and now and then rolls aside;
  *  - wanderers: stroll between random points around home, pausing to idle.
+ *    With `steer` (a navigation crowd is running) they walk the navmesh:
+ *    a NavAgent target, and the crowd steers them round walls and each
+ *    other (navigation/crowd-system.ts); straight at it where there's no
+ *    navmesh under them.
  *
- * Runs before IntentSystem (which turns the intent into velocity).
+ * Runs before CrowdSystem and IntentSystem (which turns the intent into
+ * velocity).
  */
 
-import { addComponent, entityExists } from "bitecs";
+import { addComponent, entityExists, hasComponent } from "bitecs";
 import { IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import { HAIR_COLOURS, SKIN_TONES, lookToJson, randomLook, type CharacterLook, type Gender, type ModularCatalog } from "@mmo-engine/art/character";
 import * as C from "./components.js";
-import type { SimSystem } from "./systems.js";
+import { PLAYER_SPEED, type SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
 
@@ -36,13 +41,30 @@ export interface BotOptions {
   groundHeightAt?: (x: number, z: number) => number;
   /** Abilities (protocol Ability bits); default: swim. */
   abilities?: number;
+  /** Wanderers walk by NavAgent targets (a CrowdSystem runs after this). */
+  steer?: boolean;
 }
 
 type Brain =
-  | { kind: "wander"; target: { x: number; z: number }; waitUntil: number }
+  | {
+      kind: "wander";
+      target: { x: number; z: number };
+      waitUntil: number;
+      /** Whether the crowd has this target. */
+      given: boolean;
+      /** Progress check: where it was at `checkAt - STUCK_TICKS`. */
+      checkAt: number;
+      checkX: number;
+      checkZ: number;
+    }
   | { kind: "spar"; partner: number; attacker: boolean; swapAt: number; nextPress: number; step: number; rollAt: number };
 
 const TICK_HZ = 30;
+/** A stroll: this fraction of walking speed. */
+const WANDER_PACE = 0.35;
+/** A steered wanderer that moves less than this in STUCK_TICKS gives up on its target. */
+const STUCK_METRES = 0.4;
+const STUCK_TICKS = 2 * TICK_HZ;
 /** Arm's length for a sword fight, metres. */
 const SPAR_RANGE = 1.9;
 
@@ -111,7 +133,13 @@ export class BotSystem implements SimSystem {
         const partner = this.bots[i ^ 1];
         this.brains.set(eid, { kind: "spar", partner, attacker: i % 2 === 0, swapAt: 0, nextPress: 0, step: 0, rollAt: 0 });
       } else {
-        this.brains.set(eid, { kind: "wander", target: { x: C.Transform.px[eid], z: C.Transform.pz[eid] }, waitUntil: 0 });
+        this.brains.set(eid, { kind: "wander", target: { x: C.Transform.px[eid], z: C.Transform.pz[eid] }, waitUntil: 0, given: false, checkAt: STUCK_TICKS, checkX: C.Transform.px[eid], checkZ: C.Transform.pz[eid] });
+        if (this.opts.steer) {
+          addComponent(sim.ecs, C.NavAgent, eid);
+          C.NavAgent.speed[eid] = WANDER_PACE * PLAYER_SPEED;
+          C.NavAgent.tx[eid] = NaN;
+          C.NavAgent.seq[eid] = 0;
+        }
       }
     }
   }
@@ -128,7 +156,7 @@ export class BotSystem implements SimSystem {
       I.mz[e] = 0;
       I.jump[e] = 0;
       I.buttons[e] = 0;
-      if (brain.kind === "wander") this.wander(e, brain, tick);
+      if (brain.kind === "wander") this.wander(sim, e, brain, tick);
       else this.spar(sim, e, brain, tick);
     }
   }
@@ -145,16 +173,48 @@ export class BotSystem implements SimSystem {
     return d;
   }
 
-  private wander(e: number, b: Extract<Brain, { kind: "wander" }>, tick: number): void {
+  private wander(sim: SimWorld, e: number, b: Extract<Brain, { kind: "wander" }>, tick: number): void {
     if (tick < b.waitUntil) return;
-    const d = this.moveToward(e, b.target.x, b.target.z, 0.35); // a stroll
+    const steering = this.opts.steer === true && hasComponent(sim.ecs, C.NavAgent, e);
+    const onMesh = steering && C.NavAgent.state[e] !== C.NavAgentState.Invalid;
+    let d: number;
+    if (onMesh) {
+      // The crowd walks it there (CrowdSystem writes the intent).
+      if (!b.given) this.give(e, b.target.x, b.target.z);
+      b.given = true;
+      d = Math.hypot(b.target.x - C.Transform.px[e], b.target.z - C.Transform.pz[e]);
+      if (C.NavAgent.state[e] === C.NavAgentState.NoPath) d = 0; // unreachable: pick another
+      // Stuck (someone standing on the spot, a knot of others in the way):
+      // the crowd leaves that to its caller, so give up and pick another.
+      if (tick >= b.checkAt) {
+        if (Math.hypot(C.Transform.px[e] - b.checkX, C.Transform.pz[e] - b.checkZ) < STUCK_METRES) d = 0;
+        b.checkAt = tick + STUCK_TICKS;
+        b.checkX = C.Transform.px[e];
+        b.checkZ = C.Transform.pz[e];
+      }
+    } else {
+      d = this.moveToward(e, b.target.x, b.target.z, WANDER_PACE); // a stroll
+    }
     if (d < 0.8) {
       const radius = this.opts.radius ?? 18;
       const a = this.rand() * Math.PI * 2;
       const r = this.rand() * radius;
       b.target = { x: this.opts.home.x + Math.cos(a) * r, z: this.opts.home.z + Math.sin(a) * r };
       b.waitUntil = tick + Math.floor((1 + this.rand() * 3) * TICK_HZ);
+      b.given = false;
+      b.checkAt = b.waitUntil + STUCK_TICKS;
+      b.checkX = C.Transform.px[e];
+      b.checkZ = C.Transform.pz[e];
+      if (steering) this.give(e, NaN, NaN); // stand while it idles
     }
+  }
+
+  /** A new NavAgent target (NaN: stop). */
+  private give(e: number, x: number, z: number): void {
+    C.NavAgent.tx[e] = x;
+    C.NavAgent.ty[e] = Number.isNaN(x) ? 0 : this.opts.groundHeightAt?.(x, z) ?? C.Transform.py[e];
+    C.NavAgent.tz[e] = z;
+    C.NavAgent.seq[e] = (C.NavAgent.seq[e] + 1) & 0xffff;
   }
 
   private spar(sim: SimWorld, e: number, b: Extract<Brain, { kind: "spar" }>, tick: number): void {

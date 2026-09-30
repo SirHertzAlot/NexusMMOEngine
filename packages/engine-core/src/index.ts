@@ -31,6 +31,8 @@ export {
   PathRequest,
   PathState,
   PathRequestStatus,
+  NavAgent,
+  NavAgentState,
   MAX_PATH_WAYPOINTS,
   AssetRef,
   Locomotion,
@@ -189,9 +191,12 @@ export type {
   BakeTileResult,
   FindPathsInput,
   FindPathsOutput,
+  CrowdBackend,
+  CrowdAddInput,
 } from "./navigation/backend.js";
 
 export { NavigationSystem, WaypointStore } from "./navigation/system.js";
+export { CrowdSystem } from "./navigation/crowd-system.js";
 export type { NavigationSystemOptions } from "./navigation/system.js";
 
 export {
