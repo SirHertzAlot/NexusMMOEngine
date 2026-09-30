@@ -233,15 +233,24 @@ Whether it works this way is yours to decide (§10).
 ### 5.1 Rank ladder
 
 Ranks are data: an id, a name, a power budget, the share of the loot pool it takes,
-and its visual signals. Proposed (names and shares are yours to set, §10):
+and its visual signals (built in R1: `packages/compose`).
+
+**Your rule for shares:** the number of ranks sets them. 100% starts divided evenly
+(100/N each), then is tweaked until the highest rank has the lowest share and the
+lowest rank the highest, always summing to 100%. The tweak is a linear tilt about the
+even share; by default the top rank ends at half of it. Names are inferred from the
+count. Five ranks:
 
 | Rank | Budget | Loot share | Signals |
 |---|---|---|---|
-| common | 1 | 40% | none |
+| common | 1 | 30% | none |
 | uncommon | 2 | 25% | tinted palette |
-| rare | 4 | 15% | particles |
-| epic | 7 | 10% | aura, carved runes |
+| rare | 4 | 20% | particles |
+| epic | 7 | 15% | aura, carved runes |
 | legendary | 11 | 10% | aura, runes, a unique ability, proportion and animation transforms |
+
+Three ranks give 50 / 33.33 / 16.67; seven give 21.43 down to 7.14. The shares can be
+tuned from there, and the ladder's checks keep them strictly falling and summing to 100.
 
 ### 5.2 The component tree
 
@@ -345,8 +354,8 @@ Each item is its own PR.
 
 ## 10. Open questions
 
-1. **Rank ladder:** names, how many ranks, and each one's share of the loot pool.
-   Legendary at 10% is set; what about the rest?
+1. **Rank ladder:** answered. The count sets the shares (even, then tilted so each
+   higher rank takes less, summing to 100%), and names are inferred (§5.1).
 2. **Instances:**
    - party size, time limit, re-entry
    - whether a crash loses the run (proposed: nothing is committed until the instance
