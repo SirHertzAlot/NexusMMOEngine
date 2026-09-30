@@ -1,0 +1,27 @@
+{
+  "name": "@mmo-engine/crafting",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Materials and crafting, balanced backwards from top gear: raw materials (tiers, world/vein/drop sources, tradability), recipes derived from composed items, and a balance report against the loot pool.",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "bin": {
+    "mmo-craft-report": "dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "npm run build --workspace=@mmo-engine/compose && npm run build --workspace=@mmo-engine/dungeon && tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "craft:report": "npm run build && node dist/src/cli.js"
+  },
+  "dependencies": {
+    "zod": "^4.6.5",
+    "@mmo-engine/compose": "0.1.0",
+    "@mmo-engine/dungeon": "0.1.0",
+    "@mmo-engine/species": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  }
+}

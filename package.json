@@ -23,6 +23,7 @@
     "convert:packs": "npm run build --workspace=@mmo-engine/art && npm run convert:packs --workspace=@mmo-engine/art --",
     "dungeon:bake": "npm run dungeon:bake --workspace=@mmo-engine/dungeon --",
     "loot:bake": "npm run loot:bake --workspace=@mmo-engine/compose --",
+    "craft:report": "npm run craft:report --workspace=@mmo-engine/crafting --",
     "bake:world:force": "npm run bake:world:force --workspace=@mmo-engine/engine-core",
     "preview:world": "npm run preview:world --workspace=@mmo-engine/engine-core --",
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
@@ -58,6 +59,7 @@
     "packages/placement",
     "packages/species",
     "packages/compose",
+    "packages/crafting",
     "packages/picg",
     "packages/addons/scatter",
     "packages/addons/picg"
