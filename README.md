@@ -12,6 +12,10 @@ sim tick; multiplayer from the start. Full rationale lives in
 [`docs/DECISIONS.md`](docs/DECISIONS.md) and the
 [`mmo-engine` skill](../../skills/mmo-engine/SKILL.md).
 
+**Roadmap:** what's built, in progress and next, with a running update
+log, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). Pick an item there to
+help.
+
 ## Repo layout
 
 ```

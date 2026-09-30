@@ -430,3 +430,12 @@ Every entry: date, decision, rationale. Newest first.
   InstancedMesh per level and moves each prop to the level where its
   simplification error projects to at most 4 px (never nearer than 18 m
   per level), with 10 % hysteresis; one draw call per level in use.
+- **2026-09-30 — The client is for players; developer tools live in the
+  editor.** The game client shows the world and the player's interface
+  (resource bars, chat, parties, quests, inventory, character sheet,
+  settings) and nothing else. Every developer tool, including the
+  runtime debugger (performance graphs, draw calls and triangles, LOD
+  views, network traffic, wireframe, effect showcases), lives in the
+  editor, where play mode gains an embedded game view to host it. The
+  debug overlays still in the client move there and are removed. The
+  work is tracked in `docs/ROADMAP.md`, which every PR updates.
