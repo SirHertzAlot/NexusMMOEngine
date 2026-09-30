@@ -80,3 +80,27 @@ client builds a bundle's `Prefab` onto a model with its PrefabBuilder
 
 The composer takes about 1.5 ms per entity. It is bake-time code: the loot pool (L1) is composed once
 and stored.
+
+## The loot pool
+
+```
+npm run loot:bake -- --size 10000                 # $MMO_DATA_DIR/loot, else packages/engine-core/data/loot
+npm run loot:bake -- --size 10000 --held held.jsonl --ranks ranks.json
+```
+
+`bakeLootPool` composes the whole pool once. Every drop draws from it, so the economy's supply is known:
+
+- **Exact shares:** each rank gets exactly its ladder share, by largest remainder. 10,000 items at
+  legendary 10% hold exactly 1,000 legendaries.
+- **Sources:** mob drops, chests, bosses and crafting. Each has an affinity for each rank: low ranks come
+  mostly from mobs, high ranks from bosses. A rank's items are split across sources exactly.
+- **One of a kind:** every top-rank item is a unique composition.
+- **Held items survive:** a rebake keeps the items players hold (`--held`: the world server's record) and
+  fills around them, still at the exact counts.
+- **Balance report** (`report.md`, `report.json`):
+  - counts by rank and source
+  - materials by rank
+  - the expected hours of play to obtain each rank from each source, given each source's drops per hour
+    (`DEFAULT_SOURCES`; tune these)
+
+10,000 items bake in about 12 s.
