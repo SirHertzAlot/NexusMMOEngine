@@ -17,7 +17,6 @@
  * and runes, and at the top a unique ability and body transforms.
  */
 
-import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 /** Canonical names, lowest first, and which of them a ladder of N ranks uses. */
@@ -161,17 +160,11 @@ function checkLadder(l: Ladder): Ladder {
 export const DEFAULT_LADDER: Ladder = buildLadder(5);
 
 /**
- * A ladder from a file: either `{ "ranks": ["common", "rare", …] }` (names,
- * everything else by the rules above) or full ranks. Throws with every problem.
+ * A ladder from parsed JSON: either `{ "ranks": ["common", "rare", …] }`
+ * (names, everything else by the rules above) or full ranks. Throws with
+ * every problem, prefixed with `file`. (loadLadder reads it from a file.)
  */
-export function loadLadder(file?: string): Ladder {
-  if (!file) return DEFAULT_LADDER;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(file, "utf8"));
-  } catch (e) {
-    throw new Error(`${file}: ${(e as Error).message}`);
-  }
+export function ladderFromJson(raw: unknown, file = "ladder"): Ladder {
   const names = z.strictObject({ ranks: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).min(1), top: z.number().optional() }).safeParse(raw);
   if (names.success) return buildLadder(names.data.ranks, { top: names.data.top });
   const full = LadderSchema.safeParse(raw);

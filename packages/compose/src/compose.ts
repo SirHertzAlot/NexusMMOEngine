@@ -19,6 +19,9 @@
  *  - elemental signals only for an element the entity has
  *  - the total cost within the rank's budget, and above the rank below's,
  *    so each rank is stronger than the last
+ *  - materials outside the budget: their cost is their grade, capped by
+ *    rank (common up to 1 … legendary up to 5), so top-rank gear can reach
+ *    the top materials (before, the mandatory slots left it no room)
  *
  * WFC collapses the lowest-entropy slot first, weighted by the components'
  * weights and any bias (a molten dungeon favours fire). The same inputs
@@ -28,7 +31,6 @@
  * signals, and the prefab the client builds its Object3D from.
  */
 
-import { createHash } from "node:crypto";
 import { deriveSeed, mulberry32, solve, WfcError, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engine/wfc";
 import { BUILTIN_CATALOG, ELEMENTS, elementOf, SIGNAL_SLOTS, type Catalog, type Component, type CreatureBase, type EntityKind, type SlotKind } from "./catalog.js";
 import { DEFAULT_LADDER, rankOf, type Ladder } from "./ranks.js";
@@ -132,7 +134,9 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
 
   const allowed = (k: number, slot: SlotKind): boolean => {
     const comp = comps[k - 1];
-    return comp.slot === slot && index >= comp.minRank && (comp.fits.length === 0 || comp.fits.some((t) => baseTags.has(t))) && !clash(0, k);
+    // Materials sit outside the power budget; their cost is their grade, which the rank caps (common: up to 1).
+    const graded = slot !== "material" || comp.cost <= index + 1;
+    return comp.slot === slot && graded && index >= comp.minRank && (comp.fits.length === 0 || comp.fits.some((t) => baseTags.has(t))) && !clash(0, k);
   };
   const domainOf = (slot: SlotKind): number[] => {
     const d: number[] = [];
@@ -207,7 +211,7 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
   const edges: { a: number; b: number; rule: string }[] = [];
   for (let a = 0; a < N; a++) for (let b = a + 1; b < N; b++) edges.push({ a, b, rule: "coherent" });
 
-  const cost = options.map((_, k) => (k === 0 || isAffinity(k) ? 0 : comps[k - 1].cost));
+  const cost = options.map((_, k) => (k === 0 || isAffinity(k) || comps[k - 1].slot === "material" ? 0 : comps[k - 1].cost));
   const reach = domains.reduce((t, d) => t + Math.max(...d.map((k) => cost[k])), 0);
   const floor = index > 0 ? Math.min(ladder.ranks[index - 1].budget + 1, reach, rank.budget) : 0;
 
@@ -237,7 +241,7 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
   const chosen = affinityOf(assignment[N - 1]);
   const element = chosen && (baseTags.has(chosen) || parts.some((p) => catalog.components[p.id].tags.includes(chosen))) ? chosen : null;
   const partComps = parts.map((p) => catalog.components[p.id]);
-  const spent = partComps.reduce((t, comp) => t + comp.cost, 0);
+  const spent = partComps.reduce((t, comp) => t + (comp.slot === "material" ? 0 : comp.cost), 0);
 
   // Stats: the base's, scaled by rank, plus every part's.
   const stats: Record<string, number> = {};
@@ -256,10 +260,7 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
       return { kind: p.slot as PrefabAttachment["kind"], id: p.id, params };
     });
   const tags = [...new Set([...baseTags, ...partComps.flatMap((comp) => comp.tags)])].sort();
-  const id = createHash("sha256")
-    .update(JSON.stringify([kind, base.id, rank.id, parts]))
-    .digest("hex")
-    .slice(0, 16);
+  const id = hash64(JSON.stringify([kind, base.id, rank.id, parts]));
   // The proper name follows the composition, so two different legendaries aren't namesakes.
   const name = nameOf(kind, base, parts, catalog, index === ladder.ranks.length - 1 && ladder.ranks.length > 1, parseInt(id.slice(0, 8), 16));
 
@@ -280,6 +281,14 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
     tags,
     relaxed,
   };
+}
+
+/** 64-bit FNV-1a as 16 hex digits (no node:crypto: this runs in browsers too). */
+function hash64(s: string): string {
+  let h = 0xcbf29ce484222325n;
+  const bytes = new TextEncoder().encode(s);
+  for (const b of bytes) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn;
+  return h.toString(16).padStart(16, "0");
 }
 
 const SYLLABLES = ["ae", "bel", "cor", "dra", "el", "fen", "gor", "hal", "ith", "kar", "lor", "mor", "nae", "or", "quel", "ra", "sil", "thar", "ul", "vor", "wyn", "xan", "yr", "zeth"];
