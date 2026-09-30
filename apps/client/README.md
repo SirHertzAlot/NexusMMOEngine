@@ -45,6 +45,14 @@ src/
                  day/night ramps, light maps, SDF face shadows, rim light)
                  and inverted-hull outlines; on by default in CharacterKit
     effects/     screen effects: underwater, the Gran Turismo tone curve
+    quality.ts   quality presets (low/medium/high/ultra) from the GPU's tier
+                 (@pmndrs/detect-gpu, benchmark data served by this app)
+                 and the frame-rate governor (drei PerformanceMonitor)
+    bvh.ts       BVH raycasting (three-mesh-bvh) for hover picking
+    vfx/         three.quarks effects: the entity composer's particles and
+                 auras, weapon trails
+    sky/physical-sky.ts  high presets' sky: precomputed atmospheric
+                 scattering and aerial perspective (@takram/three-atmosphere)
     follow-camera.ts  third-person camera rig (mouse look + wheel distance)
     assets.ts    AssetProvider — THE seam for Joey's future art pipeline
   ui/
@@ -65,6 +73,8 @@ npm test --workspace=@mmo-engine/client   # tsc build + node --test
 - `test/input.test.ts` — WASD vector math, yaw rotation, normalization
 - `test/entity-layer.test.ts` — mirror state to meshes, batching, chunks,
   despawn, hover, and the follow camera
+- `test/graphics.test.ts` — quality presets and governor steps, BVH hits
+  matching three's raycast, the quarks effects, the physical sky's frame
 - `test/toon.test.ts` — the toon patch and its variants, the ramp, the
   day/night fade, outline normals and skinning, the tone curve
 

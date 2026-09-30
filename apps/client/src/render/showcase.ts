@@ -2,6 +2,10 @@
  * FX showcase — toggles a ring of the six elemental orbs around the
  * player so the FX can be inspected live in the client.
  *
+ * With a QuarksFx, each orb also wears one of the entity composer's
+ * signal effects (particles and an aura in its colour), and a blade tip
+ * circles the ring drawing a trail.
+ *
  * Strictly visual and local: the orbs are decorative preview objects,
  * not authoritative entities (the server never hears about them).
  */
@@ -15,6 +19,17 @@ import {
   labelSprite,
   type ElementKind,
 } from "./element-fx.js";
+import type { QuarksFx, VfxHandle } from "./vfx/quarks-fx.js";
+
+/** The composer signal each orb wears in the showcase. */
+const ORB_SIGNALS: Record<ElementKind, { particles: string; aura: string }> = {
+  water: { particles: "motes", aura: "#4fb4ff" },
+  fire: { particles: "embers", aura: "#ff6a1a" },
+  wind: { particles: "sparks", aura: "#b9a8ff" },
+  earth: { particles: "spores", aura: "#6fd36a" },
+  snow: { particles: "snow", aura: "#8fd8ff" },
+  lava: { particles: "smoke", aura: "#ff4400" },
+};
 
 const ORB_BURST_COLOR: Record<ElementKind, number> = {
   water: 0x33aaff,
@@ -48,6 +63,7 @@ export class FxShowcase {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly onPulse?: (pos: THREE.Vector3, color: number) => void,
+    private readonly vfx?: QuarksFx,
   ) {
     this.group.visible = false;
     const radius = 5.5;
@@ -79,6 +95,9 @@ export class FxShowcase {
     scene.add(this.group);
   }
 
+  private readonly blade = new THREE.Object3D();
+  private effects: VfxHandle[] = [];
+
   get isVisible(): boolean {
     return this.visible;
   }
@@ -88,10 +107,25 @@ export class FxShowcase {
     this.visible = v;
     this.group.visible = v;
     if (v && center) this.group.position.set(center.x, 0, center.z);
+    // The composer's signal effects on the orbs, and a blade trail round the ring, while shown.
+    for (const e of this.effects) e.dispose();
+    this.effects = [];
+    if (v && this.vfx) {
+      for (const o of this.orbs) {
+        const s = ORB_SIGNALS[o.kind];
+        const p = this.vfx.attachSignal({ kind: "particles", id: s.particles, params: { effect: s.particles } }, o.group);
+        const a = this.vfx.attachSignal({ kind: "aura", id: `aura-${o.kind}`, params: { color: s.aura, radius: 0.9 } }, o.group);
+        for (const h of [p, a]) if (h) this.effects.push(h);
+      }
+      if (!this.blade.parent) this.group.add(this.blade);
+      this.effects.push(this.vfx.attachTrail(this.blade, "#9fe0ff", 0.18, 24));
+    }
   }
 
   update(time: number, dt: number): void {
     if (!this.visible) return;
+    // The blade tip sweeps round inside the ring, rising and falling like a swing.
+    this.blade.position.set(Math.cos(time * 2.2) * 3, 1.5 + Math.sin(time * 4.4) * 0.6, Math.sin(time * 2.2) * 3);
     for (const o of this.orbs) {
       tickElementMaterial(o.mat, time + o.phase);
       o.group.position.y = o.baseY + Math.sin(time * 1.3 + o.phase) * 0.35;
@@ -112,6 +146,8 @@ export class FxShowcase {
   }
 
   dispose(): void {
+    for (const e of this.effects) e.dispose();
+    this.effects = [];
     this.scene.remove(this.group);
     this.group.traverse((child) => {
       const mesh = child as THREE.Mesh;
