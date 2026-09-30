@@ -47,6 +47,17 @@ npm test           # builds TS packages, runs all node:test suites + native addo
 MMO_DEV_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))") \
   npm run seed:user --workspace=@mmo-engine/engine-core -- <name>
 #    (password via env only — never CLI args; 8-128 chars)
+
+# 2a. developing: the server and the client with its developer panels
+#     (performance graphs, wireframe, FX showcase; ` hides them)
+npm run dev
+
+# 2b. playing: the server, and the player's client (no developer tools)
+npm run server
+npm run client          # http://localhost:5173
+
+# the editor (inspectors, play mode, art pipeline)
+npm run editor
 ```
 
 

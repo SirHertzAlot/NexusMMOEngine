@@ -31,8 +31,9 @@ PR).
   views, network traffic, wireframe, effect showcases, entity
   inspection, navmesh and path overlays.
 
-`npm run client` starts the player's client and `npm run editor` the
-editor; `npm run dev` will start the development environment (E0).
+`npm run client` starts the player's client, `npm run dev` the
+development environment (the server and the developer client), and
+`npm run editor` the editor.
 
 Debug views that are still in the client today move to the editor's play
 mode (E4, E5) and are then removed from the client.
@@ -45,12 +46,12 @@ Doc: [`EDITOR.md`](EDITOR.md)
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ⏭️ | Lands with the E5 rework |
+| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ✅ | `scripts/dev.mjs`; the client's `dev:tools` script (Vite mode `devtools`) |
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
 | E3 | Art asset pipeline: pack models to GLB, previews | ✅ | |
 | E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ⏭️ | Prerequisite for E5; shares the client's renderer (a shared package, not a copy) |
-| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | The measurement code and panels exist on branch `claude/perf-hud`; they land in the editor with E4, and the client's debug overlay is removed |
+| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | Interim: in the developer client (`npm run dev`), not the player's. Moves into the editor with E4 |
 | E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) §6 |
 | E7 | PICG slice 4: hierarchical graph editor | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | E8 | D3: dungeon view: pool browser, 3D view, edits as patches | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §3.5 |
@@ -87,7 +88,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | ⏭️ | The stats message (built); stamina and mana drives in the rules |
 | U3 | Hunger and thirst meters | 📋 | Survival needs as rules on the server (new, alongside M1) |
-| U4 | Settings menu: graphics quality, controls, audio, UI scale | ⏭️ | Graphics quality exists as a button; this makes it a menu |
+| U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | The menu exists with graphics quality and leaving the world; the rest is open |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 📋 | S1 |
 | U7 | Party frames | 📋 | S3 |
@@ -147,7 +148,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | DetourCrowd steering | ✅ | #40 |
 | — | DetourTileCache: static bodies cut the navmesh | ✅ | #42 |
 | — | meshoptimizer: optimised cooked meshes, LOD chains for every prop | ✅ | #43 |
-| — | Performance instrumentation: frame, renderer, GPU memory and network counters | 🚧 | Feeds E5 |
+| — | Performance instrumentation: frame, renderer, GPU memory and network counters | ✅ | Feeds E5 |
 | — | manifold + Clipper2 (`addon-geometry`): cell outlines, polygon Booleans, CSG solids; prebaked dungeon shells | ✅ | |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
@@ -171,6 +172,10 @@ Newest first. One line per merged PR or decision.
 - **2026-09-30**: manifold + Clipper2 (`addon-geometry`) and prebaked
   dungeon shells. Added the admin console (A1–A6) and the dungeon instance
   model (D4).
+- **2026-09-30**: `npm run dev` (the server and the developer client)
+  and `npm run client` (the player's client) split (E0). The developer
+  client gets performance graphs in movable, resizable, fadeable panels
+  (E5, interim until E4); the player's client gets a settings menu (U4).
 
 - **2026-09-30**: Roadmap published. Decided: the client shows only the
   player's interface; all developer tooling, the debugger included,

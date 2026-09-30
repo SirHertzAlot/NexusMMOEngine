@@ -233,6 +233,17 @@ describe("MirrorClient state sync", () => {
     assert.deepEqual(pong.payload, payload);
   });
 
+  it("counts the bytes and messages it receives and sends", async () => {
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    const sum = (list: Uint8Array[]): number => list.reduce((n, d) => n + d.byteLength, 0);
+    assert.deepEqual(client.traffic, { bytesIn: welcomeBytes().byteLength, bytesOut: sum(socket.sent), messagesIn: 1, messagesOut: 1 });
+    const ping = encodeEnvelope(MessageType.Ping, new Uint8Array(10));
+    socket.receive(ping);
+    assert.equal(client.traffic.bytesIn, welcomeBytes().byteLength + ping.byteLength);
+    assert.equal(client.traffic.messagesOut, 2, "the pong");
+    assert.equal(client.traffic.bytesOut, sum(socket.sent));
+  });
+
   it("notifies onClose when the socket closes", async () => {
     let closed = 0;
     const { client, socket } = await connectClient(
