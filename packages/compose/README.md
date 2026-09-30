@@ -73,5 +73,10 @@ The result is deterministic per seed. `bundle` holds the ECS components:
 The top rank gets a proper name ("Fencor, Mighty Iron Sword of the Bear"; "Cornae the Swift Fiend
 of the Bear").
 
+In the browser, import `@mmo-engine/compose/browser`: everything but the
+file loaders (`loadLadder`, `loadCatalog`, which read JSON from disk). The
+client builds a bundle's `Prefab` onto a model with its PrefabBuilder
+(`apps/client/src/render/prefab`).
+
 The composer takes about 1.5 ms per entity. It is bake-time code: the loot pool (L1) is composed once
 and stored.

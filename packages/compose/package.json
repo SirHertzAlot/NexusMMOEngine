@@ -14,5 +14,18 @@
     "zod": "^4.6.5",
     "@mmo-engine/wfc": "0.1.0"
   },
-  "devDependencies": { "@types/node": "^25.0.0", "typescript": "^5.6.3" }
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./browser": {
+      "types": "./dist/src/browser.d.ts",
+      "default": "./dist/src/browser.js"
+    }
+  }
 }

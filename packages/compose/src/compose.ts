@@ -28,7 +28,6 @@
  * signals, and the prefab the client builds its Object3D from.
  */
 
-import { createHash } from "node:crypto";
 import { deriveSeed, mulberry32, solve, WfcError, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engine/wfc";
 import { BUILTIN_CATALOG, ELEMENTS, elementOf, SIGNAL_SLOTS, type Catalog, type Component, type CreatureBase, type EntityKind, type SlotKind } from "./catalog.js";
 import { DEFAULT_LADDER, rankOf, type Ladder } from "./ranks.js";
@@ -256,10 +255,7 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
       return { kind: p.slot as PrefabAttachment["kind"], id: p.id, params };
     });
   const tags = [...new Set([...baseTags, ...partComps.flatMap((comp) => comp.tags)])].sort();
-  const id = createHash("sha256")
-    .update(JSON.stringify([kind, base.id, rank.id, parts]))
-    .digest("hex")
-    .slice(0, 16);
+  const id = hash64(JSON.stringify([kind, base.id, rank.id, parts]));
   // The proper name follows the composition, so two different legendaries aren't namesakes.
   const name = nameOf(kind, base, parts, catalog, index === ladder.ranks.length - 1 && ladder.ranks.length > 1, parseInt(id.slice(0, 8), 16));
 
@@ -280,6 +276,14 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
     tags,
     relaxed,
   };
+}
+
+/** 64-bit FNV-1a as 16 hex digits (no node:crypto: this runs in browsers too). */
+function hash64(s: string): string {
+  let h = 0xcbf29ce484222325n;
+  const bytes = new TextEncoder().encode(s);
+  for (const b of bytes) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn;
+  return h.toString(16).padStart(16, "0");
 }
 
 const SYLLABLES = ["ae", "bel", "cor", "dra", "el", "fen", "gor", "hal", "ith", "kar", "lor", "mor", "nae", "or", "quel", "ra", "sil", "thar", "ul", "vor", "wyn", "xan", "yr", "zeth"];

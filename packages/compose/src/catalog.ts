@@ -22,7 +22,6 @@
  * with a file (`loadCatalog`).
  */
 
-import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 export const SLOT_KINDS = ["material", "affix", "ability", "unique", "aura", "runes", "particles", "tint", "transform"] as const;
@@ -222,15 +221,8 @@ export const BUILTIN_CATALOG: Catalog = CatalogSchema.parse({ items, components 
 /** Tags that make a signal elemental (it then needs the element on the entity). */
 export const elementOf = (comp: Component): Element | undefined => ELEMENTS.find((e) => comp.tags.includes(e));
 
-/** Our catalog with a game's file merged over it (by id). Throws with every problem. */
-export function loadCatalog(file?: string): Catalog {
-  if (!file) return BUILTIN_CATALOG;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(file, "utf8"));
-  } catch (e) {
-    throw new Error(`${file}: ${(e as Error).message}`);
-  }
+/** Our catalog with a game's (parsed JSON) merged over it, by id. Throws with every problem, prefixed with `file`. */
+export function catalogFromJson(raw: unknown, file = "catalog"): Catalog {
   const parsed = CatalogSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`${file}:\n${parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")}`);
   const merged: Catalog = {
