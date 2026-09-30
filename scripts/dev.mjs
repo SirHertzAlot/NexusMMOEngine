@@ -39,7 +39,7 @@ function kill(child) {
   }
 }
 
-/** Run one npm script, its output prefixed; `onLine` sees each stdout line. */
+/** Run one npm script, its output prefixed; `onLine` sees each line (stdout and stderr). */
 function run(p, onLine = () => {}) {
   // npm is npm.cmd on Windows, which needs a shell to run.
   // Each in its own process group (POSIX), so stopping it stops everything under it.
@@ -60,7 +60,7 @@ function run(p, onLine = () => {}) {
     stream.on("end", () => rest && out.write(`[${p.name}] ${rest}\n`));
   };
   prefix(child.stdout, process.stdout, onLine);
-  prefix(child.stderr, process.stderr, () => {});
+  prefix(child.stderr, process.stderr, onLine);
   child.on("exit", (code) => {
     if (!stopping) console.log(`[dev] ${p.name} exited (${code ?? "signal"}); stopping the rest`);
     stop(code ?? 0);
