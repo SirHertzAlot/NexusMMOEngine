@@ -20,6 +20,10 @@
 //   snaps agents to the simulation's positions, runs path following and
 //   local avoidance, and returns velocities for the game to act on. The
 //   simulation stays the authority on where things are.
+// - The tile cache (config.tileCache): bakeTileLayers / loadLayers /
+//   unloadLayers instead of bakeTile / loadTiles, plus obstacles
+//   (addObstacles, removeObstacles) that cut the navmesh; updateObstacles
+//   rebuilds the tiles they touch, a few per call.
 // - destroy() is explicit; the C++ finalizer tears the service down as a
 //   backstop if the caller forgets.
 
@@ -84,6 +88,9 @@ const CrowdAgentState = Object.freeze({
  *   maxPolys = 2048,
  *   profiles = [{ id, agentHeight, agentRadius, agentMaxClimb }],
  *   crowd = { maxAgents: 1024, maxAgentRadius: 1 },
+ *   tileCache,             // optional: { cellSize, cellHeight, agentHeight,
+ *                          //   agentRadius, agentMaxClimb, edgeMaxError,
+ *                          //   maxObstacles = 8192, maxLayers = 2 }
  * }
  */
 function createService(config) {

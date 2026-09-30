@@ -176,5 +176,78 @@ export function bakeChunkTile(
  * contours, or polys. The chunk simply has no navmesh tile.
  */
 export function isNothingWalkable(err: unknown): boolean {
-  return /0 spans|0 contours|0 polys/.test((err as Error)?.message ?? "");
+  return /0 spans|0 contours|0 polys|0 layers/.test((err as Error)?.message ?? "");
+}
+
+// ------------------------------------------------------------ tile cache
+
+/**
+ * Tile-cache settings for chunk tiles: layers built by the cache from
+ * the terrain plus the obstacles on it (DetourTileCache). A 0.25 m cell
+ * divides a 16 m chunk exactly (64 cells); agent sizes are the bake's.
+ * A heightmap never overhangs, so one layer per tile.
+ */
+export const TILE_CACHE_SETTINGS = {
+  cellSize: 0.25,
+  cellHeight: DEFAULT_BAKE_CONFIG.cellHeight,
+  agentHeight: DEFAULT_BAKE_CONFIG.agentHeight,
+  agentRadius: DEFAULT_BAKE_CONFIG.agentRadius,
+  agentMaxClimb: DEFAULT_BAKE_CONFIG.agentMaxClimb,
+  edgeMaxError: DEFAULT_BAKE_CONFIG.edgeMaxError,
+  maxObstacles: 16384,
+  maxLayers: 1,
+} as const;
+
+/** The layer format's tag in registry keys, so layer and whole-tile blobs never mix. */
+export const LAYERS_FORMAT = "tc1";
+
+/**
+ * The triangle mesh of chunk (cx, cz) and its eight neighbours: a layer
+ * bake rasterises a border past the tile's edge, so its edges aren't
+ * eroded where the ground carries on into the next chunk.
+ */
+export function buildNeighbourhoodMesh(
+  source: ChunkDataSource,
+  seed: bigint,
+  cx: number,
+  cz: number,
+  chunkWorldSize: number,
+): { vertices: Float32Array; indices: Uint32Array } {
+  const parts: Array<{ vertices: Float32Array; indices: Uint32Array }> = [];
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) parts.push(buildChunkMesh(source, seed, cx + dx, cz + dz, 0, chunkWorldSize));
+  const vertices = new Float32Array(parts.reduce((t, p) => t + p.vertices.length, 0));
+  const indices = new Uint32Array(parts.reduce((t, p) => t + p.indices.length, 0));
+  let v = 0;
+  let i = 0;
+  for (const p of parts) {
+    vertices.set(p.vertices, v);
+    const base = v / 3;
+    for (let k = 0; k < p.indices.length; k++) indices[i + k] = p.indices[k] + base;
+    v += p.vertices.length;
+    i += p.indices.length;
+  }
+  return { vertices, indices };
+}
+
+/**
+ * Bake chunk (cx, cz)'s tile-cache layers (see ChunkNavmesh). Throws
+ * "0 layers" where nothing is walkable (isNothingWalkable).
+ */
+export function bakeChunkLayers(
+  options: ChunkBakeOptions,
+  chunkX: number,
+  chunkZ: number,
+): { blob: Uint8Array; config: BakeTileConfig } {
+  const tileCache = options.backend.tileCache;
+  if (!tileCache) throw new Error("chunk-baker: the backend has no tile cache");
+  const chunkWorldSize = options.chunkWorldSize ?? 16;
+  const { vertices, indices } = buildNeighbourhoodMesh(options.source, options.seed, chunkX, chunkZ, chunkWorldSize);
+  const config: BakeTileConfig = {
+    ...DEFAULT_BAKE_CONFIG,
+    cellSize: TILE_CACHE_SETTINGS.cellSize,
+    ...options.bakeConfig,
+    tileX: chunkX,
+    tileZ: chunkZ,
+  };
+  return { blob: tileCache.bakeTileLayers(config, vertices, indices), config };
 }

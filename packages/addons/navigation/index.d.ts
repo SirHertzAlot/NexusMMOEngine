@@ -31,6 +31,33 @@ export interface NavServiceConfig {
   profiles: AgentProfileConfig[];
   /** The crowd's capacity. Default { maxAgents: 1024, maxAgentRadius: 1 }. */
   crowd?: { maxAgents?: number; maxAgentRadius?: number };
+  /** Build tiles from layers plus obstacles (see bakeTileLayers). */
+  tileCache?: TileCacheConfig;
+}
+
+export interface TileCacheConfig {
+  /** Must divide tileWorldSize into 8-200 cells. */
+  cellSize: number;
+  cellHeight: number;
+  agentHeight: number;
+  agentRadius: number;
+  agentMaxClimb: number;
+  edgeMaxError?: number;
+  /** Default 8192 (at most 65535). */
+  maxObstacles?: number;
+  /** Layers per tile (1 for a heightmap). Default 2. */
+  maxLayers?: number;
+}
+
+/** Obstacles to add, SoA: kind 0 an upright cylinder standing on pos, 1 a box centred on pos turned by yaw. */
+export interface ObstacleBatch {
+  count: number;
+  kind: Uint8Array;
+  pos: Float32Array;
+  radius: Float32Array;
+  height: Float32Array;
+  halfExtents: Float32Array;
+  yaw: Float32Array;
 }
 
 /** Agents to add (or update, when already in the crowd), SoA. */
@@ -150,6 +177,17 @@ export declare class NavService {
   crowdStep(dt: number, sync: CrowdSync, out: CrowdStepOut): void;
   /** Agents in the crowd. */
   crowdCount(): number;
+  /** A tile's heightfield layers (tile cache). Throws "0 layers" where nothing is walkable. */
+  bakeTileLayers(config: BakeConfig, vertices: Float32Array, indices: Uint32Array): Buffer;
+  /** Add a tile's layers to the cache and build its navmesh tiles: the cache refs. */
+  loadLayers(tileX: number, tileZ: number, blob: Uint8Array): BigUint64Array;
+  unloadLayers(refs: BigUint64Array): void;
+  /** Obstacle refs (0: failed). They apply as updateObstacles rebuilds the tiles they touch. */
+  addObstacles(batch: ObstacleBatch): Uint32Array;
+  removeObstacles(refs: Uint32Array): void;
+  /** Rebuild up to maxTiles touched tiles; true when every change is in. */
+  updateObstacles(maxTiles: number): boolean;
+  obstacleCount(): number;
   destroy(): void;
 }
 

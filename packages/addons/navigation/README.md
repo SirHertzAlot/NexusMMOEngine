@@ -83,15 +83,45 @@ is a `CrowdAgentState`: Invalid (off the mesh: no tile under it,
 swimming), Idle, Moving, Arrived (within its radius of the target) or
 NoPath. Stuck agents are left to the caller (a brain picks another target).
 
+## Tile cache: obstacles (DetourTileCache)
+
+Created with `config.tileCache = { cellSize, cellHeight, agentHeight,
+agentRadius, agentMaxClimb, edgeMaxError, maxObstacles, maxLayers }`, the
+service builds navmesh tiles from **heightfield layers plus obstacles**
+instead of loading finished tiles:
+
+```js
+const blob = svc.bakeTileLayers(bakeConfig, vertices, indices); // throws "0 layers" where nothing is walkable
+const refs = svc.loadLayers(tileX, tileZ, blob);   // builds the tile's navmesh tiles
+svc.unloadLayers(refs);
+const obs = svc.addObstacles({ count, kind, pos, radius, height, halfExtents, yaw });
+//   kind 0: upright cylinder standing on pos; 1: box centred on pos, turned by yaw about +Y
+svc.removeObstacles(obs);
+svc.updateObstacles(maxTiles);  // rebuild up to maxTiles touched tiles; true when all changes are in
+svc.obstacleCount();
+```
+
+- `cellSize` must divide `tileWorldSize` exactly (8-200 cells), and every
+  layer bake must use the cache's cell and agent sizes.
+- Give `bakeTileLayers` geometry past the tile's edge (the neighbours'),
+  so the border it rasterises isn't eroded where the ground carries on.
+- The navmesh gets `maxTiles * maxLayers` tile slots: keep tile bits plus
+  poly bits within 22 (32-bit poly refs).
+- Obstacles are exact footprints: grow them by the agent radius yourself
+  if paths must keep a body clear of them. An obstacle applies to the
+  tiles loaded when it is added; add it again after its tile loads.
+- The cache queues 64 obstacle requests; `addObstacles` drains it (tile
+  rebuilds) when a batch overflows, so steady callers should add in
+  smaller batches. Layers are stored uncompressed (a copy "compressor").
+
 ## Bake ownership
 
 The **server** bakes, from the same geometry its procgen/chunk pipeline
 generates — at chunk-gen/load time, never per tick. `bakeTile` is
 synchronous; production should move it onto a worker thread or bake
 ahead of time (the boundary is already shaped for it: pure function,
-config + geometry in, blob out). Dynamic obstacles are future work
-(`dtTileCache`, not rebakes — see EVALUATION.md §2); local avoidance
-is the crowd above.
+config + geometry in, blob out). Dynamic obstacles are the tile cache above
+(not rebakes, see EVALUATION.md §2); local avoidance is the crowd.
 
 Geometry contract: triangles must use **counter-clockwise winding when
 viewed from above (+Y)** and overlap the tile bounds. Violations fail

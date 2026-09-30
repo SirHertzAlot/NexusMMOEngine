@@ -8,7 +8,8 @@
  * for a chunk that unloaded meanwhile is seen before its job runs.
  *
  * Protocol (from ChunkNavmesh):
- *   { kind: "bake", ticket, cx, cz, heights, key } ->
+ *   { kind: "bake", ticket, cx, cz, heights, key } ->   (heights: the chunk's,
+ *       or in layer mode its 3x3 neighbourhood's, row by row from (-1, -1))
  *       { ticket, blob } | { ticket, empty: true } | { ticket, error }
  *   { kind: "cancel", ticket }      drop a queued job (no reply)
  *   { kind: "close" }               finish, close the registry, exit
@@ -18,16 +19,18 @@ import { parentPort, workerData } from "node:worker_threads";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { NavmeshTileRegistry, type NavmeshTileKey } from "../persist/navmesh.js";
 import { createNavigationBackend, type BakeTileConfig } from "./backend.js";
-import { bakeChunkTile, isNothingWalkable } from "./chunk-baker.js";
+import { bakeChunkLayers, bakeChunkTile, isNothingWalkable, TILE_CACHE_SETTINGS } from "./chunk-baker.js";
 
 export interface NavmeshWorkerData {
   registryDir: string;
   chunkWorldSize: number;
   bakeConfig: Omit<BakeTileConfig, "tileX" | "tileZ">;
+  /** Bake tile-cache layers instead of whole tiles. */
+  layers: boolean;
 }
 
 export type NavmeshWorkerRequest =
-  | { kind: "bake"; ticket: number; cx: number; cz: number; heights: Float32Array; key: NavmeshTileKey }
+  | { kind: "bake"; ticket: number; cx: number; cz: number; heights: Float32Array[]; key: NavmeshTileKey }
   | { kind: "cancel"; ticket: number }
   | { kind: "close" };
 
@@ -46,6 +49,16 @@ if (parentPort) {
     originZ: 0,
     tileWorldSize: data.chunkWorldSize,
     profiles: [{ id: 0, agentHeight: data.bakeConfig.agentHeight, agentRadius: data.bakeConfig.agentRadius, agentMaxClimb: data.bakeConfig.agentMaxClimb }],
+    tileCache: data.layers
+      ? {
+          ...TILE_CACHE_SETTINGS,
+          cellSize: data.bakeConfig.cellSize,
+          cellHeight: data.bakeConfig.cellHeight,
+          agentHeight: data.bakeConfig.agentHeight,
+          agentRadius: data.bakeConfig.agentRadius,
+          agentMaxClimb: data.bakeConfig.agentMaxClimb,
+        }
+      : undefined,
   });
   const registry = new NavmeshTileRegistry({ dir: data.registryDir });
   const queue: Array<Extract<NavmeshWorkerRequest, { kind: "bake" }>> = [];
@@ -63,14 +76,15 @@ if (parentPort) {
     const job = queue.shift();
     if (job && !cancelled.delete(job.ticket)) {
       const heights = job.heights;
-      const source: ChunkDataSource = { chunkSamples: heights.length, generateChunk: (_s, _cx, _cz, _l, out) => out.set(heights) };
+      // The chunk's heights, or its neighbourhood's (3x3, row by row from (-1, -1)).
+      const source: ChunkDataSource = {
+        chunkSamples: heights[0].length,
+        generateChunk: (_s, x, z, _l, out) => out.set(heights.length === 1 ? heights[0] : heights[(z - job.cz + 1) * 3 + (x - job.cx + 1)]),
+      };
       let reply: NavmeshWorkerReply;
       try {
-        const { blob } = bakeChunkTile(
-          { backend, source, seed: 0n, chunkWorldSize: data.chunkWorldSize, bakeConfig: data.bakeConfig },
-          job.cx,
-          job.cz,
-        );
+        const options = { backend, source, seed: 0n, chunkWorldSize: data.chunkWorldSize, bakeConfig: data.bakeConfig };
+        const { blob } = data.layers ? bakeChunkLayers(options, job.cx, job.cz) : bakeChunkTile(options, job.cx, job.cz);
         registry.register(job.key, blob);
         reply = { ticket: job.ticket, blob };
       } catch (err) {

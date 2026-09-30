@@ -53,13 +53,16 @@
         "third_party/RecastNavigation/DetourCrowd/Source/DetourObstacleAvoidance.cpp",
         "third_party/RecastNavigation/DetourCrowd/Source/DetourPathCorridor.cpp",
         "third_party/RecastNavigation/DetourCrowd/Source/DetourPathQueue.cpp",
-        "third_party/RecastNavigation/DetourCrowd/Source/DetourProximityGrid.cpp"
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourProximityGrid.cpp",
+        "third_party/RecastNavigation/DetourTileCache/Source/DetourTileCache.cpp",
+        "third_party/RecastNavigation/DetourTileCache/Source/DetourTileCacheBuilder.cpp"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
         "third_party/RecastNavigation/Recast/Include",
         "third_party/RecastNavigation/Detour/Include",
-        "third_party/RecastNavigation/DetourCrowd/Include"
+        "third_party/RecastNavigation/DetourCrowd/Include",
+        "third_party/RecastNavigation/DetourTileCache/Include"
       ],
       "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
       "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3"],

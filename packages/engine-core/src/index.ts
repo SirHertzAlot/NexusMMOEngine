@@ -193,10 +193,15 @@ export type {
   FindPathsOutput,
   CrowdBackend,
   CrowdAddInput,
+  TileCacheBackend,
+  TileCacheOptions,
+  ObstacleInput,
 } from "./navigation/backend.js";
 
 export { NavigationSystem, WaypointStore } from "./navigation/system.js";
 export { CrowdSystem } from "./navigation/crowd-system.js";
+export { NavObstacleSystem } from "./navigation/obstacle-system.js";
+export type { NavObstacleOptions } from "./navigation/obstacle-system.js";
 export type { NavigationSystemOptions } from "./navigation/system.js";
 
 export {
@@ -205,6 +210,10 @@ export {
   bakeConfigHash,
   canonicalBakeConfig,
   DEFAULT_BAKE_CONFIG,
+  bakeChunkLayers,
+  buildNeighbourhoodMesh,
+  TILE_CACHE_SETTINGS,
+  LAYERS_FORMAT,
 } from "./navigation/chunk-baker.js";
 export type {
   ChunkBakeOptions,

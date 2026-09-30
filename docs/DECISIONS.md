@@ -398,3 +398,20 @@ Every entry: date, decision, rationale. Newest first.
   navmesh is loaded; a new target when stuck, which the crowd leaves to
   its caller). `dtTileCache` (dynamic obstacles) is the next, separate
   change: it changes how tiles are baked and stored.
+- **2026-09-30 — Navmesh tiles come from a tile cache; every static body
+  is an obstacle.** The navigation addon compiles `DetourTileCache`. The
+  server's service is made with a tile cache (0.25 m cells, so a 16 m
+  chunk is exactly 64; one layer per tile, since a heightmap never
+  overhangs; 8192 tiles x 512 polys to stay within 32-bit poly refs).
+  Chunks are baked to heightfield layers from the chunk and its eight
+  neighbours, which also ends the eroded seams between chunk tiles; the
+  registry keeps them under a `:tc1` config key, so old whole-tile blobs
+  are never loaded as layers (the first boot after this change re-bakes
+  every tile once). `NavObstacleSystem` makes every static physics body
+  (trees, rocks, walls: whatever ColliderSystem or an archetype gave a
+  still collider) a cache obstacle, grown by the agent radius, turned by
+  the body's yaw; it re-adds obstacles when their tile loads later (the
+  cache only applies an obstacle to tiles present when it is added), and
+  budgets adds (48) and tile rebuilds (4) per tick. So pathfinding and
+  the crowd now go round props instead of through them. Moving bodies
+  aren't obstacles yet (a pushable crate would need its obstacle moved).
