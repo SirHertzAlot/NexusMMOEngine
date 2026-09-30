@@ -20,10 +20,10 @@ addon's full-tree convention. The build compiles only:
 - `Detour/Source/*.cpp` (navmesh + queries)
 - `DetourCrowd/Source/*.cpp` (crowd steering and local avoidance, since
   2026-09-30)
+- `DetourTileCache/Source/*.cpp` (layer tiles and obstacles, since
+  2026-09-30)
 
-`DetourTileCache`, `RecastDemo`, `DebugUtils` and `Tests` are vendored
-but not compiled. `dtTileCache` is the documented follow-up for dynamic
-obstacles (EVALUATION.md §2).
+`RecastDemo`, `DebugUtils` and `Tests` are vendored but not compiled.
 
 **Build:** no CMake. The sources compile directly as node-gyp
 translation units (`binding.gyp`), so `npm install` works fully offline

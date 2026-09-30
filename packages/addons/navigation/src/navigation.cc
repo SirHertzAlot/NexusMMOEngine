@@ -25,6 +25,12 @@
 //   following, corridor optimisation, separation, velocity-obstacle
 //   avoidance) and hands back each agent's velocity for the game to use
 //   as its intent. The crowd's own integration is only a prediction.
+// - The tile cache (DetourTileCache, config.tileCache): tiles are baked
+//   to heightfield LAYERS (bakeTileLayers) instead of finished navmesh
+//   tiles; loadLayers adds them to the cache, which builds the navmesh
+//   tiles from the layers plus the obstacles standing on them. Obstacles
+//   (upright cylinders, yawed boxes) are added and removed in bulk, and
+//   updateObstacles rebuilds the tiles they touch, a few per call.
 //
 // Determinism posture (EVALUATION.md §2): Detour queries are
 // synchronous with no internal randomness — the only randomness in the
@@ -44,6 +50,7 @@
 
 #include <napi.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -59,6 +66,8 @@
 #include "DetourNavMeshBuilder.h"
 #include "DetourNavMeshQuery.h"
 #include "DetourStatus.h"
+#include "DetourTileCache.h"
+#include "DetourTileCacheBuilder.h"
 #include "Recast.h"
 
 namespace mmo_navigation {
@@ -228,6 +237,55 @@ struct BakeOpts {
   float detailSampleMaxError = 1.0f;
 };
 
+// Tile-cache layers are stored uncompressed: small (a 16 m chunk layer is
+// a few KB) and the registry already deduplicates. A real compressor
+// (e.g. LZ4) can replace this without changing the layer format.
+struct CopyCompressor : public dtTileCacheCompressor {
+  int maxCompressedSize(const int bufferSize) override { return bufferSize; }
+  dtStatus compress(const unsigned char *buffer, const int bufferSize,
+                    unsigned char *compressed, const int maxCompressedSize,
+                    int *compressedSize) override {
+    if (bufferSize > maxCompressedSize) return DT_FAILURE | DT_BUFFER_TOO_SMALL;
+    memcpy(compressed, buffer, bufferSize);
+    *compressedSize = bufferSize;
+    return DT_SUCCESS;
+  }
+  dtStatus decompress(const unsigned char *compressed, const int compressedSize,
+                      unsigned char *buffer, const int maxBufferSize,
+                      int *bufferSize) override {
+    if (compressedSize > maxBufferSize) return DT_FAILURE | DT_BUFFER_TOO_SMALL;
+    memcpy(buffer, compressed, compressedSize);
+    *bufferSize = compressedSize;
+    return DT_SUCCESS;
+  }
+};
+
+// Every walkable poly the cache builds gets flag 1 (the default query
+// filter includes it), as bakeTile's polys do.
+struct WalkableFlags : public dtTileCacheMeshProcess {
+  void process(dtNavMeshCreateParams *params, unsigned char *polyAreas,
+               unsigned short *polyFlags) override {
+    for (int i = 0; i < params->polyCount; ++i) {
+      if (polyAreas[i] == DT_TILECACHE_WALKABLE_AREA) polyAreas[i] = 0;
+      polyFlags[i] = 1;
+    }
+  }
+};
+
+// Tile-cache settings (config.tileCache): every layer baked for this
+// service must use them.
+struct TileCacheCfg {
+  float cellSize = 0.25f;
+  float cellHeight = 0.2f;
+  float agentHeight = 2.0f;
+  float agentRadius = 0.6f;
+  float agentMaxClimb = 0.9f;
+  float edgeMaxError = 1.3f;
+  int maxObstacles = 8192;
+  int maxLayers = 2;
+  int tileSize = 0;  // cells per tile edge
+};
+
 class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
  public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -245,6 +303,13 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
             InstanceMethod("crowdTarget", &NavServiceWrap::CrowdTarget),
             InstanceMethod("crowdStep", &NavServiceWrap::CrowdStep),
             InstanceMethod("crowdCount", &NavServiceWrap::CrowdCount),
+            InstanceMethod("bakeTileLayers", &NavServiceWrap::BakeTileLayers),
+            InstanceMethod("loadLayers", &NavServiceWrap::LoadLayers),
+            InstanceMethod("unloadLayers", &NavServiceWrap::UnloadLayers),
+            InstanceMethod("addObstacles", &NavServiceWrap::AddObstacles),
+            InstanceMethod("removeObstacles", &NavServiceWrap::RemoveObstacles),
+            InstanceMethod("updateObstacles", &NavServiceWrap::UpdateObstacles),
+            InstanceMethod("obstacleCount", &NavServiceWrap::ObstacleCount),
         });
     exports.Set("NavService", ctor);
     return exports;
@@ -286,6 +351,42 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
       Napi::TypeError::New(env, "config.profiles must be a non-empty array")
           .ThrowAsJavaScriptException();
       return;
+    }
+
+    // The tile cache: config.tileCache = { cellSize, cellHeight,
+    // agentHeight, agentRadius, agentMaxClimb, edgeMaxError, maxObstacles,
+    // maxLayers }. Its tiles hold up to maxLayers layers each, so the
+    // navmesh gets maxTiles * maxLayers tile slots.
+    Napi::Value vTc = cfg.Get("tileCache");
+    if (vTc.IsObject()) {
+      Napi::Object tc = vTc.As<Napi::Object>();
+      auto num = [&](const char *k, float def) {
+        Napi::Value v = tc.Get(k);
+        return v.IsNumber() ? v.As<Napi::Number>().FloatValue() : def;
+      };
+      tcCfg_.cellSize = num("cellSize", tcCfg_.cellSize);
+      tcCfg_.cellHeight = num("cellHeight", tcCfg_.cellHeight);
+      tcCfg_.agentHeight = num("agentHeight", tcCfg_.agentHeight);
+      tcCfg_.agentRadius = num("agentRadius", tcCfg_.agentRadius);
+      tcCfg_.agentMaxClimb = num("agentMaxClimb", tcCfg_.agentMaxClimb);
+      tcCfg_.edgeMaxError = num("edgeMaxError", tcCfg_.edgeMaxError);
+      tcCfg_.maxObstacles = static_cast<int>(num("maxObstacles", static_cast<float>(tcCfg_.maxObstacles)));
+      tcCfg_.maxLayers = static_cast<int>(num("maxLayers", static_cast<float>(tcCfg_.maxLayers)));
+      const double cells = tileWorldSize_ / tcCfg_.cellSize;
+      tcCfg_.tileSize = static_cast<int>(std::lround(cells));
+      if (!(tcCfg_.cellSize > 0) || !(tcCfg_.cellHeight > 0) || std::fabs(cells - tcCfg_.tileSize) > 1e-4 ||
+          tcCfg_.tileSize < 8 || tcCfg_.tileSize > 200) {
+        Napi::RangeError::New(env, "config.tileCache.cellSize must divide tileWorldSize into 8..200 cells")
+            .ThrowAsJavaScriptException();
+        return;
+      }
+      if (tcCfg_.maxObstacles <= 0 || tcCfg_.maxLayers <= 0 || tcCfg_.maxLayers > 16) {
+        Napi::RangeError::New(env, "config.tileCache: maxObstacles > 0, maxLayers in 1..16")
+            .ThrowAsJavaScriptException();
+        return;
+      }
+      useTileCache_ = true;
+      maxTiles *= tcCfg_.maxLayers;
     }
 
     mesh_ = dtAllocNavMesh();
@@ -385,6 +486,29 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
       DestroyNative();
       return;
     }
+    if (useTileCache_) {
+      dtTileCacheParams tcp;
+      memset(&tcp, 0, sizeof(tcp));
+      tcp.orig[0] = static_cast<float>(originX_);
+      tcp.orig[2] = static_cast<float>(originZ_);
+      tcp.cs = tcCfg_.cellSize;
+      tcp.ch = tcCfg_.cellHeight;
+      tcp.width = tcCfg_.tileSize;
+      tcp.height = tcCfg_.tileSize;
+      tcp.walkableHeight = tcCfg_.agentHeight;
+      tcp.walkableRadius = tcCfg_.agentRadius;
+      tcp.walkableClimb = tcCfg_.agentMaxClimb;
+      tcp.maxSimplificationError = tcCfg_.edgeMaxError;
+      tcp.maxTiles = maxTiles;
+      tcp.maxObstacles = tcCfg_.maxObstacles;
+      tileCache_ = dtAllocTileCache();
+      if (!tileCache_ || dtStatusFailed(tileCache_->init(&tcp, &tcAlloc_, &tcComp_, &tcProc_))) {
+        Napi::Error::New(env, "NavService: dtTileCache::init failed").ThrowAsJavaScriptException();
+        DestroyNative();
+        return;
+      }
+    }
+
     // A query of our own for snapping agents to the simulation (the
     // crowd's is const).
     syncQuery_ = dtAllocNavMeshQuery();
@@ -418,7 +542,12 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
   }
 
   void DestroyNative() {
-    // The crowd and its query point into the mesh: they go first.
+    // The tile cache, crowd and query point into the mesh: they go first.
+    if (tileCache_) {
+      dtFreeTileCache(tileCache_);
+      tileCache_ = nullptr;
+    }
+    obstacles_ = 0;
     if (crowd_) {
       dtFreeCrowd(crowd_);
       crowd_ = nullptr;
@@ -1212,6 +1341,332 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
   dtNavMeshQuery *syncQuery_ = nullptr;
   std::vector<float> before_;  // scratch: agent positions before the update
   std::map<uint64_t, int> agents_;
+
+
+  // --- tile cache ------------------------------------------------------------
+
+  bool CheckTileCache(Napi::Env env) {
+    if (!CheckAlive(env)) return false;
+    if (!tileCache_) {
+      Napi::Error::New(env, "NavService: no tile cache (create the service with config.tileCache)")
+          .ThrowAsJavaScriptException();
+      return false;
+    }
+    return true;
+  }
+
+  // bakeTileLayers(config, vertices, indices) -> Buffer: the tile's
+  // heightfield layers, [u32 count]([u32 bytes][layer])*. The geometry
+  // may (should) reach past the tile by the border so the tile's edges
+  // aren't eroded: neighbouring chunks' edges. The agent and cell sizes
+  // must be the tile cache's. Throws "0 layers" where nothing is walkable.
+  Napi::Value BakeTileLayers(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return env.Undefined();
+    if (info.Length() < 3 || !info[0].IsObject()) {
+      Napi::TypeError::New(env, "bakeTileLayers(config, vertices: Float32Array, indices: Uint32Array)")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    BakeOpts opts;
+    if (!ParseBakeOpts(env, info[0].As<Napi::Object>(), &opts)) return env.Undefined();
+    const TileCacheCfg &tc = tcCfg_;
+    auto same = [](float a, float b) { return std::fabs(a - b) < 1e-5f; };
+    if (!same(opts.cellSize, tc.cellSize) || !same(opts.cellHeight, tc.cellHeight) ||
+        !same(opts.agentHeight, tc.agentHeight) || !same(opts.agentRadius, tc.agentRadius) ||
+        !same(opts.agentMaxClimb, tc.agentMaxClimb)) {
+      Napi::RangeError::New(env, "bakeTileLayers: cell and agent sizes must match config.tileCache")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    const float *verts = CheckedF32(env, info[1], "vertices", 9);
+    if (!verts) return env.Undefined();
+    const uint32_t *idx = CheckedU32(env, info[2], "indices", 3);
+    if (!idx) return env.Undefined();
+    const size_t nv = info[1].As<Napi::Float32Array>().ElementLength() / 3;
+    const size_t ni = info[2].As<Napi::Uint32Array>().ElementLength();
+    const size_t nt = ni / 3;
+    for (size_t i = 0; i < ni; i++) {
+      if (idx[i] >= nv) {
+        Napi::RangeError::New(env, "bakeTileLayers: triangle index out of vertex range")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+      }
+    }
+
+    rcConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.cs = tc.cellSize;
+    cfg.ch = tc.cellHeight;
+    cfg.walkableSlopeAngle = opts.walkableSlopeAngle;
+    cfg.walkableHeight = static_cast<int>(ceilf(opts.agentHeight / cfg.ch));
+    cfg.walkableClimb = static_cast<int>(floorf(opts.agentMaxClimb / cfg.ch));
+    cfg.walkableRadius = static_cast<int>(ceilf(opts.agentRadius / cfg.cs));
+    cfg.tileSize = tc.tileSize;
+    cfg.borderSize = cfg.walkableRadius + 3;
+    cfg.width = cfg.tileSize + cfg.borderSize * 2;
+    cfg.height = cfg.tileSize + cfg.borderSize * 2;
+    if (cfg.width > 255) {
+      Napi::RangeError::New(env, "bakeTileLayers: tile plus border exceeds 255 cells")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    float gmin[3], gmax[3];
+    rcCalcBounds(verts, static_cast<int>(nv), gmin, gmax);
+    cfg.bmin[0] = static_cast<float>(originX_ + opts.tileX * tileWorldSize_) - cfg.borderSize * cfg.cs;
+    cfg.bmin[2] = static_cast<float>(originZ_ + opts.tileZ * tileWorldSize_) - cfg.borderSize * cfg.cs;
+    cfg.bmax[0] = static_cast<float>(originX_ + (opts.tileX + 1) * tileWorldSize_) + cfg.borderSize * cfg.cs;
+    cfg.bmax[2] = static_cast<float>(originZ_ + (opts.tileZ + 1) * tileWorldSize_) + cfg.borderSize * cfg.cs;
+    cfg.bmin[1] = gmin[1] - 1.0f;
+    cfg.bmax[1] = gmax[1] + 1.0f;
+
+    rcContext ctx(false);
+    rcHeightfield hf;
+    if (!rcCreateHeightfield(&ctx, hf, cfg.width, cfg.height, cfg.bmin, cfg.bmax, cfg.cs, cfg.ch)) {
+      Napi::Error::New(env, "bakeTileLayers: rcCreateHeightfield failed").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    std::vector<unsigned char> triAreas(nt, RC_NULL_AREA);
+    std::vector<int> tris(nt * 3);
+    for (size_t i = 0; i < nt * 3; i++) tris[i] = static_cast<int>(idx[i]);
+    rcMarkWalkableTriangles(&ctx, cfg.walkableSlopeAngle, verts, static_cast<int>(nv), tris.data(),
+                            static_cast<int>(nt), triAreas.data());
+    if (!rcRasterizeTriangles(&ctx, verts, static_cast<int>(nv), tris.data(), triAreas.data(),
+                              static_cast<int>(nt), hf, cfg.walkableClimb)) {
+      Napi::Error::New(env, "bakeTileLayers: rcRasterizeTriangles failed").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    rcFilterLowHangingWalkableObstacles(&ctx, cfg.walkableClimb, hf);
+    rcFilterLedgeSpans(&ctx, cfg.walkableHeight, cfg.walkableClimb, hf);
+    rcFilterWalkableLowHeightSpans(&ctx, cfg.walkableHeight, hf);
+    rcCompactHeightfield chf;
+    if (!rcBuildCompactHeightfield(&ctx, cfg.walkableHeight, cfg.walkableClimb, hf, chf) ||
+        !rcErodeWalkableArea(&ctx, cfg.walkableRadius, chf)) {
+      Napi::Error::New(env, "bakeTileLayers: compact heightfield failed").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    rcHeightfieldLayerSet lset;
+    if (!rcBuildHeightfieldLayers(&ctx, chf, cfg.borderSize, cfg.walkableHeight, lset)) {
+      Napi::Error::New(env, "bakeTileLayers: rcBuildHeightfieldLayers failed").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    const int nlayers = std::min(lset.nlayers, tc.maxLayers);
+    if (nlayers == 0) {
+      Napi::Error::New(env, "bakeTileLayers: 0 layers, nothing walkable in this tile")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    std::vector<unsigned char> out(4);
+    uint32_t count = static_cast<uint32_t>(nlayers);
+    memcpy(out.data(), &count, 4);
+    for (int i = 0; i < nlayers; ++i) {
+      const rcHeightfieldLayer *layer = &lset.layers[i];
+      dtTileCacheLayerHeader header;
+      memset(&header, 0, sizeof(header));
+      header.magic = DT_TILECACHE_MAGIC;
+      header.version = DT_TILECACHE_VERSION;
+      header.tx = opts.tileX;
+      header.ty = opts.tileZ;
+      header.tlayer = i;
+      dtVcopy(header.bmin, layer->bmin);
+      dtVcopy(header.bmax, layer->bmax);
+      header.width = static_cast<unsigned char>(layer->width);
+      header.height = static_cast<unsigned char>(layer->height);
+      header.minx = static_cast<unsigned char>(layer->minx);
+      header.maxx = static_cast<unsigned char>(layer->maxx);
+      header.miny = static_cast<unsigned char>(layer->miny);
+      header.maxy = static_cast<unsigned char>(layer->maxy);
+      header.hmin = static_cast<unsigned short>(layer->hmin);
+      header.hmax = static_cast<unsigned short>(layer->hmax);
+      unsigned char *data = nullptr;
+      int dataSize = 0;
+      if (dtStatusFailed(dtBuildTileCacheLayer(&tcComp_, &header, layer->heights, layer->areas,
+                                               layer->cons, &data, &dataSize))) {
+        Napi::Error::New(env, "bakeTileLayers: dtBuildTileCacheLayer failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+      }
+      const uint32_t n32 = static_cast<uint32_t>(dataSize);
+      const size_t at = out.size();
+      out.resize(at + 4 + dataSize);
+      memcpy(out.data() + at, &n32, 4);
+      memcpy(out.data() + at + 4, data, dataSize);
+      dtFree(data);
+    }
+    return Napi::Buffer<uint8_t>::Copy(env, out.data(), out.size());
+  }
+
+  // loadLayers(tileX, tileZ, blob) -> BigUint64Array of cache tile refs:
+  // adds a bakeTileLayers blob to the cache and builds its navmesh tiles
+  // (with any obstacles already touching them).
+  Napi::Value LoadLayers(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return env.Undefined();
+    if (info.Length() < 3 || !info[0].IsNumber() || !info[1].IsNumber()) {
+      Napi::TypeError::New(env, "loadLayers(tileX, tileZ, blob)").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    const int tx = info[0].As<Napi::Number>().Int32Value();
+    const int tz = info[1].As<Napi::Number>().Int32Value();
+    Napi::Buffer<uint8_t> buf = CheckedBuffer(env, info[2], "loadLayers blob");
+    if (env.IsExceptionPending()) return env.Undefined();
+    const uint8_t *p = buf.Data();
+    const size_t len = buf.Length();
+    uint32_t count = 0;
+    if (len < 4 || (memcpy(&count, p, 4), count == 0) || count > static_cast<uint32_t>(tcCfg_.maxLayers)) {
+      Napi::Error::New(env, "loadLayers: not a layer set").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    std::vector<dtCompressedTileRef> refs;
+    size_t at = 4;
+    for (uint32_t i = 0; i < count; ++i) {
+      uint32_t n = 0;
+      if (at + 4 > len || (memcpy(&n, p + at, 4), at + 4 + n > len) || n < sizeof(dtTileCacheLayerHeader)) {
+        Napi::Error::New(env, "loadLayers: truncated layer set").ThrowAsJavaScriptException();
+        return env.Undefined();
+      }
+      const dtTileCacheLayerHeader *h = reinterpret_cast<const dtTileCacheLayerHeader *>(p + at + 4);
+      if (h->magic != DT_TILECACHE_MAGIC || h->tx != tx || h->ty != tz) {
+        Napi::Error::New(env, "loadLayers: layer is for another tile, or not a layer").ThrowAsJavaScriptException();
+        return env.Undefined();
+      }
+      unsigned char *data = static_cast<unsigned char *>(dtAlloc(n, DT_ALLOC_PERM));
+      memcpy(data, p + at + 4, n);
+      dtCompressedTileRef ref = 0;
+      if (dtStatusFailed(tileCache_->addTile(data, static_cast<int>(n), DT_COMPRESSEDTILE_FREE_DATA, &ref))) {
+        dtFree(data);
+        for (dtCompressedTileRef r : refs) tileCache_->removeTile(r, nullptr, nullptr);
+        Napi::Error::New(env, "loadLayers: dtTileCache::addTile failed (already loaded, or the cache is full)")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+      }
+      refs.push_back(ref);
+      at += 4 + n;
+    }
+    tileCache_->buildNavMeshTilesAt(tx, tz, mesh_);
+    Napi::BigUint64Array out = Napi::BigUint64Array::New(env, refs.size());
+    for (size_t i = 0; i < refs.size(); i++) out[i] = refs[i];
+    return out;
+  }
+
+  // unloadLayers(refs): removes the layers and the navmesh tiles built
+  // from them.
+  void UnloadLayers(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return;
+    const uint64_t *refs = CheckedBigU64(env, info[0], "refs", 0);
+    if (!refs) return;
+    const size_t n = info[0].As<Napi::BigUint64Array>().ElementLength();
+    for (size_t i = 0; i < n; i++) {
+      const dtCompressedTileRef ref = static_cast<dtCompressedTileRef>(refs[i]);
+      const dtCompressedTile *tile = tileCache_->getTileByRef(ref);
+      if (!tile || !tile->header) continue;
+      const dtTileRef nav = mesh_->getTileRefAt(tile->header->tx, tile->header->ty, tile->header->tlayer);
+      if (nav) mesh_->removeTile(nav, nullptr, nullptr);
+      tileCache_->removeTile(ref, nullptr, nullptr);
+    }
+  }
+
+  // Run the cache until its request queue has room (it takes requests
+  // only when no tile rebuilds are pending).
+  bool DrainRequests() {
+    for (int i = 0; i < 4096; ++i) {
+      bool upToDate = false;
+      tileCache_->update(0, mesh_, &upToDate);
+      if (upToDate) return true;
+    }
+    return false;
+  }
+
+  // addObstacles({count, kind, pos, radius, height, halfExtents, yaw})
+  // -> Uint32Array of obstacle refs (0: failed). kind 0: an upright
+  // cylinder standing on pos (radius, height); kind 1: a box centred on
+  // pos (halfExtents) turned by yaw about +Y.
+  Napi::Value AddObstacles(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return env.Undefined();
+    if (info.Length() < 1 || !info[0].IsObject()) {
+      Napi::TypeError::New(env, "addObstacles(batch)").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    Napi::Object b = info[0].As<Napi::Object>();
+    size_t n = 0;
+    if (!ReadCount(env, b, &n)) return env.Undefined();
+    const uint8_t *kind = CheckedU8(env, b.Get("kind"), "batch.kind", n);
+    if (!kind) return env.Undefined();
+    const float *pos = CheckedF32(env, b.Get("pos"), "batch.pos", n * 3);
+    if (!pos) return env.Undefined();
+    const float *radius = CheckedF32(env, b.Get("radius"), "batch.radius", n);
+    if (!radius) return env.Undefined();
+    const float *height = CheckedF32(env, b.Get("height"), "batch.height", n);
+    if (!height) return env.Undefined();
+    const float *half = CheckedF32(env, b.Get("halfExtents"), "batch.halfExtents", n * 3);
+    if (!half) return env.Undefined();
+    const float *yaw = CheckedF32(env, b.Get("yaw"), "batch.yaw", n);
+    if (!yaw) return env.Undefined();
+    Napi::Uint32Array out = Napi::Uint32Array::New(env, n);
+    for (size_t i = 0; i < n; i++) {
+      dtObstacleRef ref = 0;
+      for (int attempt = 0; attempt < 2; ++attempt) {
+        const dtStatus st = kind[i] == 1
+                                ? tileCache_->addBoxObstacle(pos + i * 3, half + i * 3, yaw[i], &ref)
+                                : tileCache_->addObstacle(pos + i * 3, radius[i], height[i], &ref);
+        if (dtStatusSucceed(st)) break;
+        ref = 0;
+        // The request queue is full: let the cache work through it, then retry once.
+        if (!(st & DT_BUFFER_TOO_SMALL) || !DrainRequests()) break;
+      }
+      out[i] = ref;
+      if (ref) obstacles_++;
+    }
+    return out;
+  }
+
+  // removeObstacles(refs: Uint32Array): unknown refs are ignored.
+  void RemoveObstacles(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return;
+    if (info.Length() < 1 || !info[0].IsTypedArray() ||
+        info[0].As<Napi::TypedArray>().TypedArrayType() != napi_uint32_array) {
+      Napi::TypeError::New(env, "removeObstacles(refs: Uint32Array)").ThrowAsJavaScriptException();
+      return;
+    }
+    Napi::Uint32Array refs = info[0].As<Napi::Uint32Array>();
+    for (size_t i = 0; i < refs.ElementLength(); i++) {
+      const dtObstacleRef ref = refs[i];
+      if (!ref || !tileCache_->getObstacleByRef(ref)) continue;
+      dtStatus st = tileCache_->removeObstacle(ref);
+      if (dtStatusFailed(st) && (st & DT_BUFFER_TOO_SMALL) && DrainRequests()) st = tileCache_->removeObstacle(ref);
+      if (dtStatusSucceed(st) && obstacles_ > 0) obstacles_--;
+    }
+  }
+
+  // updateObstacles(maxTiles) -> true when every obstacle change is in
+  // the navmesh: rebuilds up to maxTiles touched tiles (one per step).
+  Napi::Value UpdateObstacles(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return env.Undefined();
+    const int maxTiles = info.Length() > 0 && info[0].IsNumber() ? info[0].As<Napi::Number>().Int32Value() : 1;
+    bool upToDate = false;
+    for (int i = 0; i < std::max(1, maxTiles); ++i) {
+      tileCache_->update(0, mesh_, &upToDate);
+      if (upToDate) break;
+    }
+    return Napi::Boolean::New(env, upToDate);
+  }
+
+  Napi::Value ObstacleCount(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckTileCache(env)) return env.Undefined();
+    return Napi::Number::New(env, static_cast<double>(obstacles_));
+  }
+
+  bool useTileCache_ = false;
+  TileCacheCfg tcCfg_;
+  dtTileCache *tileCache_ = nullptr;
+  dtTileCacheAlloc tcAlloc_;
+  CopyCompressor tcComp_;
+  WalkableFlags tcProc_;
+  size_t obstacles_ = 0;
 
   bool alive_ = false;
   dtNavMesh *mesh_ = nullptr;

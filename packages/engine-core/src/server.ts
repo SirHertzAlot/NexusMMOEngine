@@ -107,6 +107,8 @@ import { CombatSystem } from "./combat.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
+import { NavObstacleSystem } from "./navigation/obstacle-system.js";
+import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
@@ -200,11 +202,16 @@ async function main(): Promise<void> {
     tileWorldSize: CHUNK_SIZE,
     profiles: [{ id: 0, agentHeight: 2, agentRadius: 0.6, agentMaxClimb: 0.9 }],
     // One tile per loaded chunk (up to ~441 per player while streaming).
-    // Poly refs are 32-bit: tile bits + poly bits must stay <= 22, and a
-    // 16 m terrain tile holds at most a few dozen polys.
+    // Poly refs are 32-bit: tile bits + poly bits must stay <= 22. A 16 m
+    // terrain tile holds a few dozen polys, more round the obstacles cut
+    // into it: 8192 tiles (13 bits) x 512 polys (9 bits).
     maxTiles: 8192,
-    maxPolys: 256,
+    maxPolys: 512,
+    // Tiles are built from layers plus obstacles: every static body cuts
+    // the navmesh (NavObstacleSystem), so walkers go round trees and rocks.
+    tileCache: TILE_CACHE_SETTINGS,
   });
+  const obstacles = new NavObstacleSystem(navBackend.tileCache!, { chunkWorldSize: CHUNK_SIZE, agentRadius: TILE_CACHE_SETTINGS.agentRadius });
   const navigation = new NavigationSystem({ backend: navBackend });
 
   // ---- terrain ---------------------------------------------------------------
@@ -295,6 +302,7 @@ async function main(): Promise<void> {
     chunkWorldSize: CHUNK_SIZE,
     // New tiles bake off the tick thread (5-40 ms each on first visit).
     worker: true,
+    onLoaded: (cx, cz) => obstacles.tileLoaded(cx, cz),
   });
   // Unload passes write rows on the tick thread. The snapshot store's
   // background worker already checkpoints world.db after every save, so
@@ -401,7 +409,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, new ColliderSystem(), physics, navigation],
+    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

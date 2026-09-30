@@ -15,6 +15,13 @@
  * its result — a chunk that unloaded (or unloaded and loaded again) while
  * its bake ran never gets a stale tile. Without the worker (tests, tools),
  * bakes run inline.
+ *
+ * With a tile cache (the backend was made with one), tiles are baked to
+ * heightfield layers from the chunk and its eight neighbours (so edges
+ * aren't eroded where the ground carries on), and the cache builds the
+ * navmesh tiles from the layers plus the obstacles standing on them
+ * (navigation/obstacle-system.ts). `onLoaded` hears when a chunk's tile
+ * goes in, so obstacles added before it can be applied to it.
  */
 
 import { Worker } from "node:worker_threads";
@@ -22,7 +29,15 @@ import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { heightsFingerprint } from "../procgen/chunk-source.js";
 import type { NavmeshTileKey, NavmeshTileRegistry } from "../persist/navmesh.js";
 import type { BakeTileConfig, NavigationBackend } from "./backend.js";
-import { bakeChunkTile, bakeConfigHash, DEFAULT_BAKE_CONFIG, isNothingWalkable } from "./chunk-baker.js";
+import {
+  bakeChunkLayers,
+  bakeChunkTile,
+  bakeConfigHash,
+  DEFAULT_BAKE_CONFIG,
+  isNothingWalkable,
+  LAYERS_FORMAT,
+  TILE_CACHE_SETTINGS,
+} from "./chunk-baker.js";
 import type { NavmeshWorkerData, NavmeshWorkerReply, NavmeshWorkerRequest } from "./navmesh-worker.js";
 
 export interface ChunkNavmeshOptions {
@@ -40,6 +55,8 @@ export interface ChunkNavmeshOptions {
   /** Bake new tiles on a worker thread. Default false (inline). */
   worker?: boolean;
   warn?: (message: string) => void;
+  /** A chunk's tile went into the navmesh (tile-cache mode: obstacles can reach it now). */
+  onLoaded?: (cx: number, cz: number) => void;
 }
 
 /** What a load did. "pending": a worker is baking the tile. */
@@ -61,8 +78,14 @@ export class ChunkNavmesh {
   private idleWaiters: Array<() => void> = [];
   polys = 0;
 
+  /** Tile-cache mode: layers, not whole tiles. */
+  private readonly layers: boolean;
+
   constructor(private readonly opts: ChunkNavmeshOptions) {
-    this.config = { ...DEFAULT_BAKE_CONFIG, ...opts.bakeConfig };
+    this.layers = opts.backend.tileCache !== undefined;
+    this.config = this.layers
+      ? { ...DEFAULT_BAKE_CONFIG, cellSize: TILE_CACHE_SETTINGS.cellSize, ...opts.bakeConfig }
+      : { ...DEFAULT_BAKE_CONFIG, ...opts.bakeConfig };
     this.scratch = new Float32Array(opts.source.chunkSamples);
     this.warn = opts.warn ?? ((m) => console.warn(m));
     if (opts.worker) {
@@ -75,16 +98,32 @@ export class ChunkNavmesh {
     const id = `${cx},${cz}`;
     if (this.loaded.has(id) || this.pending.has(id)) return "already-loaded";
     const { registry, source, seed } = this.opts;
-    source.generateChunk(seed, cx, cz, 0, this.scratch);
-    const fingerprint = heightsFingerprint(this.scratch);
+    // A layer tile also depends on its neighbours' edges: all nine heightmaps.
+    const around: Float32Array[] = [];
+    let fingerprint: number;
+    if (this.layers) {
+      fingerprint = 0;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const h = new Float32Array(source.chunkSamples);
+          source.generateChunk(seed, cx + dx, cz + dz, 0, h);
+          around.push(h);
+          fingerprint = (Math.imul(fingerprint, 31) + heightsFingerprint(h)) | 0;
+        }
+      }
+    } else {
+      source.generateChunk(seed, cx, cz, 0, this.scratch);
+      fingerprint = heightsFingerprint(this.scratch);
+    }
     if (this.empty.get(id) === fingerprint) return "empty";
+    const configHash = bakeConfigHash({ ...this.config, tileX: cx, tileZ: cz });
     const key: NavmeshTileKey = {
       worldSeed: seed.toString(),
       chunkX: cx,
       chunkZ: cz,
       terrainVersion: fingerprint,
       agentProfile: this.opts.agentProfile ?? 0,
-      bakeConfigHash: bakeConfigHash({ ...this.config, tileX: cx, tileZ: cz }),
+      bakeConfigHash: this.layers ? `${configHash}:${LAYERS_FORMAT}` : configHash,
     };
     const record = registry.lookup(key);
     const cached = record ? registry.loadBlob(record) : undefined;
@@ -96,9 +135,9 @@ export class ChunkNavmesh {
       const ticket = ++this.nextTicket;
       this.pending.set(id, ticket);
       this.tickets.set(ticket, { id, fingerprint });
-      const heights = this.scratch.slice();
+      const heights = this.layers ? around : [this.scratch.slice()];
       const request: NavmeshWorkerRequest = { kind: "bake", ticket, cx, cz, heights, key };
-      this.worker.postMessage(request, [heights.buffer as ArrayBuffer]);
+      this.worker.postMessage(request, heights.map((h) => h.buffer as ArrayBuffer));
       return "pending";
     }
     return this.bakeInline(id, cx, cz, key, fingerprint);
@@ -108,7 +147,8 @@ export class ChunkNavmesh {
     const id = `${cx},${cz}`;
     const refs = this.loaded.get(id);
     if (refs) {
-      this.opts.backend.unloadTiles(refs);
+      if (this.layers) this.opts.backend.tileCache!.unloadLayers(refs);
+      else this.opts.backend.unloadTiles(refs);
       this.loaded.delete(id);
     }
     const ticket = this.pending.get(id);
@@ -158,16 +198,27 @@ export class ChunkNavmesh {
   // ------------------------------------------------------------ internals
 
   private install(id: string, blob: Uint8Array): void {
-    this.loaded.set(id, this.opts.backend.loadTiles([blob]));
+    const [cx, cz] = id.split(",").map(Number);
+    this.loaded.set(id, this.layers ? this.opts.backend.tileCache!.loadLayers(cx, cz, blob) : this.opts.backend.loadTiles([blob]));
+    this.opts.onLoaded?.(cx, cz);
+  }
+
+  /** Whether chunk (cx, cz)'s tile is in the navmesh. */
+  isLoaded(cx: number, cz: number): boolean {
+    return this.loaded.has(`${cx},${cz}`);
   }
 
   private bakeInline(id: string, cx: number, cz: number, key: NavmeshTileKey, fingerprint: number): ChunkNavmeshLoad {
     const { backend, source, seed, chunkWorldSize, registry } = this.opts;
     let blob: Uint8Array;
     try {
-      const baked = bakeChunkTile({ backend, source, seed, chunkWorldSize, bakeConfig: this.config }, cx, cz);
-      blob = baked.blob;
-      this.polys += baked.stats.polyCount;
+      if (this.layers) {
+        blob = bakeChunkLayers({ backend, source, seed, chunkWorldSize, bakeConfig: this.config }, cx, cz).blob;
+      } else {
+        const baked = bakeChunkTile({ backend, source, seed, chunkWorldSize, bakeConfig: this.config }, cx, cz);
+        blob = baked.blob;
+        this.polys += baked.stats.polyCount;
+      }
     } catch (err) {
       if (!isNothingWalkable(err)) throw err;
       this.empty.set(id, fingerprint);
@@ -183,6 +234,7 @@ export class ChunkNavmesh {
       registryDir,
       chunkWorldSize: this.opts.chunkWorldSize,
       bakeConfig: this.config,
+      layers: this.layers,
     };
     const worker = new Worker(new URL("./navmesh-worker.js", import.meta.url), { workerData });
     worker.on("message", (reply: NavmeshWorkerReply) => this.onReply(reply));
