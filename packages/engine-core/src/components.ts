@@ -80,7 +80,9 @@ export const Health = defineComponent({
  *
  * Conventions (mirror mmo_engine.fbs ShapeKind/MotionType and the
  * addon C ABI):
- * - shapeKind: 0 = box (uses halfX/halfY/halfZ), 1 = sphere (uses radius)
+ * - shapeKind: 0 = box (uses halfX/halfY/halfZ), 1 = sphere (uses radius),
+ *   2 = capsule (uses radius and halfY, the straight section's half
+ *   length), upright with its base at the entity's position (the feet)
  * - motionType: 0 = static, 1 = kinematic, 2 = dynamic
  * - layer: 0 = NON_MOVING (static geometry), anything else = MOVING
  */
@@ -101,6 +103,7 @@ export const BodyConfig = defineComponent({
 export const ShapeKind = {
   Box: 0,
   Sphere: 1,
+  Capsule: 2,
 } as const;
 
 /** Mirror of the FlatBuffers MotionType enum (mmo_engine.fbs). */

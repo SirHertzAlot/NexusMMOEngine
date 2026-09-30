@@ -28,7 +28,7 @@ const { PhysicsWorld } = require(path.join(
   'physics.node',
 ));
 
-const ShapeKind = Object.freeze({ Box: 0, Sphere: 1 });
+const ShapeKind = Object.freeze({ Box: 0, Sphere: 1, Capsule: 2 });
 const MotionType = Object.freeze({ Static: 0, Kinematic: 1, Dynamic: 2 });
 const SyncFlags = Object.freeze({ None: 0, Teleport: 0x01 });
 

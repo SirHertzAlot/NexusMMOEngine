@@ -3,6 +3,7 @@
 export declare const ShapeKind: Readonly<{
   Box: 0;
   Sphere: 1;
+  Capsule: 2;
 }>;
 
 export declare const MotionType: Readonly<{

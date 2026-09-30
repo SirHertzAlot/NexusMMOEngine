@@ -18,10 +18,14 @@
  *   the socket moves.
  *
  * The quality preset's particle budget scales every emission rate.
+ *
+ * Particles collide with the ground (`setGround`): falling snow settles
+ * and bounces instead of sinking through the terrain.
  */
 
 import * as THREE from "three";
 import {
+  ApplyCollision,
   ApplyForce,
   BatchedRenderer,
   Bezier,
@@ -130,6 +134,17 @@ export class QuarksFx {
   /** Every live system and its designed emission rate (the budget scales it). */
   private readonly live = new Map<ParticleSystem, number>();
   private budget = 1;
+  private ground: ((x: number, z: number) => number | null) | null = null;
+  /** Keeps particles above the ground: shared by every system, reads the current ground. */
+  private readonly floor = {
+    resolve: (pos: QVector3, normal: QVector3): boolean => {
+      const h = this.ground?.(pos.x, pos.z) ?? null;
+      if (h === null || pos.y >= h) return false;
+      pos.y = h;
+      normal.set(0, 1, 0);
+      return true;
+    },
+  };
 
   constructor() {
     this.renderer.name = "quarks-fx";
@@ -139,6 +154,11 @@ export class QuarksFx {
   setBudget(multiplier: number): void {
     this.budget = Math.max(0, multiplier);
     for (const [system, rate] of this.live) system.emissionOverTime = new ConstantValue(rate * this.budget);
+  }
+
+  /** The ground height at world (x, z), or null where it isn't known; particles land on it. */
+  setGround(ground: ((x: number, z: number) => number | null) | null): void {
+    this.ground = ground;
   }
 
   /** Systems running now (tests, HUD). */
@@ -179,6 +199,7 @@ export class QuarksFx {
     if (p.lift) behaviors.push(new ApplyForce(new QVector3(0, Math.sign(p.lift), 0), new ConstantValue(Math.abs(p.lift))));
     if (p.wander) behaviors.push(new Noise(new ConstantValue(1.5), new ConstantValue(p.wander)));
     if (p.orbit) behaviors.push(new OrbitOverLife(new ConstantValue(p.orbit), new QVector3(0, 1, 0)));
+    behaviors.push(new ApplyCollision(this.floor, 0.3));
     const system = new ParticleSystem({
       looping: true,
       duration: 5,

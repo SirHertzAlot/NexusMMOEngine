@@ -73,8 +73,10 @@ world.bodyCount();                        // diagnostics
 world.destroy();                          // explicit; idempotent
 ```
 
-- `shapeKind`: `ShapeKind.Box` (0, uses `halfExtents`) or
-  `ShapeKind.Sphere` (1, uses `radius`). `motionType`:
+- `shapeKind`: `ShapeKind.Box` (0, uses `halfExtents`),
+  `ShapeKind.Sphere` (1, uses `radius`) or `ShapeKind.Capsule` (2, uses
+  `radius` and `halfExtents.y`, half the straight section; upright, its
+  base at the body's position: a character's feet). `motionType`:
   `MotionType.Static` (0) / `Kinematic` (1) / `Dynamic` (2).
   `layer`: 0 → NON_MOVING (static geometry), anything else → MOVING.
 - `addBodies` is **order-sensitive**: pass entities in ascending

@@ -123,15 +123,30 @@ test("scatterChunkToECS: oak gets Health (breakable) + static BodyConfig", () =>
   assert.equal(BodyConfig.layer[eid], 0);
 });
 
-test("scatterChunkToECS: birch has neither Health nor BodyConfig", () => {
+test("scatterChunkToECS: birch declares no collision, so it gets a default static box", () => {
   const world = new SimWorld();
   const eids = scatterChunkToECS(world, stubBinding([birchRecord()]), stubContent(), {
     worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256),
   });
   const eid = eids[0];
   assert.ok(!hasComponent(world.ecs, Health, eid));
-  assert.ok(!hasComponent(world.ecs, BodyConfig, eid));
-  assert.ok(!hasComponent(world.ecs, Velocity, eid));
+  assert.ok(hasComponent(world.ecs, BodyConfig, eid), "every prop is a physics body");
+  assert.ok(hasComponent(world.ecs, Velocity, eid));
+  assert.equal(BodyConfig.shapeKind[eid], ShapeKind.Box);
+  assert.equal(BodyConfig.motionType[eid], MotionType.Static);
+  assert.equal(BodyConfig.halfY[eid], 0.5, "the size of its scale (1)");
+});
+
+test("scatterChunkToECS: collision \"none\" opts a prop out (grass, flowers)", () => {
+  const world = new SimWorld();
+  const content = stubContent();
+  const table = structuredClone(content.table);
+  table.archetypes.birch = { asset: "birch", collision: { shape: "none", motion: "static" } };
+  const eids = scatterChunkToECS(world, stubBinding([birchRecord()]), { ...content, table }, {
+    worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256),
+  });
+  assert.ok(!hasComponent(world.ecs, BodyConfig, eids[0]));
+  assert.ok(!hasComponent(world.ecs, Velocity, eids[0]));
 });
 
 test("scatterChunkToECS: rejects non-square heightmaps", () => {

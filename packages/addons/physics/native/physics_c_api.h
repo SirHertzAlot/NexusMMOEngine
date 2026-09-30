@@ -36,6 +36,9 @@ typedef struct mj_physics_world mj_physics_world_t;
 // Shape kinds (mirror mmo_engine.fbs ShapeKind).
 #define MJ_SHAPE_BOX 0
 #define MJ_SHAPE_SPHERE 1
+/* Upright capsule: radius + half_extents.y (half the straight section),
+   base at the body's origin. */
+#define MJ_SHAPE_CAPSULE 2
 
 // Motion types (mirror mmo_engine.fbs MotionType).
 #define MJ_MOTION_STATIC 0

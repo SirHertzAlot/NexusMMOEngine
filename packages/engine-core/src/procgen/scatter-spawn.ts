@@ -11,8 +11,8 @@
  *   3. Each resolved spawn becomes an entity: Transform (position from
  *      the record, yaw->quaternion, scale), AssetRef (assetHash/variant),
  *      plus Health when the archetype declares it (breakable resources)
- *      and Velocity+BodyConfig when it declares collision (static bodies
- *      are picked up by PhysicsSystem on the next tick via its membership
+ *      and Velocity+BodyConfig unless its collision is "none" (a default
+ *      box when it declares none at all; static bodies are picked up by PhysicsSystem on the next tick via its membership
  *      diff — no special wiring).
  *
  * Design decisions (explicit, not accidental):
@@ -53,6 +53,7 @@ import {
   Velocity,
 } from "../components.js";
 import type { SimWorld } from "../world.js";
+import { attachDefaultCollider } from "../systems.js";
 import {
   cook,
   hashU32,
@@ -201,10 +202,14 @@ export function spawnScatterEntity(world: SimWorld, s: EntitySpawn): number {
     H.max[eid] = s.archetype.health.max;
   }
 
-  // Static collision: PhysicsSystem owns [Transform, Velocity, BodyConfig]
-  // entities, so Velocity (zeroed) rides along.
+  // Collision: every prop is a physics body unless its data says
+  // "shape": "none" (grass, flowers); an archetype that doesn't say gets
+  // a static box the size of its scale. PhysicsSystem owns [Transform,
+  // Velocity, BodyConfig] entities, so Velocity (zeroed) rides along.
   const col = s.archetype.collision;
-  if (col && col.shape !== "none") {
+  if (!col) {
+    attachDefaultCollider(world, eid);
+  } else if (col.shape !== "none") {
     const V = Velocity;
     addComponent(world.ecs, V, eid);
     V.lx[eid] = 0; V.ly[eid] = 0; V.lz[eid] = 0;

@@ -75,6 +75,7 @@ import {
   CharacterSystem,
   IntegrateSystem,
   PhysicsSystem,
+  ColliderSystem,
   createJoltBackend,
   NavigationSystem,
   createNavigationBackend,
@@ -395,7 +396,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, physics, navigation],
+    systems: [new StatsSystem(), streamer, ...bots, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, new ColliderSystem(), physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

@@ -91,6 +91,15 @@ export class PrefabGallery {
     });
   }
 
+  /** Stand every entity on the ground: `groundAt` takes the parent's local (x, z). */
+  settle(groundAt: (x: number, z: number) => number): void {
+    const o = this.group.position;
+    for (const i of this.instances) {
+      const p = i.root.position;
+      p.y = groundAt(o.x + p.x, o.z + p.z) - o.y;
+    }
+  }
+
   update(dt: number, time: number): void {
     for (const i of this.instances) i.update(dt, time);
   }

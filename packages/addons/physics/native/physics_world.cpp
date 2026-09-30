@@ -33,6 +33,8 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -169,6 +171,14 @@ struct mj_physics_world {
       JPH::Ref<JPH::ShapeSettings> settings;
       if (shape_kind[i] == MJ_SHAPE_SPHERE) {
         settings = new JPH::SphereShapeSettings(radius[i] > 0.0f ? radius[i] : 0.5f);
+      } else if (shape_kind[i] == MJ_SHAPE_CAPSULE) {
+        // Upright, lifted so its base sits at the body's origin (the
+        // feet): a character's transform is where it stands.
+        const float r = radius[i] > 0.0f ? radius[i] : 0.35f;
+        const float half = half_extents[3 * i + 1] > 0.0f ? half_extents[3 * i + 1] : 0.55f;
+        settings = new JPH::RotatedTranslatedShapeSettings(
+            JPH::Vec3(0.0f, half + r, 0.0f), JPH::Quat::sIdentity(),
+            new JPH::CapsuleShapeSettings(half, r));
       } else {
         settings = new JPH::BoxShapeSettings(
             JPH::Vec3(half_extents[3 * i], half_extents[3 * i + 1],
