@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   applyParameters,
   decodePcgMesh,
+  encodePcgMesh,
   definitionIdForGuid,
   exposedParameters,
   fnv1a32,
@@ -222,6 +223,40 @@ describe("decodePcgMesh", () => {
     const bad = pcgm({ version: 2 });
     new DataView(bad).setUint32(20 + 36 + 8, 7, true);
     assert.throws(() => decodePcgMesh(bad), /out of range/);
+  });
+});
+
+describe("encodePcgMesh", () => {
+  it("writes what decodePcgMesh reads, byte for byte what pcg-core writes", () => {
+    const bytes = pcgm({ version: 3, colors: true, materials: ["bark", "leaves!"] });
+    const m = decodePcgMesh(bytes);
+    assert.deepEqual(Buffer.from(encodePcgMesh(m)), Buffer.from(bytes));
+  });
+
+  it("round-trips every optional block, and a plain mesh", () => {
+    const mesh = {
+      positions: Float32Array.of(0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1),
+      indices: Uint32Array.of(0, 2, 1, 1, 2, 3),
+      normals: Float32Array.of(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0),
+      colors: new Float32Array(16).fill(0.5),
+      uvs: Float32Array.of(0, 0, 1, 0, 0, 1, 1, 1),
+      materials: ["floor", "wall"],
+      triangleMaterials: Uint32Array.of(0, 1),
+    };
+    const back = decodePcgMesh(encodePcgMesh(mesh));
+    assert.deepEqual(back, { ...mesh });
+    const plain = decodePcgMesh(encodePcgMesh({ positions: mesh.positions, indices: mesh.indices }));
+    assert.equal(plain.normals, null);
+    assert.equal(plain.triangleMaterials, null);
+    assert.deepEqual(plain.materials, []);
+  });
+
+  it("refuses meshes it can't write", () => {
+    const positions = Float32Array.of(0, 0, 0, 1, 0, 0, 0, 0, 1);
+    assert.throws(() => encodePcgMesh({ positions, indices: Uint32Array.of(0, 1) }), /triangles/);
+    assert.throws(() => encodePcgMesh({ positions, indices: Uint32Array.of(0, 1, 3) }), /out of range/);
+    assert.throws(() => encodePcgMesh({ positions, indices: Uint32Array.of(0, 1, 2), normals: new Float32Array(3) }), /normals/);
+    assert.throws(() => encodePcgMesh({ positions, indices: Uint32Array.of(0, 1, 2), triangleMaterials: Uint32Array.of(1), materials: ["a"] }), /slot 1/);
   });
 });
 

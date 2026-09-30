@@ -25,7 +25,7 @@ export {
   type ParameterValues,
 } from "./parameters.js";
 export { prepareForCook, type PreparedGraph, type PrepareOptions } from "./prepare.js";
-export { decodePcgMesh, PCGM_MAGIC, type PcgMesh } from "./mesh.js";
+export { decodePcgMesh, encodePcgMesh, PCGM_MAGIC, type PcgMesh } from "./mesh.js";
 export {
   fnv1a32,
   parseLibraryIndex,

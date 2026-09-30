@@ -164,7 +164,16 @@ The component-tree WFC (§5.2) fills them.
 ### 3.4 Instances (D4)
 
 An instance is a small engine instance started from a baked layout on request. It
-runs the same engine-core: a region whose "world" is one dungeon.
+runs the same engine-core: a region whose "world" is one dungeon, a small sandbox
+apart from the open world. Players are taken out of their place in the world and
+put into it; results go back the way the rest of the game's do, instance to
+region to world server, which ingests them.
+
+Everything an instance needs is prebaked in the pool, so starting one reads files
+instead of generating anything: the layout, dressing and population
+(`<id>.dungeon.json`) and the shell, its walls, floors and ceilings as one mesh
+buffer (`<id>.shell.pcgm`, built with manifold and Clipper2), which is its
+collider, its navmesh input and what clients draw.
 
 1. **Request:** a party asks at a dungeon entrance.
 2. **Start:** the region picks a layout from the pool that matches the entrance's rank
