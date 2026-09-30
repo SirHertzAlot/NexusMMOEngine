@@ -12,6 +12,9 @@
 //                              | { kind: "json", json: string }
 //                              | { kind: "none" }
 //   clearCache()              -> drop pcg-core's per-node cook cache
+//   optimizeMesh(pcgm, opts)  -> meshoptimizer: welded, cache- and overdraw-
+//                                ordered PCGM plus a LOD chain
+//                                (src/mesh_optimize.cc)
 //
 // Cooking never runs on the calling thread: a graph can take hundreds of
 // milliseconds, and the region's tick loop must not wait on it. pcg-core
@@ -31,6 +34,8 @@
 #include <vector>
 
 #include "pcg_api.h"
+
+Napi::Value OptimizeMesh(const Napi::CallbackInfo& info);  // mesh_optimize.cc
 
 namespace {
 
@@ -187,6 +192,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("validate", Napi::Function::New(env, Validate));
     exports.Set("cook", Napi::Function::New(env, Cook));
     exports.Set("clearCache", Napi::Function::New(env, ClearCache));
+    exports.Set("optimizeMesh", Napi::Function::New(env, OptimizeMesh));
     return exports;
 }
 

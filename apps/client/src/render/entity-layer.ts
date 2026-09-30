@@ -80,6 +80,7 @@ const FACE_MOVING_SPEED = 0.2;
 const TURN_RATE = 12;
 
 const tmpColor = new THREE.Color();
+const tmpEye = new THREE.Vector3();
 const tmpSpawn = new THREE.Vector3();
 
 export class EntityLayer {
@@ -110,7 +111,7 @@ export class EntityLayer {
 
   constructor(
     scene: THREE.Scene,
-    camera: THREE.Camera,
+    private readonly camera: THREE.Camera,
     private readonly assets: AssetProvider,
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
@@ -143,14 +144,18 @@ export class EntityLayer {
       .catch((e: unknown) => console.info(`[world] characters stay unanimated: ${e instanceof Error ? e.message : e}`));
   }
 
-  /** Scenery counts (dev tools, probes). */
-  get stats(): { props: number; propDrawCalls: number; propsWithModels: number; artModels: number; meshes: number } {
+  /** Scenery counts (dev tools, probes, the HUD). */
+  get stats(): { props: number; propDrawCalls: number; propsWithModels: number; artModels: number; meshes: number; propTriangles: number; propFullTriangles: number; propsPerLevel: number[] } {
+    const p = this.props.stats();
     return {
-      props: this.props.count,
-      propDrawCalls: this.props.drawCalls,
+      props: p.props,
+      propDrawCalls: p.drawCalls,
       propsWithModels: this.props.cookedCount,
       artModels: this.syntyProps.size,
       meshes: this.meshes.size,
+      propTriangles: p.triangles,
+      propFullTriangles: p.fullTriangles,
+      propsPerLevel: p.perLevel,
     };
   }
 
@@ -290,6 +295,8 @@ export class EntityLayer {
     }
 
     this.props.setHovered(this.hoveredWireId);
+    // Levels of detail follow the camera.
+    this.props.updateLod(this.camera.getWorldPosition(tmpEye));
     if (this.player) this.lastPlayerPos.copy(this.player);
     this.fx.setPlayerPos(this.player);
 

@@ -17,12 +17,18 @@
  * Removal moves the last instance into the freed slot, so a batch stays
  * dense; batches double when full. Model geometries get a BVH (bvh.ts),
  * so hover picking walks a tree instead of every triangle.
+ *
+ * Levels of detail (lod.ts): a model with a LOD chain is one InstancedMesh
+ * per level, and `updateLod(eye)` moves each instance to the level its
+ * distance from the camera calls for (a little hysteresis, so props on a
+ * boundary don't flicker). One draw call per level in use.
  */
 
 import * as THREE from "three";
 import { ShapeKind } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
 import { ensureBoundsTree } from "./bvh.js";
+import type { LodLevel } from "./lod.js";
 
 /** Smallest dimension drawn (a zero-size body still shows). */
 const MIN_SIZE = 0.05;
@@ -41,7 +47,7 @@ export interface PropModels {
   model(
     assetHash: number,
     variant: number,
-  ): { key: string; geometry: THREE.BufferGeometry; material?: THREE.Material | THREE.Material[] } | null;
+  ): { key: string; geometry: THREE.BufferGeometry; material?: THREE.Material | THREE.Material[]; lods?: LodLevel[] } | null;
 }
 
 export interface PropAsset {
@@ -49,26 +55,51 @@ export interface PropAsset {
   variant: number;
 }
 
-interface Batch {
-  key: string;
+/** One level of a batch: its geometry, the distance it starts at, and its instances. */
+interface Level {
   geometry: THREE.BufferGeometry;
-  material: THREE.Material | THREE.Material[];
-  /** Cooked models are drawn at the Transform; placeholders are scaled to the body. */
-  cooked: boolean;
+  distance: number;
   mesh: THREE.InstancedMesh;
   capacity: number;
   /** Instance index -> wire id. */
   owners: bigint[];
 }
 
+interface Batch {
+  key: string;
+  /** Its meshes' name: the model's key (levels add " lod<n>"). */
+  name: string;
+  material: THREE.Material | THREE.Material[];
+  /** Cooked models are drawn at the Transform; placeholders are scaled to the body. */
+  cooked: boolean;
+  /** Full detail first, then the LOD chain. */
+  levels: Level[];
+}
+
 interface Slot {
   batch: Batch;
+  level: number;
   index: number;
   transform: TransformRow;
   body: BodyConfigRow | null;
   asset: PropAsset | null;
   color: THREE.Color;
 }
+
+/** Stats for the HUD: what the props cost. */
+export interface PropStats {
+  props: number;
+  drawCalls: number;
+  /** Triangles drawn by the props this frame. */
+  triangles: number;
+  /** What they'd take at full detail. */
+  fullTriangles: number;
+  /** Instances per level (0: full detail). */
+  perLevel: number[];
+}
+
+/** Hysteresis: a prop moves to a lighter level only this far past its boundary, and back only this far inside it. */
+const LOD_SLACK = 0.1;
 
 const tmpMatrix = new THREE.Matrix4();
 const tmpPos = new THREE.Vector3();
@@ -101,6 +132,7 @@ export class InstancedProps {
   private readonly batches = new Map<string, Batch>();
   private readonly slots = new Map<bigint, Slot>();
   private hovered: bigint | null = null;
+  private readonly lastEye = new THREE.Vector3(Infinity, 0, 0);
 
   constructor(private readonly models: PropModels | null = null) {
     this.group.name = "props";
@@ -111,10 +143,10 @@ export class InstancedProps {
     return this.slots.size;
   }
 
-  /** Draw calls the props take (one per model in use). */
+  /** Draw calls the props take (one per model and level in use). */
   get drawCalls(): number {
     let n = 0;
-    for (const b of this.batches.values()) if (b.mesh.count > 0) n++;
+    for (const b of this.batches.values()) for (const l of b.levels) if (l.mesh.count > 0) n++;
     return n;
   }
 
@@ -123,6 +155,26 @@ export class InstancedProps {
     let n = 0;
     for (const s of this.slots.values()) if (s.batch.cooked) n++;
     return n;
+  }
+
+  /** What the props cost now: draw calls, triangles, and how many are at each level. */
+  stats(): PropStats {
+    const perLevel: number[] = [];
+    let triangles = 0;
+    let fullTriangles = 0;
+    let drawCalls = 0;
+    for (const b of this.batches.values()) {
+      const full = triangleCount(b.levels[0].geometry);
+      b.levels.forEach((l, i) => {
+        if (l.mesh.count === 0) return;
+        drawCalls++;
+        perLevel[i] = (perLevel[i] ?? 0) + l.mesh.count;
+        triangles += triangleCount(l.geometry) * l.mesh.count;
+        fullTriangles += full * l.mesh.count;
+      });
+    }
+    for (let i = 0; i < perLevel.length; i++) perLevel[i] ??= 0;
+    return { props: this.slots.size, drawCalls, triangles, fullTriangles, perLevel };
   }
 
   has(wireId: bigint): boolean {
@@ -143,10 +195,9 @@ export class InstancedProps {
       return;
     }
     if (existing) this.remove(wireId);
-    if (batch.mesh.count === batch.capacity) this.grow(batch);
-    const index = batch.mesh.count++;
-    batch.owners[index] = wireId;
-    const slot: Slot = { batch, index, transform, body, asset, color: color.clone() };
+    const slot: Slot = { batch, level: 0, index: 0, transform, body, asset, color: color.clone() };
+    slot.level = this.levelAt(batch, transform, 0);
+    this.place(wireId, slot);
     this.slots.set(wireId, slot);
     this.writeMatrix(slot);
     this.writeColor(slot);
@@ -174,23 +225,32 @@ export class InstancedProps {
     }
   }
 
+  /**
+   * Move props to the level their distance from `eye` calls for. Cheap to
+   * call every frame: it only walks the props when the camera has moved a
+   * metre or more since the last walk.
+   */
+  updateLod(eye: THREE.Vector3): void {
+    if (eye.distanceToSquared(this.lastEye) < 1) return;
+    this.lastEye.copy(eye);
+    for (const [wid, slot] of this.slots) {
+      if (slot.batch.levels.length < 2) continue;
+      const level = this.levelAt(slot.batch, slot.transform, slot.level);
+      if (level === slot.level) continue;
+      this.unplace(slot);
+      slot.level = level;
+      this.place(wid, slot);
+      this.writeMatrix(slot);
+      this.writeColor(slot);
+    }
+  }
+
   remove(wireId: bigint): void {
     const slot = this.slots.get(wireId);
     if (!slot) return;
     this.slots.delete(wireId);
     if (this.hovered === wireId) this.hovered = null;
-    const { batch, index } = slot;
-    const last = --batch.mesh.count;
-    if (index !== last) {
-      // Move the last instance into the hole.
-      const moved = this.slots.get(batch.owners[last])!;
-      moved.index = index;
-      batch.owners[index] = batch.owners[last];
-      this.writeMatrix(moved);
-      this.writeColor(moved);
-    }
-    batch.owners.length = last;
-    this.touch(batch);
+    this.unplace(slot);
   }
 
   /** Tint the prop under the pointer (null: none). */
@@ -205,11 +265,10 @@ export class InstancedProps {
 
   /** The prop a ray hits first, with its distance, or null. */
   pick(raycaster: THREE.Raycaster): { wireId: bigint; distance: number } | null {
-    const meshes = [...this.batches.values()].filter((b) => b.mesh.count > 0).map((b) => b.mesh);
-    const hit = raycaster.intersectObjects(meshes, false)[0];
+    const levels = [...this.batches.values()].flatMap((b) => b.levels).filter((l) => l.mesh.count > 0);
+    const hit = raycaster.intersectObjects(levels.map((l) => l.mesh), false)[0];
     if (!hit || hit.instanceId === undefined) return null;
-    const batch = [...this.batches.values()].find((b) => b.mesh === hit.object);
-    const wireId = batch?.owners[hit.instanceId];
+    const wireId = levels.find((l) => l.mesh === hit.object)?.owners[hit.instanceId];
     return wireId === undefined ? null : { wireId, distance: hit.distance };
   }
 
@@ -220,8 +279,10 @@ export class InstancedProps {
 
   dispose(): void {
     for (const b of this.batches.values()) {
-      this.group.remove(b.mesh);
-      b.mesh.dispose();
+      for (const l of b.levels) {
+        this.group.remove(l.mesh);
+        l.mesh.dispose();
+      }
     }
     this.batches.clear();
     this.slots.clear();
@@ -233,17 +294,68 @@ export class InstancedProps {
 
   // ------------------------------------------------------------ internals
 
+  /** The level a prop at `t` should be at, with hysteresis around the level it's at now. */
+  private levelAt(batch: Batch, t: TransformRow, current: number): number {
+    const levels = batch.levels;
+    if (levels.length < 2 || !Number.isFinite(this.lastEye.x)) return 0;
+    const d = Math.hypot(t.px - this.lastEye.x, t.py - this.lastEye.y, t.pz - this.lastEye.z);
+    let level = 0;
+    for (let i = 1; i < levels.length; i++) {
+      // Leaving a level takes going LOD_SLACK past its boundary; coming back, LOD_SLACK inside it.
+      const edge = levels[i].distance * (i <= current ? 1 - LOD_SLACK : 1 + LOD_SLACK);
+      if (d >= edge) level = i;
+    }
+    return level;
+  }
+
+  /** Put a slot's instance at the end of its level. */
+  private place(wireId: bigint, slot: Slot): void {
+    const level = slot.batch.levels[slot.level];
+    if (level.mesh.count === level.capacity) this.grow(slot.batch, level);
+    slot.index = level.mesh.count++;
+    level.owners[slot.index] = wireId;
+  }
+
+  /** Take a slot's instance out of its level (the last one moves into the hole). */
+  private unplace(slot: Slot): void {
+    const level = slot.batch.levels[slot.level];
+    const last = --level.mesh.count;
+    if (slot.index !== last) {
+      const moved = this.slots.get(level.owners[last])!;
+      moved.index = slot.index;
+      level.owners[slot.index] = level.owners[last];
+      this.writeMatrix(moved);
+      this.writeColor(moved);
+    }
+    level.owners.length = last;
+    this.touch(level);
+  }
+
   private batchFor(body: BodyConfigRow | null, asset: PropAsset | null): Batch {
     const model = asset && this.models ? this.models.model(asset.assetHash, asset.variant) : null;
     const shapeKind = body?.shapeKind === ShapeKind.Sphere ? ShapeKind.Sphere : ShapeKind.Box;
-    const key = model ? `model:${model.key}` : `shape:${shapeKind}`;
+    const lods = model?.lods ?? [];
+    const name = model ? `model:${model.key}` : `shape:${shapeKind}`;
+    // A model's chain can arrive after the model: a new batch then, the props move over.
+    const key = `${name}|${lods.length}`;
     let batch = this.batches.get(key);
     if (!batch) {
-      const geometry = model ? model.geometry : this.shape(shapeKind);
       const material = model ? (model.material ?? this.modelMaterial) : this.placeholderMaterial;
-      batch = { key, geometry, material, cooked: model !== null, mesh: this.makeMesh(key, geometry, material, INITIAL_CAPACITY), capacity: INITIAL_CAPACITY, owners: [] };
+      const geometries: Array<{ geometry: THREE.BufferGeometry; distance: number }> = [
+        { geometry: model ? model.geometry : this.shape(shapeKind), distance: 0 },
+      ];
+      // Levels further out than the one before them only.
+      for (const l of lods) if (l.distance > geometries[geometries.length - 1].distance) geometries.push(l);
+      const levels = geometries.map((g, i) => ({
+        geometry: g.geometry,
+        distance: g.distance,
+        mesh: this.makeMesh(levelName(name, i), g.geometry, material, INITIAL_CAPACITY),
+        capacity: INITIAL_CAPACITY,
+        owners: [] as bigint[],
+      }));
+      batch = { key, name, material, cooked: model !== null, levels };
       this.batches.set(key, batch);
-      this.group.add(batch.mesh);
+      for (const l of levels) this.group.add(l.mesh);
     }
     return batch;
   }
@@ -271,10 +383,11 @@ export class InstancedProps {
     return mesh;
   }
 
-  /** Double a full batch: a bigger mesh with the same instances. */
-  private grow(batch: Batch): void {
-    const old = batch.mesh;
-    const mesh = this.makeMesh(batch.key, batch.geometry, batch.material, batch.capacity * 2);
+  /** Double a full level: a bigger mesh with the same instances. */
+  private grow(batch: Batch, level: Level): void {
+    const old = level.mesh;
+    const i = batch.levels.indexOf(level);
+    const mesh = this.makeMesh(levelName(batch.name, i), level.geometry, batch.material, level.capacity * 2);
     mesh.instanceMatrix.array.set(old.instanceMatrix.array);
     mesh.instanceColor!.array.set(old.instanceColor!.array);
     mesh.instanceColor!.needsUpdate = true;
@@ -282,30 +395,40 @@ export class InstancedProps {
     this.group.remove(old);
     old.dispose();
     this.group.add(mesh);
-    batch.mesh = mesh;
-    batch.capacity *= 2;
-    this.touch(batch);
+    level.mesh = mesh;
+    level.capacity *= 2;
+    this.touch(level);
   }
 
   private writeMatrix(slot: Slot): void {
     const m = slot.batch.cooked ? modelMatrix(slot.transform, tmpMatrix) : propMatrix(slot.transform, slot.body, tmpMatrix);
-    slot.batch.mesh.setMatrixAt(slot.index, m);
-    this.touch(slot.batch);
+    const level = slot.batch.levels[slot.level];
+    level.mesh.setMatrixAt(slot.index, m);
+    this.touch(level);
   }
 
   private writeColor(slot: Slot): void {
-    const owner = slot.batch.owners[slot.index];
+    const level = slot.batch.levels[slot.level];
+    const owner = level.owners[slot.index];
     // Cooked models carry their own colours: the instance colour only tints.
     const base = slot.batch.cooked ? WHITE : slot.color;
     const c = owner === this.hovered ? tmpColor.copy(base).lerp(HOVER, HOVER_MIX) : base;
-    slot.batch.mesh.setColorAt(slot.index, c);
-    slot.batch.mesh.instanceColor!.needsUpdate = true;
+    level.mesh.setColorAt(slot.index, c);
+    level.mesh.instanceColor!.needsUpdate = true;
   }
 
-  private touch(batch: Batch): void {
-    batch.mesh.instanceMatrix.needsUpdate = true;
+  private touch(level: Level): void {
+    level.mesh.instanceMatrix.needsUpdate = true;
     // Raycasts recompute the bounds lazily from the current instances.
-    batch.mesh.boundingSphere = null;
-    batch.mesh.boundingBox = null;
+    level.mesh.boundingSphere = null;
+    level.mesh.boundingBox = null;
   }
+}
+
+function levelName(name: string, level: number): string {
+  return level === 0 ? name : `${name} lod${level}`;
+}
+
+function triangleCount(g: THREE.BufferGeometry): number {
+  return Math.floor((g.index ? g.index.count : g.getAttribute("position").count) / 3);
 }

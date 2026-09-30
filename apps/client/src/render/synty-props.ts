@@ -16,6 +16,7 @@
  */
 
 import * as THREE from "three";
+import { simplifyLods, type LodLevel } from "./lod.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { PropModels } from "./instanced-props.js";
@@ -47,6 +48,8 @@ interface Ready {
   key: string;
   geometry: THREE.BufferGeometry;
   material: THREE.Material | THREE.Material[];
+  /** Simplified levels (lod.ts), built in the background after the model loads. */
+  lods: LodLevel[];
 }
 
 export class SyntyProps implements PropModels {
@@ -113,8 +116,17 @@ export class SyntyProps implements PropModels {
         const atlases = atlasUrls(bytes, url);
         const gltf = await this.loader.parseAsync(bytes, url.slice(0, url.lastIndexOf("/") + 1));
         if (this.disposed) return;
-        this.ready.set(hash, this.merge(entry, gltf.scene, atlases));
+        const ready = this.merge(entry, gltf.scene, atlases);
+        this.ready.set(hash, ready);
         this.onChange();
+        // Then its levels of detail (meshoptimizer): the props move onto them when they're ready.
+        void simplifyLods(ready.geometry)
+          .then((lods) => {
+            if (this.disposed || lods.length === 0) return;
+            ready.lods = lods;
+            this.onChange();
+          })
+          .catch((e: unknown) => console.warn(`[props] ${entry.id}: no LODs (${e instanceof Error ? e.message : e})`));
       })
       .catch((e: unknown) => {
         this.failed.add(hash);
@@ -147,7 +159,7 @@ export class SyntyProps implements PropModels {
     const geometry = mergeGeometries(parts, true);
     if (!geometry) throw new Error("meshes don't merge");
     geometry.computeBoundingSphere();
-    return { key: `synty:${entry.id}`, geometry, material: materials.length === 1 ? materials[0] : materials };
+    return { key: `synty:${entry.id}`, geometry, material: materials.length === 1 ? materials[0] : materials, lods: [] };
   }
 
   private shared(m: THREE.Material, atlases: Map<string, string>, modelId: string): THREE.Material {
@@ -181,7 +193,10 @@ export class SyntyProps implements PropModels {
 
   dispose(): void {
     this.disposed = true;
-    for (const r of this.ready.values()) r.geometry.dispose();
+    for (const r of this.ready.values()) {
+      r.geometry.dispose();
+      for (const l of r.lods) l.geometry.dispose();
+    }
     this.ready.clear();
     for (const m of this.materials.values()) m.dispose();
     this.materials.clear();

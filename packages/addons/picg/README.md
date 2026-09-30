@@ -29,5 +29,22 @@ const r = await picg.cook(graph, 1234);
 - **No mesh-file import.** Assimp is compiled out; `ImportMesh` fails the
   cook with a clear message.
 
+## Mesh optimisation (meshoptimizer)
+
+```js
+const o = picg.optimizeMesh(pcgmBytes, { lods: [0.5, 0.25, 0.1], maxError: 0.05 });
+// o.mesh: PCGM, vertices welded, each material group's triangles ordered
+//   for the vertex cache then overdraw, vertices in first-use order
+// o.lods: [{ mesh, ratio, vertices, triangles, error }] — each group
+//   simplified to `ratio` of its triangles (borders locked, so groups don't
+//   crack), within `maxError` of the mesh's size, own compacted vertices
+// o.stats: { vertices: [in, out], triangles, acmr: [before, after] }
+```
+
+[meshoptimizer](https://github.com/zeux/meshoptimizer) (MIT, v1.3) is
+vendored in `third_party/meshoptimizer`. Synchronous: about a millisecond
+per tree. The region's asset library runs it on every cooked variant and
+serves the levels to clients (`MESH_LODS` in engine-core).
+
 Build: `npm install` (node-gyp, a C++17 compiler; ~1.5 min on 8 cores).
 Test: `npm run test:addon-picg` from the repo root.

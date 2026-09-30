@@ -415,3 +415,18 @@ Every entry: date, decision, rationale. Newest first.
   budgets adds (48) and tile rebuilds (4) per tick. So pathfinding and
   the crowd now go round props instead of through them. Moving bodies
   aren't obstacles yet (a pushable crate would need its obstacle moved).
+- **2026-09-30 — meshoptimizer optimises cooked meshes and gives every
+  prop a level-of-detail chain.** The PICG addon vendors meshoptimizer
+  (v1.3, MIT) and exposes `optimizeMesh(pcgm, { lods, maxError })`: welds
+  vertices, orders each material group's triangles for the vertex cache
+  and overdraw and vertices for fetch, and simplifies each group (borders
+  locked) to 50 / 25 / 10 % of its triangles within 5 % of the mesh's
+  size. The asset library runs it on every cooked variant (about 1 ms a
+  tree; vertex-shader runs per triangle 1.3 → 0.7) and the Pcg service
+  serves each level at the mesh URL plus `/<level>`. Art-pack models are
+  simplified in the client when they load, with meshoptimizer's
+  WebAssembly build, since their files only exist on artists' machines;
+  those levels share the model's vertex buffers. InstancedProps keeps one
+  InstancedMesh per level and moves each prop to the level where its
+  simplification error projects to at most 4 px (never nearer than 18 m
+  per level), with 10 % hysteresis; one draw call per level in use.

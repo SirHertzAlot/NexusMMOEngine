@@ -22,6 +22,8 @@ export interface PcgMeshRef {
   url: string;
   vertexCount: number;
   triangleCount: number;
+  /** Simplified levels, most detailed first (servers without meshoptimizer send none). */
+  lods?: Array<{ url: string; vertexCount: number; triangleCount: number; error: number }>;
 }
 
 export class PcgRpcError extends Error {
@@ -62,8 +64,8 @@ export class PcgRpcClient {
     return (await this.call<{ mesh: PcgMeshRef }>("GetAssetMesh", { assetHash: assetHash >>> 0, variant: variant & 0xffff })).mesh;
   }
 
-  /** The PCGM bytes a mesh ref points at. */
-  async download(ref: PcgMeshRef): Promise<ArrayBuffer> {
+  /** The PCGM bytes a mesh ref (or one of its levels, `{ url }`) points at. */
+  async download(ref: { url: string }): Promise<ArrayBuffer> {
     const res = await this.fetchImpl(this.baseUrl + ref.url, { headers: this.auth() });
     if (!res.ok) throw new PcgRpcError(res.status, `mesh download failed (${res.status})`);
     return res.arrayBuffer();

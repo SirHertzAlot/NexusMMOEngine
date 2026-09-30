@@ -38,4 +38,6 @@ module.exports = {
   validate,
   cook,
   clearCache: () => binding.clearCache(),
+  /** meshoptimizer over PCGM bytes: welded, cache/overdraw-ordered mesh plus a LOD chain (sync). */
+  optimizeMesh: (pcgm, opts = {}) => binding.optimizeMesh(pcgm, opts),
 };
