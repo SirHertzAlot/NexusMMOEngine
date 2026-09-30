@@ -47,12 +47,19 @@
         "third_party/RecastNavigation/Detour/Source/DetourNavMesh.cpp",
         "third_party/RecastNavigation/Detour/Source/DetourNavMeshBuilder.cpp",
         "third_party/RecastNavigation/Detour/Source/DetourNavMeshQuery.cpp",
-        "third_party/RecastNavigation/Detour/Source/DetourNode.cpp"
+        "third_party/RecastNavigation/Detour/Source/DetourNode.cpp",
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourCrowd.cpp",
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourLocalBoundary.cpp",
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourObstacleAvoidance.cpp",
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourPathCorridor.cpp",
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourPathQueue.cpp",
+        "third_party/RecastNavigation/DetourCrowd/Source/DetourProximityGrid.cpp"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
         "third_party/RecastNavigation/Recast/Include",
-        "third_party/RecastNavigation/Detour/Include"
+        "third_party/RecastNavigation/Detour/Include",
+        "third_party/RecastNavigation/DetourCrowd/Include"
       ],
       "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
       "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3"],

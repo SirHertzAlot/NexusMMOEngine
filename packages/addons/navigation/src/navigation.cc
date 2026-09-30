@@ -17,6 +17,14 @@
 //   hot loop.
 // - Native dtPolyRefs never cross to JS. Tile identity is the dtTileRef
 //   (u64); entity identity is the engine's u64 wire id.
+// - The crowd (DetourCrowd): agents keyed by entity id, added, retargeted
+//   and removed in bulk. It is a STEERING service, not the authority on
+//   position: crowdStep(dt, sync, out) first snaps each agent to where
+//   the simulation has it (moving its corridor along the mesh, or
+//   re-placing it after a teleport), then runs dtCrowd::update (path
+//   following, corridor optimisation, separation, velocity-obstacle
+//   avoidance) and hands back each agent's velocity for the game to use
+//   as its intent. The crowd's own integration is only a prediction.
 //
 // Determinism posture (EVALUATION.md §2): Detour queries are
 // synchronous with no internal randomness — the only randomness in the
@@ -46,6 +54,7 @@
 
 #include "DetourAlloc.h"
 #include "DetourCommon.h"
+#include "DetourCrowd.h"
 #include "DetourNavMesh.h"
 #include "DetourNavMeshBuilder.h"
 #include "DetourNavMeshQuery.h"
@@ -231,6 +240,11 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
             InstanceMethod("unloadTiles", &NavServiceWrap::UnloadTiles),
             InstanceMethod("findPaths", &NavServiceWrap::FindPaths),
             InstanceMethod("tileCount", &NavServiceWrap::TileCount),
+            InstanceMethod("crowdAdd", &NavServiceWrap::CrowdAdd),
+            InstanceMethod("crowdRemove", &NavServiceWrap::CrowdRemove),
+            InstanceMethod("crowdTarget", &NavServiceWrap::CrowdTarget),
+            InstanceMethod("crowdStep", &NavServiceWrap::CrowdStep),
+            InstanceMethod("crowdCount", &NavServiceWrap::CrowdCount),
         });
     exports.Set("NavService", ctor);
     return exports;
@@ -346,6 +360,40 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
       DestroyNative();
       return;
     }
+
+    // The crowd: config.crowd = { maxAgents = 1024, maxAgentRadius = 1 }.
+    int maxAgents = 1024;
+    float maxAgentRadius = 1.0f;
+    Napi::Value vCrowd = cfg.Get("crowd");
+    if (vCrowd.IsObject()) {
+      Napi::Object co = vCrowd.As<Napi::Object>();
+      Napi::Value vA = co.Get("maxAgents");
+      if (vA.IsNumber()) maxAgents = vA.As<Napi::Number>().Int32Value();
+      Napi::Value vR = co.Get("maxAgentRadius");
+      if (vR.IsNumber()) maxAgentRadius = vR.As<Napi::Number>().FloatValue();
+    }
+    if (maxAgents <= 0 || !(maxAgentRadius > 0)) {
+      Napi::RangeError::New(env, "config.crowd: maxAgents and maxAgentRadius must be > 0")
+          .ThrowAsJavaScriptException();
+      DestroyNative();
+      return;
+    }
+    crowd_ = dtAllocCrowd();
+    if (!crowd_ || !crowd_->init(maxAgents, maxAgentRadius, mesh_)) {
+      Napi::Error::New(env, "NavService: dtCrowd::init failed")
+          .ThrowAsJavaScriptException();
+      DestroyNative();
+      return;
+    }
+    // A query of our own for snapping agents to the simulation (the
+    // crowd's is const).
+    syncQuery_ = dtAllocNavMeshQuery();
+    if (!syncQuery_ || dtStatusFailed(syncQuery_->init(mesh_, 512))) {
+      Napi::Error::New(env, "NavService: dtNavMeshQuery::init failed")
+          .ThrowAsJavaScriptException();
+      DestroyNative();
+      return;
+    }
     alive_ = true;
   }
 
@@ -370,6 +418,16 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
   }
 
   void DestroyNative() {
+    // The crowd and its query point into the mesh: they go first.
+    if (crowd_) {
+      dtFreeCrowd(crowd_);
+      crowd_ = nullptr;
+    }
+    if (syncQuery_) {
+      dtFreeNavMeshQuery(syncQuery_);
+      syncQuery_ = nullptr;
+    }
+    agents_.clear();
     for (auto &kv : profiles_) {
       if (kv.second.query) dtFreeNavMeshQuery(kv.second.query);
     }
@@ -853,6 +911,307 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
       polyCount[i] = static_cast<uint32_t>(pathCount);
     }
   }
+
+
+  // --- crowd ---------------------------------------------------------------
+
+  // CrowdAddStatus mirrors index.js CrowdAddStatus.
+  enum CrowdAddStatus : int32_t {
+    CROWD_ADDED = 0,
+    CROWD_UPDATED = 1,  // already an agent: parameters updated
+    CROWD_FULL = 2,
+  };
+  // CrowdTargetStatus mirrors index.js CrowdTargetStatus.
+  enum CrowdTargetStatus : int32_t {
+    TARGET_OK = 0,
+    TARGET_UNKNOWN_AGENT = 1,
+    TARGET_NO_POLY = 2,
+    TARGET_CLEARED = 3,
+  };
+  // Agent states out of crowdStep (mirror index.js CrowdAgentState).
+  enum CrowdAgentState : uint8_t {
+    AGENT_INVALID = 0,   // not on the mesh (no tile under it yet, or off it)
+    AGENT_IDLE = 1,      // on the mesh, no target
+    AGENT_MOVING = 2,    // on the mesh, heading for its target
+    AGENT_ARRIVED = 3,   // within its radius of the target
+    AGENT_NO_PATH = 4,   // the target can't be reached
+  };
+
+  static dtCrowdAgentParams AgentParams(float radius, float height, float maxSpeed,
+                                        float maxAccel) {
+    dtCrowdAgentParams p;
+    memset(&p, 0, sizeof(p));
+    p.radius = radius;
+    p.height = height;
+    p.maxSpeed = maxSpeed;
+    p.maxAcceleration = maxAccel;
+    p.collisionQueryRange = radius * 12.0f;
+    p.pathOptimizationRange = radius * 30.0f;
+    p.separationWeight = 2.0f;
+    p.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_VIS |
+                    DT_CROWD_OPTIMIZE_TOPO | DT_CROWD_OBSTACLE_AVOIDANCE |
+                    DT_CROWD_SEPARATION;
+    p.obstacleAvoidanceType = 3;  // the highest-quality preset
+    p.queryFilterType = 0;
+    return p;
+  }
+
+  bool ReadCount(Napi::Env env, Napi::Object batch, size_t *count) {
+    bool ok = true;
+    const double c = ReqNum(env, batch, "count", &ok);
+    if (!ok) return false;
+    if (c < 0 || c != static_cast<double>(static_cast<int>(c))) {
+      Napi::RangeError::New(env, "batch.count must be a non-negative int")
+          .ThrowAsJavaScriptException();
+      return false;
+    }
+    *count = static_cast<size_t>(c);
+    return true;
+  }
+
+  int AgentIndex(uint64_t id) const {
+    auto it = agents_.find(id);
+    return it == agents_.end() ? -1 : it->second;
+  }
+
+  // crowdAdd({count, entityIds, pos, radius, height, maxSpeed,
+  //   maxAcceleration}) -> Int32Array of CrowdAddStatus.
+  Napi::Value CrowdAdd(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckAlive(env)) return env.Undefined();
+    if (info.Length() < 1 || !info[0].IsObject()) {
+      Napi::TypeError::New(env, "crowdAdd(batch)").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    Napi::Object b = info[0].As<Napi::Object>();
+    size_t n = 0;
+    if (!ReadCount(env, b, &n)) return env.Undefined();
+    const uint64_t *ids = CheckedBigU64(env, b.Get("entityIds"), "batch.entityIds", n);
+    if (!ids) return env.Undefined();
+    const float *pos = CheckedF32(env, b.Get("pos"), "batch.pos", n * 3);
+    if (!pos) return env.Undefined();
+    const float *radius = CheckedF32(env, b.Get("radius"), "batch.radius", n);
+    if (!radius) return env.Undefined();
+    const float *height = CheckedF32(env, b.Get("height"), "batch.height", n);
+    if (!height) return env.Undefined();
+    const float *speed = CheckedF32(env, b.Get("maxSpeed"), "batch.maxSpeed", n);
+    if (!speed) return env.Undefined();
+    const float *accel = CheckedF32(env, b.Get("maxAcceleration"), "batch.maxAcceleration", n);
+    if (!accel) return env.Undefined();
+    Napi::Int32Array out = Napi::Int32Array::New(env, n);
+    for (size_t i = 0; i < n; i++) {
+      const dtCrowdAgentParams p = AgentParams(radius[i], height[i], speed[i], accel[i]);
+      const int existing = AgentIndex(ids[i]);
+      if (existing >= 0) {
+        crowd_->updateAgentParameters(existing, &p);
+        out[i] = CROWD_UPDATED;
+        continue;
+      }
+      const int idx = crowd_->addAgent(pos + i * 3, &p);
+      if (idx < 0) {
+        out[i] = CROWD_FULL;
+        continue;
+      }
+      agents_[ids[i]] = idx;
+      out[i] = CROWD_ADDED;
+    }
+    return out;
+  }
+
+  // crowdRemove(entityIds: BigUint64Array): unknown ids are ignored.
+  void CrowdRemove(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckAlive(env)) return;
+    const uint64_t *ids = CheckedBigU64(env, info[0], "entityIds", 0);
+    if (!ids) return;
+    const size_t n = info[0].As<Napi::BigUint64Array>().ElementLength();
+    for (size_t i = 0; i < n; i++) {
+      auto it = agents_.find(ids[i]);
+      if (it == agents_.end()) continue;
+      crowd_->removeAgent(it->second);
+      agents_.erase(it);
+    }
+  }
+
+  // crowdTarget({count, entityIds, target}) -> Int32Array of
+  // CrowdTargetStatus. A NaN x clears the agent's target (it stops).
+  Napi::Value CrowdTarget(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckAlive(env)) return env.Undefined();
+    if (info.Length() < 1 || !info[0].IsObject()) {
+      Napi::TypeError::New(env, "crowdTarget(batch)").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    Napi::Object b = info[0].As<Napi::Object>();
+    size_t n = 0;
+    if (!ReadCount(env, b, &n)) return env.Undefined();
+    const uint64_t *ids = CheckedBigU64(env, b.Get("entityIds"), "batch.entityIds", n);
+    if (!ids) return env.Undefined();
+    const float *target = CheckedF32(env, b.Get("target"), "batch.target", n * 3);
+    if (!target) return env.Undefined();
+    Napi::Int32Array out = Napi::Int32Array::New(env, n);
+    const dtQueryFilter *filter = crowd_->getFilter(0);
+    for (size_t i = 0; i < n; i++) {
+      const int idx = AgentIndex(ids[i]);
+      if (idx < 0) {
+        out[i] = TARGET_UNKNOWN_AGENT;
+        continue;
+      }
+      const float *t = target + i * 3;
+      if (std::isnan(t[0])) {
+        crowd_->resetMoveTarget(idx);
+        out[i] = TARGET_CLEARED;
+        continue;
+      }
+      dtPolyRef ref = 0;
+      float nearest[3];
+      if (dtStatusFailed(syncQuery_->findNearestPoly(t, TARGET_EXTENTS, filter, &ref, nearest)) || ref == 0) {
+        out[i] = TARGET_NO_POLY;
+        continue;
+      }
+      crowd_->requestMoveTarget(idx, ref, nearest);
+      out[i] = TARGET_OK;
+    }
+    return out;
+  }
+
+  // crowdStep(dt, sync {count, entityIds, pos}, out {vel, state, pos}):
+  // snaps the listed agents to the simulation's positions, updates the
+  // whole crowd once, and writes back the listed agents' velocities
+  // (the move the crowd made this tick, over dt: steering plus
+  // separation), states and navmesh positions.
+  void CrowdStep(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckAlive(env)) return;
+    if (info.Length() < 3 || !info[0].IsNumber() || !info[1].IsObject() || !info[2].IsObject()) {
+      Napi::TypeError::New(env, "crowdStep(dt, sync, out)").ThrowAsJavaScriptException();
+      return;
+    }
+    const float dt = info[0].As<Napi::Number>().FloatValue();
+    if (!(dt > 0)) {
+      Napi::RangeError::New(env, "crowdStep: dt must be > 0").ThrowAsJavaScriptException();
+      return;
+    }
+    Napi::Object sync = info[1].As<Napi::Object>();
+    Napi::Object out = info[2].As<Napi::Object>();
+    size_t n = 0;
+    if (!ReadCount(env, sync, &n)) return;
+    const uint64_t *ids = CheckedBigU64(env, sync.Get("entityIds"), "sync.entityIds", n);
+    if (!ids) return;
+    const float *pos = CheckedF32(env, sync.Get("pos"), "sync.pos", n * 3);
+    if (!pos) return;
+    float *vel = CheckedF32Mut(env, out.Get("vel"), "out.vel", n * 3);
+    if (!vel) return;
+    float *navPos = CheckedF32Mut(env, out.Get("pos"), "out.pos", n * 3);
+    if (!navPos) return;
+    Napi::Value vState = out.Get("state");
+    if (!vState.IsTypedArray() || vState.As<Napi::TypedArray>().TypedArrayType() != napi_uint8_array ||
+        vState.As<Napi::Uint8Array>().ElementLength() < n) {
+      Napi::TypeError::New(env, "out.state must be a Uint8Array of length >= count")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    uint8_t *state = vState.As<Napi::Uint8Array>().Data();
+
+    const dtQueryFilter *filter = crowd_->getFilter(0);
+    before_.resize(n * 3);
+    for (size_t i = 0; i < n; i++) {
+      const int idx = AgentIndex(ids[i]);
+      if (idx < 0) continue;
+      dtCrowdAgent *ag = crowd_->getEditableAgent(idx);
+      if (!ag || !ag->active) continue;
+      SnapAgent(idx, ag, pos + i * 3, filter);
+      dtVcopy(&before_[i * 3], ag->npos);
+    }
+
+    crowd_->update(dt, nullptr);
+
+    for (size_t i = 0; i < n; i++) {
+      const int idx = AgentIndex(ids[i]);
+      const dtCrowdAgent *ag = idx >= 0 ? crowd_->getAgent(idx) : nullptr;
+      float *v = vel + i * 3;
+      float *p = navPos + i * 3;
+      if (!ag || !ag->active || ag->state == DT_CROWDAGENT_STATE_INVALID) {
+        v[0] = v[1] = v[2] = 0;
+        dtVcopy(p, pos + i * 3);
+        state[i] = AGENT_INVALID;
+        continue;
+      }
+      // The move the crowd made this tick, over dt: its steering plus the
+      // push that separates agents that got too close (dtCrowd resolves
+      // overlaps by moving positions, not velocities), clamped to the mesh.
+      const float inv = 1.0f / dt;
+      v[0] = (ag->npos[0] - before_[i * 3]) * inv;
+      v[1] = (ag->npos[1] - before_[i * 3 + 1]) * inv;
+      v[2] = (ag->npos[2] - before_[i * 3 + 2]) * inv;
+      dtVcopy(p, ag->npos);
+      if (ag->targetState == DT_CROWDAGENT_TARGET_NONE) {
+        state[i] = AGENT_IDLE;
+      } else if (ag->targetState == DT_CROWDAGENT_TARGET_FAILED) {
+        state[i] = AGENT_NO_PATH;
+      } else if (dtVdist2DSqr(ag->npos, ag->targetPos) <= ag->params.radius * ag->params.radius) {
+        state[i] = AGENT_ARRIVED;
+      } else {
+        state[i] = AGENT_MOVING;
+      }
+    }
+  }
+
+  // Put agent `idx` where the simulation has it: along the mesh from its
+  // corridor when close (the everyday case: the game moved it by about
+  // what the crowd asked), re-placed on the nearest poly after a jump
+  // (teleport, respawn, a fall), keeping its target.
+  void SnapAgent(int idx, dtCrowdAgent *ag, const float *simPos, const dtQueryFilter *filter) {
+    if (ag->state == DT_CROWDAGENT_STATE_WALKING && dtVdist2DSqr(ag->npos, simPos) <= SNAP_JUMP * SNAP_JUMP) {
+      if (ag->corridor.movePosition(simPos, syncQuery_, filter)) {
+        dtVcopy(ag->npos, ag->corridor.getPos());
+      }
+      return;
+    }
+    dtPolyRef ref = 0;
+    float nearest[3];
+    if (dtStatusFailed(syncQuery_->findNearestPoly(simPos, crowd_->getQueryHalfExtents(), filter, &ref, nearest)) || ref == 0) {
+      // Off the mesh (swimming, flying, beyond the loaded tiles): the
+      // crowd leaves it alone until it's back on, when this re-places it.
+      ag->state = DT_CROWDAGENT_STATE_INVALID;
+      dtVset(ag->vel, 0, 0, 0);
+      return;
+    }
+    ag->corridor.reset(ref, nearest);
+    ag->boundary.reset();
+    ag->partial = false;
+    ag->topologyOptTime = 0;
+    ag->targetReplanTime = 0;
+    ag->nneis = 0;
+    dtVset(ag->dvel, 0, 0, 0);
+    dtVset(ag->nvel, 0, 0, 0);
+    dtVset(ag->vel, 0, 0, 0);
+    dtVcopy(ag->npos, nearest);
+    ag->desiredSpeed = 0;
+    ag->state = DT_CROWDAGENT_STATE_WALKING;
+    if (ag->targetState != DT_CROWDAGENT_TARGET_NONE && ag->targetRef) {
+      const dtPolyRef tref = ag->targetRef;
+      float tpos[3];
+      dtVcopy(tpos, ag->targetPos);
+      crowd_->requestMoveTarget(idx, tref, tpos);
+    }
+  }
+
+  Napi::Value CrowdCount(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!CheckAlive(env)) return env.Undefined();
+    return Napi::Number::New(env, static_cast<double>(agents_.size()));
+  }
+
+  // Beyond this (metres, horizontal) the simulation moved an agent further
+  // than steering could: re-place it instead of sliding its corridor.
+  static constexpr float SNAP_JUMP = 3.0f;
+  static constexpr float TARGET_EXTENTS[3] = {4.0f, 8.0f, 4.0f};
+
+  dtCrowd *crowd_ = nullptr;
+  dtNavMeshQuery *syncQuery_ = nullptr;
+  std::vector<float> before_;  // scratch: agent positions before the update
+  std::map<uint64_t, int> agents_;
 
   bool alive_ = false;
   dtNavMesh *mesh_ = nullptr;

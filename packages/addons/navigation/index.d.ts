@@ -8,6 +8,10 @@ export declare const PathStatus: Readonly<{
   UnknownProfile: 4;
 }>;
 
+export declare const CrowdAddStatus: Readonly<{ Added: 0; Updated: 1; Full: 2 }>;
+export declare const CrowdTargetStatus: Readonly<{ Ok: 0; UnknownAgent: 1; NoPoly: 2; Cleared: 3 }>;
+export declare const CrowdAgentState: Readonly<{ Invalid: 0; Idle: 1; Moving: 2; Arrived: 3; NoPath: 4 }>;
+
 export interface AgentProfileConfig {
   /** Profile id referenced by findPaths requests (0-255). */
   id: number;
@@ -25,6 +29,46 @@ export interface NavServiceConfig {
   maxTiles?: number;
   maxPolys?: number;
   profiles: AgentProfileConfig[];
+  /** The crowd's capacity. Default { maxAgents: 1024, maxAgentRadius: 1 }. */
+  crowd?: { maxAgents?: number; maxAgentRadius?: number };
+}
+
+/** Agents to add (or update, when already in the crowd), SoA. */
+export interface CrowdAddBatch {
+  count: number;
+  entityIds: BigUint64Array;
+  /** Where each agent is, 3 * count. */
+  pos: Float32Array;
+  radius: Float32Array;
+  height: Float32Array;
+  /** Top speed, m/s. */
+  maxSpeed: Float32Array;
+  /** m/s². */
+  maxAcceleration: Float32Array;
+}
+
+/** New targets, SoA. A NaN x clears an agent's target. */
+export interface CrowdTargetBatch {
+  count: number;
+  entityIds: BigUint64Array;
+  target: Float32Array;
+}
+
+/** Where the simulation has each listed agent this tick. */
+export interface CrowdSync {
+  count: number;
+  entityIds: BigUint64Array;
+  pos: Float32Array;
+}
+
+/** crowdStep's results for the synced agents, caller-allocated. */
+export interface CrowdStepOut {
+  /** The move the crowd made this tick over dt (steering plus separation), 3 * count: the velocity to act on. */
+  vel: Float32Array;
+  /** Each agent's position on the navmesh, 3 * count. */
+  pos: Float32Array;
+  /** CrowdAgentState per agent. */
+  state: Uint8Array;
 }
 
 /** Bake configuration for bakeTile (world units + degrees). */
@@ -96,6 +140,16 @@ export declare class NavService {
     indices: Uint32Array,
   ): BakeResult;
   tileCount(): number;
+  /** Add agents (or update ones already in the crowd): a CrowdAddStatus each. */
+  crowdAdd(batch: CrowdAddBatch): Int32Array;
+  /** Remove agents; unknown ids are ignored. */
+  crowdRemove(entityIds: BigUint64Array): void;
+  /** Set (or with NaN, clear) targets: a CrowdTargetStatus each. */
+  crowdTarget(batch: CrowdTargetBatch): Int32Array;
+  /** Snap agents to the simulation, update the crowd, read the steering back. */
+  crowdStep(dt: number, sync: CrowdSync, out: CrowdStepOut): void;
+  /** Agents in the crowd. */
+  crowdCount(): number;
   destroy(): void;
 }
 

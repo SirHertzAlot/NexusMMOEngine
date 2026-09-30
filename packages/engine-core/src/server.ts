@@ -106,6 +106,7 @@ import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { CombatSystem } from "./combat.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { BotSystem } from "./bots.js";
+import { CrowdSystem } from "./navigation/crowd-system.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
@@ -387,16 +388,20 @@ async function main(): Promise<void> {
             catalog: characterCatalog,
             groundHeightAt: (x, z) => character.groundHeight(x, z),
             abilities: playerAbilities,
+            // Wanderers walk the navmesh with the crowd (below).
+            steer: navBackend.crowd !== undefined,
           }),
         ]
       : [];
+  // Crowd steering: every character is an agent; bots with targets are steered round walls and each other.
+  const crowd = navBackend.crowd ? [new CrowdSystem(navBackend.crowd)] : [];
   if (botCount > 0) console.log(`[bots] ${botCount} bots (sparring pairs and wanderers)`);
   const gw = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, new ColliderSystem(), physics, navigation],
+    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(), new IntegrateSystem(), character, new ColliderSystem(), physics, navigation],
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

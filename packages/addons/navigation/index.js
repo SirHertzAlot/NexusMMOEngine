@@ -15,6 +15,11 @@
 //   batch, zero allocation on the hot path.
 // - All native ops run on the JS thread; the addon never spawns its own
 //   JS-visible threads.
+// - The crowd (DetourCrowd) steers agents keyed by entity id: crowdAdd /
+//   crowdTarget / crowdRemove in bulk, and one crowdStep per tick that
+//   snaps agents to the simulation's positions, runs path following and
+//   local avoidance, and returns velocities for the game to act on. The
+//   simulation stays the authority on where things are.
 // - destroy() is explicit; the C++ finalizer tears the service down as a
 //   backstop if the caller forgets.
 
@@ -38,6 +43,37 @@ const PathStatus = Object.freeze({
   UnknownProfile: 4,
 });
 
+/** crowdAdd statuses. */
+const CrowdAddStatus = Object.freeze({
+  Added: 0,
+  /** Already an agent: its parameters were updated. */
+  Updated: 1,
+  /** The crowd is at maxAgents. */
+  Full: 2,
+});
+
+/** crowdTarget statuses. */
+const CrowdTargetStatus = Object.freeze({
+  Ok: 0,
+  UnknownAgent: 1,
+  /** No navmesh near the target. */
+  NoPoly: 2,
+  /** A NaN target cleared the agent's target: it stops. */
+  Cleared: 3,
+});
+
+/** Agent states written by crowdStep. */
+const CrowdAgentState = Object.freeze({
+  /** Not on the navmesh (no tile under it yet, or it left the mesh). */
+  Invalid: 0,
+  Idle: 1,
+  Moving: 2,
+  /** Within its radius of the target. */
+  Arrived: 3,
+  /** The target can't be reached. */
+  NoPath: 4,
+});
+
 /**
  * Create a navigation service.
  *
@@ -47,6 +83,7 @@ const PathStatus = Object.freeze({
  *   maxTiles = 128,
  *   maxPolys = 2048,
  *   profiles = [{ id, agentHeight, agentRadius, agentMaxClimb }],
+ *   crowd = { maxAgents: 1024, maxAgentRadius: 1 },
  * }
  */
 function createService(config) {
@@ -57,4 +94,7 @@ module.exports = {
   NavService,
   createService,
   PathStatus,
+  CrowdAddStatus,
+  CrowdTargetStatus,
+  CrowdAgentState,
 };
