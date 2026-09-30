@@ -38,12 +38,14 @@ import type { PcgRpcClient } from "@mmo-engine/picg";
 import { placeholderColor, type AssetProvider } from "./assets.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
+import { QuarksFx } from "./vfx/quarks-fx.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
 import { PcgMeshes } from "./pcg-meshes.js";
 import { ChainedPropModels, SyntyProps } from "./synty-props.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import type { QualitySettings } from "./quality.js";
 
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
@@ -96,10 +98,13 @@ export class EntityLayer {
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
   private readonly fx: EntityFxSystem;
+  /** Attached particle effects (three.quarks): signals' particles and auras, trails. */
+  readonly vfx = new QuarksFx();
   private readonly showcase: FxShowcase;
   private readonly playerPos = new THREE.Vector3();
   private readonly lastPlayerPos = new THREE.Vector3(8, 2, 8);
   private hoveredWireId: bigint | null = null;
+  private quality: QualitySettings | null = null;
   private lastFrame = -1;
   private disposed = false;
 
@@ -116,11 +121,15 @@ export class EntityLayer {
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
     this.group.add(this.props.group);
     this.fx = new EntityFxSystem(scene, camera);
-    this.showcase = new FxShowcase(scene, (pos, color) => this.fx.spawnBurst(pos, color));
+    this.group.add(this.vfx.renderer);
+    this.showcase = new FxShowcase(scene, (pos, color) => this.fx.spawnBurst(pos, color), this.vfx);
     CharacterKit.load()
       .then((kit) => {
         if (this.disposed) kit.dispose();
-        else this.kit = kit;
+        else {
+          this.kit = kit;
+          if (this.quality) this.setQuality(this.quality);
+        }
       })
       .catch((e: unknown) =>
         console.info(`[world] characters stay placeholders: ${e instanceof Error ? e.message : e}`),
@@ -152,6 +161,13 @@ export class EntityLayer {
   }
 
   /** Toggle the elemental-orb FX showcase (a ring placed ahead of the player, away from the camera). */
+  /** Apply a quality preset: character outlines, and the effects' particle budget. */
+  setQuality(q: QualitySettings): void {
+    this.quality = q;
+    this.vfx.setBudget(q.particles);
+    if (this.kit?.outlineMaterial) this.kit.outlineMaterial.visible = q.outlines;
+  }
+
   setShowcaseVisible(v: boolean, cameraPos: THREE.Vector3): void {
     const forward = new THREE.Vector3().subVectors(this.lastPlayerPos, cameraPos);
     forward.y = 0;
@@ -277,6 +293,7 @@ export class EntityLayer {
 
     this.fx.update(dt, now);
     this.showcase.update(now, dt);
+    this.vfx.update(dt);
   }
 
   dispose(): void {
@@ -284,6 +301,7 @@ export class EntityLayer {
     this.disposed = true;
     this.fx.dispose();
     this.showcase.dispose();
+    this.vfx.dispose();
     for (const t of this.meshes.values()) {
       this.group.remove(t.object);
       disposeTracked(t);

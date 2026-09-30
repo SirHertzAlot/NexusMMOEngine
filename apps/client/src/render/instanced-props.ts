@@ -15,12 +15,14 @@
  * When a cooked mesh arrives, `modelsChanged()` moves its props over.
  *
  * Removal moves the last instance into the freed slot, so a batch stays
- * dense; batches double when full.
+ * dense; batches double when full. Model geometries get a BVH (bvh.ts),
+ * so hover picking walks a tree instead of every triangle.
  */
 
 import * as THREE from "three";
 import { ShapeKind } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
+import { ensureBoundsTree } from "./bvh.js";
 
 /** Smallest dimension drawn (a zero-size body still shows). */
 const MIN_SIZE = 0.05;
@@ -256,6 +258,8 @@ export class InstancedProps {
   }
 
   private makeMesh(key: string, geometry: THREE.BufferGeometry, material: THREE.Material | THREE.Material[], capacity: number): THREE.InstancedMesh {
+    // Picking tests each instance's triangles: a BVH makes that a tree walk.
+    ensureBoundsTree(geometry);
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
     mesh.count = 0;
