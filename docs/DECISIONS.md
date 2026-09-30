@@ -443,3 +443,12 @@ Every entry: date, decision, rationale. Newest first.
   dragged, resized, faded, folded or closed, and ` hides them all so the
   game can be watched as a player sees it; the layout is per browser
   (localStorage), pulled back on screen when the window shrinks.
+- **2026-09-30 — The client is for players; developer tools live in the
+  editor.** The game client shows the world and the player's interface
+  (resource bars, chat, parties, quests, inventory, character sheet,
+  settings) and nothing else. Every developer tool, including the
+  runtime debugger (performance graphs, draw calls and triangles, LOD
+  views, network traffic, wireframe, effect showcases), lives in the
+  editor, where play mode gains an embedded game view to host it. The
+  debug overlays still in the client move there and are removed. The
+  work is tracked in `docs/ROADMAP.md`, which every PR updates.
