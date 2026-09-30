@@ -14,6 +14,7 @@
     "bench": "npm run bench --workspace=@mmo-engine/bench",
     "build": "npm run build --workspaces --if-present",
     "client": "npm run dev --workspace=@mmo-engine/client",
+    "dev": "node scripts/dev.mjs",
     "codegen": "bash scripts/codegen.sh",
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",

@@ -6,8 +6,11 @@
  * (docs/MESSAGE-CATALOG.md §0x0c–0x0e). The world screen is WorldCanvas
  * (a React Three Fiber scene whose frame loop samples the Interpolator,
  * syncs the world, and forwards changed input as PlayerIntent events)
- * under the HUD: connection state, server tick, entity count, fps, and
- * player position.
+ * under the player's interface (for now, the settings menu). With
+ * `npm run dev` (dev-tools.ts) it shows the developer panels instead
+ * (ui/dev-panels.tsx): status, performance graphs (ui/perf-hud.tsx),
+ * tools and controls, each movable, resizable, fadeable, and ` hides
+ * them all. They move to the editor's play mode later (docs/ROADMAP.md).
  *
  * The session token lives in a ref (memory only) — reconnect presents
  * it via the token hello variant (docs/MESSAGE-CATALOG.md).
@@ -26,6 +29,11 @@ import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
+import { PerfHud } from "./ui/perf-hud.js";
+import { DevHud, type Viewport } from "./ui/dev-panels.js";
+import { SettingsMenu } from "./ui/settings-menu.js";
+import { DEV_TOOLS } from "./dev-tools.js";
+import type { DevLayout } from "./ui/dev-layout.js";
 import {
   Button,
   Card,
@@ -42,6 +50,20 @@ type AuthMode = "login" | "register";
 const MODE_LABEL = ["walking", "swimming", "flying"];
 const QUALITY_CYCLE: ("auto" | QualityTier)[] = ["auto", ...QUALITY_TIERS];
 
+/** Where the dev panels start (and return to on "reset layout"): status and performance top left, tools top right. */
+function devLayoutDefaults(vp: Viewport): DevLayout {
+  const panel = (x: number, y: number, w: number, open = true) => ({ x, y, w, h: null, opacity: 0.9, open, collapsed: false });
+  return {
+    hidden: false,
+    panels: {
+      status: panel(16, 16, 320),
+      perf: panel(16, 104, 320),
+      tools: panel(vp.width - 16 - 300, 16, 300),
+      controls: panel(16, vp.height - 140, 380, false),
+    },
+  };
+}
+
 const DEFAULT_URL =
   typeof window !== "undefined" && window.location.protocol === "https:"
     ? "wss://localhost:7777"
@@ -56,7 +78,7 @@ export function App(): React.ReactElement {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [hud, setHud] = useState<HudData>({
-    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null,
+    tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null, perf: [],
   });
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [wireframe, setWireframe] = useState(false);
@@ -223,74 +245,91 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
         />
-        <div className="absolute left-4 top-4 rounded-md bg-slate-950/75 px-4 py-3 text-sm shadow backdrop-blur-sm">
-          <div className="font-medium text-foreground">{characterName ?? "mirror client"}</div>
-          <div className="mt-1 space-y-0.5 text-muted-foreground">
-            <div>tick <span className="text-foreground">{hud.tick}</span></div>
-            {hud.time && <div>time <span className="text-foreground">{hud.time}</span></div>}
-            {hud.weather && <div>weather <span className="text-foreground">{hud.weather}</span></div>}
-            <div>entities <span className="text-foreground">{hud.entities}</span></div>
-            <div>fps <span className="text-foreground">{hud.fps}</span></div>
-            <div>
-              pos <span className="text-foreground">
-                {hud.px.toFixed(1)}, {hud.py.toFixed(1)}, {hud.pz.toFixed(1)}
-              </span>
-            </div>
-            {hud.mode !== null && (
-              <div>
-                moving <span className="text-foreground">{MODE_LABEL[hud.mode] ?? hud.mode}</span>
-                {hud.breath < 1 && (
-                  <> · air <span className="text-foreground">{Math.round(hud.breath * 100)}%</span></>
-                )}
-              </div>
-            )}
-            {gpu && (
-              <div className="max-w-64 truncate" title={gpu.renderer}>
-                gpu <span className="text-foreground">{gpu.renderer}</span>
-              </div>
-            )}
-          </div>
-          {gpu?.software && (
-            <div className="mt-2 max-w-64 rounded-md border border-input bg-secondary/50 px-2 py-1 text-xs text-foreground">
-              Software rendering: hardware acceleration is off, so fps will
-              stay in single digits. Enable it in browser settings
-              (see chrome://gpu).
-            </div>
-          )}
-          <div className="mt-2 text-xs text-muted-foreground">
-            WASD move · Space jump / up · C down · F fly · mouse look (click canvas) · wheel zoom
-            <br />
-            left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
-          </div>
-        </div>
-        <div className="absolute right-4 top-4 flex gap-2">
-          <Button size="sm" variant="secondary" onClick={toggleWireframe}>
-            {wireframe ? "solid terrain" : "wireframe terrain"}
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={cycleQuality}
-            title={activeQuality?.detected ? `this GPU's preset: ${activeQuality.detected}` : "detecting the GPU…"}
-          >
-            quality: {quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={toggleShowcase}>
-            {showcase ? "hide FX" : "FX showcase"}
-          </Button>
-          {sessionTokenRef.current && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => void reconnectWithToken()}
-            >
-              reconnect (token)
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={disconnect}>
-            disconnect
-          </Button>
-        </div>
+        {DEV_TOOLS ? (
+          <DevHud
+            defaults={devLayoutDefaults}
+            panels={[
+              {
+                id: "status",
+                title: characterName ?? "mirror client",
+                badge: gpu?.software && (
+                  <span
+                    className="shrink-0 rounded border border-amber-400/60 px-1 text-[10px] text-amber-300"
+                    title="Software rendering: hardware acceleration is off, so fps will stay in single digits. Enable it in browser settings (see chrome://gpu)."
+                  >
+                    ⚠ software GPU
+                  </span>
+                ),
+                content: (
+                  <div className="text-muted-foreground tabular-nums">
+                    tick <span className="text-foreground">{hud.tick}</span>
+                    {hud.time && <> · <span className="text-foreground">{hud.time}</span></>}
+                    {hud.weather && <> · <span className="text-foreground">{hud.weather}</span></>}
+                    {" "}· <span className="text-foreground">{hud.fps}</span> fps · pos{" "}
+                    <span className="text-foreground">
+                      {hud.px.toFixed(0)}, {hud.py.toFixed(0)}, {hud.pz.toFixed(0)}
+                    </span>
+                    {hud.mode !== null && hud.mode !== 0 && <> · {MODE_LABEL[hud.mode] ?? hud.mode}</>}
+                    {hud.breath < 1 && <> · air {Math.round(hud.breath * 100)}%</>}
+                    {gpu && (
+                      <div className="truncate" title={gpu.renderer}>
+                        gpu <span className="text-foreground">{gpu.renderer}</span>
+                      </div>
+                    )}
+                  </div>
+                ),
+              },
+              { id: "perf", title: "performance", content: <PerfHud samples={hud.perf} /> },
+              {
+                id: "tools",
+                title: "tools",
+                content: (
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button size="sm" variant="secondary" onClick={toggleWireframe}>
+                      {wireframe ? "solid terrain" : "wireframe terrain"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={cycleQuality}
+                      title={activeQuality?.detected ? `this GPU's preset: ${activeQuality.detected}` : "detecting the GPU…"}
+                    >
+                      quality: {quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={toggleShowcase}>
+                      {showcase ? "hide FX" : "FX showcase"}
+                    </Button>
+                    {sessionTokenRef.current && (
+                      <Button size="sm" variant="secondary" onClick={() => void reconnectWithToken()}>
+                        reconnect (token)
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={disconnect}>
+                      disconnect
+                    </Button>
+                  </div>
+                ),
+              },
+              {
+                id: "controls",
+                title: "controls",
+                content: (
+                  <div className="text-muted-foreground">
+                    WASD move · Space jump / up · C down · F fly · mouse look (click canvas; Esc frees the pointer) · wheel zoom
+                    <br />
+                    left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
+                  </div>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <SettingsMenu
+            quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+            onQuality={cycleQuality}
+            onDisconnect={disconnect}
+          />
+        )}
       </div>
     );
   }

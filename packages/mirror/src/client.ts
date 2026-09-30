@@ -94,6 +94,8 @@ export class MirrorClient {
   account: AccountMessage | null = null;
   /** The player's own attributes and stats, from the last stats message; null until one arrives. */
   stats: StatsMessage | null = null;
+  /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
+  readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
   private socket: SocketLike | null = null;
   /** Server tick the last intent was sent at (-1: none on this connection). */
@@ -184,7 +186,7 @@ export class MirrorClient {
     if (!this.socket || this.closed) return Promise.reject(new Error("mirror-client: not connected"));
     if (this.replyResolve) return Promise.reject(new Error("mirror-client: a request is already in flight"));
     const reply = this.awaitReply();
-    this.socket.send(encodeEnvelope(type, payload));
+    this.send(this.socket, encodeEnvelope(type, payload));
     return reply;
   }
 
@@ -279,7 +281,7 @@ export class MirrorClient {
     socket.onerror = (err) => this.onSocketError(err);
 
     const reply = this.awaitReply();
-    socket.send(encodeEnvelope(type, encodeControl(payload)));
+    this.send(socket, encodeEnvelope(type, encodeControl(payload)));
     return reply;
   }
 
@@ -319,7 +321,7 @@ export class MirrorClient {
       this.playerEntity,
       intent,
     );
-    this.socket.send(encodeEnvelope(MessageType.Intent, payload));
+    this.send(this.socket, encodeEnvelope(MessageType.Intent, payload));
   }
 
   disconnect(): void {
@@ -356,13 +358,22 @@ export class MirrorClient {
         }
       }, CONNECT_TIMEOUT_MS);
     });
-    this.socket.send(encodeEnvelope(MessageType.Debug, encodeControl(query)));
+    this.send(this.socket, encodeEnvelope(MessageType.Debug, encodeControl(query)));
     return promise;
   }
 
   // ------------------------------------------------------------ inbound
 
+  /** Send one envelope, counting it. */
+  private send(socket: SocketLike, bytes: Uint8Array): void {
+    this.traffic.bytesOut += bytes.byteLength;
+    this.traffic.messagesOut++;
+    socket.send(bytes);
+  }
+
   private onMessage(data: Uint8Array): void {
+    this.traffic.bytesIn += data.byteLength;
+    this.traffic.messagesIn++;
     let type: MessageType;
     let payload: Uint8Array;
     try {
@@ -389,7 +400,7 @@ export class MirrorClient {
         break;
       case MessageType.Ping:
         // Heartbeat: echo the payload back as pong (catalog §0x06/0x07).
-        this.socket?.send(encodeEnvelope(MessageType.Pong, payload));
+        if (this.socket) this.send(this.socket, encodeEnvelope(MessageType.Pong, payload));
         break;
       case MessageType.Error: {
         const err = decodeControl<ErrorMessage>(payload);

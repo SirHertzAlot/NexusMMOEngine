@@ -52,6 +52,7 @@ import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
+import { PerfSampler, type PerfSample } from "./perf-stats.js";
 
 /** Haze colour before the first frame sets it from the time of day. */
 const SKY = 0x9fc0dc;
@@ -81,6 +82,8 @@ export interface HudData {
   time: string | null;
   /** What is falling where the camera is (null: clear). */
   weather: string | null;
+  /** The last minute of performance samples, oldest first (perf-stats.ts). */
+  perf: PerfSample[];
 }
 
 export interface WorldCanvasProps {
@@ -235,7 +238,8 @@ function MirrorWorld({
   const latest = useRef({ wireframe, showcase, onHud, lastStateAt, settings });
   latest.current = { wireframe, showcase, onHud, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
-  const loop = useRef({ frames: 0, fpsAt: performance.now(), pointerMoved: false });
+  const loop = useRef({ pointerMoved: false });
+  const perf = useRef(new PerfSampler(performance.now()));
   const pointer = useRef(new THREE.Vector2());
   // Nearest hit only: with BVHs (bvh.ts) a ray stops at its first triangle.
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
@@ -256,6 +260,10 @@ function MirrorWorld({
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
     scene.add(sky.group, terrain.group, water.group, layer.group, particles.group);
+
+    // Draw calls and triangles summed over every pass of a frame (the screen
+    // effects render several); the frame loop reads and resets them.
+    gl.info.autoReset = false;
 
     const canvas = gl.domElement;
     const input = new InputState();
@@ -332,7 +340,9 @@ function MirrorWorld({
     if (!r) return;
     const now = performance.now();
     const l = loop.current;
-    l.frames++;
+    // What the last frame drew (every pass), before this one starts counting.
+    perf.current.frame(delta * 1000, gl.info.render.calls, gl.info.render.triangles);
+    gl.info.reset();
     if (r.input.consumeDirty()) client.sendIntent(r.input.toIntent());
 
     const tickInterval = 1000 / (client.tickHz || 30);
@@ -383,15 +393,31 @@ function MirrorWorld({
     r.water.update(seconds);
     updateTerrainFx(seconds);
 
-    if (now - l.fpsAt >= 1000) {
-      const fps = Math.round((l.frames * 1000) / (now - l.fpsAt));
-      l.frames = 0;
-      l.fpsAt = now;
+    if (perf.current.due(now)) {
+      const props = r.layer.stats;
+      const heap = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+      const sample = perf.current.sample(
+        now,
+        {
+          geometries: gl.info.memory.geometries,
+          textures: gl.info.memory.textures,
+          programs: gl.info.programs?.length ?? 0,
+          props: props.props,
+          propDrawCalls: props.propDrawCalls,
+          propTriangles: props.propTriangles,
+          propFullTriangles: props.propFullTriangles,
+          propsPerLevel: props.propsPerLevel,
+          entities: client.state.entityCount,
+          chunks: r.terrain.chunkCount,
+          heapBytes: heap?.usedJSHeapSize ?? null,
+        },
+        client.traffic,
+      );
       const p = me?.transform;
       latest.current.onHud?.({
         tick: client.serverTick,
         entities: client.state.entityCount,
-        fps,
+        fps: Math.round(sample.fps),
         px: p?.px ?? 0,
         py: p?.py ?? 0,
         pz: p?.pz ?? 0,
@@ -399,6 +425,7 @@ function MirrorWorld({
         breath: me?.locomotion?.breath ?? 1,
         time: client.day ? formatTimeOfDay(timeOfDay) : null,
         weather: weather.intensity > 0 ? weather.kind : null,
+        perf: perf.current.history(),
       });
     }
   });

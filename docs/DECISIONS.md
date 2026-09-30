@@ -430,6 +430,22 @@ Every entry: date, decision, rationale. Newest first.
   InstancedMesh per level and moves each prop to the level where its
   simplification error projects to at most 4 px (never nearer than 18 m
   per level), with 10 % hysteresis; one draw call per level in use.
+- **2026-09-30 — The developer client measures what costs frames, in
+  panels you arrange.** `npm run dev` runs the server and the client in
+  Vite mode `devtools`; only then does the client show its developer
+  panels (`npm run client` is the player's client and has none). The
+  performance panel: a sparkline a measure for the last minute (fps,
+  mean and worst frame time, draw calls and triangles a frame, the
+  props' share, network in and out, JS heap), a bar of props by level of
+  detail with the triangles LOD saves, and what the GPU holds
+  (geometries, textures, shader programs). Draw calls and triangles are
+  summed over every pass of a frame (`renderer.info.autoReset` off, reset
+  by the frame loop), since the screen effects render several; the
+  network rates come from byte counters on MirrorClient. Every panel
+  (status, performance, tools, controls) can be dragged, resized, faded,
+  folded or closed, and ` hides them all; the layout is per browser
+  (localStorage). This is interim: the panels move to the editor's play
+  mode with its game view (ROADMAP E4, E5).
 - **2026-09-30 — The client is for players; developer tools live in the
   editor.** The game client shows the world and the player's interface
   (resource bars, chat, parties, quests, inventory, character sheet,
