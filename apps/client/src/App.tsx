@@ -6,9 +6,11 @@
  * (docs/MESSAGE-CATALOG.md §0x0c–0x0e). The world screen is WorldCanvas
  * (a React Three Fiber scene whose frame loop samples the Interpolator,
  * syncs the world, and forwards changed input as PlayerIntent events)
- * under the dev HUD (ui/dev-panels.tsx): status, performance graphs
- * (ui/perf-hud.tsx), tools and controls, each a panel the player can
- * move, resize, fade, fold or close, and ` hides them all.
+ * under the player's interface (for now, the settings menu). With
+ * `npm run dev` (dev-tools.ts) it shows the developer panels instead
+ * (ui/dev-panels.tsx): status, performance graphs (ui/perf-hud.tsx),
+ * tools and controls, each movable, resizable, fadeable, and ` hides
+ * them all. They move to the editor's play mode later (docs/ROADMAP.md).
  *
  * The session token lives in a ref (memory only) — reconnect presents
  * it via the token hello variant (docs/MESSAGE-CATALOG.md).
@@ -29,6 +31,8 @@ import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
+import { SettingsMenu } from "./ui/settings-menu.js";
+import { DEV_TOOLS } from "./dev-tools.js";
 import type { DevLayout } from "./ui/dev-layout.js";
 import {
   Button,
@@ -241,83 +245,91 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
         />
-        <DevHud
-          defaults={devLayoutDefaults}
-          panels={[
-            {
-              id: "status",
-              title: characterName ?? "mirror client",
-              badge: gpu?.software && (
-                <span
-                  className="shrink-0 rounded border border-amber-400/60 px-1 text-[10px] text-amber-300"
-                  title="Software rendering: hardware acceleration is off, so fps will stay in single digits. Enable it in browser settings (see chrome://gpu)."
-                >
-                  ⚠ software GPU
-                </span>
-              ),
-              content: (
-                <div className="text-muted-foreground tabular-nums">
-                  tick <span className="text-foreground">{hud.tick}</span>
-                  {hud.time && <> · <span className="text-foreground">{hud.time}</span></>}
-                  {hud.weather && <> · <span className="text-foreground">{hud.weather}</span></>}
-                  {" "}· <span className="text-foreground">{hud.fps}</span> fps · pos{" "}
-                  <span className="text-foreground">
-                    {hud.px.toFixed(0)}, {hud.py.toFixed(0)}, {hud.pz.toFixed(0)}
-                  </span>
-                  {hud.mode !== null && hud.mode !== 0 && <> · {MODE_LABEL[hud.mode] ?? hud.mode}</>}
-                  {hud.breath < 1 && <> · air {Math.round(hud.breath * 100)}%</>}
-                  {gpu && (
-                    <div className="truncate" title={gpu.renderer}>
-                      gpu <span className="text-foreground">{gpu.renderer}</span>
-                    </div>
-                  )}
-                </div>
-              ),
-            },
-            { id: "perf", title: "performance", content: <PerfHud samples={hud.perf} /> },
-            {
-              id: "tools",
-              title: "tools",
-              content: (
-                <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" variant="secondary" onClick={toggleWireframe}>
-                    {wireframe ? "solid terrain" : "wireframe terrain"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={cycleQuality}
-                    title={activeQuality?.detected ? `this GPU's preset: ${activeQuality.detected}` : "detecting the GPU…"}
+        {DEV_TOOLS ? (
+          <DevHud
+            defaults={devLayoutDefaults}
+            panels={[
+              {
+                id: "status",
+                title: characterName ?? "mirror client",
+                badge: gpu?.software && (
+                  <span
+                    className="shrink-0 rounded border border-amber-400/60 px-1 text-[10px] text-amber-300"
+                    title="Software rendering: hardware acceleration is off, so fps will stay in single digits. Enable it in browser settings (see chrome://gpu)."
                   >
-                    quality: {quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={toggleShowcase}>
-                    {showcase ? "hide FX" : "FX showcase"}
-                  </Button>
-                  {sessionTokenRef.current && (
-                    <Button size="sm" variant="secondary" onClick={() => void reconnectWithToken()}>
-                      reconnect (token)
+                    ⚠ software GPU
+                  </span>
+                ),
+                content: (
+                  <div className="text-muted-foreground tabular-nums">
+                    tick <span className="text-foreground">{hud.tick}</span>
+                    {hud.time && <> · <span className="text-foreground">{hud.time}</span></>}
+                    {hud.weather && <> · <span className="text-foreground">{hud.weather}</span></>}
+                    {" "}· <span className="text-foreground">{hud.fps}</span> fps · pos{" "}
+                    <span className="text-foreground">
+                      {hud.px.toFixed(0)}, {hud.py.toFixed(0)}, {hud.pz.toFixed(0)}
+                    </span>
+                    {hud.mode !== null && hud.mode !== 0 && <> · {MODE_LABEL[hud.mode] ?? hud.mode}</>}
+                    {hud.breath < 1 && <> · air {Math.round(hud.breath * 100)}%</>}
+                    {gpu && (
+                      <div className="truncate" title={gpu.renderer}>
+                        gpu <span className="text-foreground">{gpu.renderer}</span>
+                      </div>
+                    )}
+                  </div>
+                ),
+              },
+              { id: "perf", title: "performance", content: <PerfHud samples={hud.perf} /> },
+              {
+                id: "tools",
+                title: "tools",
+                content: (
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button size="sm" variant="secondary" onClick={toggleWireframe}>
+                      {wireframe ? "solid terrain" : "wireframe terrain"}
                     </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={disconnect}>
-                    disconnect
-                  </Button>
-                </div>
-              ),
-            },
-            {
-              id: "controls",
-              title: "controls",
-              content: (
-                <div className="text-muted-foreground">
-                  WASD move · Space jump / up · C down · F fly · mouse look (click canvas; Esc frees the pointer) · wheel zoom
-                  <br />
-                  left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
-                </div>
-              ),
-            },
-          ]}
-        />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={cycleQuality}
+                      title={activeQuality?.detected ? `this GPU's preset: ${activeQuality.detected}` : "detecting the GPU…"}
+                    >
+                      quality: {quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={toggleShowcase}>
+                      {showcase ? "hide FX" : "FX showcase"}
+                    </Button>
+                    {sessionTokenRef.current && (
+                      <Button size="sm" variant="secondary" onClick={() => void reconnectWithToken()}>
+                        reconnect (token)
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={disconnect}>
+                      disconnect
+                    </Button>
+                  </div>
+                ),
+              },
+              {
+                id: "controls",
+                title: "controls",
+                content: (
+                  <div className="text-muted-foreground">
+                    WASD move · Space jump / up · C down · F fly · mouse look (click canvas; Esc frees the pointer) · wheel zoom
+                    <br />
+                    left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
+                  </div>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <SettingsMenu
+            quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+            onQuality={cycleQuality}
+            onDisconnect={disconnect}
+          />
+        )}
       </div>
     );
   }
