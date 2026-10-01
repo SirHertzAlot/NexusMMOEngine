@@ -33,6 +33,12 @@ export enum MessageType {
   EnterWorld = 0x0e,
   /** S→C: the player's own stats (catalog §0x0f), after joining and whenever they change. */
   Stats = 0x0f,
+  /**
+   * Admin console (catalog §0x10, roadmap A1): authenticated admin
+   * commands C→S and their results S→C, JSON like the debug channel.
+   * The server answers 4003 to senders that are not admins.
+   */
+  Admin = 0x10,
 }
 
 /**
@@ -176,8 +182,33 @@ export interface StatsMessage {
   stats: StatLineMessage[];
 }
 
+/**
+ * C→S (catalog §0x10): one admin-console command. The server answers on
+ * the same envelope with an AdminResult. A1 commands: `help` (list what
+ * this server offers) and `whoami` (the caller's admin identity).
+ * A2+ adds the world-editing commands behind this same channel.
+ */
+export interface AdminCommand {
+  kind: "admin";
+  command: string;
+  /** Command arguments (per-command shape; absent for help/whoami). */
+  args?: unknown;
+}
+
+/** S→C (catalog §0x10): the result of one AdminCommand. */
+export interface AdminResult {
+  kind: "admin";
+  command: string;
+  /** The command ran. */
+  ok: boolean;
+  /** Human-readable outcome (help text, identity, or an error). */
+  message: string;
+}
+
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 7; // v7 (2026-09-29): stats — 0x0f, the
+export const PROTOCOL_VERSION = 8; // v8 (2026-09-30): admin console — 0x10,
+// the authenticated admin command channel (roadmap A1).
+// v7 (2026-09-29): stats — 0x0f, the
 // player's own attributes and derived stats.
 // v6: combat — the Action component on the wire and the
 // Attack/Block/Dodge intent buttons.

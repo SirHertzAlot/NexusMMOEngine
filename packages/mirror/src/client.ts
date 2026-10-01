@@ -24,6 +24,8 @@ import {
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
+  type AdminCommand,
+  type AdminResult,
   type CreateCharacterMessage,
   type DebugQuery,
   type DebugResponse,
@@ -107,6 +109,8 @@ export class MirrorClient {
   private replyReject: ((e: Error) => void) | null = null;
   private debugResolve: ((r: DebugResponse) => void) | null = null;
   private debugReject: ((e: Error) => void) | null = null;
+  private adminResolve: ((r: AdminResult) => void) | null = null;
+  private adminReject: ((e: Error) => void) | null = null;
 
   constructor(
     private readonly createSocket: (url: string) => SocketLike,
@@ -330,6 +334,9 @@ export class MirrorClient {
     this.debugReject?.(new Error("mirror-client: disconnected"));
     this.debugResolve = null;
     this.debugReject = null;
+    this.adminReject?.(new Error("mirror-client: disconnected"));
+    this.adminResolve = null;
+    this.adminReject = null;
   }
 
   /**
@@ -359,6 +366,37 @@ export class MirrorClient {
       }, CONNECT_TIMEOUT_MS);
     });
     this.send(this.socket, encodeEnvelope(MessageType.Debug, encodeControl(query)));
+    return promise;
+  }
+
+  /**
+   * Admin console command (docs/MESSAGE-CATALOG.md §0x10, roadmap A1).
+   * One outstanding command at a time, like debug(); the promise resolves
+   * with the server's AdminResult or rejects on error/disconnect/timeout.
+   * The server rejects senders that are not admins.
+   */
+  admin(command: string, args?: unknown): Promise<AdminResult> {
+    if (!this.socket || this.closed) {
+      return Promise.reject(new Error("mirror-client: not connected"));
+    }
+    if (this.adminResolve) {
+      return Promise.reject(
+        new Error("mirror-client: admin command already in flight"),
+      );
+    }
+    const msg: AdminCommand = args === undefined ? { kind: "admin", command } : { kind: "admin", command, args };
+    const promise = new Promise<AdminResult>((resolve, reject) => {
+      this.adminResolve = resolve;
+      this.adminReject = reject;
+      setTimeout(() => {
+        if (this.adminReject === reject) {
+          this.adminResolve = null;
+          this.adminReject = null;
+          reject(new Error("mirror-client: admin command timed out"));
+        }
+      }, CONNECT_TIMEOUT_MS);
+    });
+    this.send(this.socket, encodeEnvelope(MessageType.Admin, encodeControl(msg)));
     return promise;
   }
 
@@ -412,6 +450,11 @@ export class MirrorClient {
         );
         this.debugResolve = null;
         this.debugReject = null;
+        this.adminReject?.(
+          new Error(`admin rejected: ${err.code} ${err.message}`),
+        );
+        this.adminResolve = null;
+        this.adminReject = null;
         break;
       }
       case MessageType.Debug: {
@@ -425,6 +468,13 @@ export class MirrorClient {
         const stats = decodeControl<StatsMessage>(payload);
         this.stats = stats;
         this.events.onStats?.(stats);
+        break;
+      }
+      case MessageType.Admin: {
+        const res = decodeControl<AdminResult>(payload);
+        this.adminResolve?.(res);
+        this.adminResolve = null;
+        this.adminReject = null;
         break;
       }
       case MessageType.Bye:

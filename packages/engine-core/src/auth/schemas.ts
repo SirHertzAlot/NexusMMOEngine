@@ -64,6 +64,22 @@ export const RegisterSchema = z
 export type RegisterPayload = z.infer<typeof RegisterSchema>;
 
 /**
+ * Admin console command (protocol 0x10, roadmap A1). Strict like every
+ * control payload: exactly `{kind: "admin", command}` plus optional
+ * per-command args. Command names are lowercase letters (A2+ adds its
+ * commands here, each with its own args schema).
+ */
+export const AdminCommandSchema = z
+  .object({
+    kind: z.literal("admin"),
+    command: z.string().regex(/^[a-z]{1,32}$/),
+    args: z.unknown().optional(),
+  })
+  .strict();
+
+export type AdminCommandPayload = z.infer<typeof AdminCommandSchema>;
+
+/**
  * Parse a decoded-JSON hello into its variant. Returns null when the
  * payload matches neither variant (malformed hello -> error 4003).
  */

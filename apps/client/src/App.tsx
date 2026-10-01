@@ -30,6 +30,7 @@ import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
+import { AdminConsole } from "./ui/admin-console.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
@@ -312,7 +313,8 @@ export function App(): React.ReactElement {
                 id: "tools",
                 title: "tools",
                 content: (
-                  <div className="flex flex-wrap gap-1.5">
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
                     <Button size="sm" variant="secondary" onClick={toggleWireframe}>
                       {wireframe ? "solid terrain" : "wireframe terrain"}
                     </Button>
@@ -335,7 +337,9 @@ export function App(): React.ReactElement {
                     <Button size="sm" variant="outline" onClick={disconnect}>
                       disconnect
                     </Button>
-                  </div>
+                    </div>
+                    <AdminConsole client={client} />
+                  </>
                 ),
               },
               {

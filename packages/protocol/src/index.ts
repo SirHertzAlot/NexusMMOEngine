@@ -4,6 +4,8 @@ export { formatTimeOfDay, timeOfDayAt } from "./day-clock.js";
 export type { DayClock } from "./day-clock.js";
 export type {
   AccountMessage,
+  AdminCommand,
+  AdminResult,
   CharacterEntry,
   CreateCharacterMessage,
   DebugQuery,

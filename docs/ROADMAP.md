@@ -69,7 +69,7 @@ stay read-only here; this edits the running game.
 
 | # | Item | Status | Needs |
 |---|---|---|---|
-| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | ⏭️ | |
+| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands |
 | A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 📋 | A1 |
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 📋 | A1 |
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 📋 | A1 |
@@ -169,6 +169,10 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 
 Newest first. One line per merged PR or decision.
 
+- **2026-09-30**: A1 admin channel: 0x10 `help`/`whoami` over the control
+  plane (protocol v8), adminhood from `MMO_ADMINS` or `MMO_DEV_SERVER=1`
+  decided once at join, ring-buffer command log + console lines, dev
+  tools console in the client. A2+ adds world-editing commands.
 - **2026-09-30**: U4 controls + UI scale: remappable keyboard bindings
   (bindings.ts, persisted, live-swapped into InputState) and 90–125%
   interface scale in the settings menu; dev controls help reads the

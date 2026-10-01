@@ -55,6 +55,8 @@ import {
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
+  type AdminCommand,
+  type AdminResult,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -74,6 +76,7 @@ import {
   type ClientSession,
 } from "../session.js";
 import {
+  AdminCommandSchema,
   AuthRateLimiter,
   CsvCredentialStore,
   DUMMY_HASH,
@@ -171,6 +174,19 @@ export interface GatewayOptions {
    */
   allowRegister?: boolean;
   /**
+   * Admin console (roadmap A1): usernames that may send admin commands
+   * (protocol 0x10). Explicit list only — the credential store keeps
+   * exactly username+hash rows, so adminhood lives here, not in the
+   * account file. Default: MMO_ADMINS (comma-separated) or empty.
+   */
+  admins?: string[];
+  /**
+   * Development server: every account is an admin (roadmap A1: "every
+   * account on a development server"). Default: MMO_DEV_SERVER=1.
+   * Never set this on a public deployment.
+   */
+  devServer?: boolean;
+  /**
    * Editor-only read-only debug answers (protocol v3, 0x0a). Injected
    * by the production server via makeDebugSource(); when absent, the
    * `tiles` query answers [] and `waypoints` answers "unknown". The
@@ -233,11 +249,40 @@ export function despawnSessionlessAvatars(world: SimWorld): number {
   return eids.length;
 }
 
+/** One answered admin command (roadmap A1: the command log). */
+export interface AdminLogEntry {
+  /** Clock ms when the command was answered. */
+  at: number;
+  /** Account that sent it. */
+  username: string;
+  /** Command name (parsed, so always well-formed). */
+  command: string;
+  /** Whether it ran (false: rejected — not admin, unknown, malformed). */
+  ok: boolean;
+}
+
 const HEARTBEAT_INTERVAL_MS = 5000;
 const MAX_MISSED_HEARTBEATS = 3;
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
+/** Admin command log keeps the last N entries (roadmap A1). */
+const ADMIN_LOG_SIZE = 200;
+
+/**
+ * Usernames from MMO_ADMINS (comma-separated). Invalid names are dropped
+ * — the username charset is shared with the credential store, so only
+ * well-formed names can ever match.
+ */
+function parseAdminList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  const out: string[] = [];
+  for (const name of raw.split(",")) {
+    const username = name.trim();
+    if (/^[A-Za-z0-9_-]{3,32}$/.test(username) && !out.includes(username)) out.push(username);
+  }
+  return out;
+}
 
 export class Gateway {
   /**
@@ -306,6 +351,12 @@ export class Gateway {
   private readonly tokenToClient = new Map<string, string>();
   /** The stats version last sent to each session (see sendStats). */
   private readonly statsSent = new WeakMap<ClientSession, number>();
+  /** Usernames allowed admin commands (GatewayOptions.admins). */
+  private readonly admins: Set<string>;
+  /** Development server: every account is an admin (GatewayOptions.devServer). */
+  private readonly devServer: boolean;
+  /** Recent admin commands, oldest first (roadmap A1: the command log). */
+  private readonly adminLog: AdminLogEntry[] = [];
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
@@ -327,6 +378,8 @@ export class Gateway {
       startTick: opts.startTick ?? 1,
       allowRegister:
         opts.allowRegister ?? process.env.MMO_ALLOW_REGISTER !== "0",
+      admins: opts.admins ?? parseAdminList(process.env.MMO_ADMINS),
+      devServer: opts.devServer ?? process.env.MMO_DEV_SERVER === "1",
     };
     if (!Number.isInteger(this.opts.startTick) || this.opts.startTick < 1) {
       throw new RangeError(
@@ -347,6 +400,8 @@ export class Gateway {
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
+    this.admins = new Set(this.opts.admins);
+    this.devServer = this.opts.devServer;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.authSessions = new SessionManager({
@@ -624,6 +679,7 @@ export class Gateway {
       username: "",
       choosingCharacter: false,
       character: null,
+      isAdmin: false,
     };
     this.sessions.set(s.clientId, s);
     this.route(s, socket);
@@ -708,6 +764,9 @@ export class Gateway {
       case MessageType.Debug:
         this.onDebug(s, payload);
         break;
+      case MessageType.Admin:
+        this.onAdmin(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -764,6 +823,72 @@ export class Gateway {
       return;
     }
     this.sendEnvelope(s, MessageType.Debug, encodeControl(res));
+  }
+
+  /**
+   * Admin console (protocol 0x10, roadmap A1). Welcomed admins only:
+   * anything earlier, any non-admin, and any malformed command is
+   * answered 4003 and logged. Every answered command — ran or rejected —
+   * goes in the command log; A2+ adds world-editing commands here.
+   */
+  private onAdmin(s: ClientSession, payload: Uint8Array): void {
+    if (!s.welcomed) {
+      this.sendError(s, 4003, "admin before hello");
+      return;
+    }
+    let cmd: AdminCommand;
+    try {
+      const raw = decodeControl<unknown>(payload);
+      const parsed = AdminCommandSchema.safeParse(raw);
+      if (!parsed.success) throw new Error("bad shape");
+      cmd = parsed.data;
+    } catch {
+      this.logAdmin(s.username, "(malformed)", false);
+      this.sendError(s, 4003, "malformed admin command");
+      return;
+    }
+    if (!s.isAdmin) {
+      this.logAdmin(s.username, cmd.command, false);
+      this.sendError(s, 4003, "admin only");
+      return;
+    }
+    let res: AdminResult;
+    if (cmd.command === "help") {
+      res = {
+        kind: "admin",
+        command: cmd.command,
+        ok: true,
+        message: "commands: help, whoami",
+      };
+    } else if (cmd.command === "whoami") {
+      res = {
+        kind: "admin",
+        command: cmd.command,
+        ok: true,
+        message: `admin ${s.username}${this.devServer ? " (dev server)" : ""}`,
+      };
+    } else {
+      this.logAdmin(s.username, cmd.command, false);
+      this.sendError(s, 4003, `unknown admin command ${JSON.stringify(cmd.command)}`);
+      return;
+    }
+    this.logAdmin(s.username, cmd.command, true);
+    this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
+  }
+
+  /** Record one answered admin command (ring: the last ADMIN_LOG_SIZE). */
+  private logAdmin(username: string, command: string, ok: boolean): void {
+    this.adminLog.push({ at: this.clock(), username, command, ok });
+    if (this.adminLog.length > ADMIN_LOG_SIZE) {
+      this.adminLog.splice(0, this.adminLog.length - ADMIN_LOG_SIZE);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[admin] ${username} ${command} -> ${ok ? "ok" : "rejected"}`);
+  }
+
+  /** Recent admin commands, oldest first (a copy). */
+  adminLogEntries(): AdminLogEntry[] {
+    return [...this.adminLog];
   }
 
   /**
@@ -903,6 +1028,10 @@ export class Gateway {
       return;
     }
     s.username = auth.username;
+    // Adminhood is decided once here, from the authenticated username —
+    // never from anything the client claims later. Re-attached sessions
+    // keep the flag they were given at join.
+    s.isAdmin = this.devServer || this.admins.has(auth.username);
     // A session that already entered as a character re-enters as it.
     if (auth.character) {
       this.enterWorld(s, auth.character);
