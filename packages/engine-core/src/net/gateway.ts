@@ -72,6 +72,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
+import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
@@ -877,7 +878,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn",
+        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly",
       };
     } else if (cmd.command === "whoami") {
       res = {
@@ -902,6 +903,13 @@ export class Gateway {
       }
     } else if (cmd.command === "spawnlist" || cmd.command === "spawn" || cmd.command === "despawn") {
       res = this.runSpawnCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly") {
+      res = this.runPlayerCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -1036,6 +1044,46 @@ export class Gateway {
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
     const eid = spawnScatterEntity(this.world, built);
     return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
+  }
+
+  /**
+   * Player tweaks (roadmap A4, first slice): teleport (ground snap),
+   * heal (fill from max), fly (the Fly ability bit). Args schemas live
+   * in admin/player.ts; failures read as errors.
+   */
+  private runPlayerCommand(s: ClientSession, command: string, args: unknown): AdminResult {
+    if (command === "teleport") {
+      const parsed = TeleportArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) {
+        return { kind: "admin", command, ok: false, message: "usage: teleport {x, z, entity?}" };
+      }
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      const ground = this.groundHeightAt ? this.groundHeightAt(parsed.data.x, parsed.data.z) : null;
+      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, ground);
+      if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+      return { kind: "admin", command, ok: true, message: r.message };
+    }
+    if (command === "heal") {
+      const parsed = HealArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) {
+        return { kind: "admin", command, ok: false, message: "usage: heal {entity?}" };
+      }
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      const r = applyHeal(this.world, target.wireId);
+      if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+      return { kind: "admin", command, ok: true, message: r.message };
+    }
+    const parsed = FlyArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command, ok: false, message: "usage: fly {on, entity?}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+    const r = applyFly(this.world, target.wireId, parsed.data.on);
+    if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+    return { kind: "admin", command, ok: true, message: r.message };
   }
 
   /** Record one answered admin command (ring: the last ADMIN_LOG_SIZE). */
