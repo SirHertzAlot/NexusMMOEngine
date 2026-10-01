@@ -90,7 +90,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | U3 | Hunger and thirst meters | 📋 | Survival needs as rules on the server (new, alongside M1) |
 | U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
-| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 📋 | S1 |
+| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers/party/guild/reply await S2–S4 |
 | U7 | Party frames | 📋 | S3 |
 | U8 | Social window: friends, presence, blocks, guild roster | 📋 | S2, S4 |
 | U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 📋 | M1, M2 |
@@ -168,6 +168,11 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-09-30**: U6 chat panel: say/yell/emote tabs, 50-line history,
+  send-on-Enter over MirrorClient.chat()/onChat; verified with two live
+  clients. Whispers/party/guild/reply await S2–S4.
+
 
 - **2026-09-30**: A4 first slice: `teleport` (ground snap, stilled
   velocity), `heal` (fill from max), `fly` (ability bit) admin commands.

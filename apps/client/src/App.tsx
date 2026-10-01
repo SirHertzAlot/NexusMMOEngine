@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
+import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type HudData } from "./render/world-canvas.js";
@@ -31,6 +32,7 @@ import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { AdminConsole } from "./ui/admin-console.js";
+import { ChatPanel } from "./ui/chat-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
@@ -114,6 +116,9 @@ export function App(): React.ReactElement {
   const [activeQuality, setActiveQuality] = useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   const [account, setAccount] = useState<AccountMessage | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
+  // Region chat (U6): the last lines plus the sending tab.
+  const [chatLines, setChatLines] = useState<ChatBroadcast[]>([]);
+  const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -138,6 +143,7 @@ export function App(): React.ReactElement {
         setError((prev) => prev ?? "connection closed");
         setScreen("login");
       },
+      onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
     });
 
   /**
@@ -212,6 +218,7 @@ export function App(): React.ReactElement {
     clientRef.current?.disconnect();
     clientRef.current = null;
     setAccount(null);
+    setChatLines([]);
     setScreen("login");
   };
 
@@ -368,6 +375,12 @@ export function App(): React.ReactElement {
             onUiScale={setUiScale}
           />
         )}
+        <ChatPanel
+          lines={chatLines}
+          channel={chatChannel}
+          onChannel={setChatChannel}
+          onSend={(text) => client?.chat(chatChannel, text)}
+        />
       </div>
     );
   }

@@ -20,6 +20,7 @@ import {
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
+  type ChatBroadcast,
   type HelloMessage,
   type RegisterMessage,
   type WelcomeMessage,
@@ -86,6 +87,7 @@ async function connectClient(
     onState: events?.onState ?? (() => {}),
     onError: events?.onError ?? (() => {}),
     onClose: events?.onClose ?? (() => {}),
+    onChat: events?.onChat,
   });
   const p = client.connect("ws://localhost:7777", "test-client", auth);
   socket.open();
@@ -477,6 +479,37 @@ describe("MirrorClient.admin (0x10)", () => {
     client.disconnect();
     await assert.rejects(first, /disconnected/);
     await assert.rejects(client.admin("help"), /not connected/);
+  });
+});
+
+describe("MirrorClient.chat (0x11)", () => {
+  it("sends the line and dispatches broadcasts to onChat", async () => {
+    const seen: ChatBroadcast[] = [];
+    const { client, socket } = await connectClient(
+      { username: "u", password: "p" },
+      { onChat: (c) => seen.push(c) },
+    );
+    client.chat("say", "hello");
+    const sent = socket.lastOf(MessageType.Chat);
+    assert.deepEqual(decodeControl(decodeEnvelope(sent).payload), {
+      kind: "chat",
+      channel: "say",
+      text: "hello",
+    });
+    socket.receive(
+      encodeEnvelope(
+        MessageType.Chat,
+        encodeControl({ kind: "chat", channel: "say", text: "hi back", from: "v", entity: "7" }),
+      ),
+    );
+    assert.deepEqual(seen, [{ kind: "chat", channel: "say", text: "hi back", from: "v", entity: "7" }]);
+  });
+
+  it("ignores sends while disconnected", async () => {
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    client.disconnect();
+    client.chat("say", "lost");
+    assert.throws(() => socket.lastOf(MessageType.Chat), /no sent message/);
   });
 });
 
