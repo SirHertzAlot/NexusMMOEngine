@@ -195,6 +195,9 @@ Newest first. One line per merged PR or decision.
 - **2026-10-01**: Fix: `addon-geometry` failed to compile under MSVC
   (C2666 on a `Uint8Array` index), so the geometry and dungeon suites
   failed on Windows. The mask is now read through a raw byte pointer.
+- **2026-10-01**: Fix: admin commands (0x10) fell through into the chat
+  handler and drew a stray "malformed chat" 4003 after every result.
+  Every workspace now compiles with `noFallthroughCasesInSwitch`.
 
 - **2026-10-01**: Alpha plan ([`ALPHA-PLAN.md`](ALPHA-PLAN.md)):
   three milestones (first fight, keep it, hold it) and section 7 here.
