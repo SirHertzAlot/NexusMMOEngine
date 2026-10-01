@@ -24,6 +24,8 @@ import {
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
+  type ChatBroadcast,
+  type ChatChannel,
   type CreateCharacterMessage,
   type DebugQuery,
   type DebugResponse,
@@ -64,6 +66,8 @@ export interface MirrorEvents {
   onClose(): void;
   /** The player's own stats changed (also on joining). */
   onStats?(s: StatsMessage): void;
+  /** A region chat line arrived (roadmap U6, protocol 0x11). */
+  onChat?(c: ChatBroadcast): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -173,6 +177,16 @@ export class MirrorClient {
   /** Enter the world as one of the account's characters: resolves with the welcome. */
   async enterWorld(character: number): Promise<WelcomeMessage> {
     return this.welcomeOf(this.request(MessageType.EnterWorld, encodeControl({ character })));
+  }
+
+  /**
+   * Send a region chat line (roadmap U6, protocol 0x11). Fire-and-forget:
+   * broadcasts have no reply; rejections arrive as ErrorMessage through
+   * onError. The server trims, filters, and rate-limits.
+   */
+  chat(channel: ChatChannel, text: string): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "chat", channel, text })));
   }
 
   private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {
@@ -425,6 +439,10 @@ export class MirrorClient {
         const stats = decodeControl<StatsMessage>(payload);
         this.stats = stats;
         this.events.onStats?.(stats);
+        break;
+      }
+      case MessageType.Chat: {
+        this.events.onChat?.(decodeControl<ChatBroadcast>(payload));
         break;
       }
       case MessageType.Bye:
