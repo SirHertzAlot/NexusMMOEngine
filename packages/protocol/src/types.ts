@@ -39,6 +39,12 @@ export enum MessageType {
    * The server answers 4003 to senders that are not admins.
    */
   Admin = 0x10,
+  /**
+   * Region chat (catalog §0x11, roadmap S1): say/yell/emote C→S, fanned
+   * out S→C to sessions in range. JSON; the server answers 4003 to
+   * malformed, too-frequent, or out-of-world senders.
+   */
+  Chat = 0x11,
 }
 
 /**
@@ -206,8 +212,38 @@ export interface AdminResult {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 8; // v8 (2026-09-30): admin console — 0x10,
+export const PROTOCOL_VERSION = 9; // v9 (2026-10-01): region chat — 0x11,
+// say/yell/emote (roadmap S1).
+// v8 (2026-09-30): admin console — 0x10,
 // the authenticated admin command channel (roadmap A1).
+
+/**
+ * C→S (catalog §0x11): one chat line. The server trims it, checks it,
+ * rate-limits it, and fans it out; see S1 in docs/ROADMAP.md.
+ */
+export interface ChatMessage {
+  kind: "chat";
+  channel: ChatChannel;
+  text: string;
+}
+
+/** Chat channels: say and emote reach nearby players, yell reaches all. */
+export type ChatChannel = "say" | "yell" | "emote";
+
+/**
+ * S→C (catalog §0x11): a fanned-out chat line. `from` is the speaker's
+ * character name (or account name outside a character); `entity` is
+ * their avatar's wire id, for future nameplates and click-to-reply.
+ */
+export interface ChatBroadcast {
+  kind: "chat";
+  channel: ChatChannel;
+  text: string;
+  from: string;
+  entity: string;
+}
+
+/** Increment when the catalog gains a message or changes a shape. */
 // v7 (2026-09-29): stats — 0x0f, the
 // player's own attributes and derived stats.
 // v6: combat — the Action component on the wire and the

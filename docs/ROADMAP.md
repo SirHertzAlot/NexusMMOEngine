@@ -111,7 +111,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | M2 | Body parts, injuries, healing, death and respawn | 📋 | 〃 |
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); the rest is open |
 | M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
-| S1 | Say, yell, emote; rate limits; text filter hook | 📋 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8 |
+| S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
 | S2 | Region↔world event stream, presence, whispers, friends, blocks | 📋 | 〃 |
 | S3 | Parties | 📋 | 〃 |
 | S4 | Guilds | 📋 | 〃 |
@@ -203,6 +203,10 @@ Newest first. One line per merged PR or decision.
 - **2026-09-30**: U2 player frame (health): `PlayerFrame` over the world
   canvas, fed by the mirror's Health rows at 1 Hz; stamina/mana await
   their pools (M1).
+- **2026-09-30**: S1 region chat: 0x11 say/yell/emote (protocol v8 —
+  second merger with the admin branch bumps to v9), 30 m say/emote
+  range, per-channel cooldowns, TextFilter hook, full e2e coverage.
+  Client panel stays U6.
 
 - **2026-09-30**: manifold + Clipper2 (`addon-geometry`) and prebaked
   dungeon shells. Added the admin console (A1–A6) and the dungeon instance

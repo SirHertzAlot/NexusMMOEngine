@@ -91,6 +91,11 @@ export interface ClientSession {
   choosingCharacter: boolean;
   /** The character this session plays, once in the world as one. */
   character: { id: number; name: string } | null;
+  /**
+   * Clock ms of the last chat line per channel (roadmap S1 rate limits).
+   * Missing entries never sent on that channel.
+   */
+  lastChatMs: Partial<Record<"say" | "yell" | "emote", number>>;
 }
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */
