@@ -487,3 +487,20 @@ Every entry: date, decision, rationale. Newest first.
   apart from the world that players are moved into and whose results go
   back through its region to the world server, loads its geometry as one
   buffer. A cell is 2 m.
+- **2026-09-30 — Valgrind checks the addons and measures the engine.**
+  `npm run valgrind:memcheck` runs every native addon's tests under
+  memcheck, in the valgrind process itself (`node --test` otherwise runs
+  them in children valgrind doesn't follow), and fails only on errors
+  and definite leaks whose faulting frame is in our binaries: Node's and
+  V8's own reports (the garbage collector) are left out rather than kept
+  in a suppression list. Its first run found two real bugs in the
+  navigation addon: every tile bake leaked its detail mesh
+  (`rcPolyMeshDetail` has no destructor; now freed), and Recast's tile
+  cache overflowed a region's 16-entry neighbour list when obstacles cut
+  a tile into many regions (patched in the vendored source, see its
+  VENDORING.md). `npm run valgrind:perf` measures instructions per
+  operation for headless workloads with callgrind, between marks a small
+  addon sets from JS (`addon-perf-probe`, callgrind client requests), with
+  Node single-threaded so counts don't depend on scheduling; the counts
+  are committed as a baseline (`perf/callgrind-baseline.json`) that
+  changes, the gateway split first, are measured against.

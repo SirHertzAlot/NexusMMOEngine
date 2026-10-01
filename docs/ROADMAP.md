@@ -150,6 +150,8 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | meshoptimizer: optimised cooked meshes, LOD chains for every prop | ✅ | #43 |
 | — | Performance instrumentation: frame, renderer, GPU memory and network counters | ✅ | Feeds E5 |
 | — | manifold + Clipper2 (`addon-geometry`): cell outlines, polygon Booleans, CSG solids; prebaked dungeon shells | ✅ | |
+| — | Valgrind: memcheck gate for every addon's tests; callgrind instruction-count baselines for headless workloads (`npm run valgrind:memcheck`, `valgrind:perf`) | ✅ | Found and fixed a tile-bake leak and a Recast tile-cache overflow |
+| — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
 ## 6. World server
@@ -197,6 +199,21 @@ Newest first. One line per merged PR or decision.
   with E (owned 30 s, gone after 5 min, `loot.json`), a bag (B), and
   admin `items`/`give`/`drop`/`loot`. Protocol v11 (0x13–0x15). Typing
   in a text field no longer moves the character.
+- **2026-10-01**: Valgrind: `npm run valgrind:memcheck` (every addon's
+  tests under memcheck; our code's errors and leaks fail it) and
+  `npm run valgrind:perf` (callgrind instructions per operation for eight
+  headless workloads, against a committed baseline). Its first run fixed
+  two navigation bugs: a detail-mesh leak on every tile bake, and a heap
+  overflow in Recast's tile-cache region builder.
+- **2026-10-01**: Fix: the client's panels (player frame, chat, sheet,
+  settings) were see-through. Their `bg-card/90`-style classes generated
+  nothing; the theme colours now live in the Tailwind config.
+- **2026-10-01**: Fix: `addon-geometry` failed to compile under MSVC
+  (C2666 on a `Uint8Array` index), so the geometry and dungeon suites
+  failed on Windows. The mask is now read through a raw byte pointer.
+- **2026-10-01**: Fix: admin commands (0x10) fell through into the chat
+  handler and drew a stray "malformed chat" 4003 after every result.
+  Every workspace now compiles with `noFallthroughCasesInSwitch`.
 
 - **2026-10-01**: Alpha plan ([`ALPHA-PLAN.md`](ALPHA-PLAN.md)):
   three milestones (first fight, keep it, hold it) and section 7 here.

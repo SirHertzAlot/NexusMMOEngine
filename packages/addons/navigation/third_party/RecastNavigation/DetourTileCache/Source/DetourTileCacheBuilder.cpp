@@ -149,10 +149,18 @@ inline bool overlapRangeExl(const unsigned short amin, const unsigned short amax
 	return (amin >= bmax || amax <= bmin) ? false : true;
 }
 
+// NexusMMOEngine patch (found by valgrind memcheck): upstream appended
+// without a capacity check and only compared against the last entry, so a
+// region bordering many others (a tile cut up by obstacles) wrote past
+// neis[DT_LAYER_MAX_NEIS] into the next region and later read garbage
+// indices. Now: no duplicates, and at most DT_LAYER_MAX_NEIS neighbours, as
+// Recast's own layer builder (RecastLayers.cpp addUnique) does. A neighbour
+// dropped past the cap only means a region isn't merged with it.
 static void addUniqueLast(unsigned char* a, unsigned char& an, unsigned char v)
 {
-	const int n = (int)an;
-	if (n > 0 && a[n-1] == v) return;
+	for (int i = 0; i < (int)an; ++i)
+		if (a[i] == v) return;
+	if ((int)an >= DT_LAYER_MAX_NEIS) return;
 	a[an] = v;
 	an++;
 }
