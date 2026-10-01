@@ -93,7 +93,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 📋 | S1 |
 | U7 | Party frames | 📋 | S3 |
 | U8 | Social window: friends, presence, blocks, guild roster | 📋 | S2, S4 |
-| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 📋 | M1, M2 |
+| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills await M1, injuries M2 |
 | U10 | Inventory and equipment | 📋 | M3 (items), C1 crafting (built) |
 | U11 | Quest log and tracker, dialog | 📋 | P1 |
 | U12 | Injury display and hit feedback | 📋 | M2 |
@@ -168,6 +168,10 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-09-30**: U9 character sheet: attributes + derived stats with
+  modifier deltas from the stats message, toggleable panel. Skills
+  await M1, injuries M2.
 
 - **2026-09-30**: manifold + Clipper2 (`addon-geometry`) and prebaked
   dungeon shells. Added the admin console (A1–A6) and the dungeon instance

@@ -21,6 +21,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
+import type { StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type HudData } from "./render/world-canvas.js";
@@ -29,6 +30,7 @@ import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
+import { CharacterSheet } from "./ui/character-sheet.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
@@ -88,6 +90,9 @@ export function App(): React.ReactElement {
   const [activeQuality, setActiveQuality] = useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   const [account, setAccount] = useState<AccountMessage | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
+  // Character sheet (U9): the latest stats message lines, plus panel toggle.
+  const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -112,6 +117,7 @@ export function App(): React.ReactElement {
         setError((prev) => prev ?? "connection closed");
         setScreen("login");
       },
+      onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
     });
 
   /**
@@ -186,6 +192,8 @@ export function App(): React.ReactElement {
     clientRef.current?.disconnect();
     clientRef.current = null;
     setAccount(null);
+    setSheet(null);
+    setSheetOpen(false);
     setScreen("login");
   };
 
@@ -331,6 +339,14 @@ export function App(): React.ReactElement {
             onDisconnect={disconnect}
           />
         )}
+        <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+          {sheetOpen && sheet && (
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
+          )}
+          <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
+            sheet
+          </Button>
+        </div>
       </div>
     );
   }
