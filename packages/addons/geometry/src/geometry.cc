@@ -146,8 +146,11 @@ Napi::Value CellsToPolygons(const Napi::CallbackInfo& info) {
     const double offset = NumberOr(opts, "offset", 0);
     const CrossSection::JoinType join = ReadJoin(opts);  // checked even when there's no offset
 
+    // Index the raw bytes: MSVC finds Napi::TypedArrayOf::operator[] ambiguous
+    // with an int64_t index (C2666), and the pointer skips the wrapper per cell.
+    const uint8_t* bytes = mask.Data();
     auto hit = [&](int64_t x, int64_t y) {
-      const uint8_t m = mask[y * w + x];
+      const uint8_t m = bytes[static_cast<size_t>(y * w + x)];
       return anyValue ? m != 0 : m == value;
     };
     std::vector<CrossSection> runs;
