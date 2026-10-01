@@ -8,6 +8,7 @@
 import { useState } from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import { Button, Input } from "./components.js";
+import { parseAdminArgs } from "./admin-args.js";
 
 interface Entry {
   command: string;
@@ -28,15 +29,7 @@ export function AdminConsole({ client }: { client: MirrorClient }): React.ReactE
     const space = text.search(/\s/);
     const name = (space < 0 ? text : text.slice(0, space)).toLowerCase();
     const rest = space < 0 ? "" : text.slice(space + 1).trim();
-    let args: unknown;
-    if (rest !== "") {
-      try {
-        const parsed: unknown = JSON.parse(rest);
-        args = typeof parsed === "object" && parsed !== null ? parsed : { entity: rest };
-      } catch {
-        args = { entity: rest };
-      }
-    }
+    const args = parseAdminArgs(rest);
     setBusy(true);
     client
       .admin(name, args)

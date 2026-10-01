@@ -152,4 +152,30 @@ describe("gateway: admin console", () => {
     assert.equal(decodeControl<ErrorMessage>(payload).code, 4003);
     await client.close();
   });
+
+  it("set changes a field and inspect shows it; bad writes are rejected", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const { client, entity } = await join(url, "alice");
+    const set = await admin(client, "set", { entity: entity.toString(), component: "Health", field: "current", value: 33 });
+    assert.equal(set.ok, true);
+    assert.match(set.message, /Health\.current = 33/);
+    const after = await admin(client, "inspect", { entity: entity.toString() });
+    assert.match(after.message, /Health: 33\//);
+    const bad = [
+      { entity: entity.toString(), component: "Nope", field: "current", value: 1 },
+      { entity: entity.toString(), component: "Health", field: "nope", value: 1 },
+      { entity: entity.toString(), component: "Locomotion", field: "mode", value: 1.5 },
+      { entity: "999999999999", component: "Health", field: "current", value: 1 },
+    ];
+    for (const args of bad) {
+      const errP = client.waitFor(MessageType.Error, 1);
+      client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "set", args }));
+      const [payload] = await errP;
+      assert.equal(decodeControl<ErrorMessage>(payload).code, 4003, JSON.stringify(args));
+    }
+    // The pool still reads through the sim: a rejected write changed nothing.
+    const same = await admin(client, "inspect", { entity: entity.toString() });
+    assert.match(same.message, /Health: 33\//);
+    await client.close();
+  });
 });
