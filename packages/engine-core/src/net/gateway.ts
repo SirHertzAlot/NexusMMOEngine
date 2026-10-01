@@ -72,6 +72,9 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
+import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
+import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
+import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import {
   MAX_QUEUED_DELTAS,
@@ -188,6 +191,12 @@ export interface GatewayOptions {
    * Never set this on a public deployment.
    */
   devServer?: boolean;
+  /**
+   * Spawn-table archetypes for the admin `spawn` command (roadmap A3).
+   * Default: the forest table, loaded once on first use. Inject a small
+   * table in tests.
+   */
+  spawnTable?: SpawnTable;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a). Injected
    * by the production server via makeDebugSource(); when absent, the
@@ -316,6 +325,7 @@ export class Gateway {
       | "playerAbilities"
       | "http"
       | "transport"
+      | "spawnTable"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -359,6 +369,12 @@ export class Gateway {
   private readonly devServer: boolean;
   /** Recent admin commands, oldest first (roadmap A1: the command log). */
   private readonly adminLog: AdminLogEntry[] = [];
+  /**
+   * Spawn-table archetypes for the admin `spawn` command (roadmap A3).
+   * Injected for tests; otherwise the forest table, loaded once on
+   * first use so addon-less boots never pay for it.
+   */
+  private spawnTable: SpawnTable | null = null;
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
@@ -404,6 +420,7 @@ export class Gateway {
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
+    this.spawnTable = opts.spawnTable ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.authSessions = new SessionManager({
@@ -860,7 +877,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, inspect, set",
+        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn",
       };
     } else if (cmd.command === "whoami") {
       res = {
@@ -878,6 +895,13 @@ export class Gateway {
       }
     } else if (cmd.command === "set") {
       res = this.runSet(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "spawnlist" || cmd.command === "spawn" || cmd.command === "despawn") {
+      res = this.runSpawnCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -950,6 +974,68 @@ export class Gateway {
     const r = applySet(this.world, target.wireId, parsed.data.component, parsed.data.field, parsed.data.value);
     if (!r.ok) return { kind: "admin", command: "set", ok: false, message: r.message };
     return { kind: "admin", command: "set", ok: true, message: r.message };
+  }
+
+  /**
+   * Spawn commands (roadmap A3): `spawnlist` names the plantable
+   * archetypes; `spawn` plants one at the caller's avatar (or at x/z);
+   * `despawn` removes any entity that isn't a live session's avatar.
+   * Args schemas live in admin/spawn.ts; failures read as errors.
+   */
+  private runSpawnCommand(s: ClientSession, command: string, args: unknown): AdminResult {
+    if (this.spawnTable === null) {
+      try {
+        this.spawnTable = loadScatterContent().table;
+      } catch {
+        return { kind: "admin", command, ok: false, message: "no spawn table on this server" };
+      }
+    }
+    const table = this.spawnTable;
+    if (command === "spawnlist") {
+      const names = listAssets(table);
+      return { kind: "admin", command, ok: true, message: names.length > 0 ? names.join(" ") : "(empty)" };
+    }
+    if (command === "despawn") {
+      const parsed = DespawnArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) {
+        return { kind: "admin", command, ok: false, message: "usage: despawn {entity: <u64> | me}" };
+      }
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      if (this.world.resolveWireId(target.wireId) < 0) {
+        return { kind: "admin", command, ok: false, message: `unknown entity ${parsed.data.entity}` };
+      }
+      for (const other of this.sessions.values()) {
+        if (other.playerEntity === target.wireId) {
+          return { kind: "admin", command, ok: false, message: "that is a live session's avatar" };
+        }
+      }
+      this.world.despawn(parseWireEntityId(target.wireId).slot);
+      return { kind: "admin", command, ok: true, message: `despawned ${parsed.data.entity}` };
+    }
+    const parsed = SpawnArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command, ok: false, message: "usage: spawn {asset, x?, z?, yaw?}" };
+    }
+    let x = parsed.data.x;
+    let z = parsed.data.z;
+    let y: number;
+    if (x === undefined || z === undefined) {
+      if (s.playerEntity === null) {
+        return { kind: "admin", command, ok: false, message: "no player entity (not in the world)" };
+      }
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0) return { kind: "admin", command, ok: false, message: "avatar is gone" };
+      x = C.Transform.px[eid];
+      z = C.Transform.pz[eid];
+      y = C.Transform.py[eid];
+    } else {
+      y = this.groundHeightAt?.(x, z) ?? 0;
+    }
+    const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
+    if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
+    const eid = spawnScatterEntity(this.world, built);
+    return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
   }
 
   /** Record one answered admin command (ring: the last ADMIN_LOG_SIZE). */
