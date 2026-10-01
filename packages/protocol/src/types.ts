@@ -33,6 +33,12 @@ export enum MessageType {
   EnterWorld = 0x0e,
   /** S→C: the player's own stats (catalog §0x0f), after joining and whenever they change. */
   Stats = 0x0f,
+  /**
+   * Region chat (catalog §0x11, roadmap S1): say/yell/emote C→S, fanned
+   * out S→C to sessions in range. JSON; the server answers 4003 to
+   * malformed, too-frequent, or out-of-world senders.
+   */
+  Chat = 0x11,
 }
 
 /**
@@ -176,8 +182,37 @@ export interface StatsMessage {
   stats: StatLineMessage[];
 }
 
+/**
+ * C→S (catalog §0x11): one chat line. The server trims it, checks it,
+ * rate-limits it, and fans it out; see S1 in docs/ROADMAP.md.
+ */
+export interface ChatMessage {
+  kind: "chat";
+  channel: ChatChannel;
+  text: string;
+}
+
+/** Chat channels: say and emote reach nearby players, yell reaches all. */
+export type ChatChannel = "say" | "yell" | "emote";
+
+/**
+ * S→C (catalog §0x11): a fanned-out chat line. `from` is the speaker's
+ * character name (or account name outside a character); `entity` is
+ * their avatar's wire id, for future nameplates and click-to-reply.
+ */
+export interface ChatBroadcast {
+  kind: "chat";
+  channel: ChatChannel;
+  text: string;
+  from: string;
+  entity: string;
+}
+
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 7; // v7 (2026-09-29): stats — 0x0f, the
+export const PROTOCOL_VERSION = 8; // v8 (2026-09-30): region chat — 0x11,
+// say/yell/emote (roadmap S1). NOTE: the admin-console branch also
+// claims v8 for 0x10 — the second branch to merge bumps to v9.
+// v7 (2026-09-29): stats — 0x0f, the
 // player's own attributes and derived stats.
 // v6: combat — the Action component on the wire and the
 // Attack/Block/Dodge intent buttons.

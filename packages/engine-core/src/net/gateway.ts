@@ -46,7 +46,7 @@
  * `clock` in options for deterministic heartbeat/grace math.
  */
 
-import { addComponent, defineQuery } from "bitecs";
+import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
   decodeEnvelope,
@@ -55,6 +55,7 @@ import {
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
+  type ChatBroadcast,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -95,6 +96,7 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
+import { allowAllText, CHAT_COOLDOWN_MS, ChatSchema, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
 import { StatsSystem } from "../stats/stats-system.js";
@@ -170,6 +172,12 @@ export interface GatewayOptions {
    * open endpoint lets anyone mint accounts.
    */
   allowRegister?: boolean;
+  /**
+   * Region chat text filter (roadmap S1): return false to reject a line.
+   * Default allows everything that passes shape limits; a profanity or
+   * abuse service plugs in here without gateway changes.
+   */
+  textFilter?: TextFilter;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a). Injected
    * by the production server via makeDebugSource(); when absent, the
@@ -260,6 +268,7 @@ export class Gateway {
       | "maxCharacters"
       | "sessionTtlMs"
       | "authRateLimit"
+      | "textFilter"
       | "debugSource"
       | "chunkSource"
       | "groundHeightAt"
@@ -302,6 +311,8 @@ export class Gateway {
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
   private readonly playerAbilities: number;
+  /** Region chat text filter (GatewayOptions.textFilter). */
+  private readonly textFilter: TextFilter;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
   /** The stats version last sent to each session (see sendStats). */
@@ -347,6 +358,7 @@ export class Gateway {
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
+    this.textFilter = opts.textFilter ?? allowAllText;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.authSessions = new SessionManager({
@@ -624,6 +636,7 @@ export class Gateway {
       username: "",
       choosingCharacter: false,
       character: null,
+      lastChatMs: {},
     };
     this.sessions.set(s.clientId, s);
     this.route(s, socket);
@@ -708,6 +721,9 @@ export class Gateway {
       case MessageType.Debug:
         this.onDebug(s, payload);
         break;
+      case MessageType.Chat:
+        this.onChat(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -764,6 +780,71 @@ export class Gateway {
       return;
     }
     this.sendEnvelope(s, MessageType.Debug, encodeControl(res));
+  }
+
+  /**
+   * Region chat (protocol 0x11, roadmap S1). Welcomed, in-world senders
+   * only; shape-checked, filtered, and per-channel rate-limited. Say and
+   * emote reach avatars within SAY_RANGE_M, yell reaches every welcomed
+   * session in the world. Rejections are 4003, never silent.
+   */
+  private onChat(s: ClientSession, payload: Uint8Array): void {
+    if (!s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "chat outside the world");
+      return;
+    }
+    let text: string;
+    let channel: "say" | "yell" | "emote";
+    try {
+      const parsed = ChatSchema.safeParse(decodeControl<unknown>(payload));
+      if (!parsed.success) throw new Error("bad shape");
+      text = parsed.data.text;
+      channel = parsed.data.channel;
+    } catch {
+      this.sendError(s, 4003, "malformed chat");
+      return;
+    }
+    if (!this.textFilter(text)) {
+      this.sendError(s, 4003, "chat rejected");
+      return;
+    }
+    const now = this.clock();
+    const last = s.lastChatMs[channel] ?? -CHAT_COOLDOWN_MS[channel] - 1;
+    if (now - last < CHAT_COOLDOWN_MS[channel]) {
+      this.sendError(s, 4003, "chat too fast");
+      return;
+    }
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) {
+      this.sendError(s, 4003, "avatar is gone");
+      return;
+    }
+    s.lastChatMs[channel] = now;
+    const msg: ChatBroadcast = {
+      kind: "chat",
+      channel,
+      text,
+      from: s.character?.name ?? s.username,
+      entity: s.playerEntity.toString(),
+    };
+    const body = encodeControl(msg);
+    if (channel === "yell") {
+      for (const r of this.sessions.values()) {
+        if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Chat, body);
+      }
+      return;
+    }
+    const sx = C.Transform.px[eid];
+    const sz = C.Transform.pz[eid];
+    const range2 = SAY_RANGE_M * SAY_RANGE_M;
+    for (const r of this.sessions.values()) {
+      if (!r.welcomed || r.playerEntity === null) continue;
+      const reid = this.world.resolveWireId(r.playerEntity);
+      if (reid < 0 || !hasComponent(this.world.ecs, C.Transform, reid)) continue;
+      const dx = C.Transform.px[reid] - sx;
+      const dz = C.Transform.pz[reid] - sz;
+      if (dx * dx + dz * dz <= range2) this.sendEnvelope(r, MessageType.Chat, body);
+    }
   }
 
   /**

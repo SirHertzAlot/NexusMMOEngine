@@ -5,6 +5,9 @@ export type { DayClock } from "./day-clock.js";
 export type {
   AccountMessage,
   CharacterEntry,
+  ChatBroadcast,
+  ChatChannel,
+  ChatMessage,
   CreateCharacterMessage,
   DebugQuery,
   DebugResponse,

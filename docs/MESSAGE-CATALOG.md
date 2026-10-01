@@ -22,6 +22,7 @@ u64 ids travel as JSON strings (JS number precision).
 | 0x0c | `account` | S→C | JSON | `{session_token: "64 hex", characters: [{id: int, name: string, look: Look}], max_characters: int, created?: int}` | The account's characters, after a hello/register with `characters: true` and after each `create_character` (`created` = the new one's id). |
 | 0x0d | `create_character` | C→S | JSON | `{name: string, look: Look}` — name 3–16 chars `[A-Za-z'-]`, starting with a letter | Creates a character while choosing (answered with `account`). Refusals are 4005 (name taken, account full, look refused); a bad shape is 4003. |
 | 0x0e | `enter_world` | C→S | JSON | `{character: int}` | Enters the world as one of the account's characters: `welcome` + snapshot. Someone else's or an unknown id is 4005. |
+| 0x11 | `chat` | C→S / S→C | JSON | line: `{kind:"chat", channel: "say"\|"yell"\|"emote", text: 1–500 chars}` · fanned out: `{kind:"chat", channel, text, from, entity: "u64"}` | **Region chat (S1).** Say/emote reach avatars within 30 m, yell reaches every welcomed session. Per-channel cooldowns (say/emote 2 s, yell 10 s); malformed, filtered, too-frequent, or out-of-world lines are answered 4003. |
 
 ## Authentication (slice 1.4)
 
