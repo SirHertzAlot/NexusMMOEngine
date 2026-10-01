@@ -163,11 +163,37 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 | C | Accounts on the world server | 📋 (folded into C1 above) |
 | D | Stress harness and the published number | 📋 |
 
+## 7. Alpha
+
+Doc: [`ALPHA-PLAN.md`](ALPHA-PLAN.md): what alpha means, its exit
+criteria, and the decisions still open (D1 to D8 there).
+
+| # | Item | Status | Needs |
+|---|---|---|---|
+| M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ⏭️ | L1, A3 |
+| M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | 📋 | M3a |
+| M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | 📋 | M3b |
+| M2b | Death and respawn, corpses, deaths recorded | 📋 | M2a |
+| AI1 | Creature spawner and brain: goblins with weapons, aggro, chase, attack, leash | 📋 | M2a |
+| L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | 📋 | M2b, AI1 |
+| U10a | Inventory and equipment, first cut | 📋 | L2 |
+| U12a | Hit feedback and target frame | 📋 | M2a |
+| P2a | Item ledger: append-only, valid and transaction time, tombstones | 📋 | M3a, L2 |
+| P2b | Character save: position, health, inventory, equipment | 📋 | P2a |
+| P2c | Crash and replay tests over the ledger | 📋 | P2b |
+| L3 | Pool rebake keeps held items | 📋 | P2a |
+| T1 | Ingress hardening: frame cap, rate limits, validation tests | 📋 | |
+| T2 | Play telemetry into the editor's graphs | 📋 | α1 |
+
 ---
 
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-01**: Alpha plan ([`ALPHA-PLAN.md`](ALPHA-PLAN.md)):
+  three milestones (first fight, keep it, hold it) and section 7 here.
+  Decisions D1 to D8 await the user.
 
 - **2026-10-01**: Edge / core split build plan saved as
   [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) (recovered from a local
