@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { addComponent, defineQuery, Not } from "bitecs";
+import { addComponent, defineQuery, hasComponent, Not } from "bitecs";
 import {
   ChunkEntityStore,
   ChunkStreamer,
@@ -22,6 +22,7 @@ import {
   SnapshotStore,
   Transform,
   unpackChunk,
+  WorldItem,
   type ChunkDataSource,
   type ChunkPopulator,
   type ChunkStreamerOptions,
@@ -151,6 +152,26 @@ describe("ChunkStreamer", () => {
     assert.equal(home.length, 2, "no duplicates");
     assert.deepEqual(home.map((e) => Health.current[e]).sort((a, b) => a - b), [5, 100], "damage kept");
     assert.equal(propsIn(world, -1, 0).length, 1, "the felled rock stays gone");
+    store.close();
+  });
+
+  test("ground items (WorldItem) are not unloaded with their chunk", () => {
+    const world = new SimWorld();
+    const store = new ChunkEntityStore(tmpDb());
+    const s = streamer(store, { loadRadius: 1, unloadRadius: 1 });
+    const me = player(world, 8, 8);
+    run(s, world, 1);
+    const item = world.spawn();
+    addComponent(world.ecs, Transform, item);
+    Transform.px[item] = 20;
+    Transform.pz[item] = 20;
+    addComponent(world.ecs, WorldItem, item);
+    WorldItem.item[item] = 7;
+    Transform.px[me] = 20 * SIZE; // far away: the item's chunk unloads
+    run(s, world, 4);
+    assert.ok(s.stats.unloads > 0);
+    assert.equal(hasComponent(world.ecs, WorldItem, item), true, "the item stays live (it expires on its own)");
+    assert.equal(WorldItem.item[item], 7);
     store.close();
   });
 

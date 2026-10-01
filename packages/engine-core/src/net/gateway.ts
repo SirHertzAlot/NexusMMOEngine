@@ -77,6 +77,8 @@ import { applySet, SetArgsSchema } from "../admin/set.js";
 import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
+import { parseEntityArg, type ItemService } from "../items/index.js";
+import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import {
@@ -208,6 +210,13 @@ export interface GatewayOptions {
    */
   textFilter?: TextFilter;
   /**
+   * Items in the world (roadmap M3a): pickups and drops (0x13), bags
+   * (0x14), what lies on the ground (0x15), and the item admin commands.
+   * The same instance must also be in `systems` (it expires ground
+   * items each tick). Absent: item messages are refused.
+   */
+  items?: ItemService;
+  /**
    * Editor-only read-only debug answers (protocol v3, 0x0a). Injected
    * by the production server via makeDebugSource(); when absent, the
    * `tiles` query answers [] and `waypoints` answers "unknown". The
@@ -337,6 +346,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "items"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -372,6 +382,10 @@ export class Gateway {
   private readonly playerAbilities: number;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
+  /** Items (see GatewayOptions.items); shared with the systems list. */
+  private readonly items: ItemService | null;
+  /** Bag owners for sessions that play no character: one negative id per account. */
+  private readonly accountHolders = new Map<string, number>();
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
   /** The stats version last sent to each session (see sendStats). */
@@ -435,6 +449,7 @@ export class Gateway {
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
     this.textFilter = opts.textFilter ?? allowAllText;
+    this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.authSessions = new SessionManager({
@@ -564,17 +579,18 @@ export class Gateway {
     // Names for newly spawned character entities ride before the delta
     // that first shows them (catalog §0x12).
     const namesEnv = this.namesFor(state.spawned);
+    const dropsEnv = this.dropsFor(state.spawned);
     const deltaBytes = encodeDelta(state);
     this.tracker.commit(sim);
     sim.endTick();
 
-    this.broadcast(tick, deltaBytes, namesEnv);
+    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
     this.sweepGracePeriods();
     this.maybeHeartbeat();
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */
-  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null): void {
+  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
     const deltaEnv = encodeEnvelope(MessageType.Delta, deltaBytes);
     let snapshotEnv: Uint8Array | undefined;
@@ -587,6 +603,7 @@ export class Gateway {
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
       if (namesEnv) this.deliver(s, namesEnv, tick);
+      if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (isSnapshotTick || s.needsResync) {
         this.deliverSnapshot(s, snapshotFor(), tick);
       } else {
@@ -806,6 +823,9 @@ export class Gateway {
       case MessageType.Chat:
         this.onChat(s, payload);
         break;
+      case MessageType.Item:
+        this.onItem(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -897,7 +917,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly",
+        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
       };
     } else if (cmd.command === "whoami") {
       res = {
@@ -922,6 +942,13 @@ export class Gateway {
       }
     } else if (cmd.command === "spawnlist" || cmd.command === "spawn" || cmd.command === "despawn") {
       res = this.runSpawnCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot") {
+      res = this.runItemCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -1309,6 +1336,7 @@ export class Gateway {
       this.sendWelcome(known);
       this.sendFreshSnapshot(known);
       this.sendStats(known, this.tick, true);
+      this.sendInventory(known);
       return;
     }
 
@@ -1365,6 +1393,7 @@ export class Gateway {
     this.sendWelcome(s);
     this.sendFreshSnapshot(s);
     this.sendStats(s, this.tick, true);
+    this.sendInventory(s);
   }
 
   /**
@@ -1713,6 +1742,8 @@ export class Gateway {
     // entity is first-shown here (catalog §0x12).
     const names = this.namesFor(null);
     if (names) this.deliver(s, names, this.tick);
+    const drops = this.dropsFor(null);
+    if (drops) this.deliver(s, drops, this.tick);
     this.deliverSnapshot(
       s,
       encodeEnvelope(
@@ -1723,6 +1754,122 @@ export class Gateway {
       ),
       this.tick,
     );
+  }
+
+  /**
+   * Item actions (catalog §0x13, roadmap M3a): pick a ground item up, or
+   * drop one from the bag. In-world sessions only; a bad shape is 4003, a
+   * refusal (too far, someone else's, bag full) 4005. Every change answers
+   * with the whole bag (0x14).
+   */
+  private onItem(s: ClientSession, payload: Uint8Array): void {
+    if (!this.items || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "items outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed item action");
+      return;
+    }
+    const parsed = ItemActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed item action");
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) {
+      this.sendError(s, 4005, "no avatar");
+      return;
+    }
+    const holder = this.holderOf(s);
+    const a = parsed.data;
+    let result;
+    if (a.action === "pickup") {
+      const entity = parseEntityArg(a.entity);
+      result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
+    } else {
+      result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, result.error);
+      return;
+    }
+    this.sendInventory(s);
+  }
+
+  /** Who owns a session's bag: its character, or (no character) one id per account. */
+  private holderOf(s: ClientSession): number {
+    if (s.character) return s.character.id;
+    let id = this.accountHolders.get(s.username);
+    if (id === undefined) this.accountHolders.set(s.username, (id = -(this.accountHolders.size + 1)));
+    return id;
+  }
+
+  /** The session's whole bag (catalog §0x14), when the server has items. */
+  private sendInventory(s: ClientSession): void {
+    if (!this.items || !s.welcomed) return;
+    this.sendEnvelope(s, MessageType.Inventory, encodeControl(this.items.inventoryOf(this.holderOf(s))));
+  }
+
+  /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */
+  private dropsFor(only: readonly bigint[] | null): Uint8Array | null {
+    if (!this.items) return null;
+    const msg = this.items.dropsFor(this.world, only);
+    return msg ? encodeEnvelope(MessageType.Drops, encodeControl(msg)) : null;
+  }
+
+  /**
+   * Item admin commands (roadmap A5, first slice): items, give, drop, loot
+   * (see admin/items.ts). Failures read as errors, never throw.
+   */
+  private runItemCommand(s: ClientSession, command: string, args: unknown): AdminResult {
+    const fail = (message: string): AdminResult => ({ kind: "admin", command, ok: false, message });
+    const items = this.items;
+    if (!items) return fail("no items on this server");
+    if (command === "items") {
+      const a = ItemPickArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail("usage: items {base?, rank?, source?}");
+      return { kind: "admin", command, ok: true, message: describeMatches(items.defs, a.data) };
+    }
+    if (s.playerEntity === null) return fail("no player entity (not in the world)");
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return fail("avatar is gone");
+    const x = C.Transform.px[avatar];
+    const z = C.Transform.pz[avatar];
+    const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
+    if (command === "loot") {
+      const a = LootArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail("usage: loot {count?}");
+      const count = a.data.count ?? 5;
+      const holder = this.holderOf(s);
+      let dropped = 0;
+      for (let i = 0; i < count; i++) {
+        const def = pickDef(items.defs, { source: "mob" }, seed + i * 7919);
+        if (def < 0) break;
+        const ang = (i / count) * Math.PI * 2;
+        const r = 1.5 + (i % 3) * 0.6;
+        items.spawnDrop(this.world, def, x + Math.sin(ang) * r, z + Math.cos(ang) * r, holder);
+        dropped++;
+      }
+      return dropped > 0
+        ? { kind: "admin", command, ok: true, message: `dropped ${dropped} mob drop${dropped === 1 ? "" : "s"} around you` }
+        : fail("no mob drops in the pool");
+    }
+    const a = ItemPickArgsSchema.safeParse(args ?? {});
+    if (!a.success) return fail(`usage: ${command} {def? | base?, rank?, source?}`);
+    const def = pickDef(items.defs, a.data, seed);
+    if (def < 0) return fail("no items match");
+    if (command === "give") {
+      const r = items.give(this.holderOf(s), def);
+      if (!r.ok) return fail(r.error);
+      this.sendInventory(s);
+      return { kind: "admin", command, ok: true, message: r.message };
+    }
+    const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
+    return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
   }
 
   /**

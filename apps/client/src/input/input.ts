@@ -20,8 +20,10 @@ import { IntentButton, type IntentFields } from "@mmo-engine/protocol";
 import {
   DEFAULT_BINDINGS,
   PRESS_ACTIONS,
+  UI_ACTIONS,
   type ActionId,
   type Bindings,
+  type UiActionId,
 } from "./bindings.js";
 
 const SENSITIVITY = 0.0025; // radians per mouse pixel
@@ -80,6 +82,12 @@ export class InputState {
 
   keyUp(code: string): void {
     if (this.keys.delete(code)) this.dirty = true;
+  }
+
+  /** The interface action a key is bound to (pick up, bag), or null. */
+  uiActionFor(code: string): UiActionId | null {
+    for (const a of UI_ACTIONS) if (this.bindings[a].includes(code)) return a;
+    return null;
   }
 
   /** Clear all keys immediately if the browser loses focus to prevent stuck "ghost" inputs. */
@@ -167,7 +175,11 @@ export class InputState {
  */
 function deriveSets(bindings: Bindings): { movementKeys: Set<string>; pressKeys: Set<string> } {
   const movementKeys = new Set<string>([FIXED_ATTACK, FIXED_GUARD]);
-  for (const codes of Object.values(bindings)) for (const c of codes) movementKeys.add(c);
+  const ui = new Set<string>(UI_ACTIONS);
+  for (const [action, codes] of Object.entries(bindings)) {
+    if (ui.has(action)) continue; // interface keys never move the character
+    for (const c of codes) movementKeys.add(c);
+  }
   const pressKeys = new Set<string>([...FIXED_PRESS]);
   for (const a of PRESS_ACTIONS) for (const c of bindings[a]) pressKeys.add(c);
   return { movementKeys, pressKeys };
@@ -181,7 +193,7 @@ function deriveSets(bindings: Bindings): { movementKeys: Set<string>; pressKeys:
 export function bindInput(
   el: HTMLElement,
   input: InputState,
-  opts: { onFirstInteraction?: () => void } = {},
+  opts: { onFirstInteraction?: () => void; onAction?: (action: UiActionId) => void } = {},
 ): () => void {
   let interacted = false;
 
@@ -193,7 +205,14 @@ export function bindInput(
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
+    // Typing in a text field (chat, the admin console) is not playing.
+    if (isTextField(e.target)) return;
     interact();
+    const action = e.repeat ? null : input.uiActionFor(e.code);
+    if (action) {
+      opts.onAction?.(action);
+      return;
+    }
     // Space and arrows would otherwise scroll the page.
     if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
     input.keyDown(e.code);
@@ -248,4 +267,13 @@ export function bindInput(
     window.removeEventListener("mouseup", onMouseUp);
     el.removeEventListener("contextmenu", onContextMenu);
   };
+}
+
+/** Whether a key event is aimed at a text field (its keys are typing, not play). */
+export function isTextField(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target.tagName === "TEXTAREA") return true;
+  if (target.tagName !== "INPUT") return false;
+  const type = (target as HTMLInputElement).type;
+  return type !== "range" && type !== "checkbox" && type !== "radio" && type !== "button";
 }

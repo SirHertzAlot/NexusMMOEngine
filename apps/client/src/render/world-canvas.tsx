@@ -36,6 +36,7 @@ import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type Worl
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
+import { DropLabels } from "./drop-labels.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
@@ -111,7 +112,21 @@ export interface WorldCanvasProps {
   /** The preset running now, and the one detected for the GPU (null until known). */
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
+  /** The bag key was pressed (M3a). */
+  onBag?: () => void;
+  /** The ground item in pickup range changed (null: none in range). */
+  onNearDrop?: (drop: NearDrop | null) => void;
 }
+
+/** The ground item the pick-up key would take (M3a). */
+export interface NearDrop {
+  entity: bigint;
+  name: string;
+  color: string;
+}
+
+/** How near a drop must be for the prompt: a little inside the server's range (rules loot.pickupRange, 2.5 m). */
+const PICKUP_PROMPT_RANGE = 2.3;
 
 installBvh();
 
@@ -224,6 +239,7 @@ interface Runtime {
   water: WaterRenderer;
   layer: EntityLayer;
   input: InputState;
+  drops: DropLabels;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -236,6 +252,8 @@ function MirrorWorld({
   showcase,
   bindings,
   onHud,
+  onBag,
+  onNearDrop,
   settings,
   screen,
   physicalSky,
@@ -245,10 +263,10 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, lastStateAt, settings };
+  const latest = useRef({ wireframe, showcase, onHud, onBag, onNearDrop, lastStateAt, settings });
+  latest.current = { wireframe, showcase, onHud, onBag, onNearDrop, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
-  const loop = useRef({ pointerMoved: false });
+  const loop = useRef<{ pointerMoved: boolean; nearDrop: bigint | null }>({ pointerMoved: false, nearDrop: null });
   const perf = useRef(new PerfSampler(performance.now()));
   const pointer = useRef(new THREE.Vector2());
   // Nearest hit only: with BVHs (bvh.ts) a ray stops at its first triangle.
@@ -269,7 +287,8 @@ function MirrorWorld({
     water.setWorld(map, world?.seaLevel ?? null);
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group);
+    const drops = new DropLabels();
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group);
 
     // Draw calls and triangles summed over every pass of a frame (the screen
     // effects render several); the frame loop reads and resets them.
@@ -277,7 +296,13 @@ function MirrorWorld({
 
     const canvas = gl.domElement;
     const input = new InputState();
-    const unbind = bindInput(canvas, input);
+    const unbind = bindInput(canvas, input, {
+      // Interface keys (M3a): pick up the drop in range, open the bag.
+      onAction: (action) => {
+        if (action === "bag") latest.current.onBag?.();
+        else if (drops.nearest !== null) client.pickup(drops.nearest);
+      },
+    });
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       camDistance.current = clampCamDistance(camDistance.current + e.deltaY * 0.01);
@@ -306,7 +331,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops };
     particles.setBudget(latest.current.settings.particles);
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -326,6 +351,8 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
+      scene.remove(drops.group);
+      drops.dispose();
       terrain.dispose();
       water.dispose();
     };
@@ -365,6 +392,13 @@ function MirrorWorld({
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
     }, client.names);
+    // Ground items: names, beams, and which one the pick-up key would take.
+    r.drops.sync(client.state, client.drops, camera, r.layer.player, PICKUP_PROMPT_RANGE);
+    if (r.drops.nearest !== l.nearDrop) {
+      l.nearDrop = r.drops.nearest;
+      const info = l.nearDrop === null ? undefined : client.drops.get(l.nearDrop);
+      latest.current.onNearDrop?.(l.nearDrop !== null && info ? { entity: l.nearDrop, name: info.name, color: info.color } : null);
+    }
     if (l.pointerMoved) {
       l.pointerMoved = false;
       raycaster.current.setFromCamera(pointer.current, camera);

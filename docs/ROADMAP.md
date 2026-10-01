@@ -73,7 +73,7 @@ stay read-only here; this edits the running game.
 | A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays |
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 🚧 | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; god-mode needs damage (M2/M3), mana its spender, time/weather a runtime clock design |
-| A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 📋 | A1, M3 (items), U10 (inventory) |
+| A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
 | A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
 
 ## 2. Game client: the player's interface
@@ -170,13 +170,13 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 | # | Item | Status | Needs |
 |---|---|---|---|
-| M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ⏭️ | L1, A3 |
-| M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | 📋 | M3a |
+| M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ✅ | Pickup (E), bag (B), rank-coloured labels and beams; bags in memory until P2a |
+| M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | ⏭️ | M3a |
 | M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | 📋 | M3b |
 | M2b | Death and respawn, corpses, deaths recorded | 📋 | M2a |
 | AI1 | Creature spawner and brain: goblins with weapons, aggro, chase, attack, leash | 📋 | M2a |
 | L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | 📋 | M2b, AI1 |
-| U10a | Inventory and equipment, first cut | 📋 | L2 |
+| U10a | Inventory and equipment, first cut | 🚧 | Bag grid, item details, drop live (M3a); equipping lands with M3b |
 | U12a | Hit feedback and target frame | 📋 | M2a |
 | ED1 | Gameplay tables in the editor: items, creatures, loot and death rules, validated, hot-reloaded | 📋 | M3a; each α1 slice adds its table |
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | 📋 | M3a, L2 |
@@ -191,6 +191,12 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-01**: M3a items: definitions from the loot pool with each
+  base's physics (`content/rules/items.json`), ground items you pick up
+  with E (owned 30 s, gone after 5 min, `loot.json`), a bag (B), and
+  admin `items`/`give`/`drop`/`loot`. Protocol v11 (0x13–0x15). Typing
+  in a text field no longer moves the character.
 
 - **2026-10-01**: Alpha plan ([`ALPHA-PLAN.md`](ALPHA-PLAN.md)):
   three milestones (first fight, keep it, hold it) and section 7 here.

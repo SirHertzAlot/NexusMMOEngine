@@ -18,6 +18,8 @@ export const ACTIONS = [
   "down",
   "flight",
   "dodge",
+  "interact",
+  "bag",
 ] as const;
 
 export type ActionId = (typeof ACTIONS)[number];
@@ -31,6 +33,8 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   down: "swim / fly down",
   flight: "toggle flight",
   dodge: "dodge",
+  interact: "pick up",
+  bag: "bag",
 };
 
 /** Mouse buttons fixed outside rebinding (attack, guard). */
@@ -50,7 +54,16 @@ export const DEFAULT_BINDINGS: Bindings = {
   down: ["KeyC"],
   flight: ["KeyF"],
   dodge: ["KeyQ"],
+  interact: ["KeyE"],
+  bag: ["KeyB"],
 };
+
+/**
+ * Interface actions (M3a): handled by the client, never part of the
+ * movement intent — pick up the nearest drop, open the bag.
+ */
+export const UI_ACTIONS = ["interact", "bag"] as const satisfies readonly ActionId[];
+export type UiActionId = (typeof UI_ACTIONS)[number];
 
 /** Actions whose press the server acts on (latched until an intent carries them). */
 export const PRESS_ACTIONS: readonly ActionId[] = ["jump", "flight", "dodge"];

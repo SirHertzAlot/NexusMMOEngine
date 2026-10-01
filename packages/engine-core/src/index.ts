@@ -38,7 +38,9 @@ export {
   Locomotion,
   Appearance,
   Action,
+  WorldItem,
 } from "./components.js";
+export * from "./items/index.js";
 
 export { SimWorld, SimEventEmitter } from "./world.js";
 export type { QueuedIntent, SimEventName, SimEventPayload, SimEventHandler, SimWorldOptions } from "./world.js";

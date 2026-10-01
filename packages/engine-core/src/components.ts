@@ -304,3 +304,18 @@ export const CharacterRef = defineComponent({
   idHi: Types.ui32,
   idLo: Types.ui32,
 });
+
+// ---------------------------------------------------------------------------
+// WorldItem: an item lying on the ground (roadmap M3a). Server-only: never
+// replicated or persisted (clients see the entity's Transform and AssetRef,
+// variant GROUND_ITEM_VARIANT, and its name from the drops message). `item`
+// is the ItemStore id; `owner` the character the drop belongs to (0:
+// anyone) until tick `ownedUntil`; it disappears at tick `despawnAt`.
+// ---------------------------------------------------------------------------
+
+export const WorldItem = defineComponent({
+  item: Types.ui32,
+  owner: Types.f64,
+  ownedUntil: Types.ui32,
+  despawnAt: Types.ui32,
+});

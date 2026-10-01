@@ -1,0 +1,279 @@
+/**
+ * ItemService (roadmap M3a): items in the world — dropping them on the
+ * ground, picking them up, putting them in bags, and clearing the ground.
+ *
+ * A ground item is an entity with a Transform (lying flat, at the ground
+ * height), an AssetRef (its model, variant GROUND_ITEM_VARIANT) and a
+ * server-only WorldItem row. The rules (content/rules/loot.json) set who
+ * may take a drop and when (decision D2: the one who earned it for 30 s,
+ * then anyone), when it disappears (5 min), the pickup range, and the bag
+ * size. Every request is validated here, server-side: a client can only
+ * ask (decision D3: a key press near the item).
+ *
+ * As a SimSystem it expires ground items whose time is up; it allocates
+ * nothing per tick (a query, and a despawn only when one is due).
+ */
+
+import { addComponent, defineQuery, entityExists, hasComponent } from "bitecs";
+import { GROUND_ITEM_VARIANT, type DropsMessage, type InventoryMessage, type ItemView } from "@mmo-engine/protocol";
+import type { LootRules } from "@mmo-engine/rules";
+import { AssetRef, Transform, WorldItem } from "../components.js";
+import { parseWireEntityId } from "../entity-id.js";
+import type { SimSystem } from "../systems.js";
+import type { SimWorld } from "../world.js";
+import { HAND_NAME, type ItemDefs } from "./item-defs.js";
+import { ItemStore, ItemWhere } from "./item-store.js";
+
+/** Height above the ground a lying item rests at, metres. */
+const REST_HEIGHT = 0.06;
+
+export interface ItemServiceOptions {
+  defs: ItemDefs;
+  loot: LootRules;
+  tickHz: number;
+  /** Ground height at (x, z), for placing drops; absent: y = 0. */
+  groundHeightAt?: (x: number, z: number) => number;
+}
+
+export type ItemResult = { ok: true; message: string } | { ok: false; error: string };
+
+const worldItems = defineQuery([WorldItem]);
+
+export class ItemService implements SimSystem {
+  readonly name = "items";
+  readonly defs: ItemDefs;
+  readonly store: ItemStore;
+  private readonly loot: LootRules;
+  private readonly tickHz: number;
+  private readonly groundHeightAt: (x: number, z: number) => number;
+  /** Ground item id -> its entity slot. */
+  private readonly entityOf = new Map<number, number>();
+  /** Ground item ids in drop order (oldest first), for the ground cap. */
+  private readonly groundOrder: number[] = [];
+
+  constructor(o: ItemServiceOptions) {
+    this.defs = o.defs;
+    this.loot = o.loot;
+    this.tickHz = o.tickHz;
+    this.groundHeightAt = o.groundHeightAt ?? (() => 0);
+    this.store = new ItemStore(o.loot.bagSlots);
+  }
+
+  /** Items lying on the ground. */
+  get groundCount(): number {
+    return this.entityOf.size;
+  }
+
+  /**
+   * Drop a new item of definition `def` at (x, z): it belongs to `owner`
+   * (a character id; 0: anyone) for the rules' ownership time. Returns the
+   * item id and its entity slot.
+   */
+  spawnDrop(sim: SimWorld, def: number, x: number, z: number, owner: number): { item: number; eid: number } {
+    if (def < 0 || def >= this.defs.count) throw new RangeError(`items: no definition ${def}`);
+    const item = this.store.create(def, this.defs.durability[def]);
+    const eid = this.placeOnGround(sim, item, x, z, owner);
+    return { item, eid };
+  }
+
+  /**
+   * Pick a ground item up into `character`'s bag. `avatar` is the
+   * character's entity slot (for the range check); `entity` the ground
+   * item's wire id.
+   */
+  pickup(sim: SimWorld, character: number, avatar: number, entity: bigint): ItemResult {
+    const eid = sim.resolveWireId(entity);
+    if (eid < 0 || !hasComponent(sim.ecs, WorldItem, eid)) return { ok: false, error: "nothing to pick up there" };
+    const dx = Transform.px[eid] - Transform.px[avatar];
+    const dz = Transform.pz[eid] - Transform.pz[avatar];
+    const dy = Transform.py[eid] - Transform.py[avatar];
+    const r = this.loot.pickupRange;
+    if (dx * dx + dz * dz > r * r || Math.abs(dy) > 3) return { ok: false, error: "too far away" };
+    const owner = WorldItem.owner[eid];
+    if (owner !== 0 && owner !== character && sim.currentTick < WorldItem.ownedUntil[eid]) {
+      return { ok: false, error: "that belongs to someone else for now" };
+    }
+    if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
+    const item = WorldItem.item[eid];
+    this.removeGroundEntity(sim, item, eid);
+    this.store.putInBag(character, item);
+    return { ok: true, message: `picked up ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+  }
+
+  /** Drop an item from `character`'s bag at its avatar's feet (anyone may take it). */
+  dropFromBag(sim: SimWorld, character: number, avatar: number, item: number): ItemResult {
+    if (!this.store.inBagOf(character, item)) return { ok: false, error: "you don't have that" };
+    const a = 0.6;
+    const yaw = Transform.qy[avatar] !== 0 || Transform.qw[avatar] !== 0 ? 2 * Math.atan2(Transform.qy[avatar], Transform.qw[avatar]) : 0;
+    this.placeOnGround(sim, item, Transform.px[avatar] + Math.sin(yaw) * a, Transform.pz[avatar] + Math.cos(yaw) * a, 0);
+    return { ok: true, message: `dropped ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+  }
+
+  /** Give a new item straight into a bag (admin `give`). */
+  give(character: number, def: number): ItemResult {
+    if (def < 0 || def >= this.defs.count) return { ok: false, error: "no such item" };
+    if (!this.store.hasRoom(character)) return { ok: false, error: "the bag is full" };
+    const item = this.store.create(def, this.defs.durability[def]);
+    this.store.putInBag(character, item);
+    return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
+  }
+
+  /** Expire ground items whose time is up. */
+  step(sim: SimWorld): void {
+    const tick = sim.currentTick;
+    const eids = worldItems(sim.ecs);
+    for (let i = eids.length - 1; i >= 0; i--) {
+      const eid = eids[i];
+      if (tick >= WorldItem.despawnAt[eid]) {
+        const item = WorldItem.item[eid];
+        this.removeGroundEntity(sim, item, eid);
+        this.store.destroy(item);
+      }
+    }
+  }
+
+  /**
+   * Ground item entities left by a restore (the item store is in memory
+   * only until the ledger, P2a): despawn every ground-item-variant entity
+   * that has no live item behind it. Returns how many went.
+   */
+  clearStrayGroundItems(sim: SimWorld): number {
+    const strays: number[] = [];
+    for (let eid = 0; eid <= sim.maxSlotSeen; eid++) {
+      if (!entityExists(sim.ecs, eid) || !hasComponent(sim.ecs, AssetRef, eid)) continue;
+      if (AssetRef.variant[eid] !== GROUND_ITEM_VARIANT) continue;
+      if (hasComponent(sim.ecs, WorldItem, eid) && this.entityOf.get(WorldItem.item[eid]) === eid) continue;
+      strays.push(eid);
+    }
+    for (const eid of strays) sim.despawn(eid);
+    return strays.length;
+  }
+
+  /** The drops message for these ground item entities (null: every one), or null when none apply. */
+  dropsFor(sim: SimWorld, only: readonly bigint[] | null): DropsMessage | null {
+    const rows: DropsMessage["drops"] = [];
+    const add = (eid: number): void => {
+      const slot = this.store.slot(WorldItem.item[eid]);
+      if (slot < 0) return;
+      const def = this.store.defs[slot];
+      rows.push([sim.wireId(eid).toString(), this.defs.names[def], this.defs.ranks[def], this.defs.colors[def]]);
+    };
+    if (only === null) {
+      for (const eid of this.entityOf.values()) add(eid);
+    } else {
+      for (const wid of only) {
+        const eid = sim.resolveWireId(wid);
+        if (eid >= 0 && hasComponent(sim.ecs, WorldItem, eid)) add(eid);
+      }
+    }
+    return rows.length > 0 ? { kind: "drops", drops: rows } : null;
+  }
+
+  /** What a character's bag holds, for the inventory message. */
+  inventoryOf(character: number): InventoryMessage {
+    const bag = this.store.bag(character);
+    const out: InventoryMessage["bag"] = [];
+    for (let i = 0; i < bag.length; i++) out.push(bag[i] === 0 ? null : this.view(bag[i]));
+    return { kind: "inventory", bag: out };
+  }
+
+  /** One item as its holder sees it. */
+  view(item: number): ItemView {
+    const slot = this.store.slot(item);
+    if (slot < 0) throw new Error(`items: no item ${item}`);
+    const d = this.store.defs[slot];
+    const defs = this.defs;
+    return {
+      id: item,
+      def: defs.ids[d],
+      name: defs.names[d],
+      base: defs.bases[d],
+      rank: defs.ranks[d],
+      color: defs.colors[d],
+      hand: HAND_NAME[defs.hand[d]],
+      stats: { ...defs.stats[d] },
+      durability: Math.round(this.store.durability[slot]),
+      model: defs.models[d],
+    };
+  }
+
+  /** Ground entity slot of a ground item, or -1. */
+  groundEntity(item: number): number {
+    return this.entityOf.get(item) ?? -1;
+  }
+
+  private placeOnGround(sim: SimWorld, item: number, x: number, z: number, owner: number): number {
+    const slot = this.store.slot(item);
+    const def = this.store.defs[slot];
+    this.store.placeOnGround(item, owner);
+    const eid = sim.spawn();
+    addComponent(sim.ecs, Transform, eid);
+    Transform.px[eid] = x;
+    Transform.py[eid] = this.groundHeightAt(x, z) + REST_HEIGHT;
+    Transform.pz[eid] = z;
+    // Lying flat: rolled a quarter turn about Z (models stand along +Y),
+    // then turned about Y by a yaw from the item id: q = yaw ⊗ roll.
+    const half = (((item * 2654435761) >>> 0) / 4294967296) * Math.PI;
+    const a = Math.SQRT1_2;
+    const sy = Math.sin(half);
+    const cy = Math.cos(half);
+    Transform.qx[eid] = sy * a;
+    Transform.qy[eid] = sy * a;
+    Transform.qz[eid] = cy * a;
+    Transform.qw[eid] = cy * a;
+    Transform.sx[eid] = 1;
+    Transform.sy[eid] = 1;
+    Transform.sz[eid] = 1;
+    addComponent(sim.ecs, AssetRef, eid);
+    AssetRef.assetHash[eid] = this.defs.assetHash[def];
+    AssetRef.variant[eid] = GROUND_ITEM_VARIANT;
+    addComponent(sim.ecs, WorldItem, eid);
+    const tick = sim.currentTick;
+    WorldItem.item[eid] = item;
+    WorldItem.owner[eid] = owner;
+    WorldItem.ownedUntil[eid] = tick + Math.round(this.loot.ownershipSeconds * this.tickHz);
+    WorldItem.despawnAt[eid] = tick + Math.round(this.loot.despawnSeconds * this.tickHz);
+    this.entityOf.set(item, eid);
+    this.groundOrder.push(item);
+    this.enforceCap(sim);
+    return eid;
+  }
+
+  private removeGroundEntity(sim: SimWorld, item: number, eid: number): void {
+    this.entityOf.delete(item);
+    if (entityExists(sim.ecs, eid)) sim.despawn(eid);
+    // groundOrder is pruned lazily (enforceCap skips ids no longer on the ground).
+  }
+
+  /** Past the ground cap, the oldest ground items go. */
+  private enforceCap(sim: SimWorld): void {
+    while (this.entityOf.size > this.loot.maxGroundItems && this.groundOrder.length > 0) {
+      const oldest = this.groundOrder.shift()!;
+      const eid = this.entityOf.get(oldest);
+      if (eid === undefined) continue;
+      this.removeGroundEntity(sim, oldest, eid);
+      this.store.destroy(oldest);
+    }
+    // Keep the order list from growing without bound with stale ids.
+    if (this.groundOrder.length > 2 * this.loot.maxGroundItems + 64) {
+      const live = this.groundOrder.filter((id) => this.entityOf.has(id));
+      this.groundOrder.length = 0;
+      this.groundOrder.push(...live);
+    }
+  }
+}
+
+/** Parse a decimal wire id from a client; null when malformed. */
+export function parseEntityArg(entity: string): bigint | null {
+  if (!/^\d{1,20}$/.test(entity)) return null;
+  const v = BigInt(entity);
+  if (v > 0xffffffffffffffffn) return null;
+  try {
+    parseWireEntityId(v);
+  } catch {
+    return null;
+  }
+  return v;
+}
+
+export { ItemWhere };

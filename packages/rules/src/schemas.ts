@@ -263,6 +263,68 @@ export const StatsSchema = z.strictObject({
   stats: z.array(DerivedStatSchema).default([]),
 });
 
+// ----------------------------------------------------------------- items
+
+/** Which hand an item is held in: one hand, the off hand, both, or not held (armour, jewels). */
+export const Hand = z.enum(["main", "off", "both", "none"]);
+
+/**
+ * An item base's physical properties (docs/MASTERY-AND-COMBAT.md §3.1):
+ * what a blow with it does, not a damage number. A composed item (the loot
+ * pool's) is its base plus components; the base sets the physics, the
+ * components the stats.
+ */
+export const ItemBaseRulesSchema = z.strictObject({
+  /** kg: heavier hits harder and swings slower. */
+  mass: positive.default(1),
+  /** Metres of reach. */
+  length: z.number().min(0).default(0.5),
+  /** How well it cuts, pierces, and transfers a blunt blow (0..1). */
+  edge: share.default(0.1),
+  point: share.default(0.1),
+  hardness: share.default(0.5),
+  /** How quickly it recovers between blows (0..1). */
+  balance: share.default(0.5),
+  /** Uses before it breaks. */
+  durability: z.number().int().positive().default(100),
+  hand: Hand.default("none"),
+  /** The technique a plain attack with it uses (a combat.json technique). */
+  technique: id.default("bludgeon"),
+  /**
+   * Model ids the item can show as (art catalog ids, e.g.
+   * "fantasy-kingdom/SM_Wep_Sword_01"); an item picks one by its seed.
+   * Empty: the client's placeholder.
+   */
+  models: z.array(z.string().min(1).max(160)).default([]),
+});
+
+export const ItemsSchema = z.strictObject({
+  /** Item base id (the loot catalog's: sword, axe, …) -> its physics. */
+  bases: z.record(id, ItemBaseRulesSchema).default({}),
+  /** For a composed item whose base isn't listed: a stick's worth of physics. */
+  fallback: ItemBaseRulesSchema.prefault({}),
+  /** A composed item's `power` stat scales its blows: × (1 + power × powerScale). */
+  powerScale: z.number().min(0).default(0.02),
+  /** Damage from a blow with no item in hand (fists), before power and parts. */
+  unarmed: ItemBaseRulesSchema.prefault({ mass: 0.6, length: 0.3, edge: 0, point: 0, hardness: 0.3, technique: "bludgeon" }),
+});
+
+// ------------------------------------------------------------------ loot
+
+/** Items on the ground and in bags (docs/ALPHA-PLAN.md, decisions D2 and D3). */
+export const LootSchema = z.strictObject({
+  /** Seconds a drop belongs to whoever earned it before anyone may take it. */
+  ownershipSeconds: z.number().min(0).default(30),
+  /** Seconds before an item left on the ground disappears. */
+  despawnSeconds: positive.default(300),
+  /** Metres from the character within which an item can be picked up. */
+  pickupRange: positive.default(2.5),
+  /** Bag slots per character. */
+  bagSlots: z.number().int().min(1).max(256).default(24),
+  /** Most items lying on the ground in a region at once: past it, the oldest go. */
+  maxGroundItems: z.number().int().min(1).max(65536).default(4096),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -274,6 +336,8 @@ export const RULE_FILES = {
   death: DeathSchema,
   appearance: AppearanceSchema,
   stats: StatsSchema,
+  items: ItemsSchema,
+  loot: LootSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -288,6 +352,10 @@ export type AppearanceRules = z.infer<typeof AppearanceSchema>;
 export type DamageKind = z.infer<typeof DamageKind>;
 export type ItemProperty = z.infer<typeof ItemProperty>;
 export type StatsRules = z.infer<typeof StatsSchema>;
+export type ItemsRules = z.infer<typeof ItemsSchema>;
+export type ItemBaseRules = z.infer<typeof ItemBaseRulesSchema>;
+export type HandKind = z.infer<typeof Hand>;
+export type LootRules = z.infer<typeof LootSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
 export type DerivedStatDef = z.infer<typeof DerivedStatSchema>;
 export type StatDrive = z.infer<typeof StatDrive>;
@@ -301,4 +369,6 @@ export interface Rules {
   death: DeathRules;
   appearance: AppearanceRules;
   stats: StatsRules;
+  items: ItemsRules;
+  loot: LootRules;
 }
