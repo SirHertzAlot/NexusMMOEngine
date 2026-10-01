@@ -68,6 +68,32 @@ client mirrors authoritative snapshots/deltas with interpolation and
 sends WASD/mouse-look intents upstream — no client prediction yet.
 Details: [`apps/client/README.md`](apps/client/README.md).
 
+## Memory and performance checks (valgrind)
+
+Valgrind (3.x, Linux) checks the native addons and measures the engine:
+
+```sh
+npm run valgrind:memcheck            # every addon's tests under memcheck
+npm run valgrind:memcheck -- navigation physics    # some of them
+npm run valgrind:perf                # instruction counts vs the baseline
+npm run valgrind:perf -- --check     # fail if anything is > 3 % slower
+npm run valgrind:perf -- --update    # re-measure and write the baseline
+```
+
+- **memcheck** fails on memory errors and definite leaks in our code
+  (the addons' own binaries); Node's and V8's own reports are left out.
+  About 3 minutes for all addons. Rebuild an addon with
+  `CXXFLAGS=-g npx node-gyp rebuild` for file and line numbers.
+- **perf** runs the headless workloads in `scripts/valgrind/workloads.mjs`
+  (the engine's tick on 1,000 entities, a crowd of 100, a batch of paths,
+  physics, a terrain chunk, a PICG cook, meshoptimizer, a dungeon shell)
+  under callgrind. Each is measured from the perf probe's `begin()` to its
+  `end()` (`@mmo-engine/addon-perf-probe`), so a count is exactly the
+  workload's instructions, JS and native. Counts are stable between runs,
+  unlike wall time, so `perf/callgrind-baseline.json` is a baseline to
+  hold architecture changes to. The dumps in `valgrind-out/callgrind/`
+  open in `callgrind_annotate` or KCachegrind.
+
 ## Contract changes
 
 1. Edit **only** `packages/schema/mmo_engine.fbs` (additive changes: new

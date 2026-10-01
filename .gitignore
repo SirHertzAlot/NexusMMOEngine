@@ -10,6 +10,7 @@ dist/
 
 # sim benchmark artifacts (regenerable via `npm run sim`)
 sim-artifacts/
+valgrind-out/
 
 # native addon build output
 build/
