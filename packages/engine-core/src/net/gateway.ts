@@ -70,6 +70,8 @@ import {
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
+import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
+import { applySet, SetArgsSchema } from "../admin/set.js";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import {
   MAX_QUEUED_DELTAS,
@@ -858,7 +860,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami",
+        message: "commands: help, whoami, inspect, set",
       };
     } else if (cmd.command === "whoami") {
       res = {
@@ -867,6 +869,20 @@ export class Gateway {
         ok: true,
         message: `admin ${s.username}${this.devServer ? " (dev server)" : ""}`,
       };
+    } else if (cmd.command === "inspect") {
+      res = this.runInspect(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "set") {
+      res = this.runSet(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else {
       this.logAdmin(s.username, cmd.command, false);
       this.sendError(s, 4003, `unknown admin command ${JSON.stringify(cmd.command)}`);
@@ -874,6 +890,66 @@ export class Gateway {
     }
     this.logAdmin(s.username, cmd.command, true);
     this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
+  }
+
+  /**
+   * Resolve an inspect/set entity arg to a wire id: "me" is the caller's
+   * own avatar, otherwise a decimal u64. Errors read as messages, never
+   * throw — except a missing avatar, which the callers phrase per command.
+   */
+  private resolveTarget(s: ClientSession, entity: string): { wireId: bigint } | { error: string } {
+    if (entity === "me") {
+      if (s.playerEntity === null) return { error: "no player entity (not in the world)" };
+      return { wireId: s.playerEntity };
+    }
+    let wireId: bigint;
+    try {
+      wireId = BigInt(entity);
+    } catch {
+      return { error: `unknown entity ${JSON.stringify(entity)}` };
+    }
+    if (wireId < 0n || wireId > 0xffffffffffffffffn) return { error: `unknown entity ${JSON.stringify(entity)}` };
+    return { wireId };
+  }
+
+  /**
+   * `inspect` (roadmap A2, read path): dump one entity's components.
+   * `{entity: "<u64>"}` or `{entity: "me"}` (the caller's own avatar).
+   * Unknown entities and bad args read as errors, never throws.
+   */
+  private runInspect(s: ClientSession, args: unknown): AdminResult {
+    const parsed = InspectArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "inspect", ok: false, message: "usage: inspect {entity: <u64> | me}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "inspect", ok: false, message: target.error };
+    }
+    const dump = inspectEntity(this.world, target.wireId);
+    if (dump === null) {
+      return { kind: "admin", command: "inspect", ok: false, message: `unknown entity ${parsed.data.entity}` };
+    }
+    return { kind: "admin", command: "inspect", ok: true, message: dump };
+  }
+
+  /**
+   * `set` (roadmap A2, write path): change one numeric component field.
+   * Args: {entity: "<u64>" | "me", component, field, value}. Unknown
+   * entities, components, fields, and values read as errors, never throw.
+   */
+  private runSet(s: ClientSession, args: unknown): AdminResult {
+    const parsed = SetArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "set", ok: false, message: "usage: set {entity, component, field, value}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "set", ok: false, message: target.error };
+    }
+    const r = applySet(this.world, target.wireId, parsed.data.component, parsed.data.field, parsed.data.value);
+    if (!r.ok) return { kind: "admin", command: "set", ok: false, message: r.message };
+    return { kind: "admin", command: "set", ok: true, message: r.message };
   }
 
   /** Record one answered admin command (ring: the last ADMIN_LOG_SIZE). */
