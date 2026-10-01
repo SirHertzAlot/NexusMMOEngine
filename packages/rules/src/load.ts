@@ -92,6 +92,8 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   death: [],
   appearance: ["body"],
   stats: [],
+  items: ["combat"],
+  loot: [],
 };
 
 let defaults: Rules | null = null;
@@ -229,5 +231,14 @@ function crossCheck(r: Rules): RulesIssue[] {
       if (!attributes.has(attr)) add("stats", `stats[${i}].from.${attr}`, `no attribute "${attr}"`);
     }
   });
+
+  // Items: every base's plain attack is a combat technique.
+  const techniques = new Set(Object.keys(r.combat.techniques));
+  for (const [base, b] of Object.entries(r.items.bases)) {
+    if (!techniques.has(b.technique)) add("items", `bases.${base}.technique`, `no combat technique "${b.technique}"`);
+  }
+  if (!techniques.has(r.items.fallback.technique)) add("items", "fallback.technique", `no combat technique "${r.items.fallback.technique}"`);
+  if (!techniques.has(r.items.unarmed.technique)) add("items", "unarmed.technique", `no combat technique "${r.items.unarmed.technique}"`);
+
   return issues;
 }

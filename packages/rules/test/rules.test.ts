@@ -116,6 +116,24 @@ describe("our game's rules (content/rules)", () => {
     assert.ok(h.skillGain({ skill: 50, peak: 90, difficulty: 0.5 }) > h.skillGain({ skill: 50, peak: 50, difficulty: 0.5 }), "relearning is faster");
   });
 
+  it("give every loot item base physics, a hand and models (items.json)", () => {
+    for (const base of ["sword", "greatsword", "axe", "mace", "dagger", "spear", "shield"]) {
+      const b = rules.items.bases[base];
+      assert.ok(b, `no ${base}`);
+      assert.ok(b.models.length > 0, `${base} has no models`);
+      assert.ok(b.technique in rules.combat.techniques, `${base}: ${b.technique}`);
+    }
+    // The design doc's sword (§3.1).
+    const sword = rules.items.bases.sword;
+    assert.deepEqual([sword.mass, sword.edge, sword.point, sword.hardness, sword.hand], [1.3, 0.9, 0.8, 0.9, "main"]);
+    assert.equal(rules.items.bases.shield.hand, "off");
+  });
+
+  it("own drops for 30 s and despawn them after 5 min (loot.json, alpha D2)", () => {
+    assert.equal(rules.loot.ownershipSeconds, 30);
+    assert.equal(rules.loot.despawnSeconds, 300);
+  });
+
   it("respawn with skills kept and injuries cleared", () => {
     const h = createHooks(rules);
     const outcome = h.onDeath({ cause: "part", part: "head" });
@@ -177,6 +195,12 @@ describe("bad rules", () => {
     ]) {
       assert.ok(issues.includes(want), `missing "${want}" in:\n${issues.join("\n")}`);
     }
+  });
+
+  it("catch an item base whose technique isn't a combat technique", () => {
+    const issues = issuesOf(() => parseRules({ items: { bases: { club: { technique: "smash" } }, fallback: { technique: "poke" } } }));
+    assert.ok(issues.includes('items.json: bases.club.technique: no combat technique "smash"'), issues.join("\n"));
+    assert.ok(issues.includes('items.json: fallback.technique: no combat technique "poke"'), issues.join("\n"));
   });
 
   it("report cross-file problems even when another file failed its schema", () => {

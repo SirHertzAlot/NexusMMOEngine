@@ -19,6 +19,8 @@ a bad file, naming each problem by file and field:
 | `body.json` | The body's parts (a tree: losing one loses everything below it), their share of health, hit multipliers, what happens at 0, when blows harm, maim or dismember, and bleeding |
 | `death.json` | Respawn delay and place, what carries over, whether deaths are recorded |
 | `appearance.json` | Which appearance slot draws which body part (hidden when that part is lost) |
+| `items.json` | Each item base's physics (mass, reach, edge, point, hardness, balance, durability), the hand it is held in, the technique a plain attack uses, and the models it can show as; how much a composed item's power adds; fists |
+| `loot.json` | Items on the ground and in bags: how long a drop belongs to whoever earned it, when it disappears, pickup range, bag size, the most items on the ground at once |
 
 The schemas, with every field's meaning and default, are in
 `packages/rules/src/schemas.ts`; the reasoning is in

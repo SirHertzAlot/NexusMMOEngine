@@ -120,7 +120,9 @@ export function unpackChunk(key: number): [number, number] {
 }
 
 const playerQuery = defineQuery([C.PlayerIntent, C.Transform]);
-const propQuery = defineQuery([C.Transform, Not(C.PlayerIntent)]);
+// Ground items (WorldItem) stay live until they expire: their item lives in
+// the ItemService, which a chunk row could not carry.
+const propQuery = defineQuery([C.Transform, Not(C.PlayerIntent), Not(C.WorldItem)]);
 const chunkQuery = defineQuery([C.Chunk]);
 
 function emptyState(tick: number): CollectedState {

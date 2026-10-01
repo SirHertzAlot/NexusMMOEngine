@@ -52,6 +52,12 @@ export enum MessageType {
    * tags land with guilds, S4; until then the column is "").
    */
   Names = 0x12,
+  /** C→S item actions (catalog §0x13, roadmap M3a): pick up, drop. JSON. */
+  Item = 0x13,
+  /** S→C the player's bag (catalog §0x14), after joining and every change. JSON. */
+  Inventory = 0x14,
+  /** S→C what ground items are (catalog §0x15), before the state that first shows them. JSON. */
+  Drops = 0x15,
 }
 
 /**
@@ -256,7 +262,9 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 10; // v10 (2026-10-01): C3 identity —
+export const PROTOCOL_VERSION = 11; // v11 (2026-10-01): items — 0x13 item
+// actions, 0x14 inventory, 0x15 drops (roadmap M3a).
+// v10 (2026-10-01): C3 identity —
 // CharacterRef wire block + 0x12 names (roadmap C3).
 // v9 (2026-10-01): region chat — 0x11, say/yell/emote (roadmap S1).
 // v8 (2026-09-30): admin console — 0x10 (roadmap A1).

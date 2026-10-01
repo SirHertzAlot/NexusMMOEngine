@@ -118,6 +118,7 @@ import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.j
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
+import { ItemService, loadItemDefs } from "./items/index.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -412,12 +413,28 @@ async function main(): Promise<void> {
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
+  // Items (roadmap M3a): definitions from the baked loot pool joined with
+  // the rules' physics. One instance: the gateway routes item messages to
+  // it, and it is in the systems list (it expires ground items).
+  const itemDefs = loadItemDefs(DATA_DIR, game.rules);
+  console.log(`[${itemDefs.summary}]`);
+  const items = new ItemService({
+    defs: itemDefs.defs,
+    loot: game.rules.loot,
+    tickHz: 30,
+    groundHeightAt: (x, z) => character.groundHeight(x, z),
+  });
+  // Bags live in memory until the item ledger (P2a): items a restored
+  // snapshot left lying on the ground have nothing behind them.
+  const strays = items.clearStrayGroundItems(sim);
+  if (strays > 0) console.log(`[items] cleared ${strays} ground item(s) left from before the restart`);
   const gw = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(30, stamina), stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation],
+    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(30, stamina), stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

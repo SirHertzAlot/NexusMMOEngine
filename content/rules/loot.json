@@ -1,0 +1,7 @@
+{
+  "ownershipSeconds": 30,
+  "despawnSeconds": 300,
+  "pickupRange": 2.5,
+  "bagSlots": 24,
+  "maxGroundItems": 4096
+}

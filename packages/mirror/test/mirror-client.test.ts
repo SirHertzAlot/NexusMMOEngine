@@ -528,6 +528,30 @@ describe("MirrorClient.names (0x12)", () => {
   });
 });
 
+describe("MirrorClient items (0x13-0x15)", () => {
+  it("stores drops by entity, prunes them on despawn, and keeps the bag", async () => {
+    let inv: unknown = null;
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    (client as unknown as { events: { onInventory?: (i: unknown) => void } }).events.onInventory = (i) => (inv = i);
+    socket.receive(encodeEnvelope(MessageType.Drops, encodeControl({ kind: "drops", drops: [["9", "Keen Sword", "rare", "#3399ff"]] })));
+    assert.deepEqual(client.drops.get(9n), { name: "Keen Sword", rank: "rare", color: "#3399ff" });
+    socket.receive(encodeEnvelope(MessageType.Delta, encodeDelta({ ...emptyState(2, 1), despawned: [9n] })));
+    assert.equal(client.drops.has(9n), false);
+    const bag = { kind: "inventory", bag: [null, null] };
+    socket.receive(encodeEnvelope(MessageType.Inventory, encodeControl(bag)));
+    assert.deepEqual(client.inventory, bag);
+    assert.deepEqual(inv, bag);
+  });
+
+  it("sends pickups and drops as item actions", async () => {
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    client.pickup(12n);
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Item)).payload), { kind: "item", action: "pickup", entity: "12" });
+    client.dropItem(3);
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Item)).payload), { kind: "item", action: "drop", item: 3 });
+  });
+});
+
 describe("MirrorClient characters", () => {
   const LOOK = { gender: "female", parts: { head: "Chr_Head_Female_02" }, colours: { skin: "#8d5524" } };
   const account = (characters: AccountMessage["characters"], created?: number): Uint8Array =>

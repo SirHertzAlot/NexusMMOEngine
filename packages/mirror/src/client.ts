@@ -31,6 +31,8 @@ import {
   type CreateCharacterMessage,
   type DebugQuery,
   type DebugResponse,
+  type DropsMessage,
+  type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
   type IntentFields,
@@ -71,6 +73,8 @@ export interface MirrorEvents {
   onStats?(s: StatsMessage): void;
   /** A region chat line arrived (roadmap U6, protocol 0x11). */
   onChat?(c: ChatBroadcast): void;
+  /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
+  onInventory?(inv: InventoryMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -108,6 +112,14 @@ export class MirrorClient {
    * entry is name-only.
    */
   readonly names = new Map<bigint, string>();
+  /**
+   * What ground items are, by entity wire id, from the drops message
+   * (M3a, 0x15): name, rank, and the rank's colour. Pruned as entities
+   * despawn, like names.
+   */
+  readonly drops = new Map<bigint, { name: string; rank: string; color: string }>();
+  /** The player's bag, from the last inventory message; null until one arrives. */
+  inventory: InventoryMessage | null = null;
   /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
   readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
@@ -196,6 +208,18 @@ export class MirrorClient {
    * broadcasts have no reply; rejections arrive as ErrorMessage through
    * onError. The server trims, filters, and rate-limits.
    */
+  /** Ask to pick a ground item up (M3a, 0x13); the server answers with the bag, or a 4005 refusal. */
+  pickup(entity: bigint): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
+  }
+
+  /** Ask to drop an item from the bag at the player's feet (M3a, 0x13). */
+  dropItem(item: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "drop", item })));
+  }
+
   chat(channel: ChatChannel, text: string): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "chat", channel, text })));
@@ -508,6 +532,16 @@ export class MirrorClient {
         for (const [entity, name] of names) this.names.set(BigInt(entity), name);
         break;
       }
+      case MessageType.Drops: {
+        const { drops } = decodeControl<DropsMessage>(payload);
+        for (const [entity, name, rank, color] of drops) this.drops.set(BigInt(entity), { name, rank, color });
+        break;
+      }
+      case MessageType.Inventory: {
+        this.inventory = decodeControl<InventoryMessage>(payload);
+        this.events.onInventory?.(this.inventory);
+        break;
+      }
       case MessageType.Bye:
         this.disconnect();
         break;
@@ -542,6 +576,9 @@ export class MirrorClient {
     for (const wid of this.names.keys()) {
       if (!this.state.entities.has(wid)) this.names.delete(wid);
     }
+    for (const wid of this.drops.keys()) {
+      if (!this.state.entities.has(wid)) this.drops.delete(wid);
+    }
     this.serverTick = s.tick;
     this.events.onState(s.tick);
     this.flushIntent();
@@ -554,6 +591,7 @@ export class MirrorClient {
     for (const wid of d.despawned) {
       this.interpolator.remove(wid);
       this.names.delete(wid);
+      this.drops.delete(wid);
     }
     this.serverTick = d.tick;
     this.events.onState(d.tick);

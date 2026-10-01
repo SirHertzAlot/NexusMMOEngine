@@ -22,10 +22,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
-import type { StatsMessage } from "@mmo-engine/protocol";
+import type { InventoryMessage, StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
-import { WorldCanvas, type HudData } from "./render/world-canvas.js";
+import { WorldCanvas, type HudData, type NearDrop } from "./render/world-canvas.js";
 import type { GpuInfo } from "./render/gpu.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
@@ -35,6 +35,7 @@ import { PlayerFrame } from "./ui/player-frame.js";
 import { AdminConsole } from "./ui/admin-console.js";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
+import { BagPanel } from "./ui/bag-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
@@ -124,6 +125,11 @@ export function App(): React.ReactElement {
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
   const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
+  const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
+  const [bagOpen, setBagOpen] = useState(false);
+  const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
+  const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -141,7 +147,12 @@ export function App(): React.ReactElement {
         lastStateAtRef.current = performance.now();
         void tick;
       },
-      onError: (e) => setError(`server error ${e.code}: ${e.message}`),
+      onError: (e) => {
+        // A refusal in the world (too far, someone else's, bag full) is a
+        // notice, not a failed connection.
+        if (e.code === 4005 && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
+        else setError(`server error ${e.code}: ${e.message}`);
+      },
       onClose: () => {
         // The server sends an error frame before closing on every
         // rejection; keep that reason instead of masking it.
@@ -150,6 +161,7 @@ export function App(): React.ReactElement {
       },
       onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
       onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
+      onInventory: (inv) => setBag(inv.bag),
     });
 
   /**
@@ -227,6 +239,9 @@ export function App(): React.ReactElement {
     setChatLines([]);
     setSheet(null);
     setSheetOpen(false);
+    setBag(null);
+    setBagOpen(false);
+    setNearDrop(null);
     setScreen("login");
   };
 
@@ -249,6 +264,7 @@ export function App(): React.ReactElement {
   };
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
+  const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -286,7 +302,16 @@ export function App(): React.ReactElement {
           onQuality={onQuality}
           onGpu={onGpu}
           onHud={setHud}
+          onBag={toggleBag}
+          onNearDrop={setNearDrop}
         />
+        {nearDrop && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            pick up <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
+          </div>
+        )}
+        {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
         <PlayerFrame name={characterName} hp={hud.hp} maxHp={hud.maxHp} sp={hud.sp} maxSp={hud.maxSp} />
         {DEV_TOOLS ? (
           <DevHud
@@ -390,11 +415,15 @@ export function App(): React.ReactElement {
           onSend={(text) => client?.chat(chatChannel, text)}
         />
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+          {bagOpen && bag && <BagPanel bag={bag} onDrop={(id) => client?.dropItem(id)} />}
           {sheetOpen && sheet && (
             <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
           )}
           <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
             sheet
+          </Button>
+          <Button size="sm" variant="secondary" onClick={toggleBag} aria-expanded={bagOpen} title={`Bag (${prettyCode(bindings.bag[0] ?? "KeyB")})`}>
+            bag
           </Button>
         </div>
       </div>
@@ -519,6 +548,19 @@ export function App(): React.ReactElement {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** A short-lived message over the world (a refused pickup, …), gone after a few seconds. */
+function Notice({ text, onDone }: { text: string; onDone: () => void }): React.ReactElement {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2500);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div role="status" className="pointer-events-none absolute left-1/2 top-24 z-10 -translate-x-1/2 rounded-md border bg-card/90 px-3 py-1 text-sm text-amber-200 shadow-sm">
+      {text}
     </div>
   );
 }

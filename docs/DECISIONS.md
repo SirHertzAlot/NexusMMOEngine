@@ -2,6 +2,22 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-01 — Items on the ground are ordinary entities; the item
+  itself lives in the ItemService (roadmap M3a).** A ground item is a
+  Transform and an AssetRef (its model; variant `GROUND_ITEM_VARIANT`,
+  0xffff) plus a server-only `WorldItem` row, so it streams to clients
+  like any prop, is drawn by the instanced props, and needed no
+  FlatBuffers change. What it is (name, rank, colour) rides the JSON
+  drops message (0x15) before the state that first shows it, like
+  character names. Item instances and bags sit in preallocated columns
+  in the ItemService, in memory until the item ledger (P2a): a restart
+  clears ground items with nothing behind them, and chunk unloads leave
+  ground items alone (they expire instead). Definitions are the baked
+  loot pool joined with each item base's physics from
+  `content/rules/items.json`; damage will read those columns, never
+  objects. Ownership (30 s), despawn (5 min) and key-press pickup are
+  the user's alpha decisions D2 and D3, in `content/rules/loot.json`.
+
 - **2026-09-29 — The client is React all the way down: React Three Fiber
   for the 3D world (Joey's decision).** The HUD and menus stay React DOM;
   the world is a React Three Fiber `<Canvas>` in the same React tree, so

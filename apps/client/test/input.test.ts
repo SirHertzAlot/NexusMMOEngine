@@ -12,7 +12,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { IntentButton } from "@mmo-engine/protocol";
-import { InputState } from "../src/input/input.js";
+import { InputState, isTextField } from "../src/input/input.js";
+import { DEFAULT_BINDINGS } from "../src/input/bindings.js";
 
 function withKeys(...codes: string[]): InputState {
   const input = new InputState();
@@ -186,5 +187,31 @@ describe("InputState combat buttons", () => {
     s.keyUp("Mouse0");
     assert.equal(s.toIntent().buttons, IntentButton.Attack, "latched until an intent carries it");
     assert.equal(s.toIntent().buttons, 0, "then released");
+  });
+});
+
+describe("InputState interface keys (M3a)", () => {
+  it("E picks up and B opens the bag by default; neither moves the character", () => {
+    const input = new InputState();
+    assert.equal(input.uiActionFor("KeyE"), "interact");
+    assert.equal(input.uiActionFor("KeyB"), "bag");
+    assert.equal(input.uiActionFor("KeyW"), null);
+    input.consumeDirty();
+    input.keyDown("KeyE");
+    input.keyDown("KeyB");
+    assert.equal(input.consumeDirty(), false, "interface keys never mark the intent dirty");
+  });
+
+  it("follows rebinding", () => {
+    const input = new InputState();
+    const b = structuredClone(DEFAULT_BINDINGS);
+    b.interact = ["KeyG"];
+    input.setBindings(b);
+    assert.equal(input.uiActionFor("KeyG"), "interact");
+    assert.equal(input.uiActionFor("KeyE"), null);
+  });
+
+  it("treats nothing as a text field outside the browser", () => {
+    assert.equal(isTextField(null), false);
   });
 });

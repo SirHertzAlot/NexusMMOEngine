@@ -1,0 +1,33 @@
+{
+  "bases": {
+    "sword": { "mass": 1.3, "length": 0.9, "edge": 0.9, "point": 0.8, "hardness": 0.9, "balance": 0.7, "durability": 100, "hand": "main", "technique": "cut",
+      "models": ["dungeon-pack/SM_Wep_Straightsword_01", "dungeon-pack/SM_Wep_Cutlass_01", "fantasy-kingdom/SM_Wep_Sword_01", "fantasy-kingdom/SM_Wep_Sword_02"] },
+    "greatsword": { "mass": 3.0, "length": 1.4, "edge": 0.9, "point": 0.6, "hardness": 0.9, "balance": 0.4, "durability": 120, "hand": "both", "technique": "cut",
+      "models": ["dungeon-pack/SM_Wep_GreatSword_01", "dungeon-pack/SM_Wep_Greatsword_Curved_01", "dungeon-pack/SM_Wep_Greatsword_Round_01"] },
+    "axe": { "mass": 1.8, "length": 0.8, "edge": 0.8, "point": 0.1, "hardness": 0.8, "balance": 0.45, "durability": 100, "hand": "main", "technique": "cut",
+      "models": ["dungeon-pack/SM_Wep_Axe_01", "dungeon-pack/SM_Wep_HandAxe_01", "dungeon-pack/SM_Wep_Ornate_Axe_01", "dungeon-pack/SM_Wep_Axe_Rune_01"] },
+    "mace": { "mass": 2.0, "length": 0.7, "edge": 0.1, "point": 0.1, "hardness": 1.0, "balance": 0.5, "durability": 140, "hand": "main", "technique": "bludgeon",
+      "models": ["fantasy-kingdom/SM_Wep_Mace_01", "fantasy-kingdom/SM_Wep_Mace_02"] },
+    "dagger": { "mass": 0.4, "length": 0.35, "edge": 0.7, "point": 0.95, "hardness": 0.8, "balance": 0.9, "durability": 60, "hand": "main", "technique": "thrust",
+      "models": ["fantasy-kingdom/SM_Wep_Dagger_01", "fantasy-kingdom/SM_Wep_Dagger_02", "fantasy-kingdom/SM_Wep_Dagger_03"] },
+    "spear": { "mass": 2.2, "length": 2.0, "edge": 0.4, "point": 0.9, "hardness": 0.7, "balance": 0.5, "durability": 90, "hand": "both", "technique": "thrust",
+      "models": ["dungeon-pack/SM_Wep_Spear_01", "dungeon-pack/SM_Wep_Spear_02", "fantasy-kingdom/SM_Wep_Spear_01"] },
+    "staff": { "mass": 1.6, "length": 1.6, "edge": 0.05, "point": 0.2, "hardness": 0.5, "balance": 0.6, "durability": 80, "hand": "both", "technique": "bludgeon",
+      "models": ["fantasy-kingdom/SM_Wep_Staff_01", "dungeon-pack/SM_Wep_Staff_Gem_01"] },
+    "wand": { "mass": 0.3, "length": 0.35, "edge": 0, "point": 0.1, "hardness": 0.3, "balance": 0.9, "durability": 40, "hand": "main", "technique": "bludgeon",
+      "models": ["fantasy-kingdom/SM_Wep_Sceptre_01", "fantasy-kingdom/SM_Wep_Sceptre_03"] },
+    "bow": { "mass": 1.0, "length": 1.2, "edge": 0, "point": 0.05, "hardness": 0.3, "balance": 0.6, "durability": 70, "hand": "both", "technique": "bludgeon",
+      "models": [] },
+    "shield": { "mass": 4.0, "length": 0.6, "edge": 0.05, "point": 0.05, "hardness": 0.9, "balance": 0.4, "durability": 150, "hand": "off", "technique": "bludgeon",
+      "models": ["dungeon-pack/SM_Wep_Shield_Bone_01", "dungeon-pack/SM_Wep_Shield_Chitin_01"] },
+    "helm": { "mass": 2.0, "length": 0.3, "hardness": 0.8, "durability": 120, "models": ["fantasy-kingdom/SM_Prop_Bag_Explorer_01"] },
+    "cuirass": { "mass": 8.0, "length": 0.6, "hardness": 0.8, "durability": 160, "models": ["fantasy-kingdom/SM_Prop_Bag_Explorer_01"] },
+    "gauntlets": { "mass": 1.0, "length": 0.3, "hardness": 0.8, "durability": 100, "models": ["fantasy-kingdom/SM_Item_Pouch_02"] },
+    "greaves": { "mass": 2.0, "length": 0.5, "hardness": 0.8, "durability": 120, "models": ["fantasy-kingdom/SM_Prop_Bag_Explorer_01"] },
+    "ring": { "mass": 0.01, "length": 0.02, "hardness": 0.9, "durability": 500,
+      "models": ["fantasy-kingdom/SM_Item_Ring_01", "fantasy-kingdom/SM_Item_Ring_03", "fantasy-kingdom/SM_Item_Ring_05"] },
+    "amulet": { "mass": 0.05, "length": 0.3, "hardness": 0.6, "durability": 300,
+      "models": ["fantasy-kingdom/SM_Item_Necklace_Flat_01", "fantasy-kingdom/SM_Item_Necklace_Flat_03"] }
+  },
+  "powerScale": 0.02
+}
