@@ -178,6 +178,28 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
+  it("teleport moves the avatar with ground snap; heal fills; fly flips the bit", async () => {
+    const url = await startGateway({ admins: ["alice"], groundHeightAt: () => 42 });
+    const { client, entity } = await join(url, "alice");
+    const tp = await admin(client, "teleport", { x: 100, z: 200 });
+    assert.equal(tp.ok, true);
+    assert.match(tp.message, /teleported .* to 100 200/);
+    const at = await admin(client, "inspect", { entity: entity.toString() });
+    assert.match(at.message, /Transform: pos 100 42 200/);
+    const hurt = await admin(client, "set", { entity: entity.toString(), component: "Health", field: "current", value: 5 });
+    assert.equal(hurt.ok, true);
+    const healed = await admin(client, "heal", {});
+    assert.equal(healed.ok, true);
+    assert.match(healed.message, /healed .* to 100/);
+    const fly = await admin(client, "fly", { on: true });
+    assert.equal(fly.ok, true);
+    const flying = await admin(client, "inspect", { entity: entity.toString() });
+    assert.match(flying.message, /Locomotion: mode 0 abilities 3 breath/);
+    const grounded = await admin(client, "fly", { on: false });
+    assert.equal(grounded.ok, true);
+    await client.close();
+  });
+
   it("spawnlist names the table; spawn plants at me; despawn removes", async () => {
     const url = await startGateway({
       admins: ["alice"],
