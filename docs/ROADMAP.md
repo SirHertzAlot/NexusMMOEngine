@@ -192,6 +192,10 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-01**: Fix: admin commands (0x10) fell through into the chat
+  handler and drew a stray "malformed chat" 4003 after every result.
+  Every workspace now compiles with `noFallthroughCasesInSwitch`.
+
 - **2026-10-01**: Alpha plan ([`ALPHA-PLAN.md`](ALPHA-PLAN.md)):
   three milestones (first fight, keep it, hold it) and section 7 here.
   Decided: whole-body damage, loot owned 30 s then free, despawn 5 min,

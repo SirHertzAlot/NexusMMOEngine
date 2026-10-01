@@ -84,6 +84,23 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
+  it("an admin command is not also handled as chat (no stray 4003)", async () => {
+    // Regression: the 0x10 case fell through into the 0x11 chat handler,
+    // so every admin command was also parsed as chat and answered with a
+    // "malformed chat" error after its result.
+    const url = await startGateway({ admins: ["alice"] });
+    const client = await joinClient(url, "alice");
+    const before = client.payloads(MessageType.Error).length;
+    const who = await admin(client, "whoami");
+    assert.equal(who.ok, true);
+    // A ping round trip orders us after anything the gateway sent for the command.
+    const pong = client.waitFor(MessageType.Pong, 1);
+    client.sendPing();
+    await pong;
+    const errors = client.payloads(MessageType.Error).slice(before).map((p) => decodeControl<ErrorMessage>(p));
+    assert.deepEqual(errors, []);
+  });
+
   it("a non-admin is rejected and logged", async () => {
     const url = await startGateway({ admins: ["alice"] });
     const client = await joinClient(url, "user-a");

@@ -803,6 +803,7 @@ export class Gateway {
         break;
       case MessageType.Admin:
         this.onAdmin(s, payload);
+        break;
       case MessageType.Chat:
         this.onChat(s, payload);
         break;
