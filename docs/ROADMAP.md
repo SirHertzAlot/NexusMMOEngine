@@ -169,6 +169,10 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-01**: Edge / core split build plan saved as
+  [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) (recovered from a local
+  stash). Not scheduled; its slices E1–E6 are not the editor's E items.
+
 - **2026-09-30**: U9 character sheet: attributes + derived stats with
   modifier deltas from the stats message, toggleable panel. Skills
   await M1, injuries M2.
