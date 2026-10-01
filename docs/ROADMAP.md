@@ -192,6 +192,9 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-01**: Fix: the client's panels (player frame, chat, sheet,
+  settings) were see-through. Their `bg-card/90`-style classes generated
+  nothing; the theme colours now live in the Tailwind config.
 - **2026-10-01**: Fix: `addon-geometry` failed to compile under MSVC
   (C2666 on a `Uint8Array` index), so the geometry and dungeon suites
   failed on Windows. The mask is now read through a raw byte pointer.
