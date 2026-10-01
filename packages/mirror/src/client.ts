@@ -30,6 +30,7 @@ import {
   type ErrorMessage,
   type HelloMessage,
   type IntentFields,
+  type NamesMessage,
   type RegisterMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -94,6 +95,13 @@ export class MirrorClient {
   account: AccountMessage | null = null;
   /** The player's own attributes and stats, from the last stats message; null until one arrives. */
   stats: StatsMessage | null = null;
+  /**
+   * Character names by entity wire id, from the names control message
+   * (C3). Pruned as entities despawn; the entity layer reads it for
+   * nameplates. Guild tags arrive with guilds (S4); until then each
+   * entry is name-only.
+   */
+  readonly names = new Map<bigint, string>();
   /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
   readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
@@ -427,6 +435,11 @@ export class MirrorClient {
         this.events.onStats?.(stats);
         break;
       }
+      case MessageType.Names: {
+        const { names } = decodeControl<NamesMessage>(payload);
+        for (const [entity, name] of names) this.names.set(BigInt(entity), name);
+        break;
+      }
       case MessageType.Bye:
         this.disconnect();
         break;
@@ -457,6 +470,10 @@ export class MirrorClient {
     this.state.applySnapshot(s);
     this.interpolator.clear();
     this.interpolator.push(s.tick, s.transforms);
+    // Full replace: drop names for entities the snapshot doesn't carry.
+    for (const wid of this.names.keys()) {
+      if (!this.state.entities.has(wid)) this.names.delete(wid);
+    }
     this.serverTick = s.tick;
     this.events.onState(s.tick);
     this.flushIntent();
@@ -466,7 +483,10 @@ export class MirrorClient {
     const d = decodeDelta(payload);
     this.state.applyDelta(d);
     this.interpolator.push(d.tick, d.transforms);
-    for (const wid of d.despawned) this.interpolator.remove(wid);
+    for (const wid of d.despawned) {
+      this.interpolator.remove(wid);
+      this.names.delete(wid);
+    }
     this.serverTick = d.tick;
     this.events.onState(d.tick);
     this.flushIntent();

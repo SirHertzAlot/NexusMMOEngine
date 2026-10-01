@@ -11,6 +11,7 @@ export type {
   EnterWorldMessage,
   ErrorMessage,
   HelloMessage,
+  NamesMessage,
   RegisterMessage,
   StatLineMessage,
   StatsMessage,
@@ -28,6 +29,7 @@ export {
 export type {
   AssetRefRow,
   BodyConfigRow,
+  CharacterRefRow,
   ChunkRow,
   CollectedState,
   DecodedIntentMessage,

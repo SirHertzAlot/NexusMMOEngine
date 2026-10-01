@@ -33,6 +33,13 @@ export enum MessageType {
   EnterWorld = 0x0e,
   /** S→C: the player's own stats (catalog §0x0f), after joining and whenever they change. */
   Stats = 0x0f,
+  /**
+   * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): [[entity,
+   * name, guildTag]] for the character entities a snapshot or delta
+   * first shows, sent before it (and again when a guild tag changes —
+   * tags land with guilds, S4; until then the column is "").
+   */
+  Names = 0x12,
 }
 
 /**
@@ -176,8 +183,23 @@ export interface StatsMessage {
   stats: StatLineMessage[];
 }
 
+/**
+ * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): one row per
+ * character entity the accompanying snapshot or delta first shows.
+ * Tuples, spec-literal: [entity wire id, character name, guild tag].
+ * The tag column is "" until guilds (S4).
+ */
+export interface NamesMessage {
+  kind: "names";
+  names: Array<[string, string, string]>;
+}
+
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 7; // v7 (2026-09-29): stats — 0x0f, the
+export const PROTOCOL_VERSION = 8; // v8 (2026-09-30): C3 identity —
+// CharacterRef wire block + 0x12 names (roadmap C3). NOTE: the
+// admin-console (0x10) and chat (0x11) branches also claim v8 —
+// mergers reconcile ascending (admin 8, chat 9, names 10, in merge order).
+// v7 (2026-09-29): stats — 0x0f, the
 // player's own attributes and derived stats.
 // v6: combat — the Action component on the wire and the
 // Attack/Block/Dodge intent buttons.

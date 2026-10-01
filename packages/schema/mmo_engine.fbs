@@ -94,6 +94,7 @@ table Snapshot {
   locomotions: LocomotionBlock;
   appearances: AppearanceBlock;
   actions: ActionBlock;
+  characterRefs: CharacterRefBlock;
 }
 
 table Delta {
@@ -112,6 +113,7 @@ table Delta {
   locomotions: LocomotionBlock;
   appearances: AppearanceBlock;
   actions: ActionBlock;
+  characterRefs: CharacterRefBlock;
 }
 
 // ---- client -> server intent events (slice 1.3, additive) ----
@@ -211,5 +213,14 @@ table Action {
 }
 
 table ActionBlock { entities: [uint64]; items: [Action]; }
+
+// The character an entity plays as (C3): the character-store id split
+// hi/lo (bitECS has no u64 store). Bots and props carry no row.
+table CharacterRef {
+  idHi: uint32;
+  idLo: uint32;
+}
+
+table CharacterRefBlock { entities: [uint64]; items: [CharacterRef]; }
 
 root_type Snapshot;

@@ -350,7 +350,7 @@ function MirrorWorld({
     r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
-    });
+    }, client.names);
     if (l.pointerMoved) {
       l.pointerMoved = false;
       raycaster.current.setFromCamera(pointer.current, camera);

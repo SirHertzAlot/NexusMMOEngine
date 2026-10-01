@@ -126,6 +126,7 @@ export const COMPONENT_IDS = {
   Locomotion: 9,
   Appearance: 10,
   Action: 11,
+  CharacterRef: 12,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -278,4 +279,16 @@ export const Action = defineComponent({
   started: Types.ui32,
   seq: Types.ui8,
   yaw: Types.f32,
+});
+
+// ---------------------------------------------------------------------------
+// CharacterRef: the character an entity plays as (C3) — the
+// character-store id split hi/lo (bitECS has no u64 store). Set at spawn
+// for player avatars; bots and props carry no row. Replicated so every
+// client can tie entities to names (the `names` control message).
+// ---------------------------------------------------------------------------
+
+export const CharacterRef = defineComponent({
+  idHi: Types.ui32,
+  idLo: Types.ui32,
 });

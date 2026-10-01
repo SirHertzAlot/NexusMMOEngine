@@ -53,6 +53,7 @@ import type {
   ChunkRow,
   CollectedState,
   HealthRow,
+  CharacterRefRow,
   IntentRow,
   LocomotionRow,
   TransformRow,
@@ -66,6 +67,7 @@ export type {
   ChunkRow,
   CollectedState,
   HealthRow,
+  CharacterRefRow,
   IntentRow,
   LocomotionRow,
   TransformRow,
@@ -83,6 +85,7 @@ const qAssets: Query = defineQuery([C.AssetRef]);
 const qLocomotion: Query = defineQuery([C.Locomotion]);
 const qAppearance: Query = defineQuery([C.Appearance]);
 const qAction: Query = defineQuery([C.Action]);
+const qCharacterRef: Query = defineQuery([C.CharacterRef]);
 
 function readTransform(sim: SimWorld, eid: number): TransformRow {
   const T = C.Transform;
@@ -188,6 +191,11 @@ function readAction(sim: SimWorld, eid: number): ActionRow {
   return { wireId: sim.wireId(eid), move: A.move[eid], started: A.started[eid], seq: A.seq[eid], yaw: A.yaw[eid] };
 }
 
+function readCharacterRef(sim: SimWorld, eid: number): CharacterRefRow {
+  const R = C.CharacterRef;
+  return { wireId: sim.wireId(eid), characterId: R.idHi[eid] * 4294967296 + R.idLo[eid] };
+}
+
 /** Collect the full state of every entity carrying each component. */
 export function collectFullState(sim: SimWorld, tick: number): CollectedState {
   return {
@@ -203,6 +211,7 @@ export function collectFullState(sim: SimWorld, tick: number): CollectedState {
     locomotions: qLocomotion(sim.ecs).map((e) => readLocomotion(sim, e)),
     appearances: qAppearance(sim.ecs).map((e) => readAppearance(sim, e)),
     actions: qAction(sim.ecs).map((e) => readAction(sim, e)),
+    characterRefs: qCharacterRef(sim.ecs).map((e) => readCharacterRef(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -229,6 +238,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
     locomotions: having(C.Locomotion).map((e) => readLocomotion(sim, e)),
     appearances: having(C.Appearance).map((e) => readAppearance(sim, e)),
     actions: having(C.Action).map((e) => readAction(sim, e)),
+    characterRefs: having(C.CharacterRef).map((e) => readCharacterRef(sim, e)),
     spawned: [],
     despawned: [],
   };
@@ -236,7 +246,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
 
 // ---------------------------------------------------------- delta diff
 
-type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "bodies" | "assets" | "locomotions" | "appearances" | "actions";
+type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs";
 
 interface TrackedComponent {
   key: DiffKey;
@@ -300,6 +310,12 @@ const TRACKED: TrackedComponent[] = [
     stores: C.Action as unknown as Record<string, ArrayLike<number>>,
     fields: ["move", "started", "seq", "yaw"],
   },
+  {
+    // Configuration: a character ref never changes after spawn.
+    key: "characterRefs", query: qCharacterRef,
+    stores: C.CharacterRef as unknown as Record<string, ArrayLike<number>>,
+    fields: ["idHi", "idLo"],
+  },
 ];
 
 export interface DiffResult {
@@ -313,6 +329,7 @@ export interface DiffResult {
   locomotions: number[];
   appearances: number[];
   actions: number[];
+  characterRefs: number[];
 }
 
 /**
@@ -353,7 +370,7 @@ export class DeltaTracker {
     const bound = sim.maxSlotSeen + 1;
     const out: DiffResult = {
       transforms: [], velocities: [], intents: [], chunks: [], healths: [],
-      bodies: [], assets: [], locomotions: [], appearances: [], actions: [],
+      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [],
     };
     for (let ti = 0; ti < TRACKED.length; ti++) {
       const t = TRACKED[ti];
@@ -429,6 +446,7 @@ export function collectDeltaState(
     locomotions: d.locomotions.map((e) => readLocomotion(sim, e)),
     appearances: d.appearances.map((e) => readAppearance(sim, e)),
     actions: d.actions.map((e) => readAction(sim, e)),
+    characterRefs: d.characterRefs.map((e) => readCharacterRef(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
