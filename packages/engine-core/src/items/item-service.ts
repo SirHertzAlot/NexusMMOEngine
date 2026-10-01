@@ -21,8 +21,9 @@ import { AssetRef, Transform, WorldItem } from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
-import { HAND_NAME, type ItemDefs } from "./item-defs.js";
-import { ItemStore, ItemWhere } from "./item-store.js";
+import type { Held } from "@mmo-engine/art/character";
+import { HAND_CODE, HAND_NAME, type ItemDefs } from "./item-defs.js";
+import { HandSlot, ItemStore, ItemWhere } from "./item-store.js";
 
 /** Height above the ground a lying item rests at, metres. */
 const REST_HEIGHT = 0.06;
@@ -33,6 +34,10 @@ export interface ItemServiceOptions {
   tickHz: number;
   /** Ground height at (x, z), for placing drops; absent: y = 0. */
   groundHeightAt?: (x: number, z: number) => number;
+  /** Rank ids lowest first (the loot ladder), for the starter weapon. Default: none (any rank). */
+  rankOrder?: readonly string[];
+  /** The item base a new character starts holding (M3b). Default "sword"; null: none. */
+  starterBase?: string | null;
 }
 
 export type ItemResult = { ok: true; message: string } | { ok: false; error: string };
@@ -50,6 +55,10 @@ export class ItemService implements SimSystem {
   private readonly entityOf = new Map<number, number>();
   /** Ground item ids in drop order (oldest first), for the ground cap. */
   private readonly groundOrder: number[] = [];
+  private readonly rankOrder: readonly string[];
+  private readonly starterBase: string | null;
+  /** Characters already given their starter weapon this run. */
+  private readonly outfitted = new Set<number>();
 
   constructor(o: ItemServiceOptions) {
     this.defs = o.defs;
@@ -57,6 +66,8 @@ export class ItemService implements SimSystem {
     this.tickHz = o.tickHz;
     this.groundHeightAt = o.groundHeightAt ?? (() => 0);
     this.store = new ItemStore(o.loot.bagSlots);
+    this.rankOrder = o.rankOrder ?? [];
+    this.starterBase = o.starterBase === undefined ? "sword" : o.starterBase;
   }
 
   /** Items lying on the ground. */
@@ -107,6 +118,88 @@ export class ItemService implements SimSystem {
     const yaw = Transform.qy[avatar] !== 0 || Transform.qw[avatar] !== 0 ? 2 * Math.atan2(Transform.qy[avatar], Transform.qw[avatar]) : 0;
     this.placeOnGround(sim, item, Transform.px[avatar] + Math.sin(yaw) * a, Transform.pz[avatar] + Math.cos(yaw) * a, 0);
     return { ok: true, message: `dropped ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+  }
+
+  /**
+   * Hold an item from the bag (M3b): it goes to its hand, and what that
+   * hand held goes back to the bag. A two-handed item empties both hands;
+   * an off-hand item displaces a two-handed one. Refused when the item
+   * can't be held, isn't in the bag, or the bag has no room for what
+   * comes out.
+   */
+  equip(character: number, item: number): ItemResult {
+    if (!this.store.inBagOf(character, item)) return { ok: false, error: "you don't have that" };
+    const def = this.store.defs[this.store.slot(item)];
+    const hand = this.defs.hand[def];
+    if (hand === HAND_CODE.none) return { ok: false, error: "you can't hold that" };
+    const hands = this.store.hands(character);
+    const main = hands[HandSlot.Main];
+    const off = hands[HandSlot.Off];
+    const mainTwoHanded = main !== 0 && this.defs.hand[this.store.defs[this.store.slot(main)]] === HAND_CODE.both;
+    const out: number[] = [];
+    if (hand === HAND_CODE.main) {
+      if (main) out.push(main);
+    } else if (hand === HAND_CODE.off) {
+      if (off) out.push(off);
+      if (mainTwoHanded) out.push(main);
+    } else {
+      if (main) out.push(main);
+      if (off) out.push(off);
+    }
+    // The item leaves the bag, so its slot is free for one of them.
+    if (out.length > this.store.emptySlots(character) + 1) return { ok: false, error: "your bag is too full to swap" };
+    this.store.hold(character, item, hand === HAND_CODE.off ? HandSlot.Off : HandSlot.Main);
+    for (const o of out) this.store.putInBag(character, o);
+    return { ok: true, message: `holding ${this.defs.names[def]}` };
+  }
+
+  /** Put what a hand holds back in the bag. */
+  unequip(character: number, hand: "main" | "off"): ItemResult {
+    const item = this.store.hands(character)[hand === "main" ? HandSlot.Main : HandSlot.Off];
+    if (!item) return { ok: false, error: "that hand is empty" };
+    if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
+    this.store.putInBag(character, item);
+    return { ok: true, message: `put away ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+  }
+
+  /** The models a character holds (for its appearance; empty hands are left out). */
+  heldModels(character: number): Held {
+    const hands = this.store.hands(character);
+    const model = (id: number): string | undefined => {
+      if (!id) return undefined;
+      const m = this.defs.models[this.store.defs[this.store.slot(id)]];
+      return m || undefined;
+    };
+    const out: Held = {};
+    const main = model(hands[HandSlot.Main]);
+    const off = model(hands[HandSlot.Off]);
+    if (main) out.main = main;
+    if (off) out.off = off;
+    return out;
+  }
+
+  /** Definition of the item in a character's main hand, or -1 (empty-handed). */
+  mainHandDef(character: number): number {
+    const id = this.store.hands(character)[HandSlot.Main];
+    return id ? this.store.defs[this.store.slot(id)] : -1;
+  }
+
+  /**
+   * A new character's starter weapon (M3b): the first time a character is
+   * seen this run with empty hands, it is given the lowest-ranked item of
+   * the starter base and holds it. Returns whether anything was given.
+   * (Bags live in memory until the ledger, P2a, so "first time" is per run.)
+   */
+  outfit(character: number): boolean {
+    if (this.outfitted.has(character) || this.starterBase === null) return false;
+    this.outfitted.add(character);
+    const hands = this.store.hands(character);
+    if (hands[HandSlot.Main] || hands[HandSlot.Off]) return false;
+    const def = this.defs.starter(this.starterBase, this.rankOrder);
+    if (def < 0) return false;
+    const item = this.store.create(def, this.defs.durability[def]);
+    this.store.hold(character, item, HandSlot.Main);
+    return true;
   }
 
   /** Give a new item straight into a bag (admin `give`). */
@@ -174,7 +267,13 @@ export class ItemService implements SimSystem {
     const bag = this.store.bag(character);
     const out: InventoryMessage["bag"] = [];
     for (let i = 0; i < bag.length; i++) out.push(bag[i] === 0 ? null : this.view(bag[i]));
-    return { kind: "inventory", bag: out };
+    const hands = this.store.hands(character);
+    return {
+      kind: "inventory",
+      bag: out,
+      main: hands[HandSlot.Main] ? this.view(hands[HandSlot.Main]) : null,
+      off: hands[HandSlot.Off] ? this.view(hands[HandSlot.Off]) : null,
+    };
   }
 
   /** One item as its holder sees it. */

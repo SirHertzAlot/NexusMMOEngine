@@ -1790,8 +1790,13 @@ export class Gateway {
     if (a.action === "pickup") {
       const entity = parseEntityArg(a.entity);
       result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
-    } else {
+    } else if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    } else if (a.action === "equip") {
+      // M3b (in progress): the avatar's appearance does not show the held model yet.
+      result = this.items.equip(holder, a.item);
+    } else {
+      result = this.items.unequip(holder, a.hand);
     }
     if (!result.ok) {
       this.sendError(s, 4005, result.error);
