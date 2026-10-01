@@ -71,7 +71,7 @@ stay read-only here; this edits the running game.
 |---|---|---|---|
 | A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands |
 | A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays |
-| A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 📋 | A1 |
+| A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 📋 | A1 |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 📋 | A1, M3 (items), U10 (inventory) |
 | A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
@@ -168,6 +168,11 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-09-30**: A3 props spawn: `spawnlist`/`spawn` (forest-table
+  archetypes via spawnScatterEntity, at avatar or x/z with ground
+  height) + `despawn` (refuses live session avatars). Creatures need a
+  shared spawner with bots; cursor targeting awaits E4.
 
 - **2026-09-30**: A2 write path: `set` admin command (whitelisted numeric
   fields, integer stores reject fractions) sharing one entity resolver

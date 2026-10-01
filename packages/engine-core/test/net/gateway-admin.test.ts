@@ -153,8 +153,7 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
-  it("set changes a field and inspect shows it; bad writes are rejected", async () => {
-    const url = await startGateway({ admins: ["alice"] });
+  it("set changes a field and inspect shows it; bad writes are rejected", async () => {    const url = await startGateway({ admins: ["alice"] });
     const { client, entity } = await join(url, "alice");
     const set = await admin(client, "set", { entity: entity.toString(), component: "Health", field: "current", value: 33 });
     assert.equal(set.ok, true);
@@ -176,6 +175,48 @@ describe("gateway: admin console", () => {
     // The pool still reads through the sim: a rejected write changed nothing.
     const same = await admin(client, "inspect", { entity: entity.toString() });
     assert.match(same.message, /Health: 33\//);
+    await client.close();
+  });
+
+  it("spawnlist names the table; spawn plants at me; despawn removes", async () => {
+    const url = await startGateway({
+      admins: ["alice"],
+      spawnTable: { version: 1, archetypes: { "test-tree": { asset: "test-tree" } } },
+    });
+    const { client } = await join(url, "alice");
+    const list = await admin(client, "spawnlist");
+    assert.equal(list.ok, true);
+    assert.match(list.message, /test-tree/);
+    const spawned = await admin(client, "spawn", { asset: "test-tree" });
+    assert.equal(spawned.ok, true);
+    const id = spawned.message.split(" ").at(-1)!;
+    const seen = await admin(client, "inspect", { entity: id });
+    assert.equal(seen.ok, true);
+    assert.match(seen.message, /AssetRef: hash \d+ variant 0/);
+    const gone = await admin(client, "despawn", { entity: id });
+    assert.equal(gone.ok, true);
+    const errP = client.waitFor(MessageType.Error, 1);
+    client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "inspect", args: { entity: id } }));
+    const [payload] = await errP;
+    assert.equal(decodeControl<ErrorMessage>(payload).code, 4003, "despawned reads as unknown");
+    await client.close();
+  });
+
+  it("spawn rejects unknown assets; despawn refuses live avatars", async () => {
+    const url = await startGateway({
+      admins: ["alice"],
+      spawnTable: { version: 1, archetypes: { "test-tree": { asset: "test-tree" } } },
+    });
+    const { client, entity } = await join(url, "alice");
+    for (const args of [{ asset: "nope" }, { entity: entity.toString() }]) {
+      const errP = client.waitFor(MessageType.Error, 1);
+      client.sendRaw(
+        MessageType.Admin,
+        encodeControl({ kind: "admin", command: args.asset ? "spawn" : "despawn", args }),
+      );
+      const [payload] = await errP;
+      assert.equal(decodeControl<ErrorMessage>(payload).code, 4003, JSON.stringify(args));
+    }
     await client.close();
   });
 });
