@@ -19,7 +19,7 @@
  * by one tick interval (see mirror/interpolate.ts).
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
@@ -33,6 +33,17 @@ import { PlayerFrame } from "./ui/player-frame.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
+import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
+import {
+  ACTIONS,
+  ACTION_LABELS,
+  FIXED_MOUSE,
+  loadBindings,
+  prettyCode,
+  resetBindings,
+  saveBindings,
+  type Bindings,
+} from "./input/bindings.js";
 import { DEV_TOOLS } from "./dev-tools.js";
 import type { DevLayout } from "./ui/dev-layout.js";
 import {
@@ -87,6 +98,18 @@ export function App(): React.ReactElement {
   const [showcase, setShowcase] = useState(false);
   // Graphics quality: "auto" follows the GPU and the frame rate; a preset pins it.
   const [quality, setQuality] = useState<"auto" | QualityTier>("auto");
+  // Remappable keyboard bindings + UI scale (U4), persisted per browser.
+  const [bindings, setBindingsState] = useState<Bindings>(loadBindings);
+  const [uiScale, setUiScaleState] = useState<UiScale>(loadUiScale);
+  useEffect(() => {
+    applyUiScale(uiScale);
+  }, [uiScale]);
+  const setBindings = useCallback((b: Bindings) => {
+    saveBindings(b);
+    setBindingsState(b);
+  }, []);
+  const onResetBindings = useCallback(() => setBindings(resetBindings()), [setBindings]);
+  const setUiScale = useCallback((s: UiScale) => setUiScaleState(s), []);
   const [activeQuality, setActiveQuality] = useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   const [account, setAccount] = useState<AccountMessage | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
@@ -242,6 +265,7 @@ export function App(): React.ReactElement {
           lastStateAt={() => lastStateAtRef.current}
           wireframe={wireframe}
           showcase={showcase}
+          bindings={bindings}
           quality={quality}
           onQuality={onQuality}
           onGpu={onGpu}
@@ -319,9 +343,10 @@ export function App(): React.ReactElement {
                 title: "controls",
                 content: (
                   <div className="text-muted-foreground">
-                    WASD move · Space jump / up · C down · F fly · mouse look (click canvas; Esc frees the pointer) · wheel zoom
+                    {ACTIONS.map((a) => `${ACTION_LABELS[a]}: ${bindings[a].map(prettyCode).join("/")}`).join(" · ")}
                     <br />
-                    left click attack (click again in rhythm to combo) · hold right click guard · Q dodge
+                    {FIXED_MOUSE.map((m) => `${m.label}: ${m.code === "Mouse0" ? "left click" : "right click"}`).join(" · ")}
+                    {" "}· mouse look (click canvas; Esc frees the pointer) · wheel zoom
                   </div>
                 ),
               },
@@ -332,6 +357,11 @@ export function App(): React.ReactElement {
             quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
             onQuality={cycleQuality}
             onDisconnect={disconnect}
+            bindings={bindings}
+            onBindings={setBindings}
+            onResetBindings={onResetBindings}
+            uiScale={uiScale}
+            onUiScale={setUiScale}
           />
         )}
       </div>

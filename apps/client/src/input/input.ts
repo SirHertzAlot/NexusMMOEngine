@@ -17,44 +17,63 @@
  */
 
 import { IntentButton, type IntentFields } from "@mmo-engine/protocol";
+import {
+  DEFAULT_BINDINGS,
+  PRESS_ACTIONS,
+  type ActionId,
+  type Bindings,
+} from "./bindings.js";
 
 const SENSITIVITY = 0.0025; // radians per mouse pixel
 const PITCH_LIMIT = 1.2; // ~69 degrees
 
-// Whitelist movement keys to prevent inventory/UI keys from marking movement intent as dirty
-const MOVEMENT_KEYS = new Set([
-  "KeyW", "ArrowUp",
-  "KeyS", "ArrowDown",
-  "KeyA", "ArrowLeft",
-  "KeyD", "ArrowRight",
-  "Space", // jump; up when swimming or flying
-  "KeyC", // down when swimming or flying
-  "KeyF", // toggle flight
-  "Mouse0", // attack
-  "Mouse2", // guard (held)
-  "KeyQ", // dodge
-]);
-
-/**
- * Keys whose press the server acts on (jump, flight toggle). A press is
- * latched until an intent has carried it: at a low frame rate a key can
- * go down and up between two reads, and would otherwise never be sent.
- */
-const PRESS_KEYS = new Set(["Space", "KeyF", "Mouse0", "KeyQ"]);
+// Mouse buttons fight only while the pointer is locked; they stay fixed
+// outside rebinding (see input/bindings.ts).
+const FIXED_ATTACK = "Mouse0";
+const FIXED_GUARD = "Mouse2";
+const FIXED_PRESS = [FIXED_ATTACK] as const;
 
 export class InputState {
   lookYaw = 0;
   lookPitch = 0;
   private readonly keys = new Set<string>();
-  /** Presses not yet carried by an intent (see PRESS_KEYS). */
+  /** Presses not yet carried by an intent (see PRESS_ACTIONS). */
   private readonly pressed = new Set<string>();
   /** Set when the intent vector changed since the last read. */
   private dirty = true;
+  private bindings: Bindings;
+  /** Whitelist of bound codes: inventory/UI keys never mark intent dirty. */
+  private movementKeys: Set<string>;
+  /**
+   * Codes whose press the server acts on. A press is latched until an
+   * intent has carried it: at a low frame rate a key can go down and up
+   * between two reads, and would otherwise never be sent.
+   */
+  private pressKeys: Set<string>;
+
+  constructor(bindings: Bindings = structuredClone(DEFAULT_BINDINGS)) {
+    this.bindings = bindings;
+    const derived = deriveSets(bindings);
+    this.movementKeys = derived.movementKeys;
+    this.pressKeys = derived.pressKeys;
+  }
+
+  /** Live-swap the bindings (the settings menu); drops keys no longer bound. */
+  setBindings(bindings: Bindings): void {
+    this.bindings = bindings;
+    const derived = deriveSets(bindings);
+    this.movementKeys = derived.movementKeys;
+    this.pressKeys = derived.pressKeys;
+    let dropped = false;
+    for (const k of this.keys) if (!this.movementKeys.has(k)) { this.keys.delete(k); dropped = true; }
+    for (const k of this.pressed) if (!this.pressKeys.has(k)) this.pressed.delete(k);
+    if (dropped) this.dirty = true;
+  }
 
   keyDown(code: string): void {
-    if (MOVEMENT_KEYS.has(code) && !this.keys.has(code)) {
+    if (this.movementKeys.has(code) && !this.keys.has(code)) {
       this.keys.add(code);
-      if (PRESS_KEYS.has(code)) this.pressed.add(code);
+      if (this.pressKeys.has(code)) this.pressed.add(code);
       this.dirty = true;
     }
   }
@@ -98,10 +117,9 @@ export class InputState {
     const k = this.pressed.size > 0 ? new Set([...held, ...this.pressed]) : held;
     for (const code of this.pressed) if (!held.has(code)) this.dirty = true;
     this.pressed.clear();
-    const fwd = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) -
-      (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
-    const strafe = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) -
-      (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
+    const has = (a: ActionId): boolean => this.bindings[a].some((c) => k.has(c));
+    const fwd = (has("forward") ? 1 : 0) - (has("back") ? 1 : 0);
+    const strafe = (has("right") ? 1 : 0) - (has("left") ? 1 : 0);
 
     const lx = strafe;
     const lz = fwd;
@@ -128,18 +146,31 @@ export class InputState {
       mx: mx + 0,
       // Up/down wish for swimming and flight; on the ground the server
       // ignores it (jump is the jump flag).
-      my: (k.has("Space") ? 1 : 0) - (k.has("KeyC") ? 1 : 0),
+      my: (has("jump") ? 1 : 0) - (has("down") ? 1 : 0),
       mz: mz + 0,
       lookYaw: this.lookYaw,
       lookPitch: this.lookPitch,
       buttons:
-        (k.has("KeyF") ? IntentButton.ToggleFlight : 0) |
-        (k.has("Mouse0") ? IntentButton.Attack : 0) |
-        (k.has("Mouse2") ? IntentButton.Block : 0) |
-        (k.has("KeyQ") ? IntentButton.Dodge : 0),
-      jump: k.has("Space"),
+        (has("flight") ? IntentButton.ToggleFlight : 0) |
+        (k.has(FIXED_ATTACK) ? IntentButton.Attack : 0) |
+        (k.has(FIXED_GUARD) ? IntentButton.Block : 0) |
+        (has("dodge") ? IntentButton.Dodge : 0),
+      jump: has("jump"),
     };
   }
+}
+
+/**
+ * Bound-code sets derived from bindings: every bound keyboard code plus
+ * the fixed mouse buttons whitelist movement; press actions plus fixed
+ * attack latch presses.
+ */
+function deriveSets(bindings: Bindings): { movementKeys: Set<string>; pressKeys: Set<string> } {
+  const movementKeys = new Set<string>([FIXED_ATTACK, FIXED_GUARD]);
+  for (const codes of Object.values(bindings)) for (const c of codes) movementKeys.add(c);
+  const pressKeys = new Set<string>([...FIXED_PRESS]);
+  for (const a of PRESS_ACTIONS) for (const c of bindings[a]) pressKeys.add(c);
+  return { movementKeys, pressKeys };
 }
 
 /**

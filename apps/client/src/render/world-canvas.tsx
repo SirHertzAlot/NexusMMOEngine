@@ -36,6 +36,7 @@ import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type Worl
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
+import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
@@ -102,6 +103,8 @@ export interface WorldCanvasProps {
   lastStateAt: () => number;
   wireframe: boolean;
   showcase: boolean;
+  /** Remappable keyboard bindings (input.ts reads them live). */
+  bindings: Bindings;
   /** "auto": the preset for this GPU, stepped down (and back up) by the frame-rate governor; else a pinned preset. */
   quality: "auto" | QualityTier;
   onGpu?: (gpu: GpuInfo) => void;
@@ -231,6 +234,7 @@ function MirrorWorld({
   lastStateAt,
   wireframe,
   showcase,
+  bindings,
   onHud,
   settings,
   screen,
@@ -336,6 +340,10 @@ function MirrorWorld({
     rt.current?.terrain.setWireframe(wireframe);
     rt.current?.water.setWireframe(wireframe);
   }, [wireframe]);
+
+  useEffect(() => {
+    rt.current?.input.setBindings(bindings);
+  }, [bindings]);
 
   useEffect(() => {
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);

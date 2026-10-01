@@ -88,7 +88,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
 | U3 | Hunger and thirst meters | 📋 | Survival needs as rules on the server (new, alongside M1) |
-| U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | The menu exists with graphics quality and leaving the world; the rest is open |
+| U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 📋 | S1 |
 | U7 | Party frames | 📋 | S3 |
@@ -169,6 +169,10 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 
 Newest first. One line per merged PR or decision.
 
+- **2026-09-30**: U4 controls + UI scale: remappable keyboard bindings
+  (bindings.ts, persisted, live-swapped into InputState) and 90–125%
+  interface scale in the settings menu; dev controls help reads the
+  same data. Audio deferred to an audio engine.
 - **2026-09-30**: U2 stamina: `Stamina` wire component (additive `.fbs` +
   codegen), `maxStamina` drive + `staminaRegen` stat, `StaminaSystem`
   (dodge/attack/jump/swim/run drains, cooldown regen, combat gating),
