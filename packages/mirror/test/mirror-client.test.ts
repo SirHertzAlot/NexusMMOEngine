@@ -513,6 +513,21 @@ describe("MirrorClient.chat (0x11)", () => {
   });
 });
 
+describe("MirrorClient.names (0x12)", () => {
+  it("stores names by entity and prunes them on despawn", async () => {
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    socket.receive(
+      encodeEnvelope(
+        MessageType.Names,
+        encodeControl({ kind: "names", names: [["7", "Arya", ""]] }),
+      ),
+    );
+    assert.equal(client.names.get(7n), "Arya");
+    socket.receive(encodeEnvelope(MessageType.Delta, encodeDelta({ ...emptyState(2, 1), despawned: [7n] })));
+    assert.equal(client.names.has(7n), false);
+  });
+});
+
 describe("MirrorClient characters", () => {
   const LOOK = { gender: "female", parts: { head: "Chr_Head_Female_02" }, colours: { skin: "#8d5524" } };
   const account = (characters: AccountMessage["characters"], created?: number): Uint8Array =>

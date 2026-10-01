@@ -104,7 +104,7 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
-| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 📋 | 〃 |
+| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags await S4 |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
 | M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | 📋 | 〃 |
@@ -212,6 +212,10 @@ Newest first. One line per merged PR or decision.
   second merger with the admin branch bumps to v9), 30 m say/emote
   range, per-channel cooldowns, TextFilter hook, full e2e coverage.
   Client panel stays U6.
+- **2026-09-30**: C3 identity: CharacterRef wire block (id 12 — second
+  merger with the stamina branch renumbers), `names` fan-out before
+  first-showing state, cached-sprite nameplates with distance fade.
+  Guild tags await S4.
 
 - **2026-09-30**: manifold + Clipper2 (`addon-geometry`) and prebaked
   dungeon shells. Added the admin console (A1–A6) and the dungeon instance

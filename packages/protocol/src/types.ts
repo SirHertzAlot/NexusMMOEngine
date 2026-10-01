@@ -45,6 +45,13 @@ export enum MessageType {
    * malformed, too-frequent, or out-of-world senders.
    */
   Chat = 0x11,
+  /**
+   * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): [[entity,
+   * name, guildTag]] for the character entities a snapshot or delta
+   * first shows, sent before it (and again when a guild tag changes —
+   * tags land with guilds, S4; until then the column is "").
+   */
+  Names = 0x12,
 }
 
 /**
@@ -211,12 +218,6 @@ export interface AdminResult {
   message: string;
 }
 
-/** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 9; // v9 (2026-10-01): region chat — 0x11,
-// say/yell/emote (roadmap S1).
-// v8 (2026-09-30): admin console — 0x10,
-// the authenticated admin command channel (roadmap A1).
-
 /**
  * C→S (catalog §0x11): one chat line. The server trims it, checks it,
  * rate-limits it, and fans it out; see S1 in docs/ROADMAP.md.
@@ -243,7 +244,22 @@ export interface ChatBroadcast {
   entity: string;
 }
 
+/**
+ * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): one row per
+ * character entity the accompanying snapshot or delta first shows.
+ * Tuples, spec-literal: [entity wire id, character name, guild tag].
+ * The tag column is "" until guilds (S4).
+ */
+export interface NamesMessage {
+  kind: "names";
+  names: Array<[string, string, string]>;
+}
+
 /** Increment when the catalog gains a message or changes a shape. */
+export const PROTOCOL_VERSION = 10; // v10 (2026-10-01): C3 identity —
+// CharacterRef wire block + 0x12 names (roadmap C3).
+// v9 (2026-10-01): region chat — 0x11, say/yell/emote (roadmap S1).
+// v8 (2026-09-30): admin console — 0x10 (roadmap A1).
 // v7 (2026-09-29): stats — 0x0f, the
 // player's own attributes and derived stats.
 // v6: combat — the Action component on the wire and the

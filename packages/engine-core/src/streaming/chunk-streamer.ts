@@ -126,7 +126,7 @@ const chunkQuery = defineQuery([C.Chunk]);
 function emptyState(tick: number): CollectedState {
   return {
     tick, baseTick: 0, transforms: [], velocities: [], intents: [], chunks: [],
-    healths: [], staminas: [], bodies: [], assets: [], locomotions: [], appearances: [], actions: [], spawned: [], despawned: [],
+    healths: [], staminas: [], bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], spawned: [], despawned: [],
   };
 }
 

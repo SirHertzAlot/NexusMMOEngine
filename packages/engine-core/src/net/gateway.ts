@@ -61,6 +61,7 @@ import {
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
+  type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
   type DayClock,
@@ -559,19 +560,21 @@ export class Gateway {
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
 
-    const deltaBytes = encodeDelta(
-      this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker)),
-    );
+    const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
+    // Names for newly spawned character entities ride before the delta
+    // that first shows them (catalog §0x12).
+    const namesEnv = this.namesFor(state.spawned);
+    const deltaBytes = encodeDelta(state);
     this.tracker.commit(sim);
     sim.endTick();
 
-    this.broadcast(tick, deltaBytes);
+    this.broadcast(tick, deltaBytes, namesEnv);
     this.sweepGracePeriods();
     this.maybeHeartbeat();
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */
-  private broadcast(tick: number, deltaBytes: Uint8Array): void {
+  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
     const deltaEnv = encodeEnvelope(MessageType.Delta, deltaBytes);
     let snapshotEnv: Uint8Array | undefined;
@@ -583,6 +586,7 @@ export class Gateway {
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
+      if (namesEnv) this.deliver(s, namesEnv, tick);
       if (isSnapshotTick || s.needsResync) {
         this.deliverSnapshot(s, snapshotFor(), tick);
       } else {
@@ -1354,7 +1358,7 @@ export class Gateway {
     if (character) this.evictCharacter(character.id, s);
     s.choosingCharacter = false;
     s.character = character ? { id: character.id, name: character.name } : null;
-    s.playerEntity = this.spawnPlayerEntity(character?.look ?? DEFAULT_LOOK_JSON);
+    s.playerEntity = this.spawnPlayerEntity(character?.look ?? DEFAULT_LOOK_JSON, character?.id ?? null);
     s.welcomed = true;
     s.lastSeenMs = this.clock();
     this.tokenToClient.set(s.token, s.clientId);
@@ -1705,6 +1709,10 @@ export class Gateway {
 
   /** Full baseline snapshot, e.g. on join or re-attach. */
   private sendFreshSnapshot(s: ClientSession): void {
+    // Names first: the snapshot shows every entity, so every character
+    // entity is first-shown here (catalog §0x12).
+    const names = this.namesFor(null);
+    if (names) this.deliver(s, names, this.tick);
     this.deliverSnapshot(
       s,
       encodeEnvelope(
@@ -1718,17 +1726,40 @@ export class Gateway {
   }
 
   /**
+   * Character names for fan-out (C3, catalog §0x12): wire id -> name for
+   * every live session avatar. `only`: restrict to these wire ids (delta
+   * spawned lists); null means all. Returns the enveloped message, or
+   * null when no rows apply. Guild tags ride along in S4; until then "".
+   */
+  private namesFor(only: readonly bigint[] | null): Uint8Array | null {
+    const rows: Array<[string, string, string]> = [];
+    for (const other of this.sessions.values()) {
+      if (other.playerEntity === null) continue;
+      if (only !== null && !only.includes(other.playerEntity)) continue;
+      rows.push([
+        other.playerEntity.toString(),
+        other.character?.name ?? other.username,
+        "",
+      ]);
+    }
+    if (rows.length === 0) return null;
+    const msg: NamesMessage = { kind: "names", names: rows };
+    return encodeEnvelope(MessageType.Names, encodeControl(msg));
+  }
+
+  /**
    * Spawn a player entity: Transform + Velocity + PlayerIntent + Health +
    * Stamina (full; StatsSystem sets the maxima from the rules next tick) +
    * Locomotion (on foot, with the gateway's player abilities, full breath)
-   * + Appearance (the character's look, canonical JSON) + Action (no move),
+   * + Appearance (the character's look, canonical JSON) + Action (no move)
+   * + CharacterRef (the character id, when entering as one — C3),
    * and stats at the rules' bases when the game has any (StatsSystem then
    * sets Health.max from them on the next tick).
    * Spawn points spread on a grid so N players don't stack. Player
    * entities are ordinary entities — the sim treats N of them identically
    * (multiplayer by construction, no singleton).
    */
-  private spawnPlayerEntity(look: string): bigint {
+  private spawnPlayerEntity(look: string, characterId: number | null): bigint {
     const sim = this.world;
     const eid = sim.spawn();
     addComponent(sim.ecs, C.Transform, eid);
@@ -1754,6 +1785,11 @@ export class Gateway {
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;
+    if (characterId !== null) {
+      addComponent(sim.ecs, C.CharacterRef, eid);
+      C.CharacterRef.idHi[eid] = Math.floor(characterId / 4294967296);
+      C.CharacterRef.idLo[eid] = characterId % 4294967296;
+    }
     if (!sim.stats.empty) sim.stats.attach(eid);
     return sim.wireId(eid);
   }

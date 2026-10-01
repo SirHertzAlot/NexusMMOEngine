@@ -39,6 +39,7 @@ export function emptyState(tick: number, baseTick = 0): CollectedState {
     locomotions: [],
     appearances: [],
     actions: [],
+    characterRefs: [],
     spawned: [],
     despawned: [],
   };

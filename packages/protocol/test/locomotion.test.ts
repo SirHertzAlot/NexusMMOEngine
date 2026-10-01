@@ -28,6 +28,7 @@ const empty = (tick: number): CollectedState => ({
   locomotions: [],
   appearances: [],
   actions: [],
+  characterRefs: [],
 });
 
 test("locomotion rows round-trip in snapshots and deltas", () => {

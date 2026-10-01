@@ -16,6 +16,7 @@ import type {
   ChunkRow,
   CollectedState,
   HealthRow,
+  CharacterRefRow,
   IntentRow,
   LocomotionRow,
   StaminaRow,
@@ -31,6 +32,7 @@ export interface EntityMirror {
   chunk?: ChunkRow;
   health?: HealthRow;
   stamina?: StaminaRow;
+  characterRef?: CharacterRefRow;
   body?: BodyConfigRow;
   asset?: AssetRefRow;
   locomotion?: LocomotionRow;
@@ -78,6 +80,7 @@ export class MirrorState {
     for (const r of d.chunks) upsert(this.entities, r.wireId, "chunk", r);
     for (const r of d.healths) upsert(this.entities, r.wireId, "health", r);
     for (const r of d.staminas) upsert(this.entities, r.wireId, "stamina", r);
+    for (const r of d.characterRefs) upsert(this.entities, r.wireId, "characterRef", r);
     for (const r of d.bodies) upsert(this.entities, r.wireId, "body", r);
     for (const r of d.assets) upsert(this.entities, r.wireId, "asset", r);
     for (const r of d.locomotions) upsert(this.entities, r.wireId, "locomotion", r);

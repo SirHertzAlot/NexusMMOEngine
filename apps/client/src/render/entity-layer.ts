@@ -30,6 +30,7 @@
  */
 
 import * as THREE from "three";
+import { labelSprite } from "./element-fx.js";
 import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type VelocityRow } from "@mmo-engine/protocol";
 import { parseLook } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
@@ -66,7 +67,19 @@ interface TrackedMesh {
   female?: boolean;
   /** The combat move on show: "seq:move" of its Action row. */
   actionKey?: string;
+  /** Nameplate sprite above the head, and the name it shows. */
+  plate?: THREE.Sprite;
+  plateFor?: string;
 }
+
+/** Nameplate height above a character's feet, and full-visibility range. */
+const PLATE_HEIGHT = 2.05;
+const PLATE_FULL_RANGE = 12;
+const PLATE_FADE_RANGE = 45;
+/** Nameplate text height, world units (labelSprite is 1 unit tall). */
+const PLATE_TEXT_HEIGHT = 0.4;
+/** Default when the caller passes no names (tests, probes). */
+const EMPTY_NAMES: ReadonlyMap<bigint, string> = new Map();
 
 /** The server clock: combat moves play from their start tick. */
 export interface ServerClock {
@@ -108,6 +121,8 @@ export class EntityLayer {
   private quality: QualitySettings | null = null;
   private lastFrame = -1;
   private disposed = false;
+  /** Nameplate textures, one per distinct name (sprites share them). */
+  private readonly plateTextures = new Map<string, THREE.CanvasTexture>();
 
   constructor(
     scene: THREE.Scene,
@@ -167,7 +182,6 @@ export class EntityLayer {
       prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hit ? this.pickMap.get(hit.object) ?? null : null;
   }
 
-  /** Toggle the elemental-orb FX showcase (a ring placed ahead of the player, away from the camera). */
   /** Apply a quality preset: character outlines, and the effects' particle budget. */
   setQuality(q: QualitySettings): void {
     this.quality = q;
@@ -183,6 +197,47 @@ export class EntityLayer {
     this.showcase.setVisible(v, center);
   }
 
+  /**
+   * Nameplates (C3): one cached-texture sprite over named characters
+   * (never the player's own), fading with camera distance. Textures are
+   * shared per name; sprites die with their entity (see detachPlate).
+   */
+  private updatePlate(
+    tracked: TrackedMesh,
+    wid: bigint,
+    isPlayer: boolean,
+    names: ReadonlyMap<bigint, string>,
+  ): void {
+    const name = isPlayer ? undefined : names.get(wid);
+    if (name === undefined) {
+      detachPlate(tracked);
+      return;
+    }
+    if (tracked.plate === undefined || tracked.plateFor !== name) {
+      detachPlate(tracked);
+      let tex = this.plateTextures.get(name);
+      if (!tex) {
+        const sprite = labelSprite(name);
+        tex = sprite.material.map as THREE.CanvasTexture;
+        sprite.material.dispose();
+        this.plateTextures.set(name, tex);
+      }
+      const plate = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }),
+      );
+      const w = tex.image.width as number;
+      plate.scale.set((w / 72) * PLATE_TEXT_HEIGHT, PLATE_TEXT_HEIGHT, 1);
+      plate.position.y = PLATE_HEIGHT;
+      tracked.object.add(plate);
+      tracked.plate = plate;
+      tracked.plateFor = name;
+    }
+    const dist = this.camera.getWorldPosition(tmpEye).distanceTo(tracked.object.position);
+    const mat = tracked.plate.material;
+    mat.opacity = dist <= PLATE_FULL_RANGE ? 1 : Math.max(0, 1 - (dist - PLATE_FULL_RANGE) / (PLATE_FADE_RANGE - PLATE_FULL_RANGE));
+    tracked.plate.visible = mat.opacity > 0;
+  }
+
   /** Reconcile the layer with mirror state and advance the FX. */
   sync(
     state: MirrorState,
@@ -190,6 +245,7 @@ export class EntityLayer {
     alpha: number,
     playerWireId: bigint | null,
     clock: ServerClock = { tick: 0, tickHz: 30 },
+    names: ReadonlyMap<bigint, string> = EMPTY_NAMES,
   ): void {
     // Remove meshes and terrain for despawned entities.
     for (const [key, t] of this.meshes) {
@@ -245,9 +301,11 @@ export class EntityLayer {
         // BodyConfig arrived after the stand-in: reshape (or batch).
         this.group.remove(tracked.object);
         this.pickMap.delete(tracked.object);
+        detachPlate(tracked);
         disposeObject(tracked.object);
         const model = this.modelFor(e.asset);
         if (!model && isStaticProp(e.body, e.asset) && e.transform) {
+          detachPlate(tracked);
           this.meshes.delete(wid);
           this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
           continue;
@@ -287,6 +345,7 @@ export class EntityLayer {
 
       const isPlayer = playerWireId !== null && wid === playerWireId;
       if (isPlayer) this.player = this.playerPos.copy(tracked.object.position);
+      this.updatePlate(tracked, wid, isPlayer, names);
       if (tracked.character) {
         highlight(tracked.object, wid === this.hoveredWireId && !isPlayer ? "hover" : "none");
       } else {
@@ -311,6 +370,8 @@ export class EntityLayer {
     this.fx.dispose();
     this.showcase.dispose();
     this.vfx.dispose();
+    for (const tex of this.plateTextures.values()) tex.dispose();
+    this.plateTextures.clear();
     for (const t of this.meshes.values()) {
       this.group.remove(t.object);
       disposeTracked(t);
@@ -343,6 +404,7 @@ export class EntityLayer {
     character.relaxArms();
     this.group.remove(tracked.object);
     this.pickMap.delete(tracked.object);
+    detachPlate(tracked);
     disposeObject(tracked.object);
     tracked.object = character.root;
     tracked.character = character;
@@ -456,9 +518,25 @@ function turnToward(t: TrackedMesh, v: VelocityRow | undefined, dt: number, acti
 
 /** Dispose what an entity's view owns (a character shares its kit's geometry). */
 function disposeTracked(t: TrackedMesh): void {
+  detachPlate(t);
   t.animator?.dispose();
   if (t.character) t.character.dispose();
   else disposeObject(t.object);
+}
+
+/**
+ * Detach the nameplate before its object is disposed or replaced:
+ * traverse disposal must never touch the sprite's shared geometry or
+ * the layer's cached texture — only the per-sprite material dies.
+ * updatePlate() reattaches when still wanted.
+ */
+function detachPlate(t: TrackedMesh): void {
+  if (t.plate) {
+    t.plate.removeFromParent();
+    t.plate.material.dispose();
+    t.plate = undefined;
+    t.plateFor = undefined;
+  }
 }
 
 function disposeObject(obj: THREE.Object3D): void {
