@@ -25,6 +25,11 @@ are the way they are.
 - **Test before pushing.** `npm test` at the root runs every workspace. A
   native addon change needs its addon rebuilt (`npx node-gyp rebuild` in the
   addon) before engine-core's tests use it.
+- **Check native and performance-sensitive changes with valgrind.** A
+  native addon change runs `npm run valgrind:memcheck -- <addon>` clean. A
+  change to the tick, a system, an addon's hot path or the architecture
+  runs `npm run valgrind:perf` and says in its PR what moved; a deliberate
+  cost updates the baseline (`-- --update`) in the same PR.
 
 ## Hard rules
 

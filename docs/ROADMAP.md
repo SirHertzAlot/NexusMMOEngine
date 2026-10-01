@@ -150,6 +150,8 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | meshoptimizer: optimised cooked meshes, LOD chains for every prop | ✅ | #43 |
 | — | Performance instrumentation: frame, renderer, GPU memory and network counters | ✅ | Feeds E5 |
 | — | manifold + Clipper2 (`addon-geometry`): cell outlines, polygon Booleans, CSG solids; prebaked dungeon shells | ✅ | |
+| — | Valgrind: memcheck gate for every addon's tests; callgrind instruction-count baselines for headless workloads (`npm run valgrind:memcheck`, `valgrind:perf`) | ✅ | Found and fixed a tile-bake leak and a Recast tile-cache overflow |
+| — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
 ## 6. World server
@@ -192,6 +194,12 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-01**: Valgrind: `npm run valgrind:memcheck` (every addon's
+  tests under memcheck; our code's errors and leaks fail it) and
+  `npm run valgrind:perf` (callgrind instructions per operation for eight
+  headless workloads, against a committed baseline). Its first run fixed
+  two navigation bugs: a detail-mesh leak on every tile bake, and a heap
+  overflow in Recast's tile-cache region builder.
 - **2026-10-01**: Fix: the client's panels (player frame, chat, sheet,
   settings) were see-through. Their `bg-card/90`-style classes generated
   nothing; the theme colours now live in the Tailwind config.

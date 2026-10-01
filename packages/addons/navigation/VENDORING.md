@@ -28,3 +28,18 @@ addon's full-tree convention. The build compiles only:
 **Build:** no CMake. The sources compile directly as node-gyp
 translation units (`binding.gyp`), so `npm install` works fully offline
 from a clean clone.
+
+## Local patches (search for `NexusMMOEngine`)
+
+1. **`DetourTileCache/Source/DetourTileCacheBuilder.cpp`, `addUniqueLast`**
+   (2026-09-30, found by `npm run valgrind:memcheck`). Upstream appends a
+   region's neighbour to `neis[DT_LAYER_MAX_NEIS]` (16) with no capacity
+   check, comparing only against the last entry, so a region bordering many
+   others (a tile cut up by dozens of obstacles) writes past the array into
+   the next region and `dtBuildTileCacheRegions` later reads out of bounds.
+   Patched to skip duplicates and stop at the cap, as Recast's own layer
+   builder (`RecastLayers.cpp`, `addUnique`) does; a neighbour dropped past
+   the cap only means a region isn't merged with it. Unfixed upstream at
+   the pinned commit (the latest, 2026-02-27); worth reporting.
+
+Re-apply these after updating the vendored tree.
