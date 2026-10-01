@@ -69,6 +69,7 @@
 #include "DetourTileCache.h"
 #include "DetourTileCacheBuilder.h"
 #include "Recast.h"
+#include "RecastAlloc.h"
 
 namespace mmo_navigation {
 
@@ -808,6 +809,17 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
     }
 
     rcPolyMeshDetail dmesh;
+    // Unlike the other Recast structs here, rcPolyMeshDetail has no
+    // destructor: free its arrays on every way out (valgrind memcheck
+    // found every bake leaking them). dtCreateNavMeshData copies them.
+    struct DetailFree {
+      rcPolyMeshDetail& d;
+      ~DetailFree() {
+        rcFree(d.meshes);
+        rcFree(d.verts);
+        rcFree(d.tris);
+      }
+    } dmeshFree{dmesh};
     if (!rcBuildPolyMeshDetail(&ctx, pmesh, chf, opts.detailSampleDist,
                                opts.detailSampleMaxError, dmesh)) {
       Napi::Error::New(env, "bakeTile: rcBuildPolyMeshDetail failed")
