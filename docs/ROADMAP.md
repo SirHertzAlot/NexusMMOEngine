@@ -166,7 +166,7 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 ## 7. Alpha
 
 Doc: [`ALPHA-PLAN.md`](ALPHA-PLAN.md): what alpha means, its exit
-criteria, and the decisions still open (D1 to D8 there).
+criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 | # | Item | Status | Needs |
 |---|---|---|---|
@@ -178,6 +178,7 @@ criteria, and the decisions still open (D1 to D8 there).
 | L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | 📋 | M2b, AI1 |
 | U10a | Inventory and equipment, first cut | 📋 | L2 |
 | U12a | Hit feedback and target frame | 📋 | M2a |
+| ED1 | Gameplay tables in the editor: items, creatures, loot and death rules, validated, hot-reloaded | 📋 | M3a; each α1 slice adds its table |
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | 📋 | M3a, L2 |
 | P2b | Character save: position, health, inventory, equipment | 📋 | P2a |
 | P2c | Crash and replay tests over the ledger | 📋 | P2b |
@@ -193,7 +194,8 @@ Newest first. One line per merged PR or decision.
 
 - **2026-10-01**: Alpha plan ([`ALPHA-PLAN.md`](ALPHA-PLAN.md)):
   three milestones (first fight, keep it, hold it) and section 7 here.
-  Decisions D1 to D8 await the user.
+  Decided: whole-body damage, loot owned 30 s then free, despawn 5 min,
+  key-press pickup, every tunable editable in the editor (ED1).
 
 - **2026-10-01**: Edge / core split build plan saved as
   [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) (recovered from a local

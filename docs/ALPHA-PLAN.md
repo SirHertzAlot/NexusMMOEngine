@@ -44,6 +44,9 @@ The priority: something to fight, with weapons, that drops loot.
 | L2 | **Drops and pickup**: on a creature's death, a seeded roll draws from the pool's `mob` source and spawns ground items at the corpse. Pickup is an intent the server validates (range, ownership window, inventory space). Ground items despawn after a timeout | M2b, AI1 |
 | U10a | **Inventory and equipment, first cut**: a bag grid and the two hand slots, drag to equip, an item tooltip with its properties | L2 |
 | U12a | **Hit feedback and target frame**: the target's name and health bar, a hit flash, the player's own health bar reacting | M2a |
+| ED1 | **Gameplay tables in the editor**: item definitions, creature numbers (health, aggro, leash, respawn, pack size), loot rules (ownership window, despawn) and death rules, each viewable and editable in the editor. Edits are validated by the same Zod schemas the server loads, written back to `content/`, and picked up by a running development server without a restart | M3a, then each slice adds its table |
+
+Every α1 slice that adds a tunable adds it to ED1's editor view in the same PR.
 
 Done when X1 holds for "fight, kill, loot, equip, die, respawn" in one
 session.
@@ -93,16 +96,17 @@ range scans use cursors, never load-everything-then-filter.
 - **Art**: weapon and goblin models come from `/assets` through the local
   pipeline and never reach the repo. PR media stays out of the repo.
 
-## 6. Decisions needed
+## 6. Decisions
 
-The design docs leave these open. The proposed defaults are what the
-slices build unless decided otherwise.
+Decided by the user on 2026-10-01: D1, D2 and D3, and that every
+gameplay tunable is editable in the editor (ED1). The rest are proposed
+defaults the slices build unless decided otherwise.
 
 | # | Question | Proposed default |
 |---|---|---|
-| D1 | Pull a whole-body damage path ahead of mastery and body parts? The design docs order M1, then M2, then M3 | Yes: alpha damage is whole-body health; body parts replace it later |
-| D2 | Loot ownership | The killer's for 30 s, then anyone's; despawn after 5 min |
-| D3 | Pickup | A key press near the item, not auto-loot |
+| D1 | Pull a whole-body damage path ahead of mastery and body parts? The design docs order M1, then M2, then M3 | **Decided**: yes, whole-body health; body parts replace it later |
+| D2 | Loot ownership | **Decided**: the killer's for 30 s, then anyone's; despawn after 5 min |
+| D3 | Pickup | **Decided**: a key press near the item, not auto-loot |
 | D4 | What a player keeps on death (`death.json` says keep, with partial loss 0.25) | Keep everything for alpha; partial loss waits for the respawn lore |
 | D5 | Starter weapon | Every new character gets a starter sword from the pool's lowest rank |
 | D6 | Goblin numbers | Health 60, aggro radius 12 m, leash 30 m, respawn 60 s, packs of 2 to 4 |

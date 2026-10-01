@@ -17,6 +17,25 @@ They are continuously updated and refined based on the latest advancements and l
 - [Introduction to Data-Oriented Design](../../refs/introduction-to-data-oriented-design.pdf)
 - [Temporal-graph versioning (Hitchcock diss.)](../../refs/whitepaper.pdf)
 
+# Codebase Knowledge Base (read before navigating the code)
+- **Architecture reference: [`docs/architecture.html`](../../../docs/architecture.html).**
+  The runtime picture to reason from: the 30 Hz Node authority (gateway, auth,
+  sim, C++ addons in-process, SQLite WAL persistence, world/PCG), the browser
+  mirror (MirrorClient, interpolator, R3F scene, HUD), the FlatBuffers contract,
+  the editor, bench, world server and content packages, and the trust boundary
+  (everything right of the gateway is untrusted input). Keep it current when a
+  PR changes the architecture.
+- **Codebase map: `docs/kb/` (local only, git-ignored).** A full-text snapshot
+  of the repo: a directory tree, then every tracked file as a `FILE: <path>`
+  section. Grep it for `FILE: ` headers and symbols to find where things live
+  before opening files. It is a snapshot: the working tree wins when they
+  disagree, and its date is the file's modified time.
+- **Plans:** `docs/ROADMAP.md` (status board), `docs/ALPHA-PLAN.md` (the alpha
+  milestones, exit criteria and decisions), `docs/DECISIONS.md` (why).
+- **Editor parity:** every tunable a gameplay feature adds (item definitions,
+  creature numbers, loot and death rules) must be viewable and editable in the
+  editor, not only in JSON.
+
 # Role & Architecture Guardrails
 You are an expert game developer working on a high-concurrency MMO tech stack. Your code must optimize for memory layout, execution speed, and zero garbage collection/allocation in the hot loop.
 
