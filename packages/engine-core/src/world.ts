@@ -132,6 +132,13 @@ function writeComponentRows(
     H.current[eid] = r.current;
     H.max[eid] = r.max;
   }
+  const St = C.Stamina;
+  for (const r of state.staminas) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, St, eid);
+    St.current[eid] = r.current;
+    St.max[eid] = r.max;
+  }
   const Bc = C.BodyConfig;
   for (const r of state.bodies) {
     const eid = eidOf(r.wireId);
@@ -348,6 +355,7 @@ export class SimWorld {
     for (const r of state.intents) take(r.wireId);
     for (const r of state.chunks) take(r.wireId);
     for (const r of state.healths) take(r.wireId);
+    for (const r of state.staminas) take(r.wireId);
     for (const r of state.bodies) take(r.wireId);
     for (const r of state.assets) take(r.wireId);
     for (const r of state.locomotions) take(r.wireId);
@@ -393,7 +401,7 @@ export class SimWorld {
    */
   spawnFromState(state: CollectedState): number[] {
     const ids = new Set<bigint>();
-    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.bodies, state.assets, state.locomotions, state.appearances, state.actions]) {
+    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.staminas, state.bodies, state.assets, state.locomotions, state.appearances, state.actions]) {
       for (const r of block) ids.add(r.wireId);
     }
     const eids = new Map<bigint, number>();

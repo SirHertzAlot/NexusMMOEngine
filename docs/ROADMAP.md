@@ -86,7 +86,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | # | Item | Status | Needs |
 |---|---|---|---|
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
-| U2 | **Player frame**: health, mana and stamina bars | ⏭️ | The stats message (built); stamina and mana drives in the rules |
+| U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
 | U3 | Hunger and thirst meters | 📋 | Survival needs as rules on the server (new, alongside M1) |
 | U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | The menu exists with graphics quality and leaving the world; the rest is open |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
@@ -168,6 +168,15 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-09-30**: U2 stamina: `Stamina` wire component (additive `.fbs` +
+  codegen), `maxStamina` drive + `staminaRegen` stat, `StaminaSystem`
+  (dodge/attack/jump/swim/run drains, cooldown regen, combat gating),
+  live bar in `PlayerFrame`. Mana deferred to its first spender.
+
+- **2026-09-30**: U2 player frame (health): `PlayerFrame` over the world
+  canvas, fed by the mirror's Health rows at 1 Hz; stamina/mana await
+  their pools (M1).
 
 - **2026-09-30**: manifold + Clipper2 (`addon-geometry`) and prebaked
   dungeon shells. Added the admin console (A1–A6) and the dungeon instance

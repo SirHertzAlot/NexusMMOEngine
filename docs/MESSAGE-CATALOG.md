@@ -10,7 +10,7 @@ u64 ids travel as JSON strings (JS number precision).
 |------|------|-----|----------|--------|---------------------|
 | 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 6, client: string, username: string, password: string, want_snapshot: bool, characters?: bool}` · token: `{protocol: 6, client: string, token: "64 hex", want_snapshot: bool, characters?: bool}` — exactly one variant | Authentication. Once per connection. `characters: true`: choose a character before entering the world (answered with `account`, see [Characters](#characters-protocol-v5)). |
 | 0x02 | `welcome` | S→C | JSON | `{protocol: 6, player_entity: "u64", server_tick: u64, tick_hz: 30, snapshot_every: 300, session_token: "64 hex", world?: {name, chunkWorldSize, bounds, map, seaLevel?}, character?: {id, name}, day?: {seconds, offset}}` — `character` when the player entered as one; — `world` for baked worlds: the chunk range and a coarse (16 m) map of the whole world, base64 layers: `heights` (u16 over min/maxHeight), `biome` + `biomes` ids, `river`, and `water` (u16 surface of the sea and lakes, 0xffff dry; optional) · `day` — the world's day clock (optional; absent = no day cycle) | Assigns identity, syncs clock/cadence params, issues the session token; the world map draws the far horizon, ground colours and water; the day clock gives every client the same time of day (`timeOfDayAt(day, tick, tick_hz)` = `offset + tick / tick_hz / seconds`, wrapped to 0..1, 0 = midnight). Once per connection. |
-| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, BodyConfig, AssetRef, Locomotion, Appearance, Action), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
+| 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, Stamina, BodyConfig, AssetRef, Locomotion, Appearance, Action), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
 | 0x04 | `delta` | S→C | FlatBuffers `Delta` | tick, base_tick, changed component blocks only, spawned[], despawned[] | Per-tick state-change events (EDA: state out as events). 30 Hz. |
 | 0x05 | `intent` | C→S | FlatBuffers `IntentMessage` | `{client_tick: u64, entity: u64, intent: PlayerIntent}` | Player input events into the sim (EDA: intents in as events). ≤ 1 per tick per client. |
 | 0x06 | `ping` | C↔S | JSON | `{t: client_ms}` | Heartbeat + RTT. Every 5 s. |
@@ -166,6 +166,15 @@ Damage and hit reactions are a later step.
   Players spawn able to swim; the server grants flight
   (`MMO_PLAYER_ABILITIES=swim,fly`, or the gateway's `playerAbilities`) —
   expansions (mounts, spells, gear) set the bits per entity.
+- **`Stamina` component** (`current: f32, max: f32`), a SoA block
+  appended to `Snapshot` and `Delta` as `staminas` (older snapshots
+  without it decode with no rows, like `locomotions` before them).
+  Drained by exertion — dodges (20), attacks (10), jumps (8), swimming
+  (10/s) and running (6/s); back at `staminaRegen`/s after a 1 s
+  cooldown. Combat move starts spend through it: an unaffordable dodge
+  or attack never fires (guards stay free). Climbing has no locomotion
+  system yet, so nothing drains for it. `maxStamina` is a stat drive
+  (StatsSystem, share-preserving like `maxHealth`).
 - **Intent fields.** `my` is the up/down wish (−1..1): swim or fly up and
   down; on the ground it does nothing (jumping is the `jump` flag).
   `buttons` bit `IntentButton.ToggleFlight` (0x01) takes off or lands on

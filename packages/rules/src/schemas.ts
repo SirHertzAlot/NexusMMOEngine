@@ -212,8 +212,9 @@ export const AppearanceSchema = z.strictObject({
  *
  * - `moveSpeed`: a multiplier on every locomotion speed (1 = normal).
  * - `maxHealth`: the Health component's maximum (current keeps its share).
+ * - `maxStamina`: the Stamina component's maximum (current keeps its share).
  */
-export const StatDrive = z.enum(["moveSpeed", "maxHealth"]);
+export const StatDrive = z.enum(["moveSpeed", "maxHealth", "maxStamina"]);
 
 /**
  * How a modifier changes a stat. A stat's value is

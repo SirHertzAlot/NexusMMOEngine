@@ -73,6 +73,17 @@ export const Health = defineComponent({
 });
 
 /**
+ * Stamina pool (U2): current/max f32, drained by exertion (dodge,
+ * attacks, jumps, swimming, running), back after a cooldown. Rides the
+ * wire like Health so the client bar is live; max comes from the
+ * `maxStamina` drive (StatsSystem), regen from the `staminaRegen` stat.
+ */
+export const Stamina = defineComponent({
+  current: Types.f32,
+  max: Types.f32,
+});
+
+/**
  * BodyConfig — rigid-body description for the Jolt physics addon
  * (Phase 2). JS owns this component (authoritative config); the native
  * world owns the simulated state and writes results back into
@@ -126,6 +137,7 @@ export const COMPONENT_IDS = {
   Locomotion: 9,
   Appearance: 10,
   Action: 11,
+  Stamina: 12,
 } as const;
 
 const U32 = 0xffffffffn;
