@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
+import type { StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type HudData } from "./render/world-canvas.js";
@@ -33,6 +34,7 @@ import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { AdminConsole } from "./ui/admin-console.js";
 import { ChatPanel } from "./ui/chat-panel.js";
+import { CharacterSheet } from "./ui/character-sheet.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
@@ -119,6 +121,9 @@ export function App(): React.ReactElement {
   // Region chat (U6): the last lines plus the sending tab.
   const [chatLines, setChatLines] = useState<ChatBroadcast[]>([]);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
+  // Character sheet (U9): the latest stats message lines, plus panel toggle.
+  const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -144,6 +149,7 @@ export function App(): React.ReactElement {
         setScreen("login");
       },
       onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
+      onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
     });
 
   /**
@@ -219,6 +225,8 @@ export function App(): React.ReactElement {
     clientRef.current = null;
     setAccount(null);
     setChatLines([]);
+    setSheet(null);
+    setSheetOpen(false);
     setScreen("login");
   };
 
@@ -381,6 +389,14 @@ export function App(): React.ReactElement {
           onChannel={setChatChannel}
           onSend={(text) => client?.chat(chatChannel, text)}
         />
+        <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+          {sheetOpen && sheet && (
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
+          )}
+          <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
+            sheet
+          </Button>
+        </div>
       </div>
     );
   }
