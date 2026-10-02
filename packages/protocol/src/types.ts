@@ -60,6 +60,7 @@ export enum MessageType {
   Drops = 0x15,
   /** S->C a blow's outcome (catalog 0x16, roadmap M2a). JSON. */
   Hit = 0x16,
+  Life = 0x17,
 }
 
 /**
@@ -264,7 +265,9 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 12; // v11 (2026-10-01): items — 0x13 item
+export const PROTOCOL_VERSION = 13; // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
+// v12: 0x16 hit (M2a).
+// v11 (2026-10-01): items — 0x13 item
 // actions, 0x14 inventory, 0x15 drops (roadmap M3a).
 // v10 (2026-10-01): C3 identity —
 // CharacterRef wire block + 0x12 names (roadmap C3).

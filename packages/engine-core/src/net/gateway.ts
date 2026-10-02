@@ -62,6 +62,7 @@ import {
   type DebugResponse,
   type ErrorMessage,
   type HitMessage,
+  type LifeMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -112,6 +113,7 @@ import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { allowAllText, CHAT_COOLDOWN_MS, ChatSchema, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
+import { DeathSystem } from "../death.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -576,6 +578,7 @@ export class Gateway {
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
     this.sendHits(sim, tick);
+    this.sendLife(sim, tick);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -612,6 +615,55 @@ export class Gateway {
         for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
       }
     }
+  }
+
+  /**
+   * Tell every welcomed player about deaths and respawns this tick (catalog
+   * 0x17), and write a dying character's death record when the rules ask.
+   */
+  private sendLife(sim: SimWorld, tick: number): void {
+    for (const s of this.systems) {
+      if (!(s instanceof DeathSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs: LifeMessage[] = [];
+      for (const ev of events) {
+        const m: LifeMessage = { kind: "life", tick, target: String(sim.wireId(ev.target)), state: ev.state };
+        if (ev.state === "dead") {
+          if (ev.killer !== undefined) m.killer = String(sim.wireId(ev.killer));
+          m.respawnAt = ev.outcome && ev.outcome.respawnInSeconds >= 0 ? ev.respawnAt : 0;
+          const id = this.characterIdOf(ev.target);
+          if (id !== null && ev.outcome?.record) {
+            const killer = ev.killer !== undefined ? this.characterIdOf(ev.killer) : null;
+            void Promise.resolve(this.characterStore.recordDeath?.(id, { at: Date.now(), x: ev.x ?? 0, z: ev.z ?? 0, killer })).catch(() => undefined);
+          }
+        }
+        msgs.push(m);
+      }
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+      }
+    }
+  }
+
+  /** The character id an entity carries, or null (bots, creatures). */
+  private characterIdOf(eid: number): number | null {
+    if (!hasComponent(this.world.ecs, C.CharacterRef, eid)) return null;
+    return C.CharacterRef.idHi[eid] * 4294967296 + C.CharacterRef.idLo[eid];
+  }
+
+  /**
+   * Put a respawning player at the world spawn point (rules `nearestVisited`
+   * has no visited-anchor tracking yet, so it falls back here). Returns false
+   * for entities without a character (bots), which rise where they fell.
+   */
+  respawnPlayer(sim: SimWorld, eid: number): boolean {
+    if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
+    const x = this.spawnPoint.x;
+    const z = this.spawnPoint.z;
+    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ? this.groundHeightAt(x, z) : null);
+    return r.ok;
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */

@@ -42,6 +42,16 @@ export interface CharacterStore {
   get(username: string, id: number): Promise<CharacterRecord | null>;
   /** Throws CharacterRefusedError when the name is taken or the account is full. */
   create(username: string, name: string, look: string, maxPerAccount: number): Promise<CharacterRecord>;
+  /** Record a death on the character (rules: recordDeaths). */
+  recordDeath?(characterId: number, death: DeathRecord): Promise<void>;
+}
+
+export interface DeathRecord {
+  at: number;
+  x: number;
+  z: number;
+  /** The killer's character id, or null (creature, bot, nothing). */
+  killer: number | null;
 }
 
 export const DEFAULT_CHARACTERS_DB_PATH = "./data/characters.db";
@@ -56,6 +66,15 @@ CREATE TABLE IF NOT EXISTS characters (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_characters_username ON characters(username);
+CREATE TABLE IF NOT EXISTS deaths (
+  id INTEGER PRIMARY KEY,
+  character_id INTEGER NOT NULL,
+  at INTEGER NOT NULL,
+  x REAL NOT NULL,
+  z REAL NOT NULL,
+  killer INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_deaths_character ON deaths(character_id);
 `;
 
 interface Row {
@@ -119,6 +138,12 @@ export class SqliteCharacterStore implements CharacterStore {
     return this.insert(username, name, look, maxPerAccount);
   }
 
+  async recordDeath(characterId: number, d: DeathRecord): Promise<void> {
+    this.db
+      .prepare("INSERT INTO deaths (character_id, at, x, z, killer) VALUES (?, ?, ?, ?, ?)")
+      .run(characterId, d.at, d.x, d.z, d.killer);
+  }
+
   close(): void {
     this.db.close();
   }
@@ -128,7 +153,14 @@ export class MemoryCharacterStore implements CharacterStore {
   private readonly rows: CharacterRecord[] = [];
   private nextId = 1;
 
+  /** Deaths recorded, oldest first. */
+  readonly deaths: (DeathRecord & { characterId: number })[] = [];
+
   constructor(private readonly clock: () => number = Date.now) {}
+
+  async recordDeath(characterId: number, d: DeathRecord): Promise<void> {
+    this.deaths.push({ characterId, ...d });
+  }
 
   async list(username: string): Promise<CharacterRecord[]> {
     return this.rows.filter((r) => r.username === username).map((r) => ({ ...r }));
