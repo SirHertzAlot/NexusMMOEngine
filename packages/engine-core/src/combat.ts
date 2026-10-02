@@ -23,7 +23,8 @@
  * takes the rules' computeDamage for the held weapon (a fist when empty
  * handed), against the torso: health is whole-body for now (decision D1).
  * A guard facing the blow takes GUARD_FACTOR of it; a roll inside its
- * i-frames takes none. Health stops at 0 (death is M2b). Each blow leaves
+ * i-frames takes none. Health stops at 0 (DeathSystem takes it from there,
+ * M2b); the dead neither fight nor are struck. Each blow leaves
  * a HitEvent for the gateway to send (`drainHits`).
  */
 
@@ -76,6 +77,8 @@ export class CombatSystem implements SimSystem {
   private readonly queued = new Set<number>();
   private readonly targets = defineQuery([Transform, Health]);
   private hits: HitEvent[] = [];
+  /** The last entity to damage each target. */
+  private readonly attackers = new Map<number, number>();
 
   constructor(
     private readonly tickHz = 30,
@@ -84,6 +87,11 @@ export class CombatSystem implements SimSystem {
     /** Damage rules (absent in some unit tests: blows land nothing). */
     private readonly damage?: CombatDamage,
   ) {}
+
+  /** Who last hurt `e` (for death credit), if anyone. */
+  lastAttacker(e: number): number | undefined {
+    return this.attackers.get(e);
+  }
 
   /** The blows struck since the last call. */
   drainHits(): HitEvent[] {
@@ -102,6 +110,7 @@ export class CombatSystem implements SimSystem {
     const tick = sim.currentTick;
     for (let i = 0; i < eids.length; i++) {
       const e = eids[i] as number;
+      if (hasComponent(sim.ecs, Health, e) && Health.current[e] <= 0) continue; // the dead do not fight
       const buttons = PlayerIntent.buttons[e];
       const pressed = buttons & ~(this.held.get(e) ?? 0);
       this.held.set(e, buttons);
@@ -192,6 +201,7 @@ export class CombatSystem implements SimSystem {
           amount *= GUARD_FACTOR;
         }
         Health.current[t] = Math.max(0, Health.current[t] - amount);
+        this.attackers.set(t, e);
       }
       this.hits.push({ tick, source: e, target: t, outcome, amount });
     }

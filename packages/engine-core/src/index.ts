@@ -263,4 +263,5 @@ export {
 } from "./characters/index.js";
 export type { CharacterRecord, CharacterStore } from "./characters/index.js";
 
+export { DeathSystem, type LifeEvent } from "./death.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type HitEvent, type Weapon } from "./combat.js";

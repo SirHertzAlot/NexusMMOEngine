@@ -109,6 +109,7 @@ import { RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { CombatSystem, type Weapon } from "./combat.js";
+import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
@@ -445,12 +446,16 @@ async function main(): Promise<void> {
       reach: d.length[def],
     };
   };
-  const gw = new Gateway({
+  const combat = new CombatSystem(30, stamina, { hooks: game.hooks, weaponOf });
+  // Players come back at the spawn point (placement lives in the gateway,
+  // which owns the spawn grid); bots rise where they fell.
+  const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => (gw as Gateway).respawnPlayer(s, e));
+  const gw: Gateway = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(30, stamina, { hooks: game.hooks, weaponOf }), stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).

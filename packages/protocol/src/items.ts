@@ -90,3 +90,19 @@ export interface HitMessage {
   health: number;
   max: number;
 }
+
+/**
+ * 0x17 life (M2b): an entity died or came back. "dead" carries the killer
+ * (a wire id, or "" when nothing struck the last blow) and the tick the
+ * entity will respawn at (0: it will not, a creature's corpse). "alive"
+ * follows a respawn; the entity's new position and full health ride the
+ * ordinary delta.
+ */
+export interface LifeMessage {
+  kind: "life";
+  tick: number;
+  target: string;
+  state: "dead" | "alive";
+  killer?: string;
+  respawnAt?: number;
+}
