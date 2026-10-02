@@ -10,7 +10,6 @@
 
 import { useState } from "react";
 import type { ItemView } from "@mmo-engine/protocol";
-
 /** Stats in a fixed, readable order; anything else follows alphabetically. */
 const STAT_ORDER = ["power", "armour", "block", "spell", "speed", "crit", "reach", "health", "stagger"];
 
@@ -57,10 +56,16 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
 
 export function BagPanel({
   bag,
+  hands,
   onDrop,
+  onEquip,
+  onUnequip,
 }: {
   bag: Array<ItemView | null>;
+  hands: { main: ItemView | null; off: ItemView | null };
   onDrop: (item: number) => void;
+  onEquip: (item: number) => void;
+  onUnequip: (hand: "main" | "off") => void;
 }): React.ReactElement {
   const [focus, setFocus] = useState<number | null>(null);
   const shown = focus !== null ? bag.find((i) => i?.id === focus) ?? null : null;
@@ -72,6 +77,25 @@ export function BagPanel({
         <div className="text-xs text-muted-foreground tabular-nums">
           {used}/{bag.length}
         </div>
+      </div>
+      <div className="mb-2 grid grid-cols-2 gap-1" aria-label="hands">
+        {(["main", "off"] as const).map((hand) => {
+          const held = hands[hand];
+          return (
+            <button
+              key={hand}
+              type="button"
+              className="flex items-center justify-between rounded border bg-background/60 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+              style={held ? { borderColor: held.color, color: held.color } : undefined}
+              title={held ? `${held.name} (${hand} hand): activate to put away` : `${hand} hand: empty`}
+              disabled={!held}
+              onClick={() => held && onUnequip(hand)}
+            >
+              <span className="text-muted-foreground">{hand}</span>
+              <span className="truncate">{held ? held.base : "—"}</span>
+            </button>
+          );
+        })}
       </div>
       <div className="grid grid-cols-6 gap-1">
         {bag.map((item, i) => (
@@ -92,16 +116,30 @@ export function BagPanel({
       {shown ? (
         <div className="mt-2 border-t pt-2">
           <ItemDetails item={shown} />
-          <button
-            type="button"
-            className="mt-2 rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              onDrop(shown.id);
-              setFocus(null);
-            }}
-          >
-            drop
-          </button>
+          <div className="mt-2 flex gap-2">
+            {shown.hand !== "none" && (
+              <button
+                type="button"
+                className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  onEquip(shown.id);
+                  setFocus(null);
+                }}
+              >
+                equip
+              </button>
+            )}
+            <button
+              type="button"
+              className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                onDrop(shown.id);
+                setFocus(null);
+              }}
+            >
+              drop
+            </button>
+          </div>
         </div>
       ) : (
         used === 0 && <div className="mt-2 text-xs text-muted-foreground">empty: walk up to a drop and press E</div>

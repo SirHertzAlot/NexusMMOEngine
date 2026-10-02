@@ -34,6 +34,11 @@ const POOL: PoolItemLike[] = ["a", "b", "c"].map((id, i) => ({
 
 function makeItems(): ItemService {
   const rules = engineDefaults();
+  rules.items.bases.sword = {
+    ...rules.items.fallback,
+    mass: 1.3, length: 0.9, edge: 0.9, point: 0.8, hardness: 0.9, hand: "main", technique: "cut",
+    models: ["pack/SM_Wep_Sword_01"],
+  };
   return new ItemService({ defs: new ItemDefs(POOL, rules), loot: rules.loot, tickHz: 30 });
 }
 
@@ -154,6 +159,30 @@ describe("gateway: items", () => {
     assert.equal(given.ok, true, given.message);
     const bag = decodeControl<InventoryMessage>((await invP)[0]).bag;
     assert.equal(bag[0]?.def, "b");
+    await alice.close();
+  });
+
+  it("entering the world outfits the starter sword and shows it; unequip/equip refresh it", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const alice = await join(url, "alice");
+    const outfit = await admin(alice, "inspect", { entity: "me" });
+    assert.match(outfit.message, /"held":\{"main":"[^"]+"\}/, "starter sword visible on join");
+    const hands = await admin(alice, "set", { entity: "me", component: "Health", field: "current", value: 50 });
+    assert.equal(hands.ok, true);
+    // Unequip over the wire: the held model leaves the appearance...
+    const invP = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "unequip", hand: "main" }));
+    const bagged = decodeControl<InventoryMessage>((await invP)[0]).bag;
+    const sword = bagged.find((i) => i !== null);
+    assert.ok(sword, "sword is back in the bag");
+    const bare = await admin(alice, "inspect", { entity: "me" });
+    assert.doesNotMatch(bare.message, /"held"/);
+    // ...and equipping the bagged sword back brings it back.
+    const invP3 = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "equip", item: sword!.id }));
+    await invP3;
+    const dressed = await admin(alice, "inspect", { entity: "me" });
+    assert.match(dressed.message, /"held":\{"main":"[^"]+"\}/);
     await alice.close();
   });
 });

@@ -231,3 +231,51 @@ describe("ItemService", () => {
     assert.equal(inv.bag[0]?.model, "pack/SM_Wep_Sword_02");
   });
 });
+
+describe("ItemService held weapons (M3b)", () => {
+  const defs = new ItemDefs(POOL, RULES);
+  const held = (tickHz = 30): ItemService =>
+    new ItemService({ defs, loot: loot(), tickHz, rankOrder: ["common", "rare"] });
+
+  it("equips into the hand, swapping what was there back to the bag", () => {
+    const items = held();
+    items.give(1, 0);
+    items.give(1, 1);
+    assert.ok(items.equip(1, 1).ok, "first sword equips");
+    assert.ok(items.equip(1, 2).ok, "second sword displaces the first");
+    assert.deepEqual(items.inventoryOf(1).main?.id, 2);
+    assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "displaced sword is back in the bag");
+  });
+
+  it("refuses what cannot be held and what is not in the bag", () => {
+    const items = held();
+    const missing = items.equip(1, 999);
+    assert.equal(missing.ok, false);
+    items.give(1, 2); // the ring: hand "none"
+    const ring = items.equip(1, 1);
+    assert.equal(ring.ok, false);
+    if (!ring.ok) assert.match(ring.error, /hold/);
+  });
+
+  it("unequips back to the bag, refusing full bags and empty hands", () => {
+    const items = new ItemService({ defs, loot: loot({ bagSlots: 1 }), tickHz: 30 });
+    items.give(1, 0);
+    assert.ok(items.equip(1, 1).ok);
+    items.give(1, 1); // bag full again: the swap has nowhere to go
+    const full = items.unequip(1, "main");
+    assert.equal(full.ok, false);
+    if (!full.ok) assert.match(full.error, /full/);
+    const empty = items.unequip(1, "off");
+    assert.equal(empty.ok, false);
+    if (!empty.ok) assert.match(empty.error, /empty/);
+  });
+
+  it("outfits once with the lowest-ranked starter sword, shown in heldModels", () => {
+    const items = held();
+    assert.equal(items.outfit(1), true);
+    assert.equal(items.outfit(1), false, "once per character per run");
+    assert.deepEqual(items.heldModels(1), { main: "pack/SM_Wep_Sword_01" });
+    assert.equal(items.mainHandDef(1), 0);
+    assert.equal(items.mainHandDef(9), -1, "empty-handed");
+  });
+});

@@ -32,7 +32,7 @@
 import * as THREE from "three";
 import { labelSprite } from "./element-fx.js";
 import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type VelocityRow } from "@mmo-engine/protocol";
-import { parseLook } from "@mmo-engine/art/browser";
+import { parseLook, heldOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
@@ -42,7 +42,7 @@ import { FxShowcase } from "./showcase.js";
 import { QuarksFx } from "./vfx/quarks-fx.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
 import { PcgMeshes } from "./pcg-meshes.js";
-import { ChainedPropModels, SyntyProps } from "./synty-props.js";
+import { ChainedPropModels, SyntyProps, fnv1a32 } from "./synty-props.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
@@ -70,6 +70,12 @@ interface TrackedMesh {
   /** Nameplate sprite above the head, and the name it shows. */
   plate?: THREE.Sprite;
   plateFor?: string;
+  /** Held-weapon models on show, per hand (art catalog ids). */
+  held?: { main?: string; off?: string };
+  /** The look JSON the held models were read from (skip re-parsing). */
+  heldJson?: string;
+  /** Live weapon meshes, per hand (shared geometry/material — never disposed). */
+  weapons?: { main?: THREE.Object3D; off?: THREE.Object3D };
 }
 
 /** Nameplate height above a character's feet, and full-visibility range. */
@@ -95,6 +101,13 @@ const TURN_RATE = 12;
 const tmpColor = new THREE.Color();
 const tmpEye = new THREE.Vector3();
 const tmpSpawn = new THREE.Vector3();
+/** Warn-once log (missing bones, missing models: per session, not per frame). */
+const warned = new Set<string>();
+function warnOnce(message: string): void {
+  if (warned.has(message)) return;
+  warned.add(message);
+  console.warn(message);
+}
 
 export class EntityLayer {
   /** Everything this layer draws that isn't FX: add it to the scene. */
@@ -302,10 +315,12 @@ export class EntityLayer {
         this.group.remove(tracked.object);
         this.pickMap.delete(tracked.object);
         detachPlate(tracked);
+        this.detachWeapons(tracked);
         disposeObject(tracked.object);
         const model = this.modelFor(e.asset);
         if (!model && isStaticProp(e.body, e.asset) && e.transform) {
           detachPlate(tracked);
+          this.detachWeapons(tracked);
           this.meshes.delete(wid);
           this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
           continue;
@@ -321,6 +336,8 @@ export class EntityLayer {
       if (e.appearance && this.kit && tracked.look !== e.appearance.look) {
         this.dressAsCharacter(wid, tracked, e.appearance.look);
       }
+      // Held weapons ride in the appearance JSON next to the look.
+      if (e.appearance && tracked.character) this.updateHeld(tracked, e.appearance.look);
 
       if (!e.transform) continue;
 
@@ -387,10 +404,55 @@ export class EntityLayer {
   }
 
   /**
-   * Show the entity as a modular character wearing `lookJson`: the first
-   * time, the character replaces the stand-in; after that the look changes
-   * in place. An unreadable look leaves the entity as it is.
+   * Held weapons (M3b): what `heldOf(lookJson)` names, drawn as shared
+   * prop geometry parented to the hand bones. Models load async — a hand
+   * whose model isn't ready retries on later frames. Meshes are removed
+   * (never disposed: geometry/material stay shared) when the hands change
+   * or the entity goes away (see detachWeapons).
    */
+  private updateHeld(tracked: TrackedMesh, lookJson: string): void {
+    if (!tracked.character) return;
+    if (tracked.heldJson !== lookJson) {
+      tracked.heldJson = lookJson;
+      const held = heldOf(lookJson);
+      tracked.held = held.main || held.off ? held : undefined;
+      this.detachWeapons(tracked);
+    }
+    const want = tracked.held;
+    if (!want) return;
+    tracked.weapons ??= {};
+    this.attachHeld(tracked, "main", want.main, "Hand_R");
+    this.attachHeld(tracked, "off", want.off, "Hand_L");
+  }
+
+  /** Remove live weapon meshes (shared art: remove only, never dispose). */
+  private detachWeapons(tracked: TrackedMesh): void {
+    detachWeapons(tracked);
+  }
+
+  /** Attach one hand's weapon if its model is ready and not yet shown. */
+  private attachHeld(tracked: TrackedMesh, side: "main" | "off", model: string | undefined, boneName: string): void {
+    if (!model || !tracked.character || tracked.weapons?.[side]) return;
+    const ready = this.syntyProps.model(fnv1a32(model), 0);
+    if (!ready) return; // still loading: retry on a later frame
+    const bone = tracked.character.bones.get(boneName);
+    if (!bone) {
+      warnOnce(`[world] rig has no ${boneName} bone: held ${model} stays hidden`);
+      return;
+    }
+    const mesh = new THREE.Mesh(ready.geometry, ready.material);
+    mesh.name = `held-${side}`;
+    // Grip: blade along the arm, hilt at the palm. Tuned by eye (M3b).
+    mesh.rotation.set(Math.PI / 2, 0, 0);
+    // Cancel the rig's root scale so the model keeps its metre size.
+    const scale = new THREE.Vector3();
+    tracked.character.root.updateWorldMatrix(true, false);
+    bone.getWorldScale(scale);
+    mesh.scale.setScalar(1 / Math.max(scale.x, 1e-6));
+    bone.add(mesh);
+    tracked.weapons![side] = mesh;
+  }
+
   private dressAsCharacter(wid: bigint, tracked: TrackedMesh, lookJson: string): void {
     const look = parseLook(lookJson);
     tracked.look = lookJson;
@@ -405,6 +467,7 @@ export class EntityLayer {
     this.group.remove(tracked.object);
     this.pickMap.delete(tracked.object);
     detachPlate(tracked);
+    this.detachWeapons(tracked);
     disposeObject(tracked.object);
     tracked.object = character.root;
     tracked.character = character;
@@ -519,6 +582,7 @@ function turnToward(t: TrackedMesh, v: VelocityRow | undefined, dt: number, acti
 /** Dispose what an entity's view owns (a character shares its kit's geometry). */
 function disposeTracked(t: TrackedMesh): void {
   detachPlate(t);
+  detachWeapons(t);
   t.animator?.dispose();
   if (t.character) t.character.dispose();
   else disposeObject(t.object);
@@ -536,6 +600,17 @@ function detachPlate(t: TrackedMesh): void {
     t.plate.material.dispose();
     t.plate = undefined;
     t.plateFor = undefined;
+  }
+}
+
+/**
+ * Remove live weapon meshes before their object is disposed or replaced.
+ * Shared art (see updateHeld): remove only, never dispose.
+ */
+function detachWeapons(t: TrackedMesh): void {
+  for (const side of ["main", "off"] as const) {
+    t.weapons?.[side]?.removeFromParent();
+    if (t.weapons) delete t.weapons[side];
   }
 }
 
