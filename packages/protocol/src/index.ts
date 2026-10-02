@@ -64,4 +64,4 @@ export { Ability, IntentButton, LocomotionMode } from "./locomotion.js";
 export { COMBAT_MOVES, Move, combatMove, moveTravel } from "./combat.js";
 export type { CombatMove, MoveKind } from "./combat.js";
 export { GROUND_ITEM_VARIANT } from "./items.js";
-export type { DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView } from "./items.js";
+export type { HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView } from "./items.js";

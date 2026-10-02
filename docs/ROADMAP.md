@@ -174,7 +174,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 |---|---|---|---|
 | M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ✅ | Pickup (E), bag (B), rank-coloured labels and beams; bags in memory until P2a |
 | M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | ✅ | Held models ride the appearance JSON; equip/unequip on 0x13; starter sword once per character per run |
-| M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | 📋 | M3b |
+| M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | 🚧 | M3b |
 | M2b | Death and respawn, corpses, deaths recorded | 📋 | M2a |
 | AI1 | Creature spawner and brain: goblins with weapons, aggro, chase, attack, leash | 📋 | M2a |
 | L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | 📋 | M2b, AI1 |
@@ -192,6 +192,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
+- **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
 - **2026-10-02**: M3b held weapons: the avatar's appearance JSON carries `Held` models (`withHeld`), the gateway refreshes it on equip and unequip, and the client parents the weapon to `Hand_R`/`Hand_L`. Entering the world outfits the lowest-ranked starter sword once per character per run. Bag shows the two hand slots with equip and unequip buttons. Protocol: 0x13 `equip`/`unequip`, 0x14 `main?`/`off?`.

@@ -73,3 +73,20 @@ export interface DropsMessage {
   kind: "drops";
   drops: Array<[string, string, string, string]>;
 }
+
+/**
+ * S->C (catalog 0x16): a blow struck at the hit frame of an attack.
+ * `outcome` is "hit" (damage dealt), "blocked" (guard took most of it) or
+ * "dodged" (the roll avoided it; amount 0). Entities are wire ids.
+ */
+export interface HitMessage {
+  kind: "hit";
+  tick: number;
+  source: string;
+  target: string;
+  outcome: "hit" | "blocked" | "dodged";
+  amount: number;
+  /** The target's health after the blow, and its maximum. */
+  health: number;
+  max: number;
+}

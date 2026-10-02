@@ -58,6 +58,8 @@ export enum MessageType {
   Inventory = 0x14,
   /** S→C what ground items are (catalog §0x15), before the state that first shows them. JSON. */
   Drops = 0x15,
+  /** S->C a blow's outcome (catalog 0x16, roadmap M2a). JSON. */
+  Hit = 0x16,
 }
 
 /**
@@ -262,7 +264,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 11; // v11 (2026-10-01): items — 0x13 item
+export const PROTOCOL_VERSION = 12; // v11 (2026-10-01): items — 0x13 item
 // actions, 0x14 inventory, 0x15 drops (roadmap M3a).
 // v10 (2026-10-01): C3 identity —
 // CharacterRef wire block + 0x12 names (roadmap C3).
