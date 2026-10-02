@@ -49,6 +49,8 @@ export class DeathSystem implements SimSystem {
     private readonly place?: (sim: SimWorld, e: number) => boolean,
     /** Respawn delay in seconds for `e` where it differs from the rules' (creatures); undefined keeps the rules'. */
     private readonly delayOf?: (e: number) => number | undefined,
+    /** Called as each death is recorded (loot drops); the event is also queued for `drainEvents`. */
+    private readonly onDeath?: (sim: SimWorld, ev: LifeEvent) => void,
   ) {}
 
   isDead(e: number): boolean {
@@ -86,7 +88,7 @@ export class DeathSystem implements SimSystem {
       if (hasComponent(sim.ecs, Action, e)) Action.move[e] = 0;
       Velocity.lx[e] = 0;
       Velocity.lz[e] = 0;
-      this.events.push({
+      const ev: LifeEvent = {
         tick,
         target: e,
         state: "dead",
@@ -95,7 +97,9 @@ export class DeathSystem implements SimSystem {
         outcome,
         x: Transform.px[e],
         z: Transform.pz[e],
-      });
+      };
+      this.events.push(ev);
+      this.onDeath?.(sim, ev);
     }
   }
 
