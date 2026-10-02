@@ -35,6 +35,10 @@ export interface CombatMove {
   moveScale: number;
   /** Lasts while its button is held (a guard); its clip loops. */
   held?: boolean;
+  /** Seconds in when the blow lands (attacks that hurt); in step with the clip's swing. */
+  hitAt?: number;
+  /** Seconds in [from, to] when the mover cannot be hit (the roll). */
+  iframes?: { from: number; to: number };
 }
 
 /** Move ids. */
@@ -54,16 +58,16 @@ export const COMBAT_MOVES: readonly CombatMove[] = [
   {
     id: Move.SwordA, name: "sword A", clip: "Sword_Regular_A", kind: "attack", duration: 0.4333,
     chain: { next: Move.SwordB, from: 0.08, to: 0.4333 }, branchAt: 0.4333, recovery: Move.SwordARecover,
-    advance: { distance: 0.79, from: 0, to: 0.4333 }, moveScale: 0,
+    advance: { distance: 0.79, from: 0, to: 0.4333 }, moveScale: 0, hitAt: 0.2,
   },
   {
     id: Move.SwordB, name: "sword B", clip: "Sword_Regular_B", kind: "attack", duration: 0.5333,
     chain: { next: Move.SwordC, from: 0.08, to: 0.5333 }, branchAt: 0.5333, recovery: Move.SwordBRecover,
-    moveScale: 0,
+    moveScale: 0, hitAt: 0.25,
   },
   {
     id: Move.SwordC, name: "sword C (finisher)", clip: "Sword_Regular_C", kind: "attack", duration: 2.0,
-    advance: { distance: 1.49, from: 0.1, to: 0.9 }, moveScale: 0,
+    advance: { distance: 1.49, from: 0.1, to: 0.9 }, moveScale: 0, hitAt: 0.5,
   },
   {
     id: Move.SwordARecover, name: "sword A recovery", clip: "Sword_Regular_A_Rec", kind: "attack", duration: 0.9667,
@@ -78,7 +82,7 @@ export const COMBAT_MOVES: readonly CombatMove[] = [
   { id: Move.Guard, name: "guard", clip: "Idle_Shield_Loop", kind: "guard", duration: 2.5, held: true, moveScale: 0.35 },
   {
     id: Move.Roll, name: "roll", clip: "Roll", kind: "dodge", duration: 1.4667,
-    advance: { distance: 4.5, from: 0.05, to: 1.05 }, moveScale: 0,
+    advance: { distance: 4.5, from: 0.05, to: 1.05 }, moveScale: 0, iframes: { from: 0.05, to: 0.8 },
   },
   { id: Move.ShieldBash, name: "shield bash", clip: "Shield_OneShot", kind: "attack", duration: 0.8333, moveScale: 0 },
 ];

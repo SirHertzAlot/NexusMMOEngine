@@ -4,7 +4,7 @@ Mirrors Phase 1 plan §2. Envelope for every message: `[u8 type][payload]`.
 Control plane = JSON (debuggable); data plane = FlatBuffers (hot path).
 u64 ids travel as JSON strings (JS number precision).
 
-**Protocol version: 11** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons; v7 adds stats 0x0f; v8 adds the admin console 0x10; v9 adds region chat 0x11; v10 adds C3 identity: the CharacterRef block and 0x12 names; v11 adds items: 0x13 item actions, 0x14 inventory, 0x15 drops).
+**Protocol version: 12** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons; v7 adds stats 0x0f; v8 adds the admin console 0x10; v9 adds region chat 0x11; v10 adds C3 identity: the CharacterRef block and 0x12 names; v11 adds items: 0x13 item actions, 0x14 inventory, 0x15 drops; v12 adds 0x16 hit).
 
 | Type | Name | Dir | Encoding | Fields | Purpose / frequency |
 |------|------|-----|----------|--------|---------------------|
@@ -28,6 +28,7 @@ u64 ids travel as JSON strings (JS number precision).
 | 0x13 | `item` | C→S | JSON | `{kind:"item", action:"pickup", entity: "u64"}` (a ground item) · `{kind:"item", action:"drop", item: int}` (from the bag, at the player's feet) · `{kind:"item", action:"equip", item: int}` (bag → hand, swapping) · `{kind:"item", action:"unequip", hand:"main"\|"off"}` (hand → bag) | **Item actions (M3a).** In-world sessions only. Answered with the whole bag (0x14). Refusals are 4005 (nothing there, too far, someone else's drop during its ownership time, bag full, not yours, cannot be held, hand empty); a bad shape is 4003. |
 | 0x14 | `inventory` | S→C | JSON | `{kind:"inventory", bag: [ItemView \| null], main?: ItemView, off?: ItemView}` — ItemView: `{id, def, name, base, rank, color, hand: "main"\|"off"\|"both"\|"none", stats: {…}, durability, model}` | **The player's bag (M3a),** whole: after joining or re-attaching, and after every change. Slot i is `bag[i]` (null: empty). |
 | 0x15 | `drops` | S→C | JSON | `{kind:"drops", drops: [[entity: "u64", name, rank, color]]}` | **Ground items (M3a).** Sent before the snapshot or delta that first shows each ground item, like 0x12 names. A ground item is an entity with a Transform and an AssetRef whose `variant` is `0xffff` (`GROUND_ITEM_VARIANT`). |
+| 0x16 | `hit` | S→C | JSON | `{kind:"hit", tick, source, target, outcome:"hit"\|"blocked"\|"dodged", amount, health, max}` | **Damage (M2a).** One per blow the server resolves on an attack move's hit frame; `source`/`target` are wire ids. Sent to every welcomed session (not range-filtered yet). |
 
 ## Authentication (slice 1.4)
 

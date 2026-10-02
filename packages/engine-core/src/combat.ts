@@ -15,16 +15,57 @@
  * moves start only on the ground.
  *
  * Runs after IntentSystem (which sets the walking velocity) and before
- * IntegrateSystem (which moves by it). Damage and hit reactions are not
- * here yet.
+ * IntegrateSystem (which moves by it).
+ *
+ * Damage (M2a): an attack move strikes once, on the tick its hitAt falls
+ * (relative to Action.started). Every living target with a Health inside
+ * the weapon's reach and the 120-degree cone ahead of the attacker's facing
+ * takes the rules' computeDamage for the held weapon (a fist when empty
+ * handed), against the torso: health is whole-body for now (decision D1).
+ * A guard facing the blow takes GUARD_FACTOR of it; a roll inside its
+ * i-frames takes none. Health stops at 0 (death is M2b). Each blow leaves
+ * a HitEvent for the gateway to send (`drainHits`).
  */
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
-import { Action, Locomotion, PlayerIntent, Stamina, Velocity } from "./components.js";
+import type { DamageInput, RuleHooks } from "@mmo-engine/rules";
+import { Action, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { ATTACK_COST, DODGE_COST, type StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
+
+/** What a striker swings: the rules technique, the item's physics and its reach (m). */
+export interface Weapon {
+  technique: string;
+  item: DamageInput["item"];
+  reach: number;
+}
+
+/** A blow's outcome, for the gateway to tell clients. */
+export interface HitEvent {
+  tick: number;
+  source: number;
+  target: number;
+  outcome: "hit" | "blocked" | "dodged";
+  amount: number;
+}
+
+/** Fraction of a blow a facing guard lets through. */
+export const GUARD_FACTOR = 0.25;
+/** The attacking arm's own length added to the weapon's. */
+export const ARM_REACH = 0.6;
+/** cos(60 degrees): targets within 60 degrees either side of the facing. */
+const CONE_COS = 0.5;
+/** Targets further than this above or below are out of reach. */
+const MAX_DY = 2;
+const FIST: Weapon = { technique: "bludgeon", item: { mass: 0.5, edge: 0, point: 0, hardness: 0.3 }, reach: 0.8 };
+
+export interface CombatDamage {
+  hooks: RuleHooks;
+  /** The weapon an entity holds; null or absent means fists. */
+  weaponOf?: (e: number) => Weapon | null;
+}
 
 export class CombatSystem implements SimSystem {
   readonly name = "combat";
@@ -33,12 +74,23 @@ export class CombatSystem implements SimSystem {
   private readonly held = new Map<number, number>();
   /** Entities with a follow-up attack queued. */
   private readonly queued = new Set<number>();
+  private readonly targets = defineQuery([Transform, Health]);
+  private hits: HitEvent[] = [];
 
   constructor(
     private readonly tickHz = 30,
     /** Stamina gate (absent in unit tests: every move fires). */
     private readonly stamina?: StaminaSystem,
+    /** Damage rules (absent in some unit tests: blows land nothing). */
+    private readonly damage?: CombatDamage,
   ) {}
+
+  /** The blows struck since the last call. */
+  drainHits(): HitEvent[] {
+    const out = this.hits;
+    if (out.length > 0) this.hits = [];
+    return out;
+  }
 
   step(sim: SimWorld, dt: number): void {
     const eids = this.query(sim.ecs);
@@ -91,6 +143,10 @@ export class CombatSystem implements SimSystem {
         t = 0;
       }
 
+      if (move && this.damage && move.hitAt !== undefined && tick === Action.started[e] + Math.round(move.hitAt * this.tickHz)) {
+        this.strike(sim, e, tick);
+      }
+
       if (move) {
         // Walking slowed to the move's allowance, plus the move's own advance
         // over this tick, along its facing.
@@ -103,6 +159,41 @@ export class CombatSystem implements SimSystem {
           Velocity.lz[e] += (Math.cos(yaw) * d) / dt;
         }
       }
+    }
+  }
+
+  private strike(sim: SimWorld, e: number, tick: number): void {
+    const dmg = this.damage!;
+    const w = dmg.weaponOf?.(e) ?? FIST;
+    const reach = w.reach + ARM_REACH;
+    const yaw = Action.yaw[e];
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const ids = this.targets(sim.ecs);
+    for (let i = 0; i < ids.length; i++) {
+      const t = ids[i] as number;
+      if (t === e || Health.current[t] <= 0) continue;
+      const dx = Transform.px[t] - Transform.px[e];
+      const dz = Transform.pz[t] - Transform.pz[e];
+      const d = Math.hypot(dx, dz);
+      if (d > reach || Math.abs(Transform.py[t] - Transform.py[e]) > MAX_DY) continue;
+      if (d > 1e-4 && (dx * fx + dz * fz) / d < CONE_COS) continue;
+      let outcome: HitEvent["outcome"] = "hit";
+      let amount = 0;
+      const tm = hasComponent(sim.ecs, Action, t) ? combatMove(Action.move[t]) : undefined;
+      const tt = tm ? (tick - Action.started[t]) / this.tickHz : 0;
+      if (tm?.iframes && tt >= tm.iframes.from && tt <= tm.iframes.to) {
+        outcome = "dodged";
+      } else {
+        amount = dmg.hooks.computeDamage({ technique: w.technique, skill: 0, item: w.item, part: "torso" }).amount;
+        // The guard holds only against what it faces.
+        if (tm?.kind === "guard" && -(dx * Math.sin(Action.yaw[t]) + dz * Math.cos(Action.yaw[t])) >= 0) {
+          outcome = "blocked";
+          amount *= GUARD_FACTOR;
+        }
+        Health.current[t] = Math.max(0, Health.current[t] - amount);
+      }
+      this.hits.push({ tick, source: e, target: t, outcome, amount });
     }
   }
 

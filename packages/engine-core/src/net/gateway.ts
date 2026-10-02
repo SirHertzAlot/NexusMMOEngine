@@ -61,6 +61,7 @@ import {
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
+  type HitMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -574,6 +575,7 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
+    this.sendHits(sim, tick);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -587,6 +589,29 @@ export class Gateway {
     this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
     this.sweepGracePeriods();
     this.maybeHeartbeat();
+  }
+
+  /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
+  private sendHits(sim: SimWorld, tick: number): void {
+    for (const s of this.systems) {
+      if (!(s instanceof CombatSystem)) continue;
+      const hits = s.drainHits();
+      if (hits.length === 0) continue;
+      const msgs = hits.map((h): HitMessage => ({
+            kind: "hit",
+            tick,
+            source: String(sim.wireId(h.source)),
+            target: String(sim.wireId(h.target)),
+            outcome: h.outcome,
+            amount: h.amount,
+            health: C.Health.current[h.target],
+            max: C.Health.max[h.target],
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
+      }
+    }
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */

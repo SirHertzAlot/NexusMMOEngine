@@ -108,7 +108,9 @@ import { startPcgService } from "./pcg/boot.js";
 import { RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
-import { CombatSystem } from "./combat.js";
+import { CombatSystem, type Weapon } from "./combat.js";
+import { hasComponent } from "bitecs";
+import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
@@ -430,12 +432,25 @@ async function main(): Promise<void> {
   // snapshot left lying on the ground have nothing behind them.
   const strays = items.clearStrayGroundItems(sim);
   if (strays > 0) console.log(`[items] cleared ${strays} ground item(s) left from before the restart`);
+  // What a character swings: the item in the main hand, by the character's
+  // id on its avatar. Bots and props hold nothing (fists).
+  const weaponOf = (e: number): Weapon | null => {
+    if (!hasComponent(sim.ecs, CharacterRef, e)) return null;
+    const def = items.mainHandDef(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
+    if (def < 0) return null;
+    const d = itemDefs.defs;
+    return {
+      technique: d.technique[def],
+      item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] },
+      reach: d.length[def],
+    };
+  };
   const gw = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(30, stamina), stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), new CombatSystem(30, stamina, { hooks: game.hooks, weaponOf }), stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
