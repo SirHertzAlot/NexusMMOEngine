@@ -94,6 +94,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   stats: [],
   items: ["combat"],
   loot: [],
+  creatures: ["items"],
 };
 
 let defaults: Rules | null = null;
@@ -239,6 +240,15 @@ function crossCheck(r: Rules): RulesIssue[] {
   }
   if (!techniques.has(r.items.fallback.technique)) add("items", "fallback.technique", `no combat technique "${r.items.fallback.technique}"`);
   if (!techniques.has(r.items.unarmed.technique)) add("items", "unarmed.technique", `no combat technique "${r.items.unarmed.technique}"`);
+
+  // Creatures: pack range is ordered, leash outside aggro, weapons are item bases.
+  for (const [kind, c] of Object.entries(r.creatures.creatures)) {
+    if (c.pack[0] > c.pack[1]) add("creatures", `creatures.${kind}.pack`, "min is above max");
+    if (c.leashRadius <= c.aggroRadius) add("creatures", `creatures.${kind}.leashRadius`, "must be beyond aggroRadius");
+    c.weapons.forEach((w, i) => {
+      if (!(w in r.items.bases)) add("creatures", `creatures.${kind}.weapons[${i}]`, `no item base "${w}"`);
+    });
+  }
 
   return issues;
 }

@@ -325,6 +325,34 @@ export const LootSchema = z.strictObject({
   maxGroundItems: z.number().int().min(1).max(65536).default(4096),
 });
 
+// -------------------------------------------------------------- creatures
+
+/** One kind of creature (docs/ALPHA-PLAN.md, decision D6). */
+export const CreatureSchema = z.strictObject({
+  name: z.string().min(1),
+  /** Whole-body health (D1). */
+  health: positive,
+  /** Metres within which it notices a player and gives chase. */
+  aggroRadius: positive,
+  /** Metres from home past which it gives up the chase and walks back. */
+  leashRadius: positive,
+  /** Seconds a killed creature stays down before it rises at home. */
+  respawnSeconds: z.number().min(0),
+  /** How many spawn together (inclusive range). */
+  pack: z.tuple([z.number().int().min(1), z.number().int().min(1)]).default([1, 1]),
+  /** Item bases a spawned creature may carry; one is chosen at random. */
+  weapons: z.array(id).min(1),
+  /** Share of full walking speed it chases at. */
+  chaseSpeed: share.default(0.9),
+  /** Seconds between its blows while in reach. */
+  attackEverySeconds: positive.default(1.5),
+});
+
+export const CreaturesSchema = z.strictObject({
+  /** Creature kind id -> its numbers. */
+  creatures: z.record(id, CreatureSchema).default({}),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -338,6 +366,7 @@ export const RULE_FILES = {
   stats: StatsSchema,
   items: ItemsSchema,
   loot: LootSchema,
+  creatures: CreaturesSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -356,6 +385,8 @@ export type ItemsRules = z.infer<typeof ItemsSchema>;
 export type ItemBaseRules = z.infer<typeof ItemBaseRulesSchema>;
 export type HandKind = z.infer<typeof Hand>;
 export type LootRules = z.infer<typeof LootSchema>;
+export type CreaturesRules = z.infer<typeof CreaturesSchema>;
+export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
 export type DerivedStatDef = z.infer<typeof DerivedStatSchema>;
 export type StatDrive = z.infer<typeof StatDrive>;
@@ -371,4 +402,5 @@ export interface Rules {
   stats: StatsRules;
   items: ItemsRules;
   loot: LootRules;
+  creatures: CreaturesRules;
 }

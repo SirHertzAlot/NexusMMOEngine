@@ -202,6 +202,7 @@ export type {
 
 export { NavigationSystem, WaypointStore } from "./navigation/system.js";
 export { CrowdSystem } from "./navigation/crowd-system.js";
+export { CreatureSystem, type CreatureOptions } from "./creatures.js";
 export { NavObstacleSystem } from "./navigation/obstacle-system.js";
 export type { NavObstacleOptions } from "./navigation/obstacle-system.js";
 export type { NavigationSystemOptions } from "./navigation/system.js";

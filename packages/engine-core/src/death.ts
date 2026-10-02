@@ -47,6 +47,8 @@ export class DeathSystem implements SimSystem {
     private readonly lastAttacker?: (e: number) => number | undefined,
     /** Put a respawning body down; return false to let it rise where it fell. */
     private readonly place?: (sim: SimWorld, e: number) => boolean,
+    /** Respawn delay in seconds for `e` where it differs from the rules' (creatures); undefined keeps the rules'. */
+    private readonly delayOf?: (e: number) => number | undefined,
   ) {}
 
   isDead(e: number): boolean {
@@ -78,7 +80,8 @@ export class DeathSystem implements SimSystem {
       }
       if (Health.current[e] > 0) continue;
       const outcome = this.hooks.onDeath({ cause: "part", part: "torso" });
-      const respawnAt = tick + Math.round(outcome.respawnInSeconds * this.tickHz);
+      const delay = this.delayOf?.(e) ?? outcome.respawnInSeconds;
+      const respawnAt = tick + Math.round(delay * this.tickHz);
       this.dead.set(e, { respawnAt, outcome });
       if (hasComponent(sim.ecs, Action, e)) Action.move[e] = 0;
       Velocity.lx[e] = 0;

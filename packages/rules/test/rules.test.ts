@@ -134,6 +134,22 @@ describe("our game's rules (content/rules)", () => {
     assert.equal(rules.loot.despawnSeconds, 300);
   });
 
+  it("give the goblin its D6 numbers and a weapon pool of item bases (creatures.json)", () => {
+    const g = rules.creatures.creatures.goblin;
+    assert.deepEqual([g.health, g.aggroRadius, g.leashRadius, g.respawnSeconds], [60, 12, 30, 60]);
+    assert.deepEqual(g.pack, [2, 4]);
+    for (const w of g.weapons) assert.ok(w in rules.items.bases, w);
+  });
+
+  it("reject a creature with an unknown weapon or a leash inside its aggro", () => {
+    const bad = structuredClone(rules.creatures);
+    bad.creatures.goblin.weapons = ["noSuchBase"];
+    bad.creatures.goblin.leashRadius = 5;
+    const issues = issuesOf(() => parseRules({ ...rules, creatures: bad })).join("; ");
+    assert.match(issues, /noSuchBase/);
+    assert.match(issues, /beyond aggroRadius/);
+  });
+
   it("respawn with skills kept and injuries cleared", () => {
     const h = createHooks(rules);
     const outcome = h.onDeath({ cause: "part", part: "head" });
