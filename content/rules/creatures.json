@@ -1,0 +1,15 @@
+{
+  "creatures": {
+    "goblin": {
+      "name": "Goblin",
+      "health": 60,
+      "aggroRadius": 12,
+      "leashRadius": 30,
+      "respawnSeconds": 60,
+      "pack": [2, 4],
+      "weapons": ["dagger", "axe", "mace"],
+      "chaseSpeed": 0.9,
+      "attackEverySeconds": 1.5
+    }
+  }
+}

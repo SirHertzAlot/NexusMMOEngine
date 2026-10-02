@@ -116,6 +116,7 @@ import { StatsSystem } from "./stats/stats-system.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
+import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
@@ -413,6 +414,14 @@ async function main(): Promise<void> {
       : [];
   // Crowd steering: every character is an agent; bots with targets are steered round walls and each other.
   const crowd = navBackend.crowd ? [new CrowdSystem(navBackend.crowd)] : [];
+  // Creatures (AI1): one instance, shared by the tick list, combat, death and
+  // the gateway's admin spawn.
+  const creatures = new CreatureSystem({
+    creatures: game.rules.creatures.creatures,
+    bases: game.rules.items.bases,
+    groundHeightAt: (x, z) => character.groundHeight(x, z),
+    steer: navBackend.crowd !== undefined,
+  });
   if (botCount > 0) console.log(`[bots] ${botCount} bots (sparring pairs and wanderers)`);
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
@@ -436,7 +445,7 @@ async function main(): Promise<void> {
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   const weaponOf = (e: number): Weapon | null => {
-    if (!hasComponent(sim.ecs, CharacterRef, e)) return null;
+    if (!hasComponent(sim.ecs, CharacterRef, e)) return creatures.weaponOf(e);
     const def = items.mainHandDef(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
     if (def < 0) return null;
     const d = itemDefs.defs;
@@ -449,17 +458,18 @@ async function main(): Promise<void> {
   const combat = new CombatSystem(30, stamina, { hooks: game.hooks, weaponOf });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
-  const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => (gw as Gateway).respawnPlayer(s, e));
+  const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e));
   const gw: Gateway = new Gateway({
     port: PORT,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, ...crowd, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),
+    creatures: { has: (k) => k in game.rules.creatures.creatures, spawnPack: (w, k, x, z) => creatures.spawnPack(w, k, x, z) },
     spawnPoint: spawn,
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,

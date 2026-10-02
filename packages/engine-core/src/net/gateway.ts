@@ -239,6 +239,11 @@ export interface GatewayOptions {
    * Default: y = 0 (flat test worlds).
    */
   groundHeightAt?: (x: number, z: number) => number;
+  /**
+   * Admin `spawn <creature>`: the creature ids this world knows and a pack
+   * spawner (AI1). Default none: only scatter assets spawn.
+   */
+  creatures?: { has(kind: string): boolean; spawnPack(sim: SimWorld, kind: string, x: number, z: number): number[] };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
   /** A baked world's extent and coarse map, sent in every welcome. */
@@ -342,6 +347,7 @@ export class Gateway {
       | "debugSource"
       | "chunkSource"
       | "groundHeightAt"
+      | "creatures"
       | "spawnPoint"
       | "worldInfo"
       | "dayClock"
@@ -379,6 +385,7 @@ export class Gateway {
    */
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
+  private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
@@ -444,6 +451,7 @@ export class Gateway {
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
+    this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
@@ -1163,6 +1171,10 @@ export class Gateway {
       y = C.Transform.py[eid];
     } else {
       y = this.groundHeightAt?.(x, z) ?? 0;
+    }
+    if (this.creatures?.has(parsed.data.asset)) {
+      const ids = this.creatures.spawnPack(this.world, parsed.data.asset, x, z);
+      return { kind: "admin", command, ok: true, message: `spawned a pack of ${ids.length} ${parsed.data.asset}` };
     }
     const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
