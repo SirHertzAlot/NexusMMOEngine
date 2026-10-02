@@ -173,12 +173,12 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | # | Item | Status | Needs |
 |---|---|---|---|
 | M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ✅ | Pickup (E), bag (B), rank-coloured labels and beams; bags in memory until P2a |
-| M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | ⏭️ | M3a |
+| M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | ✅ | Held models ride the appearance JSON; equip/unequip on 0x13; starter sword once per character per run |
 | M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | 📋 | M3b |
 | M2b | Death and respawn, corpses, deaths recorded | 📋 | M2a |
 | AI1 | Creature spawner and brain: goblins with weapons, aggro, chase, attack, leash | 📋 | M2a |
 | L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | 📋 | M2b, AI1 |
-| U10a | Inventory and equipment, first cut | 🚧 | Bag grid, item details, drop live (M3a); equipping lands with M3b |
+| U10a | Inventory and equipment, first cut | 🚧 | Bag grid, item details, drop live (M3a); equip and unequip live (M3b); stats and tooltips later |
 | U12a | Hit feedback and target frame | 📋 | M2a |
 | ED1 | Gameplay tables in the editor: items, creatures, loot and death rules, validated, hot-reloaded | 📋 | M3a; each α1 slice adds its table |
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | 📋 | M3a, L2 |
@@ -194,6 +194,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-02**: M3b held weapons: the avatar's appearance JSON carries `Held` models (`withHeld`), the gateway refreshes it on equip and unequip, and the client parents the weapon to `Hand_R`/`Hand_L`. Entering the world outfits the lowest-ranked starter sword once per character per run. Bag shows the two hand slots with equip and unequip buttons. Protocol: 0x13 `equip`/`unequip`, 0x14 `main?`/`off?`.
 - **2026-10-01**: M3a items: definitions from the loot pool with each
   base's physics (`content/rules/items.json`), ground items you pick up
   with E (owned 30 s, gone after 5 min, `loot.json`), a bag (B), and

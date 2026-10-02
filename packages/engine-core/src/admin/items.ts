@@ -15,6 +15,8 @@ import type { ItemDefs } from "../items/item-defs.js";
 export const ItemActionSchema = z.discriminatedUnion("action", [
   z.object({ kind: z.literal("item"), action: z.literal("pickup"), entity: z.string().regex(/^\d{1,20}$/) }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("drop"), item: z.number().int().positive() }).strict(),
+  z.object({ kind: z.literal("item"), action: z.literal("equip"), item: z.number().int().positive() }).strict(),
+  z.object({ kind: z.literal("item"), action: z.literal("unequip"), hand: z.enum(["main", "off"]) }).strict(),
 ]);
 
 const pick = z

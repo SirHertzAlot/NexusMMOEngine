@@ -236,3 +236,54 @@ export function parseLook(raw: unknown): CharacterLook | null {
     colours: (v.colours ?? {}) as CharacterLook["colours"],
   });
 }
+
+/**
+ * What a character holds (roadmap M3b): the art catalog model in each
+ * hand. It rides in the appearance JSON next to the look — the server
+ * adds it from the character's equipment (withHeld); it is never part of
+ * a look a player creates or stores (parseLook drops it).
+ */
+export interface Held {
+  main?: string;
+  off?: string;
+}
+
+const MODEL_ID = /^[A-Za-z0-9_./-]{1,160}$/;
+
+/** The held models in an appearance JSON string (empty when none, or unreadable). */
+export function heldOf(appearanceJson: string): Held {
+  if (appearanceJson.length > LOOK_JSON_MAX) return {};
+  let v: unknown;
+  try {
+    v = JSON.parse(appearanceJson);
+  } catch {
+    return {};
+  }
+  const h = (v as { held?: unknown } | null)?.held;
+  if (typeof h !== "object" || h === null) return {};
+  const out: Held = {};
+  const { main, off } = h as Record<string, unknown>;
+  if (typeof main === "string" && MODEL_ID.test(main)) out.main = main;
+  if (typeof off === "string" && MODEL_ID.test(off)) out.off = off;
+  return out;
+}
+
+/**
+ * An appearance JSON string with `held` set (and nothing held: no `held`
+ * key at all). Everything else in it is kept as it was.
+ */
+export function withHeld(appearanceJson: string, held: Held): string {
+  let v: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(appearanceJson);
+    v = typeof parsed === "object" && parsed !== null ? { ...(parsed as Record<string, unknown>) } : {};
+  } catch {
+    v = {};
+  }
+  delete v.held;
+  const h: Held = {};
+  if (held.main) h.main = held.main;
+  if (held.off) h.off = held.off;
+  if (h.main || h.off) v.held = h;
+  return JSON.stringify(v);
+}

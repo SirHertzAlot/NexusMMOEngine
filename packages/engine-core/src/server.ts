@@ -106,6 +106,7 @@ import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { RulesError } from "@mmo-engine/rules";
+import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { CombatSystem } from "./combat.js";
 import { StatsSystem } from "./stats/stats-system.js";
@@ -423,6 +424,7 @@ async function main(): Promise<void> {
     loot: game.rules.loot,
     tickHz: 30,
     groundHeightAt: (x, z) => character.groundHeight(x, z),
+    rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
   });
   // Bags live in memory until the item ledger (P2a): items a restored
   // snapshot left lying on the ground have nothing behind them.

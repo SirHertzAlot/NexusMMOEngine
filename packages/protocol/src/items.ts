@@ -20,11 +20,16 @@ export type ItemHand = "main" | "off" | "both" | "none";
 /**
  * C→S (catalog §0x13): act on an item.
  * - pickup: the ground item entity (decimal u64) into the bag;
- * - drop: an item from the bag onto the ground at the player's feet.
+ * - drop: an item from the bag onto the ground at the player's feet;
+ * - equip: an item from the bag into its hand (M3b), swapping what was
+ *   there back into the bag (a two-handed item empties both hands);
+ * - unequip: what a hand holds back into the bag.
  */
 export type ItemAction =
   | { kind: "item"; action: "pickup"; entity: string }
-  | { kind: "item"; action: "drop"; item: number };
+  | { kind: "item"; action: "drop"; item: number }
+  | { kind: "item"; action: "equip"; item: number }
+  | { kind: "item"; action: "unequip"; hand: "main" | "off" };
 
 /** One item as its holder sees it. */
 export interface ItemView {
@@ -54,6 +59,9 @@ export interface ItemView {
 export interface InventoryMessage {
   kind: "inventory";
   bag: Array<ItemView | null>;
+  /** What each hand holds (M3b); null: empty. A two-handed item is in `main`. */
+  main?: ItemView | null;
+  off?: ItemView | null;
 }
 
 /**

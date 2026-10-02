@@ -15,7 +15,7 @@ import {
   starterArmour,
 } from "../src/character/modular-catalog.js";
 import { canonicalSkeleton, partScene } from "../src/convert/convert-modular.js";
-import { canonicalLook, effectiveColours, lookToJson, parseLook, resolveLook, validateLook, type CharacterLook } from "../src/character/look.js";
+import { canonicalLook, effectiveColours, heldOf, lookToJson, parseLook, resolveLook, validateLook, withHeld, type CharacterLook } from "../src/character/look.js";
 import { DEFAULT_COLOURS } from "../src/character/colour-slots.js";
 
 describe("part names", () => {
@@ -226,5 +226,21 @@ describe("look JSON", () => {
       { gender: "male", parts: { head: 5 }, colours: {} }, { gender: "male", parts: {}, colours: { skin: 1 } }, "x".repeat(5000)]) {
       assert.equal(parseLook(bad), null, JSON.stringify(bad)?.slice(0, 40));
     }
+  });
+});
+
+describe("held weapons in the appearance (M3b)", () => {
+  const look = lookToJson({ gender: "male", parts: { head: "Chr_Head_Male_02" }, colours: {} });
+  it("withHeld adds and clears held models, keeping the look; heldOf reads them back", () => {
+    const armed = withHeld(look, { main: "pack/SM_Wep_Sword_01" });
+    assert.deepEqual(heldOf(armed), { main: "pack/SM_Wep_Sword_01" });
+    assert.deepEqual(parseLook(armed), parseLook(look), "the look itself is unchanged");
+    assert.equal(withHeld(armed, {}), look, "nothing held: no held key");
+    assert.deepEqual(heldOf(withHeld(armed, { off: "pack/Shield" })), { off: "pack/Shield" });
+  });
+  it("heldOf ignores garbage and bad model ids", () => {
+    assert.deepEqual(heldOf("{"), {});
+    assert.deepEqual(heldOf(JSON.stringify({ held: { main: "<script>", off: 3 } })), {});
+    assert.deepEqual(heldOf(look), {});
   });
 });

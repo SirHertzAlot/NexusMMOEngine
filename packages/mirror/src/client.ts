@@ -220,6 +220,18 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "drop", item })));
   }
 
+  /** Ask to hold a bag item (M3b, 0x13); swaps with what the hand held. */
+  equip(item: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "equip", item })));
+  }
+
+  /** Ask to put what a hand holds back in the bag (M3b, 0x13). */
+  unequip(hand: "main" | "off"): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "unequip", hand })));
+  }
+
   chat(channel: ChatChannel, text: string): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "chat", channel, text })));

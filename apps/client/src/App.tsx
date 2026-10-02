@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
-import type { InventoryMessage, StatsMessage } from "@mmo-engine/protocol";
+import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -127,6 +127,7 @@ export function App(): React.ReactElement {
   const [sheetOpen, setSheetOpen] = useState(false);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
+  const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
   const [bagOpen, setBagOpen] = useState(false);
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
@@ -161,7 +162,10 @@ export function App(): React.ReactElement {
       },
       onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
       onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
-      onInventory: (inv) => setBag(inv.bag),
+      onInventory: (inv) => {
+        setBag(inv.bag);
+        setHands({ main: inv.main ?? null, off: inv.off ?? null });
+      },
     });
 
   /**
@@ -240,6 +244,7 @@ export function App(): React.ReactElement {
     setSheet(null);
     setSheetOpen(false);
     setBag(null);
+    setHands({ main: null, off: null });
     setBagOpen(false);
     setNearDrop(null);
     setScreen("login");
@@ -415,7 +420,15 @@ export function App(): React.ReactElement {
           onSend={(text) => client?.chat(chatChannel, text)}
         />
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
-          {bagOpen && bag && <BagPanel bag={bag} onDrop={(id) => client?.dropItem(id)} />}
+          {bagOpen && bag && (
+            <BagPanel
+              bag={bag}
+              hands={hands}
+              onDrop={(id) => client?.dropItem(id)}
+              onEquip={(id) => client?.equip(id)}
+              onUnequip={(hand) => client?.unequip(hand)}
+            />
+          )}
           {sheetOpen && sheet && (
             <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
           )}

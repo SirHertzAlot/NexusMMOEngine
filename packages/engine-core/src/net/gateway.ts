@@ -114,7 +114,7 @@ import { CombatSystem } from "../combat.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
-import { parseLook, type ModularCatalog } from "@mmo-engine/art/character";
+import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
   checkNewLook,
@@ -1389,6 +1389,14 @@ export class Gateway {
     s.character = character ? { id: character.id, name: character.name } : null;
     s.playerEntity = this.spawnPlayerEntity(character?.look ?? DEFAULT_LOOK_JSON, character?.id ?? null);
     s.welcomed = true;
+    // Starter weapon (M3b): once per character per run, then show it.
+    if (this.items) {
+      const avatar = this.world.resolveWireId(s.playerEntity);
+      if (avatar >= 0) {
+        this.items.outfit(this.holderOf(s));
+        this.refreshAvatarLook(avatar, this.holderOf(s));
+      }
+    }
     s.lastSeenMs = this.clock();
     this.tokenToClient.set(s.token, s.clientId);
     this.sendWelcome(s);
@@ -1791,14 +1799,30 @@ export class Gateway {
     if (a.action === "pickup") {
       const entity = parseEntityArg(a.entity);
       result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
-    } else {
+    } else if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    } else if (a.action === "equip") {
+      result = this.items.equip(holder, a.item);
+    } else {
+      result = this.items.unequip(holder, a.hand);
     }
     if (!result.ok) {
       this.sendError(s, 4005, result.error);
       return;
     }
+    this.refreshAvatarLook(avatar, holder);
     this.sendInventory(s);
+  }
+
+  /**
+   * Rewrite the avatar's Appearance from its look plus what its hands
+   * hold (M3b): clients that read heldOf() draw the weapon. No-op when
+   * the avatar has no Appearance row (never for players).
+   */
+  private refreshAvatarLook(avatar: number, holder: number): void {
+    if (!this.items || !hasComponent(this.world.ecs, C.Appearance, avatar)) return;
+    const look = this.world.lookJson(C.Appearance.look[avatar]);
+    this.world.setLook(avatar, withHeld(look, this.items.heldModels(holder)));
   }
 
   /** Who owns a session's bag: its character, or (no character) one id per account. */

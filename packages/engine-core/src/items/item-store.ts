@@ -18,7 +18,12 @@ export const ItemWhere = {
   Free: 0,
   Ground: 1,
   Bag: 2,
+  /** In a character's hand (roadmap M3b). */
+  Held: 3,
 } as const;
+
+/** Hand slots: index into a character's hands. */
+export const HandSlot = { Main: 0, Off: 1 } as const;
 export type ItemWhereCode = (typeof ItemWhere)[keyof typeof ItemWhere];
 
 const INITIAL_CAPACITY = 1024;
@@ -40,6 +45,8 @@ export class ItemStore {
   private nextId = 1;
   private readonly slotOf = new Map<number, number>();
   private readonly bags = new Map<number, Uint32Array>();
+  /** Item id held in each hand ([main, off]; 0: empty), per character. */
+  private readonly handsOf = new Map<number, Uint32Array>();
 
   constructor(
     /** Bag slots per character (rules loot.bagSlots). */
@@ -78,7 +85,7 @@ export class ItemStore {
   destroy(id: number): void {
     const slot = this.slotOf.get(id);
     if (slot === undefined) return;
-    if (this.where[slot] === ItemWhere.Bag) this.takeFromBag(this.owner[slot], id);
+    this.takeFromWherever(slot, id);
     this.slotOf.delete(id);
     this.ids[slot] = 0;
     this.where[slot] = ItemWhere.Free;
@@ -99,7 +106,7 @@ export class ItemStore {
   /** Mark an item as lying on the ground, belonging to `owner` (0: anyone). */
   placeOnGround(id: number, owner: number): void {
     const slot = this.mustSlot(id);
-    if (this.where[slot] === ItemWhere.Bag) this.takeFromBag(this.owner[slot], id);
+    this.takeFromWherever(slot, id);
     this.where[slot] = ItemWhere.Ground;
     this.owner[slot] = owner;
   }
@@ -113,11 +120,35 @@ export class ItemStore {
     const bag = this.bag(character);
     const free = bag.indexOf(0);
     if (free < 0) return -1;
-    if (this.where[slot] === ItemWhere.Bag) this.takeFromBag(this.owner[slot], id);
+    this.takeFromWherever(slot, id);
     bag[free] = id;
     this.where[slot] = ItemWhere.Bag;
     this.owner[slot] = character;
     return free;
+  }
+
+  /** Put an item in a character's hand (taken from wherever it was). */
+  hold(character: number, id: number, hand: number): void {
+    const slot = this.mustSlot(id);
+    this.takeFromWherever(slot, id);
+    this.hands(character)[hand] = id;
+    this.where[slot] = ItemWhere.Held;
+    this.owner[slot] = character;
+  }
+
+  /** A character's hands: item id held in each ([main, off]; 0: empty). Created empty on first use. */
+  hands(character: number): Uint32Array {
+    let h = this.handsOf.get(character);
+    if (!h) this.handsOf.set(character, (h = new Uint32Array(2)));
+    return h;
+  }
+
+  /** Empty bag slots a character has. */
+  emptySlots(character: number): number {
+    const bag = this.bag(character);
+    let n = 0;
+    for (let i = 0; i < bag.length; i++) if (bag[i] === 0) n++;
+    return n;
   }
 
   /** Whether a character's bag has an empty slot. */
@@ -136,6 +167,15 @@ export class ItemStore {
   inBagOf(character: number, id: number): boolean {
     const slot = this.slotOf.get(id);
     return slot !== undefined && this.where[slot] === ItemWhere.Bag && this.owner[slot] === character;
+  }
+
+  private takeFromWherever(slot: number, id: number): void {
+    const where = this.where[slot];
+    if (where === ItemWhere.Bag) this.takeFromBag(this.owner[slot], id);
+    else if (where === ItemWhere.Held) {
+      const h = this.handsOf.get(this.owner[slot]);
+      if (h) for (let i = 0; i < h.length; i++) if (h[i] === id) h[i] = 0;
+    }
   }
 
   private takeFromBag(character: number, id: number): void {
