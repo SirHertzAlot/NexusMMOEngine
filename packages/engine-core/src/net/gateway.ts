@@ -655,6 +655,53 @@ export class Gateway {
     }
   }
 
+  /** Save one character avatar's position and vitals (no-op for bots, or without a store that keeps state). */
+  private saveAvatar(eid: number): void {
+    if (eid < 0 || !this.characterStore.saveState) return;
+    const id = this.characterIdOf(eid);
+    if (id === null) return;
+    const T = C.Transform;
+    this.characterStore.saveState(id, {
+      x: T.px[eid],
+      y: T.py[eid],
+      z: T.pz[eid],
+      health: C.Health.current[eid],
+      stamina: C.Stamina.current[eid],
+    });
+  }
+
+  /**
+   * Save every live character's state (the server's save timer and
+   * shutdown call this; leaving the world saves just that avatar).
+   * Returns how many were saved.
+   */
+  saveCharacters(): number {
+    if (!this.characterStore.saveState) return 0;
+    let n = 0;
+    for (const s of this.sessions.values()) {
+      if (s.playerEntity === null || !s.character) continue;
+      this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * Put a freshly spawned avatar where its character last was, with the
+   * health and stamina it had. A character saved dead (or never saved)
+   * keeps the ordinary spawn: death and respawn are the rules' business.
+   */
+  private restoreCharacterState(eid: number, characterId: number): void {
+    const st = eid >= 0 ? this.characterStore.loadState?.(characterId) : null;
+    if (!st || !(st.health > 0)) return;
+    const T = C.Transform;
+    T.px[eid] = st.x;
+    T.pz[eid] = st.z;
+    T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+    C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
+    C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
+  }
+
   /** The character id an entity carries, or null (bots, creatures). */
   private characterIdOf(eid: number): number | null {
     if (!hasComponent(this.world.ecs, C.CharacterRef, eid)) return null;
@@ -759,6 +806,7 @@ export class Gateway {
       if (now - s.disconnectedAtMs < this.opts.disconnectGraceMs) continue;
       if (s.playerEntity !== null) {
         const { slot } = parseWireEntityId(s.playerEntity);
+        this.saveAvatar(this.world.resolveWireId(s.playerEntity));
         this.world.despawn(slot);
       }
       this.tokenToClient.delete(s.token);
@@ -1477,6 +1525,7 @@ export class Gateway {
     s.choosingCharacter = false;
     s.character = character ? { id: character.id, name: character.name } : null;
     s.playerEntity = this.spawnPlayerEntity(character?.look ?? DEFAULT_LOOK_JSON, character?.id ?? null);
+    if (character) this.restoreCharacterState(this.world.resolveWireId(s.playerEntity), character.id);
     s.welcomed = true;
     // Starter weapon (M3b): once per character per run, then show it.
     if (this.items) {
@@ -1501,7 +1550,10 @@ export class Gateway {
   private evictCharacter(id: number, except: ClientSession): void {
     for (const other of [...this.sessions.values()]) {
       if (other === except || other.character?.id !== id) continue;
-      if (other.playerEntity !== null) this.world.despawn(parseWireEntityId(other.playerEntity).slot);
+      if (other.playerEntity !== null) {
+        this.saveAvatar(this.world.resolveWireId(other.playerEntity));
+        this.world.despawn(parseWireEntityId(other.playerEntity).slot);
+      }
       other.playerEntity = null;
       if (this.tokenToClient.get(other.token) === other.clientId) this.tokenToClient.delete(other.token);
       this.sessions.delete(other.clientId);

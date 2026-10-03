@@ -11,7 +11,7 @@ export {
   SqliteCharacterStore,
   nameKey,
 } from "./store.js";
-export type { CharacterRecord, CharacterRefusal, CharacterStore } from "./store.js";
+export type { CharacterRecord, CharacterRefusal, CharacterState, CharacterStore } from "./store.js";
 export {
   CHARACTER_NAME_RE,
   CreateCharacterSchema,

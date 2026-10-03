@@ -542,6 +542,7 @@ async function main(): Promise<void> {
 
   const saveTimer = setInterval(() => {
     itemLedger.flush();
+    gw.saveCharacters();
     if (gw.serverTick >= nextSaveTick) {
       const result = store.saveWorld(gw.serverTick, sim);
       const st = streamer.stats;
@@ -568,6 +569,7 @@ async function main(): Promise<void> {
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
       console.log(`[server] shutdown save on ${signal}: tick ${result.tick}`);
+      gw.saveCharacters();
       itemLedger.flush();
       itemLedger.close();
       // Best-effort deregister; the world's stale-region reaper is the

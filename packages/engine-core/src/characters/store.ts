@@ -44,6 +44,19 @@ export interface CharacterStore {
   create(username: string, name: string, look: string, maxPerAccount: number): Promise<CharacterRecord>;
   /** Record a death on the character (rules: recordDeaths). */
   recordDeath?(characterId: number, death: DeathRecord): Promise<void>;
+  /** Save the character's position and vitals (synchronous: the save timer and leaving call it). */
+  saveState?(characterId: number, state: CharacterState): void;
+  /** The last saved state, or null (never saved). */
+  loadState?(characterId: number): CharacterState | null;
+}
+
+/** Where a character was and how it was, as of its last save (roadmap P2b). */
+export interface CharacterState {
+  x: number;
+  y: number;
+  z: number;
+  health: number;
+  stamina: number;
 }
 
 export interface DeathRecord {
@@ -75,6 +88,15 @@ CREATE TABLE IF NOT EXISTS deaths (
   killer INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_deaths_character ON deaths(character_id);
+CREATE TABLE IF NOT EXISTS character_state (
+  character_id INTEGER PRIMARY KEY,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  z REAL NOT NULL,
+  health REAL NOT NULL,
+  stamina REAL NOT NULL,
+  saved_at INTEGER NOT NULL
+);
 `;
 
 interface Row {
@@ -144,6 +166,22 @@ export class SqliteCharacterStore implements CharacterStore {
       .run(characterId, d.at, d.x, d.z, d.killer);
   }
 
+  saveState(characterId: number, st: CharacterState): void {
+    this.db
+      .prepare(
+        "INSERT INTO character_state (character_id, x, y, z, health, stamina, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT(character_id) DO UPDATE SET x = excluded.x, y = excluded.y, z = excluded.z, health = excluded.health, stamina = excluded.stamina, saved_at = excluded.saved_at",
+      )
+      .run(characterId, st.x, st.y, st.z, st.health, st.stamina, this.clock());
+  }
+
+  loadState(characterId: number): CharacterState | null {
+    const r = this.db
+      .prepare("SELECT x, y, z, health, stamina FROM character_state WHERE character_id = ?")
+      .get(characterId) as CharacterState | undefined;
+    return r ?? null;
+  }
+
   close(): void {
     this.db.close();
   }
@@ -160,6 +198,17 @@ export class MemoryCharacterStore implements CharacterStore {
 
   async recordDeath(characterId: number, d: DeathRecord): Promise<void> {
     this.deaths.push({ characterId, ...d });
+  }
+
+  private readonly states = new Map<number, CharacterState>();
+
+  saveState(characterId: number, st: CharacterState): void {
+    this.states.set(characterId, { ...st });
+  }
+
+  loadState(characterId: number): CharacterState | null {
+    const st = this.states.get(characterId);
+    return st ? { ...st } : null;
   }
 
   async list(username: string): Promise<CharacterRecord[]> {
