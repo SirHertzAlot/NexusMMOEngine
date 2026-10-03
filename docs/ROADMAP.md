@@ -87,7 +87,7 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
-| U3 | Hunger and thirst meters | 📋 | Survival needs as rules on the server (new, alongside M1) |
+| U3 | Hunger and thirst meters | ✅ | Survival needs as rules on the server (new, alongside M1). Server side done (`needs.json`, `Needs` component, `NeedsSystem`). Wire and HUD meters deferred (no data on the wire yet; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
 | U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers/party/guild/reply await S2–S4 |
@@ -197,6 +197,7 @@ Newest first. One line per merged PR or decision.
 
 - **2026-10-03**: L3 pool rebake keeps held items: `npm run loot:rebake -w @mmo-engine/engine-core -- --db <world.db> --pool <pool.jsonl>` bakes a new pool that keeps every bag and hand item (via the bake's `held`) and appends ledger rows pointing each live item at its new def; unheld ground items whose entry is gone are tombstoned.
 - **2026-10-03**: P2c crash and replay tests over the item ledger (unflushed loss, atomic failed flush, hot-WAL recovery, restart cycles, history replay).
+- **2026-10-03**: U3 hunger and thirst: `content/rules/needs.json` (max, drain per minute, damage per second at zero, exertion factor), a `Needs` component (id 14) and a `NeedsSystem` after stamina. Meters drain by the minute, faster while running or swimming, and hurt Health once empty. Wire/HUD meters deferred, not persisted.
 - **2026-10-03**: P2b character save: `character_state` in characters.db (position, health, stamina), saved on the save timer, eviction, grace expiry and shutdown, restored on enter world; dead or never-saved characters get the ordinary spawn.
 - **2026-10-03**: P2a item ledger: every item change (create, ground, bag, hold, destroy tombstone) appends to `item_events` in world.db with its tick (valid time) and write time (transaction time); flushed on the save timer, restored at boot (ids never reused, ground items get fresh despawn timers). Perf not run (paused).
 - **2026-10-02**: AI1 creatures: `content/rules/creatures.json` (goblin: 60 health, aggro 12 m, leash 30 m, packs of 2-4, dagger/axe/mace, 60 s respawn) drives `CreatureSystem`, a bot-shaped entity whose brain idles, aggros the nearest living character, chases (crowd-steered when navmesh is up), swings through `PlayerIntent`, and leashes home healing. `DeathSystem` takes a per-creature delay and a `place` hook; admin `spawn goblin` drops a pack. Editor tables for the numbers come with ED1.
