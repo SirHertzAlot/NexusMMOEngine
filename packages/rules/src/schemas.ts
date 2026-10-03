@@ -325,6 +325,43 @@ export const LootSchema = z.strictObject({
   maxGroundItems: z.number().int().min(1).max(65536).default(4096),
 });
 
+// ---------------------------------------------------------------- ingress
+
+/**
+ * Ingress hardening (roadmap T1, exit criterion X5): what one session may
+ * send before the gateway stops listening.
+ *
+ * Intents: the client sends at most one per server tick (30/s at 30 Hz;
+ * same-tick changes collapse in MirrorClient), so 40/s with a burst of 60
+ * never constrains legitimate play — not even a reconnect burst
+ * (MirrorClient holds at most 4) — while a flood of hundreds per second
+ * exhausts the burst in milliseconds. Pickups are key presses: 5/s with
+ * a burst of 10 is far above human mashing. Past its budget a message is
+ * dropped and counted; past maxViolations excess messages inside
+ * abuseWindowSeconds the session is disconnected (close 4000).
+ *
+ * maxClientPayloadBytes is the largest inbound WebSocket frame (see
+ * GatewayOptions): 64 KiB is ~16x the largest legitimate message (a
+ * character look, capped at 4 KiB). Keep it above ~8 KiB, or character
+ * creation breaks.
+ */
+export const IngressSchema = z.strictObject({
+  /** Largest inbound WebSocket frame accepted, bytes. */
+  maxClientPayloadBytes: z.number().int().positive().default(65536),
+  /** Intent tokens refilled per second, per session. */
+  intentsPerSecond: z.number().min(1).default(40),
+  /** Most intents a session may burst at once. */
+  intentBurst: z.number().int().min(1).default(60),
+  /** Pickup tokens refilled per second, per session. */
+  pickupsPerSecond: z.number().min(1).default(5),
+  /** Most pickups a session may burst at once. */
+  pickupBurst: z.number().int().min(1).default(10),
+  /** Seconds an abuse window spans. */
+  abuseWindowSeconds: z.number().min(1).default(10),
+  /** Excess messages inside one window before the session is disconnected. */
+  maxViolations: z.number().int().min(1).default(100),
+});
+
 // -------------------------------------------------------------- creatures
 
 /** One kind of creature (docs/ALPHA-PLAN.md, decision D6). */
@@ -394,6 +431,7 @@ export const RULE_FILES = {
   loot: LootSchema,
   creatures: CreaturesSchema,
   needs: NeedsSchema,
+  ingress: IngressSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -414,6 +452,7 @@ export type HandKind = z.infer<typeof Hand>;
 export type LootRules = z.infer<typeof LootSchema>;
 export type NeedsRules = z.infer<typeof NeedsSchema>;
 export type NeedRules = z.infer<typeof NeedSchema>;
+export type IngressRules = z.infer<typeof IngressSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
@@ -431,6 +470,7 @@ export interface Rules {
   stats: StatsRules;
   items: ItemsRules;
   loot: LootRules;
+  ingress: IngressRules;
   creatures: CreaturesRules;
   needs: NeedsRules;
 }

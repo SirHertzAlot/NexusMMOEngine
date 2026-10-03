@@ -52,6 +52,7 @@ describe("ruleFileNames", () => {
       "loot",
       "creatures",
       "needs",
+      "ingress",
     ]);
   });
 });

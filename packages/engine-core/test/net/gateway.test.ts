@@ -373,6 +373,87 @@ describe("gateway: untrusted input", () => {
     assert.ok(Math.abs(moved - PLAYER_SPEED) < 0.01, `moved ${moved} m in 1 s`);
     await client.close();
   });
+
+  // Memory-exhaustion guard: `ws` buffers a whole frame before any handler
+  // runs, and its own default cap is 100 MiB — so without a limit one
+  // unauthenticated peer could spend ~99 MiB of server memory per
+  // connection. The cap is enforced by WebSocketServer maxPayload: `ws`
+  // sees the declared frame length and closes the connection (1009)
+  // *without* allocating the payload, so onMessage never even runs.
+  it("closes a connection that sends a frame over the payload cap", async () => {
+    const cap = 1024;
+    const url = await startGateway({ maxClientPayloadBytes: cap });
+    const client = new HeadlessClient();
+    client.autoPong = false;
+    await client.connect(url);
+
+    // A "type" byte plus an oversized body.
+    client.sendRaw(MessageType.Hello, new Uint8Array(cap + 1));
+
+    const deadline = Date.now() + 3000;
+    while (!client.closed && Date.now() < deadline) await sleep(10);
+    assert.ok(client.closed, "the oversized frame must close the connection");
+    assert.equal(client.closeCode, 1009, "ws close code: message too big");
+    await client.close();
+  });
+
+  it("keeps serving other clients after an oversized frame arrives", async () => {
+    const cap = 1024;
+    const url = await startGateway({ maxClientPayloadBytes: cap });
+
+    const attacker = new HeadlessClient();
+    attacker.autoPong = false;
+    await attacker.connect(url);
+    attacker.sendRaw(MessageType.Hello, new Uint8Array(cap + 1));
+    // Let the server act on it before the next client connects.
+    await settle();
+
+    // The authority must be unaffected: a normal client still connects and
+    // is still answered. A ping→pong needs no tick, so this measures the
+    // server's health rather than the frame loop's.
+    const client = new HeadlessClient();
+    await client.connect(url);
+    const pongP = client.waitFor(MessageType.Pong, 1);
+    client.sendPing();
+    assert.equal((await pongP).length, 1, "the good client is still served");
+    assert.ok(!client.closed, "and its connection stays open");
+
+    assert.ok(attacker.closed, "the attacker's connection is gone");
+    assert.equal(attacker.closeCode, 1009);
+    await client.close();
+    await attacker.close();
+  });
+
+  it("still serves a well-formed frame under the cap", async () => {
+    const cap = 4096;
+    const url = await startGateway({ maxClientPayloadBytes: cap });
+    const client = new HeadlessClient();
+    await client.connect(url);
+    // Size alone must not be a rejection: a normal hello, comfortably
+    // under the cap, still joins.
+    const hello = encodeControl({
+      protocol: PROTOCOL_VERSION,
+      client: "x",
+      want_snapshot: true,
+      username: "alice",
+      password: TEST_PASSWORD,
+    });
+    assert.ok(hello.length < cap, `hello is ${hello.length} bytes, cap ${cap}`);
+    client.sendRaw(MessageType.Hello, hello);
+    const [welcome] = await client.waitFor(MessageType.Welcome, 1);
+    assert.ok(welcome.length > 0, "a frame under the cap is still served");
+    await client.close();
+  });
+
+  it("rejects a nonsense payload cap instead of silently accepting one", () => {
+    for (const bad of [0, -1, 1.5, Number.NaN]) {
+      assert.throws(
+        () => new Gateway({ maxClientPayloadBytes: bad }),
+        RangeError,
+        `maxClientPayloadBytes=${bad} must throw`,
+      );
+    }
+  });
 });
 
 describe("gateway: reconnect and sessions", () => {

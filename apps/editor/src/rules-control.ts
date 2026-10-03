@@ -7,7 +7,7 @@
  * that one reads the filesystem (Node-only), this one only fetches.
  */
 
-export const TABLES = ["items", "creatures", "loot", "death"] as const;
+export const TABLES = ["items", "creatures", "loot", "death", "ingress"] as const;
 export type Table = (typeof TABLES)[number];
 
 /** One validation problem, as the rules package reports it. */
@@ -136,6 +136,17 @@ export function newEntry(table: "items" | "creatures", bases: string[]): Record<
     weapons: bases.length > 0 ? [bases[0]] : [],
   };
 }
+
+/** ingress.json's fields (roadmap T1 rate limits). */
+export const INGRESS_FIELDS: FieldSpec[] = [
+  { key: "maxClientPayloadBytes", label: "Max frame (bytes)", kind: "number", int: true, min: 1, def: 65536, restart: true },
+  { key: "intentsPerSecond", label: "Intents / second", kind: "number", min: 1, def: 40 },
+  { key: "intentBurst", label: "Intent burst", kind: "number", int: true, min: 1, def: 60 },
+  { key: "pickupsPerSecond", label: "Pickups / second", kind: "number", min: 1, def: 5 },
+  { key: "pickupBurst", label: "Pickup burst", kind: "number", int: true, min: 1, def: 10 },
+  { key: "abuseWindowSeconds", label: "Abuse window (s)", kind: "number", min: 1, def: 10 },
+  { key: "maxViolations", label: "Violations to disconnect", kind: "number", int: true, min: 1, def: 100 },
+];
 
 // ---------------------------------------------------------------- helpers
 

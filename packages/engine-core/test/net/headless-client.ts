@@ -64,6 +64,8 @@ export class HeadlessClient {
   welcome: WelcomeMessage | null = null;
   lastError: ErrorMessage | null = null;
   closed = false;
+  /** WebSocket close code once closed (1000 bye, 4000 dropped, 1009 too big…). */
+  closeCode: number | null = null;
 
   private ws: WebSocket | null = null;
   private readonly received = new Map<MessageType, Uint8Array[]>();
@@ -75,8 +77,9 @@ export class HeadlessClient {
     this.ws.on("message", (data: WebSocket.RawData) =>
       this.onMessage(toBytes(data)),
     );
-    this.ws.on("close", () => {
+    this.ws.on("close", (code: number) => {
       this.closed = true;
+      this.closeCode = code;
     });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
