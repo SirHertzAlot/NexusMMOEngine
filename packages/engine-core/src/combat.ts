@@ -25,7 +25,13 @@
  * resolveDefence): the defender's Blocking or Parrying, whichever is
  * better, against the attacker's technique. A win stops the blow
  * ("blocked", nothing lands); a loss lets part of it through as a hit.
- * Without skills a guard always takes GUARD_FACTOR of the blow.
+ * Without skills a guard always takes GUARD_FACTOR of the blow. A parry
+ * that wins can disarm (M4): the defender knows the `disarm` technique (a
+ * discipline unlocks it) and is the much better fighter; the hit says
+ * `disarmed` and the gateway drops what the attacker held.
+ *
+ * Familiarity (M4): each blow with an item builds familiarity with its
+ * family, which the rules' computeDamage turns into a little extra fit.
  *
  * Damage (M2a): an attack move strikes once, on the tick its hitAt falls
  * (relative to Action.started). Every living target with a Health inside
@@ -59,6 +65,8 @@ export interface Weapon {
   technique: string;
   item: DamageInput["item"];
   reach: number;
+  /** The item family familiarity builds with (its base: "sword", "axe"); absent: none. */
+  family?: string;
 }
 
 /** A blow's outcome, for the gateway to tell clients. */
@@ -72,6 +80,8 @@ export interface HitEvent {
   part?: string;
   state?: PartState;
   lost?: string[];
+  /** A parry took the attacker's weapon (M4): what it holds in its main hand falls. */
+  disarmed?: boolean;
 }
 
 /** Fraction of a blow a facing guard lets through. */
@@ -82,7 +92,7 @@ export const ARM_REACH = 0.6;
 const CONE_COS = 0.5;
 /** Targets further than this above or below are out of reach. */
 const MAX_DY = 2;
-const FIST: Weapon = { technique: "bludgeon", item: { mass: 0.5, edge: 0, point: 0, hardness: 0.3 }, reach: 0.8 };
+const FIST: Weapon = { technique: "bludgeon", item: { mass: 0.5, edge: 0, point: 0, hardness: 0.3 }, reach: 0.8, family: "fist" };
 
 /** Combat skills (M3c): what a character knows feeds its blows, and using it trains it. */
 export interface CombatSkills {
@@ -92,6 +102,12 @@ export interface CombatSkills {
   train(e: number, id: string, difficulty: number, key: number): void;
   /** The skill a technique runs on ("cut" -> "cutting"), if any. */
   techniqueSkill(technique: string): string | undefined;
+  /** Familiarity with an item family, 0..1 (M4); absent: 0. */
+  familiarity?(e: number, family: string): number;
+  /** One blow with an item of `family` (M4). */
+  useFamily?(e: number, family: string): void;
+  /** Whether `e` can use a special technique now ("disarm"), from its disciplines (M4). */
+  knows?(e: number, technique: string): boolean;
 }
 
 /** How hard a fight is taken to be for training (proposed default; a creature-level rule later). */
@@ -245,7 +261,8 @@ export class CombatSystem implements SimSystem {
 
   private strike(sim: SimWorld, e: number, tick: number): void {
     const dmg = this.damage!;
-    const held = dmg.weaponOf?.(e) ?? FIST;
+    const holding = dmg.weaponOf?.(e) ?? null;
+    const held = holding ?? FIST;
     // A chosen technique (M3): any item can be swung any way; its fit for it is the item's.
     const stance = this.stances.get(e);
     const w = stance?.technique ? { ...held, technique: stance.technique } : held;
@@ -267,6 +284,7 @@ export class CombatSystem implements SimSystem {
       let part: string | undefined;
       let state: PartState | undefined;
       let lost: string[] | undefined;
+      let disarmed = false;
       const tm = hasComponent(sim.ecs, Action, t) ? combatMove(Action.move[t]) : undefined;
       const tt = tm ? (tick - Action.started[t]) / this.tickHz : 0;
       if (tm?.iframes && tt >= tm.iframes.from && tt <= tm.iframes.to) {
@@ -281,7 +299,9 @@ export class CombatSystem implements SimSystem {
         part = body
           ? dmg.hooks.resolveLanding({ aim: stance?.aim ?? body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
-        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part });
+        const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
+        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, familiarity });
+        if (w.family) sk?.useFamily?.(e, w.family);
         amount = blow.amount * arm;
         // The guard holds only against what it faces; a landed block trains Blocking.
         if (tm?.kind === "guard" && -(dx * Math.sin(Action.yaw[t]) + dz * Math.cos(Action.yaw[t])) >= 0) {
@@ -290,8 +310,10 @@ export class CombatSystem implements SimSystem {
             // against the attacker's technique; a win stops the blow, a loss
             // softens it. Either way the defence is used for real and trains.
             const guard = sk.get(t, "parrying") > sk.get(t, "blocking") ? "parrying" : "blocking";
-            const d = dmg.hooks.resolveDefence({ attackSkill: skill, defenceSkill: sk.get(t, guard), rng: blowRng(tick, t, e) });
+            const canDisarm = guard === "parrying" && holding !== null && (sk.knows?.(t, "disarm") ?? false);
+            const d = dmg.hooks.resolveDefence({ attackSkill: skill, defenceSkill: sk.get(t, guard), rng: blowRng(tick, t, e), canDisarm });
             if (d.stopped) outcome = "blocked";
+            if (d.disarms && canDisarm) disarmed = true;
             amount *= d.letsThrough;
             sk.train(t, guard, FIGHT_DIFFICULTY, e);
           } else {
@@ -316,6 +338,7 @@ export class CombatSystem implements SimSystem {
         hit.state = state;
         if (lost) hit.lost = lost;
       }
+      if (disarmed) hit.disarmed = true;
       this.hits.push(hit);
     }
   }

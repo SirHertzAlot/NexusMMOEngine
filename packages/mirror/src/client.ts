@@ -45,6 +45,7 @@ import {
   type StanceMessage,
   type TreatMessage,
   type TreatmentMessage,
+  type SkillsMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -99,6 +100,8 @@ export interface MirrorEvents {
   onBody?(b: BodyMessage): void;
   /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
   onTreatment?(t: TreatmentMessage): void;
+  /** The player's skills, item familiarity or disciplines changed (also on joining; roadmap M4, protocol 0x1b). */
+  onSkills?(s: SkillsMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -131,6 +134,8 @@ export class MirrorClient {
   stats: StatsMessage | null = null;
   /** The player's own body (parts, injuries, blood), from the last body message; null until one arrives. */
   body: BodyMessage | null = null;
+  /** The player's skills, familiarity and disciplines, as last sent (M4, 0x1b). */
+  skills: SkillsMessage | null = null;
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -656,6 +661,10 @@ export class MirrorClient {
       case MessageType.Body:
         this.body = decodeControl<BodyMessage>(payload);
         this.events.onBody?.(this.body);
+        break;
+      case MessageType.Skills:
+        this.skills = decodeControl<SkillsMessage>(payload);
+        this.events.onSkills?.(this.skills);
         break;
       case MessageType.Treat:
         this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));

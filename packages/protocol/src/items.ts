@@ -97,6 +97,8 @@ export interface HitMessage {
   part?: string;
   state?: PartStateName;
   lost?: string[];
+  /** A parry took the attacker's weapon (M4): it falls at the attacker's feet. */
+  disarmed?: boolean;
 }
 
 /** A body part's state (docs/MASTERY-AND-COMBAT.md §4.2). */
@@ -176,4 +178,19 @@ export interface TreatmentMessage {
   treatment: TreatmentName;
   state: "started" | "done" | "failed" | "stopped";
   seconds?: number;
+}
+
+/**
+ * S->C (catalog 0x1b, M4): the player's own skills (0..max, and the
+ * highest each has been), their familiarity with each item family used
+ * (0..1), and the disciplines they have earned (`active`: the skills are at
+ * its levels now, so what it unlocks can be used). Sent on joining and
+ * whenever a value (to a tenth) changes.
+ */
+export interface SkillsMessage {
+  kind: "skills";
+  max: number;
+  skills: { id: string; name: string; value: number; peak: number }[];
+  familiarity: { family: string; value: number }[];
+  disciplines: { id: string; name: string; active: boolean; unlocks: string[] }[];
 }

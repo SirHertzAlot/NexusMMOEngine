@@ -286,8 +286,17 @@ describe("bad rules", () => {
     assert.equal(defenceChance(r, 1, 0), 0.9);
     assert.equal(defenceChance(r, 0, 1), 0.1);
     const h = createHooks(r);
-    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.49 }), { stopped: true, letsThrough: 0 });
-    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.51 }), { stopped: false, letsThrough: 0.3 });
+    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.49 }), { stopped: true, letsThrough: 0, disarms: false });
+    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.51 }), { stopped: false, letsThrough: 0.3, disarms: false });
+  });
+
+  it("a much better parry disarms, only with the technique (M4)", () => {
+    const h = createHooks(parseRules({ skills: { skills: [] }, combat: { defence: { disarmMargin: 0.3 } } }));
+    const parry = (attackSkill: number, defenceSkill: number, canDisarm: boolean) => h.resolveDefence({ attackSkill, defenceSkill, rng: () => 0, canDisarm });
+    assert.equal(parry(40, 80, true).disarms, true);
+    assert.equal(parry(40, 80, false).disarms, false);
+    assert.equal(parry(60, 80, true).disarms, false);
+    assert.equal(h.resolveDefence({ attackSkill: 40, defenceSkill: 80, rng: () => 0.999, canDisarm: true }).disarms, false);
   });
 
   it("a skilled healer treats faster and more surely, never below the floor (M4)", () => {

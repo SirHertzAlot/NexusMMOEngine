@@ -441,7 +441,7 @@ async function main(): Promise<void> {
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
   const needs = new NeedsSystem(game.rules.needs);
-  const mastery = new MasterySystem(game.rules.skills);
+  const mastery = new MasterySystem(game.rules.skills, Date.now, game.rules.disciplines.disciplines);
   // Items (roadmap M3a): definitions from the baked loot pool joined with
   // the rules' physics. One instance: the gateway routes item messages to
   // it, and it is in the systems list (it expires ground items).
@@ -472,6 +472,7 @@ async function main(): Promise<void> {
       technique: d.technique[def],
       item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] },
       reach: d.length[def],
+      family: d.bases[def],
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
@@ -488,6 +489,7 @@ async function main(): Promise<void> {
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
+    mastery.setDisciplines(g.rules.disciplines.disciplines);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
   const combatSkills: CombatSkills = {
@@ -497,6 +499,9 @@ async function main(): Promise<void> {
       if (i >= 0) mastery.sheetOf(e).train(i, difficulty, key, Date.now());
     },
     techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
+    familiarity: (e, family) => mastery.sheetOf(e).familiarity(family),
+    useFamily: (e, family) => void mastery.sheetOf(e).useFamily(family, Date.now()),
+    knows: (e, technique) => mastery.knows(e, technique),
   };
   // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
   const body = new BodySystem(game.rules.body, hooks, game.rules.appearance, combatSkills);

@@ -61,6 +61,8 @@ export interface DefenceInput {
   defenceSkill: number;
   /** 0..1 uniform, deterministic per blow. */
   rng: () => number;
+  /** The defender parries (not blocks) and knows the `disarm` technique. */
+  canDisarm?: boolean;
 }
 
 export interface DefenceResult {
@@ -68,6 +70,8 @@ export interface DefenceResult {
   stopped: boolean;
   /** Share of the blow that gets through (0 when stopped). */
   letsThrough: number;
+  /** The attacker loses what it holds in its main hand. */
+  disarms: boolean;
 }
 
 export type TreatmentKind = "bandage" | "stump" | "set";
@@ -262,10 +266,13 @@ function defaultHooks(rules: Rules): RuleHooks {
       return neighbours[neighbours.length - 1].id;
     },
 
-    resolveDefence({ attackSkill, defenceSkill, rng }) {
+    resolveDefence({ attackSkill, defenceSkill, rng, canDisarm = false }) {
       const max = rules.skills.max;
-      if (rng() < defenceChance(rules, defenceSkill / max, attackSkill / max)) return { stopped: true, letsThrough: 0 };
-      return { stopped: false, letsThrough: rules.combat.defence.failedLetsThrough };
+      const d = rules.combat.defence;
+      if (rng() < defenceChance(rules, defenceSkill / max, attackSkill / max)) {
+        return { stopped: true, letsThrough: 0, disarms: canDisarm && (defenceSkill - attackSkill) / max >= d.disarmMargin };
+      }
+      return { stopped: false, letsThrough: d.failedLetsThrough, disarms: false };
     },
 
     resolveTreatment({ kind, skill, rng }) {
