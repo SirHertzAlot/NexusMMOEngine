@@ -18,17 +18,19 @@ import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { CharacterRecordPanel } from "./character-view.js";
 import { GraphEditorPanel } from "./graph-editor.js";
+import { DungeonPanel } from "./dungeon-view.js";
 
 import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 
-type Tab = "ecs" | "play" | "terrain" | "graphs" | "assets" | "tables" | "rules" | "characters";
+type Tab = "ecs" | "play" | "terrain" | "graphs" | "dungeons" | "assets" | "tables" | "rules" | "characters";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "ecs", label: "ECS Inspector" },
   { id: "play", label: "Play Mode" },
   { id: "terrain", label: "Terrain" },
   { id: "graphs", label: "PICG Graphs" },
+  { id: "dungeons", label: "Dungeons" },
   { id: "tables", label: "Gameplay Tables" },
   { id: "assets", label: "Art Assets" },
   { id: "rules", label: "Rules" },
@@ -74,6 +76,7 @@ export function App(): React.JSX.Element {
         {tab === "play" && <PlayModePanel />}
         {tab === "terrain" && <TerrainEditorPanel />}
         {tab === "graphs" && <GraphEditorPanel />}
+        {tab === "dungeons" && <DungeonPanel />}
         {tab === "tables" && <TablesPanel />}
         {tab === "assets" && <AssetInspectorPanel />}
         {tab === "rules" && <RulesPanel />}

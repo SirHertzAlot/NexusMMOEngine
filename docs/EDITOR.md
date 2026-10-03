@@ -163,6 +163,38 @@ mode on its next start.
 The model and view-model are `src/inspectors/graph-editor.ts` (pure TS,
 tested with `node:test`); `src/ui/graph-editor.tsx` only draws them.
 
+## 2c. Dungeons (pool, 3D view, patches, ROADMAP E8)
+
+The **Dungeons** tab is DUNGEONS-AND-LOOT.md §3.5 for the baked pool in
+`<dataDir>/dungeons` (`npm run dungeon:bake`).
+
+- **Pool:** every baked dungeon with the map thumbnail its bake wrote, its
+  theme, rooms, rank, boss and how many edits its patch carries (red when the
+  patch is stale). **Bake into the pool** runs the same CLI (count 1 to 50,
+  seed or `random`, rank) and always writes the maps.
+- **3D view:** one block per floor cell, tinted by its room's role, walls,
+  torches, spawn spheres coloured by tier (larger when pinned), and props
+  (grey layout, lilac dressing, cyan edited or added). Drag to orbit, wheel to
+  zoom, right-drag to pan. Click a room's floor, a spawn or a prop to select
+  it; drag a selected prop to move it (one undo step per drag).
+- **Details:** a room's role and dressing archetype; a spawn's pin and rank
+  (1 to 5); a prop's position, or remove it. **Place prop** adds one where you
+  click. Anything set back to its baked value drops out of the patch, and
+  "Back to the bake" clears a room's or a spawn's edits.
+
+**Edits are a patch, never a change to the bake.** Save writes
+`<id>.patch.json` (`mmo-dungeon-patch/1`) beside the baked file, after
+`PUT /api/editor/dungeons/<id>/patch` (`src/dungeon-host.ts`) checks it
+against the layout: the layout's hash (a patch made for another bake is
+stale), room ids and roles (exactly one entrance and one boss), the dressing's
+archetypes, spawn ranks, and that every moved or added prop stands on a floor
+cell. Saving an empty patch removes the file. Only ids the pool's index lists
+are read, so no path comes from a request.
+
+The model and view-model are `src/inspectors/dungeon-view.ts` (pure TS,
+tested with `node:test`); `src/ui/dungeon-scene.ts` draws them with three.js
+and `src/ui/dungeon-view.tsx` is the panel.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
