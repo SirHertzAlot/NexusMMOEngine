@@ -28,6 +28,8 @@ import {
   type AdminResult,
   type ChatBroadcast,
   type ChatChannel,
+  type FriendMessage,
+  type FriendsState,
   type GuildMessage,
   type PartyMessage,
   type PartyState,
@@ -80,6 +82,7 @@ export interface MirrorEvents {
   /** The player's party changed, or an invite arrived (roadmap S3). */
   onParty?(p: PartyState): void;
   onGuild?(g: GuildState): void;
+  onFriends?(f: FriendsState): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
 }
@@ -248,6 +251,13 @@ export class MirrorClient {
   party(op: PartyMessage["op"], name?: string): void {
     if (!this.socket || this.closed) return;
     const m: PartyMessage = name === undefined ? { kind: "party", op } : { kind: "party", op, name };
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /** Add or remove a friend by character name (S2b). */
+  friend(name: string, on: boolean): void {
+    if (!this.socket || this.closed) return;
+    const m: FriendMessage = { kind: "friend", name, on };
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
   }
 
@@ -567,9 +577,10 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState>(payload);
         if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
+        else if (m.kind === "friends") this.events.onFriends?.(m);
         else this.events.onChat?.(m);
         break;
       }

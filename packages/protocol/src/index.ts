@@ -8,6 +8,8 @@ export type {
   AdminResult,
   CharacterEntry,
   BlockMessage,
+  FriendMessage,
+  FriendsState,
   PartyMemberInfo,
   PartyMessage,
   PartyState,

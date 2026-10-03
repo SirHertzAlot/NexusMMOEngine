@@ -59,6 +59,7 @@ import {
   type AdminResult,
   type ChatBroadcast,
   type PartyState,
+  type FriendsState,
   type GuildState,
   type DebugQuery,
   type DebugResponse,
@@ -114,6 +115,7 @@ import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
+import { FriendBook, FriendSchema } from "../friends.js";
 import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
@@ -411,6 +413,7 @@ export class Gateway {
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
   private readonly blocks = new BlockList();
+  private readonly friends = new FriendBook();
   /** Parties, in memory (S3). */
   private readonly parties = new PartyBook(() => this.clock());
   private readonly guilds: GuildBook;
@@ -946,6 +949,7 @@ export class Gateway {
     s.disconnectedAtMs = this.clock();
     this.partyOffline(s);
     this.guildOffline(s);
+    this.friendPresence(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -963,6 +967,7 @@ export class Gateway {
       s.disconnectedAtMs = this.clock();
       this.partyOffline(s);
       this.guildOffline(s);
+      this.friendPresence(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -1366,6 +1371,10 @@ export class Gateway {
         this.onParty(s, raw);
         return;
       }
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "friend") {
+        this.onFriend(s, raw);
+        return;
+      }
       if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "guild") {
         this.onGuild(s, raw);
         return;
@@ -1625,6 +1634,52 @@ export class Gateway {
   private sendSystem(s: ClientSession, text: string): void {
     const msg: ChatBroadcast = { kind: "chat", channel: "system", text, from: "", entity: "" };
     this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
+  }
+
+  /** Tell everyone who lists this character as a friend that its presence changed (S2b). */
+  private friendPresence(s: ClientSession): void {
+    if (!s.welcomed) return;
+    for (const w of this.friends.watchers(s.character?.name ?? s.username)) this.pushFriends(w);
+  }
+
+  /** Send a character their friends list with presence (S2b). */
+  private pushFriends(name: string): void {
+    const r = this.findOnline(name);
+    if (!r) return;
+    const friends = this.friends.list(name).map((f) => {
+      const o = this.findOnline(f);
+      // A friend who blocks you looks offline, so presence never leaks past a block.
+      return { name: f, online: o !== undefined && !this.blocks.isBlocked(o.username, r.username) };
+    });
+    const msg: FriendsState = { kind: "friends", friends };
+    this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+  }
+
+  /** Add or remove a friend (S2b). Adding resolves only online characters, like blocking. */
+  private onFriend(s: ClientSession, raw: unknown): void {
+    const parsed = FriendSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed friend");
+      return;
+    }
+    const me = s.character?.name ?? s.username;
+    if (!parsed.data.on) {
+      const gone = this.friends.list(me).find((f) => f.toLowerCase() === parsed.data.name.toLowerCase());
+      if (gone !== undefined) this.friends.remove(me, gone);
+      this.pushFriends(me);
+      return;
+    }
+    const target = this.findOnline(parsed.data.name);
+    if (!target || this.blocks.isBlocked(target.username, s.username)) {
+      this.sendSystem(s, NOT_ONLINE);
+      return;
+    }
+    const res = this.friends.add(me, target.character?.name ?? target.username);
+    if (res === "self") this.sendSystem(s, "cannot add yourself");
+    else if (res === "full") this.sendSystem(s, "friends list is full");
+    else if (res === "exists") this.sendSystem(s, "already a friend");
+    else this.sendSystem(s, `added ${target.character?.name ?? target.username}`);
+    this.pushFriends(me);
   }
 
   /**
@@ -2200,6 +2255,8 @@ export class Gateway {
     this.guilds.setOnline(who, true);
     for (const n of this.guilds.guildOf(who)) this.pushGuild(n);
     this.pushGuild(who);
+    this.pushFriends(who);
+    this.friendPresence(s);
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */
