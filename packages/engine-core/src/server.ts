@@ -108,6 +108,7 @@ import { startPcgService } from "./pcg/boot.js";
 import { RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
+import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { CombatSystem, type Weapon } from "./combat.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
@@ -469,10 +470,23 @@ async function main(): Promise<void> {
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
   const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e) });
-  const combat = new CombatSystem(30, stamina, { hooks: game.hooks, weaponOf });
+  // Rules hot reload (ED1): combat and death hold the delegate, and a
+  // reload (validated off the tick, applied first thing in one) swaps the
+  // hooks behind it and pushes the new tables into the systems.
+  const hooks = new HooksDelegate(game.hooks);
+  const reloader = new RulesReloader(game.dir, (g) => {
+    game = g;
+    hooks.current = g.hooks;
+    creatures.setRules(g.rules.creatures.creatures, g.rules.items.bases);
+    dropper.setCreatures(g.rules.creatures.creatures);
+    items.setLoot(g.rules.loot);
+    itemDefs.defs.applyRules(g.rules);
+    console.log(`[rules] reloaded: ${g.summary}`);
+  });
+  const combat = new CombatSystem(30, stamina, { hooks, weaponOf });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
-  const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
+  const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
   const gw: Gateway = new Gateway({
     port: PORT,
     // The same instance as in the systems list below: its sheets are what get saved.
@@ -480,7 +494,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
@@ -591,6 +605,7 @@ async function main(): Promise<void> {
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       void worldClient?.stop();
+      reloader.close();
     },
   });
 
@@ -598,6 +613,7 @@ async function main(): Promise<void> {
   const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
   const port = await gw.listen();
   gw.startTicking();
+  reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse
   // to edit world.db under a running server, whose next periodic save
   // would silently overwrite the edit. Removed on exit; a stale file from

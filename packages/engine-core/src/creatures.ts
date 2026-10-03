@@ -63,9 +63,27 @@ export class CreatureSystem implements SimSystem {
   private rngState: number;
   private readonly tickHz: number;
 
-  constructor(private readonly opts: CreatureOptions) {
+  private readonly opts: CreatureOptions;
+
+  constructor(opts: CreatureOptions) {
+    this.opts = { ...opts };
     this.rngState = opts.seed ?? 20261002;
     this.tickHz = opts.tickHz ?? 30;
+  }
+
+  /**
+   * Swap in reloaded tables (ED1). Living creatures take the new aggro,
+   * leash, speed, attack rate and respawn delay at once; health and the
+   * weapon held are set at spawn. A creature whose kind was removed stands
+   * idle until it dies.
+   */
+  setRules(creatures: CreaturesRules["creatures"], bases: Record<string, ItemBaseRules>): void {
+    this.opts.creatures = creatures;
+    this.opts.bases = bases;
+    for (const [e, b] of this.brains) {
+      const def = creatures[b.kind];
+      if (def) C.NavAgent.speed[e] = def.chaseSpeed * PLAYER_SPEED;
+    }
   }
 
   get size(): number {
@@ -203,6 +221,12 @@ export class CreatureSystem implements SimSystem {
         continue;
       }
       const def = this.opts.creatures[b.kind];
+      if (!def) {
+        b.mode = "idle"; // kind removed by a rules reload
+        b.target = -1;
+        this.stop(e);
+        continue;
+      }
       const ex = C.Transform.px[e];
       const ez = C.Transform.pz[e];
       if (b.mode !== "return" && (b.target < 0 || !this.alive(sim, b.target))) {
@@ -277,7 +301,7 @@ export class CreatureSystem implements SimSystem {
         b.nextGive = tick + GIVE_EVERY;
       }
     } else if (d > 1e-3) {
-      const speed = this.opts.creatures[b.kind].chaseSpeed;
+      const speed = this.opts.creatures[b.kind]?.chaseSpeed ?? 0;
       C.PlayerIntent.mx[e] = (dx / d) * speed;
       C.PlayerIntent.mz[e] = (dz / d) * speed;
       C.PlayerIntent.lookYaw[e] = Math.atan2(dx, dz);

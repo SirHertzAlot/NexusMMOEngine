@@ -12,6 +12,11 @@
  *   POST /api/editor/terrain/area  → the same for an area {cx, cz, radius}
  *   POST /api/editor/terrain/generate → generator preview (not saved)
  *   POST /api/editor/terrain       → save edited tiles (stops play mode first)
+ *   GET  /api/editor/tables        → the gameplay tables (items, creatures,
+ *                                    loot, death) + combat's technique ids
+ *   POST /api/editor/tables        → save one table {file, json}: validated
+ *                                    like the server loads it; 422 + issues
+ *                                    when refused (a running server reloads it)
  *   GET  /api/editor/assets        → art-pack scan of <repo>/assets
  *   GET  /assets/*                 → static files from <repo>/assets
  *                                    (path-traversal guarded)
@@ -60,6 +65,7 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { pathToFileURL } from "node:url";
+import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -306,6 +312,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const readyTimeoutMs = options.readyTimeoutMs ?? 120_000;
   const assetsRoot = join(repoRoot, "assets");
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
+  const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
 
   /**
@@ -702,6 +709,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
               stoppedPlayMode,
               ...(await runTerrainTool("import", body)) as object,
             });
+            return;
+          }
+          if (url === "/api/editor/rules" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, ...readRulesTables(rulesDir) });
+            return;
+          }
+          if (url === "/api/editor/rules" && req.method === "POST") {
+            const body = JSON.parse(await readBody(req)) as { file?: unknown; json?: unknown };
+            if (!isEditableTable(body.file)) {
+              sendJson(res, 400, { ok: false, error: `not an editable rules table: ${String(body.file)}` });
+              return;
+            }
+            const saved = saveRulesTable(rulesDir, body.file, body.json);
+            sendJson(res, saved.ok ? 200 : 422, saved);
             return;
           }
           if (url === "/api/editor/assets" && req.method === "GET") {

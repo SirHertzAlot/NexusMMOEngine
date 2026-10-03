@@ -4,7 +4,8 @@
  * Tabs: ECS Inspector (read-only entity browser), Play Mode (owned
  * local server + debug overlays), Terrain (sculpt the world heightmap),
  * Art Asset Pipeline (pack scan / validation / browser load test),
- * Characters (read-only character records), Rules (gameplay tunables).
+ * Characters (read-only character records), Gameplay Tables (item bases,
+ * creatures, loot and death rules), Rules (gameplay tunables).
  * Each inspector owns its panel and its view-model; the shell only
  * switches between them.
  */
@@ -17,13 +18,15 @@ import { TerrainEditorPanel } from "./terrain-editor.js";
 import { CharacterRecordPanel } from "./character-view.js";
 
 import { RulesPanel } from "./rules-editor.js";
+import { RulesPanel as TablesPanel } from "./rules-panel.js";
 
-type Tab = "ecs" | "play" | "terrain" | "assets" | "rules" | "characters";
+type Tab = "ecs" | "play" | "terrain" | "assets" | "tables" | "rules" | "characters";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "ecs", label: "ECS Inspector" },
   { id: "play", label: "Play Mode" },
   { id: "terrain", label: "Terrain" },
+  { id: "rules", label: "Gameplay Tables" },
   { id: "assets", label: "Art Assets" },
   { id: "rules", label: "Rules" },
   { id: "characters", label: "Characters" },
@@ -39,7 +42,7 @@ export function App(): React.JSX.Element {
           <div>
             <h1 className="text-lg font-bold">MMO Engine — Editor</h1>
             <p className="text-xs text-muted-foreground">
-              Rogue Engine Editor customization · ECS · play mode · art pipeline
+              Rogue Engine Editor customization · ECS · play mode · gameplay tables · art pipeline
             </p>
           </div>
           <nav className="flex gap-1" role="tablist" aria-label="Inspectors">
@@ -67,6 +70,7 @@ export function App(): React.JSX.Element {
         {tab === "ecs" && <EcsInspectorPanel />}
         {tab === "play" && <PlayModePanel />}
         {tab === "terrain" && <TerrainEditorPanel />}
+        {tab === "rules" && <RulesPanel />}
         {tab === "assets" && <AssetInspectorPanel />}
         {tab === "rules" && <RulesPanel />}
         {tab === "characters" && <CharacterRecordPanel />}
@@ -74,7 +78,8 @@ export function App(): React.JSX.Element {
 
       <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-muted-foreground">
         Server stays authoritative — the editor inspects live state and never
-        edits a running simulation; terrain edits apply to the stored world. Docs:{" "}
+        edits a running simulation; terrain edits apply to the stored world, and
+        saved gameplay tables are validated first, then picked up by a running server. Docs:{" "}
         <span className="font-mono">docs/EDITOR.md</span>
       </footer>
     </div>
