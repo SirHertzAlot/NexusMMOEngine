@@ -130,6 +130,39 @@ skips the rest. Only the process the host launched is ever signaled —
 nothing is killed by port. If the dev server itself exits, its exit hook
 kills the owned group.
 
+## 2b. PICG Graphs (hierarchical graph editor, ROADMAP E7)
+
+The **PICG Graphs** tab edits the PICG library (`content/pcg`): the asset
+graphs (`trees/*.pcg`) and the parts they link (`parts/*.pcgsubgraph`).
+
+- **Canvas** — the graph flows downwards: inputs on a node's top edge,
+  outputs on its bottom. Drag a node to move it, drag the background to
+  pan, wheel to zoom.
+- **Hierarchy** — double-click a `SubgraphAsset` node (⤵ open) to open the
+  part it links, or a `Subgraph` node to enter its embedded definition;
+  the breadcrumb (`Oak › Trunk`) climbs back out. A part whose GUID isn't
+  in the index is outlined red.
+- **Details** — the selected node's properties (numbers, booleans, text,
+  JSON) and, at a graph's root, its parameters' defaults with their
+  target (`trunk/sweep.radiusScale`) and range. A field commits on Enter
+  or blur; a value that doesn't parse turns red and isn't applied.
+- **Undo / Redo / Revert / Save** — every open document keeps its own
+  edits and undo (a drag is one step), so a tree and its trunk can be
+  changed together; Save sends every edited document to the dev host.
+
+**Saving is validated the way the server cooks.** `PUT /api/editor/pcg/doc`
+(`src/pcg-host.ts`) checks node and edge structure, then runs
+`prepareForCook` (linked parts inlined, parameters applied) on every
+library graph the document reaches, with the candidate in place: renaming
+the trunk part's `sweep` node is refused because oak, birch and pine all
+target `trunk/sweep`. Only files `content/pcg/index.json` names are read
+or written, confined to `content/pcg`, written back with 2-space JSON. The
+region server loads the library when it starts, so a saved edit shows in play
+mode on its next start.
+
+The model and view-model are `src/inspectors/graph-editor.ts` (pure TS,
+tested with `node:test`); `src/ui/graph-editor.tsx` only draws them.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
