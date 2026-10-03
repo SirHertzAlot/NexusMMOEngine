@@ -251,9 +251,9 @@ export interface BlockMessage {
 
 /**
  * Chat channels: say and emote reach nearby players, yell reaches all,
- * whisper reaches one named character (S2).
+ * whisper reaches one named character (S2), party reaches your party (S3).
  */
-export type ChatChannel = "say" | "yell" | "emote" | "whisper";
+export type ChatChannel = "say" | "yell" | "emote" | "whisper" | "party";
 
 /**
  * S→C (catalog §0x11): a fanned-out chat line. `from` is the speaker's
@@ -272,6 +272,34 @@ export interface ChatBroadcast {
 }
 
 /**
+ * C→S (0x11, S3): a party op. `invite`, `kick` and `promote` name a character;
+ * `accept` takes the pending invite; `leave` leaves. Only the leader invites,
+ * kicks and promotes.
+ */
+export interface PartyMessage {
+  kind: "party";
+  op: "invite" | "accept" | "leave" | "kick" | "promote";
+  name?: string;
+}
+
+/** One party member as the party list shows them. */
+export interface PartyMemberInfo {
+  name: string;
+  leader: boolean;
+  online: boolean;
+}
+
+/**
+ * S→C (0x11, S3): the receiver's party, sent whenever it changes. `members`
+ * is empty when in no party; `invite` is a pending invite (60 s) from `from`.
+ */
+export interface PartyState {
+  kind: "party";
+  members: PartyMemberInfo[];
+  invite?: { from: string };
+}
+
+/**
  * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): one row per
  * character entity the accompanying snapshot or delta first shows.
  * Tuples, spec-literal: [entity wire id, character name, guild tag].
@@ -283,7 +311,8 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 13; // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
+export const PROTOCOL_VERSION = 14; // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
+// v13 (2026-10-02): 0x17 life (death/respawn, M2b).
 // v12: 0x16 hit (M2a).
 // v11 (2026-10-01): items — 0x13 item
 // actions, 0x14 inventory, 0x15 drops (roadmap M3a).

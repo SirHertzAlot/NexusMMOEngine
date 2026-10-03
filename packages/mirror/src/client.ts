@@ -28,6 +28,8 @@ import {
   type AdminResult,
   type ChatBroadcast,
   type ChatChannel,
+  type PartyMessage,
+  type PartyState,
   type CreateCharacterMessage,
   type DebugQuery,
   type DebugResponse,
@@ -73,6 +75,8 @@ export interface MirrorEvents {
   onStats?(s: StatsMessage): void;
   /** A region chat line arrived (roadmap U6, protocol 0x11). */
   onChat?(c: ChatBroadcast): void;
+  /** The player's party changed, or an invite arrived (roadmap S3). */
+  onParty?(p: PartyState): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
 }
@@ -235,6 +239,13 @@ export class MirrorClient {
   chat(channel: ChatChannel, text: string, to?: string): void {
     if (!this.socket || this.closed) return;
     const m = to === undefined ? { kind: "chat", channel, text } : { kind: "chat", channel, text, to };
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /** A party op (S3): invite, kick and promote name a character. */
+  party(op: PartyMessage["op"], name?: string): void {
+    if (!this.socket || this.closed) return;
+    const m: PartyMessage = name === undefined ? { kind: "party", op } : { kind: "party", op, name };
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
   }
 
@@ -543,7 +554,9 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        this.events.onChat?.(decodeControl<ChatBroadcast>(payload));
+        const m = decodeControl<ChatBroadcast | PartyState>(payload);
+        if (m.kind === "party") this.events.onParty?.(m);
+        else this.events.onChat?.(m);
         break;
       }
       case MessageType.Names: {

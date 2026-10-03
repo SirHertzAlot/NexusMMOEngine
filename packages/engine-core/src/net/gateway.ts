@@ -58,6 +58,7 @@ import {
   type AdminCommand,
   type AdminResult,
   type ChatBroadcast,
+  type PartyState,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -110,6 +111,7 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
+import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
 import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
@@ -404,6 +406,8 @@ export class Gateway {
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
   private readonly blocks = new BlockList();
+  /** Parties, in memory (S3). */
+  private readonly parties = new PartyBook(() => this.clock());
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
   /** Items (see GatewayOptions.items); shared with the systems list. */
@@ -857,6 +861,7 @@ export class Gateway {
     if (now - this.lastHeartbeatMs < interval) return;
     this.lastHeartbeatMs = now;
     this.authSessions.sweep(); // drop expired session tokens
+    for (const n of this.parties.sweep()) this.pushParty(n);
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue;
       // Missed = nothing from the client (pong, intent, anything) since
@@ -931,6 +936,7 @@ export class Gateway {
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
+    this.partyOffline(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -946,6 +952,7 @@ export class Gateway {
       const sock = s.socket;
       s.socket = null;
       s.disconnectedAtMs = this.clock();
+      this.partyOffline(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -1337,12 +1344,16 @@ export class Gateway {
       return;
     }
     let text: string;
-    let channel: "say" | "yell" | "emote" | "whisper";
+    let channel: "say" | "yell" | "emote" | "whisper" | "party";
     let to: string | undefined;
     try {
       const raw = decodeControl<unknown>(payload);
       if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "block") {
         this.onBlock(s, raw);
+        return;
+      }
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "party") {
+        this.onParty(s, raw);
         return;
       }
       const parsed = ChatSchema.safeParse(raw);
@@ -1396,6 +1407,21 @@ export class Gateway {
       return;
     }
     const body = encodeControl(msg);
+    if (channel === "party") {
+      const me = s.character?.name ?? s.username;
+      const mates = new Set(this.parties.partyOf(me).map((n) => n.toLowerCase()));
+      if (!mates.has(me.toLowerCase())) {
+        this.sendSystem(s, "not in a party");
+        return;
+      }
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || !r.socket) continue;
+        if (!mates.has((r.character?.name ?? r.username).toLowerCase())) continue;
+        if (r !== s && this.blocks.isBlocked(r.username, s.username)) continue;
+        this.sendEnvelope(r, MessageType.Chat, body);
+      }
+      return;
+    }
     if (channel === "yell") {
       for (const r of this.sessions.values()) {
         if (r.welcomed && r.playerEntity !== null && !this.blocks.isBlocked(r.username, s.username)) {
@@ -1417,6 +1443,68 @@ export class Gateway {
         this.sendEnvelope(r, MessageType.Chat, body);
       }
     }
+  }
+
+  /** The live welcomed session for a character name, if any. */
+  private findOnline(name: string): ClientSession | undefined {
+    const key = name.toLowerCase();
+    for (const r of this.sessions.values()) {
+      if (r.welcomed && r.socket && (r.character?.name ?? r.username).toLowerCase() === key) return r;
+    }
+    return undefined;
+  }
+
+  private partyOffline(s: ClientSession): void {
+    if (!s.welcomed) return;
+    const me = s.character?.name ?? s.username;
+    this.parties.setOnline(me, false);
+    for (const n of this.parties.partyOf(me)) this.pushParty(n);
+  }
+
+  /** Send a character their current party and any pending invite (S3). */
+  private pushParty(name: string): void {
+    const r = this.findOnline(name);
+    if (!r) return;
+    const members = this.parties.members(name);
+    const invite = this.parties.pendingInvite(name);
+    const msg: PartyState = { kind: "party", members, ...(invite ? { invite } : {}) };
+    this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+  }
+
+  /**
+   * A party op (S3). Only the leader invites, kicks and promotes; invites to
+   * anyone offline, unknown or blocking get the same "not online" notice.
+   */
+  private onParty(s: ClientSession, raw: unknown): void {
+    const parsed = PartyOpSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed party op");
+      return;
+    }
+    const { op, name } = parsed.data;
+    const me = s.character?.name ?? s.username;
+    let result: PartyResult;
+    if (op === "invite") {
+      const target = this.findOnline(name as string);
+      if (!target || target === s || this.blocks.isBlocked(target.username, s.username)) {
+        this.sendSystem(s, target === s ? "cannot invite yourself" : NOT_ONLINE);
+        return;
+      }
+      result = this.parties.invite(me, target.character?.name ?? target.username);
+    } else if (op === "accept") {
+      result = this.parties.accept(me);
+    } else if (op === "leave") {
+      result = this.parties.leave(me);
+    } else if (op === "kick") {
+      result = this.parties.kick(me, name as string);
+    } else {
+      result = this.parties.promote(me, name as string);
+    }
+    if (!result.ok) {
+      this.sendSystem(s, result.reason);
+      return;
+    }
+    for (const n of new Set(result.notify)) this.pushParty(n);
   }
 
   /** A server notice in the sender's chat (S2). */
@@ -1991,6 +2079,9 @@ export class Gateway {
       ...(s.character ? { character: s.character } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
+    this.parties.setOnline(s.character?.name ?? s.username, true);
+    for (const n of this.parties.partyOf(s.character?.name ?? s.username)) this.pushParty(n);
+    this.pushParty(s.character?.name ?? s.username);
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */

@@ -16,6 +16,7 @@ export const CHAT_COOLDOWN_MS: Record<ChatChannel, number> = {
   yell: 10000,
   emote: 2000,
   whisper: 1000,
+  party: 500,
 };
 
 /** Chat text: trimmed server-side, 1–500 chars after trimming. */
@@ -24,7 +25,7 @@ export const CHAT_TEXT_MAX = 500;
 export const ChatSchema = z
   .object({
     kind: z.literal("chat"),
-    channel: z.enum(["say", "yell", "emote", "whisper"]),
+    channel: z.enum(["say", "yell", "emote", "whisper", "party"]),
     text: z.string().trim().min(1).max(CHAT_TEXT_MAX),
     to: z.string().trim().min(1).max(32).optional(),
   })

@@ -1,7 +1,7 @@
 /**
  * ChatPanel (roadmap U6, first slice): region chat over the world.
  *
- * Tabs for the channels that exist (say/yell/emote); whispers, party,
+ * Tabs for the channels that exist (say/yell/emote); whispers (S2) arrive in any tab; guild,
  * guild, and reply need S2–S4 and stay out — the panel says so instead
  * of faking them. Lines arrive through MirrorClient.onChat; sending is
  * fire-and-forget (rejections surface through onError, as everywhere).
@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
 import { Button, Input } from "./components.js";
 
-const TABS: ChatChannel[] = ["say", "yell", "emote"];
+const TABS: ChatChannel[] = ["say", "yell", "emote", "party"];
 
 export interface ChatPanelProps {
   lines: ChatBroadcast[];
