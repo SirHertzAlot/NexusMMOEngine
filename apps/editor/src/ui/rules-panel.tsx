@@ -14,6 +14,7 @@ import * as React from "react";
 import {
   CREATURE_FIELDS,
   DEATH_FIELDS,
+  INGRESS_FIELDS,
   ITEM_BASE_FIELDS,
   ITEMS_FIELDS,
   LOOT_FIELDS,
@@ -40,6 +41,7 @@ const TABLE_LABELS: Record<Table, string> = {
   creatures: "Creatures",
   loot: "Loot",
   death: "Death",
+  ingress: "Ingress limits",
 };
 
 /** Record tables: the key their entries live under, and the fields of one entry. */
@@ -54,6 +56,7 @@ const FLAT: Record<Table, FieldSpec[]> = {
   creatures: [],
   loot: LOOT_FIELDS,
   death: DEATH_FIELDS,
+  ingress: INGRESS_FIELDS,
 };
 
 /** A save's outcome, shown on the table it was for. */

@@ -62,8 +62,26 @@ export interface ClientSession {
    * counted (never applied out of order).
    */
   lastIntentTick: bigint;
-  /** Stale or foreign intents dropped (diagnostic counter). */
+  /** Stale, foreign, or rate-limited intents dropped (diagnostic counter). */
   droppedIntents: number;
+  /**
+   * Ingress rate limits (roadmap T1): one token bucket per session per
+   * message kind. Tokens are fractional; the refill timestamps are clock
+   * ms. All scalar fields on the session: no per-message allocation.
+   */
+  intentTokens: number;
+  intentRefillMs: number;
+  pickupTokens: number;
+  pickupRefillMs: number;
+  /** Pickup requests dropped by the rate limiter (diagnostic counter). */
+  droppedPickups: number;
+  /**
+   * Excess (rate-limited) messages inside the current abuse window; past
+   * the max the gateway disconnects the session. The window starts at
+   * violationWindowStartMs (clock ms).
+   */
+  violations: number;
+  violationWindowStartMs: number;
   /** Clock ms of the last inbound message (heartbeat liveness). */
   lastSeenMs: number;
   /**

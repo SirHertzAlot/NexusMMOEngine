@@ -491,6 +491,8 @@ async function main(): Promise<void> {
     port: PORT,
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
+    // Per-session intent/pickup budgets and the frame cap (roadmap T1).
+    ingress: game.rules.ingress,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.

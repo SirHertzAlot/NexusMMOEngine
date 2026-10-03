@@ -1,0 +1,9 @@
+{
+  "maxClientPayloadBytes": 65536,
+  "intentsPerSecond": 40,
+  "intentBurst": 60,
+  "pickupsPerSecond": 5,
+  "pickupBurst": 10,
+  "abuseWindowSeconds": 10,
+  "maxViolations": 100
+}
