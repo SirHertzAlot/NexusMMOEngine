@@ -1,16 +1,17 @@
 {
   "name": "@mmo-engine/edge",
   "version": "0.1.0",
-  "description": "Edge API layer: client WebSocket + HTTP, generic packet router (content/edge/routes.json), core forwarding (stubbed until E2)",
+  "description": "Edge API layer: client WebSocket + HTTP, generic packet router (content/edge/routes.json), core forwarding over packages/channel",
   "private": true,
   "type": "module",
   "main": "dist/src/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@mmo-engine/channel && tsc -p tsconfig.json",
     "server": "npm run build && node dist/src/index.js",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\""
   },
   "dependencies": {
+    "@mmo-engine/channel": "^0.1.0",
     "express": "^5.1.0",
     "ws": "^8.22.0"
   },
