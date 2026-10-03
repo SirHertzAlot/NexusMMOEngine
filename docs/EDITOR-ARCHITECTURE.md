@@ -262,6 +262,127 @@ live in one place so a module's panels match without importing a
 component library; adopting `@material/web` components is an option for
 EA1, not a requirement.
 
+### 3.3 Every engine feature in the editor: workspaces
+
+Every feature the engine has, or the roadmap plans, is reachable from the
+editor. They are grouped into **workspaces**, as in Blender: a workspace
+is a named, saved layout of dockable panels for one kind of work, picked
+from tabs in the top bar. Modules add panels to existing workspaces and
+can add workspaces of their own.
+
+| Workspace | What it covers |
+|---|---|
+| **World** | terrain sculpting and the world bake; regions and the world map (E9); ecology and scatter; WFC formations; coast, water, sky, day and weather; navmesh tiles and the tile cache; chunk streaming radius |
+| **Scene** | outliner, viewport, details; prefabs and the prefab builder (R2); spawners and spawn points; lighting; play from here |
+| **Flow & UI** | the game flow graph (§6); login, register, character select and creation scenes; a preview of the player's HUD (frames, chat, bag, character sheet) at each quality tier |
+| **Characters** | appearance catalog and body parts; skills, mastery and disciplines; needs and stamina; character records (E10); the appearance and equipment editor (A6) |
+| **Gameplay** | data grids over every `content/rules` table (items, creatures, loot, death, combat, body, skills, needs, materials and recipes, species, ranks, ingress) and the rules tree (E11, ED1) |
+| **Dungeons & PCG** | dungeon pool, layouts, shells and dressing (E8); instances (D4); the PICG graph editor and selection cards (E6, E7); the asset library and cooks |
+| **Live ops** | the admin console (A1 to A5); players, accounts, parties, guilds, friends; chat and event log; the item ledger and checkpoints; play telemetry (T2) |
+| **Network** | edge routes and modules; edge-core channel health; `/metrics` with links out to Prometheus and Grafana (edge E6); the world server and regions; ingress limits |
+| **Debug** | the debugger's panels and performance graphs (E5); tick and per-system timings; wireframe and FX showcase; valgrind perf baseline and memcheck results |
+
+Modules and content (the Modules window, the content browser, the art pack
+scan and import) are reachable from every workspace.
+
+**Data-rich views follow established patterns** rather than inventing
+them:
+
+- **Tables** follow IBM Carbon's data table guidance
+  ([usage](https://carbondesignsystem.com/components/data-table/usage/)):
+  selectable row density (24, 32, 40 px; the editor defaults to 32), a
+  toolbar of the same height with search, filters and at most five
+  actions, a batch-action bar when rows are selected, sort icons shown on
+  the sorted column and on hover, inline edit with per-cell validation,
+  and expandable rows for nested data (a creature's drops, an item's
+  physics).
+- **Panes** follow Material 3's canonical layouts
+  ([list-detail and supporting pane](https://m3.material.io/foundations/adaptive-design/canonical-layouts)):
+  a list (tables, outliner) beside its detail (Details, Compare), with
+  resizable dividers.
+- **Dashboards** (Live ops, Network, Debug) put a row of stat tiles over
+  time-series charts over tables, like Grafana: the number first, the
+  trend second, the rows last.
+- **Live values sit beside authored ones**: the Gameplay grid shows each
+  creature's kills over the last ten minutes of play beside its health
+  and aggro, so tuning uses what actually happened.
+
+### 3.4 Layout customization
+
+Layouts work the way they do in Unreal
+([layout customization](https://dev.epicgames.com/documentation/en-us/unreal-engine/layout-customization?application_version=4.27))
+and Blender
+([workspaces](https://studio.blender.org/training/blender-fundamentals-45-lts/blender_4-5_lts_workspaces/)):
+
+- **Every panel is a tab** that can be dragged by its title. While dragging,
+  dock targets appear over the panel underneath (top, bottom, left, right,
+  or as a tab in the same stack), with a preview of where it lands.
+  Dividers between stacks are resizable; double-clicking a tab maximises
+  it.
+- **Panels pop out** into their own browser window and dock back, so a
+  second monitor can hold the debugger or a data grid. Popped-out panels
+  stay in sync because they share the same models (§3.1).
+- **Layouts are saved by name** (`Ctrl Shift S`), per workspace, and can be
+  switched, reset to the workspace default, exported and shared as a JSON
+  file. The layout records each panel's contribution id, stack, size and
+  open state; a panel whose module is disabled is skipped and comes back
+  when the module returns.
+- **Persistence**: layouts are per user in the browser by default, and a
+  project can commit default layouts under `content/editor/layouts/` so
+  the team starts from the same arrangement.
+- **Play mode keeps the layout.** Entering play swaps only what the panels
+  show (the outliner turns live, Details turns read-only), never where
+  they are; a workspace can name a separate play layout if wanted.
+
+The layout engine is the docking system E5 builds for the debugger,
+grown into the shell in EA1, not a second implementation.
+
+### 3.5 The toolbar and the play button
+
+**Two bars.** The top bar holds the menus (File, Edit, View, Window,
+Help), the workspace tabs and the command search (`Ctrl K`, which finds
+any command, panel, asset or setting, including those modules add). The
+toolbar under it holds the tools for the current workspace and the play
+controls.
+
+**The toolbar is customizable.** Commands are contributions like panels:
+the core module ships save, undo and redo, the transform tools, snapping
+and build; modules add theirs (regenerate region, reload sidecar, build
+native module, run memcheck, spawn at cursor). Right-click → Customize
+lets you drag commands on and off, group them, and choose icons only or
+icons and labels. The toolbar is saved with the layout.
+
+**The play cluster** sits in the middle of the toolbar, always in the
+same place:
+
+- **Play** is a split button. The main part plays with the last settings
+  (`F5`); the arrow opens the play menu.
+- **Pause** and **Step** (one 30 Hz tick at a time) work on the owned
+  server's tick loop, like Unity's pause and step. **Stop** ends play
+  (`Shift F5`).
+- A chip beside it shows the current setup ("In viewport · 1 client ·
+  edge + core"), so what Play will do is never a surprise.
+- While playing, the play cluster and the window edge take the tertiary
+  colour, like Unity's play-mode tint, so nobody edits a live world by
+  mistake.
+
+**The play menu** gathers every way to run the game:
+
+| Choice | Options |
+|---|---|
+| Where | in the viewport (panels stay around it), in a new window (the player's client), or simulate (the world runs, no player joins) |
+| Start from | any flow node (login, character creation, world) or the camera's position |
+| Clients | 1, 2, 4 or 8 clients, each with its own seeded editor account, for testing parties, trade and combat between players |
+| Bots | computer-driven characters near the spawn point (the server's `MMO_BOTS`) |
+| Network | core only, or edge and core (once the edge split lands) |
+| Latency | none, 80 ms or 200 ms of simulated delay on the client connections |
+| State | a fresh world from the scene, or continue the saved one; keep or discard play changes on stop (§7) |
+
+Play setups can be saved by name ("Raid test: 8 clients, 200 bots") and
+bound to a shortcut. Concept mockups of the workspaces, the dock targets
+and layout menu, the toolbar customization and the play menu go with the
+PR.
+
 ## 4. Modules
 
 A module is a folder with a manifest. It is the unit you develop, enable,
@@ -629,7 +750,7 @@ the roadmap thread adds them.
 | # | Slice | Depends on | Done when |
 |---|---|---|---|
 | EA0 | **This document** | | merged |
-| EA1 | **Docking shell and panel registry.** `App.tsx`'s tabs become panels in a dockable layout (left, right, bottom, center), persisted per browser; panels registered in code, not imported by the shell. No behaviour change. Reuses E5's panel layout code rather than a second one | E4, E5 | every existing tab opens as a panel; layout survives reload; screenshot |
+| EA1 | **Docking shell, workspaces and toolbar.** `App.tsx`'s tabs become panels in a dockable layout (drag a tab, dock targets, resizable dividers, pop out to a window); named layouts saved per workspace with reset and export; the top bar (menus, workspace tabs, command search) and the toolbar with the play cluster (Play, Pause, Step, Stop); Material 3 tokens (§3.2 to §3.5). Panels registered in code, not imported by the shell. Reuses E5's docking code rather than a second one | E4, E5 | every existing tab opens as a panel in a workspace; a saved layout survives reload; Pause and Step hold and advance the owned server; screenshots and a GIF of docking |
 | EA2 | **MVC contracts.** `Model`, `Controller`, `PanelContribution`, `EditorContext`; shared selection and an undo stack. Port ECS, play mode, rules, tables and terrain behind them | EA1 | existing editor tests pass unchanged; new controller tests with fakes |
 | EA3 | **Editor modules.** `packages/modules` (manifest schema, discovery, validation); the host's `/api/editor/modules`; the shell loads editor entries by dynamic import; Modules window to enable and disable. `modules/core` holds today's panels; Character records moves to its own module as the proof | EA2 | disabling the characters module removes its panel without a restart; a bad manifest lists every problem |
 | EA4 | **Scene documents.** `packages/scene` (schema, node and component registry); `content/scenes`; Outliner and Details over an open scene; validated save through `/api/editor/scenes`; undo | EA2 | open, edit, save and reload a scene; a refused save writes nothing |
@@ -642,9 +763,11 @@ the roadmap thread adds them.
 | EA11 | **Sidecars.** `packages/sidecar` on E2's channel; supervisor owned by play mode; `kind: "wasm"` Node host with WASI and no default file access; `kind: "exec"`; results applied between ticks; a sample wasm module | EA9, edge E2 | the sample wasm sidecar answers from a system; killing it restarts it and the tick never stalls; reload while playing |
 | EA12 | **Edge modules.** Manifests contribute `local:<module>` routes and handlers, merged into the edge's routes at boot with the same strict validation | EA9, edge E3 | a module's packet reaches its edge handler |
 | EA13 | **Existing tools as modules.** Debugger, PICG, dungeon and world tools (E5 to E9) move to their own modules | EA3 and each tool | each can be disabled on its own |
+| EA14 | **The play menu.** Where (viewport, new window, simulate), start node, 1 to 8 clients with seeded accounts, bots, network (core or edge + core), simulated latency, fresh or saved state; saved play setups with shortcuts; play-mode tint | EA8 | each option works from the menu; a saved "8 clients, 50 bots" setup starts with one key |
+| EA15 | **Fill every workspace.** Each workspace in §3.3 gets its default layout and panels: the Gameplay data grids (Carbon density, batch actions, inline validation, live values), the Live ops and Network dashboards, the Characters panels; a workspace whose feature is not built yet shows what it will hold and which roadmap item brings it | EA3, EA13 | every engine feature in §3.3 is reachable from a workspace; screenshots of each |
 
 EA1 to EA3 are the frame; EA4 to EA8 are scenes and the flow; EA9 to EA12
-are engine modules. The scene track and the module track only meet at EA9,
+are engine modules; EA14 and EA15 finish the play menu and the workspaces. The scene track and the module track only meet at EA9,
 so they can run in parallel after EA3.
 
 ## 11. Coordination with work in flight
