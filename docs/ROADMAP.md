@@ -156,6 +156,15 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
+## 5b. Edge / core split
+
+Doc: [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md). Its E1–E6 are the
+split's slices, not the editor's E items.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | 🚧 | Core channel stubbed until E2: core-bound packets answer `core.unavailable` |
+
 ## 6. World server
 
 Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
@@ -194,6 +203,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
+- **2026-10-03**: Edge/core split E1 edge skeleton: new `apps/edge` process (Express `GET /health`, client WebSocket) routes packets by type from strictly validated `content/edge/routes.json` to local modules (`ping`) or the core; the core channel is a stub until E2, so core-bound packets answer `core.unavailable` (the contract E4 reuses). Graceful SIGTERM/SIGINT. Valgrind not run (skipped at the user's request).
 - **2026-10-03**: E11 rules editor: a Rules tab in the editor lists every `content/rules/*.json`, edits it as a tree and validates on save with the `@mmo-engine/rules` schemas and cross-file checks; invalid saves write nothing and show per-path errors. Save is strict (any invalid rules file blocks). Perf and valgrind runs paused.
 - **2026-10-03**: T1 ingress hardening: 64 KiB frame cap, per-session token buckets for intents (40/s, burst 60) and pickups (5/s, burst 10), drops counted, 100 violations in 10 s disconnects. Numbers in `content/rules/ingress.json`, editable in the editor's rules tab. Built by opencode, reviewed by Claude. Live reload of limits not wired (`Gateway.updateIngress` is ready).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
