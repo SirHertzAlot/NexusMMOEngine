@@ -20,6 +20,11 @@
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
+ *   GET  /api/editor/characters    → the account's characters (id, name)
+ *                                    from <dataDir>/characters.db (read-only)
+ *   GET  /api/editor/characters/:id → one character's record: name, look,
+ *                                    deaths, saved state and ledger items
+ *                                    (characters.db + world.db, read-only)
  *
  * Safety rules:
  * - At most one owned server at a time; start while running → 409.
@@ -54,6 +59,7 @@ import {
   ruleFileNames,
   saveRuleFile,
 } from "./rules-host.js";
+import { pathToFileURL } from "node:url";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -208,6 +214,88 @@ function editorLogin(dataDir: string): { username: string; password: string } {
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(file, JSON.stringify(login), { mode: 0o600 });
   return login;
+}
+
+/**
+ * Character record view (roadmap E10): read-only gathers over the editor's
+ * world. The data-gathering lives in the engine
+ * (`packages/engine-core/src/characters/character-view.ts`, SELECT-only);
+ * this host only opens the two databases read-only, resolves loot-pool
+ * definition names, and serves the JSON. Nothing here writes.
+ */
+
+interface ReadonlyDb {
+  close(): void;
+}
+
+/** Open a SQLite file read-only (a running server keeps writing beside us). */
+async function openReadOnlyDb(file: string): Promise<ReadonlyDb> {
+  let ctor: new (file: string, opts?: { readonly?: boolean }) => ReadonlyDb;
+  try {
+    const sqlite = (await import("better-sqlite3")) as unknown as {
+      default: new (file: string, opts?: { readonly?: boolean }) => ReadonlyDb;
+    };
+    ctor = sqlite.default;
+  } catch {
+    throw Object.assign(new Error("better-sqlite3 unavailable — run npm install"), { status: 500 });
+  }
+  return new ctor(file, { readonly: true });
+}
+
+interface CharacterViewModule {
+  listCharacters(db: unknown, username?: string): Array<{ id: number; username: string; name: string }>;
+  readCharacterView(
+    db: unknown,
+    username: string,
+    id: number,
+    opts: { worldDb?: unknown; defs?: unknown },
+  ): unknown;
+}
+
+/** The built data-gathering module, imported by file (never bundled). */
+async function loadCharacterViewModule(repoRoot: string): Promise<CharacterViewModule> {
+  const file = join(repoRoot, "packages", "engine-core", "dist", "src", "characters", "character-view.js");
+  if (!existsSync(file)) {
+    throw Object.assign(
+      new Error("character view not built — run: npm run build --workspace=@mmo-engine/engine-core"),
+      { status: 500 },
+    );
+  }
+  return (await import(pathToFileURL(file).href)) as unknown as CharacterViewModule;
+}
+
+/**
+ * Loot-pool definition names by def index (the ledger stores indices).
+ * Definition order follows the pool file order (ItemDefs builds them in
+ * order), so line n is def n. Null when there is no baked pool: rows show
+ * `def <n>` placeholders instead.
+ */
+function loadPoolDefNames(dataDir: string): { count: number; names: string[]; ranks: string[]; colors: string[] } | null {
+  let text: string;
+  try {
+    text = readFileSync(join(dataDir, "loot", "pool.jsonl"), "utf8");
+  } catch {
+    return null;
+  }
+  const names: string[] = [];
+  const ranks: string[] = [];
+  const colors: string[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const it = JSON.parse(t) as {
+        rank?: unknown;
+        bundle?: { Identity?: { name?: unknown }; Rank?: { color?: unknown } };
+      };
+      names.push(typeof it.bundle?.Identity?.name === "string" ? it.bundle.Identity.name : "?");
+      ranks.push(typeof it.rank === "string" ? it.rank : "");
+      colors.push(typeof it.bundle?.Rank?.color === "string" ? it.bundle.Rank.color : "");
+    } catch {
+      /* skip a bad line */
+    }
+  }
+  return { count: names.length, names, ranks, colors };
 }
 
 export function editorHost(options: EditorHostOptions): Plugin {
@@ -618,6 +706,72 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url === "/api/editor/assets" && req.method === "GET") {
             sendJson(res, 200, { ok: true, ...(await assetScan()) });
+            return;
+          }
+          const charactersRoute =
+            url === "/api/editor/characters" ||
+            url.startsWith("/api/editor/characters?") ||
+            url.startsWith("/api/editor/characters/");
+          if (charactersRoute && req.method === "GET") {
+            const parsed = new URL(req.url ?? "/", "http://localhost");
+            const parts = parsed.pathname.split("/").filter(Boolean);
+            const charsDbPath = join(dataDir, "characters.db");
+            if (!existsSync(charsDbPath)) {
+              if (parts.length === 3) {
+                sendJson(res, 200, { ok: true, characters: [], hasDb: false });
+              } else {
+                sendJson(res, 404, { ok: false, error: "no characters.db yet — create a character first" });
+              }
+              return;
+            }
+            const view = await loadCharacterViewModule(repoRoot);
+            if (parts.length === 3) {
+              const username = parsed.searchParams.get("username") ?? undefined;
+              const db = await openReadOnlyDb(charsDbPath);
+              try {
+                sendJson(res, 200, {
+                  ok: true,
+                  hasDb: true,
+                  characters: view.listCharacters(db, username || undefined),
+                });
+              } finally {
+                db.close();
+              }
+              return;
+            }
+            if (parts.length === 4) {
+              const username = parsed.searchParams.get("username") ?? "";
+              const id = /^\d{1,10}$/.test(parts[3] ?? "") ? Number(parts[3]) : NaN;
+              if (!username || !Number.isSafeInteger(id)) {
+                sendJson(res, 400, { ok: false, error: "need ?username= and a numeric id" });
+                return;
+              }
+              const db = await openReadOnlyDb(charsDbPath);
+              try {
+                const worldDbPath = join(dataDir, "world.db");
+                const worldDb = existsSync(worldDbPath) ? await openReadOnlyDb(worldDbPath) : null;
+                try {
+                  const defs = loadPoolDefNames(dataDir);
+                  const record = view.readCharacterView(db, username, id, { worldDb, defs });
+                  if (!record) {
+                    sendJson(res, 404, { ok: false, error: "no such character for that account" });
+                    return;
+                  }
+                  sendJson(res, 200, {
+                    ok: true,
+                    view: record,
+                    defsResolved: defs !== null,
+                    hasWorldDb: worldDb !== null,
+                  });
+                } finally {
+                  worldDb?.close();
+                }
+              } finally {
+                db.close();
+              }
+              return;
+            }
+            sendJson(res, 404, { ok: false, error: "not found" });
             return;
           }
           if (url.startsWith("/assets/") && req.method === "GET") {

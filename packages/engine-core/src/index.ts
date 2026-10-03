@@ -260,12 +260,27 @@ export {
   checkNewLook,
   DEFAULT_LOOK_JSON,
   DEFAULT_MAX_CHARACTERS,
+  listCharacters,
   loadCharacterCatalog,
   MemoryCharacterStore,
+  readCharacterView,
   SqliteCharacterStore,
+  summarizeLook,
+} from "./characters/index.js";
+export type {
+  CharacterItemView,
+  CharacterItemWhere,
+  CharacterListEntry,
+  CharacterRecord,
+  CharacterStore,
+  CharacterView,
+  DeathView,
+  ItemDefNames,
+  LookSummary,
+  ReadCharacterViewOptions,
+  SavedStateView,
 } from "./characters/index.js";
 export { SqliteGuildStore } from "./guild-store.js";
-export type { CharacterRecord, CharacterStore } from "./characters/index.js";
 
 export { DeathSystem, type LifeEvent } from "./death.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type HitEvent, type Weapon } from "./combat.js";
