@@ -57,7 +57,7 @@ Doc: [`EDITOR.md`](EDITOR.md)
 | E8 | D3: dungeon view: pool browser, 3D view, edits as patches | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §3.5 |
 | E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | 📋 | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 4 |
 | E10 | Character record view (read-only) | 📋 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
-| E11 | Rules editor panel: every `content/rules/*.json` editable and validated in the editor | 🚧 | Editor parity for needs, skills, combat and the rest (built by opencode, stacked on E10) |
+| E11 | Rules editor: every `content/rules/*.json` tunable listed, edited as a tree, validated on save | ✅ | Loopback `/api/editor/rules` routes (whitelisted names, path-confined, write only when valid; strict across files); Rules tab with tree editor and per-path errors. Opened from opencode's work; no screenshot yet |
 
 ## 1b. Admin console: control the running game
 
@@ -194,6 +194,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
+- **2026-10-03**: E11 rules editor: a Rules tab in the editor lists every `content/rules/*.json`, edits it as a tree and validates on save with the `@mmo-engine/rules` schemas and cross-file checks; invalid saves write nothing and show per-path errors. Save is strict (any invalid rules file blocks). Perf and valgrind runs paused.
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
