@@ -62,10 +62,25 @@ const CONE_COS = 0.5;
 const MAX_DY = 2;
 const FIST: Weapon = { technique: "bludgeon", item: { mass: 0.5, edge: 0, point: 0, hardness: 0.3 }, reach: 0.8 };
 
+/** Combat skills (M3c): what a character knows feeds its blows, and using it trains it. */
+export interface CombatSkills {
+  /** The entity's skill `id`, 0..skills.max. */
+  get(e: number, id: string): number;
+  /** One use of skill `id` at `difficulty` (0..1) against target `key`. */
+  train(e: number, id: string, difficulty: number, key: number): void;
+  /** The skill a technique runs on ("cut" -> "cutting"), if any. */
+  techniqueSkill(technique: string): string | undefined;
+}
+
+/** How hard a fight is taken to be for training (proposed default; a creature-level rule later). */
+export const FIGHT_DIFFICULTY = 0.5;
+
 export interface CombatDamage {
   hooks: RuleHooks;
   /** The weapon an entity holds; null or absent means fists. */
   weaponOf?: (e: number) => Weapon | null;
+  /** Skills behind power and defence; absent means skill 0 and no training. */
+  skills?: CombatSkills;
 }
 
 export class CombatSystem implements SimSystem {
@@ -193,13 +208,18 @@ export class CombatSystem implements SimSystem {
       const tt = tm ? (tick - Action.started[t]) / this.tickHz : 0;
       if (tm?.iframes && tt >= tm.iframes.from && tt <= tm.iframes.to) {
         outcome = "dodged";
+        dmg.skills?.train(t, "evading", FIGHT_DIFFICULTY, e);
       } else {
-        amount = dmg.hooks.computeDamage({ technique: w.technique, skill: 0, item: w.item, part: "torso" }).amount;
-        // The guard holds only against what it faces.
+        const sk = dmg.skills;
+        const weaponSkill = sk?.techniqueSkill(w.technique);
+        amount = dmg.hooks.computeDamage({ technique: w.technique, skill: weaponSkill ? sk!.get(e, weaponSkill) : 0, item: w.item, part: "torso" }).amount;
+        // The guard holds only against what it faces; a landed block trains Blocking.
         if (tm?.kind === "guard" && -(dx * Math.sin(Action.yaw[t]) + dz * Math.cos(Action.yaw[t])) >= 0) {
           outcome = "blocked";
           amount *= GUARD_FACTOR;
+          sk?.train(t, "blocking", FIGHT_DIFFICULTY, e);
         }
+        if (weaponSkill) sk!.train(e, weaponSkill, FIGHT_DIFFICULTY, t);
         Health.current[t] = Math.max(0, Health.current[t] - amount);
         this.attackers.set(t, e);
       }
