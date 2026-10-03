@@ -283,4 +283,4 @@ export type {
 export { SqliteGuildStore } from "./guild-store.js";
 
 export { DeathSystem, type LifeEvent } from "./death.js";
-export { CombatSystem, GUARD_FACTOR, type CombatDamage, type HitEvent, type Weapon } from "./combat.js";
+export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";

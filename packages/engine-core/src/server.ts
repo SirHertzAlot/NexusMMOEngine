@@ -109,7 +109,7 @@ import { RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { CombatSystem, type Weapon } from "./combat.js";
+import { CombatSystem, type CombatSkills, type Weapon } from "./combat.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
@@ -483,7 +483,15 @@ async function main(): Promise<void> {
     itemDefs.defs.applyRules(g.rules);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf });
+  const combatSkills: CombatSkills = {
+    get: (e, id) => mastery.sheetOf(e).get(id),
+    train: (e, id, difficulty, key) => {
+      const i = mastery.index.of(id);
+      if (i >= 0) mastery.sheetOf(e).train(i, difficulty, key, Date.now());
+    },
+    techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
+  };
+  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
