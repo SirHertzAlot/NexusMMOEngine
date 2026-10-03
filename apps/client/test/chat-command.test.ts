@@ -18,11 +18,6 @@ describe("parseChatCommand", () => {
     assert.equal(parseChatCommand("/w Ann", "say").kind, "error");
     assert.equal(parseChatCommand("/zap", "say").kind, "error");
   });
-  it("/block and /unblock", () => {
-    assert.deepEqual(parseChatCommand("/block Borin", "say"), { kind: "block", name: "Borin", on: true });
-    assert.deepEqual(parseChatCommand("/UNBLOCK Borin", "say"), { kind: "block", name: "Borin", on: false });
-    assert.equal(parseChatCommand("/block", "say").kind, "error");
-  });
   it("guild chat and ops", () => {
     assert.deepEqual(parseChatCommand("/g raid at 8", "say"), { kind: "chat", channel: "guild", text: "raid at 8" });
     assert.equal(parseChatCommand("/g", "say").kind, "error");
@@ -42,5 +37,10 @@ describe("parseChatCommand", () => {
     assert.deepEqual(parseChatCommand("/friend Bob", "say"), { kind: "friend", name: "Bob", on: true });
     assert.deepEqual(parseChatCommand("/unfriend Bob", "say"), { kind: "friend", name: "Bob", on: false });
     assert.equal(parseChatCommand("/friend", "say").kind, "error");
+  });
+  it("/block and /unblock", () => {
+    assert.deepEqual(parseChatCommand("/block Borin", "say"), { kind: "block", name: "Borin", on: true });
+    assert.deepEqual(parseChatCommand("/UNBLOCK Borin", "say"), { kind: "block", name: "Borin", on: false });
+    assert.equal(parseChatCommand("/block", "say").kind, "error");
   });
 });
