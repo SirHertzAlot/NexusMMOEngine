@@ -181,7 +181,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | AI1 | Creature spawner and brain: goblins with weapons, aggro, chase, attack, leash | ✅ | M2a |
 | L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | ✅ | M2b, AI1 |
 | U10a | Inventory and equipment, first cut | 🚧 | Bag grid, item details, drop live (M3a); equip and unequip live (M3b); stats and tooltips later |
-| U12a | Hit feedback and target frame | 📋 | M2a |
+| U12a | Hit feedback and target frame | ✅ | M2a |
 | ED1 | Gameplay tables in the editor: items, creatures, loot and death rules, validated, hot-reloaded | 📋 | M3a; each α1 slice adds its table |
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | ✅ | Bags, hands and ground items survive restarts; owners are entity ids, so P2b maps them to saved characters |
 | P2b | Character save: position, health, inventory, equipment | ✅ | Position, health and stamina saved on the 1 s timer, on leaving and on shutdown, restored on entering; bags and hands already persist via P2a |
@@ -198,6 +198,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
+- **2026-10-02**: U12a hit feedback: struck entities flash red for 0.15 s (hits and blocks; dodges don't), a top-centre target frame shows the target's name and health from `hit` messages (you target what you strike, or your attacker when nothing is targeted; left click selects the hovered entity; cleared when it despawns), creatures get nameplates via the names message, and the player frame's health updates on each hit.
 - **2026-10-02**: L2 creature drops: a creature's death rolls its `drops` (`rolls` range, `chance` per roll; defaults 1-2 at 0.8) from the `mob` pool with a seeded rng, scattering items within 1.2 m of the corpse owned by the killer for the ownership window. Pickup, ownership and despawn are M3a's. `DeathSystem` gained an `onDeath` hook. Editor tables come with ED1.
 - **2026-10-03**: E10 character record view (read-only): `readCharacterView`/`listCharacters` over the character and item stores, a Characters panel in the editor (look, saved state, deaths, items). Built by opencode, reviewed. Perf not run (paused).
 - **2026-10-03**: S4 guilds: `GuildBook` with injected clock and write-through `GuildStore` (in-memory default; SQLite store and `purge` caller deferred). Ranks and rules enforced server-side, guild chat channel, `GuildState` to members on change, tag on the names fan-out (`Name <TAG>`), `GuildFrame` and guild chat commands in the client. Protocol 15; ops ride 0x11 (`kind:"guild"`). Perf and valgrind not run (paused).

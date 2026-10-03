@@ -17,7 +17,9 @@ import {
   type NamesMessage,
   type WelcomeMessage,
 } from "@mmo-engine/protocol";
+import { addComponent } from "bitecs";
 import { Gateway, type GatewayOptions } from "../../src/net/gateway.js";
+import * as C from "../../src/components.js";
 import { decodeSnapshot } from "../../src/snapshot.js";
 import { MemoryCharacterStore } from "../../src/index.js";
 import { HeadlessClient } from "./headless-client.js";
@@ -149,5 +151,44 @@ describe("gateway: character names", () => {
     const names = decodeControl<NamesMessage>((await namesP)[0]);
     assert.ok(names.names.some(([, name]) => name === "user-b"), "new avatar named before its delta");
     assert.equal(gw.clientCount(), 2);
+  });
+
+  it("creatures are named too: in a joiner's names and before the delta that spawns one (U12a)", async () => {
+    const goblins = new Set<number>();
+    const { url, gw } = await startGateway({
+      creatures: {
+        has: () => true,
+        spawnPack: () => [],
+        nameOf: (e) => (goblins.has(e) ? "Goblin" : undefined),
+        entities: () => goblins,
+      },
+    });
+    const plant = (x: number): string => {
+      const e = gw.world.spawn();
+      addComponent(gw.world.ecs, C.Transform, e);
+      C.Transform.px[e] = x;
+      C.Transform.qw[e] = 1;
+      goblins.add(e);
+      return gw.world.wireId(e).toString();
+    };
+    const first = plant(2);
+    const a = await connect(url);
+    const namesP = a.waitFor(MessageType.Names, 1);
+    const snapA = a.waitFor(MessageType.Snapshot, 1);
+    a.sendRaw(
+      MessageType.Hello,
+      encodeControl({ protocol: PROTOCOL_VERSION, client: "a", want_snapshot: true, username: "alice", password: TEST_PASSWORD }),
+    );
+    const names = decodeControl<NamesMessage>((await namesP)[0]);
+    await snapA;
+    assert.ok(names.names.some(([w, n]) => w === first && n === "Goblin"), "existing creature named on join");
+    const laterP = a.waitFor(MessageType.Names, 1);
+    const second = plant(4);
+    for (let i = 0; i < 3; i++) {
+      now += 1000 / 30;
+      gw.frame(now);
+    }
+    const later = decodeControl<NamesMessage>((await laterP)[0]);
+    assert.ok(later.names.some(([w, n]) => w === second && n === "Goblin"), "new creature named before its delta");
   });
 });

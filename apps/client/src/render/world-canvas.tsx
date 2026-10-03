@@ -27,7 +27,7 @@
  * welcome's day clock, so every client sees the same hour.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Effect } from "postprocessing";
@@ -40,6 +40,7 @@ import { DropLabels } from "./drop-labels.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
+import type { CombatFeedback } from "./combat-feedback.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
@@ -116,6 +117,17 @@ export interface WorldCanvasProps {
   onBag?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
+  combat?: CombatFeedback;
+  /** The player's health or the target changed (called on change, not every frame). */
+  onCombat?: (view: CombatView) => void;
+}
+
+/** The player's health and the target, as the frames show them (U12a). */
+export interface CombatView {
+  hp: number | null;
+  maxHp: number | null;
+  target: { entity: bigint; name: string; hp: number; maxHp: number } | null;
 }
 
 /** The ground item the pick-up key would take (M3a). */
@@ -254,6 +266,8 @@ function MirrorWorld({
   onHud,
   onBag,
   onNearDrop,
+  combat,
+  onCombat,
   settings,
   screen,
   physicalSky,
@@ -263,14 +277,26 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, onBag, onNearDrop, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, onBag, onNearDrop, lastStateAt, settings };
+  const latest = useRef({ wireframe, showcase, onHud, onBag, onNearDrop, combat, onCombat, lastStateAt, settings });
+  latest.current = { wireframe, showcase, onHud, onBag, onNearDrop, combat, onCombat, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
-  const loop = useRef<{ pointerMoved: boolean; nearDrop: bigint | null }>({ pointerMoved: false, nearDrop: null });
+  // Last values sent: nearDrop, and the combat view's numbers (onCombat fires only when one moves).
+  const loop = useRef({
+    pointerMoved: false,
+    nearDrop: null as bigint | null,
+    hp: NaN,
+    maxHp: NaN,
+    target: null as bigint | null,
+    targetHp: NaN,
+    targetMax: NaN,
+    targetName: "",
+  });
   const perf = useRef(new PerfSampler(performance.now()));
   const pointer = useRef(new THREE.Vector2());
   // Nearest hit only: with BVHs (bvh.ts) a ray stops at its first triangle.
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
+  // For CombatFeedback.prune, made once per client rather than every frame.
+  const hasEntity = useCallback((wid: bigint) => client.state.entities.has(wid), [client]);
 
   // Create the world's renderers and bind input; the same effect disposes
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
@@ -315,8 +341,15 @@ function MirrorWorld({
       );
       loop.current.pointerMoved = true;
     };
+    // A left click on another body makes it the target (U12a).
+    const onMouseDown = (e: MouseEvent): void => {
+      if (e.button !== 0) return;
+      const h = layer.hovered;
+      if (h !== null && h !== client.playerEntity) latest.current.combat?.select(h);
+    };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("mousedown", onMouseDown);
 
     // Textured ground, when the surfaces were fetched (npm run surfaces:fetch); flat colours until then.
     let surfaces: Surfaces | null = null;
@@ -344,6 +377,7 @@ function MirrorWorld({
       unbind();
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("mousedown", onMouseDown);
       scene.remove(terrain.group, water.group);
       closed = true;
       terrain.setSurfaces(null);
@@ -388,6 +422,11 @@ function MirrorWorld({
 
     const tickInterval = 1000 / (client.tickHz || 30);
     const alpha = Math.max(0, Math.min(1, (now - latest.current.lastStateAt()) / tickInterval));
+    const combat = latest.current.combat;
+    if (combat) {
+      combat.prune(hasEntity, now / 1000);
+      r.layer.setFlashes(combat.flashUntil);
+    }
     r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
@@ -398,6 +437,33 @@ function MirrorWorld({
       l.nearDrop = r.drops.nearest;
       const info = l.nearDrop === null ? undefined : client.drops.get(l.nearDrop);
       latest.current.onNearDrop?.(l.nearDrop !== null && info ? { entity: l.nearDrop, name: info.name, color: info.color } : null);
+    }
+    // The player and target frames, told only when a number moves (hits land between HUD samples).
+    if (combat && latest.current.onCombat) {
+      const mine = client.playerEntity !== null ? client.state.get(client.playerEntity)?.health : undefined;
+      const t = combat.target;
+      const theirs = t !== null ? client.state.get(t)?.health : undefined;
+      const hp = mine?.current ?? NaN;
+      const maxHp = mine?.max ?? NaN;
+      const tHp = theirs?.current ?? NaN;
+      const tMax = theirs?.max ?? NaN;
+      const tName = t !== null ? (client.names.get(t) ?? "") : "";
+      if (
+        !Object.is(hp, l.hp) || !Object.is(maxHp, l.maxHp) || t !== l.target ||
+        !Object.is(tHp, l.targetHp) || !Object.is(tMax, l.targetMax) || tName !== l.targetName
+      ) {
+        l.hp = hp;
+        l.maxHp = maxHp;
+        l.target = t;
+        l.targetHp = tHp;
+        l.targetMax = tMax;
+        l.targetName = tName;
+        latest.current.onCombat({
+          hp: mine ? hp : null,
+          maxHp: mine ? maxHp : null,
+          target: t !== null && theirs ? { entity: t, name: tName, hp: tHp, maxHp: tMax } : null,
+        });
+      }
     }
     if (l.pointerMoved) {
       l.pointerMoved = false;

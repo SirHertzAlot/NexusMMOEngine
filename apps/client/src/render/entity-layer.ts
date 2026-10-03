@@ -131,6 +131,8 @@ export class EntityLayer {
   private readonly playerPos = new THREE.Vector3();
   private readonly lastPlayerPos = new THREE.Vector3(8, 2, 8);
   private hoveredWireId: bigint | null = null;
+  /** Hit flashes: wire id -> flash end, performance.now() seconds (see setFlashes). */
+  private flashes: ReadonlyMap<bigint, number> = new Map();
   private quality: QualitySettings | null = null;
   private lastFrame = -1;
   private disposed = false;
@@ -193,6 +195,16 @@ export class EntityLayer {
     const prop = this.props.pick(raycaster);
     this.hoveredWireId =
       prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hit ? this.pickMap.get(hit.object) ?? null : null;
+  }
+
+  /** The entity under the cursor at the last hover() (a batched prop's or a mesh's wire id). */
+  get hovered(): bigint | null {
+    return this.hoveredWireId;
+  }
+
+  /** Entities flash red until their entry's time (performance.now() seconds); the map is read, never copied. */
+  setFlashes(flashes: ReadonlyMap<bigint, number>): void {
+    this.flashes = flashes;
   }
 
   /** Apply a quality preset: character outlines, and the effects' particle budget. */
@@ -363,7 +375,9 @@ export class EntityLayer {
       const isPlayer = playerWireId !== null && wid === playerWireId;
       if (isPlayer) this.player = this.playerPos.copy(tracked.object.position);
       this.updatePlate(tracked, wid, isPlayer, names);
-      if (tracked.character) {
+      if ((this.flashes.get(wid) ?? 0) > now) {
+        highlight(tracked.object, "hit");
+      } else if (tracked.character) {
         highlight(tracked.object, wid === this.hoveredWireId && !isPlayer ? "hover" : "none");
       } else {
         highlight(tracked.object, isPlayer ? "player" : wid === this.hoveredWireId ? "hover" : "none");
@@ -526,12 +540,14 @@ function colorize(obj: THREE.Object3D, color: THREE.Color): void {
   });
 }
 
-function highlight(obj: THREE.Object3D, mode: "player" | "hover" | "none"): void {
+const HIGHLIGHT = { player: 0x224422, hover: 0x444422, hit: 0x661111, none: 0x000000 } as const;
+
+function highlight(obj: THREE.Object3D, mode: keyof typeof HIGHLIGHT): void {
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh;
     const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
     if (mat && "emissive" in mat) {
-      mat.emissive.copy(tmpColor.set(mode === "player" ? 0x224422 : mode === "hover" ? 0x444422 : 0x000000));
+      mat.emissive.copy(tmpColor.set(HIGHLIGHT[mode]));
     }
   });
 }
