@@ -122,6 +122,7 @@ import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
+import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 import { ItemService, loadItemDefs } from "./items/index.js";
 
@@ -320,6 +321,8 @@ async function main(): Promise<void> {
   // this connection leaves checkpoints (and their fsync) to it.
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   const formationTiles = new FormationTileStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  // Every item change, appended here and written each second (roadmap P2a).
+  const itemLedger = new ItemLedger(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   // Baked worlds have a sea: nothing is scattered below it.
   const seaLevelMeta = store.getMeta("sea_level");
   // Baked worlds have water: swimming happens against its surface, and
@@ -438,10 +441,13 @@ async function main(): Promise<void> {
     groundHeightAt: (x, z) => character.groundHeight(x, z),
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
   });
-  // Bags live in memory until the item ledger (P2a): items a restored
-  // snapshot left lying on the ground have nothing behind them.
+  // The ledger owns items: ground entities a restored snapshot left are
+  // dropped, then every item comes back from the ledger (bags, hands, ground).
   const strays = items.clearStrayGroundItems(sim);
   if (strays > 0) console.log(`[items] cleared ${strays} ground item(s) left from before the restart`);
+  const restored = items.restore(sim, itemLedger.load());
+  items.attachLedger(itemLedger);
+  if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   const weaponOf = (e: number): Weapon | null => {
@@ -535,6 +541,7 @@ async function main(): Promise<void> {
   }
 
   const saveTimer = setInterval(() => {
+    itemLedger.flush();
     if (gw.serverTick >= nextSaveTick) {
       const result = store.saveWorld(gw.serverTick, sim);
       const st = streamer.stats;
@@ -561,6 +568,8 @@ async function main(): Promise<void> {
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
       console.log(`[server] shutdown save on ${signal}: tick ${result.tick}`);
+      itemLedger.flush();
+      itemLedger.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       void worldClient?.stop();

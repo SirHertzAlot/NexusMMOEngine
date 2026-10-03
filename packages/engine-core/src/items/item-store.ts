@@ -9,9 +9,11 @@
  * drops and kills, so the id → slot map and the bag arrays are touched
  * only by those events.
  *
- * In memory only for now: the item ledger (roadmap P2a) makes items and
- * bags survive restarts.
+ * Every change is also recorded to an optional ItemLedger (roadmap P2a), and
+ * `restore` rebuilds an item from its ledger row after a restart.
  */
+
+import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
 
 export const ItemWhere = {
   /** Slot unused. */
@@ -43,6 +45,8 @@ export class ItemStore {
   /** Slots ever handed out (the next fresh slot). */
   private top = 0;
   private nextId = 1;
+  /** Where every change is recorded (roadmap P2a); none: items live in memory only. */
+  ledger?: ItemLedger;
   private readonly slotOf = new Map<number, number>();
   private readonly bags = new Map<number, Uint32Array>();
   /** Item id held in each hand ([main, off]; 0: empty), per character. */
@@ -78,7 +82,39 @@ export class ItemStore {
     this.durability[slot] = durability;
     this.slotOf.set(id, slot);
     this.used++;
+    this.ledger?.record(LedgerKind.Create, id, def, 0, 0, durability);
     return id;
+  }
+
+  /**
+   * Put an item back from its ledger row (after a restart): into its bag
+   * slot or hand, or on the ground. Records nothing; ids stay unique.
+   */
+  restore(row: ItemRow): void {
+    if (this.slotOf.has(row.id)) return;
+    const slot = this.freeSlots.length > 0 ? this.freeSlots.pop()! : this.top++;
+    if (slot >= this.capacity) this.grow();
+    this.ids[slot] = row.id;
+    this.defs[slot] = row.def;
+    this.durability[slot] = row.durability;
+    this.owner[slot] = row.owner;
+    this.slotOf.set(row.id, slot);
+    this.used++;
+    if (row.id >= this.nextId) this.nextId = row.id + 1;
+    if (row.kind === LedgerKind.Bag && row.slot < this.bagSlots) {
+      this.bag(row.owner)[row.slot] = row.id;
+      this.where[slot] = ItemWhere.Bag;
+    } else if (row.kind === LedgerKind.Hold && row.slot < 2) {
+      this.hands(row.owner)[row.slot] = row.id;
+      this.where[slot] = ItemWhere.Held;
+    } else {
+      this.where[slot] = row.kind === LedgerKind.Create ? ItemWhere.Free : ItemWhere.Ground;
+    }
+  }
+
+  /** Make later ids start above `id` (ids of destroyed items are never reused). */
+  reserveIds(id: number): void {
+    if (id >= this.nextId) this.nextId = id + 1;
   }
 
   /** Remove an item from existence (it must not be in a bag). */
@@ -86,6 +122,7 @@ export class ItemStore {
     const slot = this.slotOf.get(id);
     if (slot === undefined) return;
     this.takeFromWherever(slot, id);
+    this.ledger?.record(LedgerKind.Destroy, id, this.defs[slot], this.owner[slot], 0, this.durability[slot]);
     this.slotOf.delete(id);
     this.ids[slot] = 0;
     this.where[slot] = ItemWhere.Free;
@@ -104,11 +141,12 @@ export class ItemStore {
   }
 
   /** Mark an item as lying on the ground, belonging to `owner` (0: anyone). */
-  placeOnGround(id: number, owner: number): void {
+  placeOnGround(id: number, owner: number, x = 0, z = 0): void {
     const slot = this.mustSlot(id);
     this.takeFromWherever(slot, id);
     this.where[slot] = ItemWhere.Ground;
     this.owner[slot] = owner;
+    this.ledger?.record(LedgerKind.Ground, id, this.defs[slot], owner, 0, this.durability[slot], x, z);
   }
 
   /**
@@ -124,6 +162,7 @@ export class ItemStore {
     bag[free] = id;
     this.where[slot] = ItemWhere.Bag;
     this.owner[slot] = character;
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, free, this.durability[slot]);
     return free;
   }
 
@@ -134,6 +173,7 @@ export class ItemStore {
     this.hands(character)[hand] = id;
     this.where[slot] = ItemWhere.Held;
     this.owner[slot] = character;
+    this.ledger?.record(LedgerKind.Hold, id, this.defs[slot], character, hand, this.durability[slot]);
   }
 
   /** A character's hands: item id held in each ([main, off]; 0: empty). Created empty on first use. */
