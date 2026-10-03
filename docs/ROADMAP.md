@@ -187,7 +187,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2b | Character save: position, health, inventory, equipment | ✅ | Position, health and stamina saved on the 1 s timer, on leaving and on shutdown, restored on entering; bags and hands already persist via P2a |
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
 | L3 | Pool rebake keeps held items | 📋 | P2a |
-| T1 | Ingress hardening: frame cap, rate limits, validation tests | 📋 | |
+| T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
 | T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
 
 ---
