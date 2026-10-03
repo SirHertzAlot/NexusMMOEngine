@@ -56,7 +56,7 @@ Doc: [`EDITOR.md`](EDITOR.md)
 | E7 | PICG slice 4: hierarchical graph editor | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | E8 | D3: dungeon view: pool browser, 3D view, edits as patches | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §3.5 |
 | E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | 📋 | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 4 |
-| E10 | Character record view (read-only) | 📋 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
+| E10 | Character record view (read-only) | ✅ | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
 | E11 | Rules editor: every `content/rules/*.json` tunable listed, edited as a tree, validated on save | ✅ | Loopback `/api/editor/rules` routes (whitelisted names, path-confined, write only when valid; strict across files); Rules tab with tree editor and per-path errors. Opened from opencode's work; no screenshot yet |
 
 ## 1b. Admin console: control the running game
@@ -198,6 +198,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
+- **2026-10-03**: E10 character record view (read-only): `readCharacterView`/`listCharacters` over the character and item stores, a Characters panel in the editor (look, saved state, deaths, items). Built by opencode, reviewed. Perf not run (paused).
 - **2026-10-03**: S4 guilds: `GuildBook` with injected clock and write-through `GuildStore` (in-memory default; SQLite store and `purge` caller deferred). Ranks and rules enforced server-side, guild chat channel, `GuildState` to members on change, tag on the names fan-out (`Name <TAG>`), `GuildFrame` and guild chat commands in the client. Protocol 15; ops ride 0x11 (`kind:"guild"`). Perf and valgrind not run (paused).
 - **2026-10-03**: S4b guild persistence: `SqliteGuildStore` (`guilds.db`, WAL, FK cascades, log trimmed to 200 per guild) behind `GatewayOptions.guildStore`; the server wires it, tests default to memory. Guilds now survive restarts. Perf and valgrind not run (paused).
 - **2026-10-03**: S3 parties: `PartyBook` (up to 6, leader invites/kicks/promotes, 60 s invites, 5 min offline removal with leadership to the longest-standing, disband at one), party chat channel, `PartyState` pushed to affected members on every change (in memory; a restart disbands). Protocol 14. Ops ride the 0x11 envelope (`kind:"party"`) because 0x0f is Stats here. Out-of-view frame data (U7) next.
