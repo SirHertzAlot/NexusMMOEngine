@@ -13,6 +13,22 @@ export {
 } from "./store.js";
 export type { CharacterRecord, CharacterRefusal, CharacterState, CharacterStore } from "./store.js";
 export {
+  listCharacters,
+  readCharacterView,
+  summarizeLook,
+} from "./character-view.js";
+export type {
+  CharacterItemView,
+  CharacterItemWhere,
+  CharacterListEntry,
+  CharacterView,
+  DeathView,
+  ItemDefNames,
+  LookSummary,
+  ReadCharacterViewOptions,
+  SavedStateView,
+} from "./character-view.js";
+export {
   CHARACTER_NAME_RE,
   CreateCharacterSchema,
   DEFAULT_LOOK_JSON,

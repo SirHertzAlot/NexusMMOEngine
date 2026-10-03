@@ -15,6 +15,9 @@ export const CHAT_COOLDOWN_MS: Record<ChatChannel, number> = {
   say: 2000,
   yell: 10000,
   emote: 2000,
+  whisper: 1000,
+  party: 500,
+  guild: 500,
 };
 
 /** Chat text: trimmed server-side, 1–500 chars after trimming. */
@@ -23,10 +26,50 @@ export const CHAT_TEXT_MAX = 500;
 export const ChatSchema = z
   .object({
     kind: z.literal("chat"),
-    channel: z.enum(["say", "yell", "emote"]),
+    channel: z.enum(["say", "yell", "emote", "whisper", "party", "guild"]),
     text: z.string().trim().min(1).max(CHAT_TEXT_MAX),
+    to: z.string().trim().min(1).max(32).optional(),
   })
+  .strict()
+  .refine((m) => (m.channel === "whisper") === (m.to !== undefined), { message: "whisper needs `to`; other channels must not have it" });
+
+export const BlockSchema = z
+  .object({ kind: z.literal("block"), name: z.string().trim().min(1).max(32), on: z.boolean() })
   .strict();
+
+/** Blocks per account (spec 5.3). */
+export const BLOCK_LIMIT = 200;
+
+/** Reply to a whisper to anyone offline, unknown or blocking: never says which. */
+export const NOT_ONLINE = "not online";
+
+/**
+ * Who blocks whom, by account name (S2). In memory: resets on restart until
+ * the world server owns the durable block table.
+ */
+export class BlockList {
+  private readonly blocks = new Map<string, Set<string>>();
+
+  isBlocked(blocker: string, sender: string): boolean {
+    return this.blocks.get(blocker.toLowerCase())?.has(sender.toLowerCase()) ?? false;
+  }
+
+  /** False when blocking yourself or over the limit. */
+  add(blocker: string, target: string): boolean {
+    const b = blocker.toLowerCase();
+    const t = target.toLowerCase();
+    if (b === t) return false;
+    let set = this.blocks.get(b);
+    if (!set) this.blocks.set(b, (set = new Set()));
+    if (!set.has(t) && set.size >= BLOCK_LIMIT) return false;
+    set.add(t);
+    return true;
+  }
+
+  remove(blocker: string, target: string): void {
+    this.blocks.get(blocker.toLowerCase())?.delete(target.toLowerCase());
+  }
+}
 
 export type ChatPayload = z.infer<typeof ChatSchema>;
 

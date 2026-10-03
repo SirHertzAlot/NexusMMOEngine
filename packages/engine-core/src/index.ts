@@ -46,6 +46,8 @@ export { SimWorld, SimEventEmitter } from "./world.js";
 export type { QueuedIntent, SimEventName, SimEventPayload, SimEventHandler, SimWorldOptions } from "./world.js";
 export { StatBook, type ModifierSpec, type StatLine } from "./stats/stat-book.js";
 export { StatsSystem } from "./stats/stats-system.js";
+export { MasterySystem } from "./stats/mastery-system.js";
+export { SkillIndex, SkillSheet } from "./stats/mastery.js";
 
 export {
   IntentSystem,
@@ -258,11 +260,27 @@ export {
   checkNewLook,
   DEFAULT_LOOK_JSON,
   DEFAULT_MAX_CHARACTERS,
+  listCharacters,
   loadCharacterCatalog,
   MemoryCharacterStore,
+  readCharacterView,
   SqliteCharacterStore,
+  summarizeLook,
 } from "./characters/index.js";
-export type { CharacterRecord, CharacterStore } from "./characters/index.js";
+export type {
+  CharacterItemView,
+  CharacterItemWhere,
+  CharacterListEntry,
+  CharacterRecord,
+  CharacterStore,
+  CharacterView,
+  DeathView,
+  ItemDefNames,
+  LookSummary,
+  ReadCharacterViewOptions,
+  SavedStateView,
+} from "./characters/index.js";
+export { SqliteGuildStore } from "./guild-store.js";
 
 export { DeathSystem, type LifeEvent } from "./death.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type HitEvent, type Weapon } from "./combat.js";

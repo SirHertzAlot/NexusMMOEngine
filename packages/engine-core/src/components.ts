@@ -84,6 +84,18 @@ export const Stamina = defineComponent({
 });
 
 /**
+ * Survival needs (U3): hunger and thirst meters, full at spawn, drained by
+ * NeedsSystem from the `needs` rules; an empty one hurts Health. Server
+ * only for now: no wire field yet, so no HUD (roadmap U3).
+ */
+export const Needs = defineComponent({
+  hunger: Types.f32,
+  hungerMax: Types.f32,
+  thirst: Types.f32,
+  thirstMax: Types.f32,
+});
+
+/**
  * BodyConfig — rigid-body description for the Jolt physics addon
  * (Phase 2). JS owns this component (authoritative config); the native
  * world owns the simulated state and writes results back into
@@ -139,6 +151,7 @@ export const COMPONENT_IDS = {
   Action: 11,
   Stamina: 12,
   CharacterRef: 13,
+  Needs: 14,
 } as const;
 
 const U32 = 0xffffffffn;

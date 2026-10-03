@@ -141,6 +141,20 @@ describe("our game's rules (content/rules)", () => {
     for (const w of g.weapons) assert.ok(w in rules.items.bases, w);
   });
 
+  it("give hunger and thirst their defaults (needs.json)", () => {
+    assert.equal(rules.needs.hunger.drainPerMinute, 2);
+    assert.equal(rules.needs.thirst.drainPerMinute, 3);
+    assert.equal(rules.needs.exertionFactor, 1.5);
+  });
+
+  it("reject a needs file with a negative drain or an unknown key", () => {
+    const bad = { ...structuredClone(rules.needs), thirsty: 1 } as unknown;
+    assert.ok(issuesOf(() => parseRules({ ...rules, needs: bad })).length > 0);
+    const neg = structuredClone(rules.needs);
+    neg.hunger.drainPerMinute = -1;
+    assert.ok(issuesOf(() => parseRules({ ...rules, needs: neg })).length > 0);
+  });
+
   it("reject a creature with an unknown weapon or a leash inside its aggro", () => {
     const bad = structuredClone(rules.creatures);
     bad.creatures.goblin.weapons = ["noSuchBase"];

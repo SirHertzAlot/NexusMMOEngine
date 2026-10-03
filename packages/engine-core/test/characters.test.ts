@@ -73,6 +73,20 @@ for (const [kind, make] of stores()) {
       }
     });
 
+    it("saves and loads a character's skills, the latest save winning", async () => {
+      const { store, done } = make();
+      try {
+        const a = await store.create("alice", "Brienne", LOOK, 8);
+        assert.equal(store.loadSkills?.(a.id), null, "never saved");
+        store.saveSkills?.(a.id, { swimming: [100, 120, 5] });
+        store.saveSkills?.(a.id, { swimming: [250, 250, 9], athletics: [10, 10, 9] });
+        assert.deepEqual(store.loadSkills?.(a.id), { swimming: [250, 250, 9], athletics: [10, 10, 9] });
+        assert.equal(store.loadSkills?.(a.id + 1), null, "per character");
+      } finally {
+        done();
+      }
+    });
+
     it("refuses a taken name (any case) and a full account", async () => {
       const { store, done } = make();
       try {

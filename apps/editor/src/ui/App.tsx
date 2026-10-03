@@ -1,10 +1,12 @@
 /**
- * Editor shell — one dock, four panels.
+ * Editor shell — one dock, one panel per inspector.
  *
  * Tabs: ECS Inspector (read-only entity browser), Play Mode (owned
  * local server + debug overlays), Terrain (sculpt the world heightmap),
- * Art Asset Pipeline (pack scan / validation / browser load test). Each inspector owns its panel and
- * its view-model; the shell only switches between them.
+ * Art Asset Pipeline (pack scan / validation / browser load test),
+ * Characters (read-only character records), Rules (gameplay tunables).
+ * Each inspector owns its panel and its view-model; the shell only
+ * switches between them.
  */
 
 import * as React from "react";
@@ -12,14 +14,19 @@ import { EcsInspectorPanel } from "./ecs-inspector.js";
 import { PlayModePanel } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
+import { CharacterRecordPanel } from "./character-view.js";
 
-type Tab = "ecs" | "play" | "terrain" | "assets";
+import { RulesPanel } from "./rules-editor.js";
+
+type Tab = "ecs" | "play" | "terrain" | "assets" | "rules" | "characters";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "ecs", label: "ECS Inspector" },
   { id: "play", label: "Play Mode" },
   { id: "terrain", label: "Terrain" },
   { id: "assets", label: "Art Assets" },
+  { id: "rules", label: "Rules" },
+  { id: "characters", label: "Characters" },
 ];
 
 export function App(): React.JSX.Element {
@@ -61,6 +68,8 @@ export function App(): React.JSX.Element {
         {tab === "play" && <PlayModePanel />}
         {tab === "terrain" && <TerrainEditorPanel />}
         {tab === "assets" && <AssetInspectorPanel />}
+        {tab === "rules" && <RulesPanel />}
+        {tab === "characters" && <CharacterRecordPanel />}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-muted-foreground">

@@ -95,6 +95,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   items: ["combat"],
   loot: [],
   creatures: ["items"],
+  needs: [],
 };
 
 let defaults: Rules | null = null;

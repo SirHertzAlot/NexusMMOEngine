@@ -1,9 +1,8 @@
 /**
  * ChatPanel (roadmap U6, first slice): region chat over the world.
  *
- * Tabs for the channels that exist (say/yell/emote); whispers, party,
- * guild, and reply need S2–S4 and stay out — the panel says so instead
- * of faking them. Lines arrive through MirrorClient.onChat; sending is
+ * Tabs for the channels that exist (say/yell/emote/party/guild); whispers (S2) arrive in any
+ * tab. Lines arrive through MirrorClient.onChat; sending is
  * fire-and-forget (rejections surface through onError, as everywhere).
  */
 
@@ -11,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
 import { Button, Input } from "./components.js";
 
-const TABS: ChatChannel[] = ["say", "yell", "emote"];
+const TABS: ChatChannel[] = ["say", "yell", "emote", "party", "guild"];
 
 export interface ChatPanelProps {
   lines: ChatBroadcast[];
@@ -23,7 +22,7 @@ export interface ChatPanelProps {
 export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps): React.ReactElement {
   const [draft, setDraft] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
-  const shown = lines.filter((l) => l.channel === channel);
+  const shown = lines.filter((l) => l.channel === channel || l.channel === "whisper" || l.channel === "system");
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [shown.length]);
@@ -47,8 +46,8 @@ export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps)
             {t}
           </Button>
         ))}
-        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="Whispers, party, and guild chat need friends/party/guild systems (roadmap S2–S4)">
-          /w /p /g need S2–S4
+        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="/w name text, /p text, /invite /accept /leave /kick /promote; guild: /g text, /gcreate name tag, /ginvite /gkick /grank name rank, /gmotd text, /gaccept /gleave; /friend /unfriend name">
+          /w /p /g /invite /leave
         </span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1 text-sm" aria-live="polite">

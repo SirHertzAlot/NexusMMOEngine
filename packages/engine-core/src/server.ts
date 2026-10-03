@@ -113,12 +113,15 @@ import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
+import { NeedsSystem } from "./stats/needs-system.js";
+import { MasterySystem } from "./stats/mastery-system.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
+import { SqliteGuildStore } from "./guild-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
@@ -369,6 +372,7 @@ async function main(): Promise<void> {
     path.join(DATA_DIR, "users.csv"),
   );
   const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
+  const guildStore = new SqliteGuildStore(path.join(DATA_DIR, "guilds.db"));
   // The licensed modular pack is only on machines that have the art
   // (assets/ is never committed): elsewhere looks are checked structurally.
   const catalogFile =
@@ -429,6 +433,8 @@ async function main(): Promise<void> {
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
+  const needs = new NeedsSystem(game.rules.needs);
+  const mastery = new MasterySystem(game.rules.skills);
   // Items (roadmap M3a): definitions from the baked loot pool joined with
   // the rules' physics. One instance: the gateway routes item messages to
   // it, and it is in the systems list (it expires ground items).
@@ -467,10 +473,12 @@ async function main(): Promise<void> {
   const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e));
   const gw: Gateway = new Gateway({
     port: PORT,
+    // The same instance as in the systems list below: its sheets are what get saved.
+    mastery,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
@@ -481,6 +489,7 @@ async function main(): Promise<void> {
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     characterStore,
+    guildStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
