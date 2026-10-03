@@ -711,11 +711,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
             });
             return;
           }
-          if (url === "/api/editor/rules" && req.method === "GET") {
+          if (url === "/api/editor/tables" && req.method === "GET") {
             sendJson(res, 200, { ok: true, ...readRulesTables(rulesDir) });
             return;
           }
-          if (url === "/api/editor/rules" && req.method === "POST") {
+          if (url === "/api/editor/tables" && req.method === "POST") {
             const body = JSON.parse(await readBody(req)) as { file?: unknown; json?: unknown };
             if (!isEditableTable(body.file)) {
               sendJson(res, 400, { ok: false, error: `not an editable rules table: ${String(body.file)}` });

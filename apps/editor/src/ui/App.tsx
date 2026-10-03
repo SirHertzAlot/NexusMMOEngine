@@ -26,7 +26,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "ecs", label: "ECS Inspector" },
   { id: "play", label: "Play Mode" },
   { id: "terrain", label: "Terrain" },
-  { id: "rules", label: "Gameplay Tables" },
+  { id: "tables", label: "Gameplay Tables" },
   { id: "assets", label: "Art Assets" },
   { id: "rules", label: "Rules" },
   { id: "characters", label: "Characters" },
@@ -70,7 +70,7 @@ export function App(): React.JSX.Element {
         {tab === "ecs" && <EcsInspectorPanel />}
         {tab === "play" && <PlayModePanel />}
         {tab === "terrain" && <TerrainEditorPanel />}
-        {tab === "rules" && <RulesPanel />}
+        {tab === "tables" && <TablesPanel />}
         {tab === "assets" && <AssetInspectorPanel />}
         {tab === "rules" && <RulesPanel />}
         {tab === "characters" && <CharacterRecordPanel />}
