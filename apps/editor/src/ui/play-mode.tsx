@@ -20,7 +20,9 @@ import { createHostServerControl } from "../server-control.js";
 import { connectMirror } from "./mirror-connect.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
-import { GameView } from "./game-view.js";
+
+// The renderer (three.js, R3F, the client's scene) loads only when play mode first runs.
+const GameView = React.lazy(() => import("./game-view.js").then((m) => ({ default: m.GameView })));
 import {
   Badge,
   Button,
@@ -189,12 +191,14 @@ export function PlayModePanel(): React.JSX.Element {
 
           {running && mirror && server && (
             <div className="flex flex-col gap-2">
-              <GameView
-                client={mirror}
-                url={server.url}
-                lastStateAt={() => lastStateAt.current}
-                onHud={setHud}
-              />
+              <React.Suspense fallback={<p className="text-xs text-muted-foreground">Loading the game view…</p>}>
+                <GameView
+                  client={mirror}
+                  url={server.url}
+                  lastStateAt={() => lastStateAt.current}
+                  onHud={setHud}
+                />
+              </React.Suspense>
               <GameViewStats hud={hud} />
             </div>
           )}
@@ -308,7 +312,7 @@ export function PlayModePanel(): React.JSX.Element {
 
 /** The renderer's once-a-second numbers under the game view. */
 function GameViewStats({ hud }: { hud: HudData | null }): React.JSX.Element {
-  if (!hud) return <p className="text-xs text-muted-foreground">Waiting for the first frame… click the view, then WASD to move.</p>;
+  if (!hud) return <p className="text-xs text-muted-foreground">Waiting for the first frame… click the view to steer the avatar (Esc releases the mouse).</p>;
   const cells: Array<[string, string]> = [
     ["fps", String(hud.fps)],
     ["tick", String(hud.tick)],
