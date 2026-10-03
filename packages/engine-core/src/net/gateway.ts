@@ -283,7 +283,7 @@ export interface GatewayOptions {
    * return true when handled. Everything else gets 404; WebSocket
    * upgrades go to the gateway.
    */
-<  http?: HttpHandler;
+  http?: HttpHandler;
   /**
    * The socket library behind the port (see ./transport.ts): "uws"
    * (uWebSockets.js), "ws", or "auto" (uws when it loads). Default:
@@ -309,6 +309,13 @@ export interface GatewayOptions {
    * code change (see GatewayOptions.ingress); this option overrides it.
    */
   maxClientPayloadBytes?: number;
+  /**
+   * Ingress rate limits (roadmap T1): per-session intent and pickup
+   * budgets, tuned in content/rules/ingress.json. Partial: absent fields
+   * take the defaults (see DEFAULT_INGRESS). The production server
+   * passes `game.rules.ingress` here.
+   */
+  ingress?: Partial<IngressLimits>;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -346,7 +353,7 @@ const MAX_MISSED_HEARTBEATS = 3;
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
-</** Admin command log keeps the last N entries (roadmap A1). */
+/** Admin command log keeps the last N entries (roadmap A1). */
 const ADMIN_LOG_SIZE = 200;
 /**
  * Largest inbound frame accepted, bytes. 64 KiB is ~16x the largest
@@ -357,6 +364,73 @@ const ADMIN_LOG_SIZE = 200;
  * (ws: code 1009) before allocating the payload.
  */
 const MAX_CLIENT_PAYLOAD_BYTES = 64 * 1024;
+
+/**
+ * Per-session ingress budgets (roadmap T1). The tunable values live in
+ * content/rules/ingress.json (see @mmo-engine/rules IngressSchema); the
+ * production server passes that file's table as GatewayOptions.ingress.
+ * These defaults mirror the schema's, so a gateway without rules behaves
+ * the same as one with an empty ingress.json.
+ */
+export interface IngressLimits {
+  /** Largest inbound WebSocket frame accepted, bytes. */
+  maxClientPayloadBytes: number;
+  /** Intent tokens refilled per second, per session. */
+  intentsPerSecond: number;
+  /** Most intents a session may burst at once. */
+  intentBurst: number;
+  /** Pickup tokens refilled per second, per session. */
+  pickupsPerSecond: number;
+  /** Most pickups a session may burst at once. */
+  pickupBurst: number;
+  /** Seconds an abuse window spans. */
+  abuseWindowSeconds: number;
+  /** Excess messages inside one window before the session is disconnected. */
+  maxViolations: number;
+}
+
+const DEFAULT_INGRESS: IngressLimits = {
+  maxClientPayloadBytes: MAX_CLIENT_PAYLOAD_BYTES,
+  intentsPerSecond: 40,
+  intentBurst: 60,
+  pickupsPerSecond: 5,
+  pickupBurst: 10,
+  abuseWindowSeconds: 10,
+  maxViolations: 100,
+};
+
+/**
+ * Merge a partial ingress table over the defaults, checked the way the
+ * rules schema checks the file: positive integers where counting
+ * matters, positive rates and windows elsewhere. Throws RangeError —
+ * a bad table must fail loudly at construction, never silently unlimit
+ * the gateway.
+ */
+export function resolveIngressLimits(partial: Partial<IngressLimits> | undefined): IngressLimits {
+  const merged: IngressLimits = { ...DEFAULT_INGRESS, ...partial };
+  const ints: Array<[keyof IngressLimits, number]> = [
+    ["maxClientPayloadBytes", merged.maxClientPayloadBytes],
+    ["intentBurst", merged.intentBurst],
+    ["pickupBurst", merged.pickupBurst],
+    ["maxViolations", merged.maxViolations],
+  ];
+  for (const [name, v] of ints) {
+    if (!Number.isInteger(v) || v <= 0) {
+      throw new RangeError(`gateway: ingress.${name} must be a positive integer (got ${partial?.[name]})`);
+    }
+  }
+  const nums: Array<[keyof IngressLimits, number]> = [
+    ["intentsPerSecond", merged.intentsPerSecond],
+    ["pickupsPerSecond", merged.pickupsPerSecond],
+    ["abuseWindowSeconds", merged.abuseWindowSeconds],
+  ];
+  for (const [name, v] of nums) {
+    if (!Number.isFinite(v) || v <= 0) {
+      throw new RangeError(`gateway: ingress.${name} must be a positive number (got ${partial?.[name]})`);
+    }
+  }
+  return merged;
+}
 
 /**
  * Usernames from MMO_ADMINS (comma-separated). Invalid names are dropped
@@ -399,6 +473,7 @@ export class Gateway {
       | "debugSource"
       | "chunkSource"
       | "maxClientPayloadBytes"
+      | "ingress"
       | "groundHeightAt"
       | "mastery"
       | "creatures"
@@ -461,6 +536,13 @@ export class Gateway {
   private readonly accountHolders = new Map<string, number>();
   /** Largest inbound frame accepted, bytes (see GatewayOptions). */
   private readonly maxClientPayloadBytes: number;
+  /** Per-session intent/pickup budgets (roadmap T1; see GatewayOptions.ingress). */
+  private ingress: IngressLimits;
+  /** Excess messages dropped by the rate limiter, all sessions (diagnostic totals). */
+  private droppedByRateLimitIntents = 0;
+  private droppedByRateLimitPickups = 0;
+  /** Sessions disconnected for sustained abuse (diagnostic total). */
+  private abuseDisconnects = 0;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
   /** The stats version last sent to each session (see sendStats). */
@@ -507,8 +589,9 @@ export class Gateway {
       );
     }
     this.world = opts.world ?? new SimWorld();
+    this.ingress = resolveIngressLimits(opts.ingress);
     this.maxClientPayloadBytes =
-      opts.maxClientPayloadBytes ?? MAX_CLIENT_PAYLOAD_BYTES;
+      opts.maxClientPayloadBytes ?? this.ingress.maxClientPayloadBytes;
     if (
       !Number.isInteger(this.maxClientPayloadBytes) ||
       this.maxClientPayloadBytes <= 0
@@ -577,6 +660,29 @@ export class Gateway {
   /** Number of sessions (connected + in grace period). */
   clientCount(): number {
     return this.sessions.size;
+  }
+
+  /**
+   * Replace the ingress budgets live (a rules reload applies between
+   * ticks through here; the production server wires it in server.ts).
+   * Checked like the constructor's table; live token balances are kept
+   * but clamped to the new bursts.
+   */
+  updateIngress(partial: Partial<IngressLimits>): void {
+    this.ingress = resolveIngressLimits(partial);
+    for (const s of this.sessions.values()) {
+      if (s.intentTokens > this.ingress.intentBurst) s.intentTokens = this.ingress.intentBurst;
+      if (s.pickupTokens > this.ingress.pickupBurst) s.pickupTokens = this.ingress.pickupBurst;
+    }
+  }
+
+  /** Rate-limiter diagnostics: dropped excess and abuse disconnects. */
+  ingressStats(): { droppedIntents: number; droppedPickups: number; abuseDisconnects: number } {
+    return {
+      droppedIntents: this.droppedByRateLimitIntents,
+      droppedPickups: this.droppedByRateLimitPickups,
+      abuseDisconnects: this.abuseDisconnects,
+    };
   }
 
   /** Bind the port (WebSocket + HTTP). Does NOT start the tick driver. */
@@ -962,6 +1068,13 @@ export class Gateway {
       joining: false,
       lastIntentTick: 0n,
       droppedIntents: 0,
+      intentTokens: this.ingress.intentBurst,
+      intentRefillMs: now,
+      pickupTokens: this.ingress.pickupBurst,
+      pickupRefillMs: now,
+      droppedPickups: 0,
+      violations: 0,
+      violationWindowStartMs: now,
       lastSeenMs: now,
       disconnectedAtMs: null,
       needsResync: false,
@@ -2216,7 +2329,61 @@ export class Gateway {
     }
   }
 
+  /**
+   * Token buckets (roadmap T1): refill pro-rata from the clock, take one.
+   * Scalar math on the session's fields only — no allocation per
+   * message. A legit client never notices: it sends at most one intent
+   * per tick and pickups on key presses, far under either budget.
+   */
+  private takeToken(s: ClientSession, kind: "intent" | "pickup"): boolean {
+    const now = this.clock();
+    const rate = kind === "intent" ? this.ingress.intentsPerSecond : this.ingress.pickupsPerSecond;
+    const burst = kind === "intent" ? this.ingress.intentBurst : this.ingress.pickupBurst;
+    const tokens = kind === "intent" ? s.intentTokens : s.pickupTokens;
+    const at = kind === "intent" ? s.intentRefillMs : s.pickupRefillMs;
+    const refilled = Math.min(burst, tokens + ((now - at) / 1000) * rate);
+    if (kind === "intent") {
+      s.intentTokens = refilled;
+      s.intentRefillMs = now;
+    } else {
+      s.pickupTokens = refilled;
+      s.pickupRefillMs = now;
+    }
+    if (refilled < 1) return false;
+    if (kind === "intent") s.intentTokens = refilled - 1;
+    else s.pickupTokens = refilled - 1;
+    return true;
+  }
+
+  /**
+   * Count one excess message; past the budget inside the window the live
+   * session is disconnected (grace parking still applies, like a
+   * heartbeat timeout). Silent: answering every dropped message would
+   * let an attacker trade one inbound frame for one outbound frame.
+   */
+  private noteViolation(s: ClientSession): void {
+    const now = this.clock();
+    if (now - s.violationWindowStartMs >= this.ingress.abuseWindowSeconds * 1000) {
+      s.violations = 0;
+      s.violationWindowStartMs = now;
+    }
+    s.violations += 1;
+    if (s.violations >= this.ingress.maxViolations && s.socket !== null) {
+      this.abuseDisconnects += 1;
+      s.violations = 0; // one disconnect per window, not one per message
+      this.dropSession(s, "too many requests");
+    }
+  }
+
   private onIntent(s: ClientSession, payload: Uint8Array): void {
+    // The bucket gates every intent — valid, malformed, or foreign — so
+    // a flood costs one counter check whether or not it would decode.
+    if (!this.takeToken(s, "intent")) {
+      s.droppedIntents += 1;
+      this.droppedByRateLimitIntents += 1;
+      this.noteViolation(s);
+      return;
+    }
     if (!s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "intent before hello");
       return;
@@ -2351,6 +2518,15 @@ export class Gateway {
     const parsed = ItemActionSchema.safeParse(raw);
     if (!parsed.success) {
       this.sendError(s, 4003, "malformed item action");
+      return;
+    }
+    // Pickup requests share the session's pickup bucket (roadmap T1):
+    // past it the request is dropped and counted, never reaching the
+    // item service. Other bag actions are bag-local and stay unthrottled.
+    if (parsed.data.action === "pickup" && !this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
       return;
     }
     const avatar = this.world.resolveWireId(s.playerEntity);

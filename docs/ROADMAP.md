@@ -195,6 +195,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 - **2026-10-03**: E11 rules editor: a Rules tab in the editor lists every `content/rules/*.json`, edits it as a tree and validates on save with the `@mmo-engine/rules` schemas and cross-file checks; invalid saves write nothing and show per-path errors. Save is strict (any invalid rules file blocks). Perf and valgrind runs paused.
+- **2026-10-03**: T1 ingress hardening: 64 KiB frame cap, per-session token buckets for intents (40/s, burst 60) and pickups (5/s, burst 10), drops counted, 100 violations in 10 s disconnects. Numbers in `content/rules/ingress.json`, editable in the editor's rules tab. Built by opencode, reviewed by Claude. Live reload of limits not wired (`Gateway.updateIngress` is ready).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 

@@ -94,6 +94,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   stats: [],
   items: ["combat"],
   loot: [],
+  ingress: [],
   creatures: ["items"],
   needs: [],
 };
