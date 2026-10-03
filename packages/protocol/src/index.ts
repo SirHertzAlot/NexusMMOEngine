@@ -30,6 +30,8 @@ export type {
   RegisterMessage,
   StatLineMessage,
   StatsMessage,
+  NeedsLine,
+  SkillLineMessage,
   WelcomeMessage,
   WireLook,
 } from "./types.js";

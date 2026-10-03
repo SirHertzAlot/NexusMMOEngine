@@ -132,7 +132,8 @@ export function App(): React.ReactElement {
   const [friends, setFriends] = useState<FriendsState | null>(null);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
-  const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
+  // Also carries hunger and thirst (U3) for the player frame, and skills for the sheet.
+  const [sheet, setSheet] = useState<StatsMessage | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
@@ -176,7 +177,7 @@ export function App(): React.ReactElement {
       onParty: setParty,
       onGuild: setGuild,
       onFriends: setFriends,
-      onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
+      onStats: setSheet,
       onInventory: (inv) => {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
@@ -347,6 +348,7 @@ export function App(): React.ReactElement {
           maxHp={combatView?.maxHp ?? hud.maxHp}
           sp={hud.sp}
           maxSp={hud.maxSp}
+          needs={sheet?.needs}
         />
         <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
@@ -491,7 +493,7 @@ export function App(): React.ReactElement {
             />
           )}
           {sheetOpen && sheet && (
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} />
           )}
           <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
             sheet

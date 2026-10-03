@@ -550,7 +550,7 @@ export class Gateway {
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
   /** The stats version last sent to each session (see sendStats). */
-  private readonly statsSent = new WeakMap<ClientSession, number>();
+  private readonly statsSent = new WeakMap<ClientSession, string>();
   /** Usernames allowed admin commands (GatewayOptions.admins). */
   private readonly admins: Set<string>;
   /** Development server: every account is an admin (GatewayOptions.devServer). */
@@ -958,17 +958,25 @@ export class Gateway {
   }
 
   /**
-   * The player's own stats (catalog §0x0f), when they changed since they
-   * were last sent to this session; `force` sends them regardless (on
-   * joining or re-attaching, the client has none yet).
+   * The player's own stats (catalog §0x0f): attributes and derived stats,
+   * hunger and thirst (U3) and skills (U9), when any of them changed since
+   * they were last sent to this session at display precision; `force`
+   * sends them regardless (on joining or re-attaching, the client has none
+   * yet). Meters move by whole points and skills by tenths, so a steady
+   * drain or a training session costs a message every few seconds, not
+   * every tick.
    */
   private sendStats(s: ClientSession, tick: number, force = false): void {
     if (s.playerEntity === null) return;
     const eid = this.world.resolveWireId(s.playerEntity);
     if (eid < 0) return;
     const version = this.world.stats.version(eid);
-    if (version === 0 || (!force && this.statsSent.get(s) === version)) return;
-    this.statsSent.set(s, version);
+    if (version === 0) return;
+    const needs = this.needsLine(eid);
+    const skills = this.skillLines(eid);
+    const key = `${version}|${needs ? `${needs.hunger},${needs.hungerMax},${needs.thirst},${needs.thirstMax}` : ""}|${skills ? skills.map((k) => `${k.value}/${k.peak}`).join(",") : ""}`;
+    if (!force && this.statsSent.get(s) === key) return;
+    this.statsSent.set(s, key);
     const sheet = this.world.stats.sheet(eid)!;
     // Display values: 4 decimals is plenty, and keeps float noise off the wire.
     const round = (v: number): number => Math.round(v * 1e4) / 1e4;
@@ -977,8 +985,36 @@ export class Gateway {
       entity: s.playerEntity.toString(),
       attributes: sheet.filter((l) => l.attribute).map(line),
       stats: sheet.filter((l) => !l.attribute).map(line),
+      ...(needs ? { needs } : {}),
+      ...(skills && this.mastery ? { skills, skillMax: this.mastery.index.rules.max } : {}),
     };
     this.deliver(s, encodeEnvelope(MessageType.Stats, encodeControl(msg)), tick);
+  }
+
+  /** Hunger and thirst in whole points (U3), or undefined without the Needs component. */
+  private needsLine(eid: number): StatsMessage["needs"] {
+    if (!hasComponent(this.world.ecs, C.Needs, eid)) return undefined;
+    // Ceil, so a meter reads 0 only when it is empty and hurting.
+    return {
+      hunger: Math.ceil(C.Needs.hunger[eid]),
+      hungerMax: Math.round(C.Needs.hungerMax[eid]),
+      thirst: Math.ceil(C.Needs.thirst[eid]),
+      thirstMax: Math.round(C.Needs.thirstMax[eid]),
+    };
+  }
+
+  /** Every skill to a tenth (U9), or undefined when this server runs no mastery. */
+  private skillLines(eid: number): StatsMessage["skills"] {
+    if (!this.mastery) return undefined;
+    const sheet = this.mastery.sheetOf(eid);
+    const tenth = (v: number): number => Math.round(v * 10) / 10;
+    return this.mastery.index.rules.skills.map((k, i) => ({
+      id: k.id,
+      name: k.name,
+      family: k.family,
+      value: tenth(sheet.value[i]),
+      peak: tenth(sheet.peak[i]),
+    }));
   }
 
   /** Queue-or-send one enveloped message, preserving order, bounded. */
