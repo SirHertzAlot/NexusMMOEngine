@@ -195,6 +195,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
+- **2026-10-03**: L3 pool rebake keeps held items: `npm run loot:rebake -w @mmo-engine/engine-core -- --db <world.db> --pool <pool.jsonl>` bakes a new pool that keeps every bag and hand item (via the bake's `held`) and appends ledger rows pointing each live item at its new def; unheld ground items whose entry is gone are tombstoned.
 - **2026-10-03**: P2c crash and replay tests over the item ledger (unflushed loss, atomic failed flush, hot-WAL recovery, restart cycles, history replay).
 - **2026-10-03**: P2b character save: `character_state` in characters.db (position, health, stamina), saved on the save timer, eviction, grace expiry and shutdown, restored on enter world; dead or never-saved characters get the ordinary spawn.
 - **2026-10-03**: P2a item ledger: every item change (create, ground, bag, hold, destroy tombstone) appends to `item_events` in world.db with its tick (valid time) and write time (transaction time); flushed on the save timer, restored at boot (ids never reused, ground items get fresh despawn timers). Perf not run (paused).
