@@ -21,6 +21,9 @@ export interface ChatPanelProps {
   onSend: (text: string) => void;
 }
 
+/** Line text colour by channel: whispers tinted, server notices muted and italic (they have no speaker). */
+const TEXT_TONE: Partial<Record<ChatBroadcast["channel"], string>> = { whisper: "text-fuchsia-300", system: "italic text-muted-foreground" };
+
 /** The speaker label: whispers say which way they went. */
 export function speakerLabel(l: ChatBroadcast, self: string | null): string {
   if (l.channel !== "whisper") return l.from;
@@ -62,9 +65,13 @@ export function ChatPanel({ lines, self, channel, onChannel, onSend }: ChatPanel
       <div className="flex-1 overflow-y-auto px-2 py-1 text-sm" aria-live="polite">
         {shown.map((l, i) => (
           <div key={`${l.entity}-${i}`} className="break-words">
-            <span className={l.channel === "whisper" ? "font-semibold text-fuchsia-400" : "font-semibold text-foreground"}>{speakerLabel(l, self)}</span>
-            <span className="text-muted-foreground">{l.channel === "emote" ? " " : ": "}</span>
-            <span className={l.channel === "whisper" ? "text-fuchsia-300" : "text-foreground"}>{l.text}</span>
+            {l.channel !== "system" && (
+              <>
+                <span className={l.channel === "whisper" ? "font-semibold text-fuchsia-400" : "font-semibold text-foreground"}>{speakerLabel(l, self)}</span>
+                <span className="text-muted-foreground">{l.channel === "emote" ? " " : ": "}</span>
+              </>
+            )}
+            <span className={TEXT_TONE[l.channel] ?? "text-foreground"}>{l.text}</span>
           </div>
         ))}
         <div ref={bottom} />
