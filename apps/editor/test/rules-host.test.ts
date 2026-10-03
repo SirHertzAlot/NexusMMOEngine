@@ -51,6 +51,7 @@ describe("ruleFileNames", () => {
       "items",
       "loot",
       "creatures",
+      "needs",
     ]);
   });
 });
