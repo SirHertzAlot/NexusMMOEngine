@@ -10,6 +10,15 @@ const repoRoot = resolve(thisDir, "..", "..");
 
 export default defineConfig({
   plugins: [react(), editorHost({ repoRoot })],
+  resolve: {
+    // Play mode's game view (E4) draws with the client's renderer, from its
+    // source: one renderer, not a copy (types: tsconfig paths, the built client).
+    alias: {
+      "@mmo-engine/client/render": resolve(repoRoot, "apps/client/src/render/index.ts"),
+    },
+  },
+  // The client's public files: the terrain surfaces (npm run surfaces:fetch).
+  publicDir: resolve(repoRoot, "apps/client/public"),
   server: { port: 5174 },
   build: {
     outDir: "dist-app",
