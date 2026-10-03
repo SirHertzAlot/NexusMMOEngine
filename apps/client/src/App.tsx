@@ -25,13 +25,15 @@ import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState }
 import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
-import { WorldCanvas, type HudData, type NearDrop } from "./render/world-canvas.js";
+import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
+import { CombatFeedback } from "./render/combat-feedback.js";
 import type { GpuInfo } from "./render/gpu.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
+import { TargetFrame } from "./ui/target-frame.js";
 import { AdminConsole } from "./ui/admin-console.js";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
@@ -143,6 +145,9 @@ export function App(): React.ReactElement {
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
   const [assets] = useState(() => new PlaceholderAssets());
+  // Hit feedback (U12a): flashes and the target, written by combat messages.
+  const [combat] = useState(() => new CombatFeedback());
+  const [combatView, setCombatView] = useState<CombatView | null>(null);
 
   /** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient =>
@@ -176,6 +181,8 @@ export function App(): React.ReactElement {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
       },
+      onHit: (h) => combat.hit(h, clientRef.current?.playerEntity ?? null),
+      onLife: (l) => combat.life(l),
     });
 
   /**
@@ -260,6 +267,8 @@ export function App(): React.ReactElement {
     setHands({ main: null, off: null });
     setBagOpen(false);
     setNearDrop(null);
+    combat.select(null);
+    setCombatView(null);
     setScreen("login");
   };
 
@@ -322,6 +331,8 @@ export function App(): React.ReactElement {
           onHud={setHud}
           onBag={toggleBag}
           onNearDrop={setNearDrop}
+          combat={combat}
+          onCombat={setCombatView}
         />
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
@@ -330,7 +341,14 @@ export function App(): React.ReactElement {
           </div>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
-        <PlayerFrame name={characterName} hp={hud.hp} maxHp={hud.maxHp} sp={hud.sp} maxSp={hud.maxSp} />
+        <PlayerFrame
+          name={characterName}
+          hp={combatView?.hp ?? hud.hp}
+          maxHp={combatView?.maxHp ?? hud.maxHp}
+          sp={hud.sp}
+          maxSp={hud.maxSp}
+        />
+        <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
           <DevHud
             defaults={devLayoutDefaults}

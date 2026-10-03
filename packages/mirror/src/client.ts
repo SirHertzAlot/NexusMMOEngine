@@ -41,6 +41,8 @@ import {
   type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
+  type HitMessage,
+  type LifeMessage,
   type IntentFields,
   type NamesMessage,
   type RegisterMessage,
@@ -85,6 +87,10 @@ export interface MirrorEvents {
   onFriends?(f: FriendsState): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
+  /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
+  onHit?(h: HitMessage): void;
+  /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
+  onLife?(l: LifeMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -599,6 +605,12 @@ export class MirrorClient {
         this.events.onInventory?.(this.inventory);
         break;
       }
+      case MessageType.Hit:
+        this.events.onHit?.(decodeControl<HitMessage>(payload));
+        break;
+      case MessageType.Life:
+        this.events.onLife?.(decodeControl<LifeMessage>(payload));
+        break;
       case MessageType.Bye:
         this.disconnect();
         break;

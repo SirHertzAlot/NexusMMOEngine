@@ -81,6 +81,17 @@ export class CreatureSystem implements SimSystem {
     return this.rngState / 4294967296;
   }
 
+  /** A creature's display name (its rules' `name`), or undefined if `e` is not one. */
+  nameOf(e: number): string | undefined {
+    const b = this.brains.get(e);
+    return b ? this.opts.creatures[b.kind]?.name : undefined;
+  }
+
+  /** Every live creature entity. */
+  entities(): IterableIterator<number> {
+    return this.brains.keys();
+  }
+
   /** What a creature swings, or null if `e` is not one. */
   weaponOf(e: number): Weapon | null {
     return this.brains.get(e)?.weapon ?? null;

@@ -552,6 +552,21 @@ describe("MirrorClient items (0x13-0x15)", () => {
   });
 });
 
+describe("MirrorClient combat events (0x16-0x17)", () => {
+  it("passes hits and life changes to their callbacks", async () => {
+    const seen: unknown[] = [];
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    const events = (client as unknown as { events: { onHit?: (m: unknown) => void; onLife?: (m: unknown) => void } }).events;
+    events.onHit = (m) => seen.push(m);
+    events.onLife = (m) => seen.push(m);
+    const hit = { kind: "hit", tick: 5, source: "7", target: "9", outcome: "hit", amount: 12, health: 48, max: 60 };
+    const life = { kind: "life", tick: 9, target: "9", state: "dead", killer: "7", respawnAt: 0 };
+    socket.receive(encodeEnvelope(MessageType.Hit, encodeControl(hit)));
+    socket.receive(encodeEnvelope(MessageType.Life, encodeControl(life)));
+    assert.deepEqual(seen, [hit, life]);
+  });
+});
+
 describe("MirrorClient characters", () => {
   const LOOK = { gender: "female", parts: { head: "Chr_Head_Female_02" }, colours: { skin: "#8d5524" } };
   const account = (characters: AccountMessage["characters"], created?: number): Uint8Array =>

@@ -485,7 +485,12 @@ async function main(): Promise<void> {
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),
-    creatures: { has: (k) => k in game.rules.creatures.creatures, spawnPack: (w, k, x, z) => creatures.spawnPack(w, k, x, z) },
+    creatures: {
+      has: (k) => k in game.rules.creatures.creatures,
+      spawnPack: (w, k, x, z) => creatures.spawnPack(w, k, x, z),
+      nameOf: (e) => creatures.nameOf(e),
+      entities: () => creatures.entities(),
+    },
     spawnPoint: spawn,
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,

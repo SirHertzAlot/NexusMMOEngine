@@ -259,7 +259,14 @@ export interface GatewayOptions {
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
    */
-  creatures?: { has(kind: string): boolean; spawnPack(sim: SimWorld, kind: string, x: number, z: number): number[] };
+  creatures?: {
+    has(kind: string): boolean;
+    spawnPack(sim: SimWorld, kind: string, x: number, z: number): number[];
+    /** A creature entity's display name (rides 0x12 names, U12a); undefined if not one. */
+    nameOf?(e: number): string | undefined;
+    /** Every live creature entity, for a joining player's names. */
+    entities?(): Iterable<number>;
+  };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
   /** A baked world's extent and coarse map, sent in every welcome. */
@@ -2415,7 +2422,7 @@ export class Gateway {
 
   /**
    * Character names for fan-out (C3, catalog §0x12): wire id -> name for
-   * every live session avatar. `only`: restrict to these wire ids (delta
+   * every live session avatar and creature (U12a). `only`: restrict to these wire ids (delta
    * spawned lists); null means all. Returns the enveloped message, or
    * null when no rows apply. Rows carry the character's guild tag (S4).
    */
@@ -2429,6 +2436,22 @@ export class Gateway {
         other.character?.name ?? other.username,
         this.guilds.tagOf(other.character?.name ?? other.username),
       ]);
+    }
+    const creatures = this.creatures;
+    if (creatures?.nameOf) {
+      const sim = this.world;
+      if (only === null) {
+        for (const e of creatures.entities?.() ?? []) {
+          const name = creatures.nameOf(e);
+          if (name) rows.push([sim.wireId(e).toString(), name, ""]);
+        }
+      } else {
+        for (const w of only) {
+          const e = sim.resolveWireId(w);
+          const name = e < 0 ? undefined : creatures.nameOf(e);
+          if (name) rows.push([w.toString(), name, ""]);
+        }
+      }
     }
     if (rows.length === 0) return null;
     const msg: NamesMessage = { kind: "names", names: rows };
