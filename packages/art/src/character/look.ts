@@ -37,8 +37,11 @@ function index(catalog: ModularCatalog): Map<string, CatalogPart> {
   return new Map(catalog.parts.map((p) => [p.name, p]));
 }
 
-/** The parts a look shows, in slot order, after defaults and hiding. */
-export function resolveLook(catalog: ModularCatalog, look: CharacterLook): CatalogPart[] {
+/**
+ * The parts a look shows, in slot order, after defaults and hiding.
+ * `lost`: slots of body parts the character has lost (M3, `lostOf`), not drawn.
+ */
+export function resolveLook(catalog: ModularCatalog, look: CharacterLook, lost: ReadonlySet<Slot> = new Set()): CatalogPart[] {
   const byName = index(catalog);
   const fits = (name: string | null | undefined, slot: Slot): CatalogPart | null => {
     const p = name ? byName.get(name) : undefined;
@@ -47,6 +50,7 @@ export function resolveLook(catalog: ModularCatalog, look: CharacterLook): Catal
   const starter = starterArmour(catalog, look.gender);
   const shown: CatalogPart[] = [];
   for (const slot of BODY_SLOTS) {
+    if (lost.has(slot)) continue;
     const p = fits(look.parts[slot], slot) ?? byName.get(starter[slot])!;
     shown.push(p);
   }
@@ -54,7 +58,7 @@ export function resolveLook(catalog: ModularCatalog, look: CharacterLook): Catal
     fits(look.parts.head, "head") ??
     catalog.parts.find((p) => p.slot === "head" && p.gender === look.gender && !p.mask) ??
     null;
-  if (head) shown.push(head);
+  if (head && !lost.has("head")) shown.push(head);
   const covering = fits(look.parts.headCovering, "headCovering");
   const hidden = new Set<Slot>(covering?.hides ?? []);
   if (head?.mask) {
@@ -62,7 +66,7 @@ export function resolveLook(catalog: ModularCatalog, look: CharacterLook): Catal
     hidden.add("facialHair");
   }
   for (const slot of DETAIL_SLOTS) {
-    if (slot === "head" || hidden.has(slot)) continue;
+    if (slot === "head" || hidden.has(slot) || lost.has(slot)) continue;
     const p = fits(look.parts[slot], slot);
     if (p) shown.push(p);
   }
@@ -285,5 +289,40 @@ export function withHeld(appearanceJson: string, held: Held): string {
   if (held.main) h.main = held.main;
   if (held.off) h.off = held.off;
   if (h.main || h.off) v.held = h;
+  return JSON.stringify(v);
+}
+
+const ALL_SLOTS: ReadonlySet<string> = new Set<string>([...BODY_SLOTS, ...DETAIL_SLOTS]);
+
+/**
+ * The slots a character no longer draws because the body part under them
+ * is gone (M3, dismemberment). Like `held`, the server adds them to the
+ * appearance JSON (withLost); they are never part of a stored look.
+ */
+export function lostOf(appearanceJson: string): Slot[] {
+  if (appearanceJson.length > LOOK_JSON_MAX) return [];
+  let v: unknown;
+  try {
+    v = JSON.parse(appearanceJson);
+  } catch {
+    return [];
+  }
+  const l = (v as { lost?: unknown } | null)?.lost;
+  if (!Array.isArray(l)) return [];
+  return l.filter((s): s is Slot => typeof s === "string" && ALL_SLOTS.has(s));
+}
+
+/** An appearance JSON string with `lost` set (none lost: no `lost` key). Everything else is kept. */
+export function withLost(appearanceJson: string, lost: readonly string[]): string {
+  let v: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(appearanceJson);
+    v = typeof parsed === "object" && parsed !== null ? { ...(parsed as Record<string, unknown>) } : {};
+  } catch {
+    v = {};
+  }
+  delete v.lost;
+  const known = lost.filter((s) => ALL_SLOTS.has(s));
+  if (known.length > 0) v.lost = [...new Set(known)].sort();
   return JSON.stringify(v);
 }

@@ -192,7 +192,7 @@ describe("gateway: items", () => {
   it("a hand cut off drops its sword at the player's feet, and can't take hold again (M3)", async () => {
     const { rules, hooks } = loadGameRules();
     const world = new SimWorld();
-    const body = new BodySystem(rules.body, hooks);
+    const body = new BodySystem(rules.body, hooks, rules.appearance);
     now = 1_000_000;
     const items = makeItems();
     gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world, systems: [items, body], items, body, admins: ["alice"] });
@@ -211,6 +211,7 @@ describe("gateway: items", () => {
     assert.equal(drops.length, 1, "the sword is on the ground");
     const bare = await admin(alice, "inspect", { entity: "me" });
     assert.doesNotMatch(bare.message, /"held"/);
+    assert.match(bare.message, /"lost":\[[^\]]*"handRight"/, "everyone's look hides the lost hand");
     // Picked up again, it can't be held in a hand that is gone.
     const pickP = alice.waitFor(MessageType.Inventory, 1);
     alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: drops[0][0] }));
@@ -218,6 +219,12 @@ describe("gateway: items", () => {
     const refused = await nextError(alice, () => alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "equip", item: sword.id })));
     assert.equal(refused.code, 4005);
     assert.match(refused.message, /can't hold/);
+    // The admin console injures too.
+    const leg = await admin(alice, "injure", { part: "legLeft", kind: "blunt", amount: 6 });
+    assert.equal(leg.ok, true, leg.message);
+    assert.equal(leg.message, "legLeft maimed");
+    const bad = await nextError(alice, () => alice.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "injure", args: { part: "tail" } })));
+    assert.match(bad.message, /no body part "tail"/);
     await alice.close();
   });
 });

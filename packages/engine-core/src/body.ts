@@ -38,7 +38,7 @@
  */
 
 import { addComponent, defineComponent, defineQuery, hasComponent, Types } from "bitecs";
-import { MAX_BODY_PARTS, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks } from "@mmo-engine/rules";
+import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks } from "@mmo-engine/rules";
 import { Health, PlayerIntent } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
@@ -73,6 +73,8 @@ export const Body = defineComponent({
   blood: Types.f32,
   bloodMax: Types.f32,
   seen: Types.f32,
+  /** Bit i: part i is gone, as last reported by drainLooks. */
+  lost: Types.ui16,
 });
 
 /**
@@ -176,6 +178,10 @@ export class BodySystem implements SimSystem {
   readonly name = "body";
   private readonly query = defineQuery([Health, PlayerIntent]);
   private layout: Layout;
+  /** Entities whose set of lost parts changed since the last drainLooks. */
+  private looks: number[] = [];
+  /** Part index -> the appearance slots that draw it or are worn on it. */
+  private slotsOfPart: string[][] = [];
   /** Hands that became useless since the last drainDropped (what they hold falls). */
   private dropped: { e: number; hand: "main" | "off" }[] = [];
   /** Why each entity that died of its body did (cleared on reset). */
@@ -184,14 +190,29 @@ export class BodySystem implements SimSystem {
   constructor(
     private rules: BodyRules,
     private readonly hooks: RuleHooks,
+    /** Which appearance slot draws which part (appearance.json): lost parts hide them. */
+    private appearance?: AppearanceRules,
   ) {
     this.layout = layoutOf(rules);
+    this.mapSlots();
+  }
+
+  private mapSlots(): void {
+    this.slotsOfPart = this.layout.ids.map((id, i) => {
+      const out = new Set<string>();
+      const own = this.rules.parts[i].slot;
+      if (own) out.add(own);
+      for (const s of this.appearance?.slots ?? []) if (s.part === id) out.add(s.id);
+      return [...out];
+    });
   }
 
   /** New body rules (hot reload): every body starts over, whole, at its current Health share. */
-  setRules(sim: SimWorld, rules: BodyRules): void {
+  setRules(sim: SimWorld, rules: BodyRules, appearance?: AppearanceRules): void {
     this.rules = rules;
+    if (appearance) this.appearance = appearance;
     this.layout = layoutOf(rules);
+    this.mapSlots();
     const ids = this.query(sim.ecs);
     for (let i = 0; i < ids.length; i++) {
       const e = ids[i] as number;
@@ -255,6 +276,23 @@ export class BodySystem implements SimSystem {
   drainDropped(): { e: number; hand: "main" | "off" }[] {
     const out = this.dropped;
     if (out.length > 0) this.dropped = [];
+    return out;
+  }
+
+  /**
+   * Entities whose lost parts changed since the last call (a part cut off,
+   * or the body made whole): their look should hide `lostSlots`.
+   */
+  drainLooks(): number[] {
+    const out = this.looks;
+    if (out.length > 0) this.looks = [];
+    return out;
+  }
+
+  /** The appearance slots `e` no longer draws: those of its lost parts. */
+  lostSlots(e: number): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < this.layout.ids.length; i++) if (this.state(e, i) === DISMEMBERED) out.push(...this.slotsOfPart[i]);
     return out;
   }
 
@@ -359,6 +397,12 @@ export class BodySystem implements SimSystem {
     for (let k = 0; k < ids.length; k++) {
       const e = ids[k] as number;
       if (!hasComponent(sim.ecs, Body, e)) this.ensure(sim, e);
+      let mask = 0;
+      for (let i = 0; i < n; i++) if (this.state(e, i) === DISMEMBERED) mask |= 1 << i;
+      if (mask !== Body.lost[e]) {
+        Body.lost[e] = mask;
+        this.looks.push(e);
+      }
       if (Health.current[e] <= 0) {
         Body.seen[e] = Health.current[e];
         continue;
@@ -453,6 +497,7 @@ export class BodySystem implements SimSystem {
     }
     Body.bloodMax[e] = this.rules.blood.max;
     Body.blood[e] = this.rules.blood.max;
+    Body.lost[e] = 0;
     Injury.move[e] = 1;
     Injury.stamina[e] = 1;
     Injury.flags[e] = 0;

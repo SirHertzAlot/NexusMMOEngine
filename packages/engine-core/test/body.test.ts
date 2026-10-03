@@ -194,6 +194,27 @@ describe("body", () => {
     assert.deepEqual(w.body.drainDropped(), [{ e, hand: "off" }]);
   });
 
+  it("reports the slots a lost part takes with it, and when the body is whole again", () => {
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    const body = new BodySystem(rules.body, hooks, rules.appearance);
+    const e = sim.spawn();
+    for (const c of [C.Transform, C.Velocity, C.PlayerIntent, C.Action, C.Health]) addComponent(sim.ecs, c, e);
+    C.Health.current[e] = C.Health.max[e] = 100;
+    body.step(sim, DT);
+    assert.deepEqual(body.drainLooks(), []);
+    body.applyBlow(sim, e, "armLowerLeft", "cut", 100);
+    body.step(sim, DT);
+    assert.deepEqual(body.drainLooks(), [e]);
+    assert.deepEqual(body.lostSlots(e).sort(), ["armLowerLeft", "elbowLeft", "handLeft"]);
+    body.step(sim, DT);
+    assert.deepEqual(body.drainLooks(), [], "reported once");
+    body.respawned(sim, e, { clearInjuries: true, restoreParts: true });
+    body.step(sim, DT);
+    assert.deepEqual(body.drainLooks(), [e]);
+    assert.deepEqual(body.lostSlots(e), []);
+  });
+
   it("the admin heal makes the body whole", () => {
     const w = setup();
     const e = w.make();
