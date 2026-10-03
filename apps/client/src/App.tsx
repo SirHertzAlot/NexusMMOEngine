@@ -341,13 +341,21 @@ export function App(): React.ReactElement {
           </div>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
-        <PlayerFrame
-          name={characterName}
-          hp={combatView?.hp ?? hud.hp}
-          maxHp={combatView?.maxHp ?? hud.maxHp}
-          sp={hud.sp}
-          maxSp={hud.maxSp}
-        />
+        {/* Bottom-left stack: friends above the player frame, so neither covers the other. */}
+        <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <FriendsFrame
+            friends={friends}
+            onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
+            onRemove={(n) => client?.friend(n, false)}
+          />
+          <PlayerFrame
+            name={characterName}
+            hp={combatView?.hp ?? hud.hp}
+            maxHp={combatView?.maxHp ?? hud.maxHp}
+            sp={hud.sp}
+            maxSp={hud.maxSp}
+          />
+        </div>
         <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
           <DevHud
@@ -461,11 +469,6 @@ export function App(): React.ReactElement {
           onKick={(name) => client?.guild("kick", { name })}
           onRank={(name, rank) => client?.guild("setRank", { name, rank })}
           onInviteExpired={() => setGuild((g) => (g ? { ...g, invite: undefined } : g))}
-        />
-        <FriendsFrame
-          friends={friends}
-          onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
-          onRemove={(n) => client?.friend(n, false)}
         />
         <ChatPanel
           lines={chatLines}
