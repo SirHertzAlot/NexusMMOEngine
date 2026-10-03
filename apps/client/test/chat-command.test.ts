@@ -33,4 +33,9 @@ describe("parseChatCommand", () => {
     assert.deepEqual(parseChatCommand("/gaccept", "say"), { kind: "guild", op: "accept" });
     assert.deepEqual(parseChatCommand("/gleave", "say"), { kind: "guild", op: "leave" });
   });
+  it("friends", () => {
+    assert.deepEqual(parseChatCommand("/friend Bob", "say"), { kind: "friend", name: "Bob", on: true });
+    assert.deepEqual(parseChatCommand("/unfriend Bob", "say"), { kind: "friend", name: "Bob", on: false });
+    assert.equal(parseChatCommand("/friend", "say").kind, "error");
+  });
 });

@@ -249,6 +249,23 @@ export interface BlockMessage {
   on: boolean;
 }
 
+/** C→S (0x11, S2b): add or remove a character (by name) on your friends list. */
+export interface FriendMessage {
+  kind: "friend";
+  name: string;
+  on: boolean;
+}
+
+/**
+ * S→C (0x11, S2b): the receiver's friends list with presence, sent on
+ * login and whenever the list or a friend's presence changes. A friend who
+ * blocks you always shows offline.
+ */
+export interface FriendsState {
+  kind: "friends";
+  friends: Array<{ name: string; online: boolean }>;
+}
+
 /**
  * Chat channels: say and emote reach nearby players, yell reaches all,
  * whisper reaches one named character (S2), party reaches your party (S3).
@@ -351,7 +368,8 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 15; // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
+export const PROTOCOL_VERSION = 16; // v16 (2026-10-03): friends list op and presence state on 0x11 (S2b).
+// v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
 // v12: 0x16 hit (M2a).

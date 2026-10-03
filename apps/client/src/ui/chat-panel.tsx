@@ -46,7 +46,7 @@ export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps)
             {t}
           </Button>
         ))}
-        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="/w name text, /p text, /invite /accept /leave /kick /promote; guild: /g text, /gcreate name tag, /ginvite /gkick /grank name rank, /gmotd text, /gaccept /gleave">
+        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="/w name text, /p text, /invite /accept /leave /kick /promote; guild: /g text, /gcreate name tag, /ginvite /gkick /grank name rank, /gmotd text, /gaccept /gleave; /friend /unfriend name">
           /w /p /g /invite /leave
         </span>
       </div>
