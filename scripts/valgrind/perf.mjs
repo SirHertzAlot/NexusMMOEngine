@@ -119,4 +119,10 @@ function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (spawnSync("valgrind", ["--version"], { stdio: "ignore" }).status !== 0) {
+    console.error("[perf] valgrind isn't on PATH: install it (apt install valgrind; on Windows, run this from WSL).");
+    process.exit(2);
+  }
+  main();
+}

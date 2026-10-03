@@ -31,6 +31,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const outDir = join(root, "valgrind-out", "memcheck");
 const only = process.argv.slice(2);
 
+if (spawnSync("valgrind", ["--version"], { stdio: "ignore" }).status !== 0) {
+  console.error("[memcheck] valgrind isn't on PATH: install it (apt install valgrind; on Windows, run this from WSL).");
+  process.exit(2);
+}
+
 /** The addons with a built binary and tests: packages/addons/<name>. */
 function addons() {
   const dir = join(root, "packages", "addons");

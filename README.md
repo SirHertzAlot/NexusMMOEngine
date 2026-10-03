@@ -70,7 +70,7 @@ Details: [`apps/client/README.md`](apps/client/README.md).
 
 ## Memory and performance checks (valgrind)
 
-Valgrind (3.x, Linux) checks the native addons and measures the engine. On a host without valgrind (Windows) the same commands run inside a Linux Docker container (`scripts/valgrind/launch.mjs`; needs Docker running):
+Valgrind (3.x, Linux) checks the native addons and measures the engine. It runs straight on the host, no container: install it with your package manager (`apt install valgrind`); on Windows, run the commands from WSL with the addons built there.
 
 ```sh
 npm run valgrind:memcheck            # every addon's tests under memcheck
