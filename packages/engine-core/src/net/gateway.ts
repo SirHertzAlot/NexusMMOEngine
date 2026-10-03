@@ -59,6 +59,7 @@ import {
   type AdminResult,
   type ChatBroadcast,
   type PartyState,
+  type GuildState,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -112,6 +113,7 @@ import {
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
+import { GuildBook, GuildOpSchema, type GuildResult } from "../guild.js";
 import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
@@ -408,6 +410,7 @@ export class Gateway {
   private readonly blocks = new BlockList();
   /** Parties, in memory (S3). */
   private readonly parties = new PartyBook(() => this.clock());
+  private readonly guilds = new GuildBook(() => this.clock());
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
   /** Items (see GatewayOptions.items); shared with the systems list. */
@@ -862,6 +865,7 @@ export class Gateway {
     this.lastHeartbeatMs = now;
     this.authSessions.sweep(); // drop expired session tokens
     for (const n of this.parties.sweep()) this.pushParty(n);
+    this.guilds.sweep();
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue;
       // Missed = nothing from the client (pong, intent, anything) since
@@ -937,6 +941,7 @@ export class Gateway {
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
     this.partyOffline(s);
+    this.guildOffline(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -953,6 +958,7 @@ export class Gateway {
       s.socket = null;
       s.disconnectedAtMs = this.clock();
       this.partyOffline(s);
+      this.guildOffline(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -1344,7 +1350,7 @@ export class Gateway {
       return;
     }
     let text: string;
-    let channel: "say" | "yell" | "emote" | "whisper" | "party";
+    let channel: "say" | "yell" | "emote" | "whisper" | "party" | "guild";
     let to: string | undefined;
     try {
       const raw = decodeControl<unknown>(payload);
@@ -1354,6 +1360,10 @@ export class Gateway {
       }
       if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "party") {
         this.onParty(s, raw);
+        return;
+      }
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "guild") {
+        this.onGuild(s, raw);
         return;
       }
       const parsed = ChatSchema.safeParse(raw);
@@ -1412,6 +1422,21 @@ export class Gateway {
       const mates = new Set(this.parties.partyOf(me).map((n) => n.toLowerCase()));
       if (!mates.has(me.toLowerCase())) {
         this.sendSystem(s, "not in a party");
+        return;
+      }
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || !r.socket) continue;
+        if (!mates.has((r.character?.name ?? r.username).toLowerCase())) continue;
+        if (r !== s && this.blocks.isBlocked(r.username, s.username)) continue;
+        this.sendEnvelope(r, MessageType.Chat, body);
+      }
+      return;
+    }
+    if (channel === "guild") {
+      const me = s.character?.name ?? s.username;
+      const mates = new Set(this.guilds.guildOf(me).map((n) => n.toLowerCase()));
+      if (!mates.has(me.toLowerCase())) {
+        this.sendSystem(s, "not in a guild");
         return;
       }
       for (const r of this.sessions.values()) {
@@ -1505,6 +1530,91 @@ export class Gateway {
       return;
     }
     for (const n of new Set(result.notify)) this.pushParty(n);
+  }
+
+  private guildOffline(s: ClientSession): void {
+    if (!s.welcomed) return;
+    const me = s.character?.name ?? s.username;
+    this.guilds.setOnline(me, false);
+    for (const n of this.guilds.guildOf(me)) this.pushGuild(n);
+  }
+
+  /** Send a character their current guild and any pending invite (S4). */
+  private pushGuild(name: string): void {
+    const r = this.findOnline(name);
+    if (!r) return;
+    const invite = this.guilds.pendingInvite(name);
+    const msg: GuildState = {
+      kind: "guild",
+      name: this.guilds.guildName(name) ?? "",
+      tag: this.guilds.tagOf(name),
+      motd: this.guilds.motd(name),
+      rank: this.guilds.rankOf(name),
+      members: this.guilds.members(name),
+      log: this.guilds.logFor(name),
+      ...(invite ? { invite } : {}),
+    };
+    this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+  }
+
+  /** Re-send the names rows (with guild tags) of these characters to everyone in the world. */
+  private pushTags(names: readonly string[]): void {
+    const keys = new Set(names.map((n) => n.toLowerCase()));
+    const wire: bigint[] = [];
+    for (const r of this.sessions.values()) {
+      if (r.playerEntity !== null && r.welcomed && keys.has((r.character?.name ?? r.username).toLowerCase())) {
+        wire.push(r.playerEntity);
+      }
+    }
+    if (wire.length === 0) return;
+    const env = this.namesFor(wire);
+    if (!env) return;
+    for (const r of this.sessions.values()) {
+      if (r.welcomed && r.socket) this.deliver(r, env, this.tick);
+    }
+  }
+
+  /**
+   * A guild op (S4). Rank rules live in GuildBook; invites to anyone offline,
+   * unknown or blocking get the same "not online" notice, as in parties.
+   */
+  private onGuild(s: ClientSession, raw: unknown): void {
+    const parsed = GuildOpSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed guild op");
+      return;
+    }
+    const { op, name, tag, rank, text } = parsed.data;
+    const me = s.character?.name ?? s.username;
+    const before = this.guilds.guildOf(me);
+    let result: GuildResult;
+    if (op === "create") {
+      result = this.guilds.create(me, name as string, tag as string);
+    } else if (op === "invite") {
+      const target = this.findOnline(name as string);
+      if (!target || target === s || this.blocks.isBlocked(target.username, s.username)) {
+        this.sendSystem(s, target === s ? "cannot invite yourself" : NOT_ONLINE);
+        return;
+      }
+      result = this.guilds.invite(me, target.character?.name ?? target.username);
+    } else if (op === "accept") {
+      result = this.guilds.accept(me);
+    } else if (op === "leave") {
+      result = this.guilds.leave(me);
+    } else if (op === "kick") {
+      result = this.guilds.kick(me, name as string);
+    } else if (op === "setRank") {
+      result = this.guilds.setRank(me, name as string, rank as NonNullable<typeof rank>);
+    } else {
+      result = this.guilds.setMotd(me, text as string);
+    }
+    if (!result.ok) {
+      this.sendSystem(s, result.reason);
+      return;
+    }
+    const touched = new Set([...result.notify, ...before, ...this.guilds.guildOf(me)]);
+    for (const n of touched) this.pushGuild(n);
+    this.pushTags([...touched]);
   }
 
   /** A server notice in the sender's chat (S2). */
@@ -2082,6 +2192,10 @@ export class Gateway {
     this.parties.setOnline(s.character?.name ?? s.username, true);
     for (const n of this.parties.partyOf(s.character?.name ?? s.username)) this.pushParty(n);
     this.pushParty(s.character?.name ?? s.username);
+    const who = s.character?.name ?? s.username;
+    this.guilds.setOnline(who, true);
+    for (const n of this.guilds.guildOf(who)) this.pushGuild(n);
+    this.pushGuild(who);
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */
@@ -2242,7 +2356,7 @@ export class Gateway {
    * Character names for fan-out (C3, catalog §0x12): wire id -> name for
    * every live session avatar. `only`: restrict to these wire ids (delta
    * spawned lists); null means all. Returns the enveloped message, or
-   * null when no rows apply. Guild tags ride along in S4; until then "".
+   * null when no rows apply. Rows carry the character's guild tag (S4).
    */
   private namesFor(only: readonly bigint[] | null): Uint8Array | null {
     const rows: Array<[string, string, string]> = [];
@@ -2252,7 +2366,7 @@ export class Gateway {
       rows.push([
         other.playerEntity.toString(),
         other.character?.name ?? other.username,
-        "",
+        this.guilds.tagOf(other.character?.name ?? other.username),
       ]);
     }
     if (rows.length === 0) return null;

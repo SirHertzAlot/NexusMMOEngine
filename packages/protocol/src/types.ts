@@ -253,7 +253,7 @@ export interface BlockMessage {
  * Chat channels: say and emote reach nearby players, yell reaches all,
  * whisper reaches one named character (S2), party reaches your party (S3).
  */
-export type ChatChannel = "say" | "yell" | "emote" | "whisper" | "party";
+export type ChatChannel = "say" | "yell" | "emote" | "whisper" | "party" | "guild";
 
 /**
  * S→C (catalog §0x11): a fanned-out chat line. `from` is the speaker's
@@ -299,11 +299,51 @@ export interface PartyState {
   invite?: { from: string };
 }
 
+export type GuildRank = "leader" | "officer" | "member" | "recruit";
+
+/**
+ * C→S (0x11, S4): a guild op. `create` takes `name` (3-24) and `tag` (2-5
+ * letters); `invite`, `kick` and `setRank` name a character (`setRank` also
+ * `rank`); `motd` takes `text`; `accept` takes the pending invite; `leave`
+ * leaves. Officers and the leader invite, kick lower ranks and edit the MOTD.
+ */
+export interface GuildMessage {
+  kind: "guild";
+  op: "create" | "invite" | "accept" | "leave" | "kick" | "setRank" | "motd";
+  name?: string;
+  tag?: string;
+  rank?: GuildRank;
+  text?: string;
+}
+
+export interface GuildMemberInfo {
+  name: string;
+  rank: GuildRank;
+  online: boolean;
+}
+
+/**
+ * S→C (0x11, S4): the receiver's guild, sent whenever it changes. `name` is
+ * "" (and `members` empty) when in none; `log` is the change log, for
+ * officers and the leader only; `invite` is a pending invite (60 s).
+ */
+export interface GuildState {
+  kind: "guild";
+  name: string;
+  tag: string;
+  motd: string;
+  rank: GuildRank | null;
+  members: GuildMemberInfo[];
+  log: Array<{ at: number; text: string }>;
+  invite?: { from: string; guild: string };
+}
+
 /**
  * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): one row per
  * character entity the accompanying snapshot or delta first shows.
  * Tuples, spec-literal: [entity wire id, character name, guild tag].
- * The tag column is "" until guilds (S4).
+ * The tag column is "" for a character in no guild; a later row for the
+ * same entity updates it when they join or leave one (S4).
  */
 export interface NamesMessage {
   kind: "names";
@@ -311,7 +351,8 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 14; // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
+export const PROTOCOL_VERSION = 15; // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
+// v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
 // v12: 0x16 hit (M2a).
 // v11 (2026-10-01): items — 0x13 item

@@ -4,7 +4,7 @@ Mirrors Phase 1 plan §2. Envelope for every message: `[u8 type][payload]`.
 Control plane = JSON (debuggable); data plane = FlatBuffers (hot path).
 u64 ids travel as JSON strings (JS number precision).
 
-**Protocol version: 14** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons; v7 adds stats 0x0f; v8 adds the admin console 0x10; v9 adds region chat 0x11; v10 adds C3 identity: the CharacterRef block and 0x12 names; v11 adds items: 0x13 item actions, 0x14 inventory, 0x15 drops; v12 adds 0x16 hit; v13 adds 0x17 life; v14 adds party ops and party state on 0x11).
+**Protocol version: 15** (v2's real auth; v3 adds 0x0a editor debug queries; v4 adds 0x0b in-client registration; v5 adds characters: 0x0c–0x0e, hello/register `characters`, error 4005, and the Appearance component; v6 adds combat: the Action component and the Attack/Block/Dodge intent buttons; v7 adds stats 0x0f; v8 adds the admin console 0x10; v9 adds region chat 0x11; v10 adds C3 identity: the CharacterRef block and 0x12 names; v11 adds items: 0x13 item actions, 0x14 inventory, 0x15 drops; v12 adds 0x16 hit; v13 adds 0x17 life; v14 adds party ops and party state on 0x11; v15 adds guild ops, guild state and the guild chat channel on 0x11, and the guild tag on 0x12 names).
 
 | Type | Name | Dir | Encoding | Fields | Purpose / frequency |
 |------|------|-----|----------|--------|---------------------|

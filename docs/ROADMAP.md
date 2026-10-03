@@ -91,9 +91,9 @@ Everything here is React DOM over the world canvas, fed by the server
 | U3 | Hunger and thirst meters | ✅ | Survival needs as rules on the server (new, alongside M1). Server side done (`needs.json`, `Needs` component, `NeedsSystem`). Wire and HUD meters deferred (no data on the wire yet; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
 | U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
-| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers (S2) and party (S3) commands live (`/w /p /invite /kick /promote /accept /leave`); guild and reply await S4 |
+| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers (S2) and party (S3) commands live (`/w /p /invite /kick /promote /accept /leave`); guild commands live (S4); reply awaits |
 | U7 | Party frames | ✅ | Member list (leader star, online dot, lead/kick for the leader), invite card with accept, leave. Per-member health and region are not on the wire yet, so rows show name and presence only (deferred with the party stats message) |
-| U8 | Social window: friends, presence, blocks, guild roster | 📋 | S2, S4 |
+| U8 | Social window: friends, presence, blocks, guild roster | 📋 | S2, S4; guild roster ships in the guild frame (S4) |
 | U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills await M1, injuries M2 |
 | U10 | Inventory and equipment | 📋 | M3 (items), C1 crafting (built) |
 | U11 | Quest log and tracker, dialog | 📋 | P1 |
@@ -105,7 +105,7 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
-| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags await S4 |
+| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
 | M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not on the wire yet |
@@ -116,7 +116,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
 | S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | 〃 |
 | S3 | Parties | ✅ | 〃 |
-| S4 | Guilds | 📋 | 〃 |
+| S4 | Guilds | ✅ | `GuildBook` (500 members, ranks leader/officer/member/recruit, officer invites, MOTD, 200-entry officer log, 60 s invites), guild chat, `GuildState` pushes, tags on the names rows, guild frame + `/g /gcreate /ginvite /gkick /grank /gmotd /gaccept /gleave`. In memory only: no SQLite `GuildStore` yet (guilds reset on restart); `purge` awaits a character-delete path |
 | P1 | Progression graphs: quests and dialog | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
 
 ## 4. World, content and generation
@@ -197,6 +197,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
+- **2026-10-03**: S4 guilds: `GuildBook` with injected clock and write-through `GuildStore` (in-memory default; SQLite store and `purge` caller deferred). Ranks and rules enforced server-side, guild chat channel, `GuildState` to members on change, tag on the names fan-out (`Name <TAG>`), `GuildFrame` and guild chat commands in the client. Protocol 15; ops ride 0x11 (`kind:"guild"`). Perf and valgrind not run (paused).
 - **2026-10-03**: S3 parties: `PartyBook` (up to 6, leader invites/kicks/promotes, 60 s invites, 5 min offline removal with leadership to the longest-standing, disband at one), party chat channel, `PartyState` pushed to affected members on every change (in memory; a restart disbands). Protocol 14. Ops ride the 0x11 envelope (`kind:"party"`) because 0x0f is Stats here. Out-of-view frame data (U7) next.
 - **2026-10-03**: U7 party frames: `PartyFrame` over the world canvas shows the party (leader star, online dot, lead/kick for the leader, leave) and a pending invite with accept; chat commands `/invite /kick /promote /accept /leave /p /w` parse client-side. The server lapses invites after 60 s without telling the invitee, so the client hides the card itself after 60 s. Per-member health and region need a wire change (deferred). Perf not run (paused).
 - **2026-10-03**: T2 play telemetry (server): `PlayTelemetry` keeps kills, deaths, pickups, drops and player damage dealt/taken in 10 s buckets (60-bucket ring, preallocated, no tick allocation) plus a tick-time histogram (p50/p99/max). Admin `stats` returns the JSON for the editor graphs (E5).
