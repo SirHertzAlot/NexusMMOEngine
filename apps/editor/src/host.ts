@@ -15,6 +15,11 @@
  *   GET  /api/editor/assets        → art-pack scan of <repo>/assets
  *   GET  /assets/*                 → static files from <repo>/assets
  *                                    (path-traversal guarded)
+ *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
+ *   GET  /api/editor/rules/:name   → one rules file's parsed content
+ *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
+ *                                    checks) then write back pretty-printed;
+ *                                    400 with per-path issues when invalid
  *
  * Safety rules:
  * - At most one owned server at a time; start while running → 409.
@@ -43,6 +48,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, normalize, posix, resolve, sep, win32 } from "node:path";
+import {
+  isRuleFile,
+  readRuleFile,
+  ruleFileNames,
+  saveRuleFile,
+} from "./rules-host.js";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -611,6 +622,62 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url.startsWith("/assets/") && req.method === "GET") {
             serveAssetFile(req, res);
+            return;
+          }
+          const rulesParsed = new URL(req.url ?? "/", "http://localhost");
+          if (
+            rulesParsed.pathname === "/api/editor/rules" ||
+            rulesParsed.pathname.startsWith("/api/editor/rules/")
+          ) {
+            const parts = rulesParsed.pathname.split("/").filter(Boolean);
+            if (req.method === "GET" && parts.length === 3) {
+              sendJson(res, 200, { ok: true, files: ruleFileNames() });
+              return;
+            }
+            let name = "";
+            try {
+              name = decodeURIComponent(parts[3] ?? "");
+            } catch {
+              sendJson(res, 400, { ok: false, error: "bad rules file name" });
+              return;
+            }
+            if (parts.length !== 4 || !isRuleFile(name)) {
+              sendJson(res, 404, { ok: false, error: `unknown rules file "${parts[3] ?? ""}"` });
+              return;
+            }
+            if (req.method === "GET") {
+              const { content, missing } = readRuleFile(repoRoot, name);
+              sendJson(res, 200, { ok: true, name, content, missing });
+              return;
+            }
+            if (req.method === "PUT") {
+              let parsed: unknown;
+              try {
+                parsed = JSON.parse(await readBody(req)) as unknown;
+              } catch {
+                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+                return;
+              }
+              if (typeof parsed !== "object" || parsed === null || !("content" in parsed)) {
+                sendJson(res, 400, { ok: false, error: 'need a JSON body shaped like {"content": …}' });
+                return;
+              }
+              try {
+                saveRuleFile(repoRoot, name, (parsed as { content: unknown }).content);
+              } catch (err) {
+                const status = (err as { status?: number }).status ?? 500;
+                const issues = (err as { issues?: unknown }).issues;
+                sendJson(res, status, {
+                  ok: false,
+                  error: err instanceof Error ? err.message : String(err),
+                  ...(Array.isArray(issues) ? { issues } : {}),
+                });
+                return;
+              }
+              sendJson(res, 200, { ok: true, name });
+              return;
+            }
+            sendJson(res, 404, { ok: false, error: "not found" });
             return;
           }
         } catch (err) {
