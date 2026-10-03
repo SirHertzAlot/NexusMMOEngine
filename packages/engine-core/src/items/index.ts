@@ -3,3 +3,4 @@ export { HandSlot, ItemStore, ItemWhere, type ItemWhereCode } from "./item-store
 export { ItemService, parseEntityArg, type ItemResult, type ItemServiceOptions } from "./item-service.js";
 export { defRemap, heldFromLedger, rebakeKeepingHeld, remapLedger, type RebakeOptions, type RebakeResult } from "./rebake.js";
 export { FALLBACK_POOL_SIZE, loadItemDefs, type LoadedItems } from "./boot.js";
+export { LootDropper, type LootDropperOptions } from "./loot-dropper.js";

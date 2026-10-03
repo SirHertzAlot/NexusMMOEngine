@@ -86,6 +86,11 @@ export class CreatureSystem implements SimSystem {
     return this.brains.get(e)?.weapon ?? null;
   }
 
+  /** The kind id of creature `e`, or undefined if `e` is not one. */
+  kindOf(e: number): string | undefined {
+    return this.brains.get(e)?.kind;
+  }
+
   /** Seconds before a dead creature rises, or undefined if `e` is not one. */
   respawnSeconds(e: number): number | undefined {
     const b = this.brains.get(e);

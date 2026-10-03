@@ -127,7 +127,7 @@ import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
-import { ItemService, loadItemDefs } from "./items/index.js";
+import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -467,10 +467,12 @@ async function main(): Promise<void> {
       reach: d.length[def],
     };
   };
+  // Creature drops (L2): rolled when DeathSystem records a creature's death.
+  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e) });
   const combat = new CombatSystem(30, stamina, { hooks: game.hooks, weaponOf });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
-  const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e));
+  const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
   const gw: Gateway = new Gateway({
     port: PORT,
     // The same instance as in the systems list below: its sheets are what get saved.

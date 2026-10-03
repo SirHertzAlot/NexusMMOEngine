@@ -346,6 +346,13 @@ export const CreatureSchema = z.strictObject({
   chaseSpeed: share.default(0.9),
   /** Seconds between its blows while in reach. */
   attackEverySeconds: positive.default(1.5),
+  /** What it drops when killed: it rolls `rolls` times (inclusive range), each roll yields one mob-pool item with `chance`. */
+  drops: z
+    .strictObject({
+      rolls: z.tuple([z.number().int().min(0), z.number().int().min(0)]).default([1, 2]),
+      chance: share.default(0.8),
+    })
+    .default({ rolls: [1, 2], chance: 0.8 }),
 });
 
 export const CreaturesSchema = z.strictObject({
