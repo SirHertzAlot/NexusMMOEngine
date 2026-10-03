@@ -118,6 +118,7 @@ import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { MasterySystem } from "../stats/mastery-system.js";
+import { PlayTelemetry } from "../stats/telemetry.js";
 import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
@@ -394,6 +395,8 @@ export class Gateway {
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
+  /** Play counters and tick timing (T2); read by the admin `stats` command. */
+  readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
@@ -589,6 +592,12 @@ export class Gateway {
   // ------------------------------------------------------------ tick
 
   private onTick(tick: number): void {
+    const t0 = performance.now();
+    this.runTick(tick);
+    this.telemetry.tickMs(performance.now() - t0);
+  }
+
+  private runTick(tick: number): void {
     this.tick = tick;
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
@@ -618,6 +627,11 @@ export class Gateway {
       if (!(s instanceof CombatSystem)) continue;
       const hits = s.drainHits();
       if (hits.length === 0) continue;
+      for (const h of hits) {
+        if (h.outcome !== "hit") continue;
+        if (hasComponent(sim.ecs, C.PlayerIntent, h.source)) this.telemetry.damageDealt(h.amount);
+        if (hasComponent(sim.ecs, C.PlayerIntent, h.target)) this.telemetry.damageTaken(h.amount);
+      }
       const msgs = hits.map((h): HitMessage => ({
             kind: "hit",
             tick,
@@ -648,6 +662,8 @@ export class Gateway {
       for (const ev of events) {
         const m: LifeMessage = { kind: "life", tick, target: String(sim.wireId(ev.target)), state: ev.state };
         if (ev.state === "dead") {
+          if (hasComponent(sim.ecs, C.PlayerIntent, ev.target)) this.telemetry.death();
+          if (ev.killer !== undefined && hasComponent(sim.ecs, C.PlayerIntent, ev.killer)) this.telemetry.kill();
           if (ev.killer !== undefined) m.killer = String(sim.wireId(ev.killer));
           m.respawnAt = ev.outcome && ev.outcome.respawnInSeconds >= 0 ? ev.respawnAt : 0;
           const id = this.characterIdOf(ev.target);
@@ -1070,8 +1086,11 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
       };
+    } else if (cmd.command === "stats") {
+      const t = this.telemetry.snapshot();
+      res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(t) };
     } else if (cmd.command === "whoami") {
       res = {
         kind: "admin",
@@ -1972,6 +1991,8 @@ export class Gateway {
       this.sendError(s, 4005, result.error);
       return;
     }
+    if (a.action === "pickup") this.telemetry.pickup();
+    else if (a.action === "drop") this.telemetry.drop();
     this.refreshAvatarLook(avatar, holder);
     this.sendInventory(s);
   }
