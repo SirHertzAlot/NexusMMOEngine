@@ -94,6 +94,11 @@ export class CreatureSystem implements SimSystem {
     return this.brains.has(e);
   }
 
+  /** Whether `kind` has creature rules (and so can spawn). */
+  has(kind: string): boolean {
+    return kind in this.opts.creatures;
+  }
+
   private rand(): number {
     this.rngState = hash(this.rngState, 0x5bd1e995);
     return this.rngState / 4294967296;
@@ -143,12 +148,13 @@ export class CreatureSystem implements SimSystem {
 
   /**
    * Spawn one pack of `kind` around (x, z): a random size in the creature's
-   * pack range, each a few metres from the centre. Returns the entity ids.
+   * pack range (or `size`, a biome's own), each a few metres from the
+   * centre. Returns the entity ids.
    */
-  spawnPack(sim: SimWorld, kind: string, x: number, z: number): number[] {
+  spawnPack(sim: SimWorld, kind: string, x: number, z: number, size?: readonly [number, number]): number[] {
     const def = this.opts.creatures[kind];
     if (!def) throw new Error(`unknown creature "${kind}"`);
-    const [min, max] = def.pack;
+    const [min, max] = size ?? def.pack;
     const n = min + Math.floor(this.rand() * (max - min + 1));
     const out: number[] = [];
     for (let i = 0; i < n; i++) {

@@ -33,6 +33,11 @@
  *                  or "pcg" (the PCG forest graph with PICG trees). Default:
  *                  ecology when the art is on this machine, else pcg.
  *   MMO_ECOLOGY    an ecology plan file (default: content/ecology/wilds.ecology.json)
+ *   MMO_BIOMES     the biome registry: per-biome scatter multipliers and
+ *                  creature tables (default: content/biomes.json)
+ *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
+ *                  baked world with biomes; default off). Only kinds with
+ *                  creature rules spawn.
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
@@ -128,6 +133,9 @@ import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
+import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
+import { WildCreatures } from "./procgen/wild-creatures.js";
+import { ecologySeed32 } from "./procgen/ecology.js";
 import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
@@ -335,12 +343,21 @@ async function main(): Promise<void> {
     seaLevelMeta === null
       ? null
       : waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, Number(seaLevelMeta));
+  // What each biome holds: scatter multipliers and creature tables.
+  const biomesFile = process.env.MMO_BIOMES || DEFAULT_BIOME_REGISTRY;
+  const { registry: biomes } = loadBiomeRegistry(biomesFile);
+  const biomeAt = biomeLookup(store, tiles);
+  const worldBiomes = store.getMeta("world_biomes");
+  if (worldBiomes) {
+    for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[] })) console.warn(`[biomes] ${p} (${biomesFile})`);
+  }
   // What grows on new chunks (see world-populator: ecology or PCG).
   const populator = makeWorldPopulator({
     worldSeed,
     chunkWorldSize: CHUNK_SIZE,
     seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
-    biomeAt: biomeLookup(store, tiles) ?? undefined,
+    biomeAt: biomeAt ?? undefined,
+    biomes,
     waterAt: water ?? undefined,
     terrain: procgen,
     // Formation tiles the bake solved (any it didn't are solved on demand and stored).
@@ -431,6 +448,29 @@ async function main(): Promise<void> {
     steer: navBackend.crowd !== undefined,
   });
   if (botCount > 0) console.log(`[bots] ${botCount} bots (sparring pairs and wanderers)`);
+  // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
+  if (process.env.MMO_WILD_CREATURES === "1") {
+    if (!biomeAt) {
+      console.warn("[biomes] MMO_WILD_CREATURES=1 but this world has no biome map: no wild packs");
+    } else {
+      const wild = new WildCreatures({
+        registry: biomes,
+        spawner: creatures,
+        seed: ecologySeed32(worldSeed),
+        chunkWorldSize: CHUNK_SIZE,
+        biomeAt,
+        // No packs in the water.
+        blocked: water ? (x, z) => (water(x, z) ?? -Infinity) > character.groundHeight(x, z) : undefined,
+      });
+      streamer.attachContents(sim, wild);
+      const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
+      const waiting = [...kinds].filter((k) => !creatures.has(k));
+      console.log(
+        `[biomes] wild packs on: ${wild.stats().packs} pack(s) round the spawn area` +
+          (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
+      );
+    }
+  }
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
