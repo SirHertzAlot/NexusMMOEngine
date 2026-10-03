@@ -1,9 +1,11 @@
 /**
  * TerrainRenderer — everything the player sees of the ground.
  *
- *  - Near: one mesh per streamed chunk (the server's exact 16x16 tile),
- *    all sharing one opaque material; normals match across chunk borders
- *    and are recomputed at the borders as neighbours come and go.
+ *  - Near: the streamed chunks (the server's exact 16x16 tiles), in LOD
+ *    rings round the camera and merged into one mesh per 4x4-chunk block
+ *    (terrain-lod.ts), all sharing one opaque material; normals match
+ *    across chunk borders and are recomputed at the borders as neighbours
+ *    come and go.
  *  - Far: one mesh of the whole world from the welcome's coarse map (16 m
  *    cells), so mountains show on the horizon long before their chunks
  *    stream in. It hides itself wherever a chunk is loaded (a mask texture
@@ -17,7 +19,8 @@ import * as THREE from "three";
 import type { ChunkRange, ChunkRow, WorldMap } from "@mmo-engine/protocol";
 import { tileHeightAt } from "@mmo-engine/protocol";
 import { groundColors, snowLine } from "./ground.js";
-import { buildChunkGeometry, chunkNormals, SIDE } from "./terrain-mesh.js";
+import { chunkNormals, SIDE } from "./terrain-mesh.js";
+import { BLOCK, blockOf, buildBlockGeometry, chunkCost, ringOf, strideForRing, type LodChunk } from "./terrain-lod.js";
 import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
 import { surfaceLayerMap, type Surfaces } from "./surfaces.js";
 
@@ -37,7 +40,25 @@ interface NearChunk {
   heights: Float32Array;
   /** False for a flat stand-in (the chunk arrived without heights). */
   displaced: boolean;
-  mesh: THREE.Mesh;
+  /** SIDE * SIDE unit normals (xyz), refined as neighbours arrive. */
+  normals: Float32Array;
+  /** Sample stride for its LOD ring (terrain-lod.ts). */
+  stride: number;
+}
+
+interface Block {
+  mesh: THREE.Mesh | null;
+  dirty: boolean;
+}
+
+/** What the near terrain costs to draw (perf HUD, tests). */
+export interface TerrainStats {
+  chunks: number;
+  /** Near meshes: one per block. */
+  drawCalls: number;
+  triangles: number;
+  /** Chunk count by sample stride. */
+  chunksPerStride: Record<number, number>;
 }
 
 interface LoadedMask {
@@ -48,6 +69,7 @@ interface LoadedMask {
 }
 
 const key = (cx: number, cz: number): string => `${cx},${cz}`;
+const blockKey = (cx: number, cz: number): string => `${blockOf(cx)},${blockOf(cz)}`;
 const EDGE_NEIGHBOURS: ReadonlyArray<[number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
 export class TerrainRenderer {
@@ -57,6 +79,9 @@ export class TerrainRenderer {
   private readonly farMaterial = createTerrainMaterial(this.uniforms, true);
   private readonly chunks = new Map<string, NearChunk>();
   private readonly keyOfWire = new Map<bigint, string>();
+  private readonly blocks = new Map<string, Block>();
+  /** The camera's chunk; null until the first update with a camera (everything full detail). */
+  private camChunk: { cx: number; cz: number } | null = null;
   private far: THREE.Mesh | null = null;
   private ground: THREE.DataTexture | null = null;
   private mask: LoadedMask | null = null;
@@ -163,15 +188,10 @@ export class TerrainRenderer {
     }
     const { cx, cz } = chunkCoords(chunk.chunkId);
     const k = key(cx, cz);
-    const old = this.chunks.get(k);
-    if (old) this.dropMesh(old);
     const displaced = chunk.heights !== null && chunk.heights.length === SIDE * SIDE;
     const heights = displaced ? chunk.heights! : new Float32Array(SIDE * SIDE);
-    const mesh = new THREE.Mesh(buildChunkGeometry(heights, this.chunkWorldSize), this.nearMaterial);
-    mesh.position.set(cx * this.chunkWorldSize, 0, cz * this.chunkWorldSize);
-    mesh.name = `chunk ${k}`;
-    this.group.add(mesh);
-    this.chunks.set(k, { wireId, cx, cz, heights, displaced, mesh });
+    const normals = new Float32Array(SIDE * SIDE * 3);
+    this.chunks.set(k, { wireId, cx, cz, heights, displaced, normals, stride: this.strideAt(cx, cz) });
     this.keyOfWire.set(wireId, k);
     this.refreshNormals(cx, cz, true);
     this.markLoaded(cx, cz, displaced);
@@ -184,8 +204,8 @@ export class TerrainRenderer {
     this.keyOfWire.delete(wireId);
     const c = this.chunks.get(k);
     if (!c || c.wireId !== wireId) return;
-    this.dropMesh(c);
     this.chunks.delete(k);
+    this.markBlock(c.cx, c.cz);
     this.markLoaded(c.cx, c.cz, false);
     this.refreshNormals(c.cx, c.cz, false);
   }
@@ -195,12 +215,44 @@ export class TerrainRenderer {
     return this.keyOfWire.keys();
   }
 
-  /** Once per frame: upload the loaded-chunk mask if it changed. */
-  update(): void {
+  /**
+   * Once per frame: move chunks to the LOD ring the camera (world x, z) puts
+   * them in, rebuild the blocks that changed, and upload the loaded-chunk
+   * mask if it changed. Without a camera every chunk stays full detail.
+   */
+  update(camera?: { x: number; z: number }): void {
+    if (camera) {
+      const cx = Math.floor(camera.x / this.chunkWorldSize);
+      const cz = Math.floor(camera.z / this.chunkWorldSize);
+      if (!this.camChunk || this.camChunk.cx !== cx || this.camChunk.cz !== cz) {
+        this.camChunk = { cx, cz };
+        for (const c of this.chunks.values()) {
+          const stride = this.strideAt(c.cx, c.cz);
+          if (stride !== c.stride) {
+            c.stride = stride;
+            this.markBlock(c.cx, c.cz);
+          }
+        }
+      }
+    }
+    for (const [bk, b] of this.blocks) if (b.dirty) this.rebuildBlock(bk, b);
     if (this.maskDirty && this.mask) {
       this.mask.texture.needsUpdate = true;
       this.maskDirty = false;
     }
+  }
+
+  /** Near-terrain cost (perf HUD, tests); current as of the last update(). */
+  get stats(): TerrainStats {
+    let drawCalls = 0;
+    let triangles = 0;
+    for (const b of this.blocks.values()) if (b.mesh) drawCalls++;
+    const chunksPerStride: Record<number, number> = {};
+    for (const c of this.chunks.values()) {
+      chunksPerStride[c.stride] = (chunksPerStride[c.stride] ?? 0) + 1;
+      triangles += chunkCost(c.stride).triangles;
+    }
+    return { chunks: this.chunks.size, drawCalls, triangles, chunksPerStride };
   }
 
   setWireframe(on: boolean): void {
@@ -228,10 +280,9 @@ export class TerrainRenderer {
     return tileHeightAt(c.heights, x - cx * this.chunkWorldSize, z - cz * this.chunkWorldSize, this.chunkWorldSize);
   }
 
-  /** The normals of a loaded chunk's mesh (tests). */
+  /** The full-detail normals of a loaded chunk (tests). */
   normalsOf(cx: number, cz: number): Float32Array | null {
-    const c = this.chunks.get(key(cx, cz));
-    return c ? (c.mesh.geometry.getAttribute("normal").array as Float32Array) : null;
+    return this.chunks.get(key(cx, cz))?.normals ?? null;
   }
 
   /** Whether the far horizon hides itself over chunk (cx, cz) (tests). */
@@ -242,7 +293,8 @@ export class TerrainRenderer {
   }
 
   dispose(): void {
-    for (const c of this.chunks.values()) this.dropMesh(c);
+    for (const b of this.blocks.values()) this.dropBlockMesh(b);
+    this.blocks.clear();
     this.chunks.clear();
     this.keyOfWire.clear();
     this.disposeWorld();
@@ -261,14 +313,55 @@ export class TerrainRenderer {
   private computeNormals(cx: number, cz: number): void {
     const c = this.chunks.get(key(cx, cz));
     if (!c) return;
-    const attr = c.mesh.geometry.getAttribute("normal") as THREE.BufferAttribute;
     chunkNormals(
       c.heights,
       (dx, dz) => this.chunks.get(key(cx + dx, cz + dz))?.heights ?? null,
       this.spacing,
-      attr.array as Float32Array,
+      c.normals,
     );
-    attr.needsUpdate = true;
+    this.markBlock(cx, cz);
+  }
+
+  private strideAt(cx: number, cz: number): number {
+    return this.camChunk ? strideForRing(ringOf(cx, cz, this.camChunk.cx, this.camChunk.cz)) : 1;
+  }
+
+  private markBlock(cx: number, cz: number): void {
+    const bk = blockKey(cx, cz);
+    const b = this.blocks.get(bk);
+    if (b) b.dirty = true;
+    else this.blocks.set(bk, { mesh: null, dirty: true });
+  }
+
+  private rebuildBlock(bk: string, b: Block): void {
+    b.dirty = false;
+    this.dropBlockMesh(b);
+    const [bx, bz] = bk.split(",").map(Number);
+    const members: LodChunk[] = [];
+    for (let dz = 0; dz < BLOCK; dz++) {
+      for (let dx = 0; dx < BLOCK; dx++) {
+        const c = this.chunks.get(key(bx * BLOCK + dx, bz * BLOCK + dz));
+        if (c) members.push(c);
+      }
+    }
+    if (members.length === 0) {
+      this.blocks.delete(bk);
+      return;
+    }
+    const ox = bx * BLOCK * this.chunkWorldSize;
+    const oz = bz * BLOCK * this.chunkWorldSize;
+    const mesh = new THREE.Mesh(buildBlockGeometry(members, this.chunkWorldSize, ox, oz), this.nearMaterial);
+    mesh.position.set(ox, 0, oz);
+    mesh.name = `terrain block ${bk}`;
+    this.group.add(mesh);
+    b.mesh = mesh;
+  }
+
+  private dropBlockMesh(b: Block): void {
+    if (!b.mesh) return;
+    this.group.remove(b.mesh);
+    b.mesh.geometry.dispose();
+    b.mesh = null;
   }
 
   private markLoaded(cx: number, cz: number, on: boolean): void {
@@ -278,11 +371,6 @@ export class TerrainRenderer {
     if (cx < b.minCx || cx > b.maxCx || cz < b.minCz || cz > b.maxCz) return;
     m.data[(cz - b.minCz) * m.width + (cx - b.minCx)] = on ? 255 : 0;
     this.maskDirty = true;
-  }
-
-  private dropMesh(c: NearChunk): void {
-    this.group.remove(c.mesh);
-    c.mesh.geometry.dispose();
   }
 
   /** Bind the surfaces to the materials when there are both surfaces and a world map. */
