@@ -30,6 +30,7 @@ import {
   type ChatChannel,
   type FriendMessage,
   type FriendsState,
+  type BlocksState,
   type GuildMessage,
   type PartyMessage,
   type PartyState,
@@ -85,6 +86,8 @@ export interface MirrorEvents {
   onParty?(p: PartyState): void;
   onGuild?(g: GuildState): void;
   onFriends?(f: FriendsState): void;
+  /** The block list (U8), on login and after each block or unblock. */
+  onBlocks?(b: BlocksState): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
@@ -583,10 +586,11 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState>(payload);
         if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
+        else if (m.kind === "blocks") this.events.onBlocks?.(m);
         else this.events.onChat?.(m);
         break;
       }

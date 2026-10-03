@@ -8,6 +8,7 @@ export type ChatCommand =
   | { kind: "party"; op: PartyMessage["op"]; name?: string }
   | { kind: "guild"; op: GuildMessage["op"]; name?: string; tag?: string; rank?: GuildRank; text?: string }
   | { kind: "friend"; name: string; on: boolean }
+  | { kind: "block"; name: string; on: boolean }
   | { kind: "error"; text: string };
 
 const RANKS = new Set(["recruit", "member", "officer", "leader"]);
@@ -57,6 +58,9 @@ export function parseChatCommand(line: string, channel: ChatChannel): ChatComman
   if (PLAIN_OPS.has(op)) return { kind: "party", op: op as PartyMessage["op"] };
   if (op === "friend" || op === "unfriend") {
     return arg ? { kind: "friend", name: arg, on: op === "friend" } : { kind: "error", text: `/${op} needs a name` };
+  }
+  if (op === "block" || op === "unblock") {
+    return arg ? { kind: "block", name: arg, on: op === "block" } : { kind: "error", text: `/${op} needs a name` };
   }
   const guild = parseGuildOp(op, rest, arg);
   if (guild) return guild;

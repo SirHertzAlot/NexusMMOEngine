@@ -60,6 +60,7 @@ import {
   type ChatBroadcast,
   type PartyState,
   type FriendsState,
+  type BlocksState,
   type GuildState,
   type DebugQuery,
   type DebugResponse,
@@ -1863,23 +1864,41 @@ export class Gateway {
       return;
     }
     const key = parsed.data.name.toLowerCase();
-    let account: string | undefined;
-    for (const r of this.sessions.values()) {
-      if ((r.character?.name ?? r.username).toLowerCase() === key) account = r.username;
+    // Unblocking matches the block list first, so a character who is offline can still come off it (U8).
+    if (!parsed.data.on) {
+      const listed = this.blocks.accountNamed(s.username, parsed.data.name);
+      if (listed !== undefined) {
+        this.blocks.remove(s.username, listed);
+        this.sendSystem(s, `unblocked ${parsed.data.name}`);
+        this.pushBlocks(s);
+        return;
+      }
     }
-    // Only online characters resolve until the character store is asked by name.
-    if (account === undefined) {
+    let target: ClientSession | undefined;
+    for (const r of this.sessions.values()) {
+      if ((r.character?.name ?? r.username).toLowerCase() === key) target = r;
+    }
+    // Blocking resolves only online characters until the character store is asked by name.
+    if (target === undefined) {
       this.sendSystem(s, NOT_ONLINE);
       return;
     }
+    const account = target.username;
     if (!parsed.data.on) {
       this.blocks.remove(s.username, account);
       this.sendSystem(s, `unblocked ${parsed.data.name}`);
-    } else if (this.blocks.add(s.username, account)) {
+    } else if (this.blocks.add(s.username, account, target.character?.name ?? target.username)) {
       this.sendSystem(s, `blocked ${parsed.data.name}`);
     } else {
       this.sendSystem(s, "cannot block");
     }
+    this.pushBlocks(s);
+  }
+
+  /** Send a session its block list (U8). */
+  private pushBlocks(s: ClientSession): void {
+    const msg: BlocksState = { kind: "blocks", blocked: this.blocks.names(s.username) };
+    this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
   }
 
   /**
@@ -2480,6 +2499,7 @@ export class Gateway {
     for (const n of this.guilds.guildOf(who)) this.pushGuild(n);
     this.pushGuild(who);
     this.pushFriends(who);
+    this.pushBlocks(s);
     this.friendPresence(s);
   }
 

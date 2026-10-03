@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
-import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
+import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
@@ -130,6 +130,7 @@ export function App(): React.ReactElement {
   const [party, setParty] = useState<PartyState | null>(null);
   const [guild, setGuild] = useState<GuildState | null>(null);
   const [friends, setFriends] = useState<FriendsState | null>(null);
+  const [blocked, setBlocked] = useState<BlocksState["blocked"]>([]);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
   const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
@@ -176,6 +177,7 @@ export function App(): React.ReactElement {
       onParty: setParty,
       onGuild: setGuild,
       onFriends: setFriends,
+      onBlocks: (b) => setBlocked(b.blocked),
       onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
       onInventory: (inv) => {
         setBag(inv.bag);
@@ -261,6 +263,7 @@ export function App(): React.ReactElement {
     setParty(null);
     setGuild(null);
     setFriends(null);
+    setBlocked([]);
     setSheet(null);
     setSheetOpen(false);
     setBag(null);
@@ -464,6 +467,9 @@ export function App(): React.ReactElement {
         />
         <FriendsFrame
           friends={friends}
+          blocked={blocked}
+          onBlock={(n) => client?.block(n, true)}
+          onUnblock={(n) => client?.block(n, false)}
           onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
           onRemove={(n) => client?.friend(n, false)}
         />
@@ -476,6 +482,7 @@ export function App(): React.ReactElement {
             if (c.kind === "party") client?.party(c.op, c.name);
             else if (c.kind === "guild") client?.guild(c.op, c);
             else if (c.kind === "friend") client?.friend(c.name, c.on);
+            else if (c.kind === "block") client?.block(c.name, c.on);
             else if (c.kind === "chat") client?.chat(c.channel, c.text, c.to);
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}

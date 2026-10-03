@@ -25,6 +25,8 @@ export interface BlockRow {
   blocker: string;
   /** Blocked account, lowercased. */
   target: string;
+  /** The character name typed when blocking, for the block list (U8); rows from before it carry the account. */
+  name: string;
 }
 
 export interface SocialStore {
@@ -33,7 +35,7 @@ export interface SocialStore {
   addFriend(owner: string, friend: string): void;
   removeFriend(owner: string, friend: string): void;
   loadBlocks(): BlockRow[];
-  addBlock(blocker: string, target: string): void;
+  addBlock(blocker: string, target: string, name?: string): void;
   removeBlock(blocker: string, target: string): void;
 }
 
@@ -54,9 +56,9 @@ export function memorySocialStore(): SocialStore {
       if (i >= 0) friends.splice(i, 1);
     },
     loadBlocks: () => blocks.map((r) => ({ ...r })),
-    addBlock: (blocker, target) => {
+    addBlock: (blocker, target, name = target) => {
       if (!blocks.some((r) => r.blocker === lc(blocker) && r.target === lc(target))) {
-        blocks.push({ blocker: lc(blocker), target: lc(target) });
+        blocks.push({ blocker: lc(blocker), target: lc(target), name });
       }
     },
     removeBlock: (blocker, target) => {
@@ -77,6 +79,7 @@ CREATE TABLE IF NOT EXISTS friends (
 CREATE TABLE IF NOT EXISTS blocks (
   blocker TEXT NOT NULL,
   target TEXT NOT NULL,
+  name TEXT,
   PRIMARY KEY (blocker, target)
 );
 `;
@@ -101,10 +104,13 @@ export class SqliteSocialStore implements SocialStore {
       this.db = target;
     }
     this.db.exec(DDL);
+    // social.db files from before the block list (U8) lack the name column.
+    const cols = this.db.prepare("PRAGMA table_info(blocks)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "name")) this.db.exec("ALTER TABLE blocks ADD COLUMN name TEXT");
     this.stmts = {
       addFriend: this.db.prepare("INSERT OR IGNORE INTO friends (owner, friend_key, friend) VALUES (?, ?, ?)"),
       removeFriend: this.db.prepare("DELETE FROM friends WHERE owner = ? AND friend_key = ?"),
-      addBlock: this.db.prepare("INSERT OR IGNORE INTO blocks (blocker, target) VALUES (?, ?)"),
+      addBlock: this.db.prepare("INSERT OR IGNORE INTO blocks (blocker, target, name) VALUES (?, ?, ?)"),
       removeBlock: this.db.prepare("DELETE FROM blocks WHERE blocker = ? AND target = ?"),
     };
   }
@@ -122,11 +128,11 @@ export class SqliteSocialStore implements SocialStore {
   }
 
   loadBlocks(): BlockRow[] {
-    return this.db.prepare("SELECT blocker, target FROM blocks ORDER BY rowid").all() as BlockRow[];
+    return this.db.prepare("SELECT blocker, target, COALESCE(name, target) AS name FROM blocks ORDER BY rowid").all() as BlockRow[];
   }
 
-  addBlock(blocker: string, target: string): void {
-    this.stmts.addBlock.run(lc(blocker), lc(target));
+  addBlock(blocker: string, target: string, name: string = target): void {
+    this.stmts.addBlock.run(lc(blocker), lc(target), name);
   }
 
   removeBlock(blocker: string, target: string): void {
