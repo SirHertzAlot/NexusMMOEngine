@@ -281,6 +281,7 @@ can add workspaces of their own.
 | **Live ops** | the admin console (A1 to A5); players, accounts, parties, guilds, friends; chat and event log; the item ledger and checkpoints; play telemetry (T2) |
 | **Network** | edge routes and modules; edge-core channel health; `/metrics` with links out to Prometheus and Grafana (edge E6); the world server and regions; ingress limits |
 | **Debug** | the debugger's panels and performance graphs (E5); tick and per-system timings; wireframe and FX showcase; valgrind perf baseline and memcheck results |
+| **Database** | every SQLite table, edited through the persistence core; read-only queries and plans; statement timings, caches and pragmas; the audit log (§7b) |
 
 Modules and content (the Modules window, the content browser, the art pack
 scan and import) are reachable from every workspace.
@@ -722,6 +723,123 @@ running server through `RulesReloader` without a restart; editor modules
 and sidecars reload in place; only server and native module changes need
 the play restart.
 
+## 7b. The database editor and the persistence core
+
+The engine persists to SQLite through `better-sqlite3`, every file in WAL
+mode under `MMO_DATA_DIR`:
+
+| File | Tables | Owner |
+|---|---|---|
+| `world.db` | `meta`, `snapshots`, `events`, `chunk_entities`, `formation_tiles_v2`, `item_events` (the item ledger), `terrain_tiles`, `world_maps` | `SnapshotStore`, `ChunkEntityStore`, `FormationTileStore`, `ItemLedger`, `TerrainTileStore` |
+| `characters.db` | `characters`, `deaths`, `character_state`, `character_skills` | `SqliteCharacterStore` |
+| `guilds.db`, `social.db` | guilds, members, guild log; friends, blocks | the guild and social stores |
+| `navmesh.db` (in the navmesh directory) | `navmesh_tiles` | the navmesh store |
+
+The editor's **Database** workspace (§3.3) browses and edits all of it.
+
+### 7b.1 Writes go through the persistence core
+
+The running server is the only writer. Its stores hold prepared
+statements and in-memory state that mirrors the rows (the ItemService's
+columns, loaded characters, guild books), the ledger is append-only, and
+WAL allows one writer at a time. An editor that wrote the files directly
+would be overwritten on the next flush or leave the server believing
+something the disk no longer says. So the editor never opens a game
+database for writing. It sends requests to a **persistence core**:
+
+- **`PersistenceCore`** is a facade in engine-core that holds every store
+  the server opens and answers five request types: `catalog` (databases,
+  tables, columns, indexes, row counts, sizes), `query` (read), `mutate`
+  (write), `explain` (query plans) and `stats` (statements, caches,
+  pragmas).
+- **Transport**: admin-only methods on the server's existing webrpc HTTP
+  endpoint (`net/rpc-http.ts`, Bearer session token), e.g.
+  `POST /rpc/Persistence/Mutate`. Only admin accounts (A1) may call them.
+  The editor's host proxies them for the play server; after the edge split
+  they ride the edge-core channel like any other core packet.
+- **Reads never touch the tick.** `query` runs on a separate read-only
+  connection (`readonly: true`, `PRAGMA query_only`) in a worker thread,
+  with a row limit and a cancel, so a heavy query cannot stall the 30 Hz
+  loop. WAL lets it read a consistent snapshot while the server writes.
+- **Writes are typed mutations, not SQL.** A mutation names a table, a key
+  and the new values (`{ db: "characters", table: "character_state",
+  key: { character_id: 12 }, set: { health: 100 } }`). The core validates
+  it against the owning store's schema, queues it, and applies it between
+  ticks on the tick thread *through the store's own methods*, so the
+  in-memory state and the row change together. The reply says which tick
+  applied it.
+- **Append-only tables stay append-only.** An edit to an item becomes a
+  new ledger event (a move, a durability change, a destroy tombstone),
+  never an `UPDATE`. Snapshots and `events` are read-only in the editor.
+- **Every write is audited and undoable.** The core records each mutation
+  with its before-image, the admin and the tick in an `admin_log` table;
+  undo in the editor sends the inverse mutation.
+- **Offline**: with no server running, the editor's host opens the files
+  read-only (as the Characters panel already does with `openReadOnlyDb` in
+  `host.ts`), and the grid says "start the server to edit". A separate
+  **maintenance mode** (server stopped, host holds the files exclusively)
+  allows migrations, `VACUUM` and `ANALYZE`, and always takes a backup
+  first with SQLite's online backup (`db.backup()`).
+
+### 7b.2 Database functions for caching and fast execution
+
+The core also owns the functions that make reads cheap and writes batch:
+
+- **A named statement registry.** Every query the stores run is prepared
+  once at boot under a name (`characters.byId`, `ledger.latestForItem`)
+  instead of being prepared ad hoc. The registry counts calls and times
+  them (p50, p99), and the editor lists them with their query plans, so a
+  slow statement shows up before it hurts a tick.
+- **Application-defined SQL functions**, registered on every connection
+  with `db.function(name, { deterministic: true }, fn)`: `wire_id(gen,
+  slot)`, `chunk_of(x, z)`, `dist2(x, z, x0, z0)`, `item_def(def)` (the
+  definition's name), and `fb_field(blob, path)` to read one field out of
+  a FlatBuffers blob. Being deterministic, they can back **expression
+  indexes and generated columns**, e.g. an index on
+  `item_events(chunk_of(x, z))` for "what lies in this chunk" without a
+  scan. They also make the editor's read queries readable.
+- **Cache tables kept by the core.** `item_latest` (each item's newest
+  ledger row) is maintained at each flush, so a restart and the editor
+  read one row per item instead of scanning history; it can always be
+  rebuilt from the ledger. Other derived tables (a character's equipped
+  items, a guild's online count) follow the same rule: derived, rebuilt on
+  demand, never the source of truth.
+- **Read-through memory caches** for hot lookups (a character by id, a
+  guild roster, an item definition) with explicit invalidation: because
+  every write goes through the core, the core knows exactly which keys a
+  mutation touched. Hit rate, size and evictions show in the editor.
+- **Batched writes**, the pattern the ledger and the character saves
+  already use: mutations and game writes queue in preallocated buffers and
+  flush in one transaction on the save timer, off the tick. The editor
+  shows flush sizes and times.
+- **Pragmas as data.** `cache_size`, `mmap_size`, `temp_store`, the WAL
+  size limit and checkpoint cadence are per-database settings in a rules
+  file, validated like the others, shown live in the editor with the WAL
+  size and checkpoint history. `PRAGMA optimize` runs at shutdown and on a
+  timer.
+- **Modules contribute** functions, statements, cache tables and their
+  migrations through a `persistence` key in their manifest (§4), so a
+  module's tables appear in the Database workspace with no editor code.
+
+Any of these that run on the tick thread (cache lookups, statement calls
+from systems) fall under the valgrind perf rule: the slice that adds them
+runs `npm run valgrind:perf` and states what moved.
+
+### 7b.3 The Database workspace
+
+- **Schema tree**: databases → tables → columns and indexes, with row
+  counts, sizes and the owning store.
+- **Data grid** (the §3.3 table pattern): paged rows with filters and
+  sort; inline edits collect as **pending mutations** in a bar
+  ("3 changes · Send to core"), and each shows the tick that applied it or
+  why the core refused it.
+- **Query tab**: a read-only SQL editor with the registered functions in
+  autocomplete, results in the grid, and `EXPLAIN QUERY PLAN` as a tree
+  that flags full scans.
+- **Performance panel**: the statement registry with timings, cache hit
+  rates, pragmas, WAL size and checkpoints.
+- **Audit log**: every mutation, who sent it, its tick, with undo.
+
 ## 8. Packages and folders
 
 | New | What it holds |
@@ -797,9 +915,11 @@ the roadmap thread adds them.
 | EA13 | **Existing tools as modules.** Debugger, PICG, dungeon and world tools (E5 to E9) move to their own modules | EA3 and each tool | each can be disabled on its own |
 | EA14 | **The play menu.** Where (viewport, new window, simulate), start node, 1 to 8 clients with seeded accounts, bots, network (core or edge + core), simulated latency, fresh or saved state; saved play setups with shortcuts; play-mode tint | EA8 | each option works from the menu; a saved "8 clients, 50 bots" setup starts with one key |
 | EA15 | **Fill every workspace.** Each workspace in §3.3 gets its default layout and panels: the Gameplay data grids (Carbon density, batch actions, inline validation, live values), the Live ops and Network dashboards, the Characters panels; a workspace whose feature is not built yet shows what it will hold and which roadmap item brings it | EA3, EA13 | every engine feature in §3.3 is reachable from a workspace; screenshots of each |
+| EA16 | **Persistence core and the Database workspace.** `PersistenceCore` with catalog, query (read-only worker connection), typed mutations applied between ticks through the stores, ledger edits as events, `admin_log` with undo; admin-only webrpc methods; offline read-only and maintenance mode with backup; schema tree, grid with pending mutations, query tab, audit log | A1, EA15 | edit a character's health from the grid and see it in play on the stated tick; an item edit lands as a ledger event; a heavy query does not move tick time |
+| EA17 | **Database functions and caches.** Named statement registry with timings; deterministic SQL functions and an expression index; `item_latest` cache table; read-through caches with invalidation; pragmas as a rules file; module `persistence` contributions; performance panel | EA16 | restore reads `item_latest`; the chunk lookup uses the expression index (plan shows no scan); valgrind perf states what moved |
 
 EA1 to EA3 are the frame; EA4 to EA8 are scenes and the flow; EA9 to EA12
-are engine modules; EA14 and EA15 finish the play menu and the workspaces. The scene track and the module track only meet at EA9,
+are engine modules; EA14 and EA15 finish the play menu and the workspaces; EA16 and EA17 add the database editor and its functions. The scene track and the module track only meet at EA9,
 so they can run in parallel after EA3.
 
 ## 11. Coordination with work in flight
