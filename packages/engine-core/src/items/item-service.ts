@@ -49,7 +49,7 @@ export class ItemService implements SimSystem {
   readonly name = "items";
   readonly defs: ItemDefs;
   readonly store: ItemStore;
-  private readonly loot: LootRules;
+  private loot: LootRules;
   private readonly tickHz: number;
   private readonly groundHeightAt: (x: number, z: number) => number;
   /** Ground item id -> its entity slot. */
@@ -69,6 +69,14 @@ export class ItemService implements SimSystem {
     this.store = new ItemStore(o.loot.bagSlots);
     this.rankOrder = o.rankOrder ?? [];
     this.starterBase = o.starterBase === undefined ? "sword" : o.starterBase;
+  }
+
+  /**
+   * Swap in reloaded loot rules (ED1): ownership, despawn, pickup range and
+   * the ground cap apply from the next tick. The bag size is restart-only.
+   */
+  setLoot(loot: LootRules): void {
+    this.loot = loot;
   }
 
   /** Items lying on the ground. */

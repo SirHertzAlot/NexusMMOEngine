@@ -3,7 +3,8 @@
  * baked loot pool (docs/DUNGEONS-AND-LOOT.md §6) joined with the rules'
  * physics per item base (content/rules/items.json).
  *
- * A definition is static for the server's life. Its name, rank and stats
+ * A definition's identity is static for the server's life (its physics
+ * follow a rules reload, `applyRules`). Its name, rank and stats
  * are strings and maps (read when an item is shown or dropped); what the
  * combat path reads per blow — mass, reach, edge, point, hardness,
  * balance, power, hand — sits in flat typed columns indexed by definition,
@@ -58,6 +59,8 @@ export class ItemDefs {
   readonly hand: Uint8Array;
   /** The plain attack's technique id, per definition. */
   readonly technique: readonly string[];
+  /** Pool seed per definition (picks the model among a base's). */
+  private readonly seeds: Uint32Array;
   private readonly byId: Map<string, number>;
   private readonly bySource = new Map<string, number[]>();
   private readonly byBase = new Map<string, number[]>();
@@ -85,11 +88,10 @@ export class ItemDefs {
     this.power = new Float32Array(n);
     this.hand = new Uint8Array(n);
     this.byId = new Map();
+    this.seeds = new Uint32Array(n);
     for (let i = 0; i < n; i++) {
       const it = items[i];
       const base = it.bundle.Identity.base || it.item;
-      const phys: ItemBaseRules = rules.items.bases[base] ?? rules.items.fallback;
-      const model = phys.models.length > 0 ? phys.models[(it.seed >>> 0) % phys.models.length] : "";
       ids.push(it.id);
       names.push(it.bundle.Identity.name);
       bases.push(base);
@@ -97,18 +99,10 @@ export class ItemDefs {
       colors.push(it.bundle.Rank.color);
       sources.push(it.source);
       stats.push(it.bundle.Stats);
-      models.push(model);
-      technique.push(phys.technique);
-      this.assetHash[i] = model ? fnv1a32(model) : 0;
-      this.mass[i] = phys.mass;
-      this.length[i] = phys.length;
-      this.edge[i] = phys.edge;
-      this.point[i] = phys.point;
-      this.hardness[i] = phys.hardness;
-      this.balance[i] = phys.balance;
-      this.durability[i] = phys.durability;
+      models.push("");
+      technique.push("");
+      this.seeds[i] = it.seed >>> 0;
       this.power[i] = it.bundle.Stats.power ?? 0;
-      this.hand[i] = HAND_CODE[phys.hand];
       // Pool ids are unique except for re-rolled commons; the first wins.
       if (!this.byId.has(it.id)) this.byId.set(it.id, i);
       push(this.bySource, it.source, i);
@@ -123,6 +117,32 @@ export class ItemDefs {
     this.stats = stats;
     this.models = models;
     this.technique = technique;
+    this.applyRules(rules);
+  }
+
+  /**
+   * Fill the per-base physics from the rules: at construction, and again
+   * in place when the rules reload (ED1). An item already dropped keeps
+   * the model it was shown with until it is dropped again.
+   */
+  applyRules(rules: Pick<Rules, "items">): void {
+    const models = this.models as string[];
+    const technique = this.technique as string[];
+    for (let i = 0; i < this.count; i++) {
+      const phys: ItemBaseRules = rules.items.bases[this.bases[i]] ?? rules.items.fallback;
+      const model = phys.models.length > 0 ? phys.models[this.seeds[i] % phys.models.length] : "";
+      models[i] = model;
+      technique[i] = phys.technique;
+      this.assetHash[i] = model ? fnv1a32(model) : 0;
+      this.mass[i] = phys.mass;
+      this.length[i] = phys.length;
+      this.edge[i] = phys.edge;
+      this.point[i] = phys.point;
+      this.hardness[i] = phys.hardness;
+      this.balance[i] = phys.balance;
+      this.durability[i] = phys.durability;
+      this.hand[i] = HAND_CODE[phys.hand];
+    }
   }
 
   /** Definition index for a pool id, or -1. */

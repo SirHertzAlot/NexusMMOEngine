@@ -30,7 +30,10 @@ export class LootDropper {
   private state: number;
   private readonly pool: readonly number[];
 
+  private creatures: CreaturesRules["creatures"];
+
   constructor(private readonly opts: LootDropperOptions) {
+    this.creatures = opts.creatures;
     this.state = opts.seed ?? 20261003;
     this.pool = opts.defs.ofSource("mob");
   }
@@ -44,7 +47,7 @@ export class LootDropper {
   onDeath(sim: SimWorld, ev: LifeEvent): number {
     if (ev.state !== "dead" || this.pool.length === 0) return 0;
     const kind = this.opts.kindOf(ev.target);
-    const rules = kind === undefined ? undefined : this.opts.creatures[kind]?.drops;
+    const rules = kind === undefined ? undefined : this.creatures[kind]?.drops;
     if (!rules) return 0;
     const [lo, hi] = rules.rolls;
     const rolls = lo + Math.floor(this.rand() * (Math.max(hi, lo) - lo + 1));
@@ -61,5 +64,10 @@ export class LootDropper {
       n++;
     }
     return n;
+  }
+
+  /** Swap the creature table (rules hot reload, ED1). */
+  setCreatures(creatures: CreaturesRules["creatures"]): void {
+    this.creatures = creatures;
   }
 }
