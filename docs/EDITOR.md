@@ -88,6 +88,21 @@ The **Play Mode** tab drives a full local loop:
      first use, so the other tabs never download the renderer. Terrain
      surfaces come from the client's `public/` folder (the editor's
      `publicDir`), when fetched.
+   - **Debugger** (ROADMAP E5) — the developer client's own dockable
+     panels (`DevHud`, `PerfHud`, `AdminConsole`, through
+     `@mmo-engine/client/debug`) drawn over the game view: drag a panel
+     by its title, resize it from its corner, fade, fold or close it; the
+     "dev" menu reopens panels or resets the layout, and ` hides them all.
+     *status* (tick, time, weather, fps, entities, position, movement,
+     the GPU, a warning on software rendering), *performance* (the last
+     minute of fps, frame time, draw calls and triangles over every pass,
+     props by level of detail, GPU memory, network in and out, JS heap),
+     *tools* (wireframe terrain, quality preset, FX showcase, maximize the
+     view to the window — Esc restores it — and the admin console) and
+     *controls* (the key bindings). The panels sit inside the view and
+     follow its size; the layout is kept per browser. The play server
+     lists the editor's play user in `MMO_ADMINS`, so the admin console
+     works on the server the editor owns.
 4. **Stop** — disconnects the client, kills the owned server process
    group, and restores the pre-play editor state (form fields, auto-
    refresh, entity selection).

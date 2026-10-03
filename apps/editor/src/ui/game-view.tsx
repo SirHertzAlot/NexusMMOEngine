@@ -8,8 +8,10 @@
  * whatever the player sees is what play mode shows.
  *
  * Click into the view to drive the avatar with the client's default key
- * bindings. The renderer's numbers (fps, tick, position) come back once a
- * second through onHud for the panels around the view.
+ * bindings. The renderer's numbers (fps, tick, position, the performance
+ * samples) come back once a second through onHud; children draw over the
+ * view (the debugger's panels, play-debugger.tsx), inside `containerRef`.
+ * Maximized, the view covers the editor window.
  */
 
 import * as React from "react";
@@ -21,6 +23,7 @@ import {
   PcgRpcClient,
   PlaceholderAssets,
   WorldCanvas,
+  type GpuInfo,
   type HudData,
   type QualityTier,
 } from "@mmo-engine/client/render";
@@ -34,7 +37,14 @@ export interface GameViewProps {
   wireframe?: boolean;
   showcase?: boolean;
   quality?: "auto" | QualityTier;
+  /** Cover the editor window instead of sitting in the panel. */
+  maximized?: boolean;
   onHud?: (hud: HudData) => void;
+  onGpu?: (gpu: GpuInfo) => void;
+  onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
+  /** The view's frame, for what draws over it. */
+  containerRef?: React.Ref<HTMLDivElement>;
+  children?: React.ReactNode;
 }
 
 export function GameView({
@@ -44,7 +54,12 @@ export function GameView({
   wireframe = false,
   showcase = false,
   quality = "auto",
+  maximized = false,
   onHud,
+  onGpu,
+  onQuality,
+  containerRef,
+  children,
 }: GameViewProps): React.JSX.Element {
   const [assets] = React.useState(() => new PlaceholderAssets());
   const [combat] = React.useState(() => new CombatFeedback());
@@ -54,7 +69,12 @@ export function GameView({
   );
   return (
     <div
-      className="relative h-[60vh] min-h-[360px] w-full overflow-hidden rounded-md border border-border bg-black"
+      ref={containerRef}
+      className={
+        maximized
+          ? "fixed inset-0 z-40 overflow-hidden bg-black"
+          : "relative h-[60vh] min-h-[360px] w-full overflow-hidden rounded-md border border-border bg-black"
+      }
       data-testid="game-view"
     >
       <WorldCanvas
@@ -68,7 +88,10 @@ export function GameView({
         quality={quality}
         combat={combat}
         onHud={onHud}
+        onGpu={onGpu}
+        onQuality={onQuality}
       />
+      {children}
     </div>
   );
 }

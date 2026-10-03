@@ -473,6 +473,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
         ...process.env,
         MMO_PORT: String(serverPort),
         MMO_DATA_DIR: dataDir,
+        // The debugger's admin console (E5): the editor's own play user is
+        // an admin of the server it owns, on top of any configured ones.
+        MMO_ADMINS: [process.env.MMO_ADMINS, username].filter(Boolean).join(","),
       },
       stdio: ["ignore", "pipe", "pipe"],
       shell: npm.shell,
