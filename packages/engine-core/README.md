@@ -103,7 +103,7 @@ Channel packets the core answers:
 
 | Type | Payload → answer |
 |---|---|
-| `player.intent` | `{ token, intent: { mx, my, mz, lookYaw, lookPitch, jump, buttons } }` → `{ accepted: true, tick }`; queued for the player that session is in the world as, sanitized like a socket intent; refused (`error`) without a player |
+| `player.intent` | `{ token, intent: { mx, my, mz, lookYaw, lookPitch, jump, buttons } }` → `{ accepted: true, tick }`, queued for the player that session is in the world as and sanitized like a socket intent; or `{ accepted: false, reason, tick }` with `reason` `no_session`, `no_player` or `bad_intent`. A malformed payload answers an `error` |
 | `auth.login` | `{ username, password }` → `{ ok: true, token, playerId }` or `{ ok: false, reason }`; the gateway's own password check and rate limit |
 | `session.validate` | `{ token }` → `{ valid }` |
 | `core.sync` | `{}` → `{ tick, sessionIds }` (every live token) |

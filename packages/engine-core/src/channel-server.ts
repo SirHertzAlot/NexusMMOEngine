@@ -77,7 +77,9 @@ export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHo
       case "player.intent": {
         const o = obj(p.payload);
         const result = host.queueTokenIntent(str(o, "token", 128), intentOf(o.intent));
-        if (result !== "ok") throw new Error(`intent refused: ${result}`);
+        // A refusal is an answer, not a failure: the edge maps channel
+        // failures to core.unavailable, which would misreport it.
+        if (result !== "ok") return { accepted: false, reason: result, tick: host.serverTick };
         counters.intentsAccepted++;
         return { accepted: true, tick: host.serverTick };
       }
