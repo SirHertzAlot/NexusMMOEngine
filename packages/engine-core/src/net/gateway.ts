@@ -68,6 +68,8 @@ import {
   type BodyMessage,
   type TreatmentMessage,
   type SkillsMessage,
+  type ManaMessage,
+  type SpellMessage,
   type HitMessage,
   type LifeMessage,
   type NamesMessage,
@@ -129,6 +131,7 @@ import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { MasterySystem } from "../stats/mastery-system.js";
+import { Mana, type MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
 import { parseLook, withHeld, withLost, type ModularCatalog } from "@mmo-engine/art/character";
@@ -269,6 +272,11 @@ export interface GatewayOptions {
    */
   body?: BodySystem;
   /**
+   * The magic system in the tick list (mana): each player is sent their
+   * mana (0x1c) as it changes, and casts spells through it. Default: none.
+   */
+  magic?: MagicSystem;
+  /**
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
    */
@@ -351,6 +359,17 @@ const TreatSchema = z
     stop: z.boolean().optional(),
   })
   .strict();
+
+/** 0x1c cast: the spell is checked against the rules by MagicSystem. */
+const CastSchema = z
+  .object({
+    kind: z.literal("cast"),
+    spell: z.string().min(1).max(32).optional(),
+    target: z.string().regex(/^\d{1,20}$/).optional(),
+    stop: z.boolean().optional(),
+  })
+  .strict()
+  .refine((m) => m.stop === true || m.spell !== undefined);
 
 /**
  * Despawn login avatars restored from a snapshot. In a gateway-owned
@@ -514,6 +533,7 @@ export class Gateway {
       | "groundHeightAt"
       | "mastery"
       | "body"
+      | "magic"
       | "creatures"
       | "spawnPoint"
       | "worldInfo"
@@ -554,9 +574,11 @@ export class Gateway {
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
   private readonly body: BodySystem | null;
+  private readonly magic: MagicSystem | null;
   /** The body message last sent to each session, as its JSON (see sendBody). */
   private readonly bodySent = new WeakMap<ClientSession, string>();
   private readonly skillsSent = new WeakMap<ClientSession, string>();
+  private readonly manaSent = new WeakMap<ClientSession, string>();
   /** Play counters and tick timing (T2); read by the admin `stats` command. */
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
@@ -656,6 +678,7 @@ export class Gateway {
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.mastery = opts.mastery ?? null;
     this.body = opts.body ?? null;
+    this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
@@ -827,6 +850,7 @@ export class Gateway {
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
+    this.sendSpells(sim);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -1074,6 +1098,7 @@ export class Gateway {
       }
       this.sendStats(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
+      if (tick % BODY_EVERY_TICKS === 0) this.sendMana(s, tick);
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
   }
@@ -1100,6 +1125,46 @@ export class Gateway {
     if (!force && this.bodySent.get(s) === json) return;
     this.bodySent.set(s, json);
     this.deliver(s, encodeEnvelope(MessageType.Body, encodeControl(msg)), tick);
+  }
+
+  /**
+   * The player's own mana (catalog 0x1c), when it changed (to a whole
+   * point) since last sent; `force` sends it regardless (joining, re-attaching).
+   */
+  private sendMana(s: ClientSession, tick: number, force = false): void {
+    if (!this.magic || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return;
+    this.magic.ensure(this.world, eid);
+    const msg: ManaMessage = { kind: "mana", current: Math.floor(Mana.current[eid]), max: Math.round(Mana.max[eid]) };
+    const json = JSON.stringify(msg);
+    if (!force && this.manaSent.get(s) === json) return;
+    this.manaSent.set(s, json);
+    this.deliver(s, encodeEnvelope(MessageType.Magic, encodeControl(msg)), tick);
+  }
+
+  /** Tell casters and targets how their casts go (catalog 0x1c). */
+  private sendSpells(sim: SimWorld): void {
+    if (!this.magic) return;
+    const events = this.magic.drainEvents();
+    if (events.length === 0) return;
+    for (const r of this.sessions.values()) {
+      if (!r.welcomed || r.playerEntity === null) continue;
+      const avatar = sim.resolveWireId(r.playerEntity);
+      for (const ev of events) {
+        if (ev.caster !== avatar && ev.target !== avatar) continue;
+        const m: SpellMessage = {
+          kind: "spell",
+          caster: String(sim.wireId(ev.caster)),
+          target: String(sim.wireId(ev.target)),
+          spell: ev.spell,
+          state: ev.state,
+          ...(ev.seconds !== undefined ? { seconds: Math.round(ev.seconds * 10) / 10 } : {}),
+          ...(ev.amount !== undefined ? { amount: Math.round(ev.amount * 10) / 10 } : {}),
+        };
+        this.sendEnvelope(r, MessageType.Magic, encodeControl(m));
+      }
+    }
   }
 
   /**
@@ -1364,6 +1429,9 @@ export class Gateway {
         break;
       case MessageType.Treat:
         this.onTreat(s, payload);
+        break;
+      case MessageType.Magic:
+        this.onCast(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -1665,6 +1733,8 @@ export class Gateway {
       if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
       const r = applyHeal(this.world, target.wireId);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+      const healed = this.world.resolveWireId(target.wireId);
+      if (this.magic && healed >= 0) this.magic.refill(this.world, healed);
       return { kind: "admin", command, ok: true, message: r.message };
     }
     if (command === "injure") {
@@ -2210,6 +2280,7 @@ export class Gateway {
       this.sendStats(known, this.tick, true);
       this.sendBody(known, this.tick, true);
       this.sendSkills(known, this.tick, true);
+      this.sendMana(known, this.tick, true);
       this.sendInventory(known);
       return;
     }
@@ -2278,6 +2349,7 @@ export class Gateway {
     this.sendStats(s, this.tick, true);
     this.sendBody(s, this.tick, true);
     this.sendSkills(s, this.tick, true);
+    this.sendMana(s, this.tick, true);
     this.sendInventory(s);
   }
 
@@ -2786,6 +2858,51 @@ export class Gateway {
       return;
     }
     const err = this.body.treat(sim, healer, patient, parsed.data.part);
+    if (err) this.sendError(s, 4005, err);
+  }
+
+  /**
+   * Cast a spell (catalog 0x1c): on yourself or a character in reach. In-world
+   * sessions only; shares the pickup bucket. A bad shape is 4003, a refusal
+   * (unknown spell, too far, cooling down, not enough mana) 4005; how it
+   * goes comes back as `spell` events.
+   */
+  private onCast(s: ClientSession, payload: Uint8Array): void {
+    if (!this.magic || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "cast outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed cast");
+      return;
+    }
+    const parsed = CastSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed cast");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const caster = sim.resolveWireId(s.playerEntity);
+    if (caster < 0) return;
+    if (parsed.data.stop) {
+      this.magic.stop(caster);
+      return;
+    }
+    const target = parsed.data.target === undefined ? caster : sim.resolveWireId(BigInt(parsed.data.target));
+    if (target < 0) {
+      this.sendError(s, 4005, "no one to cast on");
+      return;
+    }
+    const err = this.magic.cast(sim, caster, parsed.data.spell!, target);
     if (err) this.sendError(s, 4005, err);
   }
 

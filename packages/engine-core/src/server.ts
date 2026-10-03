@@ -117,6 +117,7 @@ import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
+import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
@@ -490,6 +491,7 @@ async function main(): Promise<void> {
     itemDefs.defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
     mastery.setDisciplines(g.rules.disciplines.disciplines);
+    magic.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
   const combatSkills: CombatSkills = {
@@ -506,6 +508,8 @@ async function main(): Promise<void> {
   // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
   const body = new BodySystem(game.rules.body, hooks, game.rules.appearance, combatSkills);
   bodyRef = body;
+  // Mana and spells: casting heals (Mend) spends it.
+  const magic = new MagicSystem(game.rules.spells);
   const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
@@ -515,12 +519,13 @@ async function main(): Promise<void> {
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
     body,
+    magic,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).

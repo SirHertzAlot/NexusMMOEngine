@@ -69,6 +69,8 @@ export enum MessageType {
   Treat = 0x1a,
   /** S->C the player's skills, item familiarity and disciplines (catalog 0x1b, roadmap M4). JSON. */
   Skills = 0x1b,
+  /** C->S cast a spell; S->C the player's mana and how casts go (catalog 0x1c, roadmap: mana). JSON. */
+  Magic = 0x1c,
 }
 
 /**
@@ -376,7 +378,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 20; // v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
+export const PROTOCOL_VERSION = 21; // v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
