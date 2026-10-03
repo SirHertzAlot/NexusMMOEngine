@@ -15,6 +15,7 @@
 import Database from "better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { SkillSave } from "../stats/mastery.js";
 
 export interface CharacterRecord {
   id: number;
@@ -44,6 +45,23 @@ export interface CharacterStore {
   create(username: string, name: string, look: string, maxPerAccount: number): Promise<CharacterRecord>;
   /** Record a death on the character (rules: recordDeaths). */
   recordDeath?(characterId: number, death: DeathRecord): Promise<void>;
+  /** Save the character's position and vitals (synchronous: the save timer and leaving call it). */
+  saveState?(characterId: number, state: CharacterState): void;
+  /** The last saved state, or null (never saved). */
+  loadState?(characterId: number): CharacterState | null;
+  /** Save the character's skills (M1b; synchronous like saveState). */
+  saveSkills?(characterId: number, skills: SkillSave): void;
+  /** The last saved skills, or null (never saved). */
+  loadSkills?(characterId: number): SkillSave | null;
+}
+
+/** Where a character was and how it was, as of its last save (roadmap P2b). */
+export interface CharacterState {
+  x: number;
+  y: number;
+  z: number;
+  health: number;
+  stamina: number;
 }
 
 export interface DeathRecord {
@@ -75,6 +93,20 @@ CREATE TABLE IF NOT EXISTS deaths (
   killer INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_deaths_character ON deaths(character_id);
+CREATE TABLE IF NOT EXISTS character_state (
+  character_id INTEGER PRIMARY KEY,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  z REAL NOT NULL,
+  health REAL NOT NULL,
+  stamina REAL NOT NULL,
+  saved_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS character_skills (
+  character_id INTEGER PRIMARY KEY,
+  skills TEXT NOT NULL,
+  saved_at INTEGER NOT NULL
+);
 `;
 
 interface Row {
@@ -144,6 +176,43 @@ export class SqliteCharacterStore implements CharacterStore {
       .run(characterId, d.at, d.x, d.z, d.killer);
   }
 
+  saveState(characterId: number, st: CharacterState): void {
+    this.db
+      .prepare(
+        "INSERT INTO character_state (character_id, x, y, z, health, stamina, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT(character_id) DO UPDATE SET x = excluded.x, y = excluded.y, z = excluded.z, health = excluded.health, stamina = excluded.stamina, saved_at = excluded.saved_at",
+      )
+      .run(characterId, st.x, st.y, st.z, st.health, st.stamina, this.clock());
+  }
+
+  loadState(characterId: number): CharacterState | null {
+    const r = this.db
+      .prepare("SELECT x, y, z, health, stamina FROM character_state WHERE character_id = ?")
+      .get(characterId) as CharacterState | undefined;
+    return r ?? null;
+  }
+
+  saveSkills(characterId: number, skills: SkillSave): void {
+    this.db
+      .prepare(
+        "INSERT INTO character_skills (character_id, skills, saved_at) VALUES (?, ?, ?) " +
+          "ON CONFLICT(character_id) DO UPDATE SET skills = excluded.skills, saved_at = excluded.saved_at",
+      )
+      .run(characterId, JSON.stringify(skills), this.clock());
+  }
+
+  loadSkills(characterId: number): SkillSave | null {
+    const r = this.db.prepare("SELECT skills FROM character_skills WHERE character_id = ?").get(characterId) as
+      | { skills: string }
+      | undefined;
+    if (!r) return null;
+    try {
+      return JSON.parse(r.skills) as SkillSave;
+    } catch {
+      return null;
+    }
+  }
+
   close(): void {
     this.db.close();
   }
@@ -160,6 +229,28 @@ export class MemoryCharacterStore implements CharacterStore {
 
   async recordDeath(characterId: number, d: DeathRecord): Promise<void> {
     this.deaths.push({ characterId, ...d });
+  }
+
+  private readonly states = new Map<number, CharacterState>();
+
+  saveState(characterId: number, st: CharacterState): void {
+    this.states.set(characterId, { ...st });
+  }
+
+  loadState(characterId: number): CharacterState | null {
+    const st = this.states.get(characterId);
+    return st ? { ...st } : null;
+  }
+
+  private readonly skills = new Map<number, string>();
+
+  saveSkills(characterId: number, skills: SkillSave): void {
+    this.skills.set(characterId, JSON.stringify(skills));
+  }
+
+  loadSkills(characterId: number): SkillSave | null {
+    const j = this.skills.get(characterId);
+    return j === undefined ? null : (JSON.parse(j) as SkillSave);
   }
 
   async list(username: string): Promise<CharacterRecord[]> {

@@ -20,6 +20,7 @@ a bad file, naming each problem by file and field:
 | `death.json` | Respawn delay and place, what carries over, whether deaths are recorded |
 | `appearance.json` | Which appearance slot draws which body part (hidden when that part is lost) |
 | `items.json` | Each item base's physics (mass, reach, edge, point, hardness, balance, durability), the hand it is held in, the technique a plain attack uses, and the models it can show as; how much a composed item's power adds; fists |
+| `needs.json` | Hunger and thirst: each meter's size, how fast it drains per minute, the health lost per second once it is empty, and how much faster both drain while running or swimming |
 | `loot.json` | Items on the ground and in bags: how long a drop belongs to whoever earned it, when it disappears, pickup range, bag size, the most items on the ground at once |
 
 The schemas, with every field's meaning and default, are in

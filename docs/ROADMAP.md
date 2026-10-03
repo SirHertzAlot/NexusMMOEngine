@@ -57,6 +57,7 @@ Doc: [`EDITOR.md`](EDITOR.md)
 | E8 | D3: dungeon view: pool browser, 3D view, edits as patches | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §3.5 |
 | E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | 📋 | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 4 |
 | E10 | Character record view (read-only) | 📋 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
+| E11 | Rules editor panel: every `content/rules/*.json` editable and validated in the editor | 🚧 | Editor parity for needs, skills, combat and the rest (built by opencode, stacked on E10) |
 
 ## 1b. Admin console: control the running game
 
@@ -87,12 +88,12 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
-| U3 | Hunger and thirst meters | 📋 | Survival needs as rules on the server (new, alongside M1) |
+| U3 | Hunger and thirst meters | ✅ | Survival needs as rules on the server (new, alongside M1). Server side done (`needs.json`, `Needs` component, `NeedsSystem`). Wire and HUD meters deferred (no data on the wire yet; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
 | U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
 | U5 | Nameplates (name, guild tag) | 📋 | C3 |
-| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers/party/guild/reply await S2–S4 |
-| U7 | Party frames | 📋 | S3 |
-| U8 | Social window: friends, presence, blocks, guild roster | 📋 | S2, S4 |
+| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers (S2) and party (S3) commands live (`/w /p /invite /kick /promote /accept /leave`); guild commands live (S4); reply awaits |
+| U7 | Party frames | ✅ | Member list (leader star, online dot, lead/kick for the leader), invite card with accept, leave. Per-member health and region are not on the wire yet, so rows show name and presence only (deferred with the party stats message) |
+| U8 | Social window: friends, presence, blocks, guild roster | 📋 | S2, S4; guild roster ships in the guild frame (S4) |
 | U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills await M1, injuries M2 |
 | U10 | Inventory and equipment | 📋 | M3 (items), C1 crafting (built) |
 | U11 | Quest log and tracker, dialog | 📋 | P1 |
@@ -104,17 +105,18 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
-| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags await S4 |
+| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
-| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | 📋 | 〃 |
+| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not on the wire yet |
+| M1b | Skills saved with the character | ✅ | `character_skills` table in the character store; the gateway saves a character's `SkillSheet` with its state and restores it on entering the world, applying deterioration for the time away |
 | M2 | Body parts, injuries, healing, death and respawn | 📋 | 〃 |
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); the rest is open |
 | M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
-| S2 | Region↔world event stream, presence, whispers, friends, blocks | 📋 | 〃 |
-| S3 | Parties | 📋 | 〃 |
-| S4 | Guilds | 📋 | 〃 |
+| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | 〃 |
+| S3 | Parties | ✅ | 〃 |
+| S4 | Guilds | ✅ | `GuildBook` (500 members, ranks leader/officer/member/recruit, officer invites, MOTD, 200-entry officer log, 60 s invites), guild chat, `GuildState` pushes, tags on the names rows, guild frame + `/g /gcreate /ginvite /gkick /grank /gmotd /gaccept /gleave`. In memory only: no SQLite `GuildStore` yet (guilds reset on restart); `purge` awaits a character-delete path |
 | P1 | Progression graphs: quests and dialog | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
 
 ## 4. World, content and generation
@@ -181,12 +183,12 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | U10a | Inventory and equipment, first cut | 🚧 | Bag grid, item details, drop live (M3a); equip and unequip live (M3b); stats and tooltips later |
 | U12a | Hit feedback and target frame | 📋 | M2a |
 | ED1 | Gameplay tables in the editor: items, creatures, loot and death rules, validated, hot-reloaded | 📋 | M3a; each α1 slice adds its table |
-| P2a | Item ledger: append-only, valid and transaction time, tombstones | 📋 | M3a, L2 |
-| P2b | Character save: position, health, inventory, equipment | 📋 | P2a |
-| P2c | Crash and replay tests over the ledger | 📋 | P2b |
+| P2a | Item ledger: append-only, valid and transaction time, tombstones | ✅ | Bags, hands and ground items survive restarts; owners are entity ids, so P2b maps them to saved characters |
+| P2b | Character save: position, health, inventory, equipment | ✅ | Position, health and stamina saved on the 1 s timer, on leaving and on shutdown, restored on entering; bags and hands already persist via P2a |
+| P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
 | L3 | Pool rebake keeps held items | 📋 | P2a |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | 📋 | |
-| T2 | Play telemetry into the editor's graphs | 📋 | α1 |
+| T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
 
 ---
 
@@ -195,6 +197,19 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
+- **2026-10-03**: S4 guilds: `GuildBook` with injected clock and write-through `GuildStore` (in-memory default; SQLite store and `purge` caller deferred). Ranks and rules enforced server-side, guild chat channel, `GuildState` to members on change, tag on the names fan-out (`Name <TAG>`), `GuildFrame` and guild chat commands in the client. Protocol 15; ops ride 0x11 (`kind:"guild"`). Perf and valgrind not run (paused).
+- **2026-10-03**: S3 parties: `PartyBook` (up to 6, leader invites/kicks/promotes, 60 s invites, 5 min offline removal with leadership to the longest-standing, disband at one), party chat channel, `PartyState` pushed to affected members on every change (in memory; a restart disbands). Protocol 14. Ops ride the 0x11 envelope (`kind:"party"`) because 0x0f is Stats here. Out-of-view frame data (U7) next.
+- **2026-10-03**: U7 party frames: `PartyFrame` over the world canvas shows the party (leader star, online dot, lead/kick for the leader, leave) and a pending invite with accept; chat commands `/invite /kick /promote /accept /leave /p /w` parse client-side. The server lapses invites after 60 s without telling the invitee, so the client hides the card itself after 60 s. Per-member health and region need a wire change (deferred). Perf not run (paused).
+- **2026-10-03**: T2 play telemetry (server): `PlayTelemetry` keeps kills, deaths, pickups, drops and player damage dealt/taken in 10 s buckets (60-bucket ring, preallocated, no tick allocation) plus a tick-time histogram (p50/p99/max). Admin `stats` returns the JSON for the editor graphs (E5).
+- **2026-10-03**: S2 whispers and blocks (in-memory): whisper by character name on 0x11 (`to`), echoed to the sender; unknown, offline, self or blocking targets all answer the same system "not online". Per-account silent blocks (200 limit, `block` message) hide say/yell/whispers from the blocker. Friends, presence, reply and the world-server event stream are deferred.
+
+- **2026-10-03**: M1 mastery core: `SkillSheet` (gain by challenge, slowdown at the top, repeat falloff, related skills, decay with relearn bonus, save/load) and a `MasterySystem` training Swimming and Athletics every 5 s of effort (proposed defaults). Exposure (no weather yet), familiarity, persistence and the wire/character sheet (U9, flatc) deferred. E11 rules editor panel added to the list (editor parity).
+- **2026-10-03**: M1b skill persistence: skills saved with the character (`character_skills`) and restored on enter-world with deterioration applied; `MasterySystem` shared between gateway and tick list.
+- **2026-10-03**: L3 pool rebake keeps held items: `npm run loot:rebake -w @mmo-engine/engine-core -- --db <world.db> --pool <pool.jsonl>` bakes a new pool that keeps every bag and hand item (via the bake's `held`) and appends ledger rows pointing each live item at its new def; unheld ground items whose entry is gone are tombstoned.
+- **2026-10-03**: P2c crash and replay tests over the item ledger (unflushed loss, atomic failed flush, hot-WAL recovery, restart cycles, history replay).
+- **2026-10-03**: U3 hunger and thirst: `content/rules/needs.json` (max, drain per minute, damage per second at zero, exertion factor), a `Needs` component (id 14) and a `NeedsSystem` after stamina. Meters drain by the minute, faster while running or swimming, and hurt Health once empty. Wire/HUD meters deferred, not persisted.
+- **2026-10-03**: P2b character save: `character_state` in characters.db (position, health, stamina), saved on the save timer, eviction, grace expiry and shutdown, restored on enter world; dead or never-saved characters get the ordinary spawn.
+- **2026-10-03**: P2a item ledger: every item change (create, ground, bag, hold, destroy tombstone) appends to `item_events` in world.db with its tick (valid time) and write time (transaction time); flushed on the save timer, restored at boot (ids never reused, ground items get fresh despawn timers). Perf not run (paused).
 - **2026-10-02**: AI1 creatures: `content/rules/creatures.json` (goblin: 60 health, aggro 12 m, leash 30 m, packs of 2-4, dagger/axe/mace, 60 s respawn) drives `CreatureSystem`, a bot-shaped entity whose brain idles, aggros the nearest living character, chases (crowd-steered when navmesh is up), swings through `PlayerIntent`, and leashes home healing. `DeathSystem` takes a per-creature delay and a `place` hook; admin `spawn goblin` drops a pack. Editor tables for the numbers come with ED1.
 - **2026-10-02**: M2b death and respawn: `DeathSystem` (after combat) ends a body's move and walk at 0 Health, asks the rules' `onDeath` for the delay (10 s), and on that tick restores full Health, clears held buttons and puts players at the spawn point (bots rise in place; `nearestVisited` has no visited-anchor tracking yet, so it falls back to the spawn point). The dead neither fight nor are struck. Characters get a `deaths` row when the rules ask. Protocol v13: 0x17 `life`.
 - **2026-10-02**: M3b held weapons: the avatar's appearance JSON carries `Held` models (`withHeld`), the gateway refreshes it on equip and unequip, and the client parents the weapon to `Hand_R`/`Hand_L`. Entering the world outfits the lowest-ranked starter sword once per character per run. Bag shows the two hand slots with equip and unequip buttons. Protocol: 0x13 `equip`/`unequip`, 0x14 `main?`/`off?`.

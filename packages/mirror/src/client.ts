@@ -28,6 +28,10 @@ import {
   type AdminResult,
   type ChatBroadcast,
   type ChatChannel,
+  type GuildMessage,
+  type PartyMessage,
+  type PartyState,
+  type GuildState,
   type CreateCharacterMessage,
   type DebugQuery,
   type DebugResponse,
@@ -73,6 +77,9 @@ export interface MirrorEvents {
   onStats?(s: StatsMessage): void;
   /** A region chat line arrived (roadmap U6, protocol 0x11). */
   onChat?(c: ChatBroadcast): void;
+  /** The player's party changed, or an invite arrived (roadmap S3). */
+  onParty?(p: PartyState): void;
+  onGuild?(g: GuildState): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
 }
@@ -108,8 +115,7 @@ export class MirrorClient {
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
-   * nameplates. Guild tags arrive with guilds (S4); until then each
-   * entry is name-only.
+   * nameplates. A guilded character reads "Name <TAG>" (S4).
    */
   readonly names = new Map<bigint, string>();
   /**
@@ -232,9 +238,34 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "unequip", hand })));
   }
 
-  chat(channel: ChatChannel, text: string): void {
+  chat(channel: ChatChannel, text: string, to?: string): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "chat", channel, text })));
+    const m = to === undefined ? { kind: "chat", channel, text } : { kind: "chat", channel, text, to };
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /** A party op (S3): invite, kick and promote name a character. */
+  party(op: PartyMessage["op"], name?: string): void {
+    if (!this.socket || this.closed) return;
+    const m: PartyMessage = name === undefined ? { kind: "party", op } : { kind: "party", op, name };
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /** A guild op (S4): create takes name and tag, invite/kick/setRank a character, motd text. */
+  guild(op: GuildMessage["op"], f: { name?: string; tag?: string; rank?: GuildMessage["rank"]; text?: string } = {}): void {
+    if (!this.socket || this.closed) return;
+    const m: GuildMessage = { kind: "guild", op };
+    if (f.name !== undefined) m.name = f.name;
+    if (f.tag !== undefined) m.tag = f.tag;
+    if (f.rank !== undefined) m.rank = f.rank;
+    if (f.text !== undefined) m.text = f.text;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /** Block or unblock a character by name (S2). */
+  block(name: string, on: boolean): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "block", name, on })));
   }
 
   private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {
@@ -536,12 +567,15 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        this.events.onChat?.(decodeControl<ChatBroadcast>(payload));
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState>(payload);
+        if (m.kind === "party") this.events.onParty?.(m);
+        else if (m.kind === "guild") this.events.onGuild?.(m);
+        else this.events.onChat?.(m);
         break;
       }
       case MessageType.Names: {
         const { names } = decodeControl<NamesMessage>(payload);
-        for (const [entity, name] of names) this.names.set(BigInt(entity), name);
+        for (const [entity, name, tag] of names) this.names.set(BigInt(entity), tag ? `${name} <${tag}>` : name);
         break;
       }
       case MessageType.Drops: {

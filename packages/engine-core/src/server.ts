@@ -113,6 +113,8 @@ import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
+import { NeedsSystem } from "./stats/needs-system.js";
+import { MasterySystem } from "./stats/mastery-system.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
@@ -122,6 +124,7 @@ import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
+import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 import { ItemService, loadItemDefs } from "./items/index.js";
 
@@ -320,6 +323,8 @@ async function main(): Promise<void> {
   // this connection leaves checkpoints (and their fsync) to it.
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   const formationTiles = new FormationTileStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  // Every item change, appended here and written each second (roadmap P2a).
+  const itemLedger = new ItemLedger(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   // Baked worlds have a sea: nothing is scattered below it.
   const seaLevelMeta = store.getMeta("sea_level");
   // Baked worlds have water: swimming happens against its surface, and
@@ -426,6 +431,8 @@ async function main(): Promise<void> {
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
+  const needs = new NeedsSystem(game.rules.needs);
+  const mastery = new MasterySystem(game.rules.skills);
   // Items (roadmap M3a): definitions from the baked loot pool joined with
   // the rules' physics. One instance: the gateway routes item messages to
   // it, and it is in the systems list (it expires ground items).
@@ -438,10 +445,13 @@ async function main(): Promise<void> {
     groundHeightAt: (x, z) => character.groundHeight(x, z),
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
   });
-  // Bags live in memory until the item ledger (P2a): items a restored
-  // snapshot left lying on the ground have nothing behind them.
+  // The ledger owns items: ground entities a restored snapshot left are
+  // dropped, then every item comes back from the ledger (bags, hands, ground).
   const strays = items.clearStrayGroundItems(sim);
   if (strays > 0) console.log(`[items] cleared ${strays} ground item(s) left from before the restart`);
+  const restored = items.restore(sim, itemLedger.load());
+  items.attachLedger(itemLedger);
+  if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   const weaponOf = (e: number): Weapon | null => {
@@ -461,10 +471,12 @@ async function main(): Promise<void> {
   const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e));
   const gw: Gateway = new Gateway({
     port: PORT,
+    // The same instance as in the systems list below: its sheets are what get saved.
+    mastery,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
@@ -535,6 +547,8 @@ async function main(): Promise<void> {
   }
 
   const saveTimer = setInterval(() => {
+    itemLedger.flush();
+    gw.saveCharacters();
     if (gw.serverTick >= nextSaveTick) {
       const result = store.saveWorld(gw.serverTick, sim);
       const st = streamer.stats;
@@ -561,6 +575,9 @@ async function main(): Promise<void> {
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
       console.log(`[server] shutdown save on ${signal}: tick ${result.tick}`);
+      gw.saveCharacters();
+      itemLedger.flush();
+      itemLedger.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       void worldClient?.stop();

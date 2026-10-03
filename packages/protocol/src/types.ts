@@ -235,10 +235,25 @@ export interface ChatMessage {
   kind: "chat";
   channel: ChatChannel;
   text: string;
+  /** Whisper target: a character name (S2). */
+  to?: string;
 }
 
-/** Chat channels: say and emote reach nearby players, yell reaches all. */
-export type ChatChannel = "say" | "yell" | "emote";
+/**
+ * C→S (0x11, S2): block or unblock a character by name. Blocks are per
+ * account: the blocked account is silenced for all the blocker's characters.
+ */
+export interface BlockMessage {
+  kind: "block";
+  name: string;
+  on: boolean;
+}
+
+/**
+ * Chat channels: say and emote reach nearby players, yell reaches all,
+ * whisper reaches one named character (S2), party reaches your party (S3).
+ */
+export type ChatChannel = "say" | "yell" | "emote" | "whisper" | "party" | "guild";
 
 /**
  * S→C (catalog §0x11): a fanned-out chat line. `from` is the speaker's
@@ -247,17 +262,88 @@ export type ChatChannel = "say" | "yell" | "emote";
  */
 export interface ChatBroadcast {
   kind: "chat";
-  channel: ChatChannel;
+  /** `system` is server-only: notices such as "not online". */
+  channel: ChatChannel | "system";
   text: string;
   from: string;
   entity: string;
+  /** Whispers: the target's character name, so a sender's echo shows who it went to. */
+  to?: string;
+}
+
+/**
+ * C→S (0x11, S3): a party op. `invite`, `kick` and `promote` name a character;
+ * `accept` takes the pending invite; `leave` leaves. Only the leader invites,
+ * kicks and promotes.
+ */
+export interface PartyMessage {
+  kind: "party";
+  op: "invite" | "accept" | "leave" | "kick" | "promote";
+  name?: string;
+}
+
+/** One party member as the party list shows them. */
+export interface PartyMemberInfo {
+  name: string;
+  leader: boolean;
+  online: boolean;
+}
+
+/**
+ * S→C (0x11, S3): the receiver's party, sent whenever it changes. `members`
+ * is empty when in no party; `invite` is a pending invite (60 s) from `from`.
+ */
+export interface PartyState {
+  kind: "party";
+  members: PartyMemberInfo[];
+  invite?: { from: string };
+}
+
+export type GuildRank = "leader" | "officer" | "member" | "recruit";
+
+/**
+ * C→S (0x11, S4): a guild op. `create` takes `name` (3-24) and `tag` (2-5
+ * letters); `invite`, `kick` and `setRank` name a character (`setRank` also
+ * `rank`); `motd` takes `text`; `accept` takes the pending invite; `leave`
+ * leaves. Officers and the leader invite, kick lower ranks and edit the MOTD.
+ */
+export interface GuildMessage {
+  kind: "guild";
+  op: "create" | "invite" | "accept" | "leave" | "kick" | "setRank" | "motd";
+  name?: string;
+  tag?: string;
+  rank?: GuildRank;
+  text?: string;
+}
+
+export interface GuildMemberInfo {
+  name: string;
+  rank: GuildRank;
+  online: boolean;
+}
+
+/**
+ * S→C (0x11, S4): the receiver's guild, sent whenever it changes. `name` is
+ * "" (and `members` empty) when in none; `log` is the change log, for
+ * officers and the leader only; `invite` is a pending invite (60 s).
+ */
+export interface GuildState {
+  kind: "guild";
+  name: string;
+  tag: string;
+  motd: string;
+  rank: GuildRank | null;
+  members: GuildMemberInfo[];
+  log: Array<{ at: number; text: string }>;
+  invite?: { from: string; guild: string };
 }
 
 /**
  * S→C character names (C3, CHARACTERS-AND-SOCIAL.md §4.4): one row per
  * character entity the accompanying snapshot or delta first shows.
  * Tuples, spec-literal: [entity wire id, character name, guild tag].
- * The tag column is "" until guilds (S4).
+ * The tag column is "" for a character in no guild; a later row for the
+ * same entity updates it when they join or leave one (S4).
  */
 export interface NamesMessage {
   kind: "names";
@@ -265,7 +351,9 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 13; // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
+export const PROTOCOL_VERSION = 15; // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
+// v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
+// v13 (2026-10-02): 0x17 life (death/respawn, M2b).
 // v12: 0x16 hit (M2a).
 // v11 (2026-10-01): items — 0x13 item
 // actions, 0x14 inventory, 0x15 drops (roadmap M3a).

@@ -58,6 +58,8 @@ import {
   type AdminCommand,
   type AdminResult,
   type ChatBroadcast,
+  type PartyState,
+  type GuildState,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
@@ -110,13 +112,17 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
-import { allowAllText, CHAT_COOLDOWN_MS, ChatSchema, SAY_RANGE_M, type TextFilter } from "../chat.js";
+import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
+import { GuildBook, GuildOpSchema, type GuildResult } from "../guild.js";
+import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import type { MasterySystem } from "../stats/mastery-system.js";
+import { PlayTelemetry } from "../stats/telemetry.js";
 import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
@@ -240,6 +246,12 @@ export interface GatewayOptions {
    */
   groundHeightAt?: (x: number, z: number) => number;
   /**
+   * The mastery system in the tick list (M1b): characters' skills are saved
+   * from and restored into its sheets. Share the one instance. Default: skills
+   * are not persisted.
+   */
+  mastery?: MasterySystem;
+  /**
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
    */
@@ -347,6 +359,7 @@ export class Gateway {
       | "debugSource"
       | "chunkSource"
       | "groundHeightAt"
+      | "mastery"
       | "creatures"
       | "spawnPoint"
       | "worldInfo"
@@ -385,11 +398,19 @@ export class Gateway {
    */
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
+  private readonly mastery: MasterySystem | null;
+  /** Play counters and tick timing (T2); read by the admin `stats` command. */
+  readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
   private readonly playerAbilities: number;
+  /** Who blocks whom, by account (S2). */
+  private readonly blocks = new BlockList();
+  /** Parties, in memory (S3). */
+  private readonly parties = new PartyBook(() => this.clock());
+  private readonly guilds = new GuildBook(() => this.clock());
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
   /** Items (see GatewayOptions.items); shared with the systems list. */
@@ -451,6 +472,7 @@ export class Gateway {
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
+    this.mastery = opts.mastery ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
@@ -579,6 +601,12 @@ export class Gateway {
   // ------------------------------------------------------------ tick
 
   private onTick(tick: number): void {
+    const t0 = performance.now();
+    this.runTick(tick);
+    this.telemetry.tickMs(performance.now() - t0);
+  }
+
+  private runTick(tick: number): void {
     this.tick = tick;
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
@@ -608,6 +636,11 @@ export class Gateway {
       if (!(s instanceof CombatSystem)) continue;
       const hits = s.drainHits();
       if (hits.length === 0) continue;
+      for (const h of hits) {
+        if (h.outcome !== "hit") continue;
+        if (hasComponent(sim.ecs, C.PlayerIntent, h.source)) this.telemetry.damageDealt(h.amount);
+        if (hasComponent(sim.ecs, C.PlayerIntent, h.target)) this.telemetry.damageTaken(h.amount);
+      }
       const msgs = hits.map((h): HitMessage => ({
             kind: "hit",
             tick,
@@ -638,6 +671,8 @@ export class Gateway {
       for (const ev of events) {
         const m: LifeMessage = { kind: "life", tick, target: String(sim.wireId(ev.target)), state: ev.state };
         if (ev.state === "dead") {
+          if (hasComponent(sim.ecs, C.PlayerIntent, ev.target)) this.telemetry.death();
+          if (ev.killer !== undefined && hasComponent(sim.ecs, C.PlayerIntent, ev.killer)) this.telemetry.kill();
           if (ev.killer !== undefined) m.killer = String(sim.wireId(ev.killer));
           m.respawnAt = ev.outcome && ev.outcome.respawnInSeconds >= 0 ? ev.respawnAt : 0;
           const id = this.characterIdOf(ev.target);
@@ -653,6 +688,60 @@ export class Gateway {
         for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
       }
     }
+  }
+
+  /** Save one character avatar's position and vitals (no-op for bots, or without a store that keeps state). */
+  private saveAvatar(eid: number): void {
+    if (eid < 0 || !this.characterStore.saveState) return;
+    const id = this.characterIdOf(eid);
+    if (id === null) return;
+    if (this.mastery) this.characterStore.saveSkills?.(id, this.mastery.sheetOf(eid).save());
+    const T = C.Transform;
+    this.characterStore.saveState(id, {
+      x: T.px[eid],
+      y: T.py[eid],
+      z: T.pz[eid],
+      health: C.Health.current[eid],
+      stamina: C.Stamina.current[eid],
+    });
+  }
+
+  /**
+   * Save every live character's state (the server's save timer and
+   * shutdown call this; leaving the world saves just that avatar).
+   * Returns how many were saved.
+   */
+  saveCharacters(): number {
+    if (!this.characterStore.saveState) return 0;
+    let n = 0;
+    for (const s of this.sessions.values()) {
+      if (s.playerEntity === null || !s.character) continue;
+      this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * Put a freshly spawned avatar where its character last was, with the
+   * health and stamina it had. A character saved dead (or never saved)
+   * keeps the ordinary spawn: death and respawn are the rules' business.
+   */
+  private restoreCharacterState(eid: number, characterId: number): void {
+    const saved = this.mastery && eid >= 0 ? this.characterStore.loadSkills?.(characterId) : null;
+    if (saved && this.mastery) {
+      const sheet = this.mastery.sheetOf(eid);
+      sheet.load(saved);
+      sheet.applyDecay(this.clock());
+    }
+    const st = eid >= 0 ? this.characterStore.loadState?.(characterId) : null;
+    if (!st || !(st.health > 0)) return;
+    const T = C.Transform;
+    T.px[eid] = st.x;
+    T.pz[eid] = st.z;
+    T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+    C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
+    C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
   }
 
   /** The character id an entity carries, or null (bots, creatures). */
@@ -759,6 +848,9 @@ export class Gateway {
       if (now - s.disconnectedAtMs < this.opts.disconnectGraceMs) continue;
       if (s.playerEntity !== null) {
         const { slot } = parseWireEntityId(s.playerEntity);
+        const eid = this.world.resolveWireId(s.playerEntity);
+        this.saveAvatar(eid);
+        this.mastery?.forget(eid);
         this.world.despawn(slot);
       }
       this.tokenToClient.delete(s.token);
@@ -772,6 +864,8 @@ export class Gateway {
     if (now - this.lastHeartbeatMs < interval) return;
     this.lastHeartbeatMs = now;
     this.authSessions.sweep(); // drop expired session tokens
+    for (const n of this.parties.sweep()) this.pushParty(n);
+    this.guilds.sweep();
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue;
       // Missed = nothing from the client (pong, intent, anything) since
@@ -846,6 +940,8 @@ export class Gateway {
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
+    this.partyOffline(s);
+    this.guildOffline(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -861,6 +957,8 @@ export class Gateway {
       const sock = s.socket;
       s.socket = null;
       s.disconnectedAtMs = this.clock();
+      this.partyOffline(s);
+      this.guildOffline(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -1003,8 +1101,11 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
       };
+    } else if (cmd.command === "stats") {
+      const t = this.telemetry.snapshot();
+      res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(t) };
     } else if (cmd.command === "whoami") {
       res = {
         kind: "admin",
@@ -1249,12 +1350,27 @@ export class Gateway {
       return;
     }
     let text: string;
-    let channel: "say" | "yell" | "emote";
+    let channel: "say" | "yell" | "emote" | "whisper" | "party" | "guild";
+    let to: string | undefined;
     try {
-      const parsed = ChatSchema.safeParse(decodeControl<unknown>(payload));
+      const raw = decodeControl<unknown>(payload);
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "block") {
+        this.onBlock(s, raw);
+        return;
+      }
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "party") {
+        this.onParty(s, raw);
+        return;
+      }
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "guild") {
+        this.onGuild(s, raw);
+        return;
+      }
+      const parsed = ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
       text = parsed.data.text;
       channel = parsed.data.channel;
+      to = parsed.data.to;
     } catch {
       this.sendError(s, 4003, "malformed chat");
       return;
@@ -1282,10 +1398,60 @@ export class Gateway {
       from: s.character?.name ?? s.username,
       entity: s.playerEntity.toString(),
     };
+    if (channel === "whisper" && to !== undefined) {
+      msg.to = to;
+      const key = to.toLowerCase();
+      let target: ClientSession | undefined;
+      for (const r of this.sessions.values()) {
+        if (r !== s && r.welcomed && (r.character?.name ?? r.username).toLowerCase() === key) target = r;
+      }
+      // Unknown, offline and blocking all get the same answer.
+      if (!target || this.blocks.isBlocked(target.username, s.username)) {
+        this.sendSystem(s, NOT_ONLINE);
+        return;
+      }
+      msg.to = target.character?.name ?? target.username;
+      const shown = encodeControl(msg);
+      this.sendEnvelope(target, MessageType.Chat, shown);
+      this.sendEnvelope(s, MessageType.Chat, shown);
+      return;
+    }
     const body = encodeControl(msg);
+    if (channel === "party") {
+      const me = s.character?.name ?? s.username;
+      const mates = new Set(this.parties.partyOf(me).map((n) => n.toLowerCase()));
+      if (!mates.has(me.toLowerCase())) {
+        this.sendSystem(s, "not in a party");
+        return;
+      }
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || !r.socket) continue;
+        if (!mates.has((r.character?.name ?? r.username).toLowerCase())) continue;
+        if (r !== s && this.blocks.isBlocked(r.username, s.username)) continue;
+        this.sendEnvelope(r, MessageType.Chat, body);
+      }
+      return;
+    }
+    if (channel === "guild") {
+      const me = s.character?.name ?? s.username;
+      const mates = new Set(this.guilds.guildOf(me).map((n) => n.toLowerCase()));
+      if (!mates.has(me.toLowerCase())) {
+        this.sendSystem(s, "not in a guild");
+        return;
+      }
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || !r.socket) continue;
+        if (!mates.has((r.character?.name ?? r.username).toLowerCase())) continue;
+        if (r !== s && this.blocks.isBlocked(r.username, s.username)) continue;
+        this.sendEnvelope(r, MessageType.Chat, body);
+      }
+      return;
+    }
     if (channel === "yell") {
       for (const r of this.sessions.values()) {
-        if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Chat, body);
+        if (r.welcomed && r.playerEntity !== null && !this.blocks.isBlocked(r.username, s.username)) {
+          this.sendEnvelope(r, MessageType.Chat, body);
+        }
       }
       return;
     }
@@ -1298,7 +1464,192 @@ export class Gateway {
       if (reid < 0 || !hasComponent(this.world.ecs, C.Transform, reid)) continue;
       const dx = C.Transform.px[reid] - sx;
       const dz = C.Transform.pz[reid] - sz;
-      if (dx * dx + dz * dz <= range2) this.sendEnvelope(r, MessageType.Chat, body);
+      if (dx * dx + dz * dz <= range2 && !this.blocks.isBlocked(r.username, s.username)) {
+        this.sendEnvelope(r, MessageType.Chat, body);
+      }
+    }
+  }
+
+  /** The live welcomed session for a character name, if any. */
+  private findOnline(name: string): ClientSession | undefined {
+    const key = name.toLowerCase();
+    for (const r of this.sessions.values()) {
+      if (r.welcomed && r.socket && (r.character?.name ?? r.username).toLowerCase() === key) return r;
+    }
+    return undefined;
+  }
+
+  private partyOffline(s: ClientSession): void {
+    if (!s.welcomed) return;
+    const me = s.character?.name ?? s.username;
+    this.parties.setOnline(me, false);
+    for (const n of this.parties.partyOf(me)) this.pushParty(n);
+  }
+
+  /** Send a character their current party and any pending invite (S3). */
+  private pushParty(name: string): void {
+    const r = this.findOnline(name);
+    if (!r) return;
+    const members = this.parties.members(name);
+    const invite = this.parties.pendingInvite(name);
+    const msg: PartyState = { kind: "party", members, ...(invite ? { invite } : {}) };
+    this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+  }
+
+  /**
+   * A party op (S3). Only the leader invites, kicks and promotes; invites to
+   * anyone offline, unknown or blocking get the same "not online" notice.
+   */
+  private onParty(s: ClientSession, raw: unknown): void {
+    const parsed = PartyOpSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed party op");
+      return;
+    }
+    const { op, name } = parsed.data;
+    const me = s.character?.name ?? s.username;
+    let result: PartyResult;
+    if (op === "invite") {
+      const target = this.findOnline(name as string);
+      if (!target || target === s || this.blocks.isBlocked(target.username, s.username)) {
+        this.sendSystem(s, target === s ? "cannot invite yourself" : NOT_ONLINE);
+        return;
+      }
+      result = this.parties.invite(me, target.character?.name ?? target.username);
+    } else if (op === "accept") {
+      result = this.parties.accept(me);
+    } else if (op === "leave") {
+      result = this.parties.leave(me);
+    } else if (op === "kick") {
+      result = this.parties.kick(me, name as string);
+    } else {
+      result = this.parties.promote(me, name as string);
+    }
+    if (!result.ok) {
+      this.sendSystem(s, result.reason);
+      return;
+    }
+    for (const n of new Set(result.notify)) this.pushParty(n);
+  }
+
+  private guildOffline(s: ClientSession): void {
+    if (!s.welcomed) return;
+    const me = s.character?.name ?? s.username;
+    this.guilds.setOnline(me, false);
+    for (const n of this.guilds.guildOf(me)) this.pushGuild(n);
+  }
+
+  /** Send a character their current guild and any pending invite (S4). */
+  private pushGuild(name: string): void {
+    const r = this.findOnline(name);
+    if (!r) return;
+    const invite = this.guilds.pendingInvite(name);
+    const msg: GuildState = {
+      kind: "guild",
+      name: this.guilds.guildName(name) ?? "",
+      tag: this.guilds.tagOf(name),
+      motd: this.guilds.motd(name),
+      rank: this.guilds.rankOf(name),
+      members: this.guilds.members(name),
+      log: this.guilds.logFor(name),
+      ...(invite ? { invite } : {}),
+    };
+    this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+  }
+
+  /** Re-send the names rows (with guild tags) of these characters to everyone in the world. */
+  private pushTags(names: readonly string[]): void {
+    const keys = new Set(names.map((n) => n.toLowerCase()));
+    const wire: bigint[] = [];
+    for (const r of this.sessions.values()) {
+      if (r.playerEntity !== null && r.welcomed && keys.has((r.character?.name ?? r.username).toLowerCase())) {
+        wire.push(r.playerEntity);
+      }
+    }
+    if (wire.length === 0) return;
+    const env = this.namesFor(wire);
+    if (!env) return;
+    for (const r of this.sessions.values()) {
+      if (r.welcomed && r.socket) this.deliver(r, env, this.tick);
+    }
+  }
+
+  /**
+   * A guild op (S4). Rank rules live in GuildBook; invites to anyone offline,
+   * unknown or blocking get the same "not online" notice, as in parties.
+   */
+  private onGuild(s: ClientSession, raw: unknown): void {
+    const parsed = GuildOpSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed guild op");
+      return;
+    }
+    const { op, name, tag, rank, text } = parsed.data;
+    const me = s.character?.name ?? s.username;
+    const before = this.guilds.guildOf(me);
+    let result: GuildResult;
+    if (op === "create") {
+      result = this.guilds.create(me, name as string, tag as string);
+    } else if (op === "invite") {
+      const target = this.findOnline(name as string);
+      if (!target || target === s || this.blocks.isBlocked(target.username, s.username)) {
+        this.sendSystem(s, target === s ? "cannot invite yourself" : NOT_ONLINE);
+        return;
+      }
+      result = this.guilds.invite(me, target.character?.name ?? target.username);
+    } else if (op === "accept") {
+      result = this.guilds.accept(me);
+    } else if (op === "leave") {
+      result = this.guilds.leave(me);
+    } else if (op === "kick") {
+      result = this.guilds.kick(me, name as string);
+    } else if (op === "setRank") {
+      result = this.guilds.setRank(me, name as string, rank as NonNullable<typeof rank>);
+    } else {
+      result = this.guilds.setMotd(me, text as string);
+    }
+    if (!result.ok) {
+      this.sendSystem(s, result.reason);
+      return;
+    }
+    const touched = new Set([...result.notify, ...before, ...this.guilds.guildOf(me)]);
+    for (const n of touched) this.pushGuild(n);
+    this.pushTags([...touched]);
+  }
+
+  /** A server notice in the sender's chat (S2). */
+  private sendSystem(s: ClientSession, text: string): void {
+    const msg: ChatBroadcast = { kind: "chat", channel: "system", text, from: "", entity: "" };
+    this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
+  }
+
+  /**
+   * Block or unblock a character by name (S2). Blocks are per account and
+   * silent to the blocked side; the blocker gets a notice.
+   */
+  private onBlock(s: ClientSession, raw: unknown): void {
+    const parsed = BlockSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed block");
+      return;
+    }
+    const key = parsed.data.name.toLowerCase();
+    let account: string | undefined;
+    for (const r of this.sessions.values()) {
+      if ((r.character?.name ?? r.username).toLowerCase() === key) account = r.username;
+    }
+    // Only online characters resolve until the character store is asked by name.
+    if (account === undefined) {
+      this.sendSystem(s, NOT_ONLINE);
+      return;
+    }
+    if (!parsed.data.on) {
+      this.blocks.remove(s.username, account);
+      this.sendSystem(s, `unblocked ${parsed.data.name}`);
+    } else if (this.blocks.add(s.username, account)) {
+      this.sendSystem(s, `blocked ${parsed.data.name}`);
+    } else {
+      this.sendSystem(s, "cannot block");
     }
   }
 
@@ -1477,6 +1828,7 @@ export class Gateway {
     s.choosingCharacter = false;
     s.character = character ? { id: character.id, name: character.name } : null;
     s.playerEntity = this.spawnPlayerEntity(character?.look ?? DEFAULT_LOOK_JSON, character?.id ?? null);
+    if (character) this.restoreCharacterState(this.world.resolveWireId(s.playerEntity), character.id);
     s.welcomed = true;
     // Starter weapon (M3b): once per character per run, then show it.
     if (this.items) {
@@ -1501,7 +1853,12 @@ export class Gateway {
   private evictCharacter(id: number, except: ClientSession): void {
     for (const other of [...this.sessions.values()]) {
       if (other === except || other.character?.id !== id) continue;
-      if (other.playerEntity !== null) this.world.despawn(parseWireEntityId(other.playerEntity).slot);
+      if (other.playerEntity !== null) {
+        const eid = this.world.resolveWireId(other.playerEntity);
+        this.saveAvatar(eid);
+        this.mastery?.forget(eid);
+        this.world.despawn(parseWireEntityId(other.playerEntity).slot);
+      }
       other.playerEntity = null;
       if (this.tokenToClient.get(other.token) === other.clientId) this.tokenToClient.delete(other.token);
       this.sessions.delete(other.clientId);
@@ -1832,6 +2189,13 @@ export class Gateway {
       ...(s.character ? { character: s.character } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
+    this.parties.setOnline(s.character?.name ?? s.username, true);
+    for (const n of this.parties.partyOf(s.character?.name ?? s.username)) this.pushParty(n);
+    this.pushParty(s.character?.name ?? s.username);
+    const who = s.character?.name ?? s.username;
+    this.guilds.setOnline(who, true);
+    for (const n of this.guilds.guildOf(who)) this.pushGuild(n);
+    this.pushGuild(who);
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */
@@ -1899,6 +2263,8 @@ export class Gateway {
       this.sendError(s, 4005, result.error);
       return;
     }
+    if (a.action === "pickup") this.telemetry.pickup();
+    else if (a.action === "drop") this.telemetry.drop();
     this.refreshAvatarLook(avatar, holder);
     this.sendInventory(s);
   }
@@ -1990,7 +2356,7 @@ export class Gateway {
    * Character names for fan-out (C3, catalog §0x12): wire id -> name for
    * every live session avatar. `only`: restrict to these wire ids (delta
    * spawned lists); null means all. Returns the enveloped message, or
-   * null when no rows apply. Guild tags ride along in S4; until then "".
+   * null when no rows apply. Rows carry the character's guild tag (S4).
    */
   private namesFor(only: readonly bigint[] | null): Uint8Array | null {
     const rows: Array<[string, string, string]> = [];
@@ -2000,7 +2366,7 @@ export class Gateway {
       rows.push([
         other.playerEntity.toString(),
         other.character?.name ?? other.username,
-        "",
+        this.guilds.tagOf(other.character?.name ?? other.username),
       ]);
     }
     if (rows.length === 0) return null;
@@ -2028,6 +2394,7 @@ export class Gateway {
     addComponent(sim.ecs, C.PlayerIntent, eid);
     addComponent(sim.ecs, C.Health, eid);
     addComponent(sim.ecs, C.Stamina, eid);
+    addComponent(sim.ecs, C.Needs, eid);
     addComponent(sim.ecs, C.Locomotion, eid);
     C.Locomotion.mode[eid] = LocomotionMode.Ground;
     C.Locomotion.abilities[eid] = this.playerAbilities;
@@ -2043,6 +2410,9 @@ export class Gateway {
     C.Health.max[eid] = 100;
     C.Stamina.current[eid] = 100;
     C.Stamina.max[eid] = 100;
+    // Full meters (NeedsSystem sets the maxima from the rules next tick).
+    C.Needs.hunger[eid] = C.Needs.hungerMax[eid] = 100;
+    C.Needs.thirst[eid] = C.Needs.thirstMax[eid] = 100;
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;

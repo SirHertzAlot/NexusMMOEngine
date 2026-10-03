@@ -23,6 +23,7 @@ import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 import type { Held } from "@mmo-engine/art/character";
 import { HAND_CODE, HAND_NAME, type ItemDefs } from "./item-defs.js";
+import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
 import { HandSlot, ItemStore, ItemWhere } from "./item-store.js";
 
 /** Height above the ground a lying item rests at, metres. */
@@ -188,7 +189,7 @@ export class ItemService implements SimSystem {
    * A new character's starter weapon (M3b): the first time a character is
    * seen this run with empty hands, it is given the lowest-ranked item of
    * the starter base and holds it. Returns whether anything was given.
-   * (Bags live in memory until the ledger, P2a, so "first time" is per run.)
+   * Characters with restored items count as outfitted (see `restore`).
    */
   outfit(character: number): boolean {
     if (this.outfitted.has(character) || this.starterBase === null) return false;
@@ -214,6 +215,7 @@ export class ItemService implements SimSystem {
   /** Expire ground items whose time is up. */
   step(sim: SimWorld): void {
     const tick = sim.currentTick;
+    if (this.store.ledger) this.store.ledger.tick = tick;
     const eids = worldItems(sim.ecs);
     for (let i = eids.length - 1; i >= 0; i--) {
       const eid = eids[i];
@@ -226,9 +228,34 @@ export class ItemService implements SimSystem {
   }
 
   /**
-   * Ground item entities left by a restore (the item store is in memory
-   * only until the ledger, P2a): despawn every ground-item-variant entity
-   * that has no live item behind it. Returns how many went.
+   * Bring items back from the ledger after a restart (roadmap P2a): bag and
+   * hand items return to their slots, ground items are placed again at
+   * their spot with fresh despawn timers and no owner claim. Owners of
+   * restored items are not given a new starter weapon. Call before
+   * `attachLedger`, so restoring records nothing. Returns items restored.
+   */
+  restore(sim: SimWorld, rows: readonly ItemRow[]): number {
+    let n = 0;
+    for (const row of rows) {
+      if (row.def < 0 || row.def >= this.defs.count) continue;
+      this.store.restore(row);
+      n++;
+      if (row.kind === LedgerKind.Bag || row.kind === LedgerKind.Hold) this.outfitted.add(row.owner);
+      else if (row.kind === LedgerKind.Ground) this.placeOnGround(sim, row.id, row.x, row.z, 0);
+    }
+    return n;
+  }
+
+  /** Record every item change to `ledger` from now on; later ids start above its highest. */
+  attachLedger(ledger: ItemLedger): void {
+    this.store.reserveIds(ledger.maxItemId());
+    this.store.ledger = ledger;
+  }
+
+  /**
+   * Ground item entities left by a world snapshot restore: despawn every
+   * ground-item-variant entity that has no live item behind it (ground items
+   * are re-placed from the ledger afterwards). Returns how many went.
    */
   clearStrayGroundItems(sim: SimWorld): number {
     const strays: number[] = [];
@@ -304,7 +331,7 @@ export class ItemService implements SimSystem {
   private placeOnGround(sim: SimWorld, item: number, x: number, z: number, owner: number): number {
     const slot = this.store.slot(item);
     const def = this.store.defs[slot];
-    this.store.placeOnGround(item, owner);
+    this.store.placeOnGround(item, owner, x, z);
     const eid = sim.spawn();
     addComponent(sim.ecs, Transform, eid);
     Transform.px[eid] = x;

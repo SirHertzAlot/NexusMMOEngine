@@ -95,7 +95,7 @@ export interface ClientSession {
    * Clock ms of the last chat line per channel (roadmap S1 rate limits).
    * Missing entries never sent on that channel.
    */
-  lastChatMs: Partial<Record<"say" | "yell" | "emote", number>>;
+  lastChatMs: Partial<Record<"say" | "yell" | "emote" | "whisper" | "party" | "guild", number>>;
 }
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */
