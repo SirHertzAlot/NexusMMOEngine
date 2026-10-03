@@ -123,6 +123,7 @@ import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
+import { SqliteFriendStore } from "./friend-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
@@ -374,6 +375,7 @@ async function main(): Promise<void> {
   );
   const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
   const guildStore = new SqliteGuildStore(path.join(DATA_DIR, "guilds.db"));
+  const friendStore = new SqliteFriendStore(path.join(DATA_DIR, "friends.db"));
   // The licensed modular pack is only on machines that have the art
   // (assets/ is never committed): elsewhere looks are checked structurally.
   const catalogFile =
@@ -521,6 +523,7 @@ async function main(): Promise<void> {
     credentialStore,
     characterStore,
     guildStore,
+    friendStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
