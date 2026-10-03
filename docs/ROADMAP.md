@@ -180,7 +180,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | M2b | Death and respawn, corpses, deaths recorded | ✅ | M2a — `DeathSystem`, 0x17 `life`, `deaths` table; `nearestVisited` falls back to the spawn point |
 | AI1 | Creature spawner and brain: goblins with weapons, aggro, chase, attack, leash | ✅ | M2a |
 | L2 | Drops and pickup: seeded `mob` rolls at the corpse, validated pickup, despawn timeout | ✅ | M2b, AI1 |
-| U10a | Inventory and equipment, first cut | 🚧 | Bag grid, item details, drop live (M3a); equip and unequip live (M3b); stats and tooltips later |
+| U10a | Inventory and equipment, first cut | ✅ | Bag grid, item details, drop (M3a); equip and unequip (M3b); drag to equip and unequip, comparison tooltip, held stat totals |
 | U12a | Hit feedback and target frame | ✅ | M2a |
 | ED1 | Gameplay tables in the editor: items, creatures, loot and death rules, validated, hot-reloaded | 📋 | M3a; each α1 slice adds its table |
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | ✅ | Bags, hands and ground items survive restarts; owners are entity ids, so P2b maps them to saved characters |
@@ -198,6 +198,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
 Newest first. One line per merged PR or decision.
 
+- **2026-10-02**: U10a bag panel: drag a bag item onto its hand slot to equip it (the slot lights only for the right hand), drag a held item onto the bag to put it away, double-click equips. Hovering an item shows a tooltip beside the bag with its stats and the signed change against what it would replace, by the server's swap rules (`displaced`). The held items' stat totals sit under the hands. Drops send the same 0x13 equip/unequip, so the server still decides.
 - **2026-10-02**: U12a hit feedback: struck entities flash red for 0.15 s (hits and blocks; dodges don't), a top-centre target frame shows the target's name and health from `hit` messages (you target what you strike, or your attacker when nothing is targeted; left click selects the hovered entity; cleared when it despawns), creatures get nameplates via the names message, and the player frame's health updates on each hit.
 - **2026-10-02**: L2 creature drops: a creature's death rolls its `drops` (`rolls` range, `chance` per roll; defaults 1-2 at 0.8) from the `mob` pool with a seeded rng, scattering items within 1.2 m of the corpse owned by the killer for the ownership window. Pickup, ownership and despawn are M3a's. `DeathSystem` gained an `onDeath` hook. Editor tables come with ED1.
 - **2026-10-03**: E10 character record view (read-only): `readCharacterView`/`listCharacters` over the character and item stores, a Characters panel in the editor (look, saved state, deaths, items). Built by opencode, reviewed. Perf not run (paused).
