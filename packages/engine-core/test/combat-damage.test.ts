@@ -9,7 +9,7 @@ import { addComponent } from "bitecs";
 import { combatMove, IntentButton, Move } from "@mmo-engine/protocol";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
-import { CombatSystem, GUARD_FACTOR, type Weapon } from "../src/combat.js";
+import { CombatSystem, GUARD_FACTOR, type CombatSkills, type Weapon } from "../src/combat.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
 import { loadGameRules } from "../src/rules/boot.js";
 
@@ -17,7 +17,7 @@ const DT = 1 / 30;
 const { hooks } = loadGameRules();
 const SWORD: Weapon = { technique: "cut", item: { mass: 1.2, edge: 0.8, point: 0.3, hardness: 0.6 }, reach: 0.9 };
 
-function setup(weapon: Weapon | null = SWORD) {
+function setup(weapon: Weapon | null = SWORD, skills?: CombatSkills) {
   SimWorld.resetEntityCursorForTesting();
   const sim = new SimWorld();
   const make = (comps: object[], x: number, z: number): number => {
@@ -38,7 +38,7 @@ function setup(weapon: Weapon | null = SWORD) {
     C.Health.current[t] = C.Health.max[t] = 100;
     return t;
   };
-  const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => weapon });
+  const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => weapon, skills });
   const systems = [new IntentSystem(), combat, new IntegrateSystem()];
   let tick = 0;
   const run = (ticks: number, buttons = 0, lookYaw = 0): void => {
@@ -135,5 +135,60 @@ describe("combat damage", () => {
   it("the shield bash and the guard do no damage", () => {
     assert.equal(combatMove(Move.ShieldBash)!.hitAt, undefined);
     assert.equal(combatMove(Move.Guard)!.hitAt, undefined);
+  });
+});
+
+/** A skill book that records training. */
+function book(values: Record<string, number> = {}) {
+  const trained: Array<{ e: number; id: string }> = [];
+  const skills: CombatSkills = {
+    get: (_e, id) => values[id] ?? 0,
+    train: (e, id) => {
+      trained.push({ e, id });
+    },
+    techniqueSkill: (t) => ({ cut: "cutting", thrust: "thrusting", bludgeon: "bludgeoning" })[t],
+  };
+  return { skills, trained };
+}
+
+describe("combat skills (M3c)", () => {
+  it("a higher weapon skill hits harder", () => {
+    const lo = setup(SWORD, book({ cutting: 0 }).skills);
+    const a = lo.target(0, 1);
+    lo.run(hitTick(Move.SwordA), IntentButton.Attack);
+    const novice = 100 - C.Health.current[a];
+    const hi = setup(SWORD, book({ cutting: 90 }).skills);
+    const b = hi.target(0, 1);
+    hi.run(hitTick(Move.SwordA), IntentButton.Attack);
+    assert.ok(100 - C.Health.current[b] > novice);
+  });
+
+  it("a landed hit trains the attacker's weapon skill", () => {
+    const k = book();
+    const w = setup(SWORD, k.skills);
+    const t = w.target(0, 1);
+    w.run(hitTick(Move.SwordA), IntentButton.Attack);
+    assert.deepEqual(k.trained, [{ e: w.e, id: "cutting" }]);
+    assert.ok(C.Health.current[t] < 100);
+  });
+
+  it("a block trains Blocking", () => {
+    const k = book();
+    const w = setup(SWORD, k.skills);
+    const t = w.target(0, 1, true);
+    C.Action.move[t] = Move.Guard;
+    C.Action.yaw[t] = Math.PI;
+    w.run(hitTick(Move.SwordA), IntentButton.Attack);
+    assert.ok(k.trained.some((u) => u.e === t && u.id === "blocking"));
+  });
+
+  it("a dodge trains Evading", () => {
+    const k = book();
+    const w = setup(SWORD, k.skills);
+    const t = w.target(0, 1, true);
+    C.Action.move[t] = Move.Roll;
+    C.Action.started[t] = 1;
+    w.run(hitTick(Move.SwordA), IntentButton.Attack);
+    assert.ok(k.trained.some((u) => u.e === t && u.id === "evading"));
   });
 });
