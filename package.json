@@ -38,7 +38,8 @@
     "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
     "world": "npm run server --workspace=@mmo-engine/world-server",
     "world:db": "npm run db --workspace=@mmo-engine/world-server",
-    "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --"
+    "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --",
+    "stress:world": "node scripts/world-stress/run.mjs"
   },
   "version": "0.1.0",
   "workspaces": [
