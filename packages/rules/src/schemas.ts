@@ -105,6 +105,20 @@ export const CombatSchema = z.strictObject({
   damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5) }).prefault({}),
   /** Chance a blow lands on the aimed part: novice + masterBonus × m. */
   precision: z.strictObject({ novice: share.default(0.3), masterBonus: share.default(0.65) }).prefault({}),
+  /**
+   * A guard facing the blow is a contest (docs/MASTERY-AND-COMBAT.md §3.3):
+   * the defender stops it with chance `base + perSkill × (m_defence − m_attack)`,
+   * held within [min, max]; a guard that loses lets `failedLetsThrough` of the blow through.
+   */
+  defence: z
+    .strictObject({
+      base: share.default(0.5),
+      perSkill: z.number().min(0).default(1),
+      min: share.default(0.05),
+      max: share.default(0.95),
+      failedLetsThrough: share.default(0.5),
+    })
+    .prefault({}),
 });
 
 // ------------------------------------------------------------------ body

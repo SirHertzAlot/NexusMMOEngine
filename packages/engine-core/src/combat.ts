@@ -17,6 +17,12 @@
  * Runs after IntentSystem (which sets the walking velocity) and before
  * IntegrateSystem (which moves by it).
  *
+ * Defence (M3): with skills, a facing guard is a contest (the rules'
+ * resolveDefence): the defender's Blocking or Parrying, whichever is
+ * better, against the attacker's technique. A win stops the blow
+ * ("blocked", nothing lands); a loss lets part of it through as a hit.
+ * Without skills a guard always takes GUARD_FACTOR of the blow.
+ *
  * Damage (M2a): an attack move strikes once, on the tick its hitAt falls
  * (relative to Action.started). Every living target with a Health inside
  * the weapon's reach and the 120-degree cone ahead of the attacker's facing
@@ -239,23 +245,33 @@ export class CombatSystem implements SimSystem {
         amount = blow.amount * arm;
         // The guard holds only against what it faces; a landed block trains Blocking.
         if (tm?.kind === "guard" && -(dx * Math.sin(Action.yaw[t]) + dz * Math.cos(Action.yaw[t])) >= 0) {
-          outcome = "blocked";
-          amount *= GUARD_FACTOR;
-          sk?.train(t, "blocking", FIGHT_DIFFICULTY, e);
+          if (sk) {
+            // A contest (M3): the defender's better of Blocking and Parrying
+            // against the attacker's technique; a win stops the blow, a loss
+            // softens it. Either way the defence is used for real and trains.
+            const guard = sk.get(t, "parrying") > sk.get(t, "blocking") ? "parrying" : "blocking";
+            const d = dmg.hooks.resolveDefence({ attackSkill: skill, defenceSkill: sk.get(t, guard), rng: blowRng(tick, t, e) });
+            if (d.stopped) outcome = "blocked";
+            amount *= d.letsThrough;
+            sk.train(t, guard, FIGHT_DIFFICULTY, e);
+          } else {
+            outcome = "blocked";
+            amount *= GUARD_FACTOR;
+          }
         }
         if (weaponSkill) sk!.train(e, weaponSkill, FIGHT_DIFFICULTY, t);
-        if (body) {
+        if (body && amount > 0) {
           const r = body.applyBlow(sim, t, part, blow.kind, amount);
           part = r.part;
           state = r.state;
           if (r.lost.length > 0) lost = r.lost;
-        } else {
+        } else if (!body) {
           Health.current[t] = Math.max(0, Health.current[t] - amount);
         }
         this.attackers.set(t, e);
       }
       const hit: HitEvent = { tick, source: e, target: t, outcome, amount };
-      if (this.damage?.body && part !== undefined) {
+      if (this.damage?.body && part !== undefined && state !== undefined) {
         hit.part = part;
         hit.state = state;
         if (lost) hit.lost = lost;

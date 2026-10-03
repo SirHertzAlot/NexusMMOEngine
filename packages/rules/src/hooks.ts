@@ -55,6 +55,21 @@ export interface LandingInput {
   precisionFactor?: number;
 }
 
+export interface DefenceInput {
+  /** The attacker's skill in its technique, and the defender's in its defence, 0..skills.max. */
+  attackSkill: number;
+  defenceSkill: number;
+  /** 0..1 uniform, deterministic per blow. */
+  rng: () => number;
+}
+
+export interface DefenceResult {
+  /** The guard stopped the blow. */
+  stopped: boolean;
+  /** Share of the blow that gets through (0 when stopped). */
+  letsThrough: number;
+}
+
 export interface GainInput {
   /** Current skill, 0..skills.max. */
   skill: number;
@@ -110,6 +125,7 @@ export interface RespawnOutcome {
 export interface RuleHooks {
   computeDamage(input: DamageInput): DamageResult;
   resolveLanding(input: LandingInput): string;
+  resolveDefence(input: DefenceInput): DefenceResult;
   skillGain(input: GainInput): number;
   onInjury(input: InjuryInput): InjuryResult;
   onDeath(input: DeathInput): DeathOutcome;
@@ -141,6 +157,12 @@ export function masteryPower(rules: Rules, m: number): number {
 export function precision(rules: Rules, m: number, factor = 1): number {
   const p = rules.combat.precision;
   return clamp01((p.novice + p.masterBonus * clamp01(m)) * factor);
+}
+
+/** Chance a facing guard stops a blow: base + perSkill × (m_defence − m_attack), within [min, max]. */
+export function defenceChance(rules: Rules, defence: number, attack: number): number {
+  const d = rules.combat.defence;
+  return Math.max(d.min, Math.min(d.max, d.base + d.perSkill * (clamp01(defence) - clamp01(attack))));
 }
 
 /**
@@ -208,6 +230,12 @@ function defaultHooks(rules: Rules): RuleHooks {
         if (pick < 0) return p.id;
       }
       return neighbours[neighbours.length - 1].id;
+    },
+
+    resolveDefence({ attackSkill, defenceSkill, rng }) {
+      const max = rules.skills.max;
+      if (rng() < defenceChance(rules, defenceSkill / max, attackSkill / max)) return { stopped: true, letsThrough: 0 };
+      return { stopped: false, letsThrough: rules.combat.defence.failedLetsThrough };
     },
 
     skillGain({ skill, peak, difficulty, recentUses = 0 }) {
