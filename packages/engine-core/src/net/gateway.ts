@@ -800,6 +800,13 @@ export class Gateway {
     this.tickListeners.push(cb);
   }
 
+  private readonly tickTimeListeners: Array<(ms: number) => void> = [];
+
+  /** Called with each tick's wall time in ms, once the tick is done (E6). */
+  addTickTimeListener(cb: (ms: number) => void): void {
+    this.tickTimeListeners.push(cb);
+  }
+
   /**
    * Password login for a caller that is not a socket (the edge). Same
    * credential check and per-caller rate limit as a hello; the session is
@@ -840,7 +847,9 @@ export class Gateway {
   private onTick(tick: number): void {
     const t0 = performance.now();
     this.runTick(tick);
-    this.telemetry.tickMs(performance.now() - t0);
+    const ms = performance.now() - t0;
+    this.telemetry.tickMs(ms);
+    for (const l of this.tickTimeListeners) l(ms);
   }
 
   private runTick(tick: number): void {

@@ -3,12 +3,15 @@
  * heartbeats and re-established with a fixed backoff.
  */
 import { Socket, connect as netConnect } from "node:net";
-import { encodeFrame, FrameReader } from "./framing.js";
+import { encodeFrame, FrameReader, FrameTooLargeError } from "./framing.js";
+import type { ChannelObservers } from "./metrics.js";
 import type { ChannelLike, ChannelResponse } from "./types.js";
 
 export type ChannelStatus = "up" | "down" | "unknown";
 
-export interface ChannelClientOptions { port: number; host?: string; heartbeatMs?: number; maxMissed?: number; }
+export interface ChannelClientOptions extends ChannelObservers { port: number; host?: string; heartbeatMs?: number; maxMissed?: number; }
+
+const SIDE = { side: "edge" } as const;
 
 /** Reconnect delays in ms; the last one repeats. No jitter. */
 export const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000] as const;
@@ -20,6 +23,7 @@ export class ChannelClient implements ChannelLike {
   private readonly host: string;
   private readonly heartbeatMs: number;
   private readonly maxMissed: number;
+  private readonly obs: ChannelObservers;
 
   private socket: Socket | null = null;
   private _status: ChannelStatus = "unknown";
@@ -39,6 +43,7 @@ export class ChannelClient implements ChannelLike {
     this.host = opts.host ?? "127.0.0.1";
     this.heartbeatMs = opts.heartbeatMs ?? 5000;
     this.maxMissed = opts.maxMissed ?? 3;
+    this.obs = { metrics: opts.metrics, log: opts.log };
   }
 
   get status(): ChannelStatus { return this._status; }
@@ -65,21 +70,37 @@ export class ChannelClient implements ChannelLike {
     try {
       frame = encodeFrame({ type, id: wireId, payload });
     } catch (err) {
+      this.oversized(err);
       return Promise.reject(err as Error);
     }
-    return new Promise((resolve, reject) => {
+    const m = this.obs.metrics;
+    m?.requests.inc(SIDE);
+    const started = performance.now();
+    return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(wireId);
+        m?.timeouts.inc(SIDE);
         reject(new Error("channel timeout after " + timeoutMs + "ms for " + type));
       }, timeoutMs);
-      this.pending.set(wireId, { resolve, reject, timer });
-      this.socket!.write(frame);
+      this.pending.set(wireId, {
+        resolve: (v) => { m?.latency.observe(performance.now() - started, SIDE); resolve(v); },
+        reject: (e) => { m?.errors.inc(SIDE); reject(e); },
+        timer,
+      });
+      this.write(frame);
     });
   }
 
   notify(type: string, payload: unknown): void {
     if (this._status !== "up" || !this.socket) return;
-    this.socket.write(encodeFrame({ type, id: "push-" + (this.counter++), payload }));
+    let frame: Buffer;
+    try {
+      frame = encodeFrame({ type, id: "push-" + (this.counter++), payload });
+    } catch (err) {
+      this.oversized(err);
+      throw err;
+    }
+    this.write(frame);
   }
 
   onPush(type: string, handler: (payload: unknown) => void): void {
@@ -112,10 +133,12 @@ export class ChannelClient implements ChannelLike {
     });
     socket.on("data", (chunk: Buffer) => {
       this.inboundSinceBeat = true;
+      this.obs.metrics?.bytesReceived.inc(SIDE, chunk.length);
       let frames: unknown[];
       try {
         frames = reader.push(chunk);
-      } catch {
+      } catch (err) {
+        this.oversized(err);
         socket.destroy();
         return;
       }
@@ -139,6 +162,7 @@ export class ChannelClient implements ChannelLike {
   private dispatch(frame: ChannelResponse): void {
     if (typeof frame !== "object" || frame === null || typeof frame.id !== "string") return;
     if (frame.id.startsWith("push-")) {
+      this.obs.metrics?.pushes.inc({ side: "edge", type: frame.type });
       for (const h of this.pushHandlers.get(frame.type) ?? []) h(frame.payload);
       return;
     }
@@ -155,13 +179,17 @@ export class ChannelClient implements ChannelLike {
     this.heartbeatTimer = setInterval(() => {
       if (this._status !== "up" || !this.socket) return;
       if (this.inboundSinceBeat) this.missed = 0;
-      else this.missed++;
+      else {
+        this.missed++;
+        this.obs.metrics?.heartbeatMissed.inc(SIDE);
+        this.obs.log?.log("warn", "heartbeat.missed", { missed: this.missed, max: this.maxMissed });
+      }
       this.inboundSinceBeat = false;
       if (this.missed >= this.maxMissed) {
         this.socket.destroy();
         return;
       }
-      this.socket.write(encodeFrame({ type: "channel.ping", id: "hb-" + (this.counter++), payload: {} }));
+      this.write(encodeFrame({ type: "channel.ping", id: "hb-" + (this.counter++), payload: {} }));
     }, this.heartbeatMs);
     this.heartbeatTimer.unref();
   }
@@ -173,15 +201,31 @@ export class ChannelClient implements ChannelLike {
   private scheduleReconnect(): void {
     const delay = RECONNECT_DELAYS_MS[Math.min(this.attempt, RECONNECT_DELAYS_MS.length - 1)];
     this.attempt++;
+    const attempt = this.attempt;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
+      if (!this.closed) {
+        this.obs.metrics?.reconnects.inc(SIDE);
+        this.obs.log?.log("info", "channel.reconnect", { attempt, delayMs: delay });
+      }
       if (!this.closed) this.open(() => {}, () => {});
     }, delay);
+  }
+
+  private write(frame: Buffer): void {
+    this.obs.metrics?.bytesSent.inc(SIDE, frame.length);
+    this.socket!.write(frame);
+  }
+
+  private oversized(err: unknown): void {
+    if (err instanceof FrameTooLargeError) this.obs.log?.log("error", "frame.oversized", { bytes: err.bytes });
   }
 
   private setStatus(s: ChannelStatus): void {
     if (s === this._status) return;
     this._status = s;
+    if (s === "up") this.obs.log?.log("info", "channel.up", { host: this.host, port: this.port });
+    else if (s === "down") this.obs.log?.log("warn", "channel.down", { host: this.host, port: this.port });
     for (const cb of this.statusListeners) cb(s);
   }
 }

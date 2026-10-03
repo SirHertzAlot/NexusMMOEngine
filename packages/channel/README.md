@@ -59,9 +59,34 @@ Nothing in the package uses randomness.
 
 ## Server
 
-`serveChannel(port, handler, host = "127.0.0.1")` resolves to
+`serveChannel(port, handler, host = "127.0.0.1", observers = {})` resolves to
 `{ port, pushToAll(type, payload), close() }`. It binds loopback by
 default: the channel is private to the machine.
+
+## Metrics and logs (E6)
+
+`channelMetrics(registry)` registers the channel's metrics on a
+`@mmo-engine/nethealth` registry; pass the result as `metrics` to
+`new ChannelClient({ ... })` or in `serveChannel`'s `observers`. Every series
+carries `side="edge"` (the client) or `side="core"` (the server), so one
+scrape can hold both ends.
+
+| Metric | Type | Edge side counts | Core side counts |
+|---|---|---|---|
+| `mmo_channel_requests_total` | counter | requests sent | requests answered (not pings or notifies) |
+| `mmo_channel_timeouts_total` | counter | requests that timed out | — |
+| `mmo_channel_errors_total` | counter | error answers, and requests failed by the channel dropping | handler throws |
+| `mmo_channel_request_latency_ms` | histogram | round trip of answered requests | handler time |
+| `mmo_channel_pushes_total{type}` | counter | pushes received | pushes sent (once per push, whatever the edge count) |
+| `mmo_channel_bytes_sent_total` | counter | bytes written, headers included | same |
+| `mmo_channel_bytes_received_total` | counter | bytes read | same |
+| `mmo_channel_reconnects_total` | counter | reconnect attempts | — |
+| `mmo_channel_heartbeat_missed_total` | counter | heartbeat intervals with nothing received | — |
+
+Pass a `log` (`netLogger(...)`) for the lifecycle lines: `channel.up`,
+`channel.down`, `channel.reconnect` (with `attempt`), `heartbeat.missed`, and
+`frame.oversized` (with `bytes`) for a frame over 8 MiB either way. Oversized
+frames throw `FrameTooLargeError`.
 
 ## Test
 

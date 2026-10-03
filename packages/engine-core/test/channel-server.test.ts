@@ -10,7 +10,7 @@ import * as path from "node:path";
 import { MessageType } from "@mmo-engine/protocol";
 import { ChannelClient } from "@mmo-engine/channel";
 import { Gateway } from "../src/net/gateway.js";
-import { coreChannelPort, isSnapshotTick, pushTick, startCoreChannel, type CoreChannel } from "../src/channel-server.js";
+import { CORE_METRIC_NAMES, coreChannelPort, isSnapshotTick, pushTick, startCoreChannel, type CoreChannel } from "../src/channel-server.js";
 import { SessionManager } from "../src/auth/sessions.js";
 import { SqliteSessionStore } from "../src/auth/sqlite-session-store.js";
 import { HeadlessClient } from "./net/headless-client.js";
@@ -174,5 +174,24 @@ describe("SQLite session store", () => {
     assert.equal(m3.get(kept), null);
     assert.equal(m3.size(), 0);
     store3.close();
+  });
+});
+
+describe("core metrics (E6)", () => {
+  it("metrics.get answers the core registry: tick time, pushes, intents and the channel's core side", async () => {
+    const { client } = await start();
+    tick(5);
+    await client.request("player.intent", { token: "nobody", intent: {} }, "1"); // refused: not counted as accepted
+    const text = await client.request("metrics.get", {}, "2") as string;
+    for (const name of CORE_METRIC_NAMES) assert.match(text, new RegExp(`^# TYPE ${name} `, "m"), name);
+    const count = Number(/^mmo_core_tick_duration_ms_count (\d+)$/m.exec(text)![1]);
+    assert.ok(count >= 5, `tick_duration_ms_count ${count}`);
+    assert.match(text, /^mmo_core_tick_events_pushed_total ([5-9]|\d\d+)$/m);
+    assert.match(text, /^mmo_core_intents_accepted_total 0$/m);
+    assert.match(text, /^mmo_core_tick_duration_ms_bucket\{le="33\.3"\} \d+$/m);
+    // The request being answered is counted once it is in flight.
+    assert.match(text, /^mmo_channel_requests_total\{side="core"\} 2$/m);
+    assert.match(text, /^mmo_channel_pushes_total\{side="core",type="tick\.delta"\} \d+$/m);
+    assert.match(text, /^mmo_core_tick \d+$/m);
   });
 });

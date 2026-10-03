@@ -7,6 +7,9 @@
  * channel (`packages/channel`); while the core is unreachable they answer
  * `core.unavailable`.
  *
+ * `GET /metrics` is the Prometheus scrape for the whole engine (E6,
+ * metrics.ts); network lifecycle events log as JSON lines.
+ *
  * Environment: EDGE_HTTP_PORT (3000), EDGE_WS_PORT (3001),
  * CORE_CHANNEL_PORT (4000).
  */
@@ -17,12 +20,14 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer } from "ws";
 import { ChannelClient } from "@mmo-engine/channel";
+import { netLogger } from "@mmo-engine/nethealth";
 import { loadConfig } from "./config.js";
 import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
 import { createCoreLifecycle } from "./lifecycle.js";
 import { createMirrorBuffer } from "./mirror-buffer.js";
 import { pushTick } from "./tick-buffer.js";
+import { createCoreMetricsProxy, createEdgeMetrics, metricsHandler, packetTypeLabel, recordRoute } from "./metrics.js";
 
 /** Walks up from this file until a package.json with a `workspaces` field: the repo root. */
 function findRepoRoot(): string {
@@ -44,14 +49,25 @@ const SHUTDOWN_GRACE_MS = 5000;
 // 1. config + routes
 const config = loadConfig();
 const routes = loadRoutes(join(findRepoRoot(), "content/edge/routes.json"));
+const routedTypes = new Set(routes.map((r) => r.packetType));
+const metrics = createEdgeMetrics();
+const log = netLogger("edge");
 
 // 4. modules (local:<name> destinations)
-const channel = new ChannelClient({ port: config.coreChannelPort });
+const channel = new ChannelClient({ port: config.coreChannelPort, metrics: metrics.channel, log: netLogger("channel") });
 // E4: log outages, resync on reconnect, track sessions from logins.
 const lifecycle = createCoreLifecycle(channel);
 channel.onPush("tick.events", (p) => { const { tick, events } = p as { tick: number; events: unknown[] }; pushTick(tick, events); });
 // The core's mirror stream; read by the client cutover (players still connect to the core today).
 export const mirror = createMirrorBuffer(channel);
+mirror.onDelta((d) => {
+  metrics.mirrorDeltasFannedOut.inc();
+  if (mirror.latestSnapshot) metrics.mirrorSnapshotAgeTicks.set(d.tick - mirror.latestSnapshot.tick);
+});
+const coreMetrics = createCoreMetricsProxy(channel, metrics);
+coreMetrics.start();
+// Don't wait out the 15 s interval to un-stale after (re)connecting.
+channel.onStatus((s) => { if (s === "up") void coreMetrics.refresh(); });
 channel.connect().catch(err => console.error("initial channel connect failed, retrying in background:", err.message));
 const ctx: RouterCtx = { channel, modules: { ping: pingHandler } };
 
@@ -60,6 +76,7 @@ const app = express();
 app.get("/health", (_req, res) => {
   res.json(lifecycle.health());
 });
+app.get("/metrics", metricsHandler(metrics, coreMetrics));
 const httpServer: Server = app.listen(config.httpPort, () => {
   console.log(`[edge] http on :${config.httpPort} (${routes.length} routes)`);
 });
@@ -68,23 +85,36 @@ const httpServer: Server = app.listen(config.httpPort, () => {
 const wss = new WebSocketServer({ port: config.wsPort });
 wss.on("listening", () => console.log(`[edge] ws on :${config.wsPort}`));
 wss.on("connection", (socket) => {
+  metrics.wsConnects.inc();
+  metrics.wsConnections.inc();
+  log.log("info", "ws.open", { connections: wss.clients.size });
+  socket.on("close", (code) => {
+    metrics.wsDisconnects.inc();
+    metrics.wsConnections.dec();
+    log.log("info", "ws.close", { code, connections: wss.clients.size });
+  });
   socket.on("message", async (data) => {
+    const started = performance.now();
     let packet: unknown;
     try {
       packet = JSON.parse(data.toString());
     } catch {
+      recordRoute(metrics, "none", "error.bad_packet", performance.now() - started);
       socket.send(JSON.stringify({ type: "error.bad_packet", id: "none", payload: { message: "invalid JSON" } }));
       return;
     }
     // Valid JSON that is not an object (a number, null) has no type: routePacket answers error.bad_packet.
     const p = (typeof packet === "object" && packet !== null ? packet : {}) as { type?: unknown; id?: unknown; payload?: unknown };
+    const packetType = packetTypeLabel(p.type, routedTypes);
     try {
       const response = await routePacket(p, routes, ctx);
+      recordRoute(metrics, packetType, response.type, performance.now() - started);
       lifecycle.observe(response);
       socket.send(JSON.stringify(response));
     } catch (err) {
       // A local module threw: answer instead of leaving the client hanging.
       console.error("[edge] module error:", err);
+      recordRoute(metrics, packetType, "error.internal", performance.now() - started);
       const id = typeof p.id === "string" ? p.id : "none";
       socket.send(JSON.stringify({ type: "error.internal", id, payload: { message: "internal error" } }));
     }
@@ -99,6 +129,7 @@ function shutdown(signal: string): void {
   console.log(`[edge] ${signal}: no longer accepting; closing in ${SHUTDOWN_GRACE_MS / 1000} s`);
   httpServer.close();
   wss.close();
+  coreMetrics.stop();
   channel.close();
   setTimeout(() => {
     for (const client of wss.clients) client.terminate();

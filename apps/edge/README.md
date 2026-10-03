@@ -84,6 +84,80 @@ finishes).
 
 When the edge cannot reach the core it responds `{ type: "core.unavailable", id: <same id>, payload: { retry: true, message: "The world is restarting. Your connection is safe — try again shortly." } }`. Clients MUST: show a non-dismissible "reconnecting" banner on this packet; automatically retry the original action once after 3 seconds; never drop the WebSocket. (Client implementation is out of scope — this documents the contract the client team builds against.)
 
+## Network health (E6)
+
+`GET /metrics` on the HTTP port is the Prometheus scrape for the whole
+engine, `Content-Type: text/plain; version=0.0.4`. It holds the edge's
+metrics, the channel's edge side, and the core's metrics. The edge asks the
+core for those with `metrics.get` every 15 s and caches the answer. While
+that fails, the scrape has edge metrics only and `mmo_edge_core_metrics_stale 1`.
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `mmo_edge_ws_connections` | gauge | Open client WebSocket connections. |
+| `mmo_edge_ws_connects_total` | counter | Client connections opened. |
+| `mmo_edge_ws_disconnects_total` | counter | Client connections closed. |
+| `mmo_edge_router_requests_total{packet_type}` | counter | Packets routed. Types not in `routes.json` count as `unknown`, and packets with no type as `none`, so clients cannot grow the label set. |
+| `mmo_edge_router_errors_total{packet_type,error}` | counter | Error answers: `unknown_packet`, `bad_packet`, `unknown_module`, `core_unavailable`, or `internal` (a local module threw). |
+| `mmo_edge_router_latency_ms{packet_type}` | histogram | From receiving a packet to having its answer, in ms. |
+| `mmo_edge_mirror_deltas_fanned_out_total` | counter | Tick deltas the mirror buffer took in and handed on. Until the client cutover no players read them, so this counts deltas, not deltas × clients. |
+| `mmo_edge_mirror_snapshot_age_ticks` | gauge | Newest delta's tick minus newest snapshot's tick (0–299 when healthy). |
+| `mmo_edge_core_metrics_stale` | gauge | 1 while the core's metrics cannot be fetched. |
+| `mmo_channel_*{side="edge"}` | | The channel's edge side (see `packages/channel/README.md`). |
+| `mmo_core_tick` | gauge | The core's last tick. |
+| `mmo_core_tick_duration_ms` | histogram | Each server tick's wall time (budget 33.3 ms). |
+| `mmo_core_tick_events_pushed_total` | counter | `tick.events` pushes sent to the edge. |
+| `mmo_core_intents_accepted_total` | counter | `player.intent` packets accepted over the channel. |
+| `mmo_channel_*{side="core"}` | | The channel's core side. |
+
+Histograms use fixed ms buckets (0.1 to 10 000, including 33.3). The plan
+named `hdrhistogram-js`, but no such package is on npm, and Prometheus wants
+fixed buckets anyway.
+
+Network lifecycle events log one JSON object per line to stdout:
+`{ "ts", "level", "component": "edge|channel|core", "event", ...fields }`.
+The events are `ws.open`, `ws.close` (with `code`), `channel.up`,
+`channel.down`, `channel.reconnect` (with `attempt`), `heartbeat.missed`
+and `frame.oversized` (with `bytes`). The logger drops any field named like a
+token, payload, password, secret, hash or username.
+
+### Prometheus, Grafana, k6
+
+Prometheus and Grafana run as their own binaries beside the engine.
+
+```sh
+# Prometheus scrapes the edge every 15 s.
+prometheus --config.file=docs/prometheus/prometheus.yml
+# Grafana: start it, add a Prometheus data source (http://localhost:9090),
+# then Dashboards → Import → docs/grafana/dashboard.json.
+grafana server --homepath /usr/share/grafana   # or: grafana-server on older installs
+```
+
+The one scrape target, `localhost:3000`, covers the edge and the core.
+If you set `EDGE_HTTP_PORT`, change the target's port in
+`docs/prometheus/prometheus.yml` to match. A future service follows the
+same convention: expose the Prometheus format and add a scrape job.
+
+The dashboard's alerts are documented on its panels, not provisioned:
+- router p99 over 50 ms for 5 minutes;
+- `mmo_channel_heartbeat_missed_total` increasing;
+- snapshot age over 600 ticks.
+
+The k6 WebSocket soak ramps 0→50 virtual users over 1 minute, holds for 3
+minutes, then ramps down over 30 s. Each user pings every 200 ms and sends
+one `player.intent` a second. It fails if ping p99 is 100 ms or more, or if
+any `core.unavailable` comes back (set `CORE_DOWN=1` when the core is down
+on purpose).
+
+```sh
+k6 run apps/edge/test/load/ws-soak.js            # EDGE_WS_URL=ws://host:3001 to aim elsewhere
+```
+
+Installing k6:
+- Linux: `sudo apt install k6` after adding the Grafana apt repo (https://grafana.com/docs/k6/latest/set-up/install-k6/), or `snap install k6`.
+- macOS: `brew install k6`.
+- Windows: `winget install k6 --source winget` or `choco install k6`.
+
 ## `content/edge/routes.json`
 
 ```json

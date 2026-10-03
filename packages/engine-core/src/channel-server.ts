@@ -6,8 +6,13 @@
  * Requests: player.intent, auth.login, session.validate, core.sync,
  * mythic.grant_item, mythic.spawn_boss, metrics.get. Pushes every tick:
  * tick.events and tick.delta; every 300th tick also snapshot.
+ *
+ * metrics.get answers the core registry's Prometheus text (E6): the
+ * `mmo_core_*` metrics and the channel's core side. The edge folds it into
+ * its own `GET /metrics`.
  */
-import { serveChannel, type ChannelPacket, type ChannelServer } from "@mmo-engine/channel";
+import { channelMetrics, serveChannel, type ChannelMetrics, type ChannelPacket, type ChannelServer } from "@mmo-engine/channel";
+import { netLogger, Registry, type Counter, type Gauge, type Histogram } from "@mmo-engine/nethealth";
 import type { GatewayTick } from "./net/gateway.js";
 
 /** The full-snapshot cadence: tick 0, 300, 600, ... */
@@ -28,6 +33,8 @@ export function coreChannelPort(env: NodeJS.ProcessEnv = process.env): number {
 export interface CoreChannelHost {
   readonly serverTick: number;
   addTickListener(cb: (t: GatewayTick) => void): void;
+  /** Each tick's wall time in ms; without it `tick_duration_ms` stays empty. */
+  addTickTimeListener?(cb: (ms: number) => void): void;
   channelLogin(username: string, password: string): Promise<{ ok: true; token: string; playerId: string } | { ok: false; reason: string }>;
   sessionUser(token: string): { username: string } | null;
   liveSessionTokens(): string[];
@@ -44,11 +51,38 @@ export interface MythicHooks {
 
 export interface CoreChannel {
   readonly server: ChannelServer;
+  readonly metrics: CoreMetrics;
   close(): Promise<void>;
 }
 
-/** Counters behind metrics.get until E6's registry replaces them. */
-interface CoreCounters { tickEventsPushed: number; intentsAccepted: number; lastTickMs: number; }
+/** Every `mmo_core_*` metric the core registers. */
+export const CORE_METRIC_NAMES = [
+  "mmo_core_tick",
+  "mmo_core_tick_duration_ms",
+  "mmo_core_tick_events_pushed_total",
+  "mmo_core_intents_accepted_total",
+] as const;
+
+export interface CoreMetrics {
+  readonly registry: Registry;
+  readonly channel: ChannelMetrics;
+  tick: Gauge;
+  tickDuration: Histogram;
+  tickEventsPushed: Counter;
+  intentsAccepted: Counter;
+}
+
+export function createCoreMetrics(): CoreMetrics {
+  const registry = new Registry("mmo_");
+  return {
+    registry,
+    tick: registry.gauge("core_tick", "Last completed server tick."),
+    tickDuration: registry.histogram("core_tick_duration_ms", "Wall time of each server tick in ms (budget 33.3 ms at 30 Hz)."),
+    tickEventsPushed: registry.counter("core_tick_events_pushed_total", "tick.events pushes sent to the edge."),
+    intentsAccepted: registry.counter("core_intents_accepted_total", "player.intent packets accepted over the channel."),
+    channel: channelMetrics(registry),
+  };
+}
 
 function obj(p: unknown): Record<string, unknown> {
   if (typeof p !== "object" || p === null || Array.isArray(p)) throw new Error("payload must be an object");
@@ -71,7 +105,7 @@ function intentOf(v: unknown): IntentPayload {
   return { mx: num("mx"), my: num("my"), mz: num("mz"), lookYaw: num("lookYaw"), lookPitch: num("lookPitch"), jump: o.jump === true, buttons };
 }
 
-export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHooks, counters: CoreCounters) {
+export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHooks, metrics: CoreMetrics) {
   return async (p: ChannelPacket): Promise<unknown> => {
     switch (p.type) {
       case "player.intent": {
@@ -80,7 +114,7 @@ export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHo
         // A refusal is an answer, not a failure: the edge maps channel
         // failures to core.unavailable, which would misreport it.
         if (result !== "ok") return { accepted: false, reason: result, tick: host.serverTick };
-        counters.intentsAccepted++;
+        metrics.intentsAccepted.inc();
         return { accepted: true, tick: host.serverTick };
       }
       case "auth.login": {
@@ -107,18 +141,8 @@ export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHo
         return { ok: true, instanceId };
       }
       case "metrics.get":
-        return [
-          "# HELP mmo_core_tick Last completed server tick.",
-          "# TYPE mmo_core_tick gauge",
-          `mmo_core_tick ${host.serverTick}`,
-          "# HELP mmo_core_tick_events_pushed_total tick.events pushes sent to the edge.",
-          "# TYPE mmo_core_tick_events_pushed_total counter",
-          `mmo_core_tick_events_pushed_total ${counters.tickEventsPushed}`,
-          "# HELP mmo_core_intents_accepted_total player.intent packets accepted over the channel.",
-          "# TYPE mmo_core_intents_accepted_total counter",
-          `mmo_core_intents_accepted_total ${counters.intentsAccepted}`,
-          "",
-        ].join("\n");
+        metrics.tick.set(host.serverTick);
+        return metrics.registry.scrape();
       default:
         throw new Error(`unknown packet type ${p.type}`);
     }
@@ -136,17 +160,19 @@ export function pushTick(push: (type: string, payload: unknown) => void, t: Gate
 }
 
 /** Serve the channel on `port` (loopback) and stream the host's ticks to every edge. */
-export async function startCoreChannel(host: CoreChannelHost, port: number, mythic: MythicHooks = {}): Promise<CoreChannel> {
-  const counters: CoreCounters = { tickEventsPushed: 0, intentsAccepted: 0, lastTickMs: 0 };
-  const server = await serveChannel(port, createCoreChannelHandler(host, mythic, counters));
+export async function startCoreChannel(host: CoreChannelHost, port: number, mythic: MythicHooks = {}, metrics: CoreMetrics = createCoreMetrics()): Promise<CoreChannel> {
+  const server = await serveChannel(port, createCoreChannelHandler(host, mythic, metrics), "127.0.0.1",
+    { metrics: metrics.channel, log: netLogger("core") });
   let open = true;
   host.addTickListener((t) => {
     if (!open) return;
     pushTick((type, payload) => server.pushToAll(type, payload), t);
-    counters.tickEventsPushed++;
+    metrics.tickEventsPushed.inc();
   });
+  host.addTickTimeListener?.((ms) => { if (open) metrics.tickDuration.observe(ms); });
   return {
     server,
+    metrics,
     close: () => { open = false; return server.close(); },
   };
 }
