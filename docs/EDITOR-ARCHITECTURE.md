@@ -218,6 +218,50 @@ controller of the play-mode outliner, `PlayModeController` the toolbar's,
 rules and tables keep their stores as models. EA2 moves them behind the
 contracts; behaviour does not change.
 
+### 3.2 Look and feel: Material Design 3
+
+The editor's visual language follows Google's
+[Material Design 3](https://m3.material.io/), dark scheme first, adapted
+for a dense desktop tool. Concept mockups of scene editing, play mode, the
+flow editor and the Modules window go with the PR (kept out of the repo
+like all media).
+
+- **Colour roles, not colours.** One seed colour generates the scheme
+  (primary, secondary, tertiary, error, and the surface-container ladder)
+  as CSS tokens. Panels sit on tonal surfaces (`surface-container-low` for
+  side panels, `-high` for the details panel), never on borders and
+  shadows. Tertiary is reserved for play: the Play FAB and play-only
+  overlays, so play state is recognisable at a glance; Stop uses the error
+  container.
+- **Navigation rail** for the editor's top-level places (Scene, Flow,
+  Content, Modules, Rules, Debug, Settings). Modules can add a destination.
+- **One primary action per screen** as an extended FAB in the viewport
+  ("Play from here", "Stop"). Edit / Simulate / Play is a segmented button
+  in the top app bar.
+- **Components from the M3 set**: outlined text fields with inline
+  validation, sliders with value labels, filter chips for layers and
+  module kinds, switches for enabling modules, linear progress for native
+  builds, snackbars for undo and for "Apply modules", tabs inside panels.
+- **Desktop density.** M3's compact density (40 px list items and buttons)
+  everywhere except the viewport overlays, which keep 40 px touch-size
+  targets because they float over a moving picture.
+- **Feedback states are first-class**: a schema-valid banner on Details,
+  "needs a play restart" on a module card, live/idle chips on the play
+  server, empty states that say what to do next ("Drag a prefab from
+  Content to place it").
+- **Type and icons**: Roboto Flex for UI, Roboto Mono for ids, events and
+  logs, Material Symbols Rounded for icons (all open licence, bundled with
+  the editor rather than loaded from a CDN, so it works offline).
+- **Accessibility**: M3 tone pairs keep text at 4.5:1 contrast or better;
+  every viewport tool has a keyboard shortcut shown in its tooltip; focus
+  rings use the primary colour.
+
+EA1 introduces the tokens and the rail; existing panels are restyled as
+they move behind the panel registry, not in a separate pass. The tokens
+live in one place so a module's panels match without importing a
+component library; adopting `@material/web` components is an option for
+EA1, not a requirement.
+
 ## 4. Modules
 
 A module is a folder with a manifest. It is the unit you develop, enable,
