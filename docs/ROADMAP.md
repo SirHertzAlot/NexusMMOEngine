@@ -45,7 +45,6 @@ What is left, by area:
   registry.
 - **Scale**: the edge / core split (E2 to E6), region migration, the world
   server's stress harness, terrain LOD rings.
-- **Persistence**: friends and whispers reset on restart (S2).
 - **CI**: GitHub Actions jobs don't start (out of Actions credits), so
   every change is checked locally with `npm test` and valgrind.
 
@@ -143,7 +142,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); combat skills (M3c) feed damage and train from landed hits, blocks and dodges; the rest is open |
 | M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
-| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | Whispers, blocks and friends with presence live (in memory; friends reset on restart, persistence and the world-server event stream deferred) |
+| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | Whispers, blocks and friends with presence live, persisted in `social.db` (S2c); the world-server event stream deferred |
 | S3 | Parties | ✅ | 〃 |
 | S4 | Guilds | ✅ | `GuildBook` (500 members, ranks leader/officer/member/recruit, officer invites, MOTD, 200-entry officer log, 60 s invites), guild chat, `GuildState` pushes, tags on the names rows, guild frame + `/g /gcreate /ginvite /gkick /grank /gmotd /gaccept /gleave`. Persisted by `SqliteGuildStore` (`guilds.db`: guilds, members, 200-line log per guild); `purge` awaits a character-delete path |
 | P1 | Progression graphs: quests and dialog | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
@@ -234,6 +233,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-03**: S2c friends and blocks persistence: `SqliteSocialStore` (`social.db`) behind `GatewayOptions.socialStore`, write-through from `FriendBook` and `BlockList`. Friends lists and blocks now survive restarts.
 - **2026-10-03**: Roadmap brought up to date: an "At a glance" summary; U3, U10, U12 and M2 marked in progress, U5, C3 and L3 built; the update log put back in date order under its heading. README layout lists the editor, edge and every package.
 - **2026-10-03**: Valgrind without Docker: `npm run valgrind:memcheck` and `valgrind:perf` call `memcheck.mjs` and `perf.mjs` directly again on the host's valgrind; the Docker launcher (`launch.mjs`, `Dockerfile`, `docker-run.sh`) is gone, replacing the container repair below. On Windows, run them from WSL.
 - **2026-10-03**: Edge/core split E1 edge skeleton: new `apps/edge` process (Express `GET /health`, client WebSocket) routes packets by type from strictly validated `content/edge/routes.json` to local modules (`ping`) or the core; the core channel is a stub until E2, so core-bound packets answer `core.unavailable` (the contract E4 reuses). Graceful SIGTERM/SIGINT. Valgrind not run (skipped at the user's request).
