@@ -264,6 +264,7 @@ export {
   MemoryCharacterStore,
   SqliteCharacterStore,
 } from "./characters/index.js";
+export { SqliteGuildStore } from "./guild-store.js";
 export type { CharacterRecord, CharacterStore } from "./characters/index.js";
 
 export { DeathSystem, type LifeEvent } from "./death.js";

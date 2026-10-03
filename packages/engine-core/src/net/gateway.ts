@@ -113,7 +113,7 @@ import {
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
-import { GuildBook, GuildOpSchema, type GuildResult } from "../guild.js";
+import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
 import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
@@ -174,6 +174,8 @@ export interface GatewayOptions {
    * production server passes a SqliteCharacterStore.
    */
   characterStore?: CharacterStore;
+  /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
+  guildStore?: GuildStore;
   /**
    * The modular part catalog new characters' looks are checked against;
    * null/absent = structural checks only (a server without the art).
@@ -351,6 +353,7 @@ export class Gateway {
       | "world"
       | "credentialStore"
       | "characterStore"
+      | "guildStore"
       | "characterCatalog"
       | "maxCharacters"
       | "sessionTtlMs"
@@ -410,7 +413,7 @@ export class Gateway {
   private readonly blocks = new BlockList();
   /** Parties, in memory (S3). */
   private readonly parties = new PartyBook(() => this.clock());
-  private readonly guilds = new GuildBook(() => this.clock());
+  private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
   /** Items (see GatewayOptions.items); shared with the systems list. */
@@ -465,6 +468,7 @@ export class Gateway {
     this.world = opts.world ?? new SimWorld();
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
+    this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
