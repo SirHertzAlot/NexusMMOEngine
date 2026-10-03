@@ -20,6 +20,7 @@ import { ChannelClient } from "@mmo-engine/channel";
 import { loadConfig } from "./config.js";
 import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
+import { createCoreLifecycle } from "./lifecycle.js";
 import { createMirrorBuffer } from "./mirror-buffer.js";
 import { pushTick } from "./tick-buffer.js";
 
@@ -46,7 +47,8 @@ const routes = loadRoutes(join(findRepoRoot(), "content/edge/routes.json"));
 
 // 4. modules (local:<name> destinations)
 const channel = new ChannelClient({ port: config.coreChannelPort });
-channel.onStatus(() => {}); // status is polled by /health; no action needed yet (E4 wires reactions)
+// E4: log outages, resync on reconnect, track sessions from logins.
+const lifecycle = createCoreLifecycle(channel);
 channel.onPush("tick.events", (p) => { const { tick, events } = p as { tick: number; events: unknown[] }; pushTick(tick, events); });
 // The core's mirror stream; read by the client cutover (players still connect to the core today).
 export const mirror = createMirrorBuffer(channel);
@@ -56,7 +58,7 @@ const ctx: RouterCtx = { channel, modules: { ping: pingHandler } };
 // 2. HTTP
 const app = express();
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, core: channel.status });
+  res.json(lifecycle.health());
 });
 const httpServer: Server = app.listen(config.httpPort, () => {
   console.log(`[edge] http on :${config.httpPort} (${routes.length} routes)`);
@@ -78,6 +80,7 @@ wss.on("connection", (socket) => {
     const p = (typeof packet === "object" && packet !== null ? packet : {}) as { type?: unknown; id?: unknown; payload?: unknown };
     try {
       const response = await routePacket(p, routes, ctx);
+      lifecycle.observe(response);
       socket.send(JSON.stringify(response));
     } catch (err) {
       // A local module threw: answer instead of leaving the client hanging.

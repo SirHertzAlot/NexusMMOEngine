@@ -62,6 +62,28 @@ on success, the same `type`.
 channel's status: `"unknown"` only before the first connection attempt
 finishes).
 
+## Degraded mode and resync (E4)
+
+`src/lifecycle.ts` follows the channel's status:
+
+- **Core down:** logs `core channel down at <ISO time>`. Nothing else
+  changes: local routes (`local:*`) keep answering, and every core-bound
+  packet answers `core.unavailable`. That is degraded mode. `/health`
+  says `"core": "down"`.
+- **Core back** (the channel goes from down to up): the edge asks
+  `core.sync` (10 s timeout), drops every session token it learned from
+  `auth.login` answers that the core no longer lists, logs
+  `core resync complete at <ISO time> tick=<n> sessions=<m>`, and only
+  then reports `"core": "up"`. If the sync fails it stays `"down"` with
+  its sessions untouched; the reconnect loop brings the transition round
+  again.
+- Intents sent during an outage are **not** replayed: they are
+  ephemeral, and the client re-sends per the contract below.
+
+### Client contract
+
+When the edge cannot reach the core it responds `{ type: "core.unavailable", id: <same id>, payload: { retry: true, message: "The world is restarting. Your connection is safe — try again shortly." } }`. Clients MUST: show a non-dismissible "reconnecting" banner on this packet; automatically retry the original action once after 3 seconds; never drop the WebSocket. (Client implementation is out of scope — this documents the contract the client team builds against.)
+
 ## `content/edge/routes.json`
 
 ```json
