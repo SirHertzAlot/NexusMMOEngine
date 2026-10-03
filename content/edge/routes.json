@@ -1,0 +1,5 @@
+{ "routes": [
+  { "packetType": "ping", "destination": "local:ping" },
+  { "packetType": "player.intent", "destination": "core" },
+  { "packetType": "auth.login", "destination": "core" }
+] }

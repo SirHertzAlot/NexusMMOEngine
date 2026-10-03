@@ -156,6 +156,15 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
+## 5b. Edge / core split
+
+Doc: [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md). Its E1–E6 are the
+split's slices, not the editor's E items.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | 🚧 | Core channel stubbed until E2: core-bound packets answer `core.unavailable` |
+
 ## 6. World server
 
 Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
@@ -194,6 +203,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
+- **2026-10-03**: Edge/core split E1 edge skeleton: new `apps/edge` process (Express `GET /health`, client WebSocket) routes packets by type from strictly validated `content/edge/routes.json` to local modules (`ping`) or the core; the core channel is a stub until E2, so core-bound packets answer `core.unavailable` (the contract E4 reuses). Graceful SIGTERM/SIGINT. Valgrind not run (skipped at the user's request).
 - **2026-10-03**: Valgrind repaired: the container run (`docker-run.sh`) rebuilt every addon from scratch on every run, silently (Jolt takes minutes), so `npm run valgrind:*` looked hung, and two runs at once corrupted the shared volume. Addons now rebuild only when their sources change (hash in the volume), runs are serialised with `flock`, progress is printed and a failed addon build shows its log. Verified: `valgrind:memcheck -- physics` clean in 16 s, `valgrind:perf` all 8 workloads in 84 s (container Node is v25; the baseline is from v22, so deltas are indicative only). Valgrind/perf are no longer paused.
 - **2026-10-03**: M3c combat skills: the attacker's weapon skill (Cutting/Thrusting/Bludgeoning, via the technique's skill in `combat.json`) feeds `computeDamage`; a landed hit trains it, a block trains Blocking and a dodge trains Evading (difficulty 0.5, keyed on the opponent). Server wires `CombatSkills` to the mastery sheets; no skills means the old behaviour. Valgrind/perf paused.
 - **2026-10-03**: E11 rules editor: a Rules tab in the editor lists every `content/rules/*.json`, edits it as a tree and validates on save with the `@mmo-engine/rules` schemas and cross-file checks; invalid saves write nothing and show per-path errors. Save is strict (any invalid rules file blocks). Perf and valgrind runs paused.
