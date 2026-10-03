@@ -110,7 +110,7 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
-import { allowAllText, CHAT_COOLDOWN_MS, ChatSchema, SAY_RANGE_M, type TextFilter } from "../chat.js";
+import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
@@ -402,6 +402,8 @@ export class Gateway {
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
   private readonly playerAbilities: number;
+  /** Who blocks whom, by account (S2). */
+  private readonly blocks = new BlockList();
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
   /** Items (see GatewayOptions.items); shared with the systems list. */
@@ -1335,12 +1337,19 @@ export class Gateway {
       return;
     }
     let text: string;
-    let channel: "say" | "yell" | "emote";
+    let channel: "say" | "yell" | "emote" | "whisper";
+    let to: string | undefined;
     try {
-      const parsed = ChatSchema.safeParse(decodeControl<unknown>(payload));
+      const raw = decodeControl<unknown>(payload);
+      if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "block") {
+        this.onBlock(s, raw);
+        return;
+      }
+      const parsed = ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
       text = parsed.data.text;
       channel = parsed.data.channel;
+      to = parsed.data.to;
     } catch {
       this.sendError(s, 4003, "malformed chat");
       return;
@@ -1368,10 +1377,30 @@ export class Gateway {
       from: s.character?.name ?? s.username,
       entity: s.playerEntity.toString(),
     };
+    if (channel === "whisper" && to !== undefined) {
+      msg.to = to;
+      const key = to.toLowerCase();
+      let target: ClientSession | undefined;
+      for (const r of this.sessions.values()) {
+        if (r !== s && r.welcomed && (r.character?.name ?? r.username).toLowerCase() === key) target = r;
+      }
+      // Unknown, offline and blocking all get the same answer.
+      if (!target || this.blocks.isBlocked(target.username, s.username)) {
+        this.sendSystem(s, NOT_ONLINE);
+        return;
+      }
+      msg.to = target.character?.name ?? target.username;
+      const shown = encodeControl(msg);
+      this.sendEnvelope(target, MessageType.Chat, shown);
+      this.sendEnvelope(s, MessageType.Chat, shown);
+      return;
+    }
     const body = encodeControl(msg);
     if (channel === "yell") {
       for (const r of this.sessions.values()) {
-        if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Chat, body);
+        if (r.welcomed && r.playerEntity !== null && !this.blocks.isBlocked(r.username, s.username)) {
+          this.sendEnvelope(r, MessageType.Chat, body);
+        }
       }
       return;
     }
@@ -1384,7 +1413,45 @@ export class Gateway {
       if (reid < 0 || !hasComponent(this.world.ecs, C.Transform, reid)) continue;
       const dx = C.Transform.px[reid] - sx;
       const dz = C.Transform.pz[reid] - sz;
-      if (dx * dx + dz * dz <= range2) this.sendEnvelope(r, MessageType.Chat, body);
+      if (dx * dx + dz * dz <= range2 && !this.blocks.isBlocked(r.username, s.username)) {
+        this.sendEnvelope(r, MessageType.Chat, body);
+      }
+    }
+  }
+
+  /** A server notice in the sender's chat (S2). */
+  private sendSystem(s: ClientSession, text: string): void {
+    const msg: ChatBroadcast = { kind: "chat", channel: "system", text, from: "", entity: "" };
+    this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
+  }
+
+  /**
+   * Block or unblock a character by name (S2). Blocks are per account and
+   * silent to the blocked side; the blocker gets a notice.
+   */
+  private onBlock(s: ClientSession, raw: unknown): void {
+    const parsed = BlockSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed block");
+      return;
+    }
+    const key = parsed.data.name.toLowerCase();
+    let account: string | undefined;
+    for (const r of this.sessions.values()) {
+      if ((r.character?.name ?? r.username).toLowerCase() === key) account = r.username;
+    }
+    // Only online characters resolve until the character store is asked by name.
+    if (account === undefined) {
+      this.sendSystem(s, NOT_ONLINE);
+      return;
+    }
+    if (!parsed.data.on) {
+      this.blocks.remove(s.username, account);
+      this.sendSystem(s, `unblocked ${parsed.data.name}`);
+    } else if (this.blocks.add(s.username, account)) {
+      this.sendSystem(s, `blocked ${parsed.data.name}`);
+    } else {
+      this.sendSystem(s, "cannot block");
     }
   }
 

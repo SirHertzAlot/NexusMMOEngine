@@ -235,10 +235,25 @@ export interface ChatMessage {
   kind: "chat";
   channel: ChatChannel;
   text: string;
+  /** Whisper target: a character name (S2). */
+  to?: string;
 }
 
-/** Chat channels: say and emote reach nearby players, yell reaches all. */
-export type ChatChannel = "say" | "yell" | "emote";
+/**
+ * C→S (0x11, S2): block or unblock a character by name. Blocks are per
+ * account: the blocked account is silenced for all the blocker's characters.
+ */
+export interface BlockMessage {
+  kind: "block";
+  name: string;
+  on: boolean;
+}
+
+/**
+ * Chat channels: say and emote reach nearby players, yell reaches all,
+ * whisper reaches one named character (S2).
+ */
+export type ChatChannel = "say" | "yell" | "emote" | "whisper";
 
 /**
  * S→C (catalog §0x11): a fanned-out chat line. `from` is the speaker's
@@ -247,10 +262,13 @@ export type ChatChannel = "say" | "yell" | "emote";
  */
 export interface ChatBroadcast {
   kind: "chat";
-  channel: ChatChannel;
+  /** `system` is server-only: notices such as "not online". */
+  channel: ChatChannel | "system";
   text: string;
   from: string;
   entity: string;
+  /** Whispers: the target's character name, so a sender's echo shows who it went to. */
+  to?: string;
 }
 
 /**

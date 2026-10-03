@@ -114,7 +114,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); the rest is open |
 | M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
-| S2 | Region↔world event stream, presence, whispers, friends, blocks | 📋 | 〃 |
+| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | 〃 |
 | S3 | Parties | 📋 | 〃 |
 | S4 | Guilds | 📋 | 〃 |
 | P1 | Progression graphs: quests and dialog | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
@@ -198,6 +198,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-03**: T2 play telemetry (server): `PlayTelemetry` keeps kills, deaths, pickups, drops and player damage dealt/taken in 10 s buckets (60-bucket ring, preallocated, no tick allocation) plus a tick-time histogram (p50/p99/max). Admin `stats` returns the JSON for the editor graphs (E5).
+- **2026-10-03**: S2 whispers and blocks (in-memory): whisper by character name on 0x11 (`to`), echoed to the sender; unknown, offline, self or blocking targets all answer the same system "not online". Per-account silent blocks (200 limit, `block` message) hide say/yell/whispers from the blocker. Friends, presence, reply and the world-server event stream are deferred.
 
 - **2026-10-03**: M1 mastery core: `SkillSheet` (gain by challenge, slowdown at the top, repeat falloff, related skills, decay with relearn bonus, save/load) and a `MasterySystem` training Swimming and Athletics every 5 s of effort (proposed defaults). Exposure (no weather yet), familiarity, persistence and the wire/character sheet (U9, flatc) deferred. E11 rules editor panel added to the list (editor parity).
 - **2026-10-03**: M1b skill persistence: skills saved with the character (`character_skills`) and restored on enter-world with deterioration applied; `MasterySystem` shared between gateway and tick list.

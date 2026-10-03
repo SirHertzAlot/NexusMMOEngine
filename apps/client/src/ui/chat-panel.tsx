@@ -23,7 +23,7 @@ export interface ChatPanelProps {
 export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps): React.ReactElement {
   const [draft, setDraft] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
-  const shown = lines.filter((l) => l.channel === channel);
+  const shown = lines.filter((l) => l.channel === channel || l.channel === "whisper" || l.channel === "system");
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [shown.length]);

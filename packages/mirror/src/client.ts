@@ -232,9 +232,16 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "unequip", hand })));
   }
 
-  chat(channel: ChatChannel, text: string): void {
+  chat(channel: ChatChannel, text: string, to?: string): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "chat", channel, text })));
+    const m = to === undefined ? { kind: "chat", channel, text } : { kind: "chat", channel, text, to };
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /** Block or unblock a character by name (S2). */
+  block(name: string, on: boolean): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "block", name, on })));
   }
 
   private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {

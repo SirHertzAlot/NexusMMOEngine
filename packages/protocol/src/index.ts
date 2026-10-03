@@ -7,6 +7,7 @@ export type {
   AdminCommand,
   AdminResult,
   CharacterEntry,
+  BlockMessage,
   ChatBroadcast,
   ChatChannel,
   ChatMessage,
