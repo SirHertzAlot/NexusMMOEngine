@@ -383,6 +383,38 @@ bound to a shortcut. Concept mockups of the workspaces, the dock targets
 and layout menu, the toolbar customization and the play menu go with the
 PR.
 
+### 3.6 Frontend stack: React and React Three Fiber
+
+The overhaul is a frontend redesign, built on the stack the client
+already uses ([`DECISIONS.md`](DECISIONS.md) 2026-09-29): React 19 for
+every panel and React Three Fiber 9 (with drei and postprocessing, as in
+`apps/client`) on three 0.186 for every 3D view.
+
+- **Today** the editor is React DOM with plain three.js viewports
+  (`terrain/terrain-view.ts`, `ui/model-preview.tsx`) and no R3F
+  dependency. The overhaul adds `@react-three/fiber` and `@react-three/drei`
+  at the client's versions, so both apps share one 3D stack.
+- **One `<Canvas>` per viewport panel.** The scene viewport, the play view,
+  the character preview, the dungeon view and the PICG preview are R3F
+  canvases inside dockable panels. The world itself is the shared renderer
+  E4 extracts from the client, mounted as R3F components, never a copy.
+- **Editor-only 3D is R3F components too**: gizmos (drei's
+  `TransformControls` / `PivotControls`), grid, selection outlines,
+  overlays for navmesh tiles, paths and spawn areas, the edit camera
+  (`OrbitControls`). Modules add viewport tools the same way, as R3F
+  components in a panel contribution.
+- **The MVC split holds.** Mirror and model state is read in `useFrame`,
+  never pushed through React state each frame (the client's rule);
+  controllers stay pure TS, and React re-renders only on view-model
+  changes. The existing terrain view's classes are wrapped in R3F rather
+  than rewritten, as the client did with its renderers.
+- **Material 3 tokens** (§3.2) are CSS variables in Tailwind's theme, so
+  panels, the docking layout and HTML overlays inside canvases (drei's
+  `Html` for nameplates, labels and gizmo readouts) share one look.
+
+The redesign lands as EA1 and is built against the mockups that go with
+this PR (`ux-01` to `ux-08`).
+
 ## 4. Modules
 
 A module is a folder with a manifest. It is the unit you develop, enable,
@@ -750,7 +782,7 @@ the roadmap thread adds them.
 | # | Slice | Depends on | Done when |
 |---|---|---|---|
 | EA0 | **This document** | | merged |
-| EA1 | **Docking shell, workspaces and toolbar.** `App.tsx`'s tabs become panels in a dockable layout (drag a tab, dock targets, resizable dividers, pop out to a window); named layouts saved per workspace with reset and export; the top bar (menus, workspace tabs, command search) and the toolbar with the play cluster (Play, Pause, Step, Stop); Material 3 tokens (§3.2 to §3.5). Panels registered in code, not imported by the shell. Reuses E5's docking code rather than a second one | E4, E5 | every existing tab opens as a panel in a workspace; a saved layout survives reload; Pause and Step hold and advance the owned server; screenshots and a GIF of docking |
+| EA1 | **Docking shell, workspaces and toolbar.** `App.tsx`'s tabs become panels in a dockable layout (drag a tab, dock targets, resizable dividers, pop out to a window); named layouts saved per workspace with reset and export; the top bar (menus, workspace tabs, command search) and the toolbar with the play cluster (Play, Pause, Step, Stop); Material 3 tokens (§3.2 to §3.5); the frontend redesign onto React Three Fiber for every viewport (§3.6), built against the mockups. Panels registered in code, not imported by the shell. Reuses E5's docking code rather than a second one | E4, E5 | every existing tab opens as a panel in a workspace; a saved layout survives reload; Pause and Step hold and advance the owned server; screenshots and a GIF of docking |
 | EA2 | **MVC contracts.** `Model`, `Controller`, `PanelContribution`, `EditorContext`; shared selection and an undo stack. Port ECS, play mode, rules, tables and terrain behind them | EA1 | existing editor tests pass unchanged; new controller tests with fakes |
 | EA3 | **Editor modules.** `packages/modules` (manifest schema, discovery, validation); the host's `/api/editor/modules`; the shell loads editor entries by dynamic import; Modules window to enable and disable. `modules/core` holds today's panels; Character records moves to its own module as the proof | EA2 | disabling the characters module removes its panel without a restart; a bad manifest lists every problem |
 | EA4 | **Scene documents.** `packages/scene` (schema, node and component registry); `content/scenes`; Outliner and Details over an open scene; validated save through `/api/editor/scenes`; undo | EA2 | open, edit, save and reload a scene; a refused save writes nothing |
