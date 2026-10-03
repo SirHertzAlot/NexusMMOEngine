@@ -5,7 +5,7 @@
  * velocity (no flings), heal fills from max, fly flips the Fly ability
  * bit (and lands the avatar when revoked mid-air is left to gravity).
  *
- * God-mode waits for damage to exist (M2/M3), mana for its first
+ * Heal also makes the body whole (M2). God-mode waits for damage to exist (M2/M3), mana for its first
  * spender, and time/weather for a runtime clock design — all noted in
  * the roadmap row rather than faked here.
  */
@@ -13,6 +13,7 @@
 import { hasComponent } from "bitecs";
 import { z } from "zod";
 import { Ability } from "@mmo-engine/protocol";
+import { restoreBody } from "../body.js";
 import * as C from "../components.js";
 import type { SimWorld } from "../world.js";
 
@@ -71,6 +72,8 @@ export function applyHeal(world: SimWorld, wireId: bigint): { ok: boolean; messa
   if (eid < 0 || !hasComponent(world.ecs, C.Health, eid)) {
     return { ok: false, message: `entity ${wireId} has no Health` };
   }
+  // Injuries too (M2): lost parts back, wounds closed, blood full.
+  restoreBody(world, eid);
   C.Health.current[eid] = C.Health.max[eid];
   return { ok: true, message: `healed ${wireId} to ${C.Health.max[eid]}` };
 }

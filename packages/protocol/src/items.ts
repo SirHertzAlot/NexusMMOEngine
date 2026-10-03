@@ -89,6 +89,30 @@ export interface HitMessage {
   /** The target's health after the blow, and its maximum. */
   health: number;
   max: number;
+  /**
+   * Body parts (M2): the part the blow landed on, its state after it, and
+   * the parts it cut off (that part and everything below it). Absent on
+   * dodges and on bodies without parts.
+   */
+  part?: string;
+  state?: PartStateName;
+  lost?: string[];
+}
+
+/** A body part's state (docs/MASTERY-AND-COMBAT.md §4.2). */
+export type PartStateName = "healthy" | "harmed" | "maimed" | "dismembered";
+
+/**
+ * S->C (catalog 0x18, M2): the player's own body, part by part: when it
+ * changes (at most a few times a second), and on joining. `hp` is the
+ * share of each part's own health left (0..1); `bleeding` an open wound.
+ */
+export interface BodyMessage {
+  kind: "body";
+  entity: string;
+  parts: { id: string; name: string; hp: number; state: PartStateName; bleeding: boolean }[];
+  blood: number;
+  bloodMax: number;
 }
 
 /**
@@ -105,4 +129,7 @@ export interface LifeMessage {
   state: "dead" | "alive";
   killer?: string;
   respawnAt?: number;
+  /** What killed it (dead, M2): a vital part (`part` names it), blood loss, or anything else. */
+  cause?: "part" | "bleeding" | "other";
+  part?: string;
 }

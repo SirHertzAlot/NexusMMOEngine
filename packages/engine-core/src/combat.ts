@@ -26,12 +26,20 @@
  * i-frames takes none. Health stops at 0 (DeathSystem takes it from there,
  * M2b); the dead neither fight nor are struck. Each blow leaves
  * a HitEvent for the gateway to send (`drainHits`).
+ *
+ * Body parts (M2): with a BodySystem, a blow aimed at the body's root
+ * (the torso) lands where the rules' resolveLanding puts it (precision from
+ * the attacker's skill, lowered by a weakened sword arm; a deterministic
+ * stream per tick and pair), takes that part's hit multiplier, and hurts
+ * that part (BodySystem.applyBlow: harm, maim, dismember). A weakened arm
+ * also hits softer, and a useless one cannot attack.
  */
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
-import type { DamageInput, RuleHooks } from "@mmo-engine/rules";
+import type { DamageInput, PartState, RuleHooks } from "@mmo-engine/rules";
 import { Action, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
+import { blowRng, type BodySystem } from "./body.js";
 import { ATTACK_COST, DODGE_COST, type StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
@@ -50,6 +58,10 @@ export interface HitEvent {
   target: number;
   outcome: "hit" | "blocked" | "dodged";
   amount: number;
+  /** With bodies: the part the blow landed on, its state after it, and the parts it cut off. */
+  part?: string;
+  state?: PartState;
+  lost?: string[];
 }
 
 /** Fraction of a blow a facing guard lets through. */
@@ -81,6 +93,8 @@ export interface CombatDamage {
   weaponOf?: (e: number) => Weapon | null;
   /** Skills behind power and defence; absent means skill 0 and no training. */
   skills?: CombatSkills;
+  /** Body parts (M2): blows land on parts; absent means whole-body Health. */
+  body?: BodySystem;
 }
 
 export class CombatSystem implements SimSystem {
@@ -204,6 +218,9 @@ export class CombatSystem implements SimSystem {
       if (d > 1e-4 && (dx * fx + dz * fz) / d < CONE_COS) continue;
       let outcome: HitEvent["outcome"] = "hit";
       let amount = 0;
+      let part: string | undefined;
+      let state: PartState | undefined;
+      let lost: string[] | undefined;
       const tm = hasComponent(sim.ecs, Action, t) ? combatMove(Action.move[t]) : undefined;
       const tt = tm ? (tick - Action.started[t]) / this.tickHz : 0;
       if (tm?.iframes && tt >= tm.iframes.from && tt <= tm.iframes.to) {
@@ -212,7 +229,14 @@ export class CombatSystem implements SimSystem {
       } else {
         const sk = dmg.skills;
         const weaponSkill = sk?.techniqueSkill(w.technique);
-        amount = dmg.hooks.computeDamage({ technique: w.technique, skill: weaponSkill ? sk!.get(e, weaponSkill) : 0, item: w.item, part: "torso" }).amount;
+        const skill = weaponSkill ? sk!.get(e, weaponSkill) : 0;
+        const body = dmg.body;
+        const arm = body ? body.armFactor(sim, e) : 1;
+        part = body
+          ? dmg.hooks.resolveLanding({ aim: body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
+          : "torso";
+        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part });
+        amount = blow.amount * arm;
         // The guard holds only against what it faces; a landed block trains Blocking.
         if (tm?.kind === "guard" && -(dx * Math.sin(Action.yaw[t]) + dz * Math.cos(Action.yaw[t])) >= 0) {
           outcome = "blocked";
@@ -220,10 +244,23 @@ export class CombatSystem implements SimSystem {
           sk?.train(t, "blocking", FIGHT_DIFFICULTY, e);
         }
         if (weaponSkill) sk!.train(e, weaponSkill, FIGHT_DIFFICULTY, t);
-        Health.current[t] = Math.max(0, Health.current[t] - amount);
+        if (body) {
+          const r = body.applyBlow(sim, t, part, blow.kind, amount);
+          part = r.part;
+          state = r.state;
+          if (r.lost.length > 0) lost = r.lost;
+        } else {
+          Health.current[t] = Math.max(0, Health.current[t] - amount);
+        }
         this.attackers.set(t, e);
       }
-      this.hits.push({ tick, source: e, target: t, outcome, amount });
+      const hit: HitEvent = { tick, source: e, target: t, outcome, amount };
+      if (this.damage?.body && part !== undefined) {
+        hit.part = part;
+        hit.state = state;
+        if (lost) hit.lost = lost;
+      }
+      this.hits.push(hit);
     }
   }
 
@@ -232,6 +269,8 @@ export class CombatSystem implements SimSystem {
     // start funnels through here, chains and recoveries included, while
     // guards stay free. A denied start fires nothing (returns undefined).
     const def = combatMove(id);
+    // A useless sword arm (maimed, gone) cannot attack.
+    if (def?.kind === "attack" && this.damage?.body && this.damage.body.armFactor(sim, e) === 0) return undefined;
     // Entities without a pool (bots) fence nothing: gating is for stamina
     // bearers only, so bot behaviour is unchanged.
     if (def && this.stamina && hasComponent(sim.ecs, Stamina, e)) {

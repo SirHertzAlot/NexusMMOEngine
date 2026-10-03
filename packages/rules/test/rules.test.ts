@@ -277,6 +277,22 @@ describe("bad rules", () => {
     assert.doesNotThrow(() => parseRules({ body: { parts: parts.slice(0, 15).map((p) => ({ ...p, share: 1 / 15 })) } }));
   });
 
+  it("a body's hands and fall parts must make sense (M2)", () => {
+    const issues = issuesOf(() =>
+      parseRules({
+        body: {
+          parts: [
+            { id: "torso", name: "Torso", parent: null, share: 0.5, holds: "main" },
+            { id: "claw", name: "Claw", parent: "torso", share: 0.5, holds: "main" },
+          ],
+          fall: { parts: { tail: 1 } },
+        },
+      }),
+    );
+    assert.ok(issues.includes("body.json: parts: more than one part holds the main hand"), issues.join("\n"));
+    assert.ok(issues.includes('body.json: fall.parts.tail: no part "tail"'), issues.join("\n"));
+  });
+
   it("an empty folder is the engine default", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rules-"));
     assert.deepEqual(loadRules(dir), engineDefaults());

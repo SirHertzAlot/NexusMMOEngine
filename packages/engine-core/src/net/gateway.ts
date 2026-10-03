@@ -64,6 +64,7 @@ import {
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
+  type BodyMessage,
   type HitMessage,
   type LifeMessage,
   type NamesMessage,
@@ -124,6 +125,7 @@ import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { MasterySystem } from "../stats/mastery-system.js";
+import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
 import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
 import {
@@ -256,6 +258,11 @@ export interface GatewayOptions {
    */
   mastery?: MasterySystem;
   /**
+   * The body system in the tick list (M2): each player is sent their own
+   * body (0x18) as it changes. Default: no body messages.
+   */
+  body?: BodySystem;
+  /**
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
    */
@@ -353,6 +360,8 @@ const MAX_MISSED_HEARTBEATS = 3;
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
+/** How often a player's body is checked for changes to send (catalog 0x18): 5 times a second. */
+const BODY_EVERY_TICKS = 6;
 /** Admin command log keeps the last N entries (roadmap A1). */
 const ADMIN_LOG_SIZE = 200;
 /**
@@ -476,6 +485,7 @@ export class Gateway {
       | "ingress"
       | "groundHeightAt"
       | "mastery"
+      | "body"
       | "creatures"
       | "spawnPoint"
       | "worldInfo"
@@ -515,6 +525,9 @@ export class Gateway {
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
+  private readonly body: BodySystem | null;
+  /** The body message last sent to each session, as its JSON (see sendBody). */
+  private readonly bodySent = new WeakMap<ClientSession, string>();
   /** Play counters and tick timing (T2); read by the admin `stats` command. */
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
@@ -611,6 +624,7 @@ export class Gateway {
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.mastery = opts.mastery ?? null;
+    this.body = opts.body ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
@@ -814,6 +828,8 @@ export class Gateway {
             amount: h.amount,
             health: C.Health.current[h.target],
             max: C.Health.max[h.target],
+            ...(h.part !== undefined ? { part: h.part, state: h.state } : {}),
+            ...(h.lost ? { lost: h.lost } : {}),
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
@@ -838,6 +854,10 @@ export class Gateway {
           if (hasComponent(sim.ecs, C.PlayerIntent, ev.target)) this.telemetry.death();
           if (ev.killer !== undefined && hasComponent(sim.ecs, C.PlayerIntent, ev.killer)) this.telemetry.kill();
           if (ev.killer !== undefined) m.killer = String(sim.wireId(ev.killer));
+          if (ev.cause) {
+            m.cause = ev.cause.cause;
+            if (ev.cause.part !== undefined) m.part = ev.cause.part;
+          }
           m.respawnAt = ev.outcome && ev.outcome.respawnInSeconds >= 0 ? ev.respawnAt : 0;
           const id = this.characterIdOf(ev.target);
           if (id !== null && ev.outcome?.record) {
@@ -948,7 +968,32 @@ export class Gateway {
         this.deliver(s, deltaEnv, tick);
       }
       this.sendStats(s, tick);
+      if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
     }
+  }
+
+  /**
+   * The player's own body (catalog 0x18, M2), when it changed since it was
+   * last sent to this session (checked every BODY_EVERY_TICKS); `force`
+   * sends it regardless (on joining or re-attaching).
+   */
+  private sendBody(s: ClientSession, tick: number, force = false): void {
+    if (!this.body || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0 || !this.body.has(this.world, eid)) return;
+    const v = this.body.view(eid);
+    // Display values: hp to a hundredth, blood to a tenth, so healing ticks don't resend every check.
+    const msg: BodyMessage = {
+      kind: "body",
+      entity: s.playerEntity.toString(),
+      parts: v.parts.map((p) => ({ ...p, hp: Math.round(p.hp * 100) / 100 })),
+      blood: Math.round(v.blood * 10) / 10,
+      bloodMax: v.bloodMax,
+    };
+    const json = JSON.stringify(msg);
+    if (!force && this.bodySent.get(s) === json) return;
+    this.bodySent.set(s, json);
+    this.deliver(s, encodeEnvelope(MessageType.Body, encodeControl(msg)), tick);
   }
 
   /**
@@ -2000,6 +2045,7 @@ export class Gateway {
       this.sendWelcome(known);
       this.sendFreshSnapshot(known);
       this.sendStats(known, this.tick, true);
+      this.sendBody(known, this.tick, true);
       this.sendInventory(known);
       return;
     }
@@ -2066,6 +2112,7 @@ export class Gateway {
     this.sendWelcome(s);
     this.sendFreshSnapshot(s);
     this.sendStats(s, this.tick, true);
+    this.sendBody(s, this.tick, true);
     this.sendInventory(s);
   }
 

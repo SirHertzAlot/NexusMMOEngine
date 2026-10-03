@@ -41,6 +41,7 @@ import {
   type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
+  type BodyMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -91,6 +92,8 @@ export interface MirrorEvents {
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
   onLife?(l: LifeMessage): void;
+  /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
+  onBody?(b: BodyMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -121,6 +124,8 @@ export class MirrorClient {
   account: AccountMessage | null = null;
   /** The player's own attributes and stats, from the last stats message; null until one arrives. */
   stats: StatsMessage | null = null;
+  /** The player's own body (parts, injuries, blood), from the last body message; null until one arrives. */
+  body: BodyMessage | null = null;
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -610,6 +615,10 @@ export class MirrorClient {
         break;
       case MessageType.Life:
         this.events.onLife?.(decodeControl<LifeMessage>(payload));
+        break;
+      case MessageType.Body:
+        this.body = decodeControl<BodyMessage>(payload);
+        this.events.onBody?.(this.body);
         break;
       case MessageType.Bye:
         this.disconnect();
