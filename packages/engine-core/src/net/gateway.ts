@@ -46,6 +46,7 @@
  * `clock` in options for deterministic heartbeat/grace math.
  */
 
+import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -316,6 +317,12 @@ export interface GatewayOptions {
    * passes `game.rules.ingress` here.
    */
   ingress?: Partial<IngressLimits>;
+  /**
+   * Features outside the gateway that own a 0x11 `kind` (quests: "quest").
+   * Each gets that kind's messages from characters in the world, and hears
+   * when they enter and leave (see ./extension.ts).
+   */
+  extensions?: GatewayExtension[];
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -484,6 +491,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "extensions"
       | "items"
     >
   > & { port: number };
@@ -530,6 +538,7 @@ export class Gateway {
   private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
+  private readonly extensions = new Map<string, GatewayExtension>();
   /** Items (see GatewayOptions.items); shared with the systems list. */
   private readonly items: ItemService | null;
   /** Bag owners for sessions that play no character: one negative id per account. */
@@ -620,6 +629,7 @@ export class Gateway {
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
     this.textFilter = opts.textFilter ?? allowAllText;
+    for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
@@ -1114,6 +1124,7 @@ export class Gateway {
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
+    this.extensionsLeave(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -1132,6 +1143,7 @@ export class Gateway {
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
+      this.extensionsLeave(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -1527,6 +1539,11 @@ export class Gateway {
     let to: string | undefined;
     try {
       const raw = decodeControl<unknown>(payload);
+      const ext = typeof raw === "object" && raw !== null ? this.extensions.get(String((raw as { kind?: unknown }).kind)) : undefined;
+      if (ext) {
+        ext.onMessage(this.extensionPlayer(s), raw);
+        return;
+      }
       if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "block") {
         this.onBlock(s, raw);
         return;
@@ -2475,6 +2492,23 @@ export class Gateway {
     this.pushGuild(who);
     this.pushFriends(who);
     this.friendPresence(s);
+    for (const ext of this.extensions.values()) ext.onEnter?.(this.extensionPlayer(s));
+  }
+
+  /** The session as an extension sees it (see ./extension.ts). */
+  private extensionPlayer(s: ClientSession): ExtensionPlayer {
+    return {
+      characterId: s.character?.id ?? null,
+      name: s.character?.name ?? s.username,
+      entity: () => (s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity)),
+      send: (msg) => this.sendEnvelope(s, MessageType.Chat, encodeControl(msg)),
+      refreshInventory: () => this.sendInventory(s),
+    };
+  }
+
+  private extensionsLeave(s: ClientSession): void {
+    if (!s.welcomed) return;
+    for (const ext of this.extensions.values()) ext.onLeave?.(this.extensionPlayer(s));
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */

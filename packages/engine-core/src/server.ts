@@ -33,6 +33,8 @@
  *                  or "pcg" (the PCG forest graph with PICG trees). Default:
  *                  ecology when the art is on this machine, else pcg.
  *   MMO_ECOLOGY    an ecology plan file (default: content/ecology/wilds.ecology.json)
+ *   MMO_QUESTS     quest and dialog content dir (default: the repo's
+ *                  content/quests); quest logs live in <data>/quests.db
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
@@ -118,6 +120,9 @@ import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
+import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
+import { QuestService } from "./quests/quest-service.js";
+import { SqliteQuestStore } from "./quests/quest-store.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
@@ -483,6 +488,32 @@ async function main(): Promise<void> {
     itemDefs.defs.applyRules(g.rules);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
+  // Quests and dialog (P1): the gateway's "quest" extension and a system
+  // checking places and bags; kills come through the death hook below.
+  const questDir = process.env.MMO_QUESTS || DEFAULT_QUEST_DIR;
+  const questContent = loadQuestContent(questDir);
+  const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);
+  const quests = new QuestService({
+    content: questContent,
+    store: new SqliteQuestStore(path.join(DATA_DIR, "quests.db")),
+    speciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
+    itemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemDefs.defs.ofBase(b).length > 0),
+    countInBag: (character, base) => {
+      let n = 0;
+      for (const item of items.store.bag(character)) {
+        if (item !== 0 && itemDefs.defs.bases[items.store.defs[items.store.slot(item)]] === base) n++;
+      }
+      return n;
+    },
+    grant: (character, base) => {
+      const def = itemDefs.defs.starter(base, rankOrder);
+      return def >= 0 && items.give(character, def).ok;
+    },
+  });
+  console.log(
+    `[quests] ${Object.keys(questContent.quests).length} quest(s), ${Object.keys(questContent.templates).length} template(s), ` +
+      `${Object.keys(questContent.npcs).length} npc(s) (${questDir})`,
+  );
   const combatSkills: CombatSkills = {
     get: (e, id) => mastery.sheetOf(e).get(id),
     train: (e, id, difficulty, key) => {
@@ -494,7 +525,10 @@ async function main(): Promise<void> {
   const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
-  const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
+  const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
+    dropper.onDeath(s, ev);
+    quests.onDeath(s, ev, (e) => creatures.kindOf(e));
+  });
   const gw: Gateway = new Gateway({
     port: PORT,
     // The same instance as in the systems list below: its sheets are what get saved.
@@ -504,7 +538,8 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    extensions: [quests],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
