@@ -116,6 +116,7 @@ import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
 import { FriendBook, FriendSchema } from "../friends.js";
+import type { SocialStore } from "../social-store.js";
 import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
@@ -178,6 +179,8 @@ export interface GatewayOptions {
   characterStore?: CharacterStore;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
+  /** Friends and blocks persistence (S2c). Default: in memory; the production server passes a SqliteSocialStore. */
+  socialStore?: SocialStore;
   /**
    * The modular part catalog new characters' looks are checked against;
    * null/absent = structural checks only (a server without the art).
@@ -465,6 +468,7 @@ export class Gateway {
       | "credentialStore"
       | "characterStore"
       | "guildStore"
+      | "socialStore"
       | "characterCatalog"
       | "maxCharacters"
       | "sessionTtlMs"
@@ -523,8 +527,8 @@ export class Gateway {
   private readonly dayClock: DayClock | null;
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
-  private readonly blocks = new BlockList();
-  private readonly friends = new FriendBook();
+  private readonly blocks: BlockList;
+  private readonly friends: FriendBook;
   /** Parties, in memory (S3). */
   private readonly parties = new PartyBook(() => this.clock());
   private readonly guilds: GuildBook;
@@ -603,6 +607,8 @@ export class Gateway {
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
+    this.blocks = new BlockList(opts.socialStore);
+    this.friends = new FriendBook(opts.socialStore);
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
