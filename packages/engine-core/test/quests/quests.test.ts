@@ -170,6 +170,7 @@ describe("quest service", () => {
     let inventoryRefreshes = 0;
     const player: ExtensionPlayer = {
       characterId: 5,
+      username: "hero",
       name: "Aldric",
       entity: () => avatar,
       send: (m) => sent.push(m),
