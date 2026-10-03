@@ -281,6 +281,7 @@ export type {
   SavedStateView,
 } from "./characters/index.js";
 export { SqliteGuildStore } from "./guild-store.js";
+export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social-store.js";
 
 export { DeathSystem, type LifeEvent } from "./death.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
