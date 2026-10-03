@@ -6,8 +6,8 @@
  * foot it trains Athletics, once per `USE_EVERY_SECONDS` of effort. Both
  * are plain-ground uses of fixed difficulty (no target, so no repeat
  * falloff); the numbers are proposed defaults. Exposure has no weather to
- * train against yet. Not persisted or on the wire yet (U9 character sheet
- * waits on a flatc regen).
+ * train against yet. Saved with the character (M1b, in the gateway); not on
+ * the wire yet (U9 character sheet waits on a flatc regen).
  */
 
 import { defineQuery, hasComponent } from "bitecs";

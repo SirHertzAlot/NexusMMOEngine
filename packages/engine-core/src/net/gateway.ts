@@ -117,6 +117,7 @@ import { DeathSystem } from "../death.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import type { MasterySystem } from "../stats/mastery-system.js";
 import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
@@ -240,6 +241,12 @@ export interface GatewayOptions {
    */
   groundHeightAt?: (x: number, z: number) => number;
   /**
+   * The mastery system in the tick list (M1b): characters' skills are saved
+   * from and restored into its sheets. Share the one instance. Default: skills
+   * are not persisted.
+   */
+  mastery?: MasterySystem;
+  /**
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
    */
@@ -347,6 +354,7 @@ export class Gateway {
       | "debugSource"
       | "chunkSource"
       | "groundHeightAt"
+      | "mastery"
       | "creatures"
       | "spawnPoint"
       | "worldInfo"
@@ -385,6 +393,7 @@ export class Gateway {
    */
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
+  private readonly mastery: MasterySystem | null;
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
@@ -451,6 +460,7 @@ export class Gateway {
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
+    this.mastery = opts.mastery ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
@@ -660,6 +670,7 @@ export class Gateway {
     if (eid < 0 || !this.characterStore.saveState) return;
     const id = this.characterIdOf(eid);
     if (id === null) return;
+    if (this.mastery) this.characterStore.saveSkills?.(id, this.mastery.sheetOf(eid).save());
     const T = C.Transform;
     this.characterStore.saveState(id, {
       x: T.px[eid],
@@ -692,6 +703,12 @@ export class Gateway {
    * keeps the ordinary spawn: death and respawn are the rules' business.
    */
   private restoreCharacterState(eid: number, characterId: number): void {
+    const saved = this.mastery && eid >= 0 ? this.characterStore.loadSkills?.(characterId) : null;
+    if (saved && this.mastery) {
+      const sheet = this.mastery.sheetOf(eid);
+      sheet.load(saved);
+      sheet.applyDecay(this.clock());
+    }
     const st = eid >= 0 ? this.characterStore.loadState?.(characterId) : null;
     if (!st || !(st.health > 0)) return;
     const T = C.Transform;
@@ -806,7 +823,9 @@ export class Gateway {
       if (now - s.disconnectedAtMs < this.opts.disconnectGraceMs) continue;
       if (s.playerEntity !== null) {
         const { slot } = parseWireEntityId(s.playerEntity);
-        this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+        const eid = this.world.resolveWireId(s.playerEntity);
+        this.saveAvatar(eid);
+        this.mastery?.forget(eid);
         this.world.despawn(slot);
       }
       this.tokenToClient.delete(s.token);
@@ -1551,7 +1570,9 @@ export class Gateway {
     for (const other of [...this.sessions.values()]) {
       if (other === except || other.character?.id !== id) continue;
       if (other.playerEntity !== null) {
-        this.saveAvatar(this.world.resolveWireId(other.playerEntity));
+        const eid = this.world.resolveWireId(other.playerEntity);
+        this.saveAvatar(eid);
+        this.mastery?.forget(eid);
         this.world.despawn(parseWireEntityId(other.playerEntity).slot);
       }
       other.playerEntity = null;

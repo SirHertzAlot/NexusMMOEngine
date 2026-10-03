@@ -108,7 +108,8 @@ Everything here is React DOM over the world canvas, fed by the server
 | C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags await S4 |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
-| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not persisted or on the wire yet |
+| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not on the wire yet |
+| M1b | Skills saved with the character | ✅ | `character_skills` table in the character store; the gateway saves a character's `SkillSheet` with its state and restores it on entering the world, applying deterioration for the time away |
 | M2 | Body parts, injuries, healing, death and respawn | 📋 | 〃 |
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); the rest is open |
 | M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
@@ -197,6 +198,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-03**: M1 mastery core: `SkillSheet` (gain by challenge, slowdown at the top, repeat falloff, related skills, decay with relearn bonus, save/load) and a `MasterySystem` training Swimming and Athletics every 5 s of effort (proposed defaults). Exposure (no weather yet), familiarity, persistence and the wire/character sheet (U9, flatc) deferred. E11 rules editor panel added to the list (editor parity).
+- **2026-10-03**: M1b skill persistence: skills saved with the character (`character_skills`) and restored on enter-world with deterioration applied; `MasterySystem` shared between gateway and tick list.
 - **2026-10-03**: L3 pool rebake keeps held items: `npm run loot:rebake -w @mmo-engine/engine-core -- --db <world.db> --pool <pool.jsonl>` bakes a new pool that keeps every bag and hand item (via the bake's `held`) and appends ledger rows pointing each live item at its new def; unheld ground items whose entry is gone are tombstoned.
 - **2026-10-03**: P2c crash and replay tests over the item ledger (unflushed loss, atomic failed flush, hot-WAL recovery, restart cycles, history replay).
 - **2026-10-03**: U3 hunger and thirst: `content/rules/needs.json` (max, drain per minute, damage per second at zero, exertion factor), a `Needs` component (id 14) and a `NeedsSystem` after stamina. Meters drain by the minute, faster while running or swimming, and hurt Health once empty. Wire/HUD meters deferred, not persisted.

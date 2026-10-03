@@ -15,6 +15,7 @@
 import Database from "better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { SkillSave } from "../stats/mastery.js";
 
 export interface CharacterRecord {
   id: number;
@@ -48,6 +49,10 @@ export interface CharacterStore {
   saveState?(characterId: number, state: CharacterState): void;
   /** The last saved state, or null (never saved). */
   loadState?(characterId: number): CharacterState | null;
+  /** Save the character's skills (M1b; synchronous like saveState). */
+  saveSkills?(characterId: number, skills: SkillSave): void;
+  /** The last saved skills, or null (never saved). */
+  loadSkills?(characterId: number): SkillSave | null;
 }
 
 /** Where a character was and how it was, as of its last save (roadmap P2b). */
@@ -95,6 +100,11 @@ CREATE TABLE IF NOT EXISTS character_state (
   z REAL NOT NULL,
   health REAL NOT NULL,
   stamina REAL NOT NULL,
+  saved_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS character_skills (
+  character_id INTEGER PRIMARY KEY,
+  skills TEXT NOT NULL,
   saved_at INTEGER NOT NULL
 );
 `;
@@ -182,6 +192,27 @@ export class SqliteCharacterStore implements CharacterStore {
     return r ?? null;
   }
 
+  saveSkills(characterId: number, skills: SkillSave): void {
+    this.db
+      .prepare(
+        "INSERT INTO character_skills (character_id, skills, saved_at) VALUES (?, ?, ?) " +
+          "ON CONFLICT(character_id) DO UPDATE SET skills = excluded.skills, saved_at = excluded.saved_at",
+      )
+      .run(characterId, JSON.stringify(skills), this.clock());
+  }
+
+  loadSkills(characterId: number): SkillSave | null {
+    const r = this.db.prepare("SELECT skills FROM character_skills WHERE character_id = ?").get(characterId) as
+      | { skills: string }
+      | undefined;
+    if (!r) return null;
+    try {
+      return JSON.parse(r.skills) as SkillSave;
+    } catch {
+      return null;
+    }
+  }
+
   close(): void {
     this.db.close();
   }
@@ -209,6 +240,17 @@ export class MemoryCharacterStore implements CharacterStore {
   loadState(characterId: number): CharacterState | null {
     const st = this.states.get(characterId);
     return st ? { ...st } : null;
+  }
+
+  private readonly skills = new Map<number, string>();
+
+  saveSkills(characterId: number, skills: SkillSave): void {
+    this.skills.set(characterId, JSON.stringify(skills));
+  }
+
+  loadSkills(characterId: number): SkillSave | null {
+    const j = this.skills.get(characterId);
+    return j === undefined ? null : (JSON.parse(j) as SkillSave);
   }
 
   async list(username: string): Promise<CharacterRecord[]> {

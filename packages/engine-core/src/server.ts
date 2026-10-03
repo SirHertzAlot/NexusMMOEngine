@@ -471,6 +471,8 @@ async function main(): Promise<void> {
   const death: DeathSystem = new DeathSystem(game.hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e));
   const gw: Gateway = new Gateway({
     port: PORT,
+    // The same instance as in the systems list below: its sheets are what get saved.
+    mastery,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
