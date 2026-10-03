@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
-import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
+import type { ChatBroadcast, ChatChannel, PartyState } from "@mmo-engine/protocol";
 import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
@@ -34,6 +34,8 @@ import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { AdminConsole } from "./ui/admin-console.js";
 import { ChatPanel } from "./ui/chat-panel.js";
+import { PartyFrame } from "./ui/party-frame.js";
+import { parseChatCommand } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel } from "./ui/bag-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
@@ -121,6 +123,7 @@ export function App(): React.ReactElement {
   const [characterName, setCharacterName] = useState<string | null>(null);
   // Region chat (U6): the last lines plus the sending tab.
   const [chatLines, setChatLines] = useState<ChatBroadcast[]>([]);
+  const [party, setParty] = useState<PartyState | null>(null);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
   const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
@@ -161,6 +164,7 @@ export function App(): React.ReactElement {
         setScreen("login");
       },
       onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
+      onParty: setParty,
       onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
       onInventory: (inv) => {
         setBag(inv.bag);
@@ -241,6 +245,7 @@ export function App(): React.ReactElement {
     clientRef.current = null;
     setAccount(null);
     setChatLines([]);
+    setParty(null);
     setSheet(null);
     setSheetOpen(false);
     setBag(null);
@@ -413,11 +418,25 @@ export function App(): React.ReactElement {
             onUiScale={setUiScale}
           />
         )}
+        <PartyFrame
+          party={party}
+          self={characterName}
+          onAccept={() => client?.party("accept")}
+          onLeave={() => client?.party("leave")}
+          onKick={(n) => client?.party("kick", n)}
+          onPromote={(n) => client?.party("promote", n)}
+          onInviteExpired={() => setParty((p) => (p ? { ...p, invite: undefined } : p))}
+        />
         <ChatPanel
           lines={chatLines}
           channel={chatChannel}
           onChannel={setChatChannel}
-          onSend={(text) => client?.chat(chatChannel, text)}
+          onSend={(line) => {
+            const c = parseChatCommand(line, chatChannel);
+            if (c.kind === "party") client?.party(c.op, c.name);
+            else if (c.kind === "chat") client?.chat(c.channel, c.text, c.to);
+            else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
+          }}
         />
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
           {bagOpen && bag && (

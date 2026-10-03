@@ -47,8 +47,8 @@ export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps)
             {t}
           </Button>
         ))}
-        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="Whispers, party, and guild chat need friends/party/guild systems (roadmap S2–S4)">
-          /w /p /g need S2–S4
+        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="/w name text, /p text, /invite /accept /leave /kick /promote">
+          /w /p /invite /leave
         </span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1 text-sm" aria-live="polite">
