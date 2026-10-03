@@ -66,6 +66,7 @@ import {
   type DebugResponse,
   type ErrorMessage,
   type BodyMessage,
+  type TreatmentMessage,
   type HitMessage,
   type LifeMessage,
   type NamesMessage,
@@ -337,6 +338,16 @@ const StanceSchema = z
     kind: z.literal("stance"),
     technique: z.string().min(1).max(32).nullable().optional(),
     aim: z.string().min(1).max(32).nullable().optional(),
+  })
+  .strict();
+
+/** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
+const TreatSchema = z
+  .object({
+    kind: z.literal("treat"),
+    target: z.string().regex(/^\d{1,20}$/).optional(),
+    part: z.string().min(1).max(32).optional(),
+    stop: z.boolean().optional(),
   })
   .strict();
 
@@ -811,6 +822,7 @@ export class Gateway {
     this.sendLife(sim, tick);
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
+    this.sendTreatments(sim);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -920,6 +932,30 @@ export class Gateway {
     for (const e of this.body.drainLooks()) {
       if (!hasComponent(sim.ecs, C.Appearance, e)) continue;
       sim.setLook(e, withLost(sim.lookJson(C.Appearance.look[e]), this.body.lostSlots(e)));
+    }
+  }
+
+  /** Tell healers and patients how their treatments go (catalog 0x1a, M4). */
+  private sendTreatments(sim: SimWorld): void {
+    if (!this.body) return;
+    const events = this.body.drainTreatments();
+    if (events.length === 0) return;
+    for (const r of this.sessions.values()) {
+      if (!r.welcomed || r.playerEntity === null) continue;
+      const avatar = sim.resolveWireId(r.playerEntity);
+      for (const ev of events) {
+        if (ev.healer !== avatar && ev.patient !== avatar) continue;
+        const m: TreatmentMessage = {
+          kind: "treatment",
+          healer: String(sim.wireId(ev.healer)),
+          patient: String(sim.wireId(ev.patient)),
+          part: ev.part,
+          treatment: ev.treatment,
+          state: ev.state,
+          ...(ev.seconds !== undefined ? { seconds: Math.round(ev.seconds * 10) / 10 } : {}),
+        };
+        this.sendEnvelope(r, MessageType.Treat, encodeControl(m));
+      }
     }
   }
 
@@ -1279,6 +1315,9 @@ export class Gateway {
         break;
       case MessageType.Stance:
         this.onStance(s, payload);
+        break;
+      case MessageType.Treat:
+        this.onTreat(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -2639,6 +2678,51 @@ export class Gateway {
     const avatar = this.world.resolveWireId(s.playerEntity);
     if (avatar < 0) return;
     const err = combat.setStance(avatar, parsed.data.technique, parsed.data.aim);
+    if (err) this.sendError(s, 4005, err);
+  }
+
+  /**
+   * Treat a body part (catalog 0x1a, M4): yourself or a character in reach.
+   * In-world sessions only; shares the pickup bucket. A bad shape is 4003,
+   * a refusal (too far, nothing to treat, no usable hand) 4005; how it goes
+   * comes back as `treatment` events.
+   */
+  private onTreat(s: ClientSession, payload: Uint8Array): void {
+    if (!this.body || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "treat outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed treat");
+      return;
+    }
+    const parsed = TreatSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed treat");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const healer = sim.resolveWireId(s.playerEntity);
+    if (healer < 0) return;
+    if (parsed.data.stop) {
+      this.body.stop(healer);
+      return;
+    }
+    const patient = parsed.data.target === undefined ? healer : sim.resolveWireId(BigInt(parsed.data.target));
+    if (patient < 0) {
+      this.sendError(s, 4005, "no one to treat");
+      return;
+    }
+    const err = this.body.treat(sim, healer, patient, parsed.data.part);
     if (err) this.sendError(s, 4005, err);
   }
 

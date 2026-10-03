@@ -146,3 +146,34 @@ export interface StanceMessage {
   technique?: string | null;
   aim?: string | null;
 }
+
+/**
+ * C->S (catalog 0x1a, M4): treat a body part with Medicine. `target` is the
+ * patient's wire entity (absent: yourself); `part` a body part id (absent:
+ * the most urgent: a stump, the worst bleeding, then a maimed part).
+ * `stop: true` stops the treatment under way. Refusals are 4005.
+ */
+export interface TreatMessage {
+  kind: "treat";
+  target?: string;
+  part?: string;
+  stop?: boolean;
+}
+
+/** What a treatment does: stop a wound bleeding, close a stump, set a maimed part. */
+export type TreatmentName = "bandage" | "stump" | "set";
+
+/**
+ * S->C (catalog 0x1a, M4): a treatment started (with how long it takes),
+ * worked, failed, or stopped (the healer moved, fought, went out of reach,
+ * or it was no longer needed). Sent to the healer and the patient.
+ */
+export interface TreatmentMessage {
+  kind: "treatment";
+  healer: string;
+  patient: string;
+  part: string;
+  treatment: TreatmentName;
+  state: "started" | "done" | "failed" | "stopped";
+  seconds?: number;
+}

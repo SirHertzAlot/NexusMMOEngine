@@ -65,6 +65,8 @@ export enum MessageType {
   Body = 0x18,
   /** C->S how the player swings: technique and aim (catalog 0x19, roadmap M3). JSON. */
   Stance = 0x19,
+  /** C->S treat a body part (Medicine); S->C how a treatment goes, to healer and patient (catalog 0x1a, roadmap M4). JSON. */
+  Treat = 0x1a,
 }
 
 /**
@@ -372,7 +374,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 18; // v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
+export const PROTOCOL_VERSION = 19; // v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).

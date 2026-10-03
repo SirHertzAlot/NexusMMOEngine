@@ -70,6 +70,23 @@ export interface DefenceResult {
   letsThrough: number;
 }
 
+export type TreatmentKind = "bandage" | "stump" | "set";
+
+export interface TreatmentInput {
+  kind: TreatmentKind;
+  /** The healer's Medicine, 0..skills.max. */
+  skill: number;
+  /** 0..1 uniform, deterministic per treatment. */
+  rng: () => number;
+}
+
+export interface TreatmentResult {
+  /** How long the treatment takes. */
+  seconds: number;
+  /** Whether it works when that time is up. */
+  success: boolean;
+}
+
 export interface GainInput {
   /** Current skill, 0..skills.max. */
   skill: number;
@@ -126,6 +143,7 @@ export interface RuleHooks {
   computeDamage(input: DamageInput): DamageResult;
   resolveLanding(input: LandingInput): string;
   resolveDefence(input: DefenceInput): DefenceResult;
+  resolveTreatment(input: TreatmentInput): TreatmentResult;
   skillGain(input: GainInput): number;
   onInjury(input: InjuryInput): InjuryResult;
   onDeath(input: DeathInput): DeathOutcome;
@@ -163,6 +181,18 @@ export function precision(rules: Rules, m: number, factor = 1): number {
 export function defenceChance(rules: Rules, defence: number, attack: number): number {
   const d = rules.combat.defence;
   return Math.max(d.min, Math.min(d.max, d.base + d.perSkill * (clamp01(defence) - clamp01(attack))));
+}
+
+/** Chance a treatment of `kind` by a healer at Medicine fraction `m` works. */
+export function treatmentChance(rules: Rules, kind: TreatmentKind, m: number): number {
+  const t = rules.body.treatment;
+  return Math.max(t.chance.min, Math.min(1, t.chance.base + t.chance.perSkill * clamp01(m) - t[kind].difficulty));
+}
+
+/** Seconds a treatment of `kind` takes a healer at Medicine fraction `m`. */
+export function treatmentSeconds(rules: Rules, kind: TreatmentKind, m: number): number {
+  const t = rules.body.treatment;
+  return t[kind].seconds * (1 - t.fasterPerSkill * clamp01(m));
 }
 
 /**
@@ -236,6 +266,11 @@ function defaultHooks(rules: Rules): RuleHooks {
       const max = rules.skills.max;
       if (rng() < defenceChance(rules, defenceSkill / max, attackSkill / max)) return { stopped: true, letsThrough: 0 };
       return { stopped: false, letsThrough: rules.combat.defence.failedLetsThrough };
+    },
+
+    resolveTreatment({ kind, skill, rng }) {
+      const m = skill / rules.skills.max;
+      return { seconds: treatmentSeconds(rules, kind, m), success: rng() < treatmentChance(rules, kind, m) };
     },
 
     skillGain({ skill, peak, difficulty, recentUses = 0 }) {

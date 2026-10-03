@@ -26,5 +26,13 @@
   },
   "healPerSecond": 0.005,
   "penalties": { "weakArm": 0.75, "weakLeg": 0.75, "uselessLeg": 0.4, "crawl": 0.15, "weakTorsoStamina": 0.5 },
-  "fall": { "safeSpeed": 13, "damagePerSpeed": 3, "parts": { "legLeft": 0.35, "legRight": 0.35, "hips": 0.15, "torso": 0.15 } }
+  "fall": { "safeSpeed": 13, "damagePerSpeed": 3, "parts": { "legLeft": 0.35, "legRight": 0.35, "hips": 0.15, "torso": 0.15 } },
+  "treatment": {
+    "reach": 2.5,
+    "fasterPerSkill": 0.6,
+    "chance": { "base": 0.6, "perSkill": 0.8, "min": 0.05 },
+    "bandage": { "seconds": 4, "difficulty": 0.2 },
+    "stump": { "seconds": 6, "difficulty": 0.4 },
+    "set": { "seconds": 10, "difficulty": 0.5, "minHp": 0.1 }
+  }
 }

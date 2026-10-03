@@ -43,6 +43,8 @@ import {
   type HelloMessage,
   type BodyMessage,
   type StanceMessage,
+  type TreatMessage,
+  type TreatmentMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -95,6 +97,8 @@ export interface MirrorEvents {
   onLife?(l: LifeMessage): void;
   /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
   onBody?(b: BodyMessage): void;
+  /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
+  onTreatment?(t: TreatmentMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -246,6 +250,25 @@ export class MirrorClient {
     if (technique !== undefined) msg.technique = technique;
     if (aim !== undefined) msg.aim = aim;
     this.send(this.socket, encodeEnvelope(MessageType.Stance, encodeControl(msg)));
+  }
+
+  /**
+   * Treat a body part with Medicine (M4, 0x1a): `target` a character's wire
+   * id (absent: yourself), `part` a body part (absent: the most urgent).
+   * Progress arrives as onTreatment; refusals as 4005 errors.
+   */
+  treat(target?: string, part?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: TreatMessage = { kind: "treat" };
+    if (target !== undefined) msg.target = target;
+    if (part !== undefined) msg.part = part;
+    this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl(msg)));
+  }
+
+  /** Stop the treatment under way (M4, 0x1a). */
+  stopTreating(): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl({ kind: "treat", stop: true } satisfies TreatMessage)));
   }
 
   /** Ask to drop an item from the bag at the player's feet (M3a, 0x13). */
@@ -633,6 +656,9 @@ export class MirrorClient {
       case MessageType.Body:
         this.body = decodeControl<BodyMessage>(payload);
         this.events.onBody?.(this.body);
+        break;
+      case MessageType.Treat:
+        this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
         break;
       case MessageType.Bye:
         this.disconnect();

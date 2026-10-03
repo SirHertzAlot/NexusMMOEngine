@@ -9,7 +9,8 @@ import { addComponent } from "bitecs";
 import { combatMove, IntentButton, Move } from "@mmo-engine/protocol";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
-import { blowRng, Body, BodySystem, BLEEDING_BIT, Injury, NO_JUMP, restoreBody } from "../src/body.js";
+import { blowRng, Body, BodySystem, BLEEDING_BIT, Injury, NO_JUMP, restoreBody, Wound, type BodySkills } from "../src/body.js";
+import { treatmentSeconds } from "@mmo-engine/rules";
 import { CombatSystem, type Weapon } from "../src/combat.js";
 import { DeathSystem } from "../src/death.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
@@ -20,10 +21,10 @@ const game = loadGameRules();
 const { hooks, rules } = game;
 const share = (id: string): number => rules.body.parts.find((p) => p.id === id)!.share;
 
-function setup() {
+function setup(skills?: BodySkills) {
   SimWorld.resetEntityCursorForTesting();
   const sim = new SimWorld();
-  const body = new BodySystem(rules.body, hooks);
+  const body = new BodySystem(rules.body, hooks, undefined, skills);
   const make = (x = 0, z = 0): number => {
     const e = sim.spawn();
     for (const c of [C.Transform, C.Velocity, C.PlayerIntent, C.Action, C.Health]) {
@@ -330,5 +331,165 @@ describe("body in combat", () => {
     assert.ok(onHead >= 8, `aimed at the head, landed there ${onHead} times`);
     assert.equal(f.combat.setStance(f.e, null, null), null);
     assert.deepEqual(f.combat.stanceOf(f.e), {});
+  });
+});
+
+describe("medicine (M4)", () => {
+  /** Skills by entity, and every training use. */
+  const skillbook = (medicine: Record<number, number> = {}) => {
+    const trained: { e: number; difficulty: number; key: number }[] = [];
+    const skills: BodySkills = {
+      get: (e, id) => (id === "medicine" ? (medicine[e] ?? 0) : 0),
+      train: (e, id, difficulty, key) => {
+        if (id === "medicine") trained.push({ e, difficulty, key });
+      },
+    };
+    return { skills, trained };
+  };
+  /** A deterministic hook world where every treatment works (or none does). */
+  const sure = (success: boolean) => ({
+    ...hooks,
+    resolveTreatment: (i: Parameters<typeof hooks.resolveTreatment>[0]) => ({ ...hooks.resolveTreatment(i), success }),
+  });
+  const world = (success: boolean, medicine: Record<number, number> = {}) => {
+    const book = skillbook(medicine);
+    const w = setup(book.skills);
+    const body = new BodySystem(rules.body, sure(success), undefined, book.skills);
+    const run = (seconds: number): void => {
+      const n = Math.round(seconds * 30);
+      for (let i = 0; i < n; i++) {
+        w.sim.beginTick(w.sim.currentTick + 1);
+        body.step(w.sim, DT);
+        w.sim.endTick();
+      }
+    };
+    return { ...w, body, run, trained: book.trained };
+  };
+
+  it("bandaging stops a wound bleeding, and trains Medicine", () => {
+    const w = world(true);
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, e, "legLeft", "thrust", 3);
+    assert.deepEqual(w.body.needs(e), { part: "legLeft", kind: "bandage" });
+    assert.equal(w.body.treat(w.sim, e, e), null);
+    const started = w.body.drainTreatments();
+    assert.equal(started[0].state, "started");
+    assert.ok(near(started[0].seconds!, rules.body.treatment.bandage.seconds));
+    w.run(rules.body.treatment.bandage.seconds + 0.1);
+    assert.equal(Body.wound[e][w.body.parts.indexOf("legLeft")], Wound.None);
+    assert.equal(Injury.bits[e] & BLEEDING_BIT, 0);
+    assert.deepEqual(w.body.drainTreatments().map((t) => t.state), ["done"]);
+    assert.equal(w.trained.length, 1);
+    assert.equal(w.trained[0].key, e);
+  });
+
+  it("the most urgent first: a stump before a bleeding cut before a maimed part", () => {
+    const w = world(true);
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, e, "legRight", "blunt", 10); // maims
+    assert.deepEqual(w.body.needs(e), { part: "legRight", kind: "set" });
+    w.body.applyBlow(w.sim, e, "torso", "cut", 2);
+    assert.deepEqual(w.body.needs(e), { part: "torso", kind: "bandage" });
+    w.body.applyBlow(w.sim, e, "handLeft", "cut", 50); // severs
+    assert.deepEqual(w.body.needs(e), { part: "handLeft", kind: "stump" });
+    assert.deepEqual(w.body.needs(e, "legRight"), { part: "legRight", kind: "set" });
+    assert.equal(w.body.needs(e, "head"), null);
+  });
+
+  it("setting a maimed leg makes it harmed again, so it heals and walks", () => {
+    const w = world(true);
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, e, "legRight", "blunt", 20);
+    w.run(DT);
+    assert.equal(w.body.stateOf(e, "legRight"), "maimed");
+    assert.ok(near(Injury.move[e], rules.body.penalties.uselessLeg));
+    assert.equal(w.body.treat(w.sim, e, e, "legRight"), null);
+    w.run(rules.body.treatment.set.seconds + 0.1);
+    assert.equal(w.body.stateOf(e, "legRight"), "harmed");
+    assert.ok(Body.hp[e][w.body.parts.indexOf("legRight")] >= rules.body.treatment.set.minHp - 1e-6);
+    assert.equal(Injury.flags[e] & NO_JUMP, 0);
+  });
+
+  it("a failed treatment costs the time, changes nothing, and teaches more", () => {
+    const ok = world(true);
+    const a = ok.make();
+    ok.body.ensure(ok.sim, a);
+    ok.body.applyBlow(ok.sim, a, "torso", "thrust", 2);
+    ok.body.treat(ok.sim, a, a);
+    ok.run(5);
+    const bad = world(false);
+    const b = bad.make();
+    bad.body.ensure(bad.sim, b);
+    bad.body.applyBlow(bad.sim, b, "torso", "thrust", 2);
+    bad.body.treat(bad.sim, b, b);
+    bad.run(5);
+    assert.equal(Body.wound[b][0], Wound.Thrust);
+    assert.deepEqual(bad.body.drainTreatments().map((t) => t.state), ["started", "failed"]);
+    assert.ok(bad.trained[0].difficulty > ok.trained[0].difficulty);
+  });
+
+  it("a skilled healer works faster and more reliably", () => {
+    const m = (v: number) => v / rules.skills.max;
+    assert.ok(treatmentSeconds(rules, "set", m(90)) < treatmentSeconds(rules, "set", m(0)) / 2);
+    let novice = 0;
+    let master = 0;
+    for (let i = 0; i < 400; i++) {
+      const rng = blowRng(i, 1, 2);
+      if (hooks.resolveTreatment({ kind: "set", skill: 0, rng }).success) novice++;
+      if (hooks.resolveTreatment({ kind: "set", skill: 90, rng: blowRng(i, 1, 2) }).success) master++;
+    }
+    assert.ok(novice < 80, `novice set ${novice}/400`);
+    assert.ok(master > 280, `master set ${master}/400`);
+  });
+
+  it("treats someone in reach; moving, fighting or walking off stops it", () => {
+    const w = world(true, {});
+    const healer = w.make(0, 0);
+    const patient = w.make(1, 0);
+    const far = w.make(10, 0);
+    for (const e of [healer, patient, far]) w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, patient, "torso", "cut", 2);
+    w.body.applyBlow(w.sim, far, "torso", "cut", 2);
+    assert.equal(w.body.treat(w.sim, healer, far), "too far away to treat");
+    assert.equal(w.body.treat(w.sim, healer, healer), "nothing there needs treating");
+    assert.equal(w.body.treat(w.sim, healer, patient, "tail"), 'no body part "tail"');
+
+    assert.equal(w.body.treat(w.sim, healer, patient), null);
+    C.PlayerIntent.mx[healer] = 1;
+    w.run(DT);
+    assert.equal(w.body.treatingOf(healer), null);
+
+    C.PlayerIntent.mx[healer] = 0;
+    w.body.treat(w.sim, healer, patient);
+    C.Action.move[healer] = Move.Guard;
+    w.run(DT);
+    assert.equal(w.body.treatingOf(healer), null);
+
+    C.Action.move[healer] = Move.None;
+    w.body.treat(w.sim, healer, patient);
+    C.Transform.px[patient] = 5;
+    w.run(DT);
+    assert.equal(w.body.treatingOf(healer), null);
+    assert.deepEqual(
+      w.body.drainTreatments().map((t) => t.state),
+      ["started", "stopped", "started", "stopped", "started", "stopped"],
+    );
+
+    C.Transform.px[patient] = 1;
+    w.body.treat(w.sim, healer, patient);
+    w.run(rules.body.treatment.bandage.seconds + 0.1);
+    assert.equal(Body.wound[patient][0], Wound.None);
+  });
+
+  it("no usable hand, no treatment", () => {
+    const w = world(true);
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, e, "armUpperLeft", "cut", 50);
+    w.body.applyBlow(w.sim, e, "armUpperRight", "cut", 50);
+    assert.equal(w.body.treat(w.sim, e, e), "you have no hand to treat with");
   });
 });

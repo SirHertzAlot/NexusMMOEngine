@@ -31,6 +31,9 @@ export class HooksDelegate implements RuleHooks {
   resolveDefence(input: Parameters<RuleHooks["resolveDefence"]>[0]): ReturnType<RuleHooks["resolveDefence"]> {
     return this.current.resolveDefence(input);
   }
+  resolveTreatment(input: Parameters<RuleHooks["resolveTreatment"]>[0]): ReturnType<RuleHooks["resolveTreatment"]> {
+    return this.current.resolveTreatment(input);
+  }
   skillGain(input: Parameters<RuleHooks["skillGain"]>[0]): number {
     return this.current.skillGain(input);
   }
