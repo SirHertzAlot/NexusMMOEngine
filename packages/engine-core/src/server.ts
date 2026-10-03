@@ -501,7 +501,7 @@ async function main(): Promise<void> {
   // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
   const body = new BodySystem(game.rules.body, hooks, game.rules.appearance);
   bodyRef = body;
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body });
+  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev), body);

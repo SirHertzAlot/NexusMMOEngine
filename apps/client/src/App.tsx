@@ -58,6 +58,10 @@ import {
 } from "./input/bindings.js";
 import { DEV_TOOLS } from "./dev-tools.js";
 import type { DevLayout } from "./ui/dev-layout.js";
+
+/** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
+const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
+const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
 import {
   Button,
   Card,
@@ -292,6 +296,22 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
+  // Stance (M3): R turns to the next technique, T to the next aim; the server keeps it.
+  const stance = useRef<{ technique: number; aim: number }>({ technique: -1, aim: 0 });
+  const onStance = useCallback((which: "technique" | "aim") => {
+    const c = clientRef.current;
+    if (!c) return;
+    const known = new Set(c.body?.parts.filter((p) => p.state !== "dismembered").map((p) => p.id) ?? AIMS);
+    const aims = AIMS.filter((a) => known.has(a));
+    const st = stance.current;
+    if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
+    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
+    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    c.stance(technique, aim);
+    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
+    setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
+  }, []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -330,6 +350,7 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
           onBag={toggleBag}
+          onStance={onStance}
           onNearDrop={setNearDrop}
           combat={combat}
           onCombat={setCombatView}

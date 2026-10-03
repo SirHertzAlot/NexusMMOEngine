@@ -20,6 +20,8 @@ export const ACTIONS = [
   "dodge",
   "interact",
   "bag",
+  "technique",
+  "aim",
 ] as const;
 
 export type ActionId = (typeof ACTIONS)[number];
@@ -35,6 +37,8 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   dodge: "dodge",
   interact: "pick up",
   bag: "bag",
+  technique: "next technique (cut, thrust, bludgeon)",
+  aim: "next aim (torso, head, legs, arms)",
 };
 
 /** Mouse buttons fixed outside rebinding (attack, guard). */
@@ -56,13 +60,16 @@ export const DEFAULT_BINDINGS: Bindings = {
   dodge: ["KeyQ"],
   interact: ["KeyE"],
   bag: ["KeyB"],
+  technique: ["KeyR"],
+  aim: ["KeyT"],
 };
 
 /**
  * Interface actions (M3a): handled by the client, never part of the
- * movement intent — pick up the nearest drop, open the bag.
+ * movement intent — pick up the nearest drop, open the bag, and (M3) turn
+ * to the next technique or aim (sent as a stance, 0x19).
  */
-export const UI_ACTIONS = ["interact", "bag"] as const satisfies readonly ActionId[];
+export const UI_ACTIONS = ["interact", "bag", "technique", "aim"] as const satisfies readonly ActionId[];
 export type UiActionId = (typeof UI_ACTIONS)[number];
 
 /** Actions whose press the server acts on (latched until an intent carries them). */
