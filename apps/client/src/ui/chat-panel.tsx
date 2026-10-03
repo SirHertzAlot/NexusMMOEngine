@@ -14,12 +14,21 @@ const TABS: ChatChannel[] = ["say", "yell", "emote", "party", "guild"];
 
 export interface ChatPanelProps {
   lines: ChatBroadcast[];
+  /** Our character's name, so our own whisper echoes read "to Ann". */
+  self: string | null;
   channel: ChatChannel;
   onChannel: (c: ChatChannel) => void;
   onSend: (text: string) => void;
 }
 
-export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps): React.ReactElement {
+/** The speaker label: whispers say which way they went. */
+export function speakerLabel(l: ChatBroadcast, self: string | null): string {
+  if (l.channel !== "whisper") return l.from;
+  const mine = self !== null && l.from.toLowerCase() === self.toLowerCase();
+  return mine ? `to ${l.to ?? "?"}` : `from ${l.from}`;
+}
+
+export function ChatPanel({ lines, self, channel, onChannel, onSend }: ChatPanelProps): React.ReactElement {
   const [draft, setDraft] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
   const shown = lines.filter((l) => l.channel === channel || l.channel === "whisper" || l.channel === "system");
@@ -46,16 +55,16 @@ export function ChatPanel({ lines, channel, onChannel, onSend }: ChatPanelProps)
             {t}
           </Button>
         ))}
-        <span className="ml-auto self-center px-1 text-[11px] text-muted-foreground" title="/w name text, /p text, /invite /accept /leave /kick /promote; guild: /g text, /gcreate name tag, /ginvite /gkick /grank name rank, /gmotd text, /gaccept /gleave; /friend /unfriend name">
-          /w /p /g /invite /leave
+        <span className="ml-auto self-center whitespace-nowrap px-1 text-[11px] text-muted-foreground" title="/w name text, /r text (reply to the last whisper), /p text, /invite /accept /leave /kick /promote; guild: /g text, /gcreate name tag, /ginvite /gkick /grank name rank, /gmotd text, /gaccept /gleave; /friend /unfriend name">
+          /w /r /p /g
         </span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1 text-sm" aria-live="polite">
         {shown.map((l, i) => (
           <div key={`${l.entity}-${i}`} className="break-words">
-            <span className="font-semibold text-foreground">{l.from}</span>
+            <span className={l.channel === "whisper" ? "font-semibold text-fuchsia-400" : "font-semibold text-foreground"}>{speakerLabel(l, self)}</span>
             <span className="text-muted-foreground">{l.channel === "emote" ? " " : ": "}</span>
-            <span className="text-foreground">{l.text}</span>
+            <span className={l.channel === "whisper" ? "text-fuchsia-300" : "text-foreground"}>{l.text}</span>
           </div>
         ))}
         <div ref={bottom} />

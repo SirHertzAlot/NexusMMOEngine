@@ -39,7 +39,7 @@ import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
-import { parseChatCommand } from "./ui/chat-command.js";
+import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel } from "./ui/bag-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
@@ -131,6 +131,10 @@ export function App(): React.ReactElement {
   const [guild, setGuild] = useState<GuildState | null>(null);
   const [friends, setFriends] = useState<FriendsState | null>(null);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
+  // `/r` (U6): the last character who whispered us; the name ref lets the socket callback tell our echoes apart.
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const characterNameRef = useRef<string | null>(null);
+  characterNameRef.current = characterName;
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
   const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -172,7 +176,10 @@ export function App(): React.ReactElement {
         setError((prev) => prev ?? "connection closed");
         setScreen("login");
       },
-      onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
+      onChat: (c) => {
+        setChatLines((prev) => [...prev.slice(-49), c]);
+        setReplyTo((prev) => replyTarget(prev, c, characterNameRef.current));
+      },
       onParty: setParty,
       onGuild: setGuild,
       onFriends: setFriends,
@@ -258,6 +265,7 @@ export function App(): React.ReactElement {
     clientRef.current = null;
     setAccount(null);
     setChatLines([]);
+    setReplyTo(null);
     setParty(null);
     setGuild(null);
     setFriends(null);
@@ -469,10 +477,11 @@ export function App(): React.ReactElement {
         />
         <ChatPanel
           lines={chatLines}
+          self={characterName}
           channel={chatChannel}
           onChannel={setChatChannel}
           onSend={(line) => {
-            const c = parseChatCommand(line, chatChannel);
+            const c = parseChatCommand(line, chatChannel, replyTo);
             if (c.kind === "party") client?.party(c.op, c.name);
             else if (c.kind === "guild") client?.guild(c.op, c);
             else if (c.kind === "friend") client?.friend(c.name, c.on);
