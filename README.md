@@ -22,14 +22,27 @@ help.
 packages/schema/        # mmo_engine.fbs — the SINGLE SOURCE OF TRUTH for the
                         # C++ <-> JS contract. Generated code is gitignored.
 packages/protocol/      # WS envelope + message catalog helpers (TS)
-packages/engine-core/   # authoritative server: tick loop, world, net, persist (TS)
-packages/addons/        # C++ N-API addons: template, integrate (bench), procgen (FastNoise2),
-                        # physics (Jolt), navigation (Recast/Detour), picg (PICG cook,
-                        # meshoptimizer), geometry (manifold + Clipper2 Booleans)
+packages/mirror/        # shared mirror driver (connect, snapshot/delta folding,
+                        # intents, debug queries) for the client and the editor
+packages/engine-core/   # authoritative server: tick loop, world, net, combat,
+                        # creatures, items, chat/parties/guilds, persistence (TS)
+packages/rules/         # game rules as data: schemas, defaults, content/rules loader, hooks
+packages/addons/        # C++ N-API addons: physics (Jolt), navigation (Recast/Detour),
+                        # procgen (FastNoise2), picg (PICG cook, meshoptimizer),
+                        # geometry (manifold + Clipper2), scatter, perf-probe,
+                        # integrate (bench), template
+packages/wfc/ placement/ scatter/ picg/   # procedural generation (bake time)
+packages/dungeon/ species/ compose/ crafting/   # dungeons, creatures, ranks and
+                        # loot, materials and recipes (bake time)
+packages/art/           # art asset pipeline: manifests, packs, three.js provider
+packages/world-server/  # world server: region registry, SurrealDB system of record
 packages/bench/         # tick-budget validation benchmark (slice 1.5)
-apps/client/            # three.js mirror client (Phase 3 placeholder)
-docs/                   # message catalog, decision log
-scripts/codegen.sh      # regenerates FlatBuffers bindings (flatc vendored)
+apps/client/            # the player's three.js + React client
+apps/editor/            # the editor: inspectors, play mode, rules and tables, art
+apps/edge/              # edge process: client WebSocket + packet router (edge/core split)
+content/                # rules, edge routes and other data the server loads
+docs/                   # roadmap, design docs, message catalog, decision log
+scripts/                # codegen (flatc vendored), dev launcher, valgrind
 ```
 
 ## Setup (clean clone)

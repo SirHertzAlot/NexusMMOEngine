@@ -11,7 +11,7 @@ index and the status board, not the spec.
 | Status | Meaning |
 |---|---|
 | ✅ | Built and merged |
-| 🚧 | In progress (a branch or an open PR) |
+| 🚧 | In progress: partly built and merged, or on a branch or open PR |
 | ⏭️ | Next up |
 | 📋 | Planned |
 
@@ -19,6 +19,35 @@ index and the status board, not the spec.
 or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
+
+## At a glance (2026-10-03)
+
+**55 items built, 20 in progress, 1 next, 16 planned.** The engine
+foundation is in: the 4 × 4 km world bake and chunk streaming, Jolt
+physics, navmesh and crowds, procedural generation (WFC, PICG, dungeon
+layouts and shells, loot and species bakes), the item ledger and
+character saves, and a first playable fight loop (damage, death and
+respawn, creature AI, drops, pickup, inventory and held weapons), with
+chat, parties, guilds and friends on top.
+
+What is left, by area:
+
+- **Editor**: the play-mode game view (E4, next) unblocks the debugger
+  (E5) and click-to-pick for the admin console; then PICG graph editing
+  (E6, E7), the dungeon view (E8) and world-scale editing (E9).
+- **Combat and body**: body parts, injuries and healing (M2), the rest of
+  melee (M3: fit and power, dismemberment), disciplines and Medicine (M4),
+  and mana with its first spender.
+- **Player interface**: hunger and thirst meters on the wire, skills and
+  injuries on the character sheet, the block list, chat reply, audio, and
+  the quest log (U11).
+- **Content**: quests and dialog (P1), dungeon instances (D4), the biome
+  registry.
+- **Scale**: the edge / core split (E2 to E6), region migration, the world
+  server's stress harness, terrain LOD rings.
+- **Persistence**: friends and whispers reset on restart (S2).
+- **CI**: GitHub Actions jobs don't start (out of Actions credits), so
+  every change is checked locally with `npm test` and valgrind.
 
 ## Where things live
 
@@ -88,16 +117,16 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
-| U3 | Hunger and thirst meters | ✅ | Survival needs as rules on the server (new, alongside M1). Server side done (`needs.json`, `Needs` component, `NeedsSystem`). Wire and HUD meters deferred (no data on the wire yet; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
+| U3 | Hunger and thirst meters | 🚧 | Survival needs as rules on the server (`needs.json`, `Needs` component, `NeedsSystem`) done. Wire and HUD meters not built yet (no data on the wire; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
 | U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
-| U5 | Nameplates (name, guild tag) | 📋 | C3 |
+| U5 | Nameplates (name, guild tag) | ✅ | Built with C3: sprite nameplates from the `names` fan-out, guild tags (S4), creature names (U12a) |
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers (S2) and party (S3) commands live (`/w /p /invite /kick /promote /accept /leave`); guild commands live (S4); reply awaits |
 | U7 | Party frames | ✅ | Member list (leader star, online dot, lead/kick for the leader), invite card with accept, leave. Per-member health and region are not on the wire yet, so rows show name and presence only (deferred with the party stats message) |
 | U8 | Social window: friends, presence, blocks, guild roster | 🚧 | Friends frame live (presence dot, whisper, remove; `/friend` `/unfriend`); block list UI awaits; guild roster ships in the guild frame (S4) |
-| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills await M1, injuries M2 |
-| U10 | Inventory and equipment | 📋 | M3 (items), C1 crafting (built) |
+| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills exist on the server (M1) but aren't on the wire yet; injuries await M2 |
+| U10 | Inventory and equipment | 🚧 | First cut shipped (U10a: bag grid, drag to equip, comparison tooltip); armour slots and the rest of equipment await M3 |
 | U11 | Quest log and tracker, dialog | 📋 | P1 |
-| U12 | Injury display and hit feedback | 📋 | M2 |
+| U12 | Injury display and hit feedback | 🚧 | Hit feedback and target frame shipped (U12a); injury display awaits M2 |
 
 ## 3. Characters, combat and social
 
@@ -105,12 +134,12 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
-| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
+| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | ✅ | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
 | M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not on the wire yet |
 | M1b | Skills saved with the character | ✅ | `character_skills` table in the character store; the gateway saves a character's `SkillSheet` with its state and restores it on entering the world, applying deterioration for the time away |
-| M2 | Body parts, injuries, healing, death and respawn | 📋 | 〃 |
+| M2 | Body parts, injuries, healing, death and respawn | 🚧 | Whole-body damage (M2a) and death and respawn (M2b) built; body parts, injuries and healing open |
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); combat skills (M3c) feed damage and train from landed hits, blocks and dodges; the rest is open |
 | M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
@@ -195,7 +224,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | ✅ | Bags, hands and ground items survive restarts; owners are entity ids, so P2b maps them to saved characters |
 | P2b | Character save: position, health, inventory, equipment | ✅ | Position, health and stamina saved on the 1 s timer, on leaving and on shutdown, restored on entering; bags and hands already persist via P2a |
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
-| L3 | Pool rebake keeps held items | 📋 | P2a |
+| L3 | Pool rebake keeps held items | ✅ | `npm run loot:rebake`; merged in #81 |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
 | T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
 
@@ -203,6 +232,9 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
+Newest first. One line per merged PR or decision.
+
+- **2026-10-03**: Roadmap brought up to date: an "At a glance" summary; U3, U10, U12 and M2 marked in progress, U5, C3 and L3 built; the update log put back in date order under its heading. README layout lists the editor, edge and every package.
 - **2026-10-03**: Valgrind without Docker: `npm run valgrind:memcheck` and `valgrind:perf` call `memcheck.mjs` and `perf.mjs` directly again on the host's valgrind; the Docker launcher (`launch.mjs`, `Dockerfile`, `docker-run.sh`) is gone, replacing the container repair below. On Windows, run them from WSL.
 - **2026-10-03**: Edge/core split E1 edge skeleton: new `apps/edge` process (Express `GET /health`, client WebSocket) routes packets by type from strictly validated `content/edge/routes.json` to local modules (`ping`) or the core; the core channel is a stub until E2, so core-bound packets answer `core.unavailable` (the contract E4 reuses). Graceful SIGTERM/SIGINT. Valgrind not run (skipped at the user's request).
 - **2026-10-03**: Valgrind repaired: the container run (`docker-run.sh`) rebuilt every addon from scratch on every run, silently (Jolt takes minutes), so `npm run valgrind:*` looked hung, and two runs at once corrupted the shared volume. Addons now rebuild only when their sources change (hash in the volume), runs are serialised with `flock`, progress is printed and a failed addon build shows its log. Verified: `valgrind:memcheck -- physics` clean in 16 s, `valgrind:perf` all 8 workloads in 84 s (container Node is v25; the baseline is from v22, so deltas are indicative only). Valgrind/perf are no longer paused.
@@ -210,8 +242,6 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-03**: E11 rules editor: a Rules tab in the editor lists every `content/rules/*.json`, edits it as a tree and validates on save with the `@mmo-engine/rules` schemas and cross-file checks; invalid saves write nothing and show per-path errors. Save is strict (any invalid rules file blocks). Perf and valgrind runs paused.
 - **2026-10-03**: T1 ingress hardening: 64 KiB frame cap, per-session token buckets for intents (40/s, burst 60) and pickups (5/s, burst 10), drops counted, 100 violations in 10 s disconnects. Numbers in `content/rules/ingress.json`, editable in the editor's rules tab. Built by opencode, reviewed by Claude. Live reload of limits not wired (`Gateway.updateIngress` is ready).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
-Newest first. One line per merged PR or decision.
-
 - **2026-10-02**: ED1 gameplay tables: the editor's Gameplay Tables tab edits item bases, creatures, loot and death rules, validates through the host (`/api/editor/rules`) and saves to `content/rules`; a refused save lists its issues and writes nothing. A running server's `RulesReloader` watches the folder and swaps the tables on its next tick (`HooksDelegate`, `CreatureSystem.setRules`, `ItemService.setLoot`, `ItemDefs.applyRules`); a bad file is refused and the running rules stay.
 - **2026-10-02**: U10a bag panel: drag a bag item onto its hand slot to equip it (the slot lights only for the right hand), drag a held item onto the bag to put it away, double-click equips. Hovering an item shows a tooltip beside the bag with its stats and the signed change against what it would replace, by the server's swap rules (`displaced`). The held items' stat totals sit under the hands. Drops send the same 0x13 equip/unequip, so the server still decides.
 - **2026-10-02**: U12a hit feedback: struck entities flash red for 0.15 s (hits and blocks; dodges don't), a top-centre target frame shows the target's name and health from `hit` messages (you target what you strike, or your attacker when nothing is targeted; left click selects the hovered entity; cleared when it despawns), creatures get nameplates via the names message, and the player frame's health updates on each hit.
