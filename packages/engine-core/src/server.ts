@@ -114,6 +114,7 @@ import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
+import { MasterySystem } from "./stats/mastery-system.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
@@ -431,6 +432,7 @@ async function main(): Promise<void> {
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
   const needs = new NeedsSystem(game.rules.needs);
+  const mastery = new MasterySystem(game.rules.skills);
   // Items (roadmap M3a): definitions from the baked loot pool joined with
   // the rules' physics. One instance: the gateway routes item messages to
   // it, and it is in the systems list (it expires ground items).
@@ -472,7 +474,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).

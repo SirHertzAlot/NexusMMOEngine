@@ -46,6 +46,8 @@ export { SimWorld, SimEventEmitter } from "./world.js";
 export type { QueuedIntent, SimEventName, SimEventPayload, SimEventHandler, SimWorldOptions } from "./world.js";
 export { StatBook, type ModifierSpec, type StatLine } from "./stats/stat-book.js";
 export { StatsSystem } from "./stats/stats-system.js";
+export { MasterySystem } from "./stats/mastery-system.js";
+export { SkillIndex, SkillSheet } from "./stats/mastery.js";
 
 export {
   IntentSystem,
