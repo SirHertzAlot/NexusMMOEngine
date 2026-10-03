@@ -62,7 +62,9 @@ describe("core channel server (E3)", () => {
     assert.match(login.token, /^[0-9a-f]{64}$/);
 
     // Before the player is in the world the intent has nowhere to go.
-    await assert.rejects(client.request("player.intent", { token: login.token, intent: { mx: 1 } }, "3"), /intent refused: no_player/);
+    assert.deepEqual(await client.request("player.intent", { token: "nope", intent: { mx: 1 } }, "3a"), { accepted: false, reason: "no_session", tick: gw!.serverTick });
+    const early = await client.request("player.intent", { token: login.token, intent: { mx: 1 } }, "3") as { accepted: boolean; reason: string };
+    assert.deepEqual([early.accepted, early.reason], [false, "no_player"]);
 
     const p = new HeadlessClient(); players.push(p);
     await p.connect(url);
