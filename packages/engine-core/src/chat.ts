@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import type { ChatChannel } from "@mmo-engine/protocol";
+import { memorySocialStore, type SocialStore } from "./social-store.js";
 
 /** Say and emote reach avatars within this many metres; yell is region-wide. */
 export const SAY_RANGE_M = 30;
@@ -44,11 +45,19 @@ export const BLOCK_LIMIT = 200;
 export const NOT_ONLINE = "not online";
 
 /**
- * Who blocks whom, by account name (S2). In memory: resets on restart until
- * the world server owns the durable block table.
+ * Who blocks whom, by account name (S2).
  */
 export class BlockList {
   private readonly blocks = new Map<string, Set<string>>();
+
+  /** Writes through to `store` (SQLite in the server, S2c), so blocks survive a restart. */
+  constructor(private readonly store: SocialStore = memorySocialStore()) {
+    for (const r of store.loadBlocks()) {
+      let set = this.blocks.get(r.blocker);
+      if (!set) this.blocks.set(r.blocker, (set = new Set()));
+      set.add(r.target);
+    }
+  }
 
   isBlocked(blocker: string, sender: string): boolean {
     return this.blocks.get(blocker.toLowerCase())?.has(sender.toLowerCase()) ?? false;
@@ -61,13 +70,15 @@ export class BlockList {
     if (b === t) return false;
     let set = this.blocks.get(b);
     if (!set) this.blocks.set(b, (set = new Set()));
-    if (!set.has(t) && set.size >= BLOCK_LIMIT) return false;
+    if (set.has(t)) return true;
+    if (set.size >= BLOCK_LIMIT) return false;
     set.add(t);
+    this.store.addBlock(b, t);
     return true;
   }
 
   remove(blocker: string, target: string): void {
-    this.blocks.get(blocker.toLowerCase())?.delete(target.toLowerCase());
+    if (this.blocks.get(blocker.toLowerCase())?.delete(target.toLowerCase())) this.store.removeBlock(blocker, target);
   }
 }
 
