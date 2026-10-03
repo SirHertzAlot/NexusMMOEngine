@@ -51,6 +51,10 @@
  *   MMO_TERRAIN_FREQUENCY  terrain noise frequency, (0, 1] (default 0.02)
  *                  Must match the values the world was baked with.
  *
+ *   CORE_CHANNEL_PORT the edge's internal channel, loopback only (default
+ *                  4000; see docs/EDGE-CORE-SPLIT.md). Session tokens are
+ *                  kept in world.db's sessions table.
+ *
  * Region/world (slice A): when WORLD_URL is set (e.g.
  * http://localhost:7780), this instance registers as a region with the
  * world server, heartbeats off the tick loop, and reports snapshots.
@@ -129,6 +133,8 @@ import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
+import { SqliteSessionStore } from "./auth/index.js";
+import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -495,8 +501,11 @@ async function main(): Promise<void> {
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
+  // Session tokens survive a restart (E3): the edge's resync finds them.
+  const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
   const gw: Gateway = new Gateway({
     port: PORT,
+    sessionStore,
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
@@ -612,6 +621,8 @@ async function main(): Promise<void> {
       gw.saveCharacters();
       itemLedger.flush();
       itemLedger.close();
+      sessionStore.close();
+      void coreChannel?.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       void worldClient?.stop();
@@ -622,6 +633,14 @@ async function main(): Promise<void> {
   // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
   const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
   const port = await gw.listen();
+  // The edge's channel (E3), beside the player port. A core that cannot
+  // bind it still serves players directly.
+  const channelPort = coreChannelPort();
+  const coreChannel = await startCoreChannel(gw, channelPort).catch((err: Error) => {
+    console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
+    return null;
+  });
+  if (coreChannel) console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
   gw.startTicking();
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse

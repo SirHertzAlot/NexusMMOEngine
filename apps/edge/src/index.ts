@@ -20,6 +20,8 @@ import { ChannelClient } from "@mmo-engine/channel";
 import { loadConfig } from "./config.js";
 import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
+import { createMirrorBuffer } from "./mirror-buffer.js";
+import { pushTick } from "./tick-buffer.js";
 
 /** Walks up from this file until a package.json with a `workspaces` field: the repo root. */
 function findRepoRoot(): string {
@@ -45,6 +47,9 @@ const routes = loadRoutes(join(findRepoRoot(), "content/edge/routes.json"));
 // 4. modules (local:<name> destinations)
 const channel = new ChannelClient({ port: config.coreChannelPort });
 channel.onStatus(() => {}); // status is polled by /health; no action needed yet (E4 wires reactions)
+channel.onPush("tick.events", (p) => { const { tick, events } = p as { tick: number; events: unknown[] }; pushTick(tick, events); });
+// The core's mirror stream; read by the client cutover (players still connect to the core today).
+export const mirror = createMirrorBuffer(channel);
 channel.connect().catch(err => console.error("initial channel connect failed, retrying in background:", err.message));
 const ctx: RouterCtx = { channel, modules: { ping: pingHandler } };
 

@@ -89,6 +89,41 @@ builds on this.
   same-token takeover, heartbeat drop, bad-hello rejection
   (protocol/auth-failed/malformed).
 
+## Processes (edge/core split)
+
+Plan: [`docs/EDGE-CORE-SPLIT.md`](../../docs/EDGE-CORE-SPLIT.md). The edge
+(`apps/edge`) is the players' front door; this package is the simulation
+behind it. Slice E3 is built **additively**: the server serves the edge's
+internal channel (`src/channel-server.ts`, `CORE_CHANNEL_PORT`, default
+4000, loopback only) beside the gateway, and players still connect to the
+gateway on `MMO_PORT`. Moving the client onto the edge (and dropping the
+player listener here) is a later step.
+
+Channel packets the core answers:
+
+| Type | Payload → answer |
+|---|---|
+| `player.intent` | `{ token, intent: { mx, my, mz, lookYaw, lookPitch, jump, buttons } }` → `{ accepted: true, tick }`; queued for the player that session is in the world as, sanitized like a socket intent; refused (`error`) without a player |
+| `auth.login` | `{ username, password }` → `{ ok: true, token, playerId }` or `{ ok: false, reason }`; the gateway's own password check and rate limit |
+| `session.validate` | `{ token }` → `{ valid }` |
+| `core.sync` | `{}` → `{ tick, sessionIds }` (every live token) |
+| `mythic.grant_item` | `{ playerId, itemId, instanceId, stats }` → `{ ok: true }`; answers an error until Q9 wires it |
+| `mythic.spawn_boss` | `{ bossId, instanceId, placeId, stats }` → `{ ok: true, instanceId }`; answers an error until Q9 wires it |
+| `metrics.get` | `{}` → Prometheus text (tick and channel counters until E6's registry) |
+| anything else | `error: "unknown packet type <type>"` |
+
+Pushes to every connected edge, every tick: `tick.events`
+(`{ tick, events }`, that tick's hit and life messages, sent even when
+empty) and `tick.delta` (`{ tick, delta }`, the same FlatBuffers delta the
+clients get, base64). On ticks where `isSnapshotTick(n)` (`n % 300 === 0`)
+also `snapshot` (`{ tick, snapshot }`, base64).
+
+Sessions: tokens live in `world.db`'s `sessions` table
+(`token, playerId, createdAt, expiresAt`), so a core restart keeps them.
+Expiry is unchanged (24 h wall-clock TTL), which is why the columns are
+milliseconds rather than the plan's ticks. The character a session last
+entered as is not stored.
+
 ## Commands
 
 ```sh
