@@ -353,6 +353,25 @@ export const CreaturesSchema = z.strictObject({
   creatures: z.record(id, CreatureSchema).default({}),
 });
 
+// ------------------------------------------------------------------ needs
+
+/** One survival meter: full at spawn, drained over time, harmful at zero. */
+export const NeedSchema = z.strictObject({
+  /** Meter size. */
+  max: positive.default(100),
+  /** Points lost per minute of play. */
+  drainPerMinute: z.number().min(0),
+  /** Health lost per second while the meter is empty. */
+  damagePerSecond: z.number().min(0),
+});
+
+export const NeedsSchema = z.strictObject({
+  hunger: NeedSchema.default({ max: 100, drainPerMinute: 2, damagePerSecond: 1 }),
+  thirst: NeedSchema.default({ max: 100, drainPerMinute: 3, damagePerSecond: 1 }),
+  /** Share of the drain that applies while running or swimming (1 = no change). */
+  exertionFactor: z.number().min(1).default(1.5),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -367,6 +386,7 @@ export const RULE_FILES = {
   items: ItemsSchema,
   loot: LootSchema,
   creatures: CreaturesSchema,
+  needs: NeedsSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -385,6 +405,8 @@ export type ItemsRules = z.infer<typeof ItemsSchema>;
 export type ItemBaseRules = z.infer<typeof ItemBaseRulesSchema>;
 export type HandKind = z.infer<typeof Hand>;
 export type LootRules = z.infer<typeof LootSchema>;
+export type NeedsRules = z.infer<typeof NeedsSchema>;
+export type NeedRules = z.infer<typeof NeedSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
@@ -403,4 +425,5 @@ export interface Rules {
   items: ItemsRules;
   loot: LootRules;
   creatures: CreaturesRules;
+  needs: NeedsRules;
 }

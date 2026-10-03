@@ -2080,6 +2080,7 @@ export class Gateway {
     addComponent(sim.ecs, C.PlayerIntent, eid);
     addComponent(sim.ecs, C.Health, eid);
     addComponent(sim.ecs, C.Stamina, eid);
+    addComponent(sim.ecs, C.Needs, eid);
     addComponent(sim.ecs, C.Locomotion, eid);
     C.Locomotion.mode[eid] = LocomotionMode.Ground;
     C.Locomotion.abilities[eid] = this.playerAbilities;
@@ -2095,6 +2096,9 @@ export class Gateway {
     C.Health.max[eid] = 100;
     C.Stamina.current[eid] = 100;
     C.Stamina.max[eid] = 100;
+    // Full meters (NeedsSystem sets the maxima from the rules next tick).
+    C.Needs.hunger[eid] = C.Needs.hungerMax[eid] = 100;
+    C.Needs.thirst[eid] = C.Needs.thirstMax[eid] = 100;
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;
