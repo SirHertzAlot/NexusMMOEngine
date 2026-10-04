@@ -67,6 +67,7 @@ import {
   type ErrorMessage,
   type BodyMessage,
   type TreatmentMessage,
+  type SkillsMessage,
   type HitMessage,
   type LifeMessage,
   type NamesMessage,
@@ -82,7 +83,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
-import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
@@ -404,6 +405,8 @@ const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
 /** How often a player's body is checked for changes to send (catalog 0x18): 5 times a second. */
 const BODY_EVERY_TICKS = 6;
+/** How often a player's skills are checked for a change worth sending (0x1b, M4). */
+const SKILLS_EVERY_TICKS = 30;
 /** Admin command log keeps the last N entries (roadmap A1). */
 const ADMIN_LOG_SIZE = 200;
 /**
@@ -573,6 +576,7 @@ export class Gateway {
   private readonly body: BodySystem | null;
   /** The body message last sent to each session, as its JSON (see sendBody). */
   private readonly bodySent = new WeakMap<ClientSession, string>();
+  private readonly skillsSent = new WeakMap<ClientSession, string>();
   /** Play counters and tick timing (T2); read by the admin `stats` command. */
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
@@ -946,7 +950,9 @@ export class Gateway {
             max: C.Health.max[h.target],
             ...(h.part !== undefined ? { part: h.part, state: h.state } : {}),
             ...(h.lost ? { lost: h.lost } : {}),
+            ...(h.disarmed ? { disarmed: true } : {}),
       }));
+      this.dropDisarmed(sim, hits);
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
@@ -1011,6 +1017,20 @@ export class Gateway {
       if (!changed) continue;
       this.refreshAvatarLook(avatar, this.holderOf(s));
       this.sendInventory(s);
+    }
+  }
+
+  /** A parry took a player's weapon (M4): it falls at their feet, and their look and bag follow. */
+  private dropDisarmed(sim: SimWorld, hits: readonly { source: number; disarmed?: boolean }[]): void {
+    if (!this.items) return;
+    for (const h of hits) {
+      if (!h.disarmed) continue;
+      for (const s of this.sessions.values()) {
+        if (s.playerEntity === null || sim.resolveWireId(s.playerEntity) !== h.source) continue;
+        if (!this.items.dropHeld(sim, this.holderOf(s), h.source, "main")) continue;
+        this.refreshAvatarLook(h.source, this.holderOf(s));
+        this.sendInventory(s);
+      }
     }
   }
 
@@ -1145,6 +1165,7 @@ export class Gateway {
       }
       this.sendStats(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
+      if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
   }
 
@@ -1170,6 +1191,31 @@ export class Gateway {
     if (!force && this.bodySent.get(s) === json) return;
     this.bodySent.set(s, json);
     this.deliver(s, encodeEnvelope(MessageType.Body, encodeControl(msg)), tick);
+  }
+
+  /**
+   * The player's own skills, item familiarity and disciplines (catalog
+   * 0x1b, M4), when they changed (to a tenth) since last sent; `force`
+   * sends them regardless (on joining or re-attaching).
+   */
+  private sendSkills(s: ClientSession, tick: number, force = false): void {
+    if (!this.mastery || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return;
+    const sheet = this.mastery.sheetOf(eid);
+    const rules = this.mastery.index.rules;
+    const tenth = (v: number): number => Math.round(v * 10) / 10;
+    const msg: SkillsMessage = {
+      kind: "skills",
+      max: rules.max,
+      skills: rules.skills.map((k, i) => ({ id: k.id, name: k.name, value: tenth(sheet.value[i]), peak: tenth(sheet.peak[i]) })),
+      familiarity: sheet.families().map(([family, value]) => ({ family, value: Math.round(value * 1000) / 1000 })),
+      disciplines: this.mastery.disciplinesOf(eid).map((d) => ({ id: d.id, name: d.name, active: d.active, unlocks: [...d.unlocks] })),
+    };
+    const json = JSON.stringify(msg);
+    if (!force && this.skillsSent.get(s) === json) return;
+    this.skillsSent.set(s, json);
+    this.deliver(s, encodeEnvelope(MessageType.Skills, encodeControl(msg)), tick);
   }
 
   /**
@@ -1501,7 +1547,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, items, give, drop, loot",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1541,7 +1587,7 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
-    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly" || cmd.command === "injure") {
+    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly" || cmd.command === "injure" || cmd.command === "skill") {
       res = this.runPlayerCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
@@ -1722,6 +1768,21 @@ export class Gateway {
       if (!this.body.parts.includes(parsed.data.part)) return { kind: "admin", command, ok: false, message: `no body part "${parsed.data.part}" (parts: ${this.body.parts.join(", ")})` };
       const r = this.body.applyBlow(this.world, eid, parsed.data.part, parsed.data.kind, parsed.data.amount ?? C.Health.max[eid]);
       return { kind: "admin", command, ok: true, message: `${r.part} ${r.state}${r.lost.length > 0 ? ` (lost ${r.lost.join(", ")})` : ""}` };
+    }
+    if (command === "skill") {
+      const parsed = SkillArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) return { kind: "admin", command, ok: false, message: "usage: skill {id, value, entity?}" };
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      const eid = this.world.resolveWireId(target.wireId);
+      const i = this.mastery?.index.of(parsed.data.id) ?? -1;
+      if (!this.mastery || eid < 0) return { kind: "admin", command, ok: false, message: "no skills there" };
+      if (i < 0) return { kind: "admin", command, ok: false, message: `no skill "${parsed.data.id}" (skills: ${this.mastery.index.ids.join(", ")})` };
+      const sheet = this.mastery.sheetOf(eid);
+      const v = Math.min(this.mastery.index.rules.max, parsed.data.value);
+      sheet.value[i] = v;
+      sheet.peak[i] = Math.max(sheet.peak[i], v);
+      return { kind: "admin", command, ok: true, message: `${parsed.data.id} ${v}` };
     }
     const parsed = FlyArgsSchema.safeParse(args ?? {});
     if (!parsed.success) {
@@ -2239,6 +2300,7 @@ export class Gateway {
       this.sendFreshSnapshot(known);
       this.sendStats(known, this.tick, true);
       this.sendBody(known, this.tick, true);
+      this.sendSkills(known, this.tick, true);
       this.sendInventory(known);
       return;
     }
@@ -2306,6 +2368,7 @@ export class Gateway {
     this.sendFreshSnapshot(s);
     this.sendStats(s, this.tick, true);
     this.sendBody(s, this.tick, true);
+    this.sendSkills(s, this.tick, true);
     this.sendInventory(s);
   }
 

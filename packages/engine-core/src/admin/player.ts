@@ -46,6 +46,15 @@ export const InjureArgsSchema = z
   })
   .strict();
 
+/** `skill {id, value, entity?}` (M4): set a skill (its peak rises with it), for testing disciplines. */
+export const SkillArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    id: z.string().min(1).max(32),
+    value: z.number().finite().min(0).max(100000),
+  })
+  .strict();
+
 export const FlyArgsSchema = z
   .object({
     entity: z.string().min(1).max(32).default("me"),

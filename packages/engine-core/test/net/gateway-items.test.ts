@@ -23,6 +23,8 @@ import { Gateway, type GatewayOptions } from "../../src/net/gateway.js";
 import { ItemDefs, ItemService, type PoolItemLike } from "../../src/items/index.js";
 import { HeadlessClient, type HelloAuth } from "./headless-client.js";
 import { BodySystem } from "../../src/body.js";
+import { CombatSystem, type HitEvent } from "../../src/combat.js";
+import type { HitMessage } from "@mmo-engine/protocol";
 import { SimWorld } from "../../src/world.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
@@ -227,4 +229,37 @@ describe("gateway: items", () => {
     assert.match(bad.message, /no body part "tail"/);
     await alice.close();
   });
+
+  it("a disarmed player's sword falls at their feet, and the hit says so (M4)", async () => {
+    /** Combat that reports one disarming parry of `source`'s blow when told to. */
+    class Disarming extends CombatSystem {
+      next: HitEvent | null = null;
+      override drainHits(): HitEvent[] {
+        const out = [...super.drainHits(), ...(this.next ? [this.next] : [])];
+        this.next = null;
+        return out;
+      }
+    }
+    const world = new SimWorld();
+    const combat = new Disarming(30);
+    now = 1_000_000;
+    const items = makeItems();
+    gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world, systems: [items, combat], items });
+    const port = await gw.listen();
+    gw.frame(now);
+    const alice = await join(`ws://127.0.0.1:${port}`, "alice");
+    tick();
+    const avatar = world.resolveWireId(BigInt(alice.welcome!.player_entity));
+    const hitP = alice.waitFor(MessageType.Hit, 1);
+    const invP = alice.waitFor(MessageType.Inventory, 1);
+    const dropsP = alice.waitFor(MessageType.Drops, 1);
+    combat.next = { tick: 0, source: avatar, target: avatar, outcome: "blocked", amount: 0, disarmed: true };
+    tick();
+    const hit = decodeControl<HitMessage>((await hitP)[0]);
+    assert.equal(hit.disarmed, true);
+    assert.ok(!decodeControl<InventoryMessage>((await invP)[0]).main, "the sword left the hand");
+    assert.equal(decodeControl<DropsMessage>((await dropsP)[0]).drops.length, 1, "and lies on the ground");
+    await alice.close();
+  });
 });
+

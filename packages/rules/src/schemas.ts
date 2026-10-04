@@ -109,6 +109,9 @@ export const CombatSchema = z.strictObject({
    * A guard facing the blow is a contest (docs/MASTERY-AND-COMBAT.md §3.3):
    * the defender stops it with chance `base + perSkill × (m_defence − m_attack)`,
    * held within [min, max]; a guard that loses lets `failedLetsThrough` of the blow through.
+   * A parry that stops a blow disarms the attacker when the defender knows
+   * the `disarm` technique (a discipline's) and out-skills the attacker by
+   * at least `disarmMargin` (as a share of skills.max).
    */
   defence: z
     .strictObject({
@@ -117,6 +120,7 @@ export const CombatSchema = z.strictObject({
       min: share.default(0.05),
       max: share.default(0.95),
       failedLetsThrough: share.default(0.5),
+      disarmMargin: share.default(0.3),
     })
     .prefault({}),
 });
@@ -511,6 +515,7 @@ export type RuleFile = keyof typeof RULE_FILES;
 
 export type SkillsRules = z.infer<typeof SkillsSchema>;
 export type DisciplinesRules = z.infer<typeof DisciplinesSchema>;
+export type Discipline = z.infer<typeof DisciplineSchema>;
 export type CombatRules = z.infer<typeof CombatSchema>;
 export type BodyRules = z.infer<typeof BodySchema>;
 export type BodyPart = z.infer<typeof BodyPartSchema>;

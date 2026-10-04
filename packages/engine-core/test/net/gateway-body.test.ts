@@ -5,10 +5,11 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage, type TreatmentMessage } from "@mmo-engine/protocol";
+import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage, type TreatmentMessage, type SkillsMessage, type AdminResult } from "@mmo-engine/protocol";
 import { CombatSystem } from "../../src/combat.js";
 import { Gateway } from "../../src/net/gateway.js";
 import { BodySystem } from "../../src/body.js";
+import { MasterySystem } from "../../src/stats/mastery-system.js";
 import { SimWorld } from "../../src/world.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import { HeadlessClient } from "./headless-client.js";
@@ -139,3 +140,69 @@ describe("gateway: body", () => {
     await client.close();
   });
 });
+
+describe("gateway: skills (M4)", () => {
+  it("sends the player's skills, familiarity and disciplines on joining and when they change", async () => {
+    const { rules } = loadGameRules();
+    const world = new SimWorld();
+    const mastery = new MasterySystem(rules.skills, () => 1000, rules.disciplines.disciplines);
+    now = 1_000_000;
+    gw = new Gateway({ clock: () => now, world, credentialStore: await makeCredentialStore(), systems: [mastery], mastery });
+    const port = await gw.listen();
+    gw.frame(now);
+    const client = new HeadlessClient();
+    await client.connect(`ws://127.0.0.1:${port}`);
+    const first = client.waitFor(MessageType.Skills, 1);
+    const welcome = await client.hello("user-a", { username: "user-a", password: TEST_PASSWORD });
+    const joined = decodeControl<SkillsMessage>((await first)[0]);
+    assert.equal(joined.max, rules.skills.max);
+    assert.deepEqual(joined.skills.map((k) => k.id), rules.skills.skills.map((k) => k.id));
+    assert.deepEqual(joined.disciplines, []);
+
+    const me = world.resolveWireId(BigInt(welcome.player_entity));
+    const sheet = mastery.sheetOf(me);
+    for (const [id, level] of Object.entries(rules.disciplines.disciplines.find((d) => d.id === "bladeMaster")!.requires)) {
+      sheet.value[mastery.index.of(id)] = level;
+      sheet.peak[mastery.index.of(id)] = level;
+    }
+    sheet.useFamily("sword", 1000);
+    const changed = client.waitFor(MessageType.Skills, 1);
+    for (let i = 0; i < 31; i++) {
+      now += 1000 / 30;
+      gw.frame(now);
+    }
+    const after = decodeControl<SkillsMessage>((await changed)[0]);
+    assert.deepEqual(after.disciplines.map((d) => [d.id, d.active, d.unlocks]), [["bladeMaster", true, ["disarm"]]]);
+    assert.deepEqual(after.familiarity, [{ family: "sword", value: rules.skills.familiarity.perUse }]);
+    assert.equal(after.skills.find((k) => k.id === "cutting")!.value, 80);
+    await client.close();
+  });
+
+  it("the admin console sets a skill, peak with it", async () => {
+    const { rules } = loadGameRules();
+    const world = new SimWorld();
+    const mastery = new MasterySystem(rules.skills, () => 1000, rules.disciplines.disciplines);
+    now = 1_000_000;
+    gw = new Gateway({ clock: () => now, world, credentialStore: await makeCredentialStore(), systems: [mastery], mastery, admins: ["user-a"] });
+    const port = await gw.listen();
+    gw.frame(now);
+    const client = new HeadlessClient();
+    await client.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await client.hello("user-a", { username: "user-a", password: TEST_PASSWORD });
+    const admin = async (args: unknown): Promise<AdminResult> => {
+      const p = client.waitFor(MessageType.Admin, 1);
+      client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "skill", args }));
+      return decodeControl<AdminResult>((await p)[0]);
+    };
+    const r = await admin({ id: "medicine", value: 120 });
+    assert.deepEqual([r.ok, r.message], [true, `medicine ${rules.skills.max}`]);
+    const me = world.resolveWireId(BigInt(welcome.player_entity));
+    assert.equal(mastery.sheetOf(me).get("medicine"), rules.skills.max);
+    // A refused admin command answers as a 4003 error.
+    const badP = client.waitFor(MessageType.Error, 1);
+    client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "skill", args: { id: "juggling", value: 1 } }));
+    assert.match(decodeControl<ErrorMessage>((await badP)[0]).message, /no skill "juggling"/);
+    await client.close();
+  });
+});
+

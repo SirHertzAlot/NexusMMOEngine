@@ -22,8 +22,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
-import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
+import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import { treatmentNotice } from "./ui/treatment-notice.js";
+import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -150,14 +151,17 @@ export function App(): React.ReactElement {
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
+  // The last skills message (M4): a discipline new since it is announced.
+  const skillsRef = useRef<SkillsMessage | null>(null);
   const [assets] = useState(() => new PlaceholderAssets());
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
 
   /** Shared MirrorClient construction with the standard callbacks. */
-  const createClient = (): MirrorClient =>
-    new MirrorClient((u) => new BrowserSocket(u), {
+  const createClient = (): MirrorClient => {
+    skillsRef.current = null;
+    return new MirrorClient((u) => new BrowserSocket(u), {
       onWelcome: (_w: WelcomeMessage) => {
         sessionTokenRef.current = _w.session_token;
         setCharacterName(_w.character?.name ?? null);
@@ -187,7 +191,16 @@ export function App(): React.ReactElement {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
       },
-      onHit: (h) => combat.hit(h, clientRef.current?.playerEntity ?? null),
+      onHit: (h) => {
+        combat.hit(h, clientRef.current?.playerEntity ?? null);
+        const text = disarmNotice(h, clientRef.current?.playerEntity?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onSkills: (next) => {
+        const [text] = disciplineNotices(skillsRef.current, next);
+        skillsRef.current = next;
+        if (text) setNotice({ text, at: performance.now() });
+      },
       onLife: (l) => combat.life(l),
       onTreatment: (t) => {
         const c = clientRef.current;
@@ -196,6 +209,7 @@ export function App(): React.ReactElement {
         if (text) setNotice({ text, at: performance.now() });
       },
     });
+  };
 
   /**
    * Run one handshake (login, register, or token reconnect) against a
