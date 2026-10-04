@@ -12,6 +12,7 @@
   "private": true,
   "scripts": {
     "bench": "npm run bench --workspace=@mmo-engine/bench",
+    "bench:e5": "node scripts/bench-e5.mjs",
     "build": "npm run build --workspaces --if-present",
     "client": "npm run dev --workspace=@mmo-engine/client",
     "dev": "node scripts/dev.mjs",
@@ -38,7 +39,8 @@
     "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
     "world": "npm run server --workspace=@mmo-engine/world-server",
     "world:db": "npm run db --workspace=@mmo-engine/world-server",
-    "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --"
+    "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --",
+    "stress:world": "node scripts/world-stress/run.mjs"
   },
   "version": "0.1.0",
   "workspaces": [
@@ -56,6 +58,8 @@
     "packages/addons/navigation",
     "apps/client",
     "apps/editor",
+    "packages/nethealth",
+    "packages/channel",
     "apps/edge",
     "packages/world-server",
     "packages/scatter",

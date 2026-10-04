@@ -25,7 +25,7 @@ export interface PlayerFrameProps {
 export function PlayerFrame({ name, hp, maxHp, sp, maxSp, needs }: PlayerFrameProps): React.ReactElement | null {
   if (hp === null || maxHp === null) return null;
   return (
-    <div className="pointer-events-none absolute bottom-4 left-4 w-64 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
+    <div className="pointer-events-none w-64 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
       {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
       <Bar label="health" value={hp} max={maxHp} tone="health" />
       {sp !== null && maxSp !== null && (

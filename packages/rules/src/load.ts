@@ -97,6 +97,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   ingress: [],
   creatures: ["items"],
   needs: [],
+  spells: [],
 };
 
 let defaults: Rules | null = null;
@@ -196,9 +197,16 @@ function crossCheck(r: Rules): RulesIssue[] {
   });
   const total = parts.reduce((s, p) => s + p.share, 0);
   if (Math.abs(total - 1) > 0.005) add("body", "parts", `shares add up to ${total.toFixed(3)}, not 1`);
+  for (const hand of ["main", "off"] as const) {
+    if (parts.filter((p) => p.holds === hand).length > 1) add("body", "parts", `more than one part holds the ${hand} hand`);
+  }
+  for (const id of Object.keys(r.body.fall.parts)) {
+    if (!byId.has(id)) add("body", `fall.parts.${id}`, `no part "${id}"`);
+  }
 
   // Appearance.
   dupes("appearance", r.appearance.slots, "slots");
+  dupes("spells", r.spells.spells, "spells");
   r.appearance.slots.forEach((s, i) => {
     if (s.part !== undefined && !byId.has(s.part)) add("appearance", `slots[${i}].part`, `no body part "${s.part}"`);
   });

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "stages": ["hook", "travel", "obstacle", "twist", "confrontation", "reward"],
+  "steps": {
+    "plea":        { "stage": "hook", "text": "Hear {giver} out about the {species} near {place}.", "objective": { "type": "talk", "npc": "$giver" }, "weight": 2 },
+    "notice":      { "stage": "hook", "text": "Read the notice {giver} posted about {place}.", "objective": { "type": "talk", "npc": "$giver" } },
+    "scout":       { "stage": "hook", "text": "Meet the scout {giver} is sending with you.", "objective": { "type": "talk", "npc": "$giver" }, "gives": ["ally"] },
+
+    "travel":      { "stage": "travel", "text": "Travel to {place}.", "objective": { "type": "reach", "place": "$place" }, "weight": 2 },
+    "tracks":      { "stage": "travel", "text": "Follow the tracks to {place}.", "objective": { "type": "reach", "place": "$place" } },
+
+    "thin-out":    { "stage": "obstacle", "text": "Thin out the {species} on the road ({count}).", "objective": { "type": "kill", "kind": "$species", "count": [2, 4] }, "weight": 2 },
+    "supplies":    { "stage": "obstacle", "text": "Carry {count} {item} for the camp.", "objective": { "type": "collect", "base": "$item", "count": [1, 2] }, "gives": ["supplied"] },
+
+    "betrayal":    { "stage": "twist", "text": "The scout has gone over to the {species}: warn {giver}.", "objective": { "type": "talk", "npc": "$giver" }, "needs": ["ally"], "weight": 2 },
+    "ambush":      { "stage": "twist", "text": "Survive the ambush ({count}).", "objective": { "type": "kill", "kind": "$species", "count": [2, 3] } },
+    "doubled-back":{ "stage": "twist", "text": "The trail doubles back: search {place} again.", "objective": { "type": "reach", "place": "$place" }, "excludes": ["supplied"] },
+
+    "drive-out":   { "stage": "confrontation", "text": "Drive the {species} out of {place} ({count}).", "objective": { "type": "kill", "kind": "$species", "count": [4, 7] }, "weight": 2 },
+    "warband":     { "stage": "confrontation", "text": "Break the {Species} warband ({count}).", "objective": { "type": "kill", "kind": "$species", "count": [5, 8] } },
+
+    "report":      { "stage": "reward", "text": "Return to {giver}.", "objective": { "type": "talk", "npc": "$giver" } }
+  },
+  "templates": {
+    "bounty":     { "name": "{Species} bounty", "stages": ["hook", "obstacle", "confrontation", "reward"], "rewards": [{ "base": "$item" }] },
+    "expedition": { "name": "Trouble at {place}", "stages": ["hook", "travel", "obstacle", "twist", "confrontation", "reward"], "rewards": [{ "base": "$item" }, { "base": "ring" }] }
+  }
+}

@@ -1,6 +1,6 @@
-/** Chat-box slash commands (U6/U7): party ops, `/p`, `/w`. Pure, so the box and tests share it. */
+/** Chat-box slash commands (U6/U7): party ops, `/p`, `/w`, `/r`. Pure, so the box and tests share it. */
 
-import type { ChatChannel, GuildMessage, GuildRank, PartyMessage } from "@mmo-engine/protocol";
+import type { ChatBroadcast, ChatChannel, GuildMessage, GuildRank, PartyMessage } from "@mmo-engine/protocol";
 
 export type ChatCommand =
   | { kind: "say"; text: string }
@@ -8,6 +8,7 @@ export type ChatCommand =
   | { kind: "party"; op: PartyMessage["op"]; name?: string }
   | { kind: "guild"; op: GuildMessage["op"]; name?: string; tag?: string; rank?: GuildRank; text?: string }
   | { kind: "friend"; name: string; on: boolean }
+  | { kind: "block"; name: string; on: boolean }
   | { kind: "error"; text: string };
 
 const RANKS = new Set(["recruit", "member", "officer", "leader"]);
@@ -44,8 +45,21 @@ function parseGuildOp(op: string, words: string[], arg: string): ChatCommand | n
 const NAMED_OPS = new Set(["invite", "kick", "promote"]);
 const PLAIN_OPS = new Set(["accept", "leave"]);
 
-/** Parses one submitted line; `channel` is the tab it was typed in. */
-export function parseChatCommand(line: string, channel: ChatChannel): ChatCommand {
+/**
+ * Who `/r` answers after `line` arrives: the sender of a whisper to `self`, or
+ * `prev` for anything else (our own echoes, other channels, system notices).
+ */
+export function replyTarget(prev: string | null, line: ChatBroadcast, self: string | null): string | null {
+  if (line.channel !== "whisper") return prev;
+  if (self !== null && line.from.toLowerCase() === self.toLowerCase()) return prev;
+  return line.from;
+}
+
+/**
+ * Parses one submitted line; `channel` is the tab it was typed in and
+ * `replyTo` the last character who whispered us (for `/r`).
+ */
+export function parseChatCommand(line: string, channel: ChatChannel, replyTo: string | null = null): ChatCommand {
   const text = line.trim();
   if (!text.startsWith("/")) return { kind: "chat", channel, text };
   const [cmd = "", ...rest] = text.slice(1).split(/\s+/);
@@ -58,6 +72,9 @@ export function parseChatCommand(line: string, channel: ChatChannel): ChatComman
   if (op === "friend" || op === "unfriend") {
     return arg ? { kind: "friend", name: arg, on: op === "friend" } : { kind: "error", text: `/${op} needs a name` };
   }
+  if (op === "block" || op === "unblock") {
+    return arg ? { kind: "block", name: arg, on: op === "block" } : { kind: "error", text: `/${op} needs a name` };
+  }
   const guild = parseGuildOp(op, rest, arg);
   if (guild) return guild;
   if (op === "g" || op === "guild") return arg ? { kind: "chat", channel: "guild", text: arg } : { kind: "error", text: "/g needs a message" };
@@ -65,6 +82,10 @@ export function parseChatCommand(line: string, channel: ChatChannel): ChatComman
   if (op === "w" || op === "whisper") {
     const [to = "", ...msg] = rest;
     return to && msg.length ? { kind: "chat", channel: "whisper", text: msg.join(" "), to } : { kind: "error", text: "/w needs a name and a message" };
+  }
+  if (op === "r" || op === "reply") {
+    if (replyTo === null) return { kind: "error", text: "no whisper to reply to" };
+    return arg ? { kind: "chat", channel: "whisper", text: arg, to: replyTo } : { kind: "error", text: "/r needs a message" };
   }
   return { kind: "error", text: `unknown command /${cmd}` };
 }
