@@ -3,12 +3,12 @@
  *
  * The edge is the players' front door: it holds client WebSocket
  * connections and HTTP routes, and routes every packet by type through
- * `content/edge/routes.json`. Core-bound packets go over the core channel,
- * which is a stub until E2 (every core-bound packet answers
- * `core.unavailable`).
+ * `content/edge/routes.json`. Core-bound packets go over the internal
+ * channel (`packages/channel`); while the core is unreachable they answer
+ * `core.unavailable`.
  *
  * Environment: EDGE_HTTP_PORT (3000), EDGE_WS_PORT (3001),
- * CORE_CHANNEL_PORT (4000, unused until E2).
+ * CORE_CHANNEL_PORT (4000).
  */
 import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer } from "ws";
-import { StubChannel } from "./channel-stub.js";
+import { ChannelClient } from "@mmo-engine/channel";
 import { loadConfig } from "./config.js";
 import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
@@ -43,7 +43,9 @@ const config = loadConfig();
 const routes = loadRoutes(join(findRepoRoot(), "content/edge/routes.json"));
 
 // 4. modules (local:<name> destinations)
-const channel = new StubChannel();
+const channel = new ChannelClient({ port: config.coreChannelPort });
+channel.onStatus(() => {}); // status is polled by /health; no action needed yet (E4 wires reactions)
+channel.connect().catch(err => console.error("initial channel connect failed, retrying in background:", err.message));
 const ctx: RouterCtx = { channel, modules: { ping: pingHandler } };
 
 // 2. HTTP
@@ -89,6 +91,7 @@ function shutdown(signal: string): void {
   console.log(`[edge] ${signal}: no longer accepting; closing in ${SHUTDOWN_GRACE_MS / 1000} s`);
   httpServer.close();
   wss.close();
+  channel.close();
   setTimeout(() => {
     for (const client of wss.clients) client.terminate();
     httpServer.closeAllConnections();

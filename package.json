@@ -56,6 +56,7 @@
     "packages/addons/navigation",
     "apps/client",
     "apps/editor",
+    "packages/channel",
     "apps/edge",
     "packages/world-server",
     "packages/scatter",

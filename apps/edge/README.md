@@ -5,26 +5,27 @@ engine-core. It accepts client WebSocket connections and HTTP requests,
 routes every packet by its `type` through a data file, and answers.
 engine-core stays pure simulation behind it, so a core crash or stall does
 not drop player connections. Plan: [`docs/EDGE-CORE-SPLIT.md`](../../docs/EDGE-CORE-SPLIT.md)
-(this is slice E1).
+(slices E1 and E2).
 
-> **Stub channel (E1):** the link to the core is
-> `src/channel-stub.ts` — its `status` is `"unknown"` and every request
-> fails, so every core-bound packet answers `core.unavailable`. Slice E2
-> replaces it with the real framed-TCP channel (`packages/channel`); the
-> router does not change.
+> **Core channel (E2):** core-bound packets travel over
+> [`packages/channel`](../../packages/channel/README.md) to
+> `CORE_CHANNEL_PORT`. The edge boots whether or not the core is running
+> and keeps reconnecting in the background; while the core is
+> unreachable every core-bound packet answers `core.unavailable`, and
+> local routes keep working. E3 makes engine-core serve the channel.
 
 ## Run
 
 ```sh
 npm run server --workspace=@mmo-engine/edge   # builds, then boots
-curl localhost:3000/health                    # {"ok":true,"core":"unknown"}
+curl localhost:3000/health                    # {"ok":true,"core":"down"} until a core serves the channel
 ```
 
 | Env | Default | What |
 |---|---|---|
 | `EDGE_HTTP_PORT` | 3000 | HTTP (`GET /health`) |
 | `EDGE_WS_PORT` | 3001 | client WebSocket |
-| `CORE_CHANNEL_PORT` | 4000 | internal core channel (used from E2) |
+| `CORE_CHANNEL_PORT` | 4000 | internal core channel (loopback) |
 
 Each must be an integer 1–65535; a bad value fails boot naming the
 variable. SIGTERM/SIGINT stops accepting connections at once, closes the
@@ -47,7 +48,8 @@ on success, the same `type`.
 | `error.internal` | a local module threw |
 
 `GET /health` → `{ "ok": true, "core": "up" | "down" | "unknown" }` (the
-channel's status).
+channel's status: `"unknown"` only before the first connection attempt
+finishes).
 
 ## `content/edge/routes.json`
 
