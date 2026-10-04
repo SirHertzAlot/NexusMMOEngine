@@ -1,12 +1,13 @@
 /**
  * CharacterSheet (roadmap U9): attributes and derived stats from the
  * stats message (0x0f), with modifier deltas, and skills by family with
- * their peaks (M1). Injuries need body parts (M2); the sheet grows that
- * section when they land instead of faking it.
+ * their peaks (M1), and the body's injuries from the body message (0x18,
+ * M2) with a doll whose parts are clicked to treat them (M4).
  */
 
 import { useState } from "react";
-import type { SkillLineMessage, StatLineMessage } from "@mmo-engine/protocol";
+import type { BodyMessage, SkillLineMessage, StatLineMessage } from "@mmo-engine/protocol";
+import { InjuriesSection } from "./body-doll.js";
 
 /** Modifier delta text: "+2", "-1", or "" when unmodified. */
 export function statDelta(line: StatLineMessage): string {
@@ -111,17 +112,23 @@ export function CharacterSheet({
   stats,
   skills = [],
   skillMax = 100,
+  body = null,
+  onTreat,
 }: {
   name: string | null;
   attributes: StatLineMessage[];
   stats: StatLineMessage[];
   skills?: SkillLineMessage[];
   skillMax?: number;
+  /** The player's body (0x18) for the injuries section; clicking a part treats it. */
+  body?: BodyMessage | null;
+  onTreat?: (part: string) => void;
 }): React.ReactElement {
   return (
     <div className="pointer-events-auto max-h-[calc(100vh-8rem)] w-72 overflow-y-auto rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
       {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
       <div className="flex flex-col gap-2">
+        <InjuriesSection body={body} onTreat={onTreat} />
         <SheetSection title="attributes" lines={attributes} />
         <SheetSection title="stats" lines={stats} />
         <SkillsSection skills={skills} max={skillMax} />
