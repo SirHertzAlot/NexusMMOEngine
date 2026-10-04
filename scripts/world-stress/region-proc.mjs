@@ -64,10 +64,11 @@ const transport = {
   },
 };
 const errors = {};
+let lastError = null;
 const client = new WorldClient({
   transport, regionId, chunkRange: RANGE, endpoint: `ws://${regionId}.stress`, capacity: 10_000, apiKey,
   getStats: () => ({ load: 0, tickJitterMs: loopDelay.percentile(99) / 1e6, entityCount: sim.liveEntityCount }),
-  onError: (err, ctx) => { errors[ctx] = (errors[ctx] ?? 0) + 1; },
+  onError: (err, ctx) => { errors[ctx] = (errors[ctx] ?? 0) + 1; lastError = `${ctx}: ${err?.message ?? err}`; },
   onAck: (ack) => { void coord.onAck(ack).catch((e) => { errors.ack = (errors.ack ?? 0) + 1; }); },
 });
 
@@ -134,6 +135,13 @@ process.on("message", async (m) => {
 });
 
 gw.startTicking();
+// Many regions starting at once can outrun the world (a register verifies
+// the API key with argon2): retry for a while before giving up.
 await client.start();
-await coord.refreshRegistry();
-process.send({ type: "ready", registered: client.registered });
+for (let tries = 1; !client.registered && tries < 20; tries++) {
+  await client.stop();
+  await new Promise((r) => setTimeout(r, 500 * tries));
+  await client.start();
+}
+if (client.registered) await coord.refreshRegistry();
+process.send({ type: "ready", registered: client.registered, error: client.registered ? null : lastError });

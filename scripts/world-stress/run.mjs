@@ -14,8 +14,9 @@
  * and duration (redirect to the target's commit), region tick jitter
  * (event-loop delay p99, i.e. how late a tick can start) and tick time,
  * world CPU and memory. The sweep stops at the first N that breaks a
- * spec stop condition: hand-off p99 > 500 ms, tick jitter > 8 ms on any
- * region, or world CPU > 80%. The result is the last N that held.
+ * spec stop condition: hand-off p99 > 500 ms, tick jitter > 8 ms or a
+ * tick p99 past one 30 Hz frame (33.3 ms) on any region, or world CPU >
+ * 80%. The result is the last N that held.
  *
  * Needs built dists: npm run build --workspace=@mmo-engine/engine-core
  */
@@ -34,7 +35,9 @@ const ENTITIES = Number(arg("entities", 500));
 const PLAYERS = Number(arg("players", 40));
 const OUT = arg("out", path.join(os.tmpdir(), "world-stress.json"));
 const KEY = "stress-api-key-123456";
-const LIMITS = { handoffP99Ms: 500, tickJitterMs: 8, worldCpuPct: 80 };
+// tickP99Ms: a region tick past one 30 Hz frame (33.3 ms) means the region
+// can no longer hold its rate: the box is out of CPU for regions.
+const LIMITS = { handoffP99Ms: 500, tickJitterMs: 8, tickP99Ms: 33.3, worldCpuPct: 80 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const pct = (xs, p) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
@@ -84,17 +87,31 @@ async function runN(n) {
       if (m.type === "redirect") {
         // The player's client reconnects to the target region.
         if (measuring) redirects++;
-        redirectAt.set(m.migrationId, performance.now());
+        // Only hand-offs that began inside the window count, so the
+        // success rate never passes 1.
+        redirectAt.set(m.migrationId, { t0: performance.now(), measured: measuring });
         byEndpoint.get(m.endpoint)?.send({ type: "arrive", migrationId: m.migrationId });
       } else if (m.type === "accepted") {
-        const t0 = redirectAt.get(m.migrationId);
+        const r = redirectAt.get(m.migrationId);
         redirectAt.delete(m.migrationId);
-        if (!measuring || t0 === undefined) return;
-        if (m.ok) { accepted++; handoffs.push(performance.now() - t0); } else refused++;
+        if (!measuring || !r?.measured) return;
+        if (m.ok) { accepted++; handoffs.push(performance.now() - r.t0); } else refused++;
       } else if (m.type === "report") reports.push(m);
     });
   }
-  await Promise.all(regions.map((p) => new Promise((r) => p.on("message", (m) => m.type === "ready" && r()))));
+  const ready = await Promise.all(regions.map((p) => new Promise((r) => {
+    p.on("message", (m) => m.type === "ready" && r(m));
+    p.once("exit", (code) => r({ registered: false, error: `region exited ${code}` }));
+  })));
+  const unregistered = ready.filter((m) => !m.registered);
+  if (unregistered.length) {
+    for (const p of regions) if (p.connected) p.send({ type: "stop" });
+    await sleep(1000);
+    for (const p of regions) p.kill();
+    world.kill();
+    const why = `${unregistered.length}/${n} regions could not register with the world (${unregistered[0].error})`;
+    return { regions: n, failedToStart: why, breaches: [why] };
+  }
   await sleep(WARMUP_S * 1000);
   for (const p of regions) p.send({ type: "report" }); // reset the counters
   await sleep(300);
@@ -134,6 +151,7 @@ async function runN(n) {
   result.breaches = [
     result.handoffs.p99 != null && result.handoffs.p99 > LIMITS.handoffP99Ms && `hand-off p99 ${result.handoffs.p99} ms > ${LIMITS.handoffP99Ms}`,
     result.tickJitterP99Ms > LIMITS.tickJitterMs && `tick jitter ${result.tickJitterP99Ms} ms > ${LIMITS.tickJitterMs}`,
+    result.tickP99Ms > LIMITS.tickP99Ms && `region tick p99 ${result.tickP99Ms} ms > ${LIMITS.tickP99Ms}`,
     result.worldCpuPct.avg > LIMITS.worldCpuPct && `world CPU ${result.worldCpuPct.avg}% > ${LIMITS.worldCpuPct}`,
   ].filter(Boolean);
   return result;
@@ -144,6 +162,7 @@ console.log(`[stress] ${os.cpus().length} cores, ${Math.round(os.totalmem() / 2 
 for (const n of SWEEP) {
   const r = await runN(n);
   results.push(r);
+  if (r.failedToStart) { console.log(`[stress] N=${n}: BREACH: ${r.failedToStart}`); break; }
   console.log(`[stress] N=${n}: hand-offs ${r.handoffs.accepted}/${r.handoffs.redirects} p50 ${r.handoffs.p50} p99 ${r.handoffs.p99} ms | tick jitter p99 ${r.tickJitterP99Ms} ms, tick p99 ${r.tickP99Ms} ms | world CPU ${r.worldCpuPct.avg}% (max ${r.worldCpuPct.max}), RSS ${r.worldRssMb} MB | heartbeat p99 ${r.ops.Heartbeat?.p99} ms${r.breaches.length ? " | BREACH: " + r.breaches.join("; ") : ""}`);
   if (r.breaches.length) break;
 }
