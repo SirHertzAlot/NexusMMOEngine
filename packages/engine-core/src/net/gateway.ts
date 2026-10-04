@@ -48,6 +48,7 @@
 
 import * as crypto from "node:crypto";
 import { z } from "zod";
+import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -63,6 +64,7 @@ import {
   type ChatBroadcast,
   type PartyState,
   type FriendsState,
+  type BlocksState,
   type GuildState,
   type DebugQuery,
   type DebugResponse,
@@ -347,6 +349,12 @@ export interface GatewayOptions {
    * passes `game.rules.ingress` here.
    */
   ingress?: Partial<IngressLimits>;
+  /**
+   * Features outside the gateway that own a 0x11 `kind` (quests: "quest").
+   * Each gets that kind's messages from characters in the world, and hears
+   * when they enter and leave (see ./extension.ts).
+   */
+  extensions?: GatewayExtension[];
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -586,6 +594,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "extensions"
       | "items"
     >
   > & { port: number };
@@ -638,6 +647,7 @@ export class Gateway {
   private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
+  private readonly extensions = new Map<string, GatewayExtension>();
   /** Items (see GatewayOptions.items); shared with the systems list. */
   private readonly items: ItemService | null;
   /** Bag owners for sessions that play no character: one negative id per account. */
@@ -659,7 +669,7 @@ export class Gateway {
   private readonly handoffArrivals = new Map<string, { migrationId: string; ticketHash: string }>();
   private acceptMigration: ((migrationId: string, verify: (m: MigrationRecord) => boolean) => Promise<boolean>) | null = null;
   /** The stats version last sent to each session (see sendStats). */
-  private readonly statsSent = new WeakMap<ClientSession, number>();
+  private readonly statsSent = new WeakMap<ClientSession, string>();
   /** Usernames allowed admin commands (GatewayOptions.admins). */
   private readonly admins: Set<string>;
   /** Development server: every account is an admin (GatewayOptions.devServer). */
@@ -738,6 +748,7 @@ export class Gateway {
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
     this.textFilter = opts.textFilter ?? allowAllText;
+    for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
@@ -833,6 +844,26 @@ export class Gateway {
       this.loop.frame(this.clock());
     }, STEP_MS / 2);
     this.tickTimer.unref();
+  }
+
+  /**
+   * A way in for a character arriving from another world (a dungeon
+   * instance, roadmap D4): a session token for `username`, already entered
+   * as `character`. The client says hello with `{token}` and lands here as
+   * that character, at the spawn point; nothing is asked of the account's
+   * password. Tokens last as long as any session's (sessionTtlMs).
+   */
+  admit(username: string, character: { id: number; name: string; look: string }): string {
+    const token = this.authSessions.create(`admit-${character.id}`, username);
+    const auth = this.authSessions.get(token);
+    if (auth) auth.character = { ...character };
+    return token;
+  }
+
+  /** The character names in `name`'s party, `name` included (just `[name]` without a party). */
+  partyOf(name: string): string[] {
+    const members = this.parties.partyOf(name);
+    return members.length > 0 ? members : [name];
   }
 
   /** Advance the fixed-timestep loop manually (tests). Returns ticks run. */
@@ -1497,17 +1528,25 @@ export class Gateway {
   }
 
   /**
-   * The player's own stats (catalog §0x0f), when they changed since they
-   * were last sent to this session; `force` sends them regardless (on
-   * joining or re-attaching, the client has none yet).
+   * The player's own stats (catalog §0x0f): attributes and derived stats,
+   * hunger and thirst (U3) and skills (U9), when any of them changed since
+   * they were last sent to this session at display precision; `force`
+   * sends them regardless (on joining or re-attaching, the client has none
+   * yet). Meters move by whole points and skills by tenths, so a steady
+   * drain or a training session costs a message every few seconds, not
+   * every tick.
    */
   private sendStats(s: ClientSession, tick: number, force = false): void {
     if (s.playerEntity === null) return;
     const eid = this.world.resolveWireId(s.playerEntity);
     if (eid < 0) return;
     const version = this.world.stats.version(eid);
-    if (version === 0 || (!force && this.statsSent.get(s) === version)) return;
-    this.statsSent.set(s, version);
+    if (version === 0) return;
+    const needs = this.needsLine(eid);
+    const skills = this.skillLines(eid);
+    const key = `${version}|${needs ? `${needs.hunger},${needs.hungerMax},${needs.thirst},${needs.thirstMax}` : ""}|${skills ? skills.map((k) => `${k.value}/${k.peak}`).join(",") : ""}`;
+    if (!force && this.statsSent.get(s) === key) return;
+    this.statsSent.set(s, key);
     const sheet = this.world.stats.sheet(eid)!;
     // Display values: 4 decimals is plenty, and keeps float noise off the wire.
     const round = (v: number): number => Math.round(v * 1e4) / 1e4;
@@ -1516,8 +1555,36 @@ export class Gateway {
       entity: s.playerEntity.toString(),
       attributes: sheet.filter((l) => l.attribute).map(line),
       stats: sheet.filter((l) => !l.attribute).map(line),
+      ...(needs ? { needs } : {}),
+      ...(skills && this.mastery ? { skills, skillMax: this.mastery.index.rules.max } : {}),
     };
     this.deliver(s, encodeEnvelope(MessageType.Stats, encodeControl(msg)), tick);
+  }
+
+  /** Hunger and thirst in whole points (U3), or undefined without the Needs component. */
+  private needsLine(eid: number): StatsMessage["needs"] {
+    if (!hasComponent(this.world.ecs, C.Needs, eid)) return undefined;
+    // Ceil, so a meter reads 0 only when it is empty and hurting.
+    return {
+      hunger: Math.ceil(C.Needs.hunger[eid]),
+      hungerMax: Math.round(C.Needs.hungerMax[eid]),
+      thirst: Math.ceil(C.Needs.thirst[eid]),
+      thirstMax: Math.round(C.Needs.thirstMax[eid]),
+    };
+  }
+
+  /** Every skill to a tenth (U9), or undefined when this server runs no mastery. */
+  private skillLines(eid: number): StatsMessage["skills"] {
+    if (!this.mastery) return undefined;
+    const sheet = this.mastery.sheetOf(eid);
+    const tenth = (v: number): number => Math.round(v * 10) / 10;
+    return this.mastery.index.rules.skills.map((k, i) => ({
+      id: k.id,
+      name: k.name,
+      family: k.family,
+      value: tenth(sheet.value[i]),
+      peak: tenth(sheet.peak[i]),
+    }));
   }
 
   /** Queue-or-send one enveloped message, preserving order, bounded. */
@@ -1659,6 +1726,7 @@ export class Gateway {
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
+    this.extensionsLeave(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -1677,6 +1745,7 @@ export class Gateway {
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
+      this.extensionsLeave(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -2109,6 +2178,11 @@ export class Gateway {
     let to: string | undefined;
     try {
       const raw = decodeControl<unknown>(payload);
+      const ext = typeof raw === "object" && raw !== null ? this.extensions.get(String((raw as { kind?: unknown }).kind)) : undefined;
+      if (ext) {
+        ext.onMessage(this.extensionPlayer(s), raw);
+        return;
+      }
       if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "block") {
         this.onBlock(s, raw);
         return;
@@ -2439,23 +2513,41 @@ export class Gateway {
       return;
     }
     const key = parsed.data.name.toLowerCase();
-    let account: string | undefined;
-    for (const r of this.sessions.values()) {
-      if ((r.character?.name ?? r.username).toLowerCase() === key) account = r.username;
+    // Unblocking matches the block list first, so a character who is offline can still come off it (U8).
+    if (!parsed.data.on) {
+      const listed = this.blocks.accountNamed(s.username, parsed.data.name);
+      if (listed !== undefined) {
+        this.blocks.remove(s.username, listed);
+        this.sendSystem(s, `unblocked ${parsed.data.name}`);
+        this.pushBlocks(s);
+        return;
+      }
     }
-    // Only online characters resolve until the character store is asked by name.
-    if (account === undefined) {
+    let target: ClientSession | undefined;
+    for (const r of this.sessions.values()) {
+      if ((r.character?.name ?? r.username).toLowerCase() === key) target = r;
+    }
+    // Blocking resolves only online characters until the character store is asked by name.
+    if (target === undefined) {
       this.sendSystem(s, NOT_ONLINE);
       return;
     }
+    const account = target.username;
     if (!parsed.data.on) {
       this.blocks.remove(s.username, account);
       this.sendSystem(s, `unblocked ${parsed.data.name}`);
-    } else if (this.blocks.add(s.username, account)) {
+    } else if (this.blocks.add(s.username, account, target.character?.name ?? target.username)) {
       this.sendSystem(s, `blocked ${parsed.data.name}`);
     } else {
       this.sendSystem(s, "cannot block");
     }
+    this.pushBlocks(s);
+  }
+
+  /** Send a session its block list (U8). */
+  private pushBlocks(s: ClientSession): void {
+    const msg: BlocksState = { kind: "blocks", blocked: this.blocks.names(s.username) };
+    this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
   }
 
   /**
@@ -3073,7 +3165,26 @@ export class Gateway {
     for (const n of this.guilds.guildOf(who)) this.pushGuild(n);
     this.pushGuild(who);
     this.pushFriends(who);
+    this.pushBlocks(s);
     this.friendPresence(s);
+    for (const ext of this.extensions.values()) ext.onEnter?.(this.extensionPlayer(s));
+  }
+
+  /** The session as an extension sees it (see ./extension.ts). */
+  private extensionPlayer(s: ClientSession): ExtensionPlayer {
+    return {
+      characterId: s.character?.id ?? null,
+      username: s.username,
+      name: s.character?.name ?? s.username,
+      entity: () => (s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity)),
+      send: (msg) => this.sendEnvelope(s, MessageType.Chat, encodeControl(msg)),
+      refreshInventory: () => this.sendInventory(s),
+    };
+  }
+
+  private extensionsLeave(s: ClientSession): void {
+    if (!s.welcomed) return;
+    for (const ext of this.extensions.values()) ext.onLeave?.(this.extensionPlayer(s));
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */

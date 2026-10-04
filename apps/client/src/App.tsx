@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
-import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
+import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
@@ -42,13 +42,16 @@ import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
-import { parseChatCommand } from "./ui/chat-command.js";
+import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel } from "./ui/bag-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
+import { AudioEngine } from "./audio/engine.js";
+import { loadVolumes, saveVolumes, type AudioBus, type Volumes } from "./audio/volumes.js";
+import type { Cue } from "./audio/cues.js";
 import {
   ACTIONS,
   ACTION_LABELS,
@@ -101,6 +104,10 @@ const DEFAULT_URL =
     ? "wss://localhost:7777"
     : "ws://localhost:7777";
 
+/** What each settings slider plays when let go (U4 audio). */
+const PREVIEW_CUE: Partial<Record<AudioBus, Cue>> = { effects: "hit", interface: "whisper" };
+const HIT_CUE: Record<"hit" | "blocked" | "dodged", Cue> = { hit: "hit", blocked: "block", dodged: "dodge" };
+
 export function App(): React.ReactElement {
   const [screen, setScreen] = useState<Screen>("login");
   const [mode, setMode] = useState<AuthMode>("login");
@@ -130,6 +137,33 @@ export function App(): React.ReactElement {
   }, []);
   const onResetBindings = useCallback(() => setBindings(resetBindings()), [setBindings]);
   const setUiScale = useCallback((s: UiScale) => setUiScaleState(s), []);
+  // Audio (U4): volumes persisted per browser; the engine starts on the first click or key.
+  const [volumes, setVolumesState] = useState<Volumes>(loadVolumes);
+  const [audio] = useState(() => new AudioEngine(volumes));
+  const setVolumes = useCallback(
+    (v: Volumes) => {
+      saveVolumes(v);
+      audio.setVolumes(v);
+      setVolumesState(v);
+    },
+    [audio],
+  );
+  const previewBus = useCallback((b: AudioBus) => {
+    const cue = PREVIEW_CUE[b];
+    if (cue) audio.play(cue);
+  }, [audio]);
+  useEffect(() => {
+    const unlock = (): void => audio.unlock();
+    const onVisibility = (): void => audio.setHidden(document.hidden);
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [audio]);
   const [activeQuality, setActiveQuality] = useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   const [account, setAccount] = useState<AccountMessage | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
@@ -138,9 +172,15 @@ export function App(): React.ReactElement {
   const [party, setParty] = useState<PartyState | null>(null);
   const [guild, setGuild] = useState<GuildState | null>(null);
   const [friends, setFriends] = useState<FriendsState | null>(null);
+  const [blocked, setBlocked] = useState<BlocksState["blocked"]>([]);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
+  // `/r` (U6): the last character who whispered us; the name ref lets the socket callback tell our echoes apart.
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const characterNameRef = useRef<string | null>(null);
+  characterNameRef.current = characterName;
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
-  const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
+  // Also carries hunger and thirst (U3) for the player frame, and skills for the sheet.
+  const [sheet, setSheet] = useState<StatsMessage | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
@@ -186,18 +226,25 @@ export function App(): React.ReactElement {
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
       // asset requests go to the server that has the player now.
       onRegionChange: setUrl,
-      onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
+      onChat: (c) => {
+        setChatLines((prev) => [...prev.slice(-49), c]);
+        setReplyTo((prev) => replyTarget(prev, c, characterNameRef.current));
+      },
       onParty: setParty,
       onGuild: setGuild,
       onFriends: setFriends,
-      onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
+      onBlocks: (b) => setBlocked(b.blocked),
+      onStats: setSheet,
       onInventory: (inv) => {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
       },
       onHit: (h) => {
-        combat.hit(h, clientRef.current?.playerEntity ?? null);
-        const text = disarmNotice(h, clientRef.current?.playerEntity?.toString() ?? null);
+        const player = clientRef.current?.playerEntity ?? null;
+        combat.hit(h, player);
+        // Only blows the player gives or takes make a sound, for now.
+        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(HIT_CUE[h.outcome]);
+        const text = disarmNotice(h, player?.toString() ?? null);
         if (text) setNotice({ text, at: performance.now() });
       },
       onSpell: (sp) => {
@@ -292,9 +339,11 @@ export function App(): React.ReactElement {
     clientRef.current = null;
     setAccount(null);
     setChatLines([]);
+    setReplyTo(null);
     setParty(null);
     setGuild(null);
     setFriends(null);
+    setBlocked([]);
     setSheet(null);
     setSheetOpen(false);
     setBag(null);
@@ -308,6 +357,15 @@ export function App(): React.ReactElement {
 
   // ---- world -------------------------------------------------------------
   const client = screen === "world" ? clientRef.current : null;
+  // Audio cues from what the player sees (U4): wind in the world, a chime for whispers to us, a blip for notices.
+  useEffect(() => audio.setAmbience(screen === "world"), [audio, screen]);
+  useEffect(() => {
+    const l = chatLines.at(-1);
+    if (l?.channel === "whisper" && l.from.toLowerCase() !== characterName?.toLowerCase()) audio.play("whisper");
+  }, [audio, chatLines, characterName]);
+  useEffect(() => {
+    if (notice) audio.play("notice");
+  }, [audio, notice]);
   // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
   const pcg = useMemo(
     () => (client ? new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken) : undefined),
@@ -398,13 +456,25 @@ export function App(): React.ReactElement {
           </div>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
-        <PlayerFrame
-          name={characterName}
-          hp={combatView?.hp ?? hud.hp}
-          maxHp={combatView?.maxHp ?? hud.maxHp}
-          sp={hud.sp}
-          maxSp={hud.maxSp}
-        />
+        {/* Bottom-left stack: friends above the player frame, so neither covers the other. */}
+        <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <FriendsFrame
+            friends={friends}
+            blocked={blocked}
+            onBlock={(n) => client?.block(n, true)}
+            onUnblock={(n) => client?.block(n, false)}
+            onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
+            onRemove={(n) => client?.friend(n, false)}
+          />
+          <PlayerFrame
+            name={characterName}
+            hp={combatView?.hp ?? hud.hp}
+            maxHp={combatView?.maxHp ?? hud.maxHp}
+            sp={hud.sp}
+            maxSp={hud.maxSp}
+            needs={sheet?.needs}
+          />
+        </div>
         <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
           <DevHud
@@ -499,6 +569,9 @@ export function App(): React.ReactElement {
             onResetBindings={onResetBindings}
             uiScale={uiScale}
             onUiScale={setUiScale}
+            volumes={volumes}
+            onVolumes={setVolumes}
+            onPreview={previewBus}
           />
         )}
         <PartyFrame
@@ -519,20 +592,17 @@ export function App(): React.ReactElement {
           onRank={(name, rank) => client?.guild("setRank", { name, rank })}
           onInviteExpired={() => setGuild((g) => (g ? { ...g, invite: undefined } : g))}
         />
-        <FriendsFrame
-          friends={friends}
-          onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
-          onRemove={(n) => client?.friend(n, false)}
-        />
         <ChatPanel
           lines={chatLines}
+          self={characterName}
           channel={chatChannel}
           onChannel={setChatChannel}
           onSend={(line) => {
-            const c = parseChatCommand(line, chatChannel);
+            const c = parseChatCommand(line, chatChannel, replyTo);
             if (c.kind === "party") client?.party(c.op, c.name);
             else if (c.kind === "guild") client?.guild(c.op, c);
             else if (c.kind === "friend") client?.friend(c.name, c.on);
+            else if (c.kind === "block") client?.block(c.name, c.on);
             else if (c.kind === "chat") client?.chat(c.channel, c.text, c.to);
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
@@ -548,7 +618,7 @@ export function App(): React.ReactElement {
             />
           )}
           {sheetOpen && sheet && (
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} />
           )}
           <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
             sheet

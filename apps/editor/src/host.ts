@@ -20,6 +20,17 @@
  *   GET  /api/editor/assets        → art-pack scan of <repo>/assets
  *   GET  /assets/*                 → static files from <repo>/assets
  *                                    (path-traversal guarded)
+ *   GET  /api/editor/pcg/library   → the PICG asset library: each asset's
+ *                                    AssetRef hash and graph parameters (E6)
+ *   GET  /api/editor/dungeons      → the baked dungeon pool (E8); /<id> one
+ *                                    dungeon and its patch, /<id>/map.png its
+ *                                    map, PUT /<id>/patch a validated patch,
+ *                                    POST /bake more dungeons (dungeon-host.ts)
+ *   GET  /api/editor/pcg/docs      → the PICG graphs and parts (E7)
+ *   GET  /api/editor/pcg/doc?file= → one of them
+ *   PUT  /api/editor/pcg/doc       → save one {file, doc}: validated with a
+ *                                    cook preparation of every graph it
+ *                                    affects; 422 + issues when refused
  *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
  *   GET  /api/editor/rules/:name   → one rules file's parsed content
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
@@ -66,6 +77,8 @@ import {
 } from "./rules-host.js";
 import { pathToFileURL } from "node:url";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
+import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
+import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -473,6 +486,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
         ...process.env,
         MMO_PORT: String(serverPort),
         MMO_DATA_DIR: dataDir,
+        // The debugger's admin console (E5): the editor's own play user is
+        // an admin of the server it owns, on top of any configured ones.
+        MMO_ADMINS: [process.env.MMO_ADMINS, username].filter(Boolean).join(","),
       },
       stdio: ["ignore", "pipe", "pipe"],
       shell: npm.shell,
@@ -793,6 +809,95 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             sendJson(res, 404, { ok: false, error: "not found" });
+            return;
+          }
+          if (url === "/api/editor/dungeons" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, dungeons: listPool(dataDir), archetypes: ARCHETYPES });
+            return;
+          }
+          if (url === "/api/editor/dungeons/bake" && req.method === "POST") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            sendJson(res, 200, { ok: true, ...(await runBake(repoRoot, dataDir, (body ?? {}) as object)) });
+            return;
+          }
+          const dungeonRoute = /^\/api\/editor\/dungeons\/([^/?]+)(\/map\.png|\/patch)?$/.exec(url);
+          if (dungeonRoute) {
+            const id = dungeonRoute[1];
+            if (!dungeonRoute[2] && req.method === "GET") {
+              sendJson(res, 200, { ok: true, ...readDungeon(dataDir, id) });
+              return;
+            }
+            if (dungeonRoute[2] === "/map.png" && req.method === "GET") {
+              const png = mapPng(dataDir, id);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "image/png");
+              res.end(png);
+              return;
+            }
+            if (dungeonRoute[2] === "/patch" && req.method === "PUT") {
+              let body: { patch?: unknown };
+              try {
+                body = JSON.parse(await readBody(req)) as { patch?: unknown };
+              } catch {
+                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+                return;
+              }
+              try {
+                sendJson(res, 200, { ok: true, ...savePatch(dataDir, id, body.patch) });
+              } catch (err) {
+                const issues = (err as { issues?: unknown }).issues;
+                sendJson(res, (err as { status?: number }).status ?? 500, {
+                  ok: false,
+                  error: err instanceof Error ? err.message : String(err),
+                  ...(Array.isArray(issues) ? { issues } : {}),
+                });
+              }
+              return;
+            }
+          }
+          if (url === "/api/editor/pcg/library" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, ...readPcgLibrary(repoRoot) });
+            return;
+          }
+          if (url === "/api/editor/pcg/docs" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, docs: listPcgDocuments(repoRoot) });
+            return;
+          }
+          if (url.startsWith("/api/editor/pcg/doc?") && req.method === "GET") {
+            const file = new URL(url, "http://localhost").searchParams.get("file") ?? "";
+            sendJson(res, 200, { ok: true, ...readPcgDocument(repoRoot, file) });
+            return;
+          }
+          if (url === "/api/editor/pcg/doc" && req.method === "PUT") {
+            let body: { file?: unknown; doc?: unknown };
+            try {
+              body = JSON.parse(await readBody(req)) as { file?: unknown; doc?: unknown };
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            if (typeof body.file !== "string" || body.doc === undefined) {
+              sendJson(res, 400, { ok: false, error: 'need a JSON body shaped like {"file": …, "doc": …}' });
+              return;
+            }
+            try {
+              savePcgDocument(repoRoot, body.file, body.doc);
+            } catch (err) {
+              const issues = (err as { issues?: unknown }).issues;
+              sendJson(res, (err as { status?: number }).status ?? 500, {
+                ok: false,
+                error: err instanceof Error ? err.message : String(err),
+                ...(Array.isArray(issues) ? { issues } : {}),
+              });
+              return;
+            }
+            sendJson(res, 200, { ok: true, file: body.file });
             return;
           }
           if (url.startsWith("/assets/") && req.method === "GET") {

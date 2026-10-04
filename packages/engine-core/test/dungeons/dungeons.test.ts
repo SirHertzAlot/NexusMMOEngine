@@ -1,0 +1,292 @@
+/**
+ * Dungeon instances (roadmap D4): pool layouts decode and are picked by
+ * rank and theme; walls hold bodies on the floor; an instance admits its
+ * party by token, populates its spawn points, ends cleared when the boss
+ * room falls and reports one result; the region's manager starts a run at
+ * an entrance, transfers the party, lets members back in, and commits loot
+ * only when the run reports.
+ */
+
+import { describe, it, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { addComponent } from "bitecs";
+import { decodeControl, encodeControl, MessageType, PROTOCOL_VERSION } from "@mmo-engine/protocol";
+import * as C from "../../src/components.js";
+import { SimWorld } from "../../src/world.js";
+import { Gateway } from "../../src/net/gateway.js";
+import { MemoryCharacterStore } from "../../src/index.js";
+import { loadGameRules } from "../../src/rules/boot.js";
+import { loadDungeonContent, parseDungeonContent, type DungeonContent } from "../../src/dungeons/content.js";
+import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/pool.js";
+import { DungeonWallSystem } from "../../src/dungeons/walls.js";
+import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
+import { InstanceManager } from "../../src/dungeons/manager.js";
+import { MemoryInstanceResultStore, SqliteInstanceResultStore } from "../../src/dungeons/results.js";
+import { HeadlessClient } from "../net/headless-client.js";
+import { makeCredentialStore, TEST_PASSWORD } from "../net/auth-harness.js";
+
+const game = loadGameRules();
+const content = loadDungeonContent();
+
+/** A 24 × 12 layout: an entrance room, a corridor, a boss room with two spawns, one spawn by the entrance. */
+function fixture(id = "grim-abc", theme = "grim", rank = 1): Record<string, unknown> {
+  const W = 24, H = 12;
+  const grid = new Uint8Array(W * H).fill(2);
+  const floor = (x0: number, x1: number, y0: number, y1: number): void => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) grid[y * W + x] = 1;
+  };
+  floor(1, 6, 1, 10);
+  floor(7, 14, 5, 6);
+  floor(15, 22, 1, 10);
+  return {
+    format: "mmo-dungeon/1", id, name: "The Test Barrow", params: { theme }, width: W, height: H,
+    rooms: [{ id: 0, cx: 3, cy: 5 }, { id: 1, cx: 18, cy: 5 }], entrance: 0, boss: 1,
+    spawns: [{ x: 5, y: 2, tier: 1, room: 0 }, { x: 18, y: 4, tier: 3, room: 1 }, { x: 19, y: 6, tier: 3, room: 1 }],
+    grids: { grid: Buffer.from(grid).toString("base64") },
+    dressing: { rank },
+    population: { spawns: [{ x: 5, y: 2, species: "skeleton" }, { x: 18, y: 4, species: "goblin" }, { x: 19, y: 6, species: "goblin" }] },
+  };
+}
+
+function poolDir(entries: Record<string, unknown>[]): string {
+  const dir = mkdtempSync(join(tmpdir(), "pool-"));
+  for (const f of entries) writeFileSync(join(dir, `${f.id as string}.dungeon.json`), JSON.stringify(f));
+  writeFileSync(join(dir, "index.json"), JSON.stringify({
+    format: "mmo-dungeon-index/1",
+    dungeons: entries.map((f) => ({ id: f.id, file: `${f.id as string}.dungeon.json`, name: f.name, theme: (f.params as { theme: string }).theme, rank: (f.dressing as { rank: number }).rank, rooms: 2, width: 24, height: 12 })),
+  }));
+  return dir;
+}
+
+const dirs: string[] = [];
+const closers: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const c of closers.splice(0).reverse()) await c();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+async function until(pred: () => boolean, ms = 3000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!pred()) {
+    if (Date.now() > end) throw new Error("timeout");
+    await sleep(20);
+  }
+}
+type Ctl = { kind?: string; op?: string; [k: string]: unknown };
+const ctl = (c: HeadlessClient): Ctl[] => c.payloads(MessageType.Chat).map((f) => decodeControl<Ctl>(f));
+
+describe("dungeon content and pool", () => {
+  it("the shipped rules and entrances load; bad ones name their problems", () => {
+    assert.equal(content.rules.commit, "on-report");
+    assert.deepEqual(content.rules.partySize, [1, 5]);
+    assert.ok(content.entrances["barrow-gate"]);
+    assert.throws(() => parseDungeonContent({ ...content.rules, partySize: [5, 1] }, { version: 1, entrances: {} }), /instances.json: partySize/);
+  });
+
+  it("decodes a layout and picks pool entries by rank and theme", () => {
+    const l = readLayout(fixture());
+    assert.deepEqual(l.entrance, { x: 3.5 * CELL_M, z: 5.5 * CELL_M });
+    assert.equal(l.spawns.length, 3);
+    assert.equal(l.spawns[0].species, "skeleton");
+    assert.ok(walkableAt(l, 10 * CELL_M + 1, 5 * CELL_M + 1), "corridor");
+    assert.ok(!walkableAt(l, 10 * CELL_M + 1, 2 * CELL_M + 1), "rock beside it");
+    const dir = poolDir([fixture("grim-1", "grim", 1), fixture("frost-2", "frost", 2)]);
+    dirs.push(dir);
+    const pool = new DungeonPool(dir);
+    assert.equal(pool.matching(null, []).length, 2);
+    assert.deepEqual(pool.matching(2, []).map((e) => e.id), ["frost-2"]);
+    assert.deepEqual(pool.matching(null, ["grim"]).map((e) => e.id), ["grim-1"]);
+    assert.equal(pool.pick(3, [], 1), null);
+    assert.equal(pool.pick(1, [], 99)!.id, "grim-1");
+    assert.deepEqual(new DungeonPool(join(dir, "missing")).entries, []);
+  });
+
+  it("walls keep a body on the floor, sliding along them", () => {
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    const e = sim.spawn();
+    addComponent(sim.ecs, C.Transform, e);
+    addComponent(sim.ecs, C.Velocity, e);
+    const walls = new DungeonWallSystem(readLayout(fixture()));
+    C.Transform.px[e] = 3;
+    C.Transform.pz[e] = 3;
+    walls.step(sim);
+    C.Transform.px[e] = -1; // into the outer wall, and down the room
+    C.Transform.pz[e] = 5;
+    walls.step(sim);
+    assert.deepEqual([C.Transform.px[e], C.Transform.pz[e]], [3, 5]);
+  });
+});
+
+describe("dungeon instance", () => {
+  it("admits a member by token at the entrance, ends cleared with the boss room, and reports once", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    let now = 1_000_000;
+    const inst = new DungeonInstance({
+      id: "run-1", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [7, 8, 9], onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    assert.equal(inst.remaining().creatures, 3, "skeletons have no rules: the fallback goblin stands in");
+    assert.equal(inst.remaining().boss, 2);
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token });
+    assert.equal(welcome.character?.name, "Alice");
+    await until(() => ctl(c).some((m) => m.kind === "dungeon" && m.op === "state"));
+    const state = ctl(c).find((m) => m.op === "state")!;
+    assert.equal(state.dungeon, "The Test Barrow");
+    assert.equal(state.bossLeft, 2);
+    // The character's avatar in the instance, and its kills (credited to the killer).
+    const avatar = inst.world.resolveWireId(BigInt(welcome.player_entity));
+    assert.ok(Math.abs(C.Transform.px[avatar] - 7) < 3 && avatar >= 0 || assert.fail(`at ${avatar} ${C.Transform.px[avatar]},${C.Transform.pz[avatar]}`)); assert.ok(Math.abs(C.Transform.px[avatar] - 7) < 3 && Math.abs(C.Transform.pz[avatar] - 11) < 3, "at the entrance");
+    const boss = [...inst.creatures.entities()].filter((e) => C.Transform.px[e] > 30);
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    for (const e of boss) {
+      C.Health.current[e] = 0;
+      onDeath(inst.world, { tick: 1, target: e, state: "dead", killer: avatar });
+    }
+    now += 1000;
+    await until(() => results.length === 1);
+    const r = results[0];
+    assert.equal(r.outcome, "cleared");
+    assert.deepEqual(r.members, [rec.id]);
+    assert.deepEqual(r.kills, [{ characterId: rec.id, kind: "goblin", count: 2 }]);
+    assert.ok(r.loot.length >= 4 && r.loot.every((l) => l.characterId === rec.id && [7, 8, 9].includes(l.def)), "2-3 boss rolls each");
+    await until(() => ctl(c).some((m) => m.op === "ended"));
+    assert.equal(ctl(c).find((m) => m.op === "ended")!.outcome, "cleared");
+    await sleep(100);
+    assert.equal(results.length, 1, "reported once");
+  });
+
+  it("times out, and an empty run is abandoned", async () => {
+    for (const [advance, want] of [[46 * 60_000, "timeout"], [121_000, "abandoned"]] as const) {
+      SimWorld.resetEntityCursorForTesting();
+      const results: InstanceResult[] = [];
+      let now = 5_000_000;
+      const inst = new DungeonInstance({
+        id: `run-${want}`, entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+        members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+        onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
+      });
+      await inst.start();
+      closers.push(() => inst.close());
+      now += advance;
+      await until(() => results.length === 1);
+      assert.equal(results[0].outcome, want);
+    }
+  });
+});
+
+describe("instance manager", () => {
+  async function region(dungeons: DungeonContent, partySizes?: [number, number]) {
+    SimWorld.resetEntityCursorForTesting();
+    const dir = poolDir([fixture()]);
+    dirs.push(dir);
+    const characters = new MemoryCharacterStore();
+    const credentialStore = await makeCredentialStore();
+    const results = new MemoryInstanceResultStore();
+    const granted: Array<[number, number]> = [];
+    let gw!: Gateway;
+    const rules = partySizes ? { ...dungeons.rules, partySize: partySizes } : dungeons.rules;
+    const mgr = new InstanceManager({
+      content: { ...dungeons, rules }, pool: new DungeonPool(dir), game: () => game,
+      credentialStore, characterStore: characters, partyOf: (n) => gw.partyOf(n),
+      lootPool: () => [42], grant: (c, d) => (granted.push([c, d]), true),
+      endpoint: (p) => `ws://127.0.0.1:${p}`, results, transport: "ws",
+    });
+    const gate = content.entrances["barrow-gate"];
+    gw = new Gateway({ credentialStore, characterStore: characters, extensions: [mgr], spawnPoint: { x: gate.x + 14, z: gate.z + 14 } /* the first avatar stands 14 m off it, on the gate */, transport: "ws" });
+    const port = await gw.listen();
+    gw.startTicking();
+    closers.push(() => gw.close());
+    closers.push(async () => {
+      mgr.endAll();
+      await Promise.all(mgr.instances().map((i) => i.close()));
+    });
+    const join = async (user: string, name: string) => {
+      const rec = await characters.create(user, name, "{}", 8);
+      const c = new HeadlessClient();
+      closers.push(() => c.close());
+      await c.connect(`ws://127.0.0.1:${port}`);
+      const account = c.waitFor(MessageType.Account, 1);
+      c.sendRaw(MessageType.Hello, encodeControl({ protocol: PROTOCOL_VERSION, client: "t", want_snapshot: true, characters: true, username: user, password: TEST_PASSWORD }));
+      await account;
+      const snap = c.waitFor(MessageType.Snapshot, 1);
+      c.sendRaw(MessageType.EnterWorld, encodeControl({ character: rec.id }));
+      await snap;
+      return c;
+    };
+    return { mgr, gw, results, granted, join };
+  }
+
+  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "enter", entrance }));
+
+  it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
+    const r = await region(content);
+    const a = await r.join("alice", "Alice");
+    ask(a, "nowhere");
+    await until(() => ctl(a).some((m) => m.text === "there is no dungeon entrance here"));
+    ask(a);
+    await until(() => ctl(a).some((m) => m.op === "transfer"));
+    const t = ctl(a).find((m) => m.op === "transfer")!;
+    assert.equal(t.dungeon, "The Test Barrow");
+    assert.equal(r.mgr.count, 1);
+    // Into the instance with the token.
+    const inside = new HeadlessClient();
+    closers.push(() => inside.close());
+    await inside.connect(t.endpoint as string);
+    const w = await inside.hello("t", { token: t.token as string });
+    assert.equal(w.character?.name, "Alice");
+    // Asking again while the run lasts lets the member back in, to the same run.
+    ask(a);
+    await until(() => ctl(a).filter((m) => m.op === "transfer").length === 2);
+    assert.equal(ctl(a).filter((m) => m.op === "transfer")[1].instance, t.instance);
+    assert.equal(r.mgr.count, 1);
+    // Nothing is granted until the run reports.
+    const inst = r.mgr.instances()[0];
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    const first = [...inst.creatures.entities()].find((e) => C.Transform.px[e] < 30)!;
+    C.Health.current[first] = 0;
+    onDeath(inst.world, { tick: 1, target: first, state: "dead", killer: avatar });
+    await sleep(100);
+    assert.equal(r.granted.length, 0);
+    inst.end("abandoned");
+    assert.equal(r.results.unreported().length, 1);
+    assert.equal(r.results.unreported()[0].kills[0].count, 1);
+    assert.ok(r.granted.every(([, d]) => d === 42));
+    assert.equal(r.mgr.count, 0);
+  });
+
+  it("refuses a party outside its size", async () => {
+    const r = await region(content, [2, 5]);
+    const a = await r.join("alice", "Alice");
+    ask(a);
+    await until(() => ctl(a).some((m) => m.text === "a party of at least 2 is needed here"));
+    assert.equal(r.mgr.count, 0);
+  });
+
+  it("the SQLite store keeps results until reported", () => {
+    const dir = mkdtempSync(join(tmpdir(), "inst-"));
+    dirs.push(dir);
+    const store = new SqliteInstanceResultStore(join(dir, "instances.db"));
+    const res: InstanceResult = { instance: "run-x", dungeon: "d", entrance: "e", outcome: "cleared", startedAt: 1, endedAt: 2, members: [1], kills: [], deaths: [], loot: [{ characterId: 1, def: 3 }] };
+    store.record(res, 1, 0);
+    assert.deepEqual(store.unreported(), [res]);
+    store.markReported(["run-x"]);
+    assert.deepEqual(store.unreported(), []);
+    store.close();
+  });
+});

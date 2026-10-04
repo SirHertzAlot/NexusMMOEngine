@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "entrances": {
+    "barrow-gate": { "name": "The barrow gate", "x": 530, "z": 600, "radius": 8, "rank": null, "themes": [] }
+  }
+}
