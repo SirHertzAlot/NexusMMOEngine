@@ -192,3 +192,146 @@ describe("combat skills (M3c)", () => {
     assert.ok(k.trained.some((u) => u.e === t && u.id === "evading"));
   });
 });
+
+describe("defence contests (M3)", () => {
+  /** Skills by entity: the attacker (the first spawned) and everyone else. */
+  function duel(attacker: number, defender: number) {
+    let me = -1;
+    const skills: CombatSkills = {
+      get: (e, id) => (e === me ? (id === "cutting" ? attacker : 0) : id === "blocking" || id === "parrying" ? defender : 0),
+      train: () => undefined,
+      techniqueSkill: (t) => ({ cut: "cutting", thrust: "thrusting", bludgeon: "bludgeoning" })[t],
+    };
+    let stopped = 0;
+    let through = 0;
+    const N = 40;
+    for (let lead = 0; lead < N; lead++) {
+      const w = setup(SWORD, skills);
+      me = w.e;
+      const t = w.target(0, 1, true);
+      C.Action.move[t] = Move.Guard;
+      C.Action.yaw[t] = Math.PI; // facing the attacker
+      w.run(lead); // a different tick, so a different roll
+      w.run(hitTick(Move.SwordA), IntentButton.Attack);
+      const hit = w.combat.drainHits().find((h) => h.target === t)!;
+      if (hit.outcome === "blocked") {
+        assert.equal(hit.amount, 0, "a won contest stops the blow");
+        assert.equal(C.Health.current[t], 100);
+        stopped++;
+      } else {
+        assert.equal(hit.outcome, "hit");
+        through++;
+      }
+    }
+    return { stopped, through, N };
+  }
+
+  it("a master's guard stops a novice's blows; a novice's guard rarely stops a master's", () => {
+    const strong = duel(0, 100);
+    assert.ok(strong.stopped >= strong.N * 0.8, `stopped ${strong.stopped}/${strong.N}`);
+    const weak = duel(100, 0);
+    assert.ok(weak.through >= weak.N * 0.8, `through ${weak.through}/${weak.N}`);
+  });
+
+  it("a lost contest lets the rules' share of the blow through", () => {
+    const skills: CombatSkills = {
+      get: (e, id) => (id === "cutting" ? 100 : 0),
+      train: () => undefined,
+      techniqueSkill: (t) => ({ cut: "cutting" })[t],
+    };
+    const { rules } = loadGameRules();
+    for (let lead = 0; lead < 20; lead++) {
+      const w = setup(SWORD, skills);
+      const t = w.target(0, 1, true);
+      C.Action.move[t] = Move.Guard;
+      C.Action.yaw[t] = Math.PI;
+      w.run(lead);
+      w.run(hitTick(Move.SwordA), IntentButton.Attack);
+      const hit = w.combat.drainHits().find((h) => h.target === t)!;
+      if (hit.outcome !== "hit") continue;
+      const full = hooks.computeDamage({ technique: "cut", skill: 100, item: SWORD.item, part: "torso" }).amount;
+      assert.ok(Math.abs(hit.amount - full * rules.combat.defence.failedLetsThrough) < 1e-3);
+      return;
+    }
+    assert.fail("no blow got through in 20 tries at the minimum stop chance");
+  });
+});
+
+describe("familiarity and disarms (M4)", () => {
+  const FAMILY_SWORD: Weapon = { ...SWORD, family: "sword" };
+  it("familiarity with the item's family adds to the blow, and each blow builds it", () => {
+    const used: string[] = [];
+    const strike = (familiarity: number): number => {
+      const skills: CombatSkills = {
+        get: () => 0,
+        train: () => undefined,
+        techniqueSkill: () => undefined,
+        familiarity: (_e, f) => (f === "sword" ? familiarity : 0),
+        useFamily: (_e, f) => void used.push(f),
+      };
+      const w = setup(FAMILY_SWORD, skills);
+      const t = w.target(0, 1);
+      w.run(hitTick(Move.SwordA), IntentButton.Attack);
+      return w.combat.drainHits().find((h) => h.target === t)!.amount;
+    };
+    const fresh = strike(0);
+    const known = strike(1);
+    assert.ok(known > fresh, `${known} > ${fresh}`);
+    assert.deepEqual(used, ["sword", "sword"]);
+  });
+
+  /** A parry by `defender` against a sword at `attacker`, knowing the disarm or not. */
+  function parries(attacker: number, defender: number, knows: boolean) {
+    let me = -1;
+    const skills: CombatSkills = {
+      get: (e, id) => (e === me ? (id === "cutting" ? attacker : 0) : id === "parrying" ? defender : 0),
+      train: () => undefined,
+      techniqueSkill: (t) => ({ cut: "cutting" })[t],
+      knows: (e, technique) => knows && e !== me && technique === "disarm",
+    };
+    let disarmed = 0;
+    let blocked = 0;
+    for (let lead = 0; lead < 20; lead++) {
+      const w = setup(SWORD, skills);
+      me = w.e;
+      const t = w.target(0, 1, true);
+      C.Action.move[t] = Move.Guard;
+      C.Action.yaw[t] = Math.PI;
+      w.run(lead);
+      w.run(hitTick(Move.SwordA), IntentButton.Attack);
+      const hit = w.combat.drainHits().find((h) => h.target === t)!;
+      if (hit.outcome === "blocked") blocked++;
+      if (hit.disarmed) {
+        assert.equal(hit.outcome, "blocked", "only a parry that stops the blow disarms");
+        disarmed++;
+      }
+    }
+    return { disarmed, blocked };
+  }
+
+  it("a much better parry by someone who knows the disarm takes the weapon", () => {
+    const master = parries(20, 90, true);
+    assert.ok(master.disarmed > 0 && master.disarmed === master.blocked, JSON.stringify(master));
+    assert.equal(parries(20, 90, false).disarmed, 0, "without the technique");
+    assert.equal(parries(70, 90, true).disarmed, 0, "against a near equal");
+  });
+
+  it("an empty hand can't be disarmed", () => {
+    const skills: CombatSkills = {
+      get: (e, id) => (id === "parrying" ? 100 : 0),
+      train: () => undefined,
+      techniqueSkill: () => undefined,
+      knows: () => true,
+    };
+    for (let lead = 0; lead < 5; lead++) {
+      const w = setup(null, skills);
+      const t = w.target(0, 0.8, true);
+      C.Action.move[t] = Move.Guard;
+      C.Action.yaw[t] = Math.PI;
+      w.run(lead);
+      w.run(hitTick(Move.SwordA), IntentButton.Attack);
+      for (const h of w.combat.drainHits()) assert.ok(!h.disarmed);
+    }
+  });
+});
+

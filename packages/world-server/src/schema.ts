@@ -60,16 +60,34 @@ export const SnapshotReportSchema = z
   })
   .strict();
 
-/** Slice B. */
+/** Serialized entity state cap: what one ECS entity can reasonably carry. */
+export const MAX_ENTITY_STATE_BYTES = 64 * 1024;
+const MIGRATION_ID = z.string().regex(/^mig-[0-9a-f]{24}$/);
+
 export const BeginMigrationSchema = z
   .object({
     opId: OP_ID,
-    entityId: z.string().min(1).max(128),
+    entityId: z.string().min(1).max(128).regex(/^[A-Za-z0-9:_.-]+$/),
     fromRegion: REGION_ID,
     toRegion: REGION_ID,
+    // An object (or null), bounded in size; its shape is the region's business.
+    entityState: z.record(z.string(), z.unknown()).nullable(),
   })
   .strict()
-  .and(z.object({ entityState: z.unknown() }));
+  .refine((m) => Buffer.byteLength(JSON.stringify(m.entityState)) <= MAX_ENTITY_STATE_BYTES, {
+    message: `entityState over ${MAX_ENTITY_STATE_BYTES} bytes`,
+    path: ["entityState"],
+  });
+
+export const CommitMigrationSchema = z
+  .object({ migrationId: MIGRATION_ID, opId: OP_ID })
+  .strict();
+
+export const AbortMigrationSchema = z
+  .object({ migrationId: MIGRATION_ID, opId: OP_ID, reason: z.string().max(200) })
+  .strict();
+
+export const GetMigrationSchema = z.object({ migrationId: MIGRATION_ID }).strict();
 
 /** Bearer token format: 256-bit hex. */
 export const BearerTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);

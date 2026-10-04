@@ -8,5 +8,18 @@ Game content the engine generates from, committed with the code:
   the ones spawn tables use. The region serves it (`MMO_PCG_ASSETS`
   overrides the path).
 
+- `quests/` — quests and dialog (roadmap P1): `steps.json` (stages, step
+  types and templates for generated quests), `quests.json` (authored
+  quests), `npcs.json` (quest givers, their boards and places) and
+  `dialogs.json` (dialog graphs). Checked as a set at boot
+  (`packages/engine-core/src/quests/content.ts`); `MMO_QUESTS` overrides
+  the path.
+
+- `dungeons/` — dungeon instances (roadmap D4): `instances.json` (the run
+  rules: party size, time limit, re-entry, teardown, loot rolls) and
+  `entrances.json` (where in the world a party asks for a run, and which
+  pool layouts each draws from). `MMO_DUNGEONS` overrides the path; the
+  layouts are the pool `npm run dungeon:bake` writes to `<data>/dungeons`.
+
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.

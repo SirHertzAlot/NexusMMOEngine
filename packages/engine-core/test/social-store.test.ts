@@ -28,7 +28,7 @@ function roundTrip(open: () => SocialStore & { close?: () => void }): void {
     { owner: "ann", friend: "Bob" },
     { owner: "di", friend: "Ann" },
   ]);
-  assert.deepEqual(s.loadBlocks(), [{ blocker: "acct-a", target: "acct-b" }]);
+  assert.deepEqual(s.loadBlocks(), [{ blocker: "acct-a", target: "acct-b", name: "Acct-B" }]);
   s.close?.();
 }
 
@@ -65,6 +65,40 @@ describe("SocialStore", () => {
     assert.equal(f2.add("Ann", "BOB"), "exists");
     assert.ok(b2.isBlocked("ACCT-A", "acct-b"));
     assert.ok(!b2.isBlocked("acct-a", "acct-c"));
+    s.close();
+    t.done();
+  });
+
+  it("block names come back for the block list (U8)", () => {
+    const t = tmpDb();
+    let s = new SqliteSocialStore(t.file);
+    const blocks = new BlockList(s);
+    blocks.add("acct-a", "acct-b", "Borin");
+    blocks.add("acct-a", "acct-c", "Cyra");
+    assert.deepEqual(blocks.names("ACCT-A"), ["Borin", "Cyra"]);
+    s.close();
+    s = new SqliteSocialStore(t.file);
+    const b2 = new BlockList(s);
+    assert.deepEqual(b2.names("acct-a"), ["Borin", "Cyra"]);
+    assert.equal(b2.accountNamed("acct-a", "borin"), "acct-b");
+    assert.equal(b2.accountNamed("acct-a", "nobody"), undefined);
+    b2.remove("acct-a", b2.accountNamed("acct-a", "CYRA")!);
+    assert.deepEqual(b2.names("acct-a"), ["Borin"]);
+    s.close();
+    t.done();
+  });
+
+  it("a social.db from before block names opens and lists accounts", async () => {
+    const t = tmpDb();
+    const { default: Database } = await import("better-sqlite3");
+    const old = new Database(t.file);
+    old.exec("CREATE TABLE blocks (blocker TEXT NOT NULL, target TEXT NOT NULL, PRIMARY KEY (blocker, target)); INSERT INTO blocks VALUES ('acct-a', 'acct-b');");
+    old.close();
+    const s = new SqliteSocialStore(t.file);
+    const blocks = new BlockList(s);
+    assert.deepEqual(blocks.names("acct-a"), ["acct-b"]);
+    blocks.add("acct-a", "acct-c", "Cyra");
+    assert.deepEqual(s.loadBlocks().map((r) => r.name), ["acct-b", "Cyra"]);
     s.close();
     t.done();
   });

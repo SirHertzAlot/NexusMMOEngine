@@ -156,22 +156,50 @@ test("regionId must match the bearer token", async () => {
   assert.equal(res.status, 403);
 });
 
-test("slice B methods authenticate first, then return 501", async () => {
+test("slice B methods authenticate first", async () => {
   const { base } = await boot();
-  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
-  const token = (reg.json["lease"] as Record<string, unknown>)["token"] as string;
-
-  for (const m of ["BeginMigration", "CommitMigration", "AbortMigration"]) {
-    // No token / bad token: 401 before the method is even considered.
+  for (const m of ["ListRegions", "BeginMigration", "CommitMigration", "AbortMigration", "GetMigration"]) {
     const noToken = await rpc(base, m, {});
     assert.equal(noToken.status, 401, m);
     const badToken = await rpc(base, m, {}, "f".repeat(64));
     assert.equal(badToken.status, 401, m);
-    // Valid token, unimplemented method: 501 with the webrpc envelope.
-    const res = await rpc(base, m, {}, token);
-    assert.equal(res.status, 501, m);
-    assert.equal(res.json["code"], 501);
   }
+});
+
+test("migration over webrpc: list, begin, read, commit; wrong party 403; bad input 400", async () => {
+  const { base } = await boot();
+  const tok = async (regionId: string, x0: number) => {
+    const r = await rpc(base, "RegisterRegion", { input: { ...REG_INPUT, regionId, chunkRange: { x0, x1: x0 + 100, z0: 0, z1: 100 }, opId: "op-reg-" + regionId } });
+    return (r.json["lease"] as Record<string, unknown>)["token"] as string;
+  };
+  const a = await tok("ra", 0);
+  const b = await tok("rb", 100);
+
+  const list = await rpc(base, "ListRegions", {}, a);
+  assert.deepEqual((list.json["regions"] as Array<{ regionId: string; live: boolean }>).map((r) => [r.regionId, r.live]), [["ra", true], ["rb", true]]);
+  assert.ok(!JSON.stringify(list.json).includes("Hash"), "no hashes leak");
+
+  const input = { opId: "op-m1", entityId: "player:9", fromRegion: "ra", toRegion: "rb", entityState: { hp: 5 } };
+  assert.equal((await rpc(base, "BeginMigration", { input }, b)).status, 403, "only the source begins");
+  const begun = await rpc(base, "BeginMigration", { input }, a);
+  assert.equal(begun.status, 200);
+  const migrationId = begun.json["migrationId"] as string;
+  assert.match(migrationId, /^mig-[0-9a-f]{24}$/);
+
+  const got = await rpc(base, "GetMigration", { migrationId }, b);
+  assert.deepEqual((got.json["migration"] as Record<string, unknown>)["entityState"], { hp: 5 });
+  assert.equal((await rpc(base, "CommitMigration", { migrationId, opId: "op-c1" }, a)).status, 403, "only the target commits");
+  assert.equal((await rpc(base, "CommitMigration", { migrationId, opId: "op-c1" }, b)).status, 200);
+  assert.equal((await rpc(base, "AbortMigration", { migrationId, opId: "op-a1", reason: "late" }, a)).status, 409);
+
+  // Validation: strict shapes, bounded state, well-formed ids.
+  assert.equal((await rpc(base, "BeginMigration", { input: { ...input, opId: "op-m2", extra: 1 } }, a)).status, 400);
+  assert.equal((await rpc(base, "BeginMigration", { input: { ...input, opId: "op-m3", entityState: "not an object" } }, a)).status, 400);
+  const big = { blob: "x".repeat(70 * 1024) };
+  const tooBig = await rpc(base, "BeginMigration", { input: { ...input, opId: "op-m4", entityId: "player:10", entityState: big } }, a);
+  assert.equal(tooBig.status, 400);
+  assert.match(tooBig.json["msg"] as string, /entityState/);
+  assert.equal((await rpc(base, "CommitMigration", { migrationId: "mig-nope", opId: "op-c2" }, b)).status, 400);
 });
 
 test("non-JSON content-type is rejected with 415", async () => {

@@ -61,6 +61,16 @@ export enum MessageType {
   /** S->C a blow's outcome (catalog 0x16, roadmap M2a). JSON. */
   Hit = 0x16,
   Life = 0x17,
+  /** S->C the player's own body parts, injuries and blood (catalog 0x18, roadmap M2). JSON. */
+  Body = 0x18,
+  /** C->S how the player swings: technique and aim (catalog 0x19, roadmap M3). JSON. */
+  Stance = 0x19,
+  /** C->S treat a body part (Medicine); S->C how a treatment goes, to healer and patient (catalog 0x1a, roadmap M4). JSON. */
+  Treat = 0x1a,
+  /** S->C the player's skills, item familiarity and disciplines (catalog 0x1b, roadmap M4). JSON. */
+  Skills = 0x1b,
+  /** C->S cast a spell; S->C the player's mana and how casts go (catalog 0x1c, roadmap: mana). JSON. */
+  Magic = 0x1c,
 }
 
 /**
@@ -202,6 +212,28 @@ export interface StatsMessage {
   entity: string;
   attributes: StatLineMessage[];
   stats: StatLineMessage[];
+  /** Hunger and thirst meters (U3), when the player has them. Whole numbers. */
+  needs?: NeedsLine;
+  /** Every skill in rules order with its value and peak, 0..`skillMax`, to 0.1 (U9). */
+  skills?: SkillLineMessage[];
+  skillMax?: number;
+}
+
+export interface NeedsLine {
+  hunger: number;
+  hungerMax: number;
+  thirst: number;
+  thirstMax: number;
+}
+
+export interface SkillLineMessage {
+  id: string;
+  name: string;
+  /** The rules' family (weapon, defence, body, survival, work), for grouping. */
+  family: string;
+  value: number;
+  /** The highest the skill has been; above `value` it relearns faster. */
+  peak: number;
 }
 
 /**
@@ -264,6 +296,16 @@ export interface FriendMessage {
 export interface FriendsState {
   kind: "friends";
   friends: Array<{ name: string; online: boolean }>;
+}
+
+/**
+ * S→C (0x11, U8): the receiver's block list, by the character names the
+ * blocks were made under, in block order. Sent on login and after every
+ * block or unblock.
+ */
+export interface BlocksState {
+  kind: "blocks";
+  blocked: string[];
 }
 
 /**
@@ -368,7 +410,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 16; // v16 (2026-10-03): friends list op and presence state on 0x11 (S2b).
+export const PROTOCOL_VERSION = 21; // v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).

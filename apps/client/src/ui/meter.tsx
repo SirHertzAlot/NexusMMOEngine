@@ -11,6 +11,8 @@ const TONES: Record<string, string> = {
   health: "bg-red-500",
   stamina: "bg-green-500",
   mana: "bg-sky-500",
+  hunger: "bg-amber-500",
+  thirst: "bg-cyan-400",
 };
 
 /** Fraction of a bar to fill, clamped to [0, 1]; non-positive maxima fill nothing. */

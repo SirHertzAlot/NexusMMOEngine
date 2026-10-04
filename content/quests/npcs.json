@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "npcs": {
+    "warden": {
+      "name": "Warden Hale",
+      "x": 510, "z": 622,
+      "dialog": "warden",
+      "board": ["bounty", "expedition"],
+      "places": [
+        { "name": "the old watchtower", "x": 560, "z": 650, "radius": 14 },
+        { "name": "the standing stones", "x": 470, "z": 580, "radius": 12 }
+      ]
+    }
+  }
+}
