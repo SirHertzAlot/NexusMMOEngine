@@ -196,6 +196,12 @@ function crossCheck(r: Rules): RulesIssue[] {
   });
   const total = parts.reduce((s, p) => s + p.share, 0);
   if (Math.abs(total - 1) > 0.005) add("body", "parts", `shares add up to ${total.toFixed(3)}, not 1`);
+  for (const hand of ["main", "off"] as const) {
+    if (parts.filter((p) => p.holds === hand).length > 1) add("body", "parts", `more than one part holds the ${hand} hand`);
+  }
+  for (const id of Object.keys(r.body.fall.parts)) {
+    if (!byId.has(id)) add("body", `fall.parts.${id}`, `no part "${id}"`);
+  }
 
   // Appearance.
   dupes("appearance", r.appearance.slots, "slots");

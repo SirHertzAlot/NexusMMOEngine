@@ -124,6 +124,8 @@ export const BodyPartSchema = z.strictObject({
   atZero: AtZero.default("useless"),
   /** The appearance slot that draws it (hidden when dismembered). */
   slot: id.optional(),
+  /** A hand: which hand's item it holds. Its arm (it and the parts above it, below the root) swings that hand's blows. */
+  holds: z.enum(["main", "off"]).optional(),
 });
 
 const Severity = z.strictObject({
@@ -159,6 +161,41 @@ export const BodySchema = z.strictObject({
       bleedPerSecond: z
         .strictObject({ cut: z.number().min(0).default(0), thrust: z.number().min(0).default(0), dismember: z.number().min(0).default(0) })
         .prefault({}),
+      /** Seconds before an open wound stops bleeding on its own (null: only treatment stops it). A stump never does. */
+      clotSeconds: z
+        .strictObject({ cut: positive.nullable().default(null), thrust: positive.nullable().default(null) })
+        .prefault({}),
+      /** Blood made back per second while nothing bleeds. */
+      regenPerSecond: z.number().min(0).default(0),
+    })
+    .prefault({}),
+  /** Harmed parts that no longer bleed heal this share of their health per second (maimed parts wait for treatment). */
+  healPerSecond: share.default(0),
+  /**
+   * What injuries cost (docs/MASTERY-AND-COMBAT.md §4.2). A part is
+   * weakened while harmed below `harmedBelow`, and useless while maimed,
+   * dismembered or at 0 health.
+   */
+  penalties: z
+    .strictObject({
+      /** Power and precision with a weakened arm. */
+      weakArm: share.default(0.75),
+      /** Speed with a weakened leg (a `cannotStand` part). */
+      weakLeg: share.default(0.75),
+      /** Speed with a useless leg (and no jumping). */
+      uselessLeg: share.default(0.4),
+      /** Speed with two useless legs, or useless hips: a crawl. */
+      crawl: share.default(0.15),
+      /** Stamina recovery with a weakened torso (the root part). */
+      weakTorsoStamina: share.default(0.5),
+    })
+    .prefault({}),
+  /** Landing hard: blunt damage per m/s of impact above `safeSpeed`, shared out over `parts` (absent: by share over the whole body). */
+  fall: z
+    .strictObject({
+      safeSpeed: positive.default(13),
+      damagePerSpeed: z.number().min(0).default(0),
+      parts: z.record(id, share).default({}),
     })
     .prefault({}),
 });

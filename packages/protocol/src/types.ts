@@ -61,6 +61,8 @@ export enum MessageType {
   /** S->C a blow's outcome (catalog 0x16, roadmap M2a). JSON. */
   Hit = 0x16,
   Life = 0x17,
+  /** S->C the player's own body parts, injuries and blood (catalog 0x18, roadmap M2). JSON. */
+  Body = 0x18,
 }
 
 /**
@@ -368,7 +370,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 16; // v16 (2026-10-03): friends list op and presence state on 0x11 (S2b).
+export const PROTOCOL_VERSION = 17; // v17 (2026-10-03): 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).

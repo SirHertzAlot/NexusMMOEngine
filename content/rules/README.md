@@ -16,7 +16,7 @@ a bad file, naming each problem by file and field:
 | `skills.json` | Skills and their families, related skills, how fast skills rise (challenge, slower at the top, anti-farming), item familiarity, and deterioration |
 | `disciplines.json` | Named paths a character earns by skill levels, and the techniques they unlock |
 | `combat.json` | Techniques (which item property they read, the damage they do, their skill), and the damage, power and precision formulas' coefficients |
-| `body.json` | The body's parts (a tree: losing one loses everything below it), their share of health, hit multipliers, what happens at 0, when blows harm, maim or dismember, and bleeding |
+| `body.json` | The body's parts (a tree: losing one loses everything below it), their share of health, hit multipliers, what happens at 0, which part holds each hand, when blows harm, maim or dismember, bleeding and clotting, healing, what injuries cost (`penalties`), and fall damage |
 | `death.json` | Respawn delay and place, what carries over, whether deaths are recorded |
 | `appearance.json` | Which appearance slot draws which body part (hidden when that part is lost) |
 | `items.json` | Each item base's physics (mass, reach, edge, point, hardness, balance, durability), the hand it is held in, the technique a plain attack uses, and the models it can show as; how much a composed item's power adds; fists |

@@ -7,8 +7,8 @@
     { "id": "armUpperRight", "name": "Right upper arm", "parent": "torso", "share": 0.06, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armUpperRight" },
     { "id": "armLowerLeft", "name": "Left forearm", "parent": "armUpperLeft", "share": 0.05, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armLowerLeft" },
     { "id": "armLowerRight", "name": "Right forearm", "parent": "armUpperRight", "share": 0.05, "hitMultiplier": 0.8, "atZero": "useless", "slot": "armLowerRight" },
-    { "id": "handLeft", "name": "Left hand", "parent": "armLowerLeft", "share": 0.03, "hitMultiplier": 0.7, "atZero": "drop", "slot": "handLeft" },
-    { "id": "handRight", "name": "Right hand", "parent": "armLowerRight", "share": 0.03, "hitMultiplier": 0.7, "atZero": "drop", "slot": "handRight" },
+    { "id": "handLeft", "name": "Left hand", "parent": "armLowerLeft", "share": 0.03, "hitMultiplier": 0.7, "atZero": "drop", "slot": "handLeft", "holds": "off" },
+    { "id": "handRight", "name": "Right hand", "parent": "armLowerRight", "share": 0.03, "hitMultiplier": 0.7, "atZero": "drop", "slot": "handRight", "holds": "main" },
     { "id": "legLeft", "name": "Left leg", "parent": "hips", "share": 0.11, "hitMultiplier": 0.8, "atZero": "cannotStand", "slot": "legLeft" },
     { "id": "legRight", "name": "Right leg", "parent": "hips", "share": 0.11, "hitMultiplier": 0.8, "atZero": "cannotStand", "slot": "legRight" }
   ],
@@ -20,6 +20,11 @@
   },
   "blood": {
     "max": 100,
-    "bleedPerSecond": { "cut": 0.4, "thrust": 0.8, "dismember": 2.5 }
-  }
+    "bleedPerSecond": { "cut": 0.4, "thrust": 0.8, "dismember": 2.5 },
+    "clotSeconds": { "cut": 20, "thrust": 40 },
+    "regenPerSecond": 0.2
+  },
+  "healPerSecond": 0.005,
+  "penalties": { "weakArm": 0.75, "weakLeg": 0.75, "uselessLeg": 0.4, "crawl": 0.15, "weakTorsoStamina": 0.5 },
+  "fall": { "safeSpeed": 13, "damagePerSpeed": 3, "parts": { "legLeft": 0.35, "legRight": 0.35, "hips": 0.15, "torso": 0.15 } }
 }

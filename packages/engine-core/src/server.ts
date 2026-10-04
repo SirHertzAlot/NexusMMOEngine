@@ -114,6 +114,7 @@ import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { CombatSystem, type CombatSkills, type Weapon } from "./combat.js";
+import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
@@ -400,7 +401,10 @@ async function main(): Promise<void> {
   // held inside the world's edge.
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
   const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
+  // The body system is made below with the hooks; hard landings reach it through this.
+  let bodyRef: BodySystem | null = null;
   const character = new CharacterSystem({
+    onLand: (e, speed) => void bodyRef?.applyFall(sim, e, speed),
     chunkSource: procgen,
     worldSeed,
     chunkSize: CHUNK_SIZE,
@@ -491,6 +495,7 @@ async function main(): Promise<void> {
     dropper.setCreatures(g.rules.creatures.creatures);
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
+    bodyRef?.setRules(sim, g.rules.body);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
   const combatSkills: CombatSkills = {
@@ -501,10 +506,13 @@ async function main(): Promise<void> {
     },
     techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
   };
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills });
+  // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
+  const body = new BodySystem(game.rules.body, hooks);
+  bodyRef = body;
+  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
-  const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev));
+  const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => dropper.onDeath(s, ev), body);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
   const gw: Gateway = new Gateway({
@@ -512,12 +520,13 @@ async function main(): Promise<void> {
     sessionStore,
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
+    body,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
