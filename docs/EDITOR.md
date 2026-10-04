@@ -195,6 +195,38 @@ The model and view-model are `src/inspectors/dungeon-view.ts` (pure TS,
 tested with `node:test`); `src/ui/dungeon-scene.ts` draws them with three.js
 and `src/ui/dungeon-view.tsx` is the panel.
 
+## 2d. Terrain at world scale (ROADMAP E9)
+
+The **Terrain** tab sculpts one area of the stored world at a time (its
+outer edge pinned to the unloaded neighbours). For a baked world
+(OPEN-WORLD-PLAN.md Phase 4) it also has:
+
+- **World map:** the whole world at the welcome's ~16 m resolution (the
+  client's biome ground colours, lit by a hillshade, sea and lakes over
+  them), the region grid, the loaded area (cyan), the camera (white) and
+  the spawn (gold). Hover shows a cell's biome and height; click loads the
+  area there, at the radius in the Area box.
+- **Follow camera:** pan the view (middle-drag) and once the camera is half
+  the area's radius from its centre the area round it loads, keeping the
+  camera where it is. It pauses while anything is unsaved, since loading
+  another area would drop the edits.
+- **Mountain-scale brushes:** the radius slider runs 1 to 256 m on a log
+  scale, and raise or lower up to 40 m/s. Load an area wider than the brush:
+  a brush that reaches the pinned edge rises as a plateau.
+- **Regenerate from the world spec:** the loaded area or one region of the
+  spec's region grid goes back to what the bake makes of the spec, and
+  nothing else changes. `terrain-tool regenerate` re-runs the survey
+  (~10 s for 4 km), rebuilds that range's tiles and survey-map cells, and
+  blends a 48 m band along each edge from the stored neighbour (exactly, at
+  the edge) to the fresh ground, so no seam opens. Props there are re-seated
+  as a save does, and a running server is refused (play mode is stopped
+  first). It refuses a spec that isn't the one this world was baked from
+  (name, seed, size or biome list). The SurrealDB chunk catalog isn't
+  updated.
+
+The map and follow logic are `src/inspectors/world-map.ts` (pure TS,
+tested); the tool side is `packages/engine-core/src/terrain/region-regen.ts`.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
