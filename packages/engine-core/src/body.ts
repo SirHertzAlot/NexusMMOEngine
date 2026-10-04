@@ -22,7 +22,7 @@
  * Each tick, wounds bleed blood away (`bleedPerSecond`) until they clot
  * (`clotSeconds`; a stump never does), blood comes back while nothing
  * bleeds, and harmed parts that no longer bleed heal (`healPerSecond`).
- * Maimed parts wait for treatment (Medicine, M4). The character dies when a
+ * Maimed parts wait for treatment. The character dies when a
  * part whose `atZero` is "death" reaches 0 or its blood runs out:
  * Health goes to 0 and DeathSystem takes it from there (`causeOf` says why).
  *
@@ -33,13 +33,22 @@
  * arm that holds the main hand (`armFactor`) hits softer and less
  * precisely when weakened, and cannot attack when useless.
  *
+ * Medicine (M4, §4.5): `treat` starts a healer working on a part of a
+ * patient within reach (themselves included). Bandaging stops an open
+ * wound, a stump is closed, a maimed part is set back to harmed so it
+ * heals. It takes the rules' time, shorter with Medicine, and holds only
+ * while the healer stands still, keeps out of a fight and stays in reach;
+ * at the end the rules' resolveTreatment says whether it worked. Either
+ * way the healer's Medicine trains (a failure teaches more). The healer
+ * and patient hear how it went (`drainTreatments`).
+ *
  * Runs after CombatSystem and before DeathSystem, so a blow's death shows
  * the same tick.
  */
 
 import { addComponent, defineComponent, defineQuery, hasComponent, Types } from "bitecs";
-import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks } from "@mmo-engine/rules";
-import { Health, PlayerIntent } from "./components.js";
+import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks, type TreatmentKind } from "@mmo-engine/rules";
+import { Action, Health, PlayerIntent, Transform } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 
@@ -111,6 +120,35 @@ export interface BlowResult {
   state: PartState;
   /** Parts lost to this blow (the part and everything below it), when it dismembered. */
   lost: string[];
+}
+
+/** The skills a healer treats with (Medicine), and its training. */
+export interface BodySkills {
+  get(e: number, id: string): number;
+  train(e: number, id: string, difficulty: number, key: number): void;
+}
+
+/** How hard a treatment is taken to be for training, above its own difficulty (a failure adds FAILED_TEACHES). */
+export const TREAT_TRAINS_ABOVE = 0.3;
+export const FAILED_TEACHES = 0.1;
+
+/** A treatment's progress, for the healer and the patient. */
+export interface TreatmentEvent {
+  healer: number;
+  patient: number;
+  part: string;
+  treatment: TreatmentKind;
+  state: "started" | "done" | "failed" | "stopped";
+  /** Seconds it takes (started). */
+  seconds?: number;
+}
+
+interface Treating {
+  patient: number;
+  part: number;
+  kind: TreatmentKind;
+  left: number;
+  success: boolean;
 }
 
 /** Parts the main and off hands are held by, and the arm above each. */
@@ -186,12 +224,17 @@ export class BodySystem implements SimSystem {
   private dropped: { e: number; hand: "main" | "off" }[] = [];
   /** Why each entity that died of its body did (cleared on reset). */
   private readonly causes = new Map<number, DeathInput>();
+  /** Treatments under way, by healer. */
+  private readonly treating = new Map<number, Treating>();
+  private treatments: TreatmentEvent[] = [];
 
   constructor(
     private rules: BodyRules,
     private readonly hooks: RuleHooks,
     /** Which appearance slot draws which part (appearance.json): lost parts hide them. */
     private appearance?: AppearanceRules,
+    /** Medicine (M4); absent: every healer treats at skill 0, untrained. */
+    private readonly skills?: BodySkills,
   ) {
     this.layout = layoutOf(rules);
     this.mapSlots();
@@ -213,6 +256,7 @@ export class BodySystem implements SimSystem {
     if (appearance) this.appearance = appearance;
     this.layout = layoutOf(rules);
     this.mapSlots();
+    this.treating.clear();
     const ids = this.query(sim.ecs);
     for (let i = 0; i < ids.length; i++) {
       const e = ids[i] as number;
@@ -369,6 +413,80 @@ export class BodySystem implements SimSystem {
     return damage;
   }
 
+  /**
+   * What `part` of `e` needs first: its stump closed, its wound bandaged,
+   * or (maimed) setting. Without a part, the most urgent anywhere: a stump,
+   * then the worst bleeding, then the biggest maimed part. Null: nothing.
+   */
+  needs(e: number, part?: string): { part: string; kind: TreatmentKind } | null {
+    const L = this.layout;
+    const pick = (i: number): TreatmentKind | null => {
+      const w = Body.wound[e][i];
+      if (w === Wound.Stump) return "stump";
+      if (w !== Wound.None) return "bandage";
+      return this.state(e, i) === MAIMED ? "set" : null;
+    };
+    if (part !== undefined) {
+      const i = L.index.get(part);
+      const kind = i === undefined ? null : pick(i);
+      return kind ? { part, kind } : null;
+    }
+    let best = -1;
+    let rank = 0;
+    for (let i = 0; i < L.ids.length; i++) {
+      const k = pick(i);
+      if (!k) continue;
+      const w = Body.wound[e][i];
+      const r = k === "stump" ? 4 : w === Wound.Thrust ? 3 : k === "bandage" ? 2 : 1 + L.share[i];
+      if (r > rank) {
+        rank = r;
+        best = i;
+      }
+    }
+    return best < 0 ? null : { part: L.ids[best], kind: pick(best)! };
+  }
+
+  /**
+   * `healer` starts treating `patient` (its own part, or the most urgent).
+   * Replaces what the healer was doing. Returns why it can't, or null.
+   */
+  treat(sim: SimWorld, healer: number, patient: number, part?: string): string | null {
+    if (part !== undefined && !this.layout.index.has(part)) return `no body part "${part}"`;
+    if (!hasComponent(sim.ecs, Body, healer) || Health.current[healer] <= 0) return "you can't treat anyone now";
+    if (!hasComponent(sim.ecs, Body, patient) || Health.current[patient] <= 0) return "they can't be treated";
+    if (patient !== healer && this.distance(healer, patient) > this.rules.treatment.reach) return "too far away to treat";
+    if (this.armFactor(sim, healer, "main") === 0 && this.armFactor(sim, healer, "off") === 0) return "you have no hand to treat with";
+    const need = this.needs(patient, part);
+    if (!need) return "nothing there needs treating";
+    const medicine = this.skills?.get(healer, "medicine") ?? 0;
+    const r = this.hooks.resolveTreatment({ kind: need.kind, skill: medicine, rng: blowRng(sim.currentTick, healer, patient) });
+    this.stop(healer);
+    this.treating.set(healer, { patient, part: this.layout.index.get(need.part)!, kind: need.kind, left: r.seconds, success: r.success });
+    this.treatments.push({ healer, patient, part: need.part, treatment: need.kind, state: "started", seconds: r.seconds });
+    return null;
+  }
+
+  /** What `healer` is treating, if anything. */
+  treatingOf(healer: number): { patient: number; part: string; kind: TreatmentKind; left: number } | null {
+    const t = this.treating.get(healer);
+    return t ? { patient: t.patient, part: this.layout.ids[t.part], kind: t.kind, left: t.left } : null;
+  }
+
+  /** Stop `healer`'s treatment, if any (told to both as "stopped"). */
+  stop(healer: number): void {
+    const t = this.treating.get(healer);
+    if (!t) return;
+    this.treating.delete(healer);
+    this.treatments.push({ healer, patient: t.patient, part: this.layout.ids[t.part], treatment: t.kind, state: "stopped" });
+  }
+
+  /** Treatments started, finished and stopped since the last call. */
+  drainTreatments(): TreatmentEvent[] {
+    const out = this.treatments;
+    if (out.length > 0) this.treatments = [];
+    return out;
+  }
+
   /** The owner's view of the body (the `body` message). */
   view(e: number): BodyView {
     const L = this.layout;
@@ -391,6 +509,7 @@ export class BodySystem implements SimSystem {
       const live = new Set<number>(ids as unknown as number[]);
       for (const e of this.causes.keys()) if (!live.has(e)) this.causes.delete(e);
     }
+    if (this.treating.size > 0) this.progress(sim, dt);
     const L = this.layout;
     const n = L.ids.length;
     const { bleedPerSecond, regenPerSecond } = this.rules.blood;
@@ -446,6 +565,40 @@ export class BodySystem implements SimSystem {
   }
 
   // ------------------------------------------------------------ internals
+
+  /** Treatments go on while the healer holds still, out of a fight, in reach; done, they work or fail. */
+  private progress(sim: SimWorld, dt: number): void {
+    for (const [h, t] of [...this.treating]) {
+      const p = t.patient;
+      const alive = (e: number): boolean => hasComponent(sim.ecs, Body, e) && Health.current[e] > 0;
+      const busy =
+        (hasComponent(sim.ecs, PlayerIntent, h) && (PlayerIntent.mx[h] !== 0 || PlayerIntent.mz[h] !== 0)) ||
+        (hasComponent(sim.ecs, Action, h) && Action.move[h] !== 0);
+      // Still needed: a wound may have clotted, or a part been cut off, meanwhile.
+      const need = alive(p) ? this.needs(p, this.layout.ids[t.part]) : null;
+      if (!alive(h) || !need || need.kind !== t.kind || busy || (p !== h && this.distance(h, p) > this.rules.treatment.reach)) {
+        this.stop(h);
+        continue;
+      }
+      t.left -= dt;
+      if (t.left > 0) continue;
+      this.treating.delete(h);
+      const diff = this.rules.treatment[t.kind].difficulty + TREAT_TRAINS_ABOVE;
+      this.skills?.train(h, "medicine", t.success ? diff : diff + FAILED_TEACHES, p);
+      if (t.success) {
+        if (t.kind === "set") {
+          this.setState(p, t.part, HARMED);
+          Body.hp[p][t.part] = Math.max(Body.hp[p][t.part], this.rules.treatment.set.minHp);
+          this.write(p);
+        } else Body.wound[p][t.part] = Wound.None;
+      }
+      this.treatments.push({ healer: h, patient: p, part: this.layout.ids[t.part], treatment: t.kind, state: t.success ? "done" : "failed" });
+    }
+  }
+
+  private distance(a: number, b: number): number {
+    return Math.hypot(Transform.px[a] - Transform.px[b], Transform.pz[a] - Transform.pz[b]);
+  }
 
   private state(e: number, i: number): number {
     return (Injury.bits[e] >>> (2 * i)) & 3;

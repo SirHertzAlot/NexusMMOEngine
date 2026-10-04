@@ -5,7 +5,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage } from "@mmo-engine/protocol";
+import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage, type TreatmentMessage } from "@mmo-engine/protocol";
 import { CombatSystem } from "../../src/combat.js";
 import { Gateway } from "../../src/net/gateway.js";
 import { BodySystem } from "../../src/body.js";
@@ -90,6 +90,52 @@ describe("gateway: body", () => {
     const deadline = Date.now() + 2000;
     while (combat.stanceOf(avatar).aim !== "head" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
     assert.deepEqual(combat.stanceOf(avatar), { technique: "bludgeon", aim: "head" });
+    await client.close();
+  });
+
+  it("treats the player's own wound, and says how it goes (M4)", async () => {
+    const { rules, hooks } = loadGameRules();
+    const world = new SimWorld();
+    const sure = { ...hooks, resolveTreatment: (i: Parameters<typeof hooks.resolveTreatment>[0]) => ({ ...hooks.resolveTreatment(i), success: true }) };
+    const body = new BodySystem(rules.body, sure);
+    now = 1_000_000;
+    gw = new Gateway({ clock: () => now, world, credentialStore: await makeCredentialStore(), systems: [body], body });
+    const port = await gw.listen();
+    gw.frame(now);
+    const tick = (n: number): void => {
+      for (let i = 0; i < n; i++) {
+        now += 1000 / 30;
+        gw!.frame(now);
+      }
+    };
+    const client = new HeadlessClient();
+    await client.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await client.hello("user-a", { username: "user-a", password: TEST_PASSWORD });
+    tick(1);
+    const me = world.resolveWireId(BigInt(welcome.player_entity));
+    const error = async (msg: unknown): Promise<ErrorMessage> => {
+      const p = client.waitFor(MessageType.Error, 1);
+      client.sendRaw(MessageType.Treat, encodeControl(msg));
+      return decodeControl<ErrorMessage>((await p)[0]);
+    };
+    assert.equal((await error({ kind: "treat" })).message, "nothing there needs treating");
+    assert.equal((await error({ kind: "treat", part: "tail" })).code, 4005);
+    assert.equal((await error({ kind: "treat", target: "x" })).code, 4003);
+
+    body.applyBlow(world, me, "legLeft", "cut", 2);
+    const events = client.waitFor(MessageType.Treat, 2);
+    client.sendRaw(MessageType.Treat, encodeControl({ kind: "treat" }));
+    const deadline = Date.now() + 2000;
+    while (!body.treatingOf(me) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    tick(Math.ceil(rules.body.treatment.bandage.seconds * 30) + 2);
+    const [started, done] = (await events).map((b) => decodeControl<TreatmentMessage>(b));
+    assert.deepEqual(
+      { ...started, seconds: undefined },
+      { kind: "treatment", healer: welcome.player_entity, patient: welcome.player_entity, part: "legLeft", treatment: "bandage", state: "started", seconds: undefined },
+    );
+    assert.equal(started.seconds, rules.body.treatment.bandage.seconds);
+    assert.equal(done.state, "done");
+    assert.equal(body.view(me).parts.find((p) => p.id === "legLeft")!.bleeding, false);
     await client.close();
   });
 });

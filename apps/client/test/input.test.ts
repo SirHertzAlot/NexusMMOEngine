@@ -197,6 +197,7 @@ describe("InputState interface keys (M3a)", () => {
     assert.equal(input.uiActionFor("KeyB"), "bag");
     assert.equal(input.uiActionFor("KeyR"), "technique", "R: next technique (M3)");
     assert.equal(input.uiActionFor("KeyT"), "aim", "T: next aim (M3)");
+    assert.equal(input.uiActionFor("KeyH"), "treat", "H: treat your worst wound (M4)");
     assert.equal(input.uiActionFor("KeyW"), null);
     input.consumeDirty();
     input.keyDown("KeyE");

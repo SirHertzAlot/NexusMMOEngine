@@ -14,6 +14,8 @@ import {
   createHooks,
   decaySkill,
   defenceChance,
+  treatmentChance,
+  treatmentSeconds,
   engineDefaults,
   loadRules,
   parseRules,
@@ -286,6 +288,20 @@ describe("bad rules", () => {
     const h = createHooks(r);
     assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.49 }), { stopped: true, letsThrough: 0 });
     assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.51 }), { stopped: false, letsThrough: 0.3 });
+  });
+
+  it("a skilled healer treats faster and more surely, never below the floor (M4)", () => {
+    const r = parseRules({ skills: { skills: [] } });
+    const t = r.body.treatment;
+    assert.equal(treatmentSeconds(r, "set", 0), t.set.seconds);
+    assert.ok(Math.abs(treatmentSeconds(r, "set", 1) - t.set.seconds * (1 - t.fasterPerSkill)) < 1e-9);
+    assert.ok(Math.abs(treatmentChance(r, "bandage", 0) - (t.chance.base - t.bandage.difficulty)) < 1e-9);
+    assert.equal(treatmentChance(r, "bandage", 1), 1);
+    const hard = parseRules({ skills: { skills: [] }, body: { treatment: { set: { seconds: 5, difficulty: 1 } } } });
+    assert.equal(treatmentChance(hard, "set", 0), hard.body.treatment.chance.min);
+    const h = createHooks(r);
+    assert.deepEqual(h.resolveTreatment({ kind: "bandage", skill: 0, rng: () => 0.39 }), { seconds: t.bandage.seconds, success: true });
+    assert.equal(h.resolveTreatment({ kind: "bandage", skill: 0, rng: () => 0.41 }).success, false);
   });
 
   it("a body's hands and fall parts must make sense (M2)", () => {

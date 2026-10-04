@@ -157,6 +157,9 @@ const Severity = z.strictObject({
  */
 export const MAX_BODY_PARTS = 15;
 
+/** One kind of treatment: how long it takes a novice, and how hard it is (0..1). */
+const Treatment = z.strictObject({ seconds: positive, difficulty: share });
+
 export const BodySchema = z.strictObject({
   parts: z
     .array(BodyPartSchema)
@@ -210,6 +213,25 @@ export const BodySchema = z.strictObject({
       safeSpeed: positive.default(13),
       damagePerSpeed: z.number().min(0).default(0),
       parts: z.record(id, share).default({}),
+    })
+    .prefault({}),
+  /**
+   * Medicine (M4, §4.5): treating a part takes time and may fail. `bandage`
+   * stops an open wound bleeding, `stump` a lost part's stump, `set` turns
+   * a maimed part back to harmed (at least `minHp`) so it heals. A healer at
+   * Medicine m takes `seconds × (1 − fasterPerSkill × m)` and succeeds with
+   * chance `chance.base + chance.perSkill × m − difficulty`, within
+   * [chance.min, 1]; a failure costs the time and teaches more.
+   */
+  treatment: z
+    .strictObject({
+      /** Metres from healer to patient (treating yourself is always in reach). */
+      reach: positive.default(2.5),
+      fasterPerSkill: share.default(0.6),
+      chance: z.strictObject({ base: share.default(0.6), perSkill: share.default(0.8), min: share.default(0.05) }).prefault({}),
+      bandage: Treatment.prefault({ seconds: 4, difficulty: 0.2 }),
+      stump: Treatment.prefault({ seconds: 6, difficulty: 0.4 }),
+      set: Treatment.extend({ minHp: share.default(0.1) }).prefault({ seconds: 10, difficulty: 0.5 }),
     })
     .prefault({}),
 });

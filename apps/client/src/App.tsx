@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
+import { treatmentNotice } from "./ui/treatment-notice.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -62,6 +63,7 @@ import type { DevLayout } from "./ui/dev-layout.js";
 /** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
 const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
 const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
+
 import {
   Button,
   Card,
@@ -187,6 +189,12 @@ export function App(): React.ReactElement {
       },
       onHit: (h) => combat.hit(h, clientRef.current?.playerEntity ?? null),
       onLife: (l) => combat.life(l),
+      onTreatment: (t) => {
+        const c = clientRef.current;
+        const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
+        const text = treatmentNotice(t, c?.playerEntity?.toString() ?? null, name);
+        if (text) setNotice({ text, at: performance.now() });
+      },
     });
 
   /**
@@ -312,6 +320,8 @@ export function App(): React.ReactElement {
     const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
     setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
   }, []);
+  // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
+  const onTreat = useCallback(() => clientRef.current?.treat(), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -351,6 +361,7 @@ export function App(): React.ReactElement {
           onHud={setHud}
           onBag={toggleBag}
           onStance={onStance}
+          onTreat={onTreat}
           onNearDrop={setNearDrop}
           combat={combat}
           onCombat={setCombatView}

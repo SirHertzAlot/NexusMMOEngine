@@ -507,7 +507,7 @@ async function main(): Promise<void> {
     techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
   };
   // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
-  const body = new BodySystem(game.rules.body, hooks, game.rules.appearance);
+  const body = new BodySystem(game.rules.body, hooks, game.rules.appearance, combatSkills);
   bodyRef = body;
   const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
   // Players come back at the spawn point (placement lives in the gateway,
