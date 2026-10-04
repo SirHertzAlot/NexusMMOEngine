@@ -10,7 +10,8 @@
  *
  * While it runs, the game view (ROADMAP E4, game-view.tsx) shows the
  * world through the client's own renderer, driven by the same mirror
- * client the overlays query, with the renderer's numbers beside it.
+ * client the overlays query, with the renderer's numbers beside it, and
+ * the debugger's panels over it (ROADMAP E5, play-debugger.tsx).
  */
 
 import * as React from "react";
@@ -21,8 +22,8 @@ import { connectMirror } from "./mirror-connect.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
-// The renderer (three.js, R3F, the client's scene) loads only when play mode first runs.
-const GameView = React.lazy(() => import("./game-view.js").then((m) => ({ default: m.GameView })));
+// The game view and its debugger (three.js, R3F, the client's scene) load only when play mode first runs.
+const PlayDebugger = React.lazy(() => import("./play-debugger.js").then((m) => ({ default: m.PlayDebugger })));
 import {
   Badge,
   Button,
@@ -192,7 +193,7 @@ export function PlayModePanel(): React.JSX.Element {
           {running && mirror && server && (
             <div className="flex flex-col gap-2">
               <React.Suspense fallback={<p className="text-xs text-muted-foreground">Loading the game view…</p>}>
-                <GameView
+                <PlayDebugger
                   client={mirror}
                   url={server.url}
                   lastStateAt={() => lastStateAt.current}

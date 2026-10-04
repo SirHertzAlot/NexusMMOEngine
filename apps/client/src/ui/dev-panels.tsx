@@ -11,6 +11,10 @@
  *
  * The layout lives in this component, so dragging re-renders only the
  * panels and never the world; dev-layout.ts keeps it in localStorage.
+ *
+ * Panels are placed in the window, or in `bounds` when given (the editor's
+ * game view, ROADMAP E5): its size clamps them, and they follow it as it
+ * resizes.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,7 +40,17 @@ export interface DevPanelSpec {
   content: React.ReactNode;
 }
 
-export function DevHud({ panels, defaults }: { panels: DevPanelSpec[]; defaults: (viewport: Viewport) => DevLayout }): React.ReactElement {
+export function DevHud({
+  panels,
+  defaults,
+  bounds,
+}: {
+  panels: DevPanelSpec[];
+  defaults: (viewport: Viewport) => DevLayout;
+  /** The element the panels sit in (default: the window). */
+  bounds?: { current: HTMLElement | null };
+}): React.ReactElement {
+  const viewport = useCallback((): Viewport => boundsViewport(bounds?.current ?? null), [bounds]);
   const [layout, setLayout] = useState<DevLayout>(() => {
     const vp = viewport();
     const l = loadLayout(browserStorage(), defaults(vp));
@@ -46,12 +60,18 @@ export function DevHud({ panels, defaults }: { panels: DevPanelSpec[]; defaults:
 
   useEffect(() => saveLayout(browserStorage(), layout), [layout]);
 
-  // A smaller window pulls the panels back on screen.
+  // A smaller window (or bounds) pulls the panels back on screen.
   useEffect(() => {
     const onResize = (): void => setLayout((l) => clampAll(l, viewport()));
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    const el = bounds?.current;
+    const observer = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    if (el) observer?.observe(el);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      observer?.disconnect();
+    };
+  }, [bounds, viewport]);
 
   // ` hides (and shows) every dev panel.
   useEffect(() => {
@@ -65,7 +85,7 @@ export function DevHud({ panels, defaults }: { panels: DevPanelSpec[]; defaults:
 
   const update = useCallback((id: string, patch: Partial<PanelLayout>) => {
     setLayout((l) => ({ ...l, panels: { ...l.panels, [id]: clampPanel({ ...l.panels[id], ...patch }, viewport()) } }));
-  }, []);
+  }, [viewport]);
 
   if (layout.hidden) {
     return (
@@ -205,7 +225,8 @@ export interface Viewport {
   height: number;
 }
 
-function viewport(): Viewport {
+function boundsViewport(el: HTMLElement | null): Viewport {
+  if (el && el.clientWidth > 0 && el.clientHeight > 0) return { width: el.clientWidth, height: el.clientHeight };
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
