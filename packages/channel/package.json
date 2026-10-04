@@ -1,0 +1,20 @@
+{
+  "name": "@mmo-engine/channel",
+  "version": "0.1.0",
+  "description": "Internal edge<->core channel: length-prefixed JSON frames over TCP, request/response by id, server pushes, heartbeats, reconnect backoff",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "npm run build --workspace=@mmo-engine/nethealth && tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@mmo-engine/nethealth": "^0.1.0"
+  }
+}

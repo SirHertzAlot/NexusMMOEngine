@@ -105,6 +105,24 @@ export const CombatSchema = z.strictObject({
   damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5) }).prefault({}),
   /** Chance a blow lands on the aimed part: novice + masterBonus × m. */
   precision: z.strictObject({ novice: share.default(0.3), masterBonus: share.default(0.65) }).prefault({}),
+  /**
+   * A guard facing the blow is a contest (docs/MASTERY-AND-COMBAT.md §3.3):
+   * the defender stops it with chance `base + perSkill × (m_defence − m_attack)`,
+   * held within [min, max]; a guard that loses lets `failedLetsThrough` of the blow through.
+   * A parry that stops a blow disarms the attacker when the defender knows
+   * the `disarm` technique (a discipline's) and out-skills the attacker by
+   * at least `disarmMargin` (as a share of skills.max).
+   */
+  defence: z
+    .strictObject({
+      base: share.default(0.5),
+      perSkill: z.number().min(0).default(1),
+      min: share.default(0.05),
+      max: share.default(0.95),
+      failedLetsThrough: share.default(0.5),
+      disarmMargin: share.default(0.3),
+    })
+    .prefault({}),
 });
 
 // ------------------------------------------------------------------ body
@@ -124,6 +142,8 @@ export const BodyPartSchema = z.strictObject({
   atZero: AtZero.default("useless"),
   /** The appearance slot that draws it (hidden when dismembered). */
   slot: id.optional(),
+  /** A hand: which hand's item it holds. Its arm (it and the parts above it, below the root) swings that hand's blows. */
+  holds: z.enum(["main", "off"]).optional(),
 });
 
 const Severity = z.strictObject({
@@ -140,6 +160,9 @@ const Severity = z.strictObject({
  * per part into 32 bits, keeping one for bleeding (docs/MASTERY-AND-COMBAT.md §6).
  */
 export const MAX_BODY_PARTS = 15;
+
+/** One kind of treatment: how long it takes a novice, and how hard it is (0..1). */
+const Treatment = z.strictObject({ seconds: positive, difficulty: share });
 
 export const BodySchema = z.strictObject({
   parts: z
@@ -159,6 +182,60 @@ export const BodySchema = z.strictObject({
       bleedPerSecond: z
         .strictObject({ cut: z.number().min(0).default(0), thrust: z.number().min(0).default(0), dismember: z.number().min(0).default(0) })
         .prefault({}),
+      /** Seconds before an open wound stops bleeding on its own (null: only treatment stops it). A stump never does. */
+      clotSeconds: z
+        .strictObject({ cut: positive.nullable().default(null), thrust: positive.nullable().default(null) })
+        .prefault({}),
+      /** Blood made back per second while nothing bleeds. */
+      regenPerSecond: z.number().min(0).default(0),
+    })
+    .prefault({}),
+  /** Harmed parts that no longer bleed heal this share of their health per second (maimed parts wait for treatment). */
+  healPerSecond: share.default(0),
+  /**
+   * What injuries cost (docs/MASTERY-AND-COMBAT.md §4.2). A part is
+   * weakened while harmed below `harmedBelow`, and useless while maimed,
+   * dismembered or at 0 health.
+   */
+  penalties: z
+    .strictObject({
+      /** Power and precision with a weakened arm. */
+      weakArm: share.default(0.75),
+      /** Speed with a weakened leg (a `cannotStand` part). */
+      weakLeg: share.default(0.75),
+      /** Speed with a useless leg (and no jumping). */
+      uselessLeg: share.default(0.4),
+      /** Speed with two useless legs, or useless hips: a crawl. */
+      crawl: share.default(0.15),
+      /** Stamina recovery with a weakened torso (the root part). */
+      weakTorsoStamina: share.default(0.5),
+    })
+    .prefault({}),
+  /** Landing hard: blunt damage per m/s of impact above `safeSpeed`, shared out over `parts` (absent: by share over the whole body). */
+  fall: z
+    .strictObject({
+      safeSpeed: positive.default(13),
+      damagePerSpeed: z.number().min(0).default(0),
+      parts: z.record(id, share).default({}),
+    })
+    .prefault({}),
+  /**
+   * Medicine (M4, §4.5): treating a part takes time and may fail. `bandage`
+   * stops an open wound bleeding, `stump` a lost part's stump, `set` turns
+   * a maimed part back to harmed (at least `minHp`) so it heals. A healer at
+   * Medicine m takes `seconds × (1 − fasterPerSkill × m)` and succeeds with
+   * chance `chance.base + chance.perSkill × m − difficulty`, within
+   * [chance.min, 1]; a failure costs the time and teaches more.
+   */
+  treatment: z
+    .strictObject({
+      /** Metres from healer to patient (treating yourself is always in reach). */
+      reach: positive.default(2.5),
+      fasterPerSkill: share.default(0.6),
+      chance: z.strictObject({ base: share.default(0.6), perSkill: share.default(0.8), min: share.default(0.05) }).prefault({}),
+      bandage: Treatment.prefault({ seconds: 4, difficulty: 0.2 }),
+      stump: Treatment.prefault({ seconds: 6, difficulty: 0.4 }),
+      set: Treatment.extend({ minHp: share.default(0.1) }).prefault({ seconds: 10, difficulty: 0.5 }),
     })
     .prefault({}),
 });
@@ -213,8 +290,9 @@ export const AppearanceSchema = z.strictObject({
  * - `moveSpeed`: a multiplier on every locomotion speed (1 = normal).
  * - `maxHealth`: the Health component's maximum (current keeps its share).
  * - `maxStamina`: the Stamina component's maximum (current keeps its share).
+ * - `maxMana`: the Mana pool's maximum (current keeps its share).
  */
-export const StatDrive = z.enum(["moveSpeed", "maxHealth", "maxStamina"]);
+export const StatDrive = z.enum(["moveSpeed", "maxHealth", "maxStamina", "maxMana"]);
 
 /**
  * How a modifier changes a stat. A stat's value is
@@ -416,6 +494,39 @@ export const NeedsSchema = z.strictObject({
   exertionFactor: z.number().min(1).default(1.5),
 });
 
+// ---------------------------------------------------------------- spells
+
+/** What a spell does when its cast completes. */
+export const SpellEffectSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    /** Restore `amount` health × the caster's `spellPower` stat (spread over the parts; it neither sets bones nor stops bleeding). */
+    kind: z.literal("heal"),
+    amount: positive,
+  }),
+]);
+
+export const SpellSchema = z.strictObject({
+  id,
+  name: z.string().min(1),
+  /** Mana spent when the cast completes. */
+  mana: z.number().min(0),
+  /** Seconds the caster must stand still and out of a fight (0: instant). */
+  castSeconds: z.number().min(0).default(1.5),
+  /** Seconds after a completed cast before it can be cast again. */
+  cooldownSeconds: z.number().min(0).default(0),
+  /** Who it can be cast on: the caster only, or anyone within `reach` metres. */
+  target: z.enum(["self", "any"]).default("any"),
+  reach: positive.default(3),
+  effect: SpellEffectSchema,
+});
+
+export const SpellsSchema = z.strictObject({
+  spells: z.array(SpellSchema).default([]),
+  /** Mana pool when the rules bind no stat to `maxMana`, and regeneration per second without a `manaRegen` stat. */
+  defaultMax: positive.default(50),
+  defaultRegen: z.number().min(0).default(1),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -432,13 +543,17 @@ export const RULE_FILES = {
   creatures: CreaturesSchema,
   needs: NeedsSchema,
   ingress: IngressSchema,
+  spells: SpellsSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
 
 export type SkillsRules = z.infer<typeof SkillsSchema>;
 export type DisciplinesRules = z.infer<typeof DisciplinesSchema>;
+export type Discipline = z.infer<typeof DisciplineSchema>;
 export type CombatRules = z.infer<typeof CombatSchema>;
+export type SpellsRules = z.infer<typeof SpellsSchema>;
+export type Spell = z.infer<typeof SpellSchema>;
 export type BodyRules = z.infer<typeof BodySchema>;
 export type BodyPart = z.infer<typeof BodyPartSchema>;
 export type DeathRules = z.infer<typeof DeathSchema>;
@@ -473,4 +588,5 @@ export interface Rules {
   ingress: IngressRules;
   creatures: CreaturesRules;
   needs: NeedsRules;
+  spells: SpellsRules;
 }
