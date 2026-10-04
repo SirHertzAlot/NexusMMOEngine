@@ -12,6 +12,9 @@
  *   POST /api/editor/terrain/area  → the same for an area {cx, cz, radius}
  *   POST /api/editor/terrain/generate → generator preview (not saved)
  *   POST /api/editor/terrain       → save edited tiles (stops play mode first)
+ *   GET  /api/editor/terrain/map   → the whole-world overview (map, regions, spawn)
+ *   POST /api/editor/terrain/regenerate → {region} | {area}: re-bake it from
+ *                                    the world spec (stops play mode first)
  *   GET  /api/editor/tables        → the gameplay tables (items, creatures,
  *                                    loot, death) + combat's technique ids
  *   POST /api/editor/tables        → save one table {file, json}: validated
@@ -329,12 +332,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
   let owned: OwnedServer | null = null;
 
   /**
-   * Run the engine's terrain tool (export | generate | import) as its own
+   * Run the engine's terrain tool (export | generate | import | map | regenerate) as its own
    * process — native SQLite/procgen code never loads into Vite — with the
    * editor's world as MMO_DATA_DIR. Resolves with its JSON output; a
    * failure rejects with the tool's message.
    */
-  function runTerrainTool(cmd: "export" | "generate" | "import", input?: string): Promise<unknown> {
+  function runTerrainTool(cmd: "export" | "generate" | "import" | "map" | "regenerate", input?: string): Promise<unknown> {
     const tool = join(repoRoot, "packages", "engine-core", "dist", "src", "terrain-tool.js");
     if (!existsSync(tool)) {
       return Promise.reject(
@@ -355,7 +358,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
         rejectRun(new Error(`terrain ${cmd} timed out`));
-      }, 60_000);
+        // A regenerate re-runs the world survey (~10 s for 4 km) first.
+      }, cmd === "regenerate" ? 300_000 : 60_000);
       timer.unref?.();
       child.on("error", (e) => {
         clearTimeout(timer);
@@ -712,6 +716,16 @@ export function editorHost(options: EditorHostOptions): Plugin {
           if (url === "/api/editor/terrain/generate" && req.method === "POST") {
             const body = await readBody(req);
             sendJson(res, 200, { ok: true, ...(await runTerrainTool("generate", body)) as object });
+            return;
+          }
+          if (url === "/api/editor/terrain/map" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, ...(await runTerrainTool("map")) as object });
+            return;
+          }
+          if (url === "/api/editor/terrain/regenerate" && req.method === "POST") {
+            const body = await readBody(req);
+            const stoppedPlayMode = await stopOwned();
+            sendJson(res, 200, { ok: true, stoppedPlayMode, ...(await runTerrainTool("regenerate", body)) as object });
             return;
           }
           if (url === "/api/editor/terrain" && req.method === "POST") {
