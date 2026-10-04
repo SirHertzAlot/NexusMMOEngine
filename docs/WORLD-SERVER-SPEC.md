@@ -184,9 +184,10 @@ The one hard problem. Authority must never be lost or duplicated.
   player who drops after crossing reconnects to the region they are in.
 - A player's hand-off state covers:
   - account and character identity, look, position;
-  - health, stamina and skills.
+  - health, stamina, mana and skills.
 
-  It does not cover bags, parties and guilds, which live in each region's
+  It does not cover injuries, bags, parties and guilds. Injuries start
+  fresh in the new region. Bags, parties and guilds live in each region's
   own store. Carrying them needs the shared persistence the regions don't
   have yet.
 

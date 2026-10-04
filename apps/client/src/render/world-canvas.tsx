@@ -115,6 +115,12 @@ export interface WorldCanvasProps {
   onHud?: (hud: HudData) => void;
   /** The bag key was pressed (M3a). */
   onBag?: () => void;
+  /** The technique or aim key (M3): turn to the next one. */
+  onStance?: (which: "technique" | "aim") => void;
+  /** H (M4): treat your own worst wound. */
+  onTreat?: () => void;
+  /** G: cast Mend on yourself. */
+  onMend?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
@@ -265,6 +271,9 @@ function MirrorWorld({
   bindings,
   onHud,
   onBag,
+  onStance,
+  onTreat,
+  onMend,
   onNearDrop,
   combat,
   onCombat,
@@ -277,8 +286,8 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, onBag, onNearDrop, combat, onCombat, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, onBag, onNearDrop, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, combat, onCombat, lastStateAt, settings });
+  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, combat, onCombat, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Last values sent: nearDrop, and the combat view's numbers (onCombat fires only when one moves).
   const loop = useRef({
@@ -326,6 +335,9 @@ function MirrorWorld({
       // Interface keys (M3a): pick up the drop in range, open the bag.
       onAction: (action) => {
         if (action === "bag") latest.current.onBag?.();
+        else if (action === "technique" || action === "aim") latest.current.onStance?.(action);
+        else if (action === "treat") latest.current.onTreat?.();
+        else if (action === "mend") latest.current.onMend?.();
         else if (drops.nearest !== null) client.pickup(drops.nearest);
       },
     });

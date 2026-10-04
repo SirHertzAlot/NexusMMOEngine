@@ -75,4 +75,4 @@ export { Ability, IntentButton, LocomotionMode } from "./locomotion.js";
 export { COMBAT_MOVES, Move, combatMove, moveTravel } from "./combat.js";
 export type { CombatMove, MoveKind } from "./combat.js";
 export { GROUND_ITEM_VARIANT } from "./items.js";
-export type { LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView } from "./items.js";
+export type { BodyMessage, PartStateName, StanceMessage, TreatMessage, TreatmentMessage, TreatmentName, SkillsMessage, CastMessage, ManaMessage, SpellMessage, LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView } from "./items.js";

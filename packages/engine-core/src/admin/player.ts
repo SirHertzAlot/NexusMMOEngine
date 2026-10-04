@@ -5,14 +5,15 @@
  * velocity (no flings), heal fills from max, fly flips the Fly ability
  * bit (and lands the avatar when revoked mid-air is left to gravity).
  *
- * God-mode waits for damage to exist (M2/M3), mana for its first
- * spender, and time/weather for a runtime clock design — all noted in
- * the roadmap row rather than faked here.
+ * Heal also makes the body whole (M2), and the gateway fills the mana pool
+ * with it. God-mode waits for damage to exist (M2/M3), and time/weather for
+ * a runtime clock design — both noted in the roadmap row rather than faked here.
  */
 
 import { hasComponent } from "bitecs";
 import { z } from "zod";
 import { Ability } from "@mmo-engine/protocol";
+import { restoreBody } from "../body.js";
 import * as C from "../components.js";
 import type { SimWorld } from "../world.js";
 
@@ -33,6 +34,26 @@ export const HealArgsSchema = z
   .strict();
 
 export type HealArgs = z.infer<typeof HealArgsSchema>;
+
+/** `injure {part, kind?, amount?, entity?}` (M3): a blow on one body part, for testing injuries. */
+export const InjureArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    part: z.string().min(1).max(32),
+    kind: z.enum(["cut", "blunt", "thrust"]).default("cut"),
+    /** Health points; default: the part's whole health (a cut that severs it). */
+    amount: z.number().finite().positive().max(100000).optional(),
+  })
+  .strict();
+
+/** `skill {id, value, entity?}` (M4): set a skill (its peak rises with it), for testing disciplines. */
+export const SkillArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    id: z.string().min(1).max(32),
+    value: z.number().finite().min(0).max(100000),
+  })
+  .strict();
 
 export const FlyArgsSchema = z
   .object({
@@ -71,6 +92,8 @@ export function applyHeal(world: SimWorld, wireId: bigint): { ok: boolean; messa
   if (eid < 0 || !hasComponent(world.ecs, C.Health, eid)) {
     return { ok: false, message: `entity ${wireId} has no Health` };
   }
+  // Injuries too (M2): lost parts back, wounds closed, blood full.
+  restoreBody(world, eid);
   C.Health.current[eid] = C.Health.max[eid];
   return { ok: true, message: `healed ${wireId} to ${C.Health.max[eid]}` };
 }

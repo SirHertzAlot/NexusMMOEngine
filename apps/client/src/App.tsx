@@ -22,7 +22,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
-import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
+import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
+import { treatmentNotice } from "./ui/treatment-notice.js";
+import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
+import { spellNotice } from "./ui/spell-notice.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -58,6 +61,11 @@ import {
 } from "./input/bindings.js";
 import { DEV_TOOLS } from "./dev-tools.js";
 import type { DevLayout } from "./ui/dev-layout.js";
+
+/** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
+const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
+const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
+
 import {
   Button,
   Card,
@@ -144,14 +152,17 @@ export function App(): React.ReactElement {
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
+  // The last skills message (M4): a discipline new since it is announced.
+  const skillsRef = useRef<SkillsMessage | null>(null);
   const [assets] = useState(() => new PlaceholderAssets());
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
 
   /** Shared MirrorClient construction with the standard callbacks. */
-  const createClient = (): MirrorClient =>
-    new MirrorClient((u) => new BrowserSocket(u), {
+  const createClient = (): MirrorClient => {
+    skillsRef.current = null;
+    return new MirrorClient((u) => new BrowserSocket(u), {
       onWelcome: (_w: WelcomeMessage) => {
         sessionTokenRef.current = _w.session_token;
         setCharacterName(_w.character?.name ?? null);
@@ -184,9 +195,29 @@ export function App(): React.ReactElement {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
       },
-      onHit: (h) => combat.hit(h, clientRef.current?.playerEntity ?? null),
+      onHit: (h) => {
+        combat.hit(h, clientRef.current?.playerEntity ?? null);
+        const text = disarmNotice(h, clientRef.current?.playerEntity?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onSpell: (sp) => {
+        const text = spellNotice(sp, clientRef.current?.playerEntity?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onSkills: (next) => {
+        const [text] = disciplineNotices(skillsRef.current, next);
+        skillsRef.current = next;
+        if (text) setNotice({ text, at: performance.now() });
+      },
       onLife: (l) => combat.life(l),
+      onTreatment: (t) => {
+        const c = clientRef.current;
+        const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
+        const text = treatmentNotice(t, c?.playerEntity?.toString() ?? null, name);
+        if (text) setNotice({ text, at: performance.now() });
+      },
     });
+  };
 
   /**
    * Run one handshake (login, register, or token reconnect) against a
@@ -295,6 +326,26 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
+  // Stance (M3): R turns to the next technique, T to the next aim; the server keeps it.
+  const stance = useRef<{ technique: number; aim: number }>({ technique: -1, aim: 0 });
+  const onStance = useCallback((which: "technique" | "aim") => {
+    const c = clientRef.current;
+    if (!c) return;
+    const known = new Set(c.body?.parts.filter((p) => p.state !== "dismembered").map((p) => p.id) ?? AIMS);
+    const aims = AIMS.filter((a) => known.has(a));
+    const st = stance.current;
+    if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
+    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
+    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    c.stance(technique, aim);
+    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
+    setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
+  }, []);
+  // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
+  const onTreat = useCallback(() => clientRef.current?.treat(), []);
+  // G casts Mend on yourself (mana's first spender).
+  const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -333,6 +384,9 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
           onBag={toggleBag}
+          onStance={onStance}
+          onTreat={onTreat}
+          onMend={onMend}
           onNearDrop={setNearDrop}
           combat={combat}
           onCombat={setCombatView}

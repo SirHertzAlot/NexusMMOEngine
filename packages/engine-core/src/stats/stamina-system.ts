@@ -17,6 +17,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
 import { Action, Locomotion, PlayerIntent, Stamina } from "../components.js";
+import { Injury } from "../body.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 
@@ -81,7 +82,8 @@ export class StaminaSystem implements SimSystem {
 
       const since = tick - (this.drained.get(e) ?? -REGEN_DELAY_TICKS - 1);
       if (since > REGEN_DELAY_TICKS && Stamina.current[e] < Stamina.max[e]) {
-        const rate = sim.stats.get(e, "staminaRegen") ?? BUILTIN_REGEN;
+        // A weakened torso (M2) recovers more slowly.
+        const rate = (sim.stats.get(e, "staminaRegen") ?? BUILTIN_REGEN) * (hasComponent(sim.ecs, Injury, e) ? Injury.stamina[e] : 1);
         Stamina.current[e] = Math.min(Stamina.max[e], Stamina.current[e] + rate * dtSeconds);
       }
     }
