@@ -1,0 +1,7 @@
+{
+  "spells": [
+    { "id": "mend", "name": "Mend", "mana": 25, "castSeconds": 2, "cooldownSeconds": 6, "target": "any", "reach": 3, "effect": { "kind": "heal", "amount": 15 } }
+  ],
+  "defaultMax": 50,
+  "defaultRegen": 1
+}

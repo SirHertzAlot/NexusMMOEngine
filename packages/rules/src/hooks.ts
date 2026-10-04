@@ -55,6 +55,42 @@ export interface LandingInput {
   precisionFactor?: number;
 }
 
+export interface DefenceInput {
+  /** The attacker's skill in its technique, and the defender's in its defence, 0..skills.max. */
+  attackSkill: number;
+  defenceSkill: number;
+  /** 0..1 uniform, deterministic per blow. */
+  rng: () => number;
+  /** The defender parries (not blocks) and knows the `disarm` technique. */
+  canDisarm?: boolean;
+}
+
+export interface DefenceResult {
+  /** The guard stopped the blow. */
+  stopped: boolean;
+  /** Share of the blow that gets through (0 when stopped). */
+  letsThrough: number;
+  /** The attacker loses what it holds in its main hand. */
+  disarms: boolean;
+}
+
+export type TreatmentKind = "bandage" | "stump" | "set";
+
+export interface TreatmentInput {
+  kind: TreatmentKind;
+  /** The healer's Medicine, 0..skills.max. */
+  skill: number;
+  /** 0..1 uniform, deterministic per treatment. */
+  rng: () => number;
+}
+
+export interface TreatmentResult {
+  /** How long the treatment takes. */
+  seconds: number;
+  /** Whether it works when that time is up. */
+  success: boolean;
+}
+
 export interface GainInput {
   /** Current skill, 0..skills.max. */
   skill: number;
@@ -110,6 +146,8 @@ export interface RespawnOutcome {
 export interface RuleHooks {
   computeDamage(input: DamageInput): DamageResult;
   resolveLanding(input: LandingInput): string;
+  resolveDefence(input: DefenceInput): DefenceResult;
+  resolveTreatment(input: TreatmentInput): TreatmentResult;
   skillGain(input: GainInput): number;
   onInjury(input: InjuryInput): InjuryResult;
   onDeath(input: DeathInput): DeathOutcome;
@@ -141,6 +179,24 @@ export function masteryPower(rules: Rules, m: number): number {
 export function precision(rules: Rules, m: number, factor = 1): number {
   const p = rules.combat.precision;
   return clamp01((p.novice + p.masterBonus * clamp01(m)) * factor);
+}
+
+/** Chance a facing guard stops a blow: base + perSkill × (m_defence − m_attack), within [min, max]. */
+export function defenceChance(rules: Rules, defence: number, attack: number): number {
+  const d = rules.combat.defence;
+  return Math.max(d.min, Math.min(d.max, d.base + d.perSkill * (clamp01(defence) - clamp01(attack))));
+}
+
+/** Chance a treatment of `kind` by a healer at Medicine fraction `m` works. */
+export function treatmentChance(rules: Rules, kind: TreatmentKind, m: number): number {
+  const t = rules.body.treatment;
+  return Math.max(t.chance.min, Math.min(1, t.chance.base + t.chance.perSkill * clamp01(m) - t[kind].difficulty));
+}
+
+/** Seconds a treatment of `kind` takes a healer at Medicine fraction `m`. */
+export function treatmentSeconds(rules: Rules, kind: TreatmentKind, m: number): number {
+  const t = rules.body.treatment;
+  return t[kind].seconds * (1 - t.fasterPerSkill * clamp01(m));
 }
 
 /**
@@ -208,6 +264,20 @@ function defaultHooks(rules: Rules): RuleHooks {
         if (pick < 0) return p.id;
       }
       return neighbours[neighbours.length - 1].id;
+    },
+
+    resolveDefence({ attackSkill, defenceSkill, rng, canDisarm = false }) {
+      const max = rules.skills.max;
+      const d = rules.combat.defence;
+      if (rng() < defenceChance(rules, defenceSkill / max, attackSkill / max)) {
+        return { stopped: true, letsThrough: 0, disarms: canDisarm && (defenceSkill - attackSkill) / max >= d.disarmMargin };
+      }
+      return { stopped: false, letsThrough: d.failedLetsThrough, disarms: false };
+    },
+
+    resolveTreatment({ kind, skill, rng }) {
+      const m = skill / rules.skills.max;
+      return { seconds: treatmentSeconds(rules, kind, m), success: rng() < treatmentChance(rules, kind, m) };
     },
 
     skillGain({ skill, peak, difficulty, recentUses = 0 }) {

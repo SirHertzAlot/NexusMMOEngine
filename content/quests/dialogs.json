@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "dialogs": {
+    "warden": {
+      "start": "greet",
+      "nodes": {
+        "greet": {
+          "text": "Well met, {name}. These are uneasy days on the plains.",
+          "replies": [
+            { "text": "I've dealt with the goblins at the tower.", "if": { "quest": "goblin-trouble", "is": "ready" }, "do": { "complete": "goblin-trouble" }, "next": "thanks" },
+            { "text": "I've been to the standing stones.", "if": { "quest": "standing-stones", "is": "ready" }, "do": { "complete": "standing-stones" }, "next": "thanks" },
+            { "text": "The board job is done.", "if": { "quest": "board", "is": "ready" }, "do": { "complete": "board" }, "next": "thanks" },
+            { "text": "Uneasy how?", "if": { "quest": "goblin-trouble", "is": "available" }, "next": "goblins" },
+            { "text": "What draws them to the stones?", "if": { "quest": "standing-stones", "is": "available" }, "next": "stones" },
+            { "text": "Any work on the board?", "if": { "quest": "board", "is": "available" }, "next": "board" },
+            { "text": "Farewell." }
+          ]
+        },
+        "goblins": {
+          "text": "Goblins have taken the old watchtower to the east. Clear them out and I'll see you armed properly.",
+          "replies": [
+            { "text": "I'll see to it.", "do": { "accept": "goblin-trouble" } },
+            { "text": "Not today.", "next": "greet" }
+          ]
+        },
+        "stones": {
+          "text": "The stones to the southwest hum at night. Have a look and tell me what you find.",
+          "replies": [
+            { "text": "I'll go.", "do": { "accept": "standing-stones" } },
+            { "text": "Maybe later.", "next": "greet" }
+          ]
+        },
+        "board": {
+          "text": "Today's posting: {board}.",
+          "replies": [
+            { "text": "I'll take it.", "do": { "accept": "board" } },
+            { "text": "Something else, then.", "next": "greet" }
+          ]
+        },
+        "thanks": {
+          "text": "Good work. Take this, you've earned it.",
+          "replies": [{ "text": "Anything else?", "next": "greet" }, { "text": "Farewell." }]
+        }
+      }
+    }
+  }
+}

@@ -30,6 +30,7 @@ import {
   type ChatChannel,
   type FriendMessage,
   type FriendsState,
+  type BlocksState,
   type GuildMessage,
   type PartyMessage,
   type PartyState,
@@ -41,6 +42,14 @@ import {
   type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
+  type BodyMessage,
+  type StanceMessage,
+  type TreatMessage,
+  type TreatmentMessage,
+  type SkillsMessage,
+  type CastMessage,
+  type ManaMessage,
+  type SpellMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -85,12 +94,24 @@ export interface MirrorEvents {
   onParty?(p: PartyState): void;
   onGuild?(g: GuildState): void;
   onFriends?(f: FriendsState): void;
+  /** The block list (U8), on login and after each block or unblock. */
+  onBlocks?(b: BlocksState): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
   onLife?(l: LifeMessage): void;
+  /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
+  onBody?(b: BodyMessage): void;
+  /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
+  onTreatment?(t: TreatmentMessage): void;
+  /** The player's skills, item familiarity or disciplines changed (also on joining; roadmap M4, protocol 0x1b). */
+  onSkills?(s: SkillsMessage): void;
+  /** The player's mana changed (also on joining; protocol 0x1c). */
+  onMana?(m: ManaMessage): void;
+  /** A cast the player makes or receives started, completed or stopped (protocol 0x1c). */
+  onSpell?(s: SpellMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -121,6 +142,12 @@ export class MirrorClient {
   account: AccountMessage | null = null;
   /** The player's own attributes and stats, from the last stats message; null until one arrives. */
   stats: StatsMessage | null = null;
+  /** The player's own body (parts, injuries, blood), from the last body message; null until one arrives. */
+  body: BodyMessage | null = null;
+  /** The player's skills, familiarity and disciplines, as last sent (M4, 0x1b). */
+  skills: SkillsMessage | null = null;
+  /** The player's mana pool, as last sent (0x1c); null until one arrives. */
+  mana: ManaMessage | null = null;
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -227,6 +254,55 @@ export class MirrorClient {
   pickup(entity: bigint): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
+  }
+
+  /**
+   * How the player's blows are struck (M3, 0x19): a technique ("cut",
+   * "thrust", "bludgeon") and the body part aimed at. Undefined leaves a
+   * field as it is, null resets it; refusals arrive as 4005 errors.
+   */
+  stance(technique: string | null | undefined, aim: string | null | undefined): void {
+    if (!this.socket || this.closed) return;
+    const msg: StanceMessage = { kind: "stance" };
+    if (technique !== undefined) msg.technique = technique;
+    if (aim !== undefined) msg.aim = aim;
+    this.send(this.socket, encodeEnvelope(MessageType.Stance, encodeControl(msg)));
+  }
+
+  /**
+   * Treat a body part with Medicine (M4, 0x1a): `target` a character's wire
+   * id (absent: yourself), `part` a body part (absent: the most urgent).
+   * Progress arrives as onTreatment; refusals as 4005 errors.
+   */
+  treat(target?: string, part?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: TreatMessage = { kind: "treat" };
+    if (target !== undefined) msg.target = target;
+    if (part !== undefined) msg.part = part;
+    this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl(msg)));
+  }
+
+  /**
+   * Cast a spell (0x1c) on `target` (a character's wire id; absent:
+   * yourself). Progress arrives as onSpell, refusals as 4005 errors.
+   */
+  cast(spell: string, target?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: CastMessage = { kind: "cast", spell };
+    if (target !== undefined) msg.target = target;
+    this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl(msg)));
+  }
+
+  /** Stop the cast under way (0x1c). */
+  stopCasting(): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl({ kind: "cast", stop: true } satisfies CastMessage)));
+  }
+
+  /** Stop the treatment under way (M4, 0x1a). */
+  stopTreating(): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl({ kind: "treat", stop: true } satisfies TreatMessage)));
   }
 
   /** Ask to drop an item from the bag at the player's feet (M3a, 0x13). */
@@ -583,10 +659,11 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState>(payload);
         if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
+        else if (m.kind === "blocks") this.events.onBlocks?.(m);
         else this.events.onChat?.(m);
         break;
       }
@@ -610,6 +687,25 @@ export class MirrorClient {
         break;
       case MessageType.Life:
         this.events.onLife?.(decodeControl<LifeMessage>(payload));
+        break;
+      case MessageType.Body:
+        this.body = decodeControl<BodyMessage>(payload);
+        this.events.onBody?.(this.body);
+        break;
+      case MessageType.Skills:
+        this.skills = decodeControl<SkillsMessage>(payload);
+        this.events.onSkills?.(this.skills);
+        break;
+      case MessageType.Magic: {
+        const m = decodeControl<ManaMessage | SpellMessage>(payload);
+        if (m.kind === "mana") {
+          this.mana = m;
+          this.events.onMana?.(m);
+        } else this.events.onSpell?.(m);
+        break;
+      }
+      case MessageType.Treat:
+        this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
         break;
       case MessageType.Bye:
         this.disconnect();

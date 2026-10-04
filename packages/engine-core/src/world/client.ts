@@ -10,6 +10,8 @@
 import type {
   ChunkRange,
   HeartbeatAck,
+  MigrationRecord,
+  RegionInfo,
   RegionLease,
 } from "@mmo-engine/world-server";
 
@@ -49,6 +51,8 @@ export interface WorldClientOptions {
   /** Live stats sampled on each heartbeat (defaults to zeros). */
   getStats?: () => { load: number; tickJitterMs: number; entityCount: number };
   onError?: (err: unknown, context: string) => void;
+  /** Every heartbeat ack from the timer (migration outcomes ride on it). */
+  onAck?: (ack: HeartbeatAck) => void;
 }
 
 function newOpId(): string {
@@ -75,6 +79,10 @@ export class WorldClient {
     return this.lease !== null;
   }
 
+  get regionId(): string {
+    return this.opts.regionId;
+  }
+
   private fail(err: unknown, context: string): void {
     if (this.opts.onError) this.opts.onError(err, context);
   }
@@ -88,7 +96,9 @@ export class WorldClient {
       this.lease?.heartbeatIntervalMs ?? this.opts.heartbeatIntervalMs ?? 5000,
     );
     this.timer = setInterval(() => {
-      void this.heartbeat().catch((err) => this.fail(err, "heartbeat"));
+      void this.heartbeat()
+        .then((ack) => { if (ack && this.opts.onAck) this.opts.onAck(ack); })
+        .catch((err) => this.fail(err, "heartbeat"));
     }, interval);
     this.timer.unref();
   }
@@ -173,6 +183,42 @@ export class WorldClient {
     } catch (err) {
       this.fail(err, "reportSnapshot");
     }
+  }
+
+  // ---------------------------------------------------------- slice B
+  // Unlike heartbeats these throw: the migration coordinator decides
+  // what a failure means for the entity.
+
+  private token(): string {
+    if (!this.lease) throw new WorldTransportError(0, "not registered with the world");
+    return this.lease.token;
+  }
+
+  async listRegions(): Promise<RegionInfo[]> {
+    const res = await this.transport.call("ListRegions", {}, this.token());
+    return res["regions"] as RegionInfo[];
+  }
+
+  async beginMigration(entityId: string, toRegion: string, entityState: Record<string, unknown> | null): Promise<string> {
+    const res = await this.transport.call(
+      "BeginMigration",
+      { input: { opId: newOpId(), entityId, fromRegion: this.opts.regionId, toRegion, entityState } },
+      this.token(),
+    );
+    return res["migrationId"] as string;
+  }
+
+  async commitMigration(migrationId: string): Promise<void> {
+    await this.transport.call("CommitMigration", { migrationId, opId: newOpId() }, this.token());
+  }
+
+  async abortMigration(migrationId: string, reason: string): Promise<void> {
+    await this.transport.call("AbortMigration", { migrationId, opId: newOpId(), reason }, this.token());
+  }
+
+  async getMigration(migrationId: string): Promise<MigrationRecord> {
+    const res = await this.transport.call("GetMigration", { migrationId }, this.token());
+    return res["migration"] as MigrationRecord;
   }
 
   /** Stop heartbeats and best-effort deregister. Never throws. */

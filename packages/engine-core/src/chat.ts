@@ -45,17 +45,19 @@ export const BLOCK_LIMIT = 200;
 export const NOT_ONLINE = "not online";
 
 /**
- * Who blocks whom, by account name (S2).
+ * Who blocks whom, by account name (S2), with the character name each block
+ * was made under so the blocker's list (U8) can show and undo it.
  */
 export class BlockList {
-  private readonly blocks = new Map<string, Set<string>>();
+  /** blocker account → blocked account → name as blocked, in block order. */
+  private readonly blocks = new Map<string, Map<string, string>>();
 
   /** Writes through to `store` (SQLite in the server, S2c), so blocks survive a restart. */
   constructor(private readonly store: SocialStore = memorySocialStore()) {
     for (const r of store.loadBlocks()) {
       let set = this.blocks.get(r.blocker);
-      if (!set) this.blocks.set(r.blocker, (set = new Set()));
-      set.add(r.target);
+      if (!set) this.blocks.set(r.blocker, (set = new Map()));
+      set.set(r.target, r.name);
     }
   }
 
@@ -63,22 +65,34 @@ export class BlockList {
     return this.blocks.get(blocker.toLowerCase())?.has(sender.toLowerCase()) ?? false;
   }
 
-  /** False when blocking yourself or over the limit. */
-  add(blocker: string, target: string): boolean {
+  /** False when blocking yourself or over the limit. `name` is what the blocker typed (default: the account). */
+  add(blocker: string, target: string, name: string = target): boolean {
     const b = blocker.toLowerCase();
     const t = target.toLowerCase();
     if (b === t) return false;
     let set = this.blocks.get(b);
-    if (!set) this.blocks.set(b, (set = new Set()));
+    if (!set) this.blocks.set(b, (set = new Map()));
     if (set.has(t)) return true;
     if (set.size >= BLOCK_LIMIT) return false;
-    set.add(t);
-    this.store.addBlock(b, t);
+    set.set(t, name);
+    this.store.addBlock(b, t, name);
     return true;
   }
 
   remove(blocker: string, target: string): void {
     if (this.blocks.get(blocker.toLowerCase())?.delete(target.toLowerCase())) this.store.removeBlock(blocker, target);
+  }
+
+  /** The names on a blocker's list, in block order. */
+  names(blocker: string): string[] {
+    return [...(this.blocks.get(blocker.toLowerCase())?.values() ?? [])];
+  }
+
+  /** The blocked account listed under `name` (case-insensitive), so an offline character can be unblocked. */
+  accountNamed(blocker: string, name: string): string | undefined {
+    const key = name.toLowerCase();
+    for (const [account, n] of this.blocks.get(blocker.toLowerCase()) ?? []) if (n.toLowerCase() === key) return account;
+    return undefined;
   }
 }
 

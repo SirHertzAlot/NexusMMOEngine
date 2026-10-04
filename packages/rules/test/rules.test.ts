@@ -13,6 +13,9 @@ import { fileURLToPath } from "node:url";
 import {
   createHooks,
   decaySkill,
+  defenceChance,
+  treatmentChance,
+  treatmentSeconds,
   engineDefaults,
   loadRules,
   parseRules,
@@ -275,6 +278,69 @@ describe("bad rules", () => {
     const issues = issuesOf(() => parseRules({ body: { parts } }));
     assert.ok(issues.some((i) => i.startsWith("body.json: parts: ") && /at most 15 parts/.test(i)), issues.join("\n"));
     assert.doesNotThrow(() => parseRules({ body: { parts: parts.slice(0, 15).map((p) => ({ ...p, share: 1 / 15 })) } }));
+  });
+
+  it("a guard is a contest of skills, held within its bounds (M3)", () => {
+    const r = parseRules({ skills: { skills: [] }, combat: { defence: { base: 0.5, perSkill: 1, min: 0.1, max: 0.9, failedLetsThrough: 0.3 } } });
+    assert.equal(defenceChance(r, 0.5, 0.5), 0.5);
+    assert.equal(defenceChance(r, 1, 0), 0.9);
+    assert.equal(defenceChance(r, 0, 1), 0.1);
+    const h = createHooks(r);
+    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.49 }), { stopped: true, letsThrough: 0, disarms: false });
+    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.51 }), { stopped: false, letsThrough: 0.3, disarms: false });
+  });
+
+  it("a much better parry disarms, only with the technique (M4)", () => {
+    const h = createHooks(parseRules({ skills: { skills: [] }, combat: { defence: { disarmMargin: 0.3 } } }));
+    const parry = (attackSkill: number, defenceSkill: number, canDisarm: boolean) => h.resolveDefence({ attackSkill, defenceSkill, rng: () => 0, canDisarm });
+    assert.equal(parry(40, 80, true).disarms, true);
+    assert.equal(parry(40, 80, false).disarms, false);
+    assert.equal(parry(60, 80, true).disarms, false);
+    assert.equal(h.resolveDefence({ attackSkill: 40, defenceSkill: 80, rng: () => 0.999, canDisarm: true }).disarms, false);
+  });
+
+  it("a skilled healer treats faster and more surely, never below the floor (M4)", () => {
+    const r = parseRules({ skills: { skills: [] } });
+    const t = r.body.treatment;
+    assert.equal(treatmentSeconds(r, "set", 0), t.set.seconds);
+    assert.ok(Math.abs(treatmentSeconds(r, "set", 1) - t.set.seconds * (1 - t.fasterPerSkill)) < 1e-9);
+    assert.ok(Math.abs(treatmentChance(r, "bandage", 0) - (t.chance.base - t.bandage.difficulty)) < 1e-9);
+    assert.equal(treatmentChance(r, "bandage", 1), 1);
+    const hard = parseRules({ skills: { skills: [] }, body: { treatment: { set: { seconds: 5, difficulty: 1 } } } });
+    assert.equal(treatmentChance(hard, "set", 0), hard.body.treatment.chance.min);
+    const h = createHooks(r);
+    assert.deepEqual(h.resolveTreatment({ kind: "bandage", skill: 0, rng: () => 0.39 }), { seconds: t.bandage.seconds, success: true });
+    assert.equal(h.resolveTreatment({ kind: "bandage", skill: 0, rng: () => 0.41 }).success, false);
+  });
+
+  it("spells are data: ids are unique, and mana can drive a stat", () => {
+    const r = parseRules({ skills: { skills: [] } });
+    assert.deepEqual(r.spells.spells, []);
+    assert.equal(r.spells.defaultMax, 50);
+    const mend = { id: "mend", name: "Mend", mana: 10, effect: { kind: "heal", amount: 5 } };
+    const two = parseRules({ skills: { skills: [] }, spells: { spells: [mend] } }).spells.spells[0];
+    assert.deepEqual([two.castSeconds, two.cooldownSeconds, two.target, two.reach], [1.5, 0, "any", 3]);
+    const issues = issuesOf(() => parseRules({ skills: { skills: [] }, spells: { spells: [mend, mend] } }));
+    assert.ok(issues.some((i) => i.startsWith("spells.json") && /mend/.test(i)), issues.join("\n"));
+    assert.ok(issuesOf(() => parseRules({ spells: { spells: [{ ...mend, effect: { kind: "fire" } }] } })).length > 0);
+    const stats = parseRules({ stats: { attributes: [], stats: [{ id: "maxMana", name: "Max mana", base: 30, drives: "maxMana" }] } });
+    assert.equal(stats.stats.stats[0].drives, "maxMana");
+  });
+
+  it("a body's hands and fall parts must make sense (M2)", () => {
+    const issues = issuesOf(() =>
+      parseRules({
+        body: {
+          parts: [
+            { id: "torso", name: "Torso", parent: null, share: 0.5, holds: "main" },
+            { id: "claw", name: "Claw", parent: "torso", share: 0.5, holds: "main" },
+          ],
+          fall: { parts: { tail: 1 } },
+        },
+      }),
+    );
+    assert.ok(issues.includes("body.json: parts: more than one part holds the main hand"), issues.join("\n"));
+    assert.ok(issues.includes('body.json: fall.parts.tail: no part "tail"'), issues.join("\n"));
   });
 
   it("an empty folder is the engine default", () => {

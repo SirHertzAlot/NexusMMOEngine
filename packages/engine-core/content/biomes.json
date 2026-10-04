@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "biomes": {
+    "sea": {
+      "name": "Sea",
+      "scatter": {"lilies": 0.0, "reeds": 0.1},
+      "creatures": { "packsPerKm2": 0, "table": [] }
+    },
+    "lake": {
+      "name": "Lake",
+      "scatter": {"lilies": 1.0, "reeds": 1.0},
+      "creatures": { "packsPerKm2": 0, "table": [] }
+    },
+    "volcanic": {
+      "name": "Volcanic fields",
+      "scatter": {"trees": 0.0, "open": 0.0, "deadwood": 0.4, "understory": 0.0, "shrubs": 0.0, "rocks": 2.0, "flowers": 0.0, "grass": 0.0, "reeds": 0.0, "lilies": 0.0},
+      "creatures": { "packsPerKm2": 10, "table": [
+        {"kind": "orc", "weight": 1}
+      ] }
+    },
+    "glacier": {
+      "name": "Glacier",
+      "scatter": {"trees": 0.0, "open": 0.0, "deadwood": 0.0, "understory": 0.0, "shrubs": 0.0, "rocks": 0.7, "flowers": 0.0, "grass": 0.0, "reeds": 0.0, "lilies": 0.0},
+      "creatures": { "packsPerKm2": 0, "table": [] }
+    },
+    "snow": {
+      "name": "Snowfield",
+      "scatter": {"trees": 0.08, "open": 0.0, "deadwood": 0.3, "understory": 0.0, "shrubs": 0.0, "rocks": 1.1, "flowers": 0.0, "grass": 0.0, "reeds": 0.0, "lilies": 0.0},
+      "creatures": { "packsPerKm2": 10, "table": [
+        {"kind": "troll", "weight": 1},
+        {"kind": "wolf", "weight": 1}
+      ] }
+    },
+    "mountains": {
+      "name": "Mountains",
+      "scatter": {"trees": 0.35, "open": 0.3, "deadwood": 0.8, "understory": 0.4, "shrubs": 0.4, "rocks": 2.4, "flowers": 0.4, "grass": 0.6, "reeds": 0.3, "lilies": 0.2},
+      "creatures": { "packsPerKm2": 25, "table": [
+        {"kind": "goblin", "weight": 1},
+        {"kind": "orc", "weight": 2},
+        {"kind": "troll", "weight": 2},
+        {"kind": "ogre", "weight": 1},
+        {"kind": "bear", "weight": 1}
+      ] }
+    },
+    "tundra": {
+      "name": "Tundra",
+      "scatter": {"trees": 0.25, "open": 0.4, "deadwood": 1.5, "understory": 0.3, "shrubs": 0.5, "rocks": 1.6, "flowers": 0.4, "grass": 0.8, "reeds": 0.4, "lilies": 0.2},
+      "creatures": { "packsPerKm2": 20, "table": [
+        {"kind": "troll", "weight": 2},
+        {"kind": "wolf", "weight": 2},
+        {"kind": "bear", "weight": 1}
+      ] }
+    },
+    "beach": {
+      "name": "Beach",
+      "scatter": {"trees": 0.1, "open": 0.2, "deadwood": 0.3, "understory": 0.1, "shrubs": 0.3, "rocks": 0.6, "flowers": 0.2, "grass": 0.35, "reeds": 0.1, "lilies": 0.0},
+      "creatures": { "packsPerKm2": 0, "table": [] }
+    },
+    "swamp": {
+      "name": "Swamp",
+      "scatter": {"trees": 0.6, "open": 0.3, "deadwood": 3.0, "understory": 1.2, "shrubs": 0.8, "rocks": 0.3, "flowers": 0.4, "grass": 1.1, "reeds": 2.0, "lilies": 2.0},
+      "creatures": { "packsPerKm2": 35, "table": [
+        {"kind": "goblin", "weight": 2},
+        {"kind": "troll", "weight": 1},
+        {"kind": "ogre", "weight": 1},
+        {"kind": "giant-spider", "weight": 1}
+      ] }
+    },
+    "desert": {
+      "name": "Desert",
+      "scatter": {"trees": 0.03, "open": 0.05, "deadwood": 0.6, "understory": 0.05, "shrubs": 0.25, "rocks": 1.4, "flowers": 0.05, "grass": 0.12, "reeds": 0.6, "lilies": 0.2},
+      "creatures": { "packsPerKm2": 12, "table": [
+        {"kind": "orc", "weight": 1}
+      ] }
+    },
+    "rainforest": {
+      "name": "Rainforest",
+      "scatter": {"trees": 1.35, "open": 0.3, "deadwood": 0.8, "understory": 1.7, "shrubs": 1.4, "rocks": 0.4, "flowers": 0.5, "grass": 0.3, "reeds": 1.2, "lilies": 1.4},
+      "creatures": { "packsPerKm2": 40, "table": [
+        {"kind": "boar", "weight": 1},
+        {"kind": "giant-spider", "weight": 2}
+      ] }
+    },
+    "forest": {
+      "name": "Forest",
+      "scatter": {"trees": 1.0, "open": 0.5, "deadwood": 1.0, "understory": 1.0, "shrubs": 1.0, "rocks": 0.7, "flowers": 0.8, "grass": 0.6, "reeds": 1.0, "lilies": 1.0},
+      "creatures": { "packsPerKm2": 40, "table": [
+        {"kind": "goblin", "weight": 2},
+        {"kind": "wolf", "weight": 2},
+        {"kind": "bear", "weight": 2},
+        {"kind": "boar", "weight": 2}
+      ] }
+    },
+    "plains": {
+      "name": "Plains",
+      "scatter": {"trees": 0.2, "open": 1.4, "deadwood": 0.2, "understory": 0.5, "shrubs": 0.8, "rocks": 0.7, "flowers": 1.5, "grass": 1.5, "reeds": 1.0, "lilies": 1.0},
+      "creatures": { "packsPerKm2": 30, "table": [
+        {"kind": "goblin", "weight": 1},
+        {"kind": "orc", "weight": 2},
+        {"kind": "wolf", "weight": 1},
+        {"kind": "boar", "weight": 1}
+      ] }
+    }
+  }
+}
