@@ -6,10 +6,10 @@
 import type { SpellMessage } from "@mmo-engine/protocol";
 
 /** "mend" -> "Mend". */
-const title = (id: string): string => id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, " $1");
+export const spellTitle = (id: string): string => id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, " $1");
 
 /** The line to show, or null when there is nothing to say. `me` is the player's own wire id. */
-export function spellNotice(s: SpellMessage, me: string | null, name = title(s.spell)): string | null {
+export function spellNotice(s: SpellMessage, me: string | null, name = spellTitle(s.spell)): string | null {
   const self = s.caster === s.target;
   if (s.caster === me) {
     switch (s.state) {

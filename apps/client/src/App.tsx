@@ -22,12 +22,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
-import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
+import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
 import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
+import { CastBar, nextCast, type CastState } from "./ui/cast-bar.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -184,6 +185,11 @@ export function App(): React.ReactElement {
   // Also carries hunger and thirst (U3) for the player frame, and skills for the sheet.
   const [sheet, setSheet] = useState<StatsMessage | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The player's body (0x18): injuries on the player frame's doll and the sheet.
+  const [body, setBody] = useState<BodyMessage | null>(null);
+  // Mana (0x1c) for the player frame, and the player's own cast under way for the cast bar.
+  const [mana, setMana] = useState<ManaMessage | null>(null);
+  const [cast, setCast] = useState<CastState | null>(null);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
@@ -250,6 +256,7 @@ export function App(): React.ReactElement {
       onNpcs: (n) => setNpcs(n.npcs),
       onDialog: (d) => setDialog("closed" in d ? null : d),
       onStats: setSheet,
+      onBody: setBody,
       onInventory: (inv) => {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
@@ -262,8 +269,11 @@ export function App(): React.ReactElement {
         const text = disarmNotice(h, player?.toString() ?? null);
         if (text) setNotice({ text, at: performance.now() });
       },
+      onMana: setMana,
       onSpell: (sp) => {
-        const text = spellNotice(sp, clientRef.current?.playerEntity?.toString() ?? null);
+        const me = clientRef.current?.playerEntity?.toString() ?? null;
+        setCast((prev) => nextCast(prev, sp, me, performance.now()));
+        const text = spellNotice(sp, me);
         if (text) setNotice({ text, at: performance.now() });
       },
       onSkills: (next) => {
@@ -361,6 +371,9 @@ export function App(): React.ReactElement {
     setBlocked([]);
     setSheet(null);
     setSheetOpen(false);
+    setBody(null);
+    setMana(null);
+    setCast(null);
     setBag(null);
     setHands({ main: null, off: null });
     setBagOpen(false);
@@ -426,6 +439,8 @@ export function App(): React.ReactElement {
   }, []);
   // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
   const onTreat = useCallback(() => clientRef.current?.treat(), []);
+  // The sheet's body doll treats the part clicked.
+  const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
@@ -514,8 +529,11 @@ export function App(): React.ReactElement {
             maxHp={combatView?.maxHp ?? hud.maxHp}
             sp={hud.sp}
             maxSp={hud.maxSp}
+            mana={mana}
             needs={sheet?.needs}
+            body={body}
           />
+          <CastBar cast={cast} />
         </div>
         <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
@@ -661,7 +679,7 @@ export function App(): React.ReactElement {
           )}
           {questsOpen && quests && <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />}
           {sheetOpen && sheet && (
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} />
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} />
           )}
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
             quests
