@@ -204,6 +204,24 @@ Damage and hit reactions are a later step.
   250 m above the ground, at 12 m/s across. Descending onto the ground
   lands; into deep water, swims; toggling off mid-air falls.
 
+## Quests and dialog (P1, on 0x11)
+
+Quest messages ride the chat envelope (0x11) like parties and guilds. They
+are additive kinds, so older clients ignore them. Types: `@mmo-engine/protocol`
+`quests.ts`.
+
+| Direction | Message | Meaning |
+|---|---|---|
+| C→S | `{kind:"quest", op:"talk", npc}` | Open an npc's dialog. Refused ("nobody to talk to there") outside its talk range (default 6 m). Talking also counts toward any "talk to" step. |
+| C→S | `{kind:"quest", op:"reply", index}` | Pick a reply of the open dialog by its `index` (as sent). Its action runs (take or hand in a quest), then its next node shows, or the dialog closes. |
+| C→S | `{kind:"quest", op:"close"}` | Close the dialog. |
+| C→S | `{kind:"quest", op:"abandon", quest}` | Drop a quest in progress. |
+| S→C | `{kind:"npcs", npcs:[{id, name, x, z, marker}]}` | On entering and after every change: quest givers, where they stand, and `marker` `"offer"` (a quest to take), `"ready"` (one to hand in) or null. |
+| S→C | `{kind:"quests", quests:[QuestView]}` | The whole log on entering and after every change. `QuestView`: `{id, name, giver, giverId, summary, state:"active"\|"ready"\|"done", steps:[{text, done, progress, target}], rewards:[{base, count}]}`. Only done steps and the current one are listed. |
+| S→C | `{kind:"dialog", npc, name, text, replies:[{index, text}]}` · `{kind:"dialog", npc, closed:true}` | The open dialog: only the replies whose conditions hold are sent. Closed when picked to an end, on `close`, or when the character walks out of range. |
+
+Refusals come as system chat lines (`{kind:"chat", channel:"system", text}`). Quests need a character: an account playing without one gets no log.
+
 ## Session & reconnect semantics (slice 1.3, auth updated slice 1.4)
 
 - **Identity.** The server-issued session token is the client identity.

@@ -104,6 +104,17 @@ parameters. The same works for:
 
 The editor's graph view (PICG slices 3 and 4) is where these graphs are drawn.
 
+**Built (P1, quests and dialog):** `content/quests/` holds the stages, step
+types (objective, text, tags given, needed and excluded) and templates;
+`engine-core/src/quests/generate.ts` collapses a template with the WFC
+solver (one slot per stage, a "seq" edge between every pair of slots for
+needs and exclusions) and binds it to the giver's world: a creature kind
+living near, one of the giver's places, an item base. Authored quests and
+dialog graphs (lines, replies with conditions and actions) sit beside them.
+A region's `QuestService` runs dialog, quest logs (saved in `quests.db`),
+progress from kills, places, bags and talks, and hand-in with rewards; each
+quest giver's board offers every character one generated quest a day.
+
 ### 2.4 Raymarching
 
 Raymarching comes in at two points. Which matters most to you is an open question (§10):
