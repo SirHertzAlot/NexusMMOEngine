@@ -503,7 +503,7 @@ function MirrorWorld({
     r.particles.update(Math.min(delta, 0.25), camera.position, weather);
 
     const seconds = now / 1000;
-    r.terrain.update();
+    r.terrain.update(camera.position);
     r.water.update(seconds);
     updateTerrainFx(seconds);
 
