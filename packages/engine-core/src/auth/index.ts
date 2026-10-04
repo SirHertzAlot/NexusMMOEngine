@@ -26,10 +26,11 @@ export {
   AdminCommandSchema,
   HelloCredentialsSchema,
   HelloTokenSchema,
+  HelloMigrationSchema,
   RegisterSchema,
   parseHello,
 } from "./schemas.js";
-export type { AdminCommandPayload, HelloCredentials, HelloToken, RegisterPayload } from "./schemas.js";
+export type { AdminCommandPayload, HelloCredentials, HelloToken, HelloMigration, RegisterPayload } from "./schemas.js";
 
 export { SessionManager } from "./sessions.js";
 export type { AuthSession, SessionManagerOptions, SessionStore } from "./sessions.js";

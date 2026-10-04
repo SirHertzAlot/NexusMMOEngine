@@ -18,6 +18,7 @@ export type {
   GuildMessage,
   GuildRank,
   GuildState,
+  ByeMessage,
   ChatBroadcast,
   ChatChannel,
   ChatMessage,

@@ -255,6 +255,9 @@ export function App(): React.ReactElement {
         setError((prev) => prev ?? "connection closed");
         setScreen("login");
       },
+      // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
+      // asset requests go to the server that has the player now.
+      onRegionChange: setUrl,
       onChat: (c) => {
         setChatLines((prev) => [...prev.slice(-49), c]);
         setReplyTo((prev) => replyTarget(prev, c, characterNameRef.current));

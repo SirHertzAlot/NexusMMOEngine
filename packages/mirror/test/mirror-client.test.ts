@@ -671,3 +671,111 @@ describe("MirrorClient characters", () => {
     assert.equal((await again).created, 2);
   });
 });
+
+describe("MirrorClient region redirect (bye, WORLD-SERVER-SPEC §6)", () => {
+  const tick = () => new Promise((r) => setImmediate(r));
+  const REDIRECT = { endpoint: "ws://region-b:7777", migration: "mig-" + "c".repeat(24), ticket: "d".repeat(64) };
+  const byeBytes = () => encodeEnvelope(MessageType.Bye, encodeControl({ reason: "redirect", redirect: REDIRECT }));
+  const helloOf = (s: FakeSocket) => decodeControl<HelloMessage>(decodeEnvelope(s.lastOf(MessageType.Hello)).payload);
+
+  /** A client on region a that records every socket it opens, with its URL. */
+  async function onRegionA(log: string[]) {
+    const sockets: Array<{ url: string; socket: FakeSocket }> = [];
+    const client = new MirrorClient((url) => {
+      const socket = new FakeSocket();
+      sockets.push({ url, socket });
+      return socket;
+    }, {
+      onWelcome: () => log.push("welcome"),
+      onState: () => {},
+      onError: (e) => log.push(`error ${e.code}`),
+      onClose: () => log.push("close"),
+      onRegionChange: (url) => log.push(`region ${url}`),
+    });
+    const p = client.connect("ws://region-a:7777", "test-client", { username: "joey", password: "secret" });
+    sockets[0].socket.open();
+    await tick();
+    sockets[0].socket.receive(welcomeBytes());
+    await p;
+    return { client, sockets };
+  }
+
+  it("joins the target with the ticket, without a password", async () => {
+    const log: string[] = [];
+    const { client, sockets } = await onRegionA(log);
+    sockets[0].socket.receive(byeBytes());
+    await tick();
+    assert.equal(sockets.length, 2);
+    assert.equal(sockets[1].url, REDIRECT.endpoint);
+    sockets[1].socket.open();
+    await tick();
+    const hello = helloOf(sockets[1].socket);
+    assert.equal(hello.migration, REDIRECT.migration);
+    assert.equal(hello.ticket, REDIRECT.ticket);
+    assert.equal(hello.password, undefined);
+    assert.equal(hello.token, undefined);
+    assert.equal(hello.client, "test-client");
+    sockets[1].socket.receive(welcomeBytes());
+    await tick();
+    assert.deepEqual(log, ["welcome", "welcome", `region ${REDIRECT.endpoint}`]);
+    assert.equal(client.closed, false);
+  });
+
+  it("holds input while joining the target: no intent before its welcome", async () => {
+    const log: string[] = [];
+    const { client, sockets } = await onRegionA(log);
+    sockets[0].socket.receive(byeBytes());
+    await tick();
+    sockets[1].socket.open();
+    await tick();
+    client.sendIntent({ mx: 1, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons: 0 });
+    const intents = () => sockets[1].socket.sent.filter((d) => decodeEnvelope(d).type === MessageType.Intent).length;
+    assert.equal(intents(), 0, "the target would answer 4003 intent before hello");
+    sockets[1].socket.receive(welcomeBytes());
+    await tick();
+    client.sendIntent({ mx: 1, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons: 0 });
+    assert.equal(intents(), 1);
+  });
+
+  it("falls back to the source with its session token when the target refuses", async () => {
+    const log: string[] = [];
+    const { client, sockets } = await onRegionA(log);
+    sockets[0].socket.receive(byeBytes());
+    await tick();
+    sockets[1].socket.open();
+    await tick();
+    sockets[1].socket.receive(encodeEnvelope(MessageType.Error, encodeControl({ code: 4002, message: "auth failed" })));
+    sockets[1].socket.close();
+    await tick();
+    assert.equal(sockets.length, 3);
+    assert.equal(sockets[2].url, "ws://region-a:7777");
+    sockets[2].socket.open();
+    await tick();
+    assert.equal(helloOf(sockets[2].socket).token, "ab".repeat(32));
+    sockets[2].socket.receive(welcomeBytes());
+    await tick();
+    assert.deepEqual(log, ["welcome", "welcome"], "no error or close reaches the game");
+    assert.equal(client.closed, false);
+  });
+
+  it("closes once when neither region will have it", async () => {
+    const log: string[] = [];
+    const { client, sockets } = await onRegionA(log);
+    sockets[0].socket.receive(byeBytes());
+    await tick();
+    sockets[1].socket.close(); // target unreachable
+    await tick();
+    sockets[2].socket.close(); // source gone too
+    await tick();
+    assert.deepEqual(log, ["welcome", "close"]);
+    assert.equal(client.closed, true);
+  });
+
+  it("a bye without a redirect still just disconnects", async () => {
+    const log: string[] = [];
+    const { sockets } = await onRegionA(log);
+    sockets[0].socket.receive(encodeEnvelope(MessageType.Bye, encodeControl({ reason: "shutdown" })));
+    await tick();
+    assert.equal(sockets.length, 1);
+  });
+});

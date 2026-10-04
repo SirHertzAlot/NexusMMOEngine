@@ -46,6 +46,7 @@
  * `clock` in options for deterministic heartbeat/grace math.
  */
 
+import * as crypto from "node:crypto";
 import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
@@ -59,6 +60,7 @@ import {
   type AccountMessage,
   type AdminCommand,
   type AdminResult,
+  type ByeMessage,
   type ChatBroadcast,
   type PartyState,
   type FriendsState,
@@ -107,6 +109,7 @@ import {
   parseHello,
   RegisterSchema,
   SessionManager,
+  USERNAME_RE,
   verifyPassword,
   type CredentialStore,
   type SessionStore,
@@ -133,6 +136,8 @@ import { DeathSystem } from "../death.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import type { EntityPosition, MigrationHost } from "../world/migration.js";
+import type { MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
 import { Mana, type MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
@@ -518,6 +523,25 @@ export function resolveIngressLimits(partial: Partial<IngressLimits> | undefined
  * — the username charset is shared with the credential store, so only
  * well-formed names can ever match.
  */
+const sha256Hex = (s: string): string => crypto.createHash("sha256").update(s).digest("hex");
+
+/** A player's hand-off state (Gateway.handoffSerialize), checked on arrival. */
+const HandoffStateSchema = z.object({
+  username: z.string().regex(USERNAME_RE),
+  character: z.object({ id: z.number().int(), name: z.string().max(64), look: z.string().max(4096) }).nullable(),
+  pos: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+  health: z.number().finite(),
+  stamina: z.number().finite(),
+  mana: z.number().finite().nullable().optional(),
+  skills: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).nullable(),
+  ticketHash: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+function parseHandoffState(state: unknown): z.infer<typeof HandoffStateSchema> | null {
+  const r = HandoffStateSchema.safeParse(state);
+  return r.success ? r.data : null;
+}
+
 function parseAdminList(raw: string | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
@@ -639,6 +663,11 @@ export class Gateway {
   private abuseDisconnects = 0;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
+  /** Region migration (B2): hand-off tickets by entity, between serialize and redirect. */
+  private readonly handoffTickets = new Map<string, string>();
+  /** Region migration (B2): arrived players waiting for their client, by clientId. */
+  private readonly handoffArrivals = new Map<string, { migrationId: string; ticketHash: string }>();
+  private acceptMigration: ((migrationId: string, verify: (m: MigrationRecord) => boolean) => Promise<boolean>) | null = null;
   /** The stats version last sent to each session (see sendStats). */
   private readonly statsSent = new WeakMap<ClientSession, string>();
   /** Usernames allowed admin commands (GatewayOptions.admins). */
@@ -1155,6 +1184,190 @@ export class Gateway {
       n++;
     }
     return n;
+  }
+
+  // ---------------------------------------------- region migration (B2)
+  //
+  // WORLD-SERVER-SPEC §6: the gateway is the ECS side of a border hand-off
+  // (MigrationHost). A player is the migrating entity `player:<username>`;
+  // the region's MigrationCoordinator decides when and where. The source
+  // sends the client a `bye` redirect with a one-time ticket whose hash
+  // rides in the migration record; the target spawns the avatar without a
+  // socket and lets in the client whose migration hello carries that ticket.
+
+  /** Where each player in the world stands, for MigrationCoordinator.observe. */
+  migrationPositions(): EntityPosition[] {
+    const out: EntityPosition[] = [];
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || s.playerEntity === null || this.handoffArrivals.has(s.clientId)) continue;
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0) continue;
+      out.push({ entityId: `player:${s.username}`, x: C.Transform.px[eid], z: C.Transform.pz[eid] });
+    }
+    return out;
+  }
+
+  /** The gateway's side of a hand-off, for this region's MigrationCoordinator. */
+  migrationHost(): MigrationHost {
+    return {
+      serialize: (id) => this.handoffSerialize(id),
+      instantiate: (id, state, migrationId) => this.handoffInstantiate(id, state, migrationId),
+      drop: (id) => this.handoffDrop(id),
+      has: (id) => this.handoffSession(id) !== undefined,
+      redirect: (id, endpoint, migrationId) => this.handoffRedirect(id, endpoint, migrationId),
+    };
+  }
+
+  /**
+   * How a migration hello is let in: the region's coordinator accepts the
+   * migration (`MigrationCoordinator.accept`), checking the record with
+   * `verify` first. Unset, a migration hello is refused.
+   */
+  setMigrationAcceptor(accept: (migrationId: string, verify: (m: MigrationRecord) => boolean) => Promise<boolean>): void {
+    this.acceptMigration = accept;
+  }
+
+  private handoffSession(entityId: string): ClientSession | undefined {
+    if (!entityId.startsWith("player:")) return undefined;
+    const username = entityId.slice("player:".length);
+    for (const s of this.sessions.values()) {
+      if (s.username === username && s.playerEntity !== null) return s;
+    }
+    return undefined;
+  }
+
+  private handoffSerialize(entityId: string): Record<string, unknown> | null {
+    const s = this.handoffSession(entityId);
+    if (!s || s.playerEntity === null) return null;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return null;
+    const ticket = crypto.randomBytes(32).toString("hex");
+    this.handoffTickets.set(entityId, ticket);
+    const auth = this.authSessions.get(s.token);
+    const T = C.Transform;
+    return {
+      username: s.username,
+      character: auth?.character ?? null,
+      pos: [T.px[eid], T.py[eid], T.pz[eid]],
+      health: C.Health.current[eid],
+      stamina: C.Stamina.current[eid],
+      mana: hasComponent(this.world.ecs, Mana, eid) ? Mana.current[eid] : null,
+      skills: this.mastery ? this.mastery.sheetOf(eid).save() : null,
+      ticketHash: sha256Hex(ticket),
+    };
+  }
+
+  private handoffRedirect(entityId: string, endpoint: string, migrationId: string): void {
+    const s = this.handoffSession(entityId);
+    const ticket = this.handoffTickets.get(entityId);
+    this.handoffTickets.delete(entityId);
+    if (!s || !ticket) return;
+    const bye: ByeMessage = { reason: "redirect", redirect: { endpoint, migration: migrationId, ticket } };
+    this.sendEnvelope(s, MessageType.Bye, encodeControl(bye));
+  }
+
+  /** The target region took the player: remove the avatar here, unsaved (it isn't ours to save). */
+  private handoffDrop(entityId: string): void {
+    const s = this.handoffSession(entityId);
+    if (!s || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    this.mastery?.forget(eid);
+    this.world.despawn(parseWireEntityId(s.playerEntity).slot);
+    s.playerEntity = null;
+    this.handoffArrivals.delete(s.clientId);
+    if (this.tokenToClient.get(s.token) === s.clientId) this.tokenToClient.delete(s.token);
+    this.authSessions.revoke(s.token);
+    this.sessions.delete(s.clientId);
+    if (s.socket) {
+      try {
+        s.socket.close(4000, "moved to another region");
+      } catch {
+        /* ignore */
+      }
+      s.socket = null;
+    }
+  }
+
+  /**
+   * Spawn an arriving player from its handed-over state, as a session
+   * waiting for its client (the disconnect grace period applies: a client
+   * that never comes is despawned like any other).
+   */
+  private handoffInstantiate(entityId: string, state: Record<string, unknown> | null, migrationId: string): void {
+    const st = parseHandoffState(state);
+    if (!st || `player:${st.username}` !== entityId) return;
+    const now = this.clock();
+    const s: ClientSession = {
+      clientId: `c${++this.clientSeq}`,
+      token: this.authSessions.create("", st.username),
+      playerEntity: null,
+      lastAckedTick: 0n,
+      lastSnapshotTick: 0n,
+      sendQueue: [],
+      missedHeartbeats: 0,
+      lastPingMs: 0,
+      connectedAtMs: now,
+      socket: null,
+      welcomed: true,
+      joining: false,
+      lastIntentTick: 0n,
+      droppedIntents: 0,
+      intentTokens: this.ingress.intentBurst,
+      intentRefillMs: now,
+      pickupTokens: this.ingress.pickupBurst,
+      pickupRefillMs: now,
+      droppedPickups: 0,
+      violations: 0,
+      violationWindowStartMs: now,
+      lastSeenMs: now,
+      disconnectedAtMs: now,
+      needsResync: false,
+      remoteIp: "",
+      username: st.username,
+      choosingCharacter: false,
+      character: st.character ? { id: st.character.id, name: st.character.name } : null,
+      isAdmin: this.devServer || this.admins.has(st.username),
+      lastChatMs: {},
+    };
+    this.authSessions.rebind(s.token, s.clientId);
+    const auth = this.authSessions.get(s.token);
+    if (auth && st.character) auth.character = st.character;
+    if (st.character) this.evictCharacter(st.character.id, s);
+    s.playerEntity = this.spawnPlayerEntity(st.character?.look ?? DEFAULT_LOOK_JSON, st.character?.id ?? null);
+    const eid = this.world.resolveWireId(s.playerEntity);
+    const T = C.Transform;
+    [T.px[eid], T.py[eid], T.pz[eid]] = st.pos;
+    C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
+    C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
+    if (st.mana != null && this.magic) {
+      this.magic.ensure(this.world, eid);
+      Mana.current[eid] = Math.min(st.mana, Mana.max[eid]);
+    }
+    if (st.skills && this.mastery) this.mastery.sheetOf(eid).load(st.skills);
+    this.sessions.set(s.clientId, s);
+    this.tokenToClient.set(s.token, s.clientId);
+    this.handoffArrivals.set(s.clientId, { migrationId, ticketHash: st.ticketHash });
+  }
+
+  /**
+   * A migration hello: the coordinator accepts the migration (checking the
+   * ticket against the record before anything spawns), then the client
+   * takes over the session `handoffInstantiate` made, like a token
+   * reconnect. Returns that session's token, or null to refuse.
+   */
+  private async handoffArrive(migrationId: string, ticket: string): Promise<string | null> {
+    if (!this.acceptMigration) return null;
+    const hash = sha256Hex(ticket);
+    const verify = (m: MigrationRecord): boolean => (m.entityState as { ticketHash?: unknown } | null)?.ticketHash === hash;
+    if (!(await this.acceptMigration(migrationId, verify))) return null;
+    for (const s of this.sessions.values()) {
+      const a = this.handoffArrivals.get(s.clientId);
+      if (!a || a.migrationId !== migrationId) continue;
+      if (a.ticketHash !== hash) return null;
+      this.handoffArrivals.delete(s.clientId);
+      return s.token;
+    }
+    return null;
   }
 
   /**
@@ -2423,6 +2636,17 @@ export class Gateway {
       sessionToken = this.authSessions.create(s.clientId, username);
       // eslint-disable-next-line no-console
       console.log(`[gateway] hello client=${clientLabel} via=password`);
+    } else if (parsed.kind === "migration") {
+      const token = await this.handoffArrive(parsed.value.migration, parsed.value.ticket);
+      if (!token) {
+        this.rateLimiter.recordFailure(s.remoteIp);
+        this.sendErrorAndClose(s, 4002, "auth failed");
+        return;
+      }
+      this.rateLimiter.recordSuccess(s.remoteIp);
+      sessionToken = token;
+      // eslint-disable-next-line no-console
+      console.log(`[gateway] hello client=${clientLabel} via=migration`);
     } else {
       const sess = this.authSessions.get(parsed.value.token);
       if (!sess) {
