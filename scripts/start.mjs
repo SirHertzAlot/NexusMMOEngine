@@ -44,24 +44,34 @@ const log = (msg) => console.log(`[start] ${msg}`);
 // ---- setup
 
 /** Run an npm command in the foreground; stop everything if it fails. */
-function npm(npmArgs, env = {}) {
+function npm(npmArgs, env = {}, hint = "") {
   log(`npm ${npmArgs.join(" ")}`);
   const r = spawnSync("npm", npmArgs, { cwd: root, stdio: "inherit", shell: win, env: { ...process.env, ...env } });
   if (r.status !== 0) {
+    if (hint) console.error(`[start] ${hint}`);
     console.error(`[start] npm ${npmArgs.join(" ")} failed (${r.status ?? r.signal}); fix that and run npm start again`);
     process.exit(r.status || 1);
   }
 }
 
 function setup() {
-  // 1. Dependencies. The stamp records the lockfile they were installed from;
-  // an existing install with no stamp is taken as current.
-  const lock = createHash("sha1").update(readFileSync(join(root, "package-lock.json"))).digest("hex");
+  // 1. Dependencies. The stamp records the lockfile they were installed from.
+  // An install with no stamp (made before npm start existed) is current
+  // unless the lockfile is newer than npm's own record of that install, as
+  // after a pull that changed it.
+  const lockfile = join(root, "package-lock.json");
+  const lock = createHash("sha1").update(readFileSync(lockfile)).digest("hex");
   const stamp = join(root, "node_modules", ".mmo-start-lock");
+  const installed = join(root, "node_modules", ".package-lock.json");
   const modules = existsSync(join(root, "node_modules"));
-  if (!modules || (existsSync(stamp) && readFileSync(stamp, "utf8") !== lock)) {
+  const stale = existsSync(stamp)
+    ? readFileSync(stamp, "utf8") !== lock
+    : !existsSync(installed) || statSync(installed).mtimeMs < statSync(lockfile).mtimeMs;
+  if (!modules || stale) {
     log(modules ? "the lockfile changed: reinstalling" : "installing dependencies (builds the native addons, a few minutes)");
-    npm(["ci"]);
+    npm(["ci"], {}, win
+      ? "the native addons need the Visual Studio C++ build tools (\"Desktop development with C++\") and Python"
+      : "the native addons need a C++17 compiler (build-essential, or Xcode's command line tools) and Python");
   }
   writeFileSync(stamp, lock);
 

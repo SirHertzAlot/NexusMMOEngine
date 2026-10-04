@@ -70,10 +70,10 @@ You are an expert game developer working on a high-concurrency MMO tech stack. Y
 - **Combat move starts funnel through one method**: gate/cost by move
   `kind` there and chains, recoveries and bashes inherit it. Guards stay
   free. Entities without the pool skip gating so bot behaviour is unchanged.
-- **Schema changes on Windows**: `codegen.sh` needs bash/Linux and the
-  vendored flatc is a Linux binary. Download the exact matching Windows
-  flatc (C++ header asserts the compiler version) and verify zero
-  mismatches against current output before trusting it. No C++ TU
+- **Schema changes on Windows**: `npm run codegen` is plain Node
+  (`scripts/codegen.mjs`) and uses the vendored `flatc.exe`, the same
+  25.12.19 release as the Linux binary (the C++ header asserts the
+  compiler version). No C++ TU
   includes the generated header today — confirm that before judging C++
   risk. `PROTOCOL_VERSION` bumps are safe: every use references the
   constant — but the catalog's version line must be updated by hand.

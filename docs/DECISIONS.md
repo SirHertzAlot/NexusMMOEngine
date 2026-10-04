@@ -2,6 +2,19 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-04 — Codegen is a Node script with flatc vendored for Linux,
+  Windows and macOS.** `npm start` failed on Windows at its first build:
+  `scripts/codegen.sh` (run by `npm run codegen` and by the schema
+  package's `prebuild`, so by every server and client start) needed bash,
+  and the vendored flatc was a Linux binary. `scripts/codegen.mjs` does the
+  same work in Node and picks `third_party/flatc/flatc`, `flatc.exe` or
+  `flatc-macos`, all the official 25.12.19 release, so every platform
+  writes the same bindings; a system flatc on PATH stays the fallback.
+  Same reasoning as the 2026-09-27 node-gyp decision: a clone needs Node,
+  Python and a C++ compiler, nothing Unix-only. `npm start` also
+  reinstalls a pre-`npm start` install when the lockfile is newer than
+  npm's record of it, instead of trusting it.
+
 - **2026-10-04 — Players cross region borders with a one-time ticket, not
   a world-scoped session (WORLD-SERVER-SPEC slice B2).**
   - **How a player crosses.** The source region begins the migration, then
