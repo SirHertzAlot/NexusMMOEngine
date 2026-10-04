@@ -14,11 +14,14 @@
  * - tools: wireframe terrain, quality preset, FX showcase, maximize, and
  *   the admin console (protocol 0x10)
  * - controls: the key bindings
+ * - selection (E6): the entity picked with a left click in the view, its
+ *   components and, for a PICG asset, its graph parameters
+ *   (inspectors/selection.ts)
  */
 
 import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
-import { QUALITY_TIERS, type GpuInfo, type HudData, type QualityTier } from "@mmo-engine/client/render";
+import { CombatFeedback, QUALITY_TIERS, type GpuInfo, type HudData, type QualityTier } from "@mmo-engine/client/render";
 import {
   ACTION_LABELS,
   ACTIONS,
@@ -33,6 +36,11 @@ import { debuggerLayoutDefaults } from "../debugger-layout.js";
 import { DEFAULT_BINDINGS } from "@mmo-engine/client/render";
 import { GameView } from "./game-view.js";
 import { Button } from "./components.js";
+import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
+import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
+
+/** How often the selection card re-reads the picked entity (the mirror changes every tick). */
+const CARD_REFRESH_MS = 250;
 
 const MODE_LABEL = ["walking", "swimming", "flying"];
 const QUALITY_CYCLE: ("auto" | QualityTier)[] = ["auto", ...QUALITY_TIERS];
@@ -55,6 +63,20 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
+  // The picked entity (a left click in the view) and its card.
+  const [combat] = React.useState(() => new CombatFeedback());
+  const library = usePcgLibrary();
+  const [card, setCard] = React.useState<SelectionCard | null>(null);
+  React.useEffect(() => {
+    const read = (): void => {
+      const target = combat.target;
+      const entity = target !== null ? client.state.get(target) : undefined;
+      setCard(entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null);
+    };
+    read();
+    const t = setInterval(read, CARD_REFRESH_MS);
+    return () => clearInterval(t);
+  }, [client, combat, library.assets]);
 
   const onHudBoth = React.useCallback(
     (h: HudData) => {
@@ -140,6 +162,29 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       ),
     },
     {
+      id: "selection",
+      title: "selection",
+      content: (
+        <>
+          <div className="mb-2 flex gap-1.5">
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant="secondary"
+              onClick={() => combat.select(client.playerEntity)}
+              disabled={client.playerEntity === null}
+            >
+              my avatar
+            </Button>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => combat.select(null)} disabled={!card}>
+              clear
+            </Button>
+          </div>
+          <SelectionCardView card={card} libraryError={library.error} />
+        </>
+      ),
+    },
+    {
       id: "controls",
       title: "controls",
       content: (
@@ -165,6 +210,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       onHud={onHudBoth}
       onGpu={setGpu}
       onQuality={onQuality}
+      combat={combat}
       containerRef={setFrame}
     >
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}

@@ -20,6 +20,8 @@
  *   GET  /api/editor/assets        → art-pack scan of <repo>/assets
  *   GET  /assets/*                 → static files from <repo>/assets
  *                                    (path-traversal guarded)
+ *   GET  /api/editor/pcg/library   → the PICG asset library: each asset's
+ *                                    AssetRef hash and graph parameters (E6)
  *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
  *   GET  /api/editor/rules/:name   → one rules file's parsed content
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
@@ -66,6 +68,7 @@ import {
 } from "./rules-host.js";
 import { pathToFileURL } from "node:url";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
+import { readPcgLibrary } from "./pcg-host.js";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -796,6 +799,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             sendJson(res, 404, { ok: false, error: "not found" });
+            return;
+          }
+          if (url === "/api/editor/pcg/library" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, ...readPcgLibrary(repoRoot) });
             return;
           }
           if (url.startsWith("/assets/") && req.method === "GET") {

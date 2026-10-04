@@ -103,6 +103,17 @@ The **Play Mode** tab drives a full local loop:
      follow its size; the layout is kept per browser. The play server
      lists the editor's play user in `MMO_ADMINS`, so the admin console
      works on the server the editor owns.
+   - **Selection card** (ROADMAP E6, PICG slice 3) — the debugger's
+     *selection* panel: left-click an entity in the game view (or "my
+     avatar") and it lists every component the mirror holds for it, field
+     by field. When its AssetRef names a PICG library asset
+     (`content/pcg/index.json`), the card adds the asset: its graph, which
+     cooked shape the entity's variant picks and that shape's seed (the
+     server cook's own mapping), and the graph's exposed parameters with
+     their values, ranges and an ● where the asset overrides the graph
+     default. The view-model is `src/inspectors/selection.ts` (pure TS);
+     the library comes from `GET /api/editor/pcg/library` (`src/pcg-host.ts`,
+     read-only, confined to `content/pcg`).
 4. **Stop** — disconnects the client, kills the owned server process
    group, and restores the pre-play editor state (form fields, auto-
    refresh, entity selection).

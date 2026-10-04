@@ -42,6 +42,8 @@ export interface GameViewProps {
   onHud?: (hud: HudData) => void;
   onGpu?: (gpu: GpuInfo) => void;
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
+  /** Hit feedback and the picked target (a left click on a body picks it); one is made when absent. */
+  combat?: CombatFeedback;
   /** The view's frame, for what draws over it. */
   containerRef?: React.Ref<HTMLDivElement>;
   children?: React.ReactNode;
@@ -58,11 +60,13 @@ export function GameView({
   onHud,
   onGpu,
   onQuality,
+  combat: givenCombat,
   containerRef,
   children,
 }: GameViewProps): React.JSX.Element {
   const [assets] = React.useState(() => new PlaceholderAssets());
-  const [combat] = React.useState(() => new CombatFeedback());
+  const [ownCombat] = React.useState(() => new CombatFeedback());
+  const combat = givenCombat ?? ownCombat;
   const pcg = React.useMemo(
     () => new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken),
     [client, url],
