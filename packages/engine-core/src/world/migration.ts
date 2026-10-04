@@ -35,7 +35,7 @@ export interface MigrationHost {
   /** The entity's state to hand over (JSON-safe), or null if it is gone. */
   serialize(entityId: string): Record<string, unknown> | null;
   /** Spawn the entity from a handed-over state (target side). */
-  instantiate(entityId: string, state: Record<string, unknown> | null): void;
+  instantiate(entityId: string, state: Record<string, unknown> | null, migrationId: string): void;
   /** Remove the entity: another region has authority now. */
   drop(entityId: string): void;
   /** Whether this region currently simulates the entity. */
@@ -208,9 +208,11 @@ export class MigrationCoordinator {
   /**
    * Target side: take the entity. Called when its client arrives with the
    * migration id, or from an ack when the source has died. Returns whether
-   * this region now has authority.
+   * this region now has authority. `verify` sees the record before
+   * anything is instantiated (the client's hand-off ticket, say); a record
+   * it rejects is refused and left to expire.
    */
-  async accept(migrationId: string, backstop = false): Promise<boolean> {
+  async accept(migrationId: string, backstop = false, verify?: (m: MigrationRecord) => boolean): Promise<boolean> {
     const taken = this.accepted.get(migrationId);
     if (taken) return taken.committed || this.commit(migrationId, taken.entityId, backstop);
     let m: MigrationRecord;
@@ -226,8 +228,12 @@ export class MigrationCoordinator {
       this.emit({ kind: "refused", entityId: m.entityId, migrationId, reason: m.state });
       return false;
     }
+    if (verify && !verify(m)) {
+      this.emit({ kind: "refused", entityId: m.entityId, migrationId, reason: "not verified" });
+      return false;
+    }
     this.accepted.set(migrationId, { entityId: m.entityId, committed: false });
-    if (!this.opts.host.has(m.entityId)) this.opts.host.instantiate(m.entityId, m.entityState as Record<string, unknown> | null);
+    if (!this.opts.host.has(m.entityId)) this.opts.host.instantiate(m.entityId, m.entityState as Record<string, unknown> | null, migrationId);
     return this.commit(migrationId, m.entityId, backstop);
   }
 

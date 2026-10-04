@@ -103,6 +103,7 @@ import {
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
+  MigrationCoordinator,
   waterSurfaceFromMaps,
   type ChunkBounds,
 } from "./index.js";
@@ -566,14 +567,17 @@ async function main(): Promise<void> {
   const REGION_ID = process.env.REGION_ID ?? "region-1";
   const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
   let worldClient: WorldClient | null = null;
+  let migrationTimer: NodeJS.Timeout | null = null;
   if (WORLD_URL) {
     const parts = (process.env.REGION_CHUNK_RANGE ?? "0,0,4096,4096")
       .split(",")
       .map(Number);
+    const chunkRange = { x0: parts[0], z0: parts[1], x1: parts[2], z1: parts[3] };
+    let migration: MigrationCoordinator | null = null;
     worldClient = new WorldClient({
       transport: new WebrpcWorldTransport(WORLD_URL),
       regionId: REGION_ID,
-      chunkRange: { x0: parts[0], z0: parts[1], x1: parts[2], z1: parts[3] },
+      chunkRange,
       endpoint:
         process.env.REGION_ENDPOINT ?? `ws://localhost:${PORT}`,
       capacity: REGION_CAPACITY,
@@ -586,10 +590,34 @@ async function main(): Promise<void> {
       }),
       onError: (err, ctx) =>
         console.warn(`[server] world ${ctx}: ${(err as Error).message}`),
+      // Region migration (slice B): acks carry registry changes and
+      // hand-off outcomes for the coordinator.
+      onAck: (ack) => {
+        void migration?.onAck(ack).catch((err: unknown) =>
+          console.warn(`[server] migration ack: ${(err as Error).message}`));
+      },
     });
+    // Border hand-offs (WORLD-SERVER-SPEC §6): players walking into another
+    // live region's chunks are handed to it; off the tick, 4 times a second.
+    migration = new MigrationCoordinator({
+      world: worldClient,
+      host: gw.migrationHost(),
+      chunkRange,
+      chunkSize: CHUNK_SIZE,
+      log: (line) => console.log(`[server] ${line}`),
+    });
+    const coordinator = migration;
+    coordinator.onEvent((e) => console.log(`[server] migration ${e.kind} ${e.entityId} ${e.migrationId}`));
+    gw.setMigrationAcceptor((id, verify) => coordinator.accept(id, false, verify));
     await worldClient.start();
     if (worldClient.registered) {
       console.log(`[server] registered with world at ${WORLD_URL} as ${REGION_ID}`);
+      await coordinator.refreshRegistry().catch(() => {});
+      migrationTimer = setInterval(() => {
+        void coordinator.observe(gw.migrationPositions()).catch((err: unknown) =>
+          console.warn(`[server] migration observe: ${(err as Error).message}`));
+      }, 250);
+      migrationTimer.unref();
     } else {
       console.warn(`[server] world registration failed; running standalone`);
     }
@@ -631,6 +659,7 @@ async function main(): Promise<void> {
       void coreChannel?.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
+      if (migrationTimer) clearInterval(migrationTimer);
       void worldClient?.stop();
       reloader.close();
     },

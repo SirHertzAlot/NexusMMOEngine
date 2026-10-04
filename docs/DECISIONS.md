@@ -2,6 +2,23 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-04 — Players cross region borders with a one-time ticket, not
+  a world-scoped session (WORLD-SERVER-SPEC slice B2).**
+  - **How a player crosses.** The source region begins the migration, then
+    sends the client `bye` with a redirect: the target's endpoint, the
+    migration id and a 32-byte ticket. Only the ticket's SHA-256 goes into
+    the migration record. The target checks the ticket against that hash
+    before spawning the player, commits, and hands out its own session
+    token. If the target refuses, the client goes back to the source with
+    its old token, and the source still has the player.
+  - **Why a ticket.** The spec's world-scoped tokens need the world server
+    to issue and revoke sessions. That is a bigger change, and each region
+    keeping its own sessions works for one hand-off at a time. A ticket
+    can't be reused, and it never sits in the world's store or logs in a
+    form anyone can present.
+  - **What the hand-off doesn't carry yet.** Bags, parties and guilds stay
+    in the region that made them until regions share persistence.
+
 - **2026-10-04 — Plan on 16 regions per 4-core box; the world server is
   not the bottleneck (WORLD-SERVER-SPEC slice D).** The stress harness
   (`npm run stress:world`) runs one world process and N region processes.

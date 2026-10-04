@@ -173,6 +173,23 @@ The one hard problem. Authority must never be lost or duplicated.
      record and commits; world is the backstop.
    - Client fails to reach B → reconnects to A; A still has authority.
 
+**As built (slice B2, 2026-10-04).**
+- The "reconnect to B" in step 3 is a `bye` with `redirect: {endpoint,
+  migration, ticket}` (MESSAGE-CATALOG §0x09). The client answers B with
+  a migration `hello`.
+- The ticket is a one-time secret the source mints per hand-off. Only its
+  hash rides in `entityState`, and B checks it before instantiating.
+- B issues its own session token. World-scoped tokens (sessions issued by
+  the world, valid in every region) are still to come. Until then, a
+  player who drops after crossing reconnects to the region they are in.
+- A player's hand-off state covers:
+  - account and character identity, look, position;
+  - health, stamina and skills.
+
+  It does not cover bags, parties and guilds, which live in each region's
+  own store. Carrying them needs the shared persistence the regions don't
+  have yet.
+
 v1 transfers the entity blob *through* the world (correctness first).
 If the stress harness shows migration payload size is a bottleneck,
 slice B+ switches to direct A→B transfer with the world arbitrating

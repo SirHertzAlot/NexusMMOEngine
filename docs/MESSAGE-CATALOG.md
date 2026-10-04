@@ -8,7 +8,7 @@ u64 ids travel as JSON strings (JS number precision).
 
 | Type | Name | Dir | Encoding | Fields | Purpose / frequency |
 |------|------|-----|----------|--------|---------------------|
-| 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 6, client: string, username: string, password: string, want_snapshot: bool, characters?: bool}` · token: `{protocol: 6, client: string, token: "64 hex", want_snapshot: bool, characters?: bool}` — exactly one variant | Authentication. Once per connection. `characters: true`: choose a character before entering the world (answered with `account`, see [Characters](#characters-protocol-v5)). |
+| 0x01 | `hello` | C→S | JSON | credentials: `{protocol: 6, client: string, username: string, password: string, want_snapshot: bool, characters?: bool}` · token: `{protocol: 6, client: string, token: "64 hex", want_snapshot: bool, characters?: bool}` · migration: `{protocol: 6, client: string, migration: "mig-…", ticket: "64 hex", want_snapshot: bool}` — exactly one variant | Authentication. Once per connection. `characters: true`: choose a character before entering the world (answered with `account`, see [Characters](#characters-protocol-v5)). |
 | 0x02 | `welcome` | S→C | JSON | `{protocol: 6, player_entity: "u64", server_tick: u64, tick_hz: 30, snapshot_every: 300, session_token: "64 hex", world?: {name, chunkWorldSize, bounds, map, seaLevel?}, character?: {id, name}, day?: {seconds, offset}}` — `character` when the player entered as one; — `world` for baked worlds: the chunk range and a coarse (16 m) map of the whole world, base64 layers: `heights` (u16 over min/maxHeight), `biome` + `biomes` ids, `river`, and `water` (u16 surface of the sea and lakes, 0xffff dry; optional) · `day` — the world's day clock (optional; absent = no day cycle) | Assigns identity, syncs clock/cadence params, issues the session token; the world map draws the far horizon, ground colours and water; the day clock gives every client the same time of day (`timeOfDayAt(day, tick, tick_hz)` = `offset + tick / tick_hz / seconds`, wrapped to 0..1, 0 = midnight). Once per connection. |
 | 0x03 | `snapshot` | S→C | FlatBuffers `Snapshot` | tick, SoA component blocks (Transform, Velocity, PlayerIntent, Chunk, Health, Stamina, BodyConfig, AssetRef, Locomotion, Appearance, Action), spawned[], despawned[] | Baseline state. On connect + every 300 ticks. |
 | 0x04 | `delta` | S→C | FlatBuffers `Delta` | tick, base_tick, changed component blocks only, spawned[], despawned[] | Per-tick state-change events (EDA: state out as events). 30 Hz. |
@@ -16,7 +16,7 @@ u64 ids travel as JSON strings (JS number precision).
 | 0x06 | `ping` | C↔S | JSON | `{t: client_ms}` | Heartbeat + RTT. Every 5 s. |
 | 0x07 | `pong` | C↔S | JSON | `{t: client_ms}` | Heartbeat reply. |
 | 0x08 | `error` | S→C | JSON | `{code: int, message: string}` | Protocol/auth/server errors. Codes: 4001 bad-protocol, 4002 auth-failed, 4003 malformed, 4004 server-error, 4005 refused (a well-formed request the server declines — a taken character name, a refused look; the connection stays open). As needed. |
-| 0x09 | `bye` | either | JSON | `{reason: string}` | Graceful disconnect notice. |
+| 0x09 | `bye` | either | JSON | `{reason: string, redirect?: {endpoint: string, migration: "mig-…", ticket: "64 hex"}}` | Graceful disconnect notice. From the server, `redirect` hands the player to another region (see [Region hand-off](#authentication-slice-14)). |
 | 0x0a | `debug` | C→S / S→C | JSON | query: `{kind:"debug", query:"waypoints", entity:"u64"}` or `{kind:"debug", query:"tiles"}` · response: `{kind:"debug", query:"waypoints", entity, status:"active"\|"idle"\|"failed"\|"unknown", waypoints:[[x,y,z]…]}` or `{kind:"debug", query:"tiles", tiles:[[x0,z0,x1,z1]…]}` | **Editor-only, read-only.** Live answers the delta stream doesn't carry (path waypoints live server-side; navmesh tile bounds). Requires a welcomed session; malformed/unknown → 4003. Never touches sim state. |
 | 0x0b | `register` | C→S | JSON | `{protocol: 6, client: string, username: string, password: string, characters?: bool}` — username 3–32 chars `[A-Za-z0-9_-]`, password 8–128 chars | **In-client account creation.** Creates the account (argon2id-hashed, never stored/logged in plaintext), mints a session, then joins exactly like a credentials hello: `welcome` + snapshot. Once per connection. Failures: 4002 username-taken / registration-disabled / too-many-attempts, 4003 malformed, 4001 protocol mismatch. Registration attempts share the per-IP auth budget with logins. Disable server-side with `MMO_ALLOW_REGISTER=0` (do this before any public deployment). |
 | 0x0c | `account` | S→C | JSON | `{session_token: "64 hex", characters: [{id: int, name: string, look: Look}], max_characters: int, created?: int}` | The account's characters, after a hello/register with `characters: true` and after each `create_character` (`created` = the new one's id). |
@@ -33,7 +33,7 @@ u64 ids travel as JSON strings (JS number precision).
 
 ## Authentication (slice 1.4)
 
-A `hello` carries **exactly one** of two shapes; carrying both, neither,
+A `hello` carries **exactly one** of three shapes; carrying both, neither,
 or any malformed shape is rejected as 4003 (no connection close):
 
 - **Credentials hello** (login): `{protocol, client, want_snapshot,
@@ -44,6 +44,17 @@ or any malformed shape is rejected as 4003 (no connection close):
 - **Token hello** (reconnect): `{protocol, client, want_snapshot, token}`,
   where `token` is the 64-lowercase-hex session token from a previous
   `welcome`. A valid, unexpired token skips the password check entirely.
+- **Migration hello** (region hand-off, WORLD-SERVER-SPEC §6):
+  `{protocol, client, want_snapshot, migration, ticket}`. The region the
+  player is leaving sends `bye` with `redirect: {endpoint, migration,
+  ticket}`; the client closes, connects to `endpoint` and sends this hello.
+  The ticket is 32 random bytes made for this one hand-off. Only its
+  SHA-256 travels in the migration record, and the target region checks it
+  before it spawns anything, so neither the world server nor its logs can
+  replay it. The target answers with its own `welcome` and session token.
+  A refused ticket is a plain 4002. The client then reconnects to the
+  region it came from with its old token, and that region still has the
+  player until the target commits. A ticket works once.
 
 On success the server answers `welcome`, which now includes
 `session_token`: a 256-bit opaque token (`crypto.randomBytes(32)` hex).

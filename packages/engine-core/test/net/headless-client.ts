@@ -55,7 +55,8 @@ export interface IntentInput {
  */
 export type HelloAuth =
   | { username: string; password: string }
-  | { token: string };
+  | { token: string }
+  | { migration: string; ticket: string };
 
 export class HeadlessClient {
   /** Auto-reply to server pings (disable to simulate a dead client). */

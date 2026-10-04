@@ -26,6 +26,7 @@ import {
   type AccountMessage,
   type AdminCommand,
   type AdminResult,
+  type ByeMessage,
   type ChatBroadcast,
   type ChatChannel,
   type FriendMessage,
@@ -91,6 +92,12 @@ export interface MirrorEvents {
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
   onLife?(l: LifeMessage): void;
+  /**
+   * The player crossed into another region and this client moved to its
+   * server (WORLD-SERVER-SPEC §6). onWelcome fired first, with the new
+   * region's player entity; `url` is the server the client now talks to.
+   */
+  onRegionChange?(url: string): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -139,6 +146,11 @@ export class MirrorClient {
   readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
   private socket: SocketLike | null = null;
+  /** The server this client talks to, and the name it gave in its hello (for a region redirect). */
+  private url: string | null = null;
+  private clientName = "";
+  /** A region redirect is in progress: socket closes are part of it, not the end. */
+  private handingOff = false;
   /** Server tick the last intent was sent at (-1: none on this connection). */
   private intentSentAt = -1;
   /** Intents held back for the next authoritative ticks, oldest first (one goes per tick). */
@@ -361,6 +373,8 @@ export class MirrorClient {
     if (this.socket) throw new Error("mirror-client: already connected");
     const socket = this.createSocket(url);
     this.socket = socket;
+    this.url = url;
+    this.clientName = payload.client;
     socket.onmessage = (data) => this.onMessage(data);
 
     await new Promise<void>((resolve, reject) => {
@@ -409,7 +423,9 @@ export class MirrorClient {
    * place and the newer intent queues behind it, a tick later.
    */
   sendIntent(intent: IntentFields): void {
-    if (!this.socket || this.playerEntity == null) return;
+    // Mid-redirect the new socket hasn't been welcomed yet: the target would
+    // answer an intent before hello with 4003. Input resumes on its welcome.
+    if (!this.socket || this.playerEntity == null || this.handingOff) return;
     const q = this.pendingIntents;
     if (this.serverTick <= this.intentSentAt || q.length > 0) {
       const last = q[q.length - 1];
@@ -423,7 +439,7 @@ export class MirrorClient {
   }
 
   private transmitIntent(intent: IntentFields): void {
-    if (!this.socket || this.playerEntity == null) return;
+    if (!this.socket || this.playerEntity == null || this.handingOff) return;
     this.intentSentAt = this.serverTick;
     const payload = encodeIntentMessage(
       BigInt(this.serverTick),
@@ -548,7 +564,9 @@ export class MirrorClient {
       case MessageType.Error: {
         const err = decodeControl<ErrorMessage>(payload);
         this.lastError = err;
-        this.events.onError(err);
+        // A target region refusing a redirect isn't the player's error:
+        // the client falls back to the region it came from.
+        if (!this.handingOff) this.events.onError(err);
         this.settle(new Error(`hello rejected: ${err.code} ${err.message}`));
         this.debugReject?.(
           new Error(`debug rejected: ${err.code} ${err.message}`),
@@ -611,9 +629,12 @@ export class MirrorClient {
       case MessageType.Life:
         this.events.onLife?.(decodeControl<LifeMessage>(payload));
         break;
-      case MessageType.Bye:
-        this.disconnect();
+      case MessageType.Bye: {
+        const bye = decodeControl<ByeMessage>(payload);
+        if (bye.redirect) void this.followRedirect(bye.redirect);
+        else this.disconnect();
         break;
+      }
       default:
         break;
     }
@@ -673,7 +694,63 @@ export class MirrorClient {
     if (next !== undefined) this.transmitIntent(next);
   }
 
+  /**
+   * The server handed the player to another region (a `bye` redirect):
+   * close this socket and join the target with the redirect's ticket. If
+   * the target won't have us, reconnect here with the session token: this
+   * region keeps the player until the target commits (WORLD-SERVER-SPEC §6).
+   */
+  private async followRedirect(r: NonNullable<ByeMessage["redirect"]>): Promise<void> {
+    if (this.handingOff) return;
+    const from = this.url;
+    const token = this.sessionToken;
+    this.handingOff = true;
+    this.dropSocket();
+    try {
+      const hello: HelloMessage = {
+        protocol: PROTOCOL_VERSION,
+        client: this.clientName,
+        want_snapshot: true,
+        migration: r.migration,
+        ticket: r.ticket,
+      };
+      await this.welcomeOf(this.openAndHandshake(r.endpoint, MessageType.Hello, hello));
+      this.handingOff = false;
+      this.events.onRegionChange?.(r.endpoint);
+      return;
+    } catch {
+      this.dropSocket();
+    }
+    try {
+      if (!from || !token) throw new Error("mirror-client: nowhere to fall back to");
+      await this.connect(from, this.clientName, { token });
+      this.handingOff = false;
+    } catch {
+      this.dropSocket();
+      this.handingOff = false;
+      this.onClose();
+    }
+  }
+
+  /** Close the current socket without treating it as the end of the connection. */
+  private dropSocket(): void {
+    const old = this.socket;
+    this.socket = null;
+    if (!old) return;
+    old.onmessage = null;
+    old.onclose = null;
+    old.onerror = null;
+    old.onopen = null;
+    old.close();
+  }
+
   private onClose(): void {
+    if (this.handingOff) {
+      // Part of a redirect: followRedirect decides what comes next.
+      this.socket = null;
+      this.settle(new Error("mirror-client: connection closed"));
+      return;
+    }
     this.closed = true;
     this.socket = null;
     this.settle(new Error("mirror-client: connection closed"));

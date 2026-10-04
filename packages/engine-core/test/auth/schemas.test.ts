@@ -29,6 +29,19 @@ describe("auth: hello schemas", () => {
     assert.equal(r.kind, "token");
   });
 
+  it("accepts the migration variant (arriving from another region)", () => {
+    const r = parseHello({ ...base, migration: "mig-" + "0a".repeat(12), ticket: "f".repeat(64) });
+    assert(r, "parses");
+    assert.equal(r.kind, "migration");
+    assert.equal(parseHello({ ...base, migration: "mig-xyz", ticket: "f".repeat(64) }), null, "bad migration id");
+    assert.equal(parseHello({ ...base, migration: "mig-" + "0a".repeat(12), ticket: "short" }), null, "bad ticket");
+    assert.equal(
+      parseHello({ ...base, migration: "mig-" + "0a".repeat(12), ticket: "f".repeat(64), token: "a".repeat(64) }),
+      null,
+      "migration plus token -> malformed",
+    );
+  });
+
   it("rejects payloads carrying both or neither variant", () => {
     assert.equal(
       parseHello({ ...base, username: "alice", password: "s3cret!!", token: "a".repeat(64) }),
