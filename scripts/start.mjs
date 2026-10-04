@@ -1,0 +1,163 @@
+#!/usr/bin/env node
+/**
+ * `npm start`: one command from a fresh clone to a running game. It does
+ * whatever setup is missing, then starts the game server and the player's
+ * client (http://localhost:5173), each line of their output prefixed with
+ * its name. Ctrl+C, or either one exiting, stops both.
+ *
+ * Setup, each step only when needed (a second start goes straight to the
+ * server):
+ *   1. dependencies: `npm ci` when node_modules is missing or the lockfile
+ *      changed since the last start (npm ci never rewrites the lockfile)
+ *   2. FlatBuffers bindings: `npm run codegen` when they're missing or older
+ *      than the schema
+ *   3. the world: `npm run bake:world` when there's no world.db
+ *   4. the loot pool: `npm run loot:bake` when there's no pool.jsonl
+ *   5. dungeons: `npm run dungeon:bake` when the dungeon pool is empty
+ * The data folder is MMO_DATA_DIR, else packages/engine-core/data, where
+ * the server keeps it.
+ *
+ *   npm start                  setup, the server and the player's client
+ *   npm start -- --server      setup and the server only
+ *   npm start -- --dev         the client with its developer panels
+ *                              (performance graphs, wireframe, FX showcase)
+ *   npm start -- --no-setup    skip the setup checks
+ *
+ * `npm run dev` is `npm start -- --dev`.
+ */
+
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const args = process.argv.slice(2);
+const flag = (f) => args.includes(f);
+const dev = flag("--dev");
+const serverOnly = flag("--server");
+
+const win = process.platform === "win32";
+const log = (msg) => console.log(`[start] ${msg}`);
+
+// ---- setup
+
+/** Run an npm command in the foreground; stop everything if it fails. */
+function npm(npmArgs, env = {}) {
+  log(`npm ${npmArgs.join(" ")}`);
+  const r = spawnSync("npm", npmArgs, { cwd: root, stdio: "inherit", shell: win, env: { ...process.env, ...env } });
+  if (r.status !== 0) {
+    console.error(`[start] npm ${npmArgs.join(" ")} failed (${r.status ?? r.signal}); fix that and run npm start again`);
+    process.exit(r.status || 1);
+  }
+}
+
+function setup() {
+  // 1. Dependencies. The stamp records the lockfile they were installed from;
+  // an existing install with no stamp is taken as current.
+  const lock = createHash("sha1").update(readFileSync(join(root, "package-lock.json"))).digest("hex");
+  const stamp = join(root, "node_modules", ".mmo-start-lock");
+  const modules = existsSync(join(root, "node_modules"));
+  if (!modules || (existsSync(stamp) && readFileSync(stamp, "utf8") !== lock)) {
+    log(modules ? "the lockfile changed: reinstalling" : "installing dependencies (builds the native addons, a few minutes)");
+    npm(["ci"]);
+  }
+  writeFileSync(stamp, lock);
+
+  // 2. FlatBuffers bindings.
+  const schema = join(root, "packages", "schema", "mmo_engine.fbs");
+  const generated = join(root, "packages", "schema", "generated", "ts", "mmo_engine.ts");
+  if (!existsSync(generated) || statSync(generated).mtimeMs < statSync(schema).mtimeMs) npm(["run", "codegen"]);
+
+  // 3-5. Baked data, where the server will look for it.
+  const data = resolve(join(root, "packages", "engine-core"), process.env.MMO_DATA_DIR ?? "data");
+  if (!existsSync(join(data, "world.db"))) {
+    log(`no world in ${data}: baking it`);
+    npm(["run", "bake:world"], { MMO_DATA_DIR: data });
+  }
+  if (!existsSync(join(data, "loot", "pool.jsonl"))) {
+    log("no loot pool: baking it");
+    npm(["run", "loot:bake"], { MMO_DATA_DIR: data });
+  }
+  const dungeons = join(data, "dungeons");
+  if (!existsSync(dungeons) || !readdirSync(dungeons).some((f) => f.endsWith(".dungeon.json"))) {
+    log("no dungeons: baking 10");
+    npm(["run", "dungeon:bake", "--", "--n", "10"], { MMO_DATA_DIR: data });
+  }
+}
+
+if (!flag("--no-setup")) setup();
+
+// ---- the server and the client
+
+const SERVER = { name: "server", args: ["run", "server"] };
+const CLIENT = {
+  name: "client",
+  args: ["run", dev ? "dev:tools" : "dev", "--workspace=@mmo-engine/client"],
+};
+
+const children = [];
+let stopping = false;
+
+function stop(code) {
+  if (stopping) return;
+  stopping = true;
+  for (const c of children) if (c.exitCode === null) kill(c);
+  // Give them a moment to save (the server writes its last tick), then go.
+  setTimeout(() => process.exit(code), 3000).unref();
+}
+
+/** Stop a child and what it started (npm runs the server under a shell). */
+function kill(child) {
+  if (win) {
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGTERM"); // its process group
+  } catch {
+    child.kill("SIGTERM");
+  }
+}
+
+/** Run one npm script, its output prefixed; `onLine` sees each line (stdout and stderr). */
+function run(p, onLine = () => {}) {
+  // npm is npm.cmd on Windows, which needs a shell to run.
+  // Each in its own process group (POSIX), so stopping it stops everything under it.
+  const child = spawn("npm", p.args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], shell: win, detached: !win });
+  children.push(child);
+  const prefix = (stream, out, see) => {
+    let rest = "";
+    stream.setEncoding("utf8");
+    stream.on("data", (chunk) => {
+      const lines = (rest + chunk).split(/\r?\n/);
+      rest = lines.pop();
+      for (const line of lines) {
+        out.write(`[${p.name}] ${line}\n`);
+        see(line);
+      }
+    });
+    stream.on("end", () => rest && out.write(`[${p.name}] ${rest}\n`));
+  };
+  prefix(child.stdout, process.stdout, onLine);
+  prefix(child.stderr, process.stderr, onLine);
+  child.on("exit", (code) => {
+    if (!stopping) log(`${p.name} exited (${code ?? "signal"}); stopping the rest`);
+    stop(code ?? 0);
+  });
+}
+
+// The server first: its build compiles the shared packages the client
+// needs too, and the client connects to it. The client starts once the
+// server is listening.
+let clientStarted = serverOnly;
+run(SERVER, (line) => {
+  if (clientStarted || !/listening on/.test(line)) return;
+  clientStarted = true;
+  run(CLIENT);
+  log(`open http://localhost:5173${dev ? " (developer panels: ` hides them)" : ""}`);
+});
+
+process.on("SIGINT", () => stop(0));
+process.on("SIGTERM", () => stop(0));

@@ -53,31 +53,28 @@ npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts}
 npm test           # builds TS packages, runs all node:test suites + native addon test
 ```
 
-## Run the game (server + mirror client)
+## Run the game: `npm start`
 
 ```sh
-# 1. create an account in the client ("Create account" tab), or headless:
-MMO_DEV_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))") \
-  npm run seed:user --workspace=@mmo-engine/engine-core -- <name>
-#    (password via env only — never CLI args; 8-128 chars)
-
-# 2a. developing: the server and the client with its developer panels
-#     (performance graphs, wireframe, FX showcase; ` hides them)
-npm run dev
-
-# 2b. playing: the server, and the player's client (no developer tools)
-npm run server
-npm run client          # http://localhost:5173
-
-# the editor (inspectors, play mode, art pipeline)
-npm run editor
+npm start                  # everything: setup, the server and the player's client
+                           # → http://localhost:5173
+npm start -- --dev         # the client with its developer panels (` hides them);
+                           # same as npm run dev
+npm start -- --server      # the server only
+npm run editor             # the editor (inspectors, play mode, art pipeline)
 ```
 
+`npm start` works from a fresh clone. It does only the setup that's
+missing, then starts the server and the client together (Ctrl+C stops
+both): it installs dependencies (`npm ci`, also after the lockfile
+changes), generates the FlatBuffers bindings, and bakes the world, the
+loot pool and 10 dungeons into the data folder. The first start takes a
+few minutes; after that it goes straight to the server.
 
-Server env: `MMO_PORT` (7777), `MMO_DATA_DIR` (./data), `MMO_WORLD_SEED`
-(1234), `MMO_CHUNK_SIZE` (16). Create an account via the client's
-"Create account" tab (or the CLI above), then log in; the
-client mirrors authoritative snapshots/deltas with interpolation and
+Create an account in the client's "Create account" tab and log in.
+
+Server env: `MMO_PORT` (7777), `MMO_DATA_DIR` (packages/engine-core/data),
+`MMO_WORLD_SEED` (1234), `MMO_CHUNK_SIZE` (16). The client mirrors authoritative snapshots/deltas with interpolation and
 sends WASD/mouse-look intents upstream — no client prediction yet.
 Details: [`apps/client/README.md`](apps/client/README.md).
 
