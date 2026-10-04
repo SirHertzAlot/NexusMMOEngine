@@ -14,6 +14,11 @@
  * recovers over repeatRecoverMinutes); `relearn` multiplies gains below the
  * skill's old peak. Each gain also gives its skill's `related` skills a
  * share (not cascading). Unused skills deteriorate on entry (`decay`).
+ *
+ * Item familiarity (M4, §2.2): each blow with an item of a family (its
+ * base: sword, axe, stick) adds `familiarity.perUse`, up to 1, which
+ * computeDamage turns into up to `familiarity.maxFitBonus` extra fit. It is
+ * saved with the skills, under `fam:<family>` keys.
  */
 
 import type { SkillsRules } from "@mmo-engine/rules";
@@ -49,12 +54,15 @@ export class SkillIndex {
   }
 }
 
+/** Save keys of item families (skill ids can't hold a colon). */
+export const FAMILY_KEY = "fam:";
+
 const MS_PER_DAY = 86_400_000;
 const MS_PER_MINUTE = 60_000;
 
 /** Saved form of a sheet (values in tenths, so it stays integer). */
 export interface SkillSave {
-  /** skill id -> [tenths, peak tenths, last-use epoch ms]. */
+  /** skill id -> [tenths, peak tenths, last-use epoch ms]; `fam:<family>` -> [thousandths, thousandths, last-use epoch ms]. */
   [id: string]: [number, number, number];
 }
 
@@ -68,6 +76,8 @@ export class SkillSheet {
   /** Recent uses on lastTarget (a float: it recovers over time). */
   private readonly heat: Float32Array;
   private readonly heatAt: Float64Array;
+  /** Item family -> [familiarity 0..1, last use epoch ms]. */
+  private readonly familiar = new Map<string, [number, number]>();
 
   constructor(readonly index: SkillIndex) {
     const n = index.size;
@@ -119,6 +129,23 @@ export class SkillSheet {
     return gain;
   }
 
+  /** Familiarity with an item family, 0..1. */
+  familiarity(family: string): number {
+    return this.familiar.get(family)?.[0] ?? 0;
+  }
+
+  /** Every family used, with its familiarity. */
+  families(): [family: string, familiarity: number][] {
+    return [...this.familiar].map(([f, [v]]) => [f, v]);
+  }
+
+  /** One use of an item of `family`. Returns the familiarity after it. */
+  useFamily(family: string, nowMs: number): number {
+    const f = Math.min(1, this.familiarity(family) + this.index.rules.familiarity.perUse);
+    this.familiar.set(family, [f, nowMs]);
+    return f;
+  }
+
   private add(i: number, points: number, nowMs: number): void {
     const max = this.index.rules.max;
     const v = Math.min(max, this.value[i] + points);
@@ -149,11 +176,19 @@ export class SkillSheet {
       if (this.peak[i] <= 0) continue;
       out[this.index.ids[i]] = [Math.round(this.value[i] * 10), Math.round(this.peak[i] * 10), this.lastUse[i]];
     }
+    for (const [family, [f, at]] of this.familiar) {
+      const k = Math.round(f * 1000);
+      if (k > 0) out[FAMILY_KEY + family] = [k, k, at];
+    }
     return out;
   }
 
   load(s: SkillSave): void {
     for (const [id, [v, p, t]] of Object.entries(s)) {
+      if (id.startsWith(FAMILY_KEY)) {
+        this.familiar.set(id.slice(FAMILY_KEY.length), [Math.min(1, Math.max(0, v / 1000)), t]);
+        continue;
+      }
       const i = this.index.of(id);
       if (i < 0) continue;
       this.value[i] = v / 10;

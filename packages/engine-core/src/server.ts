@@ -64,6 +64,10 @@
  *   MMO_TERRAIN_FREQUENCY  terrain noise frequency, (0, 1] (default 0.02)
  *                  Must match the values the world was baked with.
  *
+ *   CORE_CHANNEL_PORT the edge's internal channel, loopback only (default
+ *                  4000; see docs/EDGE-CORE-SPLIT.md). Session tokens are
+ *                  kept in world.db's sessions table.
+ *
  * Region/world (slice A): when WORLD_URL is set (e.g.
  * http://localhost:7780), this instance registers as a region with the
  * world server, heartbeats off the tick loop, and reports snapshots.
@@ -123,12 +127,14 @@ import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { CombatSystem, type CombatSkills, type Weapon } from "./combat.js";
+import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
+import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
@@ -144,6 +150,7 @@ import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
 import { SqliteSocialStore } from "./social-store.js";
+import { SqlitePartyStore } from "./party-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
@@ -153,6 +160,8 @@ import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from ".
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
+import { SqliteSessionStore } from "./auth/index.js";
+import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -408,6 +417,7 @@ async function main(): Promise<void> {
   const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
   const guildStore = new SqliteGuildStore(path.join(DATA_DIR, "guilds.db"));
   const socialStore = new SqliteSocialStore(path.join(DATA_DIR, "social.db"));
+  const partyStore = new SqlitePartyStore(path.join(DATA_DIR, "parties.db"));
   // The licensed modular pack is only on machines that have the art
   // (assets/ is never committed): elsewhere looks are checked structurally.
   const catalogFile =
@@ -424,7 +434,10 @@ async function main(): Promise<void> {
   // held inside the world's edge.
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
   const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
+  // The body system is made below with the hooks; hard landings reach it through this.
+  let bodyRef: BodySystem | null = null;
   const character = new CharacterSystem({
+    onLand: (e, speed) => void bodyRef?.applyFall(sim, e, speed),
     chunkSource: procgen,
     worldSeed,
     chunkSize: CHUNK_SIZE,
@@ -492,7 +505,7 @@ async function main(): Promise<void> {
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
   const needs = new NeedsSystem(game.rules.needs);
-  const mastery = new MasterySystem(game.rules.skills);
+  const mastery = new MasterySystem(game.rules.skills, Date.now, game.rules.disciplines.disciplines);
   // Items (roadmap M3a): definitions from the baked loot pool joined with
   // the rules' physics. One instance: the gateway routes item messages to
   // it, and it is in the systems list (it expires ground items).
@@ -523,6 +536,7 @@ async function main(): Promise<void> {
       technique: d.technique[def],
       item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] },
       reach: d.length[def],
+      family: d.bases[def],
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
@@ -538,6 +552,9 @@ async function main(): Promise<void> {
     dropper.setCreatures(g.rules.creatures.creatures);
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
+    bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
+    mastery.setDisciplines(g.rules.disciplines.disciplines);
+    magic.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
   // Quests and dialog (P1): the gateway's "quest" extension and a system
@@ -598,24 +615,37 @@ async function main(): Promise<void> {
       if (i >= 0) mastery.sheetOf(e).train(i, difficulty, key, Date.now());
     },
     techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
+    familiarity: (e, family) => mastery.sheetOf(e).familiarity(family),
+    useFamily: (e, family) => void mastery.sheetOf(e).useFamily(family, Date.now()),
+    knows: (e, technique) => mastery.knows(e, technique),
   };
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills });
+  // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
+  const body = new BodySystem(game.rules.body, hooks, game.rules.appearance, combatSkills);
+  bodyRef = body;
+  // Mana and spells: casting heals (Mend) spends it.
+  const magic = new MagicSystem(game.rules.spells);
+  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
     dropper.onDeath(s, ev);
     quests.onDeath(s, ev, (e) => creatures.kindOf(e));
-  });
+  }, body);
+  // Session tokens survive a restart (E3): the edge's resync finds them.
+  const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
   const gw: Gateway = new Gateway({
     port: PORT,
+    sessionStore,
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
+    body,
+    magic,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
@@ -634,6 +664,7 @@ async function main(): Promise<void> {
     characterStore,
     guildStore,
     socialStore,
+    partyStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
@@ -727,6 +758,8 @@ async function main(): Promise<void> {
       gw.saveCharacters();
       itemLedger.flush();
       itemLedger.close();
+      sessionStore.close();
+      void coreChannel?.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       void worldClient?.stop();
@@ -737,6 +770,14 @@ async function main(): Promise<void> {
   // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
   const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
   const port = await gw.listen();
+  // The edge's channel (E3), beside the player port. A core that cannot
+  // bind it still serves players directly.
+  const channelPort = coreChannelPort();
+  const coreChannel = await startCoreChannel(gw, channelPort).catch((err: Error) => {
+    console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
+    return null;
+  });
+  if (coreChannel) console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
   gw.startTicking();
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse

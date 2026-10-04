@@ -238,6 +238,14 @@ export {
 } from "./world/client.js";
 export type { WorldTransport, WorldClientOptions } from "./world/client.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
+export { MigrationCoordinator } from "./world/migration.js";
+export type {
+  EntityPosition,
+  MigrationCoordinatorOptions,
+  MigrationEvent,
+  MigrationHost,
+  MigrationWorldApi,
+} from "./world/migration.js";
 
 export { ChunkEntityStore } from "./persist/chunk-entities.js";
 export type { ChunkEntitiesRow } from "./persist/chunk-entities.js";
@@ -281,7 +289,24 @@ export type {
   SavedStateView,
 } from "./characters/index.js";
 export { SqliteGuildStore } from "./guild-store.js";
+export { SqlitePartyStore } from "./party-store.js";
 export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social-store.js";
 
-export { DeathSystem, type LifeEvent } from "./death.js";
+export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
+export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
+export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
+
+// Edge/core split E3: the core's end of the internal channel.
+export {
+  startCoreChannel,
+  createCoreChannelHandler,
+  pushTick,
+  isSnapshotTick,
+  coreChannelPort,
+  SNAPSHOT_EVERY_TICKS,
+  createCoreMetrics,
+  CORE_METRIC_NAMES,
+} from "./channel-server.js";
+export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
+export type { GatewayTick } from "./net/gateway.js";

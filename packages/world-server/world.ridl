@@ -16,9 +16,10 @@
 // Regenerating with webrpc-gen must be a drop-in replacement:
 //   webrpc-gen -schema=world.ridl -target=typescript -out=./gen/
 //
-// Slice A implements: RegisterRegion, Heartbeat, DeregisterRegion,
-// ReportSnapshot. Migration methods are declared for slice B (the
-// server returns UNIMPLEMENTED until then).
+// Slice A: RegisterRegion, Heartbeat, DeregisterRegion, ReportSnapshot.
+// Slice B: ListRegions and the migration methods. The world checks that
+// the caller is the right party: the source begins, the target commits,
+// either aborts while begun, either reads the record.
 
 webrpc = v1
 
@@ -32,9 +33,12 @@ service World
   - ReportSnapshot(input: SnapshotReportInput) => ()
 
   # Slice B: cross-region entity migration arbitration
+  - ListRegions() => (regions: []RegionInfo)
   - BeginMigration(input: BeginMigrationInput) => (migrationId: string)
   - CommitMigration(migrationId: string, opId: string) => ()
   - AbortMigration(migrationId: string, opId: string, reason: string) => ()
+  # The record with its entity state: the target's backstop if the source dies
+  - GetMigration(migrationId: string) => (migration: Migration)
 
 struct ChunkRange
   - x0: int32
@@ -72,9 +76,40 @@ struct HeartbeatAck
   # Slice B: outcomes for this region's pending migrations
   - migrations: []MigrationOutcome
 
+# Every migration naming the region that is begun or resolved recently;
+# repeats are expected and must be handled idempotently.
 struct MigrationOutcome
   - migrationId: string
+  - entityId: string
+  - fromRegion: string
+  - toRegion: string
+  # begun | committed | aborted | expired
   - state: string
+
+struct RegionInfo
+  - regionId: string
+  - chunkRange: ChunkRange
+  - endpoint: string
+  - live: bool
+
+struct BeginMigrationInput
+  - opId: string
+  - entityId: string
+  - fromRegion: string
+  - toRegion: string
+  # Serialized ECS state (JSON object, at most 64 KiB)
+  - entityState: map<string,any>
+
+struct Migration
+  - migrationId: string
+  - entityId: string
+  - fromRegion: string
+  - toRegion: string
+  - state: string
+  - entityState: map<string,any>
+  - reason: string
+  - createdAt: uint64
+  - updatedAt: uint64
 
 struct SnapshotReportInput
   - regionId: string
