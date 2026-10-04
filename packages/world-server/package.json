@@ -5,7 +5,7 @@
     "surrealdb": "^2.0.8",
     "zod": "^4.6.5"
   },
-  "description": "World server: region registry, migration arbitration, global system of record (SurrealDB). Slice A: core + registry + webrpc adapter.",
+  "description": "World server: region registry, migration arbitration, global system of record (SurrealDB). Slices A and B: core, registry, webrpc adapter, migration arbitration.",
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^25.0.0",

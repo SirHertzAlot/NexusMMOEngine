@@ -20,7 +20,11 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { WorldCoreImpl } from "../core.js";
 import {
+  AbortMigrationSchema,
+  BeginMigrationSchema,
+  CommitMigrationSchema,
   DeregisterSchema,
+  GetMigrationSchema,
   HeartbeatSchema,
   RegisterRegionSchema,
   SnapshotReportSchema,
@@ -135,16 +139,40 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
     }),
   );
 
-  // -- Slice B: declared in the RIDL, not yet implemented ---------------
-  // Authenticated first (per spec, all non-registration methods auth),
-  // then 501 until slice B lands.
-  for (const m of ["BeginMigration", "CommitMigration", "AbortMigration"]) {
-    r.post(`/rpc/World/${m}`, (req, res) =>
-      authed(req, res, async () => {
-        throw new WorldError(501, `${m} not implemented (slice B)`);
-      }),
-    );
-  }
+  // -- Slice B: migration arbitration -----------------------------------
+  // The core checks that the caller is the right party for each op.
+
+  r.post("/rpc/World/ListRegions", (req, res) =>
+    authed(req, res, async () => ({ regions: await core.listRegions() })),
+  );
+
+  r.post("/rpc/World/BeginMigration", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = BeginMigrationSchema.parse(req.body?.input);
+      return core.beginMigration(regionId, input);
+    }),
+  );
+
+  r.post("/rpc/World/CommitMigration", (req, res) =>
+    authed(req, res, async (regionId) => {
+      await core.commitMigration(regionId, CommitMigrationSchema.parse(req.body ?? {}));
+      return {};
+    }),
+  );
+
+  r.post("/rpc/World/AbortMigration", (req, res) =>
+    authed(req, res, async (regionId) => {
+      await core.abortMigration(regionId, AbortMigrationSchema.parse(req.body ?? {}));
+      return {};
+    }),
+  );
+
+  r.post("/rpc/World/GetMigration", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const { migrationId } = GetMigrationSchema.parse(req.body ?? {});
+      return { migration: await core.getMigration(regionId, migrationId) };
+    }),
+  );
 
   return r;
 }

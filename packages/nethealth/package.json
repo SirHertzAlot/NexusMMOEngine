@@ -1,0 +1,17 @@
+{
+  "name": "@mmo-engine/nethealth",
+  "version": "0.1.0",
+  "description": "Network health instrumentation: counters, gauges and histograms with Prometheus text exposition, and structured network lifecycle logs",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  }
+}

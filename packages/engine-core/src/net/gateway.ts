@@ -102,6 +102,7 @@ import {
   SessionManager,
   verifyPassword,
   type CredentialStore,
+  type SessionStore,
 } from "../auth/index.js";
 import {
   attachChunkHeights,
@@ -114,7 +115,7 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
-import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
+import { PartyBook, PartyOpSchema, type PartyResult, type PartyStore } from "../party.js";
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
 import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
@@ -181,6 +182,8 @@ export interface GatewayOptions {
   characterStore?: CharacterStore;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
+  /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
+  partyStore?: PartyStore;
   /** Friends and blocks persistence (S2c). Default: in memory; the production server passes a SqliteSocialStore. */
   socialStore?: SocialStore;
   /**
@@ -192,6 +195,8 @@ export interface GatewayOptions {
   maxCharacters?: number;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
+  /** Durable session tokens (edge/core split E3); absent = memory only. */
+  sessionStore?: SessionStore;
   /** Auth rate limit: { maxFailures, windowMs }. Defaults 5 / 60_000. */
   authRateLimit?: { maxFailures?: number; windowMs?: number };
   /**
@@ -360,6 +365,19 @@ export interface AdminLogEntry {
 
 const HEARTBEAT_INTERVAL_MS = 5000;
 const MAX_MISSED_HEARTBEATS = 3;
+/** One finished tick, as the gateway hands it to tick listeners (E3). */
+export interface GatewayTick {
+  tick: number;
+  /** The FlatBuffers delta every client got this tick. */
+  delta: Uint8Array;
+  /** This tick's gameplay events: hits (0x16) and deaths/respawns (0x17). */
+  events: Array<HitMessage | LifeMessage>;
+  /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
+  fullState(): Uint8Array;
+}
+
+type QueuedIntentFields = Parameters<SimWorld["queueIntent"]>[1];
+
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
@@ -478,9 +496,11 @@ export class Gateway {
       | "characterStore"
       | "guildStore"
       | "socialStore"
+      | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
       | "sessionTtlMs"
+      | "sessionStore"
       | "authRateLimit"
       | "textFilter"
       | "debugSource"
@@ -543,7 +563,7 @@ export class Gateway {
   private readonly blocks: BlockList;
   private readonly friends: FriendBook;
   /** Parties, in memory (S3). */
-  private readonly parties = new PartyBook(() => this.clock());
+  private readonly parties: PartyBook;
   private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
@@ -620,6 +640,7 @@ export class Gateway {
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
+    this.parties = new PartyBook(() => this.clock(), opts.partyStore);
     this.blocks = new BlockList(opts.socialStore);
     this.friends = new FriendBook(opts.socialStore);
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
@@ -646,6 +667,7 @@ export class Gateway {
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
+      store: opts.sessionStore,
     });
     this.rateLimiter = new AuthRateLimiter({
       ...opts.authRateLimit,
@@ -782,12 +804,70 @@ export class Gateway {
     return session ? { username: session.username } : null;
   }
 
+  // ------------------------------------------------------------ edge channel (E3)
+  //
+  // What the core's channel server (src/channel-server.ts) needs from the
+  // gateway: the tick stream, password login, session lookups and intents
+  // addressed by session token. Players still connect here directly until
+  // the edge serves the client protocol.
+
+  private readonly tickListeners: Array<(t: GatewayTick) => void> = [];
+
+  /** Called after every tick's broadcast. */
+  addTickListener(cb: (t: GatewayTick) => void): void {
+    this.tickListeners.push(cb);
+  }
+
+  private readonly tickTimeListeners: Array<(ms: number) => void> = [];
+
+  /** Called with each tick's wall time in ms, once the tick is done (E6). */
+  addTickTimeListener(cb: (ms: number) => void): void {
+    this.tickTimeListeners.push(cb);
+  }
+
+  /**
+   * Password login for a caller that is not a socket (the edge). Same
+   * credential check and per-caller rate limit as a hello; the session is
+   * not bound to a connection until a client presents its token.
+   */
+  async channelLogin(username: string, password: string, caller = "channel"): Promise<{ ok: true; token: string; playerId: string } | { ok: false; reason: string }> {
+    if (this.rateLimiter.isLimited(caller)) return { ok: false, reason: "too many attempts, try again later" };
+    if (!(await this.checkPassword(username, password))) {
+      this.rateLimiter.recordFailure(caller);
+      return { ok: false, reason: "auth failed" };
+    }
+    this.rateLimiter.recordSuccess(caller);
+    return { ok: true, token: this.authSessions.create("", username), playerId: username };
+  }
+
+  /** Every live session token. */
+  liveSessionTokens(): string[] {
+    return this.authSessions.tokens();
+  }
+
+  /**
+   * Queue an intent for the player a session token is in the world as.
+   * Sanitized like a socket's intent; refused when the token has no player.
+   */
+  queueTokenIntent(token: string, intent: QueuedIntentFields): "ok" | "no_session" | "no_player" | "bad_intent" {
+    if (!this.authSessions.get(token)) return "no_session";
+    const clientId = this.tokenToClient.get(token);
+    const s = clientId ? this.sessions.get(clientId) : undefined;
+    if (!s || !s.welcomed || s.playerEntity === null) return "no_player";
+    const clean = sanitizeIntent(intent);
+    if (clean === null) return "bad_intent";
+    this.world.queueIntent(parseWireEntityId(s.playerEntity).slot, clean);
+    return "ok";
+  }
+
   // ------------------------------------------------------------ tick
 
   private onTick(tick: number): void {
     const t0 = performance.now();
     this.runTick(tick);
-    this.telemetry.tickMs(performance.now() - t0);
+    const ms = performance.now() - t0;
+    this.telemetry.tickMs(ms);
+    for (const l of this.tickTimeListeners) l(ms);
   }
 
   private runTick(tick: number): void {
@@ -797,8 +877,10 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
-    this.sendHits(sim, tick);
-    this.sendLife(sim, tick);
+    const events: Array<HitMessage | LifeMessage> = [
+      ...this.sendHits(sim, tick),
+      ...this.sendLife(sim, tick),
+    ];
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -810,12 +892,16 @@ export class Gateway {
     sim.endTick();
 
     this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
+    for (const l of this.tickListeners) {
+      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshot(this.withHeights(collectFullState(this.world, tick))) });
+    }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
   }
 
   /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
-  private sendHits(sim: SimWorld, tick: number): void {
+  private sendHits(sim: SimWorld, tick: number): HitMessage[] {
+    const all: HitMessage[] = [];
     for (const s of this.systems) {
       if (!(s instanceof CombatSystem)) continue;
       const hits = s.drainHits();
@@ -841,14 +927,17 @@ export class Gateway {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
       }
+      all.push(...msgs);
     }
+    return all;
   }
 
   /**
    * Tell every welcomed player about deaths and respawns this tick (catalog
    * 0x17), and write a dying character's death record when the rules ask.
    */
-  private sendLife(sim: SimWorld, tick: number): void {
+  private sendLife(sim: SimWorld, tick: number): LifeMessage[] {
+    const all: LifeMessage[] = [];
     for (const s of this.systems) {
       if (!(s instanceof DeathSystem)) continue;
       const events = s.drainEvents();
@@ -877,7 +966,9 @@ export class Gateway {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
       }
+      all.push(...msgs);
     }
+    return all;
   }
 
   /** Save one character avatar's position and vitals (no-op for bots, or without a store that keeps state). */

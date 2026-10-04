@@ -32,7 +32,8 @@ export {
 export type { AdminCommandPayload, HelloCredentials, HelloToken, RegisterPayload } from "./schemas.js";
 
 export { SessionManager } from "./sessions.js";
-export type { AuthSession, SessionManagerOptions } from "./sessions.js";
+export type { AuthSession, SessionManagerOptions, SessionStore } from "./sessions.js";
+export { SqliteSessionStore } from "./sqlite-session-store.js";
 
 export { AuthRateLimiter } from "./rate-limit.js";
 export type { RateLimitOptions } from "./rate-limit.js";
