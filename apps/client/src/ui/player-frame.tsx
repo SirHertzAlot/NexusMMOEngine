@@ -3,8 +3,7 @@
  *
  * Health comes from the mirror's Health rows (authoritative, pushed at
  * 1 Hz through onHud with the rest of HudData). Bars come from the
- * shared ui/meter.tsx — stamina and mana reuse it once their pools land
- * (M1/M2), with no new bar code.
+ * shared ui/meter.tsx; stamina and mana (0x1c, from onMana) reuse it.
  */
 
 import type { BodyMessage, NeedsLine } from "@mmo-engine/protocol";
@@ -19,13 +18,15 @@ export interface PlayerFrameProps {
   /** Current/max stamina from the mirror (null: no Stamina row yet). */
   sp: number | null;
   maxSp: number | null;
+  /** The mana pool from the server (0x1c); absent until one arrives. */
+  mana?: { current: number; max: number } | null;
   /** Hunger and thirst from the stats message (U3); absent until the server sends them. */
   needs?: NeedsLine | null;
   /** The player's body (0x18); a small doll shows beside the bars while anything is wrong. */
   body?: BodyMessage | null;
 }
 
-export function PlayerFrame({ name, hp, maxHp, sp, maxSp, needs, body }: PlayerFrameProps): React.ReactElement | null {
+export function PlayerFrame({ name, hp, maxHp, sp, maxSp, mana, needs, body }: PlayerFrameProps): React.ReactElement | null {
   if (hp === null || maxHp === null) return null;
   const hurt = isHurt(body ?? null);
   return (
@@ -36,6 +37,11 @@ export function PlayerFrame({ name, hp, maxHp, sp, maxSp, needs, body }: PlayerF
         {sp !== null && maxSp !== null && (
           <div className="mt-1.5">
             <Bar label="stamina" value={sp} max={maxSp} tone="stamina" />
+          </div>
+        )}
+        {mana && (
+          <div className="mt-1.5">
+            <Bar label="mana" value={mana.current} max={mana.max} tone="mana" />
           </div>
         )}
         {needs && (

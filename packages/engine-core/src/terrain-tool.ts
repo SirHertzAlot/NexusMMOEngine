@@ -4,19 +4,23 @@
  *   node dist/src/terrain-tool.js export [< area]    an area's tiles + props -> stdout
  *   node dist/src/terrain-tool.js generate < req     generator preview (not saved)
  *   node dist/src/terrain-tool.js import < tiles     save edited tiles
+ *   node dist/src/terrain-tool.js map                the whole-world overview
+ *   node dist/src/terrain-tool.js regenerate < req   re-bake one region or area
+ *                                                    from the world spec
  *
  * A baked world is too big to edit whole (a 4 km world is 62,500 tiles),
  * so export returns one area - {cx, cz, radius} in chunks, default 8
  * around (0,0) - and import reads only the edited tiles' neighbourhood.
  *
  * Env: MMO_DATA_DIR (./data), MMO_WORLD_SEED (1234), MMO_CHUNK_SIZE (16),
- *      MMO_WORLD_RADIUS (1), MMO_TERRAIN_AMPLITUDE / MMO_TERRAIN_FREQUENCY.
+ *      MMO_WORLD_RADIUS (1), MMO_TERRAIN_AMPLITUDE / MMO_TERRAIN_FREQUENCY,
+ *      MMO_WORLD_SPEC (the spec regenerate reads, as bake-world).
  *
  * I/O is one JSON object on stdin/stdout; failures print a message on
  * stderr and exit 1. It runs as its own process (spawned by the editor
  * host, like seed-user) so native code never loads into the editor.
  *
- * import is the only writer, and it:
+ * import and regenerate are the only writers. import:
  *  - refuses while a server owns the data dir (its next periodic save
  *    would silently overwrite the edit);
  *  - rejects tiles outside the baked world, and tiles that open a seam
@@ -25,10 +29,17 @@
  *    under it, so trees stay planted on sculpted terrain — props in the
  *    snapshot (loaded chunks) and in the rows of unloaded chunks alike;
  *  - writes tiles and the corrected snapshot in ONE transaction.
+ *
+ * regenerate (terrain/region-regen.ts) re-runs the bake's survey for the
+ * world's spec (refused if it is another world's) and replaces the tiles
+ * and survey-map cells of one region or area only, blending into stored
+ * neighbours along its edges; it refuses a running server and re-seats
+ * props like import.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   chunkKey,
   HeightGrid,
@@ -47,6 +58,11 @@ import {
   TerrainTileStore,
   chunkCoordsFor,
 } from "./index.js";
+import { blendTile, patchMap, regionRange, surveyLayers, worldRegions, type ChunkRange as Range } from "./terrain/region-regen.js";
+import { surveyWorld } from "./terrain/survey.js";
+import { WorldHeights } from "./terrain/world-heights.js";
+import { worldInfoFor } from "./terrain/world-info.js";
+import { loadWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
 
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const DB_PATH = path.join(DATA_DIR, "world.db");
@@ -377,11 +393,172 @@ function cmdImport(): unknown {
   }
 }
 
+/** The spec the world was baked from, as bake-world resolves it; null if none is found. */
+function worldSpec(): WorldSpec | null {
+  const env = process.env.MMO_WORLD_SPEC;
+  if (env === "none") return null;
+  const file = env
+    ? path.resolve(env)
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../worlds/default.world.json");
+  return fs.existsSync(file) ? loadWorldSpec(file) : null;
+}
+
+/** The spec, if it is the one this world was baked from; else why not. */
+function matchingSpec(store: SnapshotStore): { spec: WorldSpec | null; reason: string | null } {
+  const baked = bakedWorld(store);
+  if (!baked) return { spec: null, reason: "this world was not baked from a world spec" };
+  const spec = worldSpec();
+  if (!spec) return { spec: null, reason: "no world spec found (MMO_WORLD_SPEC)" };
+  if (spec.name !== baked.name || String(spec.seed) !== baked.seed) {
+    return { spec: null, reason: `the world spec is "${spec.name}" (seed ${spec.seed}), not this world's "${baked.name}" (seed ${baked.seed})` };
+  }
+  const { minChunk, maxChunk } = worldBounds(spec);
+  if (minChunk !== baked.minChunk || maxChunk !== baked.maxChunk) {
+    return { spec: null, reason: "the world spec's size changed since the bake: re-bake the world" };
+  }
+  const biomes = store.getMeta("world_biomes");
+  if (biomes && biomes !== JSON.stringify(spec.biomes.map((b) => b.id))) {
+    return { spec: null, reason: "the world spec's biome list changed since the bake: re-bake the world" };
+  }
+  return { spec, reason: null };
+}
+
+/** The whole-world overview: the welcome's coarse map, regions and spawn. */
+function cmdMap(): unknown {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const store = new SnapshotStore({ dbPath: DB_PATH });
+  const tileStore = new TerrainTileStore(DB_PATH);
+  try {
+    const { spec, reason } = matchingSpec(store);
+    const chunkWorldSize = spec?.chunkWorldSize ?? CHUNK_SIZE;
+    const info = worldInfoFor(store, tileStore, chunkWorldSize);
+    if (!info) return { info: null };
+    const spawn = store.getMeta("spawn_point");
+    return {
+      info,
+      spawn: spawn ? (JSON.parse(spawn) as { x: number; z: number }) : null,
+      regions: spec ? worldRegions(spec) : [],
+      regenerate: reason,
+    };
+  } finally {
+    tileStore.close();
+    store.close();
+  }
+}
+
+/** Most chunks one regenerate replaces (a 4 km world's region is 15,625). */
+const MAX_REGEN_CHUNKS = 20_000;
+
+function cmdRegenerate(): unknown {
+  const pid = runningServerPid(DATA_DIR);
+  if (pid !== null) {
+    throw new Error(`the game server (pid ${pid}) is running on this world — stop it, then regenerate again`);
+  }
+  const req = JSON.parse(readStdin() || "{}") as { region?: [number, number]; area?: Area; blend?: number };
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const store = new SnapshotStore({ dbPath: DB_PATH });
+  try {
+    const { spec, reason } = matchingSpec(store);
+    if (!spec) throw new Error(`can't regenerate: ${reason}`);
+    const world = worldBounds(spec);
+    let range: Range;
+    if (req.region) range = regionRange(spec, req.region[0], req.region[1]);
+    else if (req.area) {
+      const a = req.area;
+      if (![a.cx, a.cz, a.radius].every(Number.isInteger) || a.radius < 0) throw new Error("area needs whole-number cx, cz and radius");
+      range = [
+        Math.max(world.minChunk, a.cx - a.radius),
+        Math.max(world.minChunk, a.cz - a.radius),
+        Math.min(world.maxChunk, a.cx + a.radius),
+        Math.min(world.maxChunk, a.cz + a.radius),
+      ];
+      if (range[0] > range[2] || range[1] > range[3]) throw new Error("the area is outside the world");
+    } else throw new Error("say which region ({region: [rx, rz]}) or area ({area: {cx, cz, radius}}) to regenerate");
+    const chunks = (range[2] - range[0] + 1) * (range[3] - range[1] + 1);
+    if (chunks > MAX_REGEN_CHUNKS) throw new Error(`${chunks} chunks is more than one regenerate does (${MAX_REGEN_CHUNKS})`);
+    const size = spec.chunkWorldSize;
+    const blend = req.blend ?? 3 * size;
+    if (!Number.isFinite(blend) || blend < 0 || blend > 64 * size) throw new Error(`blend must be 0..${64 * size} m`);
+
+    const t0 = performance.now();
+    const survey = surveyWorld(spec);
+    const surveyMs = Math.round(performance.now() - t0);
+    const heights = new WorldHeights(survey);
+
+    const tileStore = new TerrainTileStore(DB_PATH);
+    const before = new Map(tileStore.getRange(...range).map((t) => [chunkKey(t.cx, t.cz), t]));
+    const maps: Array<[string, ReturnType<TerrainTileStore["getMap"]>]> = [];
+    const x0 = range[0] * size;
+    const z0 = range[1] * size;
+    const x1 = (range[2] + 1) * size;
+    const z1 = (range[3] + 1) * size;
+    for (const [name, layer] of Object.entries(surveyLayers(survey))) {
+      const stored = tileStore.getMap(name);
+      if (!stored) continue;
+      const patched = patchMap(stored, layer, survey.grid, x0, z0, x1, z1);
+      if (!patched) {
+        tileStore.close();
+        throw new Error(`survey map "${name}" no longer lines up with the spec's grid: re-bake the world`);
+      }
+      maps.push([name, patched]);
+    }
+    tileStore.close();
+
+    const changed: TerrainTile[] = [];
+    for (let cz = range[1]; cz <= range[3]; cz++) {
+      for (let cx = range[0]; cx <= range[2]; cx++) {
+        const fresh = new Float32Array(heights.chunkSamples);
+        heights.generateChunk(0n, cx, cz, 0, fresh);
+        const old = before.get(chunkKey(cx, cz));
+        if (old) blendTile(fresh, old.heights, cx, cz, range, world, size, blend);
+        if (!old || old.heights.some((v, i) => v !== fresh[i])) changed.push({ cx, cz, heights: fresh });
+      }
+    }
+
+    // Props stay planted (as import): the snapshot's and unloaded chunks' rows.
+    const snapshot = store.loadLatest();
+    const state = snapshot ? decodeSnapshot(snapshot.bytes) : null;
+    const rowPeek = new ChunkEntityStore(DB_PATH);
+    const rows = unloadedRows(rowPeek, state, range);
+    rowPeek.close();
+    const edited = new Map(changed.map((t) => [chunkKey(t.cx, t.cz), t]));
+    let reseated = 0;
+    let snapshotBytes: Uint8Array | null = null;
+    const rowWrites: Array<{ cx: number; cz: number; tick: number; bytes: Uint8Array }> = [];
+    if (state) {
+      const moved = reseat(propRows(state), edited, before);
+      if (moved > 0) snapshotBytes = encodeSnapshot(state);
+      reseated += moved;
+    }
+    for (const row of rows) {
+      const moved = reseat(row.state.transforms, edited, before);
+      if (moved > 0) rowWrites.push({ cx: row.cx, cz: row.cz, tick: row.tick, bytes: encodeSnapshot(row.state).slice() });
+      reseated += moved;
+    }
+
+    store.transaction((db) => {
+      const tiles = new TerrainTileStore(db);
+      tiles.putMany(changed);
+      for (const [name, map] of maps) tiles.putMap(name, map!);
+      new ChunkEntityStore(db).putMany(rowWrites);
+      if (snapshotBytes && snapshot) {
+        const gens = snapshot.generations;
+        const table = new Uint32Array(gens.size === 0 ? 0 : Math.max(...gens.keys()) + 1);
+        for (const [slot, gen] of gens) table[slot] = gen;
+        store.saveSnapshotBytes(snapshot.tick, snapshotBytes, table, snapshot.entityCount);
+      }
+    });
+    return { range, chunks, changed: changed.length, blend, reseatedProps: reseated, maps: maps.length, surveyMs };
+  } finally {
+    store.close();
+  }
+}
+
 function main(): void {
   const cmd = process.argv[2];
-  const run = { export: cmdExport, generate: cmdGenerate, import: cmdImport }[cmd ?? ""];
+  const run = { export: cmdExport, generate: cmdGenerate, import: cmdImport, map: cmdMap, regenerate: cmdRegenerate }[cmd ?? ""];
   if (!run) {
-    process.stderr.write("usage: terrain-tool.js export [< area.json] | generate < req.json | import < tiles.json\n");
+    process.stderr.write("usage: terrain-tool.js export [< area.json] | generate < req.json | import < tiles.json | map | regenerate < req.json\n");
     process.exit(2);
   }
   try {

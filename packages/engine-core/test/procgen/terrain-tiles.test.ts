@@ -305,6 +305,60 @@ describe("terrain-tool (the editor's terrain writer)", () => {
     assert.ok(Math.abs(tree.py - newGround) < 1e-3, `the tree stands on it (${tree.py} vs ${newGround})`);
   });
 
+  test("regenerate: one area back to the spec, blended into sculpted neighbours, nothing else touched", { timeout: 240_000 }, () => {
+    const dir = tmpDir();
+    const env = bakeSmallWorld(dir);
+    const view = { cx: 0, cz: 0, radius: 6 };
+    const exportView = (): TerrainTile[] => wireTiles(JSON.parse(run(dir, ["terrain-tool.js", "export"], JSON.stringify(view), env).out).tiles);
+    const baked = exportView();
+
+    // Sculpt inside the area-to-be (around 8, 8) and across its east edge (x = 64).
+    const grid = HeightGrid.fromTiles(baked);
+    grid.pinBorders();
+    const touched = new Set<string>();
+    for (let k = 0; k < 4; k++) {
+      for (const key of applyBrush(grid, { tool: "raise", x: 8, z: 8, radius: 20, strength: 2 })) touched.add(key);
+      for (const key of applyBrush(grid, { tool: "raise", x: 66, z: 8, radius: 12, strength: 2 })) touched.add(key);
+    }
+    const edit = { tiles: [...touched].map((key) => { const [cx, cz] = key.split(",").map(Number); return { cx, cz, heights: Array.from(grid.tile(cx, cz).heights) }; }) };
+    assert.equal(run(dir, ["terrain-tool.js", "import"], JSON.stringify(edit), env).status, 0);
+    const sculpted = exportView();
+
+    const r = run(dir, ["terrain-tool.js", "regenerate"], JSON.stringify({ area: { cx: 0, cz: 0, radius: 3 } }), env);
+    assert.equal(r.status, 0, r.err);
+    const out = JSON.parse(r.out);
+    assert.deepEqual(out.range, [-3, -3, 3, 3]);
+    assert.equal(out.chunks, 49);
+    assert.ok(out.changed > 0 && out.maps > 0);
+    const after = exportView();
+    HeightGrid.fromTiles(after); // throws on any seam
+
+    const by = (tiles: TerrainTile[]) => new Map(tiles.map((t) => [`${t.cx},${t.cz}`, t.heights]));
+    const [b, s, a] = [by(baked), by(sculpted), by(after)];
+    assert.deepEqual(a.get("0,0"), b.get("0,0"), "the middle is the bake again");
+    assert.notDeepEqual(s.get("0,0"), b.get("0,0"), "(it had been sculpted)");
+    for (const [key, h] of a) {
+      const [cx, cz] = key.split(",").map(Number);
+      if (Math.abs(cx) > 3 || Math.abs(cz) > 3) assert.deepEqual(h, s.get(key), `chunk ${key} outside the area is untouched`);
+    }
+    // The east edge kept the sculpted neighbour's samples.
+    assert.deepEqual(a.get("3,0")!.filter((_, i) => i % 16 === 15), s.get("3,0")!.filter((_, i) => i % 16 === 15));
+
+    // The overview, and a spec that isn't this world's.
+    const map = JSON.parse(run(dir, ["terrain-tool.js", "map"], "", env).out);
+    assert.deepEqual(map.info.bounds, { minCx: -16, minCz: -16, maxCx: 15, maxCz: 15 });
+    assert.equal(map.regions.length, 1);
+    assert.equal(map.regenerate, null);
+    const spec = JSON.parse(fs.readFileSync(env.MMO_WORLD_SPEC, "utf8"));
+    const other = path.join(dir, "other.world.json");
+    fs.writeFileSync(other, JSON.stringify({ ...spec, name: "other" }));
+    const wrong = run(dir, ["terrain-tool.js", "regenerate"], JSON.stringify({ region: [0, 0] }), { ...env, MMO_WORLD_SPEC: other });
+    assert.equal(wrong.status, 1);
+    assert.match(wrong.err, /not this world's "small"/);
+    const none = run(dir, ["terrain-tool.js", "regenerate"], JSON.stringify({ region: [1, 0] }), env);
+    assert.match(none.err, /no region 1,0/);
+  });
+
   test("refuses to save while a server owns the world", () => {
     const dir = tmpDir();
     // This test process stands in for the running server.
