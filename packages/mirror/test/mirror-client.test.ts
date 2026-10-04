@@ -538,6 +538,23 @@ describe("MirrorClient quests (P1, on 0x11)", () => {
   });
 });
 
+describe("MirrorClient dungeons (D4, on 0x11)", () => {
+  it("sends dungeon ops, keeps the entrances and routes dungeon messages to onDungeon", async () => {
+    const seen: string[] = [];
+    const { client, socket } = await connectClient(
+      { username: "u", password: "p" },
+      { onChat: () => seen.push("chat"), onDungeon: (d) => seen.push(d.op) },
+    );
+    client.dungeon({ kind: "dungeon", op: "enter", entrance: "barrow-gate" });
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Chat)).payload), { kind: "dungeon", op: "enter", entrance: "barrow-gate" });
+    const send = (m: unknown): void => socket.receive(encodeEnvelope(MessageType.Chat, encodeControl(m)));
+    send({ kind: "dungeon", op: "entrances", entrances: [{ id: "barrow-gate", name: "The barrow gate", x: 1, z: 2, radius: 8 }] });
+    send({ kind: "dungeon", op: "transfer", endpoint: "ws://h:1", token: "t", instance: "run-1", dungeon: "The Barrow" });
+    assert.deepEqual(seen, ["entrances", "transfer"]);
+    assert.equal(client.entrances[0].name, "The barrow gate");
+  });
+});
+
 describe("MirrorClient.names (0x12)", () => {
   it("stores names by entity and prunes them on despawn", async () => {
     const { client, socket } = await connectClient({ username: "u", password: "p" });

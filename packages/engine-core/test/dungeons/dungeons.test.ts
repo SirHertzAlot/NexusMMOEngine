@@ -236,6 +236,11 @@ describe("instance manager", () => {
   it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
     const r = await region(content);
     const a = await r.join("alice", "Alice");
+    // Entering the world tells the client where the entrances are.
+    await until(() => ctl(a).some((m) => m.op === "entrances"));
+    const listed = ctl(a).find((m) => m.op === "entrances")!.entrances as { id: string; x: number; radius: number }[];
+    assert.deepEqual(listed.map((e) => e.id), ["barrow-gate"]);
+    assert.equal(listed[0].x, content.entrances["barrow-gate"].x);
     ask(a, "nowhere");
     await until(() => ctl(a).some((m) => m.text === "there is no dungeon entrance here"));
     ask(a);
