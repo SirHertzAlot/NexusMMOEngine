@@ -881,6 +881,7 @@ export class Gateway {
       ...this.sendHits(sim, tick),
       ...this.sendLife(sim, tick),
     ];
+    this.dropFromUselessHands(sim);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -969,6 +970,25 @@ export class Gateway {
       all.push(...msgs);
     }
     return all;
+  }
+
+  /**
+   * A player's hand maimed or cut off (M3): what it held falls at their
+   * feet, and their look and bag are brought up to date.
+   */
+  private dropFromUselessHands(sim: SimWorld): void {
+    if (!this.body || !this.items) return;
+    const lost = this.body.drainDropped();
+    if (lost.length === 0) return;
+    for (const s of this.sessions.values()) {
+      if (s.playerEntity === null) continue;
+      const avatar = sim.resolveWireId(s.playerEntity);
+      let changed = false;
+      for (const l of lost) if (l.e === avatar && this.items.dropHeld(sim, this.holderOf(s), avatar, l.hand)) changed = true;
+      if (!changed) continue;
+      this.refreshAvatarLook(avatar, this.holderOf(s));
+      this.sendInventory(s);
+    }
   }
 
   /** Save one character avatar's position and vitals (no-op for bots, or without a store that keeps state). */
@@ -2687,7 +2707,11 @@ export class Gateway {
     } else if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
     } else if (a.action === "equip") {
-      result = this.items.equip(holder, a.item);
+      // A maimed or lost hand (M3) can't take hold of anything.
+      const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
+      result = hands?.some((h) => this.body!.armFactor(this.world, avatar, h) === 0)
+        ? { ok: false as const, error: "that hand can't hold anything" }
+        : this.items.equip(holder, a.item);
     } else {
       result = this.items.unequip(holder, a.hand);
     }

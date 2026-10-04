@@ -181,6 +181,19 @@ describe("body", () => {
     assert.equal(w.body.stateOf(e, "head"), "healthy");
   });
 
+  it("a hand that becomes useless lets go of what it holds, once", () => {
+    const w = setup();
+    const e = w.make();
+    w.body.applyBlow(w.sim, e, "handRight", "cut", 0.5);
+    assert.deepEqual(w.body.drainDropped(), [], "a scratch holds on");
+    w.body.applyBlow(w.sim, e, "armLowerRight", "blunt", share("armLowerRight") * 100 * 0.5);
+    assert.deepEqual(w.body.drainDropped(), [{ e, hand: "main" }]);
+    w.body.applyBlow(w.sim, e, "handRight", "cut", 100);
+    assert.deepEqual(w.body.drainDropped(), [], "already let go");
+    w.body.applyBlow(w.sim, e, "armUpperLeft", "cut", 100);
+    assert.deepEqual(w.body.drainDropped(), [{ e, hand: "off" }]);
+  });
+
   it("the admin heal makes the body whole", () => {
     const w = setup();
     const e = w.make();

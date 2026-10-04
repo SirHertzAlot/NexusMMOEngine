@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import {
   createHooks,
   decaySkill,
+  defenceChance,
   engineDefaults,
   loadRules,
   parseRules,
@@ -275,6 +276,16 @@ describe("bad rules", () => {
     const issues = issuesOf(() => parseRules({ body: { parts } }));
     assert.ok(issues.some((i) => i.startsWith("body.json: parts: ") && /at most 15 parts/.test(i)), issues.join("\n"));
     assert.doesNotThrow(() => parseRules({ body: { parts: parts.slice(0, 15).map((p) => ({ ...p, share: 1 / 15 })) } }));
+  });
+
+  it("a guard is a contest of skills, held within its bounds (M3)", () => {
+    const r = parseRules({ skills: { skills: [] }, combat: { defence: { base: 0.5, perSkill: 1, min: 0.1, max: 0.9, failedLetsThrough: 0.3 } } });
+    assert.equal(defenceChance(r, 0.5, 0.5), 0.5);
+    assert.equal(defenceChance(r, 1, 0), 0.9);
+    assert.equal(defenceChance(r, 0, 1), 0.1);
+    const h = createHooks(r);
+    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.49 }), { stopped: true, letsThrough: 0 });
+    assert.deepEqual(h.resolveDefence({ attackSkill: 50, defenceSkill: 50, rng: () => 0.51 }), { stopped: false, letsThrough: 0.3 });
   });
 
   it("a body's hands and fall parts must make sense (M2)", () => {

@@ -22,6 +22,9 @@ import { engineDefaults } from "@mmo-engine/rules";
 import { Gateway, type GatewayOptions } from "../../src/net/gateway.js";
 import { ItemDefs, ItemService, type PoolItemLike } from "../../src/items/index.js";
 import { HeadlessClient, type HelloAuth } from "./headless-client.js";
+import { BodySystem } from "../../src/body.js";
+import { SimWorld } from "../../src/world.js";
+import { loadGameRules } from "../../src/rules/boot.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
 
 let now = 0;
@@ -183,6 +186,38 @@ describe("gateway: items", () => {
     await invP3;
     const dressed = await admin(alice, "inspect", { entity: "me" });
     assert.match(dressed.message, /"held":\{"main":"[^"]+"\}/);
+    await alice.close();
+  });
+
+  it("a hand cut off drops its sword at the player's feet, and can't take hold again (M3)", async () => {
+    const { rules, hooks } = loadGameRules();
+    const world = new SimWorld();
+    const body = new BodySystem(rules.body, hooks);
+    now = 1_000_000;
+    const items = makeItems();
+    gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world, systems: [items, body], items, body, admins: ["alice"] });
+    const port = await gw.listen();
+    gw.frame(now);
+    const alice = await join(`ws://127.0.0.1:${port}`, "alice");
+    tick();
+    const avatar = world.resolveWireId(BigInt(alice.welcome!.player_entity));
+    const dropsP = alice.waitFor(MessageType.Drops, 1);
+    const invP = alice.waitFor(MessageType.Inventory, 1);
+    body.applyBlow(world, avatar, "handRight", "cut", 100);
+    tick();
+    const inv = decodeControl<InventoryMessage>((await invP)[0]);
+    assert.ok(!inv.main, "the hand let go");
+    const drops = decodeControl<DropsMessage>((await dropsP)[0]).drops;
+    assert.equal(drops.length, 1, "the sword is on the ground");
+    const bare = await admin(alice, "inspect", { entity: "me" });
+    assert.doesNotMatch(bare.message, /"held"/);
+    // Picked up again, it can't be held in a hand that is gone.
+    const pickP = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: drops[0][0] }));
+    const sword = decodeControl<InventoryMessage>((await pickP)[0]).bag.find((i) => i !== null)!;
+    const refused = await nextError(alice, () => alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "equip", item: sword.id })));
+    assert.equal(refused.code, 4005);
+    assert.match(refused.message, /can't hold/);
     await alice.close();
   });
 });

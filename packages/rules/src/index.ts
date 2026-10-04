@@ -4,6 +4,7 @@ export { computeStats, ModifierTotals, StatLayout, type StatModifier } from "./s
 export {
   createHooks,
   decaySkill,
+  defenceChance,
   effectiveFit,
   masteryPower,
   partAndBelow,
@@ -12,6 +13,8 @@ export {
   type DamageResult,
   type DeathInput,
   type DeathOutcome,
+  type DefenceInput,
+  type DefenceResult,
   type GainInput,
   type HookOverrides,
   type InjuryInput,

@@ -176,6 +176,8 @@ export class BodySystem implements SimSystem {
   readonly name = "body";
   private readonly query = defineQuery([Health, PlayerIntent]);
   private layout: Layout;
+  /** Hands that became useless since the last drainDropped (what they hold falls). */
+  private dropped: { e: number; hand: "main" | "off" }[] = [];
   /** Why each entity that died of its body did (cleared on reset). */
   private readonly causes = new Map<number, DeathInput>();
 
@@ -246,6 +248,16 @@ export class BodySystem implements SimSystem {
     return f;
   }
 
+  /**
+   * The hands that became useless (maimed, gone) since the last call: what
+   * they hold should fall (the part's `atZero: "drop"`, §4.1).
+   */
+  drainDropped(): { e: number; hand: "main" | "off" }[] {
+    const out = this.dropped;
+    if (out.length > 0) this.dropped = [];
+    return out;
+  }
+
   /** Why `e`'s body killed it (for the rules' onDeath), if it did. */
   causeOf(e: number): DeathInput {
     return this.causes.get(e) ?? { cause: "other" };
@@ -281,6 +293,7 @@ export class BodySystem implements SimSystem {
     while (this.state(e, i) === DISMEMBERED && L.parent[i] >= 0) i = L.parent[i];
     const max = L.share[i] * Health.max[e];
     const before = this.state(e, i);
+    const handsBefore = [this.armFactor(sim, e, "main"), this.armFactor(sim, e, "off")];
     const r = this.hooks.onInjury({ part: L.ids[i], kind, damage: amount, hp: Body.hp[e][i] * max, maxHp: max, state: PART_STATES[before] });
     const lost: string[] = [];
     if (r.state === "dismembered" && before !== DISMEMBERED) {
@@ -299,6 +312,8 @@ export class BodySystem implements SimSystem {
       if (amount > 0 && (kind === "cut" || kind === "thrust")) this.openWound(e, i, kind);
     }
     if (!this.checkDeath(e)) this.write(e);
+    if (handsBefore[0] > 0 && this.armFactor(sim, e, "main") === 0) this.dropped.push({ e, hand: "main" });
+    if (handsBefore[1] > 0 && this.armFactor(sim, e, "off") === 0) this.dropped.push({ e, hand: "off" });
     return { part: L.ids[i], state: PART_STATES[this.state(e, i)], lost };
   }
 
