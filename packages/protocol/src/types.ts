@@ -277,6 +277,16 @@ export interface FriendsState {
 }
 
 /**
+ * S→C (0x11, U8): the receiver's block list, by the character names the
+ * blocks were made under, in block order. Sent on login and after every
+ * block or unblock.
+ */
+export interface BlocksState {
+  kind: "blocks";
+  blocked: string[];
+}
+
+/**
  * Chat channels: say and emote reach nearby players, yell reaches all,
  * whisper reaches one named character (S2), party reaches your party (S3).
  */

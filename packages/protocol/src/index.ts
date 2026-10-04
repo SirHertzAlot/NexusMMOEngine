@@ -10,6 +10,7 @@ export type {
   BlockMessage,
   FriendMessage,
   FriendsState,
+  BlocksState,
   PartyMemberInfo,
   PartyMessage,
   PartyState,
