@@ -1,11 +1,12 @@
 /**
- * CharacterSheet (roadmap U9, first slice): attributes and derived
- * stats from the stats message (0x0f), with modifier deltas. Skills and
- * their peaks need mastery (M1), injuries need body parts (M2) — the
- * sheet grows those sections when they land instead of faking them.
+ * CharacterSheet (roadmap U9): attributes and derived stats from the
+ * stats message (0x0f), with modifier deltas, and skills by family with
+ * their peaks (M1). Injuries need body parts (M2); the sheet grows that
+ * section when they land instead of faking it.
  */
 
-import type { StatLineMessage } from "@mmo-engine/protocol";
+import { useState } from "react";
+import type { SkillLineMessage, StatLineMessage } from "@mmo-engine/protocol";
 
 /** Modifier delta text: "+2", "-1", or "" when unmodified. */
 export function statDelta(line: StatLineMessage): string {
@@ -35,21 +36,95 @@ export function SheetSection({ title, lines }: { title: string; lines: StatLineM
   );
 }
 
+export interface SkillGroup {
+  family: string;
+  /** Skills with any value or peak, highest first. */
+  trained: SkillLineMessage[];
+  untrained: SkillLineMessage[];
+}
+
+/** Skills by family, in the order families first appear (the rules' order). */
+export function groupSkills(skills: SkillLineMessage[]): SkillGroup[] {
+  const groups = new Map<string, SkillGroup>();
+  for (const k of skills) {
+    let g = groups.get(k.family);
+    if (!g) groups.set(k.family, (g = { family: k.family, trained: [], untrained: [] }));
+    (k.value > 0 || k.peak > 0 ? g.trained : g.untrained).push(k);
+  }
+  for (const g of groups.values()) g.trained.sort((a, b) => b.value - a.value);
+  return [...groups.values()];
+}
+
+/** One skill: name, a bar to `max` with the peak marked when it sits above the value, and the value. */
+function SkillRow({ skill, max }: { skill: SkillLineMessage; max: number }): React.ReactElement {
+  const pct = (v: number): string => `${Math.max(0, Math.min(1, v / max)) * 100}%`;
+  const relearn = skill.peak > skill.value;
+  return (
+    <div className="flex items-center gap-2 text-sm tabular-nums" title={relearn ? `peak ${skill.peak}: relearns faster up to it` : undefined}>
+      <span className="w-24 shrink-0 truncate text-muted-foreground">{skill.name}</span>
+      <div className="relative h-1.5 flex-1 rounded bg-secondary" role="progressbar" aria-label={skill.name} aria-valuenow={skill.value} aria-valuemax={max}>
+        <div className="h-full rounded bg-violet-400" style={{ width: pct(skill.value) }} />
+        {relearn && <div className="absolute top-[-2px] h-[10px] w-0.5 rounded bg-violet-200/80" style={{ left: pct(skill.peak) }} />}
+      </div>
+      <span className="w-10 text-right text-foreground">{skill.value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+export function SkillsSection({ skills, max }: { skills: SkillLineMessage[]; max: number }): React.ReactElement | null {
+  const [showAll, setShowAll] = useState(false);
+  if (skills.length === 0) return null;
+  const groups = groupSkills(skills);
+  const untrained = groups.reduce((n, g) => n + g.untrained.length, 0);
+  return (
+    <div>
+      <div className="mb-0.5 flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
+        <span>skills</span>
+        {untrained > 0 && (
+          <button className="normal-case tracking-normal hover:text-foreground" aria-expanded={showAll} onClick={() => setShowAll((s) => !s)}>
+            {showAll ? "hide untrained" : `+${untrained} untrained`}
+          </button>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {groups.map((g) => {
+          const rows = showAll ? [...g.trained, ...g.untrained] : g.trained;
+          if (rows.length === 0) return null;
+          return (
+            <div key={g.family}>
+              <div className="text-[10px] capitalize text-muted-foreground/80">{g.family}</div>
+              {rows.map((k) => (
+                <SkillRow key={k.id} skill={k} max={max} />
+              ))}
+            </div>
+          );
+        })}
+        {!showAll && untrained === skills.length && <div className="text-xs text-muted-foreground">nothing trained yet: skills grow with use</div>}
+      </div>
+    </div>
+  );
+}
+
 export function CharacterSheet({
   name,
   attributes,
   stats,
+  skills = [],
+  skillMax = 100,
 }: {
   name: string | null;
   attributes: StatLineMessage[];
   stats: StatLineMessage[];
+  skills?: SkillLineMessage[];
+  skillMax?: number;
 }): React.ReactElement {
   return (
-    <div className="pointer-events-auto w-72 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
+    <div className="pointer-events-auto max-h-[calc(100vh-8rem)] w-72 overflow-y-auto rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
       {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
       <div className="flex flex-col gap-2">
         <SheetSection title="attributes" lines={attributes} />
         <SheetSection title="stats" lines={stats} />
+        <SkillsSection skills={skills} max={skillMax} />
       </div>
     </div>
   );

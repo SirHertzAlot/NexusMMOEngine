@@ -212,6 +212,28 @@ export interface StatsMessage {
   entity: string;
   attributes: StatLineMessage[];
   stats: StatLineMessage[];
+  /** Hunger and thirst meters (U3), when the player has them. Whole numbers. */
+  needs?: NeedsLine;
+  /** Every skill in rules order with its value and peak, 0..`skillMax`, to 0.1 (U9). */
+  skills?: SkillLineMessage[];
+  skillMax?: number;
+}
+
+export interface NeedsLine {
+  hunger: number;
+  hungerMax: number;
+  thirst: number;
+  thirstMax: number;
+}
+
+export interface SkillLineMessage {
+  id: string;
+  name: string;
+  /** The rules' family (weapon, defence, body, survival, work), for grouping. */
+  family: string;
+  value: number;
+  /** The highest the skill has been; above `value` it relearns faster. */
+  peak: number;
 }
 
 /**
