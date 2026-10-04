@@ -48,6 +48,7 @@ import {
   Velocity,
 } from "./components.js";
 import type { SimWorld } from "./world.js";
+import { Injury, NO_JUMP } from "./body.js";
 import type { ChunkDataSource } from "./procgen/chunk-source.js";
 
 export interface SimSystem {
@@ -71,7 +72,8 @@ export const FLY_VERTICAL_SPEED = 6;
  * 1 when the rules bind none or it has no stats. Never negative.
  */
 export function moveSpeedFactor(sim: SimWorld, e: number): number {
-  return Math.max(0, sim.stats.drive(e, "moveSpeed") ?? 1);
+  const injury = hasComponent(sim.ecs, Injury, e) ? Injury.move[e] : 1;
+  return Math.max(0, (sim.stats.drive(e, "moveSpeed") ?? 1) * injury);
 }
 
 /** Horizontal speed for an entity's locomotion mode (walking without one). */
@@ -153,6 +155,8 @@ export interface CharacterOptions {
   bounds?: { minX: number; minZ: number; maxX: number; maxZ: number };
   /** Where the water is (sea and lakes); absent -> no water, no swimming. */
   water?: WaterSurface;
+  /** A walker landed at `speed` m/s (downward): fall damage (M2, BodySystem.applyFall). */
+  onLand?: (e: number, speed: number) => void;
 }
 
 /**
@@ -208,6 +212,7 @@ export class CharacterSystem implements SimSystem {
   /** Eids holding ToggleFlight last tick — flight toggles on the press. */
   private readonly flightHeld = new Set<number>();
   private readonly water: WaterSurface | null;
+  private readonly onLand: ((e: number, speed: number) => void) | null;
 
   constructor(opts: CharacterOptions = {}) {
     this.source = opts.chunkSource ?? null;
@@ -215,6 +220,7 @@ export class CharacterSystem implements SimSystem {
     this.chunkSize = opts.chunkSize ?? 16;
     this.bounds = opts.bounds ?? null;
     this.water = opts.water ?? null;
+    this.onLand = opts.onLand ?? null;
   }
 
   /** Terrain height under world (x, z); y=0 without a source. */
@@ -261,7 +267,9 @@ export class CharacterSystem implements SimSystem {
       }
       const ground = this.groundHeight(Transform.px[e], Transform.pz[e]);
       const wantJump = PlayerIntent.jump[e] !== 0;
-      const jumpPressed = wantJump && !this.jumpHeld.has(e);
+      // A useless leg (M2) can't jump.
+      const lame = hasComponent(sim.ecs, Injury, e) && (Injury.flags[e] & NO_JUMP) !== 0;
+      const jumpPressed = wantJump && !this.jumpHeld.has(e) && !lame;
       if (wantJump) this.jumpHeld.add(e);
       else this.jumpHeld.delete(e);
 
@@ -288,7 +296,10 @@ export class CharacterSystem implements SimSystem {
       // Grounded: kill downward velocity and glue to the terrain so
       // landing never hovers inside the snap tolerance and walking
       // stays planted on slopes.
-      if (Velocity.ly[e] < 0) Velocity.ly[e] = 0;
+      if (Velocity.ly[e] < 0) {
+        if (this.onLand && Velocity.ly[e] < -1) this.onLand(e, -Velocity.ly[e]);
+        Velocity.ly[e] = 0;
+      }
       Transform.py[e] = ground;
     }
   }

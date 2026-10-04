@@ -6,11 +6,13 @@
  * the rules' onDeath outcome deciding the respawn delay. When that delay is
  * up the body is brought back at full health (`place` puts players at the
  * spawn point; anything else rises where it fell) and onRespawn is told.
- * Runs right after CombatSystem, so a blow's death shows the same tick.
+ * Runs right after CombatSystem (and BodySystem), so a blow's death shows
+ * the same tick. With a body, the cause is the body's (a vital part, blood
+ * loss), and onRespawn's outcome clears its injuries.
  */
 
 import { defineQuery, hasComponent } from "bitecs";
-import type { DeathOutcome, RuleHooks } from "@mmo-engine/rules";
+import type { DeathInput, DeathOutcome, RespawnOutcome, RuleHooks } from "@mmo-engine/rules";
 import { Action, Health, PlayerIntent, Transform, Velocity } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
@@ -27,6 +29,14 @@ export interface LifeEvent {
   /** Where it fell (dead events). */
   x?: number;
   z?: number;
+  /** What killed it (dead events). */
+  cause?: DeathInput;
+}
+
+/** What DeathSystem asks of the body (M2): why it died, and putting it right on respawn. */
+export interface DeathBody {
+  causeOf(e: number): DeathInput;
+  respawned(sim: SimWorld, e: number, outcome: RespawnOutcome): void;
 }
 
 interface Corpse {
@@ -51,6 +61,8 @@ export class DeathSystem implements SimSystem {
     private readonly delayOf?: (e: number) => number | undefined,
     /** Called as each death is recorded (loot drops); the event is also queued for `drainEvents`. */
     private readonly onDeath?: (sim: SimWorld, ev: LifeEvent) => void,
+    /** Body parts (M2): the cause of death, and injuries cleared on respawn. Absent: a torso death. */
+    private readonly body?: DeathBody,
   ) {}
 
   isDead(e: number): boolean {
@@ -81,7 +93,8 @@ export class DeathSystem implements SimSystem {
         continue;
       }
       if (Health.current[e] > 0) continue;
-      const outcome = this.hooks.onDeath({ cause: "part", part: "torso" });
+      const cause: DeathInput = this.body?.causeOf(e) ?? { cause: "part", part: "torso" };
+      const outcome = this.hooks.onDeath(cause);
       const delay = this.delayOf?.(e) ?? outcome.respawnInSeconds;
       const respawnAt = tick + Math.round(delay * this.tickHz);
       this.dead.set(e, { respawnAt, outcome });
@@ -97,6 +110,7 @@ export class DeathSystem implements SimSystem {
         outcome,
         x: Transform.px[e],
         z: Transform.pz[e],
+        cause,
       };
       this.events.push(ev);
       this.onDeath?.(sim, ev);
@@ -105,8 +119,9 @@ export class DeathSystem implements SimSystem {
 
   private respawn(sim: SimWorld, e: number, tick: number, corpse: Corpse): void {
     this.dead.delete(e);
-    this.hooks.onRespawn({ outcome: corpse.outcome });
+    const back = this.hooks.onRespawn({ outcome: corpse.outcome });
     Health.current[e] = Health.max[e];
+    this.body?.respawned(sim, e, back);
     if (hasComponent(sim.ecs, PlayerIntent, e)) PlayerIntent.buttons[e] = 0;
     this.place?.(sim, e);
     this.events.push({ tick, target: e, state: "alive" });

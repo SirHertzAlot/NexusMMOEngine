@@ -26,7 +26,7 @@ export function FriendsFrame({ friends, blocked, onWhisper, onRemove, onBlock, o
   if (list.length === 0 && blocked.length === 0) return null;
   const sorted = [...list].sort((a, b) => Number(b.online) - Number(a.online));
   return (
-    <div className="absolute bottom-4 left-4 z-10 w-48 rounded-lg border bg-card/90 p-2 text-sm text-card-foreground shadow-sm" aria-label="friends">
+    <div className="pointer-events-auto max-h-48 w-48 overflow-y-auto rounded-lg border bg-card/90 p-2 text-sm text-card-foreground shadow-sm" aria-label="friends">
       <ul className="space-y-1">
         {sorted.map((f) => (
           <li key={f.name} className="flex items-center gap-1.5">

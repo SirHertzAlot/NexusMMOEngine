@@ -22,7 +22,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
-import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
+import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
+import { treatmentNotice } from "./ui/treatment-notice.js";
+import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
+import { spellNotice } from "./ui/spell-notice.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -39,7 +42,7 @@ import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
-import { parseChatCommand } from "./ui/chat-command.js";
+import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel } from "./ui/bag-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
@@ -58,6 +61,11 @@ import {
 } from "./input/bindings.js";
 import { DEV_TOOLS } from "./dev-tools.js";
 import type { DevLayout } from "./ui/dev-layout.js";
+
+/** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
+const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
+const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
+
 import {
   Button,
   Card,
@@ -132,6 +140,10 @@ export function App(): React.ReactElement {
   const [friends, setFriends] = useState<FriendsState | null>(null);
   const [blocked, setBlocked] = useState<BlocksState["blocked"]>([]);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
+  // `/r` (U6): the last character who whispered us; the name ref lets the socket callback tell our echoes apart.
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const characterNameRef = useRef<string | null>(null);
+  characterNameRef.current = characterName;
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
   const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -145,14 +157,17 @@ export function App(): React.ReactElement {
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
+  // The last skills message (M4): a discipline new since it is announced.
+  const skillsRef = useRef<SkillsMessage | null>(null);
   const [assets] = useState(() => new PlaceholderAssets());
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
 
   /** Shared MirrorClient construction with the standard callbacks. */
-  const createClient = (): MirrorClient =>
-    new MirrorClient((u) => new BrowserSocket(u), {
+  const createClient = (): MirrorClient => {
+    skillsRef.current = null;
+    return new MirrorClient((u) => new BrowserSocket(u), {
       onWelcome: (_w: WelcomeMessage) => {
         sessionTokenRef.current = _w.session_token;
         setCharacterName(_w.character?.name ?? null);
@@ -173,7 +188,10 @@ export function App(): React.ReactElement {
         setError((prev) => prev ?? "connection closed");
         setScreen("login");
       },
-      onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
+      onChat: (c) => {
+        setChatLines((prev) => [...prev.slice(-49), c]);
+        setReplyTo((prev) => replyTarget(prev, c, characterNameRef.current));
+      },
       onParty: setParty,
       onGuild: setGuild,
       onFriends: setFriends,
@@ -183,9 +201,29 @@ export function App(): React.ReactElement {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
       },
-      onHit: (h) => combat.hit(h, clientRef.current?.playerEntity ?? null),
+      onHit: (h) => {
+        combat.hit(h, clientRef.current?.playerEntity ?? null);
+        const text = disarmNotice(h, clientRef.current?.playerEntity?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onSpell: (sp) => {
+        const text = spellNotice(sp, clientRef.current?.playerEntity?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onSkills: (next) => {
+        const [text] = disciplineNotices(skillsRef.current, next);
+        skillsRef.current = next;
+        if (text) setNotice({ text, at: performance.now() });
+      },
       onLife: (l) => combat.life(l),
+      onTreatment: (t) => {
+        const c = clientRef.current;
+        const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
+        const text = treatmentNotice(t, c?.playerEntity?.toString() ?? null, name);
+        if (text) setNotice({ text, at: performance.now() });
+      },
     });
+  };
 
   /**
    * Run one handshake (login, register, or token reconnect) against a
@@ -260,6 +298,7 @@ export function App(): React.ReactElement {
     clientRef.current = null;
     setAccount(null);
     setChatLines([]);
+    setReplyTo(null);
     setParty(null);
     setGuild(null);
     setFriends(null);
@@ -295,6 +334,26 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
+  // Stance (M3): R turns to the next technique, T to the next aim; the server keeps it.
+  const stance = useRef<{ technique: number; aim: number }>({ technique: -1, aim: 0 });
+  const onStance = useCallback((which: "technique" | "aim") => {
+    const c = clientRef.current;
+    if (!c) return;
+    const known = new Set(c.body?.parts.filter((p) => p.state !== "dismembered").map((p) => p.id) ?? AIMS);
+    const aims = AIMS.filter((a) => known.has(a));
+    const st = stance.current;
+    if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
+    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
+    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    c.stance(technique, aim);
+    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
+    setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
+  }, []);
+  // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
+  const onTreat = useCallback(() => clientRef.current?.treat(), []);
+  // G casts Mend on yourself (mana's first spender).
+  const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -333,6 +392,9 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
           onBag={toggleBag}
+          onStance={onStance}
+          onTreat={onTreat}
+          onMend={onMend}
           onNearDrop={setNearDrop}
           combat={combat}
           onCombat={setCombatView}
@@ -344,13 +406,24 @@ export function App(): React.ReactElement {
           </div>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
-        <PlayerFrame
-          name={characterName}
-          hp={combatView?.hp ?? hud.hp}
-          maxHp={combatView?.maxHp ?? hud.maxHp}
-          sp={hud.sp}
-          maxSp={hud.maxSp}
-        />
+        {/* Bottom-left stack: friends above the player frame, so neither covers the other. */}
+        <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <FriendsFrame
+            friends={friends}
+            blocked={blocked}
+            onBlock={(n) => client?.block(n, true)}
+            onUnblock={(n) => client?.block(n, false)}
+            onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
+            onRemove={(n) => client?.friend(n, false)}
+          />
+          <PlayerFrame
+            name={characterName}
+            hp={combatView?.hp ?? hud.hp}
+            maxHp={combatView?.maxHp ?? hud.maxHp}
+            sp={hud.sp}
+            maxSp={hud.maxSp}
+          />
+        </div>
         <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
           <DevHud
@@ -465,20 +538,13 @@ export function App(): React.ReactElement {
           onRank={(name, rank) => client?.guild("setRank", { name, rank })}
           onInviteExpired={() => setGuild((g) => (g ? { ...g, invite: undefined } : g))}
         />
-        <FriendsFrame
-          friends={friends}
-          blocked={blocked}
-          onBlock={(n) => client?.block(n, true)}
-          onUnblock={(n) => client?.block(n, false)}
-          onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
-          onRemove={(n) => client?.friend(n, false)}
-        />
         <ChatPanel
           lines={chatLines}
+          self={characterName}
           channel={chatChannel}
           onChannel={setChatChannel}
           onSend={(line) => {
-            const c = parseChatCommand(line, chatChannel);
+            const c = parseChatCommand(line, chatChannel, replyTo);
             if (c.kind === "party") client?.party(c.op, c.name);
             else if (c.kind === "guild") client?.guild(c.op, c);
             else if (c.kind === "friend") client?.friend(c.name, c.on);

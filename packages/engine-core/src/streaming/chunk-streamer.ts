@@ -57,6 +57,17 @@ export interface ChunkNavmeshHook {
   unload(cx: number, cz: number): void;
 }
 
+/**
+ * Live contents that follow loaded chunks but aren't stored in its row (the
+ * biome's wild packs, see WildCreatures): `load` runs on every load, after
+ * the chunk's stored or scattered entities are in; `unload` before the
+ * chunk's entities are collected.
+ */
+export interface ChunkContentsHook {
+  load(sim: SimWorld, cx: number, cz: number): void;
+  unload(sim: SimWorld, cx: number, cz: number): void;
+}
+
 /** Static terrain collision that follows loaded chunks (see PhysicsSystem.terrainColliders). */
 export interface ChunkColliderHook {
   add(cx: number, cz: number, heights: Float32Array): void;
@@ -151,6 +162,7 @@ export class ChunkStreamer implements SimSystem {
   private overBudget = false;
   private readonly warn: (message: string) => void;
   private readonly counters = { loads: 0, unloads: 0, populated: 0, restored: 0 };
+  private contents: ChunkContentsHook | null = null;
 
   constructor(private readonly opts: ChunkStreamerOptions) {
     this.loadRadius = opts.loadRadius ?? 8;
@@ -181,6 +193,15 @@ export class ChunkStreamer implements SimSystem {
 
   isLoaded(cx: number, cz: number): boolean {
     return this.loaded.has(packChunk(cx, cz));
+  }
+
+  /**
+   * Live contents that follow chunks (see ChunkContentsHook). Attached once
+   * what they need exists; chunks already loaded get them now.
+   */
+  attachContents(sim: SimWorld, hook: ChunkContentsHook): void {
+    this.contents = hook;
+    for (const c of this.loaded.values()) hook.load(sim, c.cx, c.cz);
   }
 
   /** Loaded chunk coords (tests, debug). */
@@ -335,6 +356,7 @@ export class ChunkStreamer implements SimSystem {
       this.counters.populated++;
     }
     this.loadNavmesh(cx, cz);
+    this.contents?.load(sim, cx, cz);
     this.counters.loads++;
   }
 
@@ -350,6 +372,12 @@ export class ChunkStreamer implements SimSystem {
 
   private unload(sim: SimWorld, keys: readonly number[]): void {
     const unloading = new Set(keys);
+    if (this.contents) {
+      for (const key of unloading) {
+        const [cx, cz] = unpackChunk(key);
+        this.contents.unload(sim, cx, cz);
+      }
+    }
     const size = this.opts.chunkWorldSize;
     const members = new Map<number, number[]>();
     for (const key of unloading) members.set(key, []);

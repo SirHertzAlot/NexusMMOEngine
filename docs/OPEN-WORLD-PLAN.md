@@ -247,8 +247,17 @@ reproducible (same spec → same bytes), not identical across platforms.
 
 ## Phase 5 — Biomes
 
-- [ ] Biome registry: each biome's scatter sets and creature tables (its
+- [x] Biome registry: each biome's scatter sets and creature tables (its
       terrain rule and surface character live in the world spec).
+      `packages/engine-core/content/biomes.json` (`MMO_BIOMES`): per biome,
+      the ecology plan's group multipliers (moved out of the plan, which
+      keeps only its `default` row) and a creature table (packs per km²,
+      kinds by weight, optional pack size). Checked against the world's
+      biomes, the plan's groups and known kinds. `planChunkPacks` plans at
+      most one pack per chunk from the seed alone; `WildCreatures` spawns a
+      chunk's packs as it loads and removes them as it unloads
+      (`MMO_WILD_CREATURES=1`, off by default). Only kinds with creature
+      rules spawn (goblins today); the others keep their share of the roll.
 - [x] Biome placement from the coarse fields — done in the climate-driven
       survey (Phase 1): biomes emerge from climate and water, uncapped.
 - **Verify:** every biome is recognisable on the world map and in game.
