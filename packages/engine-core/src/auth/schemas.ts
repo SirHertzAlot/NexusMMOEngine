@@ -6,10 +6,12 @@
  * is argon2.verify (./passwords.ts); the real identity is the opaque
  * session token (./sessions.ts).
  *
- * `hello` has two variants (docs/MESSAGE-CATALOG.md):
- * - credentials: { username, password } — first contact / login
- * - token:       { token }             — reconnect with a session token
- * A payload carrying BOTH (or neither) is malformed. Both schemas are
+ * `hello` has three variants (docs/MESSAGE-CATALOG.md):
+ * - credentials: { username, password }  — first contact / login
+ * - token:       { token }               — reconnect with a session token
+ * - migration:   { migration, ticket }   — arrive from another region
+ *   (WORLD-SERVER-SPEC §6), with the ticket the source region handed out
+ * A payload carrying more than one (or none) is malformed. Both schemas are
  * .strict(): unknown fields are rejected, so a client can't smuggle
  * extra auth material past validation.
  */
@@ -41,8 +43,17 @@ export const HelloTokenSchema = helloBase
   })
   .strict();
 
+/** Arrive from another region: the world's migration id and the source's one-time ticket. */
+export const HelloMigrationSchema = helloBase
+  .extend({
+    migration: z.string().regex(/^mig-[0-9a-f]{24}$/),
+    ticket: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+
 export type HelloCredentials = z.infer<typeof HelloCredentialsSchema>;
 export type HelloToken = z.infer<typeof HelloTokenSchema>;
+export type HelloMigration = z.infer<typeof HelloMigrationSchema>;
 
 /**
  * In-client account creation (protocol 0x0b). Same shape discipline as
@@ -85,10 +96,16 @@ export type AdminCommandPayload = z.infer<typeof AdminCommandSchema>;
  */
 export function parseHello(
   raw: unknown,
-): { kind: "credentials"; value: HelloCredentials } | { kind: "token"; value: HelloToken } | null {
+):
+  | { kind: "credentials"; value: HelloCredentials }
+  | { kind: "token"; value: HelloToken }
+  | { kind: "migration"; value: HelloMigration }
+  | null {
   const creds = HelloCredentialsSchema.safeParse(raw);
   if (creds.success) return { kind: "credentials", value: creds.data };
   const tok = HelloTokenSchema.safeParse(raw);
   if (tok.success) return { kind: "token", value: tok.data };
+  const mig = HelloMigrationSchema.safeParse(raw);
+  if (mig.success) return { kind: "migration", value: mig.data };
   return null;
 }

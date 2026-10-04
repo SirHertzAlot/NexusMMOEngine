@@ -74,10 +74,12 @@ export enum MessageType {
 }
 
 /**
- * C→S, once per connection. Two variants (docs/MESSAGE-CATALOG.md):
+ * C→S, once per connection. Three variants (docs/MESSAGE-CATALOG.md):
  * - credentials: { username, password } — first contact / login
  * - token:       { token }              — reconnect with a session token
- * Carrying both (or neither) is malformed. Server-side Zod schemas
+ * - migration:   { migration, ticket }  — arrive from another region after
+ *   a `bye` redirect (WORLD-SERVER-SPEC §6)
+ * Carrying more than one (or none) is malformed. Server-side Zod schemas
  * (@mmo-engine/engine-core auth) enforce the shapes.
  */
 export interface HelloMessage {
@@ -87,6 +89,8 @@ export interface HelloMessage {
   username?: string; // credentials variant
   password?: string; // credentials variant
   token?: string; // session-token variant (64 hex chars)
+  migration?: string; // migration variant: the redirect's migration id
+  ticket?: string; // migration variant: the redirect's one-time ticket (64 hex chars)
   /**
    * The client chooses a character before entering the world: the server
    * answers with `account` (0x0c) instead of joining, and the client
@@ -110,6 +114,22 @@ export interface WelcomeMessage {
   day?: DayClock;
   /** The character this connection plays, when it entered as one. */
   character?: { id: number; name: string };
+}
+
+/**
+ * Either direction (catalog §0x09): a graceful disconnect notice. From the
+ * server it can carry `redirect`: the player crossed into another region
+ * (WORLD-SERVER-SPEC §6). The client closes this socket and sends that
+ * region a migration hello; if it can't get in, it reconnects here with
+ * its session token, and this region still has the player.
+ */
+export interface ByeMessage {
+  reason: string;
+  redirect?: {
+    endpoint: string; // the target region's gateway URL
+    migration: string; // the world's migration id
+    ticket: string; // one-time, 64 hex chars; the target checks its hash
+  };
 }
 
 /** S→C on protocol/auth/server errors. */
