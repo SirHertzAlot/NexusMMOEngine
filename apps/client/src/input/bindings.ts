@@ -24,6 +24,7 @@ export const ACTIONS = [
   "aim",
   "treat",
   "mend",
+  "quests",
 ] as const;
 
 export type ActionId = (typeof ACTIONS)[number];
@@ -37,12 +38,13 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   down: "swim / fly down",
   flight: "toggle flight",
   dodge: "dodge",
-  interact: "pick up",
+  interact: "pick up / talk",
   bag: "bag",
   technique: "next technique (cut, thrust, bludgeon)",
   aim: "next aim (torso, head, legs, arms)",
   treat: "treat your worst wound",
   mend: "cast Mend on yourself",
+  quests: "quest log",
 };
 
 /** Mouse buttons fixed outside rebinding (attack, guard). */
@@ -68,15 +70,17 @@ export const DEFAULT_BINDINGS: Bindings = {
   aim: ["KeyT"],
   treat: ["KeyH"],
   mend: ["KeyG"],
+  quests: ["KeyJ"],
 };
 
 /**
  * Interface actions (M3a): handled by the client, never part of the
  * movement intent — pick up the nearest drop, open the bag, and (M3) turn
  * to the next technique or aim (sent as a stance, 0x19), and (M4) treat
- * your own worst wound (0x1a), and cast Mend on yourself (0x1c).
+ * your own worst wound (0x1a), cast Mend on yourself (0x1c), and open
+ * the quest log (P1).
  */
-export const UI_ACTIONS = ["interact", "bag", "technique", "aim", "treat", "mend"] as const satisfies readonly ActionId[];
+export const UI_ACTIONS = ["interact", "bag", "technique", "aim", "treat", "mend", "quests"] as const satisfies readonly ActionId[];
 export type UiActionId = (typeof UI_ACTIONS)[number];
 
 /** Actions whose press the server acts on (latched until an intent carries them). */
