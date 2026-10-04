@@ -78,6 +78,16 @@ The **Play Mode** tab drives a full local loop:
      backend (protocol v3 `0x0a` `tiles` query).
    - **Waypoints** — per-entity path status (`active`/`idle`/`failed`/
      `unknown`) and live waypoint list (`0x0a` `waypoints` query).
+   - **Game view** (ROADMAP E4) — the world drawn by the game client's
+     own renderer (`WorldCanvas`, imported from `apps/client/src/render`
+     through `@mmo-engine/client/render`: a Vite alias to the source, and
+     tsconfig paths to the built client's types), on the same mirror
+     client the overlays query. Click the view to steer the avatar with
+     the default bindings (Esc frees the mouse); fps, tick, entities,
+     position, time of day and weather show under it. The view loads on
+     first use, so the other tabs never download the renderer. Terrain
+     surfaces come from the client's `public/` folder (the editor's
+     `publicDir`), when fetched.
 4. **Stop** — disconnects the client, kills the owned server process
    group, and restores the pre-play editor state (form fields, auto-
    refresh, entity selection).
