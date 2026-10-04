@@ -9,6 +9,12 @@
  * re-seats trees/rocks onto the new ground and stops play mode first (a
  * running server would overwrite the edit); the server serves the new
  * terrain on next start.
+ *
+ * At world scale (ROADMAP E9): a map of the whole baked world shows the
+ * loaded area and the camera, and a click loads the area there; "Follow
+ * camera" loads the area round the camera as it pans (only while nothing
+ * is unsaved); the brush reaches 256 m for mountain-scale edits; and one
+ * region (or the loaded area) can be regenerated from the world spec.
  */
 
 import * as React from "react";
@@ -23,10 +29,15 @@ import { TerrainView } from "../terrain/terrain-view.js";
 import {
   generateTerrain,
   loadTerrain,
+  loadWorldOverview,
+  regenerateTerrain,
   saveTerrain,
   type TerrainArea,
+  type WorldOverview,
   type WorldTerrain,
 } from "../terrain/terrain-api.js";
+import { areaAround, areaRange, brushRadius, brushSlider, chunkAt, followCamera, regionAt, type ChunkRange } from "../inspectors/world-map.js";
+import { WorldMapView } from "./world-map.js";
 import {
   Badge,
   Button,
@@ -61,7 +72,13 @@ export function TerrainEditorPanel(): React.JSX.Element {
   const [strength, setStrength] = React.useState(2);
   const [wireframe, setWireframe] = React.useState(false);
   const [dirtyCount, setDirtyCount] = React.useState(0);
-  const [busy, setBusy] = React.useState<null | "loading" | "saving" | "generating">("loading");
+  const [busy, setBusy] = React.useState<null | "loading" | "saving" | "generating" | "regenerating">("loading");
+  const busyRef = React.useRef<typeof busy>("loading");
+  busyRef.current = busy;
+  const [overview, setOverview] = React.useState<WorldOverview | null>(null);
+  const [camera, setCamera] = React.useState<{ x: number; z: number } | null>(null);
+  const [follow, setFollow] = React.useState(true);
+  const [regenTarget, setRegenTarget] = React.useState("area");
   const [message, setMessage] = React.useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [amplitude, setAmplitude] = React.useState("2");
   const [frequency, setFrequency] = React.useState("0.02");
@@ -113,7 +130,7 @@ export function TerrainEditorPanel(): React.JSX.Element {
     };
   }, [markDirty]);
 
-  const showWorld = React.useCallback((w: WorldTerrain) => {
+  const showWorld = React.useCallback((w: WorldTerrain, keepCamera = false) => {
     const grid = HeightGrid.fromTiles(w.tiles);
     if (w.partial) grid.pinBorders();
     gridRef.current = grid;
@@ -125,13 +142,13 @@ export function TerrainEditorPanel(): React.JSX.Element {
     setWorld(w);
     setAmplitude(String(w.amplitude));
     setFrequency(String(w.frequency));
-    viewRef.current?.setWorld(grid, w.props, w.chunkWorldSize);
+    viewRef.current?.setWorld(grid, w.props, w.chunkWorldSize, keepCamera);
   }, []);
 
-  const reload = React.useCallback(async (area?: TerrainArea) => {
+  const reload = React.useCallback(async (area?: TerrainArea, keepCamera = false) => {
     setBusy("loading");
     try {
-      showWorld(await loadTerrain(area ?? areaRef.current));
+      showWorld(await loadTerrain(area ?? areaRef.current), keepCamera);
     } catch (err) {
       setMessage({ tone: "bad", text: errText(err) });
     } finally {
@@ -142,6 +159,32 @@ export function TerrainEditorPanel(): React.JSX.Element {
   React.useEffect(() => {
     void reload();
   }, [reload]);
+
+  const refreshOverview = React.useCallback(async () => {
+    try {
+      setOverview(await loadWorldOverview());
+    } catch (err) {
+      setMessage({ tone: "bad", text: errText(err) });
+    }
+  }, []);
+  React.useEffect(() => {
+    void refreshOverview();
+  }, [refreshOverview]);
+
+  // The camera on the map, and the area following it.
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      const view = viewRef.current;
+      const area = areaRef.current;
+      if (!view || !area) return;
+      const target = view.cameraTarget();
+      setCamera((c) => (c && Math.abs(c.x - target.x) < 0.5 && Math.abs(c.z - target.z) < 0.5 ? c : target));
+      if (!follow || busyRef.current !== null || !world?.world) return;
+      const next = followCamera(area, target, chunkSize.current, world.world, dirtyRef.current.size > 0);
+      if (next) void reload(next, true);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [follow, world, reload]);
 
   React.useEffect(() => {
     viewRef.current?.setWireframe(wireframe);
@@ -181,6 +224,49 @@ export function TerrainEditorPanel(): React.JSX.Element {
     if (dirtyRef.current.size > 0 && !window.confirm("Loading another area discards your unsaved sculpting. Continue?")) return;
     setMessage(null);
     void reload(area);
+  }
+
+  function jump(x: number, z: number): void {
+    if (!world?.world) return;
+    const { cx, cz } = chunkAt(x, z, chunkSize.current);
+    // The radius typed in the Area box (else the loaded area's).
+    const typed = Number(areaInput.radius);
+    const radius = Number.isInteger(typed) && typed >= 0 && typed <= 32 ? typed : areaRef.current?.radius ?? 8;
+    const area = areaAround(cx, cz, radius, world.world);
+    if (dirtyRef.current.size > 0 && !window.confirm("Loading another area discards your unsaved sculpting. Continue?")) return;
+    setMessage(null);
+    void reload(area);
+  }
+
+  const regenRange: ChunkRange | null = React.useMemo(() => {
+    if (regenTarget === "area") return areaRef.current ? areaRange(areaRef.current) : null;
+    const [rx, rz] = regenTarget.split(",").map(Number);
+    return overview?.regions.find((r) => r.rx === rx && r.rz === rz)?.range ?? null;
+  }, [regenTarget, overview, world]);
+
+  async function regenerateFromSpec(): Promise<void> {
+    if (!regenRange) return;
+    const n = (regenRange[2] - regenRange[0] + 1) * (regenRange[3] - regenRange[1] + 1);
+    if (!window.confirm(`Regenerate ${n} chunk(s) from the world spec? Sculpting there is replaced; its edges blend into the neighbours.`)) return;
+    setBusy("regenerating");
+    setMessage(null);
+    try {
+      const req = regenTarget === "area" ? { area: areaRef.current! } : { region: regenTarget.split(",").map(Number) as [number, number] };
+      const r = await regenerateTerrain(req);
+      setMessage({
+        tone: "ok",
+        text:
+          `Regenerated ${r.chunks} chunk(s) (${r.changed} differed from the spec; survey ${(r.surveyMs / 1000).toFixed(1)} s); ` +
+          `${r.reseatedProps} prop(s) moved onto the new ground.` +
+          (r.stoppedPlayMode ? " Play mode was stopped." : ""),
+      });
+      showWorld(await loadTerrain(areaRef.current), true);
+      void refreshOverview();
+    } catch (err) {
+      setMessage({ tone: "bad", text: errText(err) });
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function regenerate(): Promise<void> {
@@ -249,13 +335,13 @@ export function TerrainEditorPanel(): React.JSX.Element {
             ))}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="terrain-radius">Radius: {radius.toFixed(1)} units</Label>
-            <input id="terrain-radius" type="range" min={1} max={12} step={0.5}
-              value={radius} onChange={(e) => setRadius(Number(e.target.value))} />
+            <Label htmlFor="terrain-radius">Radius: {radius} m</Label>
+            <input id="terrain-radius" type="range" min={0} max={1} step={0.005}
+              value={brushSlider(radius)} onChange={(e) => setRadius(brushRadius(Number(e.target.value)))} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="terrain-strength">Strength: {strength.toFixed(1)} {toolHint}</Label>
-            <input id="terrain-strength" type="range" min={0.5} max={10} step={0.5}
+            <input id="terrain-strength" type="range" min={0.5} max={40} step={0.5}
               value={strength} onChange={(e) => setStrength(Number(e.target.value))} />
           </div>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -271,6 +357,50 @@ export function TerrainEditorPanel(): React.JSX.Element {
               Revert
             </Button>
           </div>
+
+          {overview && (
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <SectionTitle>World map</SectionTitle>
+              <WorldMapView
+                world={overview}
+                area={areaRef.current ?? null}
+                camera={camera}
+                highlight={regenTarget === "area" ? null : regenRange}
+                onJump={jump}
+              />
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
+                Follow camera (loads the area round it as you pan{dirtyCount > 0 ? "; paused: save first" : ""})
+              </label>
+              <SectionTitle>Regenerate from the world spec</SectionTitle>
+              {overview.regenerate ? (
+                <p className="text-xs text-muted-foreground">Not available: {overview.regenerate}.</p>
+              ) : (
+                <>
+                  <select
+                    className="rounded border border-input bg-background px-1.5 py-1 text-sm"
+                    value={regenTarget}
+                    onChange={(e) => setRegenTarget(e.target.value)}
+                    data-testid="regen-target"
+                  >
+                    <option value="area">The loaded area</option>
+                    {overview.regions.map((r) => {
+                      const c = camera && chunkAt(camera.x, camera.z, overview.chunkWorldSize);
+                      const here = c !== null && regionAt([r], c.cx, c.cz) !== null;
+                      return (
+                        <option key={`${r.rx},${r.rz}`} value={`${r.rx},${r.rz}`}>
+                          Region {r.rx},{r.rz} ({r.range[2] - r.range[0] + 1}² chunks){here ? " · camera here" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <Button variant="secondary" size="sm" onClick={() => void regenerateFromSpec()} disabled={busy !== null || !regenRange}>
+                    {busy === "regenerating" ? "Regenerating…" : "Regenerate"}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 border-t border-border pt-4">
             <SectionTitle>Area</SectionTitle>
