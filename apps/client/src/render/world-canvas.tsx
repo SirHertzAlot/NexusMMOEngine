@@ -37,6 +37,7 @@ import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
 import { DropLabels } from "./drop-labels.js";
+import { NpcMarkers } from "./npc-markers.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
@@ -123,6 +124,10 @@ export interface WorldCanvasProps {
   onMend?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** The quest log key (P1/U11). */
+  onQuests?: () => void;
+  /** The npc in talk range changed (an npc id; null: none in range). */
+  onNearNpc?: (npc: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
   combat?: CombatFeedback;
   /** The player's health or the target changed (called on change, not every frame). */
@@ -258,6 +263,7 @@ interface Runtime {
   layer: EntityLayer;
   input: InputState;
   drops: DropLabels;
+  npcs: NpcMarkers;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -275,6 +281,8 @@ function MirrorWorld({
   onTreat,
   onMend,
   onNearDrop,
+  onQuests,
+  onNearNpc,
   combat,
   onCombat,
   settings,
@@ -286,13 +294,14 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, combat, onCombat, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, combat, onCombat, lastStateAt, settings });
+  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, combat, onCombat, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Last values sent: nearDrop, and the combat view's numbers (onCombat fires only when one moves).
   const loop = useRef({
     pointerMoved: false,
     nearDrop: null as bigint | null,
+    nearNpc: null as string | null,
     hp: NaN,
     maxHp: NaN,
     target: null as bigint | null,
@@ -323,7 +332,8 @@ function MirrorWorld({
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group);
+    const npcs = new NpcMarkers();
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group);
 
     // Draw calls and triangles summed over every pass of a frame (the screen
     // effects render several); the frame loop reads and resets them.
@@ -332,13 +342,15 @@ function MirrorWorld({
     const canvas = gl.domElement;
     const input = new InputState();
     const unbind = bindInput(canvas, input, {
-      // Interface keys (M3a): pick up the drop in range, open the bag.
+      // Interface keys (M3a): pick up the drop in range (else talk to the npc in range), open the bag.
       onAction: (action) => {
         if (action === "bag") latest.current.onBag?.();
         else if (action === "technique" || action === "aim") latest.current.onStance?.(action);
         else if (action === "treat") latest.current.onTreat?.();
         else if (action === "mend") latest.current.onMend?.();
+        else if (action === "quests") latest.current.onQuests?.();
         else if (drops.nearest !== null) client.pickup(drops.nearest);
+        else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
       },
     });
     const onWheel = (e: WheelEvent): void => {
@@ -376,7 +388,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs };
     particles.setBudget(latest.current.settings.particles);
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -397,8 +409,9 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
-      scene.remove(drops.group);
+      scene.remove(drops.group, npcs.group);
       drops.dispose();
+      npcs.dispose();
       terrain.dispose();
       water.dispose();
     };
@@ -449,6 +462,12 @@ function MirrorWorld({
       l.nearDrop = r.drops.nearest;
       const info = l.nearDrop === null ? undefined : client.drops.get(l.nearDrop);
       latest.current.onNearDrop?.(l.nearDrop !== null && info ? { entity: l.nearDrop, name: info.name, color: info.color } : null);
+    }
+    // Quest givers: figures, markers, and which one the interact key would talk to.
+    r.npcs.sync(client.npcs, (x, z) => r.terrain.heightAt(x, z), camera, r.layer.player, now);
+    if (r.npcs.nearest !== l.nearNpc) {
+      l.nearNpc = r.npcs.nearest;
+      latest.current.onNearNpc?.(l.nearNpc);
     }
     // The player and target frames, told only when a number moves (hits land between HUD samples).
     if (combat && latest.current.onCombat) {

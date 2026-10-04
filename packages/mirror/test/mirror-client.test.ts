@@ -83,6 +83,7 @@ async function connectClient(
 ): Promise<{ client: MirrorClient; socket: FakeSocket }> {
   let socket!: FakeSocket;
   const client = new MirrorClient(() => (socket = new FakeSocket()), {
+    ...events,
     onWelcome: events?.onWelcome ?? (() => {}),
     onState: events?.onState ?? (() => {}),
     onError: events?.onError ?? (() => {}),
@@ -510,6 +511,30 @@ describe("MirrorClient.chat (0x11)", () => {
     client.disconnect();
     client.chat("say", "lost");
     assert.throws(() => socket.lastOf(MessageType.Chat), /no sent message/);
+  });
+});
+
+describe("MirrorClient quests (P1, on 0x11)", () => {
+  it("sends quest ops and routes the log, npcs and dialog to their own events", async () => {
+    const seen: string[] = [];
+    const { client, socket } = await connectClient(
+      { username: "u", password: "p" },
+      {
+        onChat: () => seen.push("chat"),
+        onQuests: (q) => seen.push(`quests:${q.quests.length}`),
+        onNpcs: (n) => seen.push(`npcs:${n.npcs[0].name}`),
+        onDialog: (d) => seen.push("closed" in d ? "dialog:closed" : `dialog:${d.replies.length}`),
+      },
+    );
+    client.quest({ kind: "quest", op: "talk", npc: "warden" });
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Chat)).payload), { kind: "quest", op: "talk", npc: "warden" });
+    const send = (m: unknown): void => socket.receive(encodeEnvelope(MessageType.Chat, encodeControl(m)));
+    send({ kind: "quests", quests: [] });
+    send({ kind: "npcs", npcs: [{ id: "warden", name: "Warden Hale", x: 1, z: 2, marker: "offer" }] });
+    send({ kind: "dialog", npc: "warden", name: "Warden Hale", text: "Well met.", replies: [{ index: 0, text: "Farewell." }] });
+    send({ kind: "dialog", npc: "warden", closed: true });
+    assert.deepEqual(seen, ["quests:0", "npcs:Warden Hale", "dialog:1", "dialog:closed"]);
+    assert.equal(client.npcs[0].marker, "offer");
   });
 });
 

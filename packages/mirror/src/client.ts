@@ -31,6 +31,11 @@ import {
   type FriendMessage,
   type FriendsState,
   type BlocksState,
+  type DialogMessage,
+  type NpcView,
+  type NpcsMessage,
+  type QuestLogMessage,
+  type QuestOp,
   type GuildMessage,
   type PartyMessage,
   type PartyState,
@@ -96,6 +101,12 @@ export interface MirrorEvents {
   onFriends?(f: FriendsState): void;
   /** The block list (U8), on login and after each block or unblock. */
   onBlocks?(b: BlocksState): void;
+  /** The player's quest log (P1), on entering the world and after every change. */
+  onQuests?(q: QuestLogMessage): void;
+  /** Who gives quests and where, with their markers (P1), on entering and when a marker changes. */
+  onNpcs?(n: NpcsMessage): void;
+  /** An npc's line and the replies open to the player, or the dialog closed (P1). */
+  onDialog?(d: DialogMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
@@ -148,6 +159,8 @@ export class MirrorClient {
   skills: SkillsMessage | null = null;
   /** The player's mana pool, as last sent (0x1c); null until one arrives. */
   mana: ManaMessage | null = null;
+  /** Quest givers and their markers (P1), as last sent; the world draws them. */
+  npcs: NpcView[] = [];
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -358,6 +371,16 @@ export class MirrorClient {
   block(name: string, on: boolean): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "block", name, on })));
+  }
+
+  /**
+   * A quest op (P1, on the chat envelope): talk to an npc in range, pick a
+   * reply of the open dialog, close it, or abandon a quest. Answers come
+   * back as onDialog / onQuests, refusals as system chat lines.
+   */
+  quest(op: QuestOp): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
   }
 
   private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {
@@ -659,11 +682,16 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage>(payload);
         if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
         else if (m.kind === "blocks") this.events.onBlocks?.(m);
+        else if (m.kind === "quests") this.events.onQuests?.(m);
+        else if (m.kind === "npcs") {
+          this.npcs = m.npcs;
+          this.events.onNpcs?.(m);
+        } else if (m.kind === "dialog") this.events.onDialog?.(m);
         else this.events.onChat?.(m);
         break;
       }

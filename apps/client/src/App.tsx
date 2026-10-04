@@ -23,6 +23,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
+import type { NpcView, QuestView } from "@mmo-engine/protocol";
+import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -187,6 +189,13 @@ export function App(): React.ReactElement {
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
   const [bagOpen, setBagOpen] = useState(false);
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
+  // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
+  const [quests, setQuests] = useState<QuestView[] | null>(null);
+  const [questsOpen, setQuestsOpen] = useState(false);
+  const [npcs, setNpcs] = useState<NpcView[]>([]);
+  const [nearNpc, setNearNpc] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  const questsRef = useRef<QuestView[] | null>(null);
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
 
   const clientRef = useRef<MirrorClient | null>(null);
@@ -231,6 +240,15 @@ export function App(): React.ReactElement {
       onGuild: setGuild,
       onFriends: setFriends,
       onBlocks: (b) => setBlocked(b.blocked),
+      onQuests: (q) => {
+        const notices = questNotices(questsRef.current, q.quests);
+        questsRef.current = q.quests;
+        setQuests(q.quests);
+        const text = notices[notices.length - 1];
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onNpcs: (n) => setNpcs(n.npcs),
+      onDialog: (d) => setDialog("closed" in d ? null : d),
       onStats: setSheet,
       onInventory: (inv) => {
         setBag(inv.bag);
@@ -347,6 +365,12 @@ export function App(): React.ReactElement {
     setHands({ main: null, off: null });
     setBagOpen(false);
     setNearDrop(null);
+    setQuests(null);
+    questsRef.current = null;
+    setQuestsOpen(false);
+    setNpcs([]);
+    setNearNpc(null);
+    setDialog(null);
     combat.select(null);
     setCombatView(null);
     setScreen("login");
@@ -381,6 +405,9 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
+  const toggleQuests = useCallback(() => setQuestsOpen((o) => !o), []);
+  const onReply = useCallback((index: number) => clientRef.current?.quest({ kind: "quest", op: "reply", index }), []);
+  const onCloseDialog = useCallback(() => clientRef.current?.quest({ kind: "quest", op: "close" }), []);
   // Stance (M3): R turns to the next technique, T to the next aim; the server keeps it.
   const stance = useRef<{ technique: number; aim: number }>({ technique: -1, aim: 0 });
   const onStance = useCallback((which: "technique" | "aim") => {
@@ -443,6 +470,8 @@ export function App(): React.ReactElement {
           onTreat={onTreat}
           onMend={onMend}
           onNearDrop={setNearDrop}
+          onQuests={toggleQuests}
+          onNearNpc={setNearNpc}
           combat={combat}
           onCombat={setCombatView}
         />
@@ -450,6 +479,22 @@ export function App(): React.ReactElement {
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             pick up <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
+          </div>
+        )}
+        {!nearDrop && !dialog && nearNpc && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            talk to <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
+          </div>
+        )}
+        {dialog && (
+          <div className="absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
+            <DialogPanel dialog={dialog} onReply={onReply} onClose={onCloseDialog} />
+          </div>
+        )}
+        {quests && (
+          <div className="absolute right-4 top-16 z-10">
+            <QuestTracker quests={quests} />
           </div>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
@@ -614,9 +659,13 @@ export function App(): React.ReactElement {
               onUnequip={(hand) => client?.unequip(hand)}
             />
           )}
+          {questsOpen && quests && <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />}
           {sheetOpen && sheet && (
             <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} />
           )}
+          <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
+            quests
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
             sheet
           </Button>
