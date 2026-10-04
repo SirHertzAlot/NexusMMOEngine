@@ -238,6 +238,14 @@ export {
 } from "./world/client.js";
 export type { WorldTransport, WorldClientOptions } from "./world/client.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
+export { MigrationCoordinator } from "./world/migration.js";
+export type {
+  EntityPosition,
+  MigrationCoordinatorOptions,
+  MigrationEvent,
+  MigrationHost,
+  MigrationWorldApi,
+} from "./world/migration.js";
 
 export { ChunkEntityStore } from "./persist/chunk-entities.js";
 export type { ChunkEntitiesRow } from "./persist/chunk-entities.js";
