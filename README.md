@@ -71,7 +71,9 @@ changes), generates the FlatBuffers bindings, and bakes the world, the
 loot pool and 10 dungeons into the data folder. The first start takes a
 few minutes; after that it goes straight to the server.
 
-Create an account in the client's "Create account" tab and log in.
+Create an account in the client's "Create account" tab and log in. Every
+other command (bakes, tools, benchmarks, servers, the admin console, chat
+commands and keys) is in [`docs/CLI.md`](docs/CLI.md).
 
 Server env: `MMO_PORT` (7777), `MMO_DATA_DIR` (packages/engine-core/data),
 `MMO_WORLD_SEED` (1234), `MMO_CHUNK_SIZE` (16). The client mirrors authoritative snapshots/deltas with interpolation and
