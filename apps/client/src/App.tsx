@@ -224,6 +224,7 @@ export function App(): React.ReactElement {
   const lastStateAtRef = useRef(0);
   // The last skills message (M4): a discipline new since it is announced.
   const skillsRef = useRef<SkillsMessage | null>(null);
+  const [mastery, setMastery] = useState<SkillsMessage | null>(null);
   const [assets] = useState(() => new PlaceholderAssets());
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
@@ -305,6 +306,7 @@ export function App(): React.ReactElement {
       onSkills: (next) => {
         const [text] = disciplineNotices(skillsRef.current, next);
         skillsRef.current = next;
+        setMastery(next);
         if (text) setNotice({ text, at: performance.now() });
       },
       onLife: (l) => combat.life(l),
@@ -455,6 +457,7 @@ export function App(): React.ReactElement {
     setSheet(null);
     setSheetOpen(false);
     setBody(null);
+    setMastery(null);
     setMana(null);
     setCast(null);
     setBag(null);
@@ -792,7 +795,7 @@ export function App(): React.ReactElement {
           )}
           {questsOpen && quests && <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />}
           {sheetOpen && sheet && (
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} />
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
           )}
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
             quests

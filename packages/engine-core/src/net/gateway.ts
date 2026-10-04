@@ -542,6 +542,11 @@ function parseHandoffState(state: unknown): z.infer<typeof HandoffStateSchema> |
   return r.success ? r.data : null;
 }
 
+/** A discipline's `requires` map as the wire's list (M4). */
+function requirements(requires: Readonly<Record<string, number>>): { skill: string; level: number }[] {
+  return Object.entries(requires).map(([skill, level]) => ({ skill, level }));
+}
+
 function parseAdminList(raw: string | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
@@ -1519,7 +1524,11 @@ export class Gateway {
       max: rules.max,
       skills: rules.skills.map((k, i) => ({ id: k.id, name: k.name, value: tenth(sheet.value[i]), peak: tenth(sheet.peak[i]) })),
       familiarity: sheet.families().map(([family, value]) => ({ family, value: Math.round(value * 1000) / 1000 })),
-      disciplines: this.mastery.disciplinesOf(eid).map((d) => ({ id: d.id, name: d.name, active: d.active, unlocks: [...d.unlocks] })),
+      disciplines: this.mastery.disciplinesOf(eid).map((d) => {
+        const rule = this.mastery!.discipline(d.id);
+        return { id: d.id, name: d.name, active: d.active, unlocks: [...d.unlocks], ...(rule ? { requires: requirements(rule.requires) } : {}) };
+      }),
+      toward: this.mastery.goalsOf(eid).map((d) => ({ id: d.id, name: d.name, unlocks: [...d.unlocks], requires: requirements(d.requires) })),
     };
     const json = JSON.stringify(msg);
     if (!force && this.skillsSent.get(s) === json) return;

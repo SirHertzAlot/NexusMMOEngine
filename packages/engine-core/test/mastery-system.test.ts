@@ -97,6 +97,16 @@ describe("disciplines and familiarity (M4)", () => {
     assert.equal(sys.knows(8, "disarm"), false, "nobody else");
   });
 
+  it("lists the disciplines not yet earned as goals", () => {
+    const { sys, set } = make();
+    const all_ = all.disciplines.disciplines.map((d) => d.id);
+    assert.deepEqual(sys.goalsOf(7).map((d) => d.id), all_);
+    for (const [id, level] of Object.entries(blade.requires)) set(id, level);
+    assert.deepEqual(sys.goalsOf(7).map((d) => d.id), all_.filter((id) => id !== "bladeMaster"));
+    assert.equal(sys.discipline("bladeMaster"), blade);
+    assert.equal(sys.discipline("nope"), undefined);
+  });
+
   it("keeps the title after the skills decay, but not its technique", () => {
     const { sys, set } = make();
     for (const [id, level] of Object.entries(blade.requires)) set(id, level - 10, level);

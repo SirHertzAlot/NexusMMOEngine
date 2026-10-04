@@ -184,7 +184,9 @@ export interface TreatmentMessage {
  * S->C (catalog 0x1b, M4): the player's own skills (0..max, and the
  * highest each has been), their familiarity with each item family used
  * (0..1), and the disciplines they have earned (`active`: the skills are at
- * its levels now, so what it unlocks can be used). Sent on joining and
+ * its levels now, so what it unlocks can be used). `requires` names each
+ * discipline's skill levels, and `toward` lists the ones not yet earned,
+ * so the character sheet can show the way to them. Sent on joining and
  * whenever a value (to a tenth) changes.
  */
 export interface SkillsMessage {
@@ -192,7 +194,15 @@ export interface SkillsMessage {
   max: number;
   skills: { id: string; name: string; value: number; peak: number }[];
   familiarity: { family: string; value: number }[];
-  disciplines: { id: string; name: string; active: boolean; unlocks: string[] }[];
+  disciplines: { id: string; name: string; active: boolean; unlocks: string[]; requires?: DisciplineRequirement[] }[];
+  /** Disciplines not yet earned, in rules order (absent from older servers). */
+  toward?: { id: string; name: string; unlocks: string[]; requires: DisciplineRequirement[] }[];
+}
+
+/** A skill (`skills` id) a discipline needs, and the level. */
+export interface DisciplineRequirement {
+  skill: string;
+  level: number;
 }
 
 /**

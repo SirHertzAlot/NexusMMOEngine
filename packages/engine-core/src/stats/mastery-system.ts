@@ -92,6 +92,17 @@ export class MasterySystem implements SimSystem {
     return out;
   }
 
+  /** The disciplines `eid` hasn't earned yet, in rules order: what the character sheet shows the way to. */
+  goalsOf(eid: number): Discipline[] {
+    const earned = new Set(this.disciplinesOf(eid).map((d) => d.id));
+    return this.disciplines.filter((d) => !earned.has(d.id));
+  }
+
+  /** The rules' discipline `id`, or undefined. */
+  discipline(id: string): Discipline | undefined {
+    return this.disciplines.find((d) => d.id === id);
+  }
+
   /** Whether `eid` can use `technique` now: an active discipline of its unlocks it. */
   knows(eid: number, technique: string): boolean {
     if (!this.sheets.has(eid)) return false;
