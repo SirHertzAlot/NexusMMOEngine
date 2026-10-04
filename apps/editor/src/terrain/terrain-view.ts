@@ -166,8 +166,16 @@ export class TerrainView {
     });
   }
 
-  /** Show a world: builds one mesh per chunk and frames the camera. */
-  setWorld(grid: HeightGrid, props: ReadonlyArray<readonly [number, number, number]>, chunkWorldSize: number): void {
+  /**
+   * Show a world: builds one mesh per chunk and frames the camera, or
+   * keeps it where it is (`keepCamera`: the area followed the camera).
+   */
+  setWorld(
+    grid: HeightGrid,
+    props: ReadonlyArray<readonly [number, number, number]>,
+    chunkWorldSize: number,
+    keepCamera = false,
+  ): void {
     this.grid = grid;
     this.size = chunkWorldSize;
     for (const mesh of this.chunks.values()) {
@@ -184,7 +192,12 @@ export class TerrainView {
       this.scene.add(mesh);
     }
     this.setProps(props);
-    this.frame();
+    if (!keepCamera) this.frame();
+  }
+
+  /** Where the camera looks, on the ground plane (world x, z). */
+  cameraTarget(): { x: number; z: number } {
+    return { x: this.controls.target.x, z: this.controls.target.z };
   }
 
   /** Redraw chunks after the grid changed under them. */
