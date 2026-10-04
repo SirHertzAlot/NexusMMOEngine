@@ -113,7 +113,7 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
-import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
+import { PartyBook, PartyOpSchema, type PartyResult, type PartyStore } from "../party.js";
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
 import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
@@ -179,6 +179,8 @@ export interface GatewayOptions {
   characterStore?: CharacterStore;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
+  /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
+  partyStore?: PartyStore;
   /** Friends and blocks persistence (S2c). Default: in memory; the production server passes a SqliteSocialStore. */
   socialStore?: SocialStore;
   /**
@@ -469,6 +471,7 @@ export class Gateway {
       | "characterStore"
       | "guildStore"
       | "socialStore"
+      | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
       | "sessionTtlMs"
@@ -530,7 +533,7 @@ export class Gateway {
   private readonly blocks: BlockList;
   private readonly friends: FriendBook;
   /** Parties, in memory (S3). */
-  private readonly parties = new PartyBook(() => this.clock());
+  private readonly parties: PartyBook;
   private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
@@ -607,6 +610,7 @@ export class Gateway {
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
+    this.parties = new PartyBook(() => this.clock(), opts.partyStore);
     this.blocks = new BlockList(opts.socialStore);
     this.friends = new FriendBook(opts.socialStore);
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
