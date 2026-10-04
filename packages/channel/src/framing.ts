@@ -4,9 +4,14 @@
  */
 export const MAX_FRAME_BYTES = 8388608; // 8 MiB
 
+/** A frame over the 8 MiB cap, sent or announced; `bytes` is its size. */
+export class FrameTooLargeError extends Error {
+  constructor(readonly bytes: number) { super("frame exceeds 8 MiB"); }
+}
+
 export function encodeFrame(obj: unknown): Buffer {
   const body = Buffer.from(JSON.stringify(obj), "utf8");
-  if (body.length > MAX_FRAME_BYTES) throw new Error("frame exceeds 8 MiB");
+  if (body.length > MAX_FRAME_BYTES) throw new FrameTooLargeError(body.length);
   const header = Buffer.allocUnsafe(4);
   header.writeUInt32BE(body.length, 0);
   return Buffer.concat([header, body]);
@@ -26,7 +31,7 @@ export class FrameReader {
     const out: unknown[] = [];
     while (this.buf.length >= 4) {
       const len = this.buf.readUInt32BE(0);
-      if (len > MAX_FRAME_BYTES) throw new Error("frame exceeds 8 MiB");
+      if (len > MAX_FRAME_BYTES) throw new FrameTooLargeError(len);
       if (this.buf.length < 4 + len) break;
       const body = this.buf.subarray(4, 4 + len);
       this.buf = this.buf.subarray(4 + len);

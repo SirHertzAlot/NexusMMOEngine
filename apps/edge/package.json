@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mmo-engine/channel": "^0.1.0",
+    "@mmo-engine/nethealth": "^0.1.0",
     "express": "^5.1.0",
     "ws": "^8.22.0"
   },

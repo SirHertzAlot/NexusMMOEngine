@@ -295,6 +295,8 @@ export {
   isSnapshotTick,
   coreChannelPort,
   SNAPSHOT_EVERY_TICKS,
+  createCoreMetrics,
+  CORE_METRIC_NAMES,
 } from "./channel-server.js";
-export type { CoreChannel, CoreChannelHost, IntentPayload, MythicHooks } from "./channel-server.js";
+export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
 export type { GatewayTick } from "./net/gateway.js";
