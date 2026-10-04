@@ -53,6 +53,7 @@ describe("ruleFileNames", () => {
       "creatures",
       "needs",
       "ingress",
+      "spells",
     ]);
   });
 });

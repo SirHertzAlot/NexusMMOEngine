@@ -12,7 +12,12 @@ import {
   WorldCoreOptions,
   WorldError,
   WorldStore,
+  type AbortMigrationInput,
+  type BeginMigrationInput,
   type ChunkRange,
+  type CommitMigrationInput,
+  type MigrationRecord,
+  type RegionInfo,
   type HeartbeatAck,
   type HeartbeatInput,
   type RegionLease,
@@ -33,10 +38,15 @@ export function randomToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
+/** Final migrations are kept this long for lookups, then pruned. */
+const MIGRATION_HISTORY_MS = 24 * 60 * 60 * 1000;
+
 export class WorldCoreImpl implements WorldCore {
   private readonly store: WorldStore;
   private readonly heartbeatTimeoutMs: number;
   private readonly heartbeatIntervalMs: number;
+  private readonly migrationTimeoutMs: number;
+  private readonly outcomeRetentionMs: number;
   /** argon2id hash of the bootstrap API key (null = registration disabled). */
   private readonly apiKeyHash: string | null;
 
@@ -44,6 +54,8 @@ export class WorldCoreImpl implements WorldCore {
     this.store = opts.store;
     this.heartbeatTimeoutMs = opts.heartbeatTimeoutMs;
     this.heartbeatIntervalMs = opts.heartbeatIntervalMs;
+    this.migrationTimeoutMs = opts.migrationTimeoutMs ?? 10_000;
+    this.outcomeRetentionMs = opts.outcomeRetentionMs ?? 60_000;
     this.apiKeyHash = opts.apiKeyHash ?? null;
   }
 
@@ -126,12 +138,22 @@ export class WorldCoreImpl implements WorldCore {
     r.load = input.load;
     r.tickJitterMs = input.tickJitterMs;
     r.entityCount = input.entityCount;
-    r.lastHeartbeat = Date.now();
+    const now = Date.now();
+    r.lastHeartbeat = now;
     await this.store.upsertRegion(r);
+    // Every migration naming this region that is still begun or resolved
+    // recently. Repeats are harmless: regions act on each outcome once.
+    const migrations = (await this.store.listMigrationsForRegion(r.regionId, now - this.outcomeRetentionMs)).map((m) => ({
+      migrationId: m.migrationId,
+      entityId: m.entityId,
+      fromRegion: m.fromRegion,
+      toRegion: m.toRegion,
+      state: m.state,
+    }));
     return {
       ok: true,
       registryVersion: await this.store.getRegistryVersion(),
-      migrations: [], // slice B
+      migrations,
     };
   }
 
@@ -158,5 +180,104 @@ export class WorldCoreImpl implements WorldCore {
     );
     if (reaped.length > 0) await this.store.bumpRegistryVersion();
     return reaped;
+  }
+
+  // ------------------------------------------------------------ slice B
+
+  async listRegions(): Promise<RegionInfo[]> {
+    const now = Date.now();
+    return (await this.store.listRegions()).map((r) => ({
+      regionId: r.regionId,
+      chunkRange: r.chunkRange,
+      endpoint: r.endpoint,
+      live: now - r.lastHeartbeat < this.heartbeatTimeoutMs,
+    }));
+  }
+
+  /**
+   * Step 2 of the hand-off (spec §6): the source region records the
+   * entity's state. The source keeps authority until the target commits.
+   */
+  async beginMigration(caller: string, input: BeginMigrationInput): Promise<{ migrationId: string }> {
+    if (caller !== input.fromRegion) throw new WorldError(403, "only the source region may begin a migration");
+    if (input.fromRegion === input.toRegion) throw new WorldError(400, "source and target are the same region");
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as { migrationId: string };
+    const now = Date.now();
+    const target = await this.store.getRegion(input.toRegion);
+    if (target === null || now - target.lastHeartbeat >= this.heartbeatTimeoutMs) {
+      throw new WorldError(409, `target region ${input.toRegion} is not live`);
+    }
+    const open = await this.store.getBegunMigrationForEntity(input.entityId);
+    if (open !== null) throw new WorldError(409, `entity already migrating (${open.migrationId})`);
+    const record: MigrationRecord = {
+      migrationId: "mig-" + crypto.randomBytes(12).toString("hex"),
+      entityId: input.entityId,
+      fromRegion: input.fromRegion,
+      toRegion: input.toRegion,
+      state: "begun",
+      entityState: input.entityState,
+      reason: "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.store.createMigration(record);
+    const result = { migrationId: record.migrationId };
+    await this.store.storeOpResult(input.opId, result);
+    return result;
+  }
+
+  /**
+   * Step 4: the target has instantiated the entity and takes authority.
+   * Committing twice is fine; committing after expiry or abort is a 409,
+   * and the target must then drop its copy.
+   */
+  async commitMigration(caller: string, input: CommitMigrationInput): Promise<void> {
+    if ((await this.store.getOpResult(input.opId)) !== null) return;
+    const m = await this.party(caller, input.migrationId);
+    if (caller !== m.toRegion) throw new WorldError(403, "only the target region may commit");
+    if (m.state === "begun") {
+      const done = await this.store.resolveMigration(m.migrationId, "committed", "", Date.now());
+      if (done === null) return this.commitMigration(caller, input); // raced with expiry or abort: report that
+    } else if (m.state !== "committed") {
+      throw new WorldError(409, `migration ${m.state}`);
+    }
+    await this.store.storeOpResult(input.opId, { ok: true });
+  }
+
+  /** Either party calls the hand-off off while it is begun; the source keeps authority. */
+  async abortMigration(caller: string, input: AbortMigrationInput): Promise<void> {
+    if ((await this.store.getOpResult(input.opId)) !== null) return;
+    const m = await this.party(caller, input.migrationId);
+    if (m.state === "begun") {
+      const done = await this.store.resolveMigration(m.migrationId, "aborted", input.reason.slice(0, 200), Date.now());
+      if (done === null) return this.abortMigration(caller, input);
+    } else if (m.state === "committed") {
+      throw new WorldError(409, "migration already committed");
+    }
+    // aborted or expired already: the outcome the caller wants
+    await this.store.storeOpResult(input.opId, { ok: true });
+  }
+
+  async getMigration(caller: string, migrationId: string): Promise<MigrationRecord> {
+    return this.party(caller, migrationId);
+  }
+
+  async expireMigrations(): Promise<string[]> {
+    const now = Date.now();
+    const expired: string[] = [];
+    for (const id of await this.store.listBegunBefore(now - this.migrationTimeoutMs)) {
+      if (await this.store.resolveMigration(id, "expired", "not committed in time", now)) expired.push(id);
+    }
+    await this.store.pruneMigrations(now - MIGRATION_HISTORY_MS);
+    return expired;
+  }
+
+  /** The migration, if `caller` is its source or target. */
+  private async party(caller: string, migrationId: string): Promise<MigrationRecord> {
+    const m = await this.store.getMigration(migrationId);
+    if (m === null) throw new WorldError(404, "unknown migration");
+    if (caller !== m.fromRegion && caller !== m.toRegion) throw new WorldError(403, "not a party to this migration");
+    return m;
   }
 }
