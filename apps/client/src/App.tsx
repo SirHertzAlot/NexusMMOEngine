@@ -211,6 +211,12 @@ export function App(): React.ReactElement {
   runRef.current = run;
   const [nearEntrance, setNearEntrance] = useState<string | null>(null);
   const regionRef = useRef<{ url: string; token: string } | null>(null);
+  // The server and name as of this render, for socket callbacks made in an earlier one
+  // (a region hand-off changes the server mid-session).
+  const urlRef = useRef(url);
+  urlRef.current = url;
+  const usernameRef = useRef(username);
+  usernameRef.current = username;
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
 
   const clientRef = useRef<MirrorClient | null>(null);
@@ -327,7 +333,7 @@ export function App(): React.ReactElement {
    * character. The old client is let go; its close is expected.
    */
   const hop = async (endpoint: string, token: string, transit: Extract<DungeonRun, { phase: "entering" | "leaving" }>): Promise<void> => {
-    if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url, token: sessionTokenRef.current };
+    if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url: urlRef.current, token: sessionTokenRef.current };
     setRun(transit);
     setDialog(null);
     setNearDrop(null);
@@ -340,7 +346,7 @@ export function App(): React.ReactElement {
     clientRef.current = next;
     old?.disconnect();
     try {
-      await next.join(endpoint, username || "mirror", { token });
+      await next.join(endpoint, usernameRef.current || "mirror", { token });
       if (transit.phase === "entering") setRun((prev) => (prev?.phase === "entering" ? { phase: "in", dungeon: transit.dungeon, state: null, at: 0 } : prev));
       else {
         regionRef.current = null;
@@ -576,6 +582,7 @@ export function App(): React.ReactElement {
           onQuests={toggleQuests}
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
+          instance={run !== null}
           combat={combat}
           onCombat={setCombatView}
         />

@@ -129,6 +129,8 @@ export interface WorldCanvasProps {
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
   onNearNpc?: (npc: string | null) => void;
+  /** Inside a dungeon instance (D4): draw a stand-in floor, since the walls aren't on the wire yet. Read on mount. */
+  instance?: boolean;
   /** The dungeon entrance the player stands in changed (an entrance id; null: none). */
   onNearEntrance?: (entrance: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
@@ -288,6 +290,7 @@ function MirrorWorld({
   onQuests,
   onNearNpc,
   onNearEntrance,
+  instance,
   combat,
   onCombat,
   settings,
@@ -341,9 +344,9 @@ function MirrorWorld({
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
     scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group);
-    // No world map (a dungeon instance, D4): a stone floor at y = 0 where the server keeps
+    // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
     // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
-    const floor = world ? null : makeFloor();
+    const floor = instance ? makeFloor() : null;
     if (floor) scene.add(floor);
 
     // Draw calls and triangles summed over every pass of a frame (the screen
