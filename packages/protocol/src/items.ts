@@ -194,3 +194,37 @@ export interface SkillsMessage {
   familiarity: { family: string; value: number }[];
   disciplines: { id: string; name: string; active: boolean; unlocks: string[] }[];
 }
+
+/**
+ * C->S (catalog 0x1c): cast a spell (`spells.json` id) on `target` (a
+ * character's wire id; absent: yourself), or `stop: true` the cast under
+ * way. Refusals (unknown spell, too far, cooling down, not enough mana) are 4005.
+ */
+export interface CastMessage {
+  kind: "cast";
+  spell?: string;
+  target?: string;
+  stop?: boolean;
+}
+
+/** S->C (catalog 0x1c): the player's own mana pool, on joining and when it changes (to a whole point). */
+export interface ManaMessage {
+  kind: "mana";
+  current: number;
+  max: number;
+}
+
+/**
+ * S->C (catalog 0x1c): a cast started (with how long it takes), completed
+ * (`amount`: the health a heal restored), or stopped (the caster moved,
+ * fought, the target went out of reach or died). Sent to caster and target.
+ */
+export interface SpellMessage {
+  kind: "spell";
+  caster: string;
+  target: string;
+  spell: string;
+  state: "started" | "done" | "stopped";
+  seconds?: number;
+  amount?: number;
+}

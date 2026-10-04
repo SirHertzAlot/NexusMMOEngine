@@ -313,6 +313,20 @@ describe("bad rules", () => {
     assert.equal(h.resolveTreatment({ kind: "bandage", skill: 0, rng: () => 0.41 }).success, false);
   });
 
+  it("spells are data: ids are unique, and mana can drive a stat", () => {
+    const r = parseRules({ skills: { skills: [] } });
+    assert.deepEqual(r.spells.spells, []);
+    assert.equal(r.spells.defaultMax, 50);
+    const mend = { id: "mend", name: "Mend", mana: 10, effect: { kind: "heal", amount: 5 } };
+    const two = parseRules({ skills: { skills: [] }, spells: { spells: [mend] } }).spells.spells[0];
+    assert.deepEqual([two.castSeconds, two.cooldownSeconds, two.target, two.reach], [1.5, 0, "any", 3]);
+    const issues = issuesOf(() => parseRules({ skills: { skills: [] }, spells: { spells: [mend, mend] } }));
+    assert.ok(issues.some((i) => i.startsWith("spells.json") && /mend/.test(i)), issues.join("\n"));
+    assert.ok(issuesOf(() => parseRules({ spells: { spells: [{ ...mend, effect: { kind: "fire" } }] } })).length > 0);
+    const stats = parseRules({ stats: { attributes: [], stats: [{ id: "maxMana", name: "Max mana", base: 30, drives: "maxMana" }] } });
+    assert.equal(stats.stats.stats[0].drives, "maxMana");
+  });
+
   it("a body's hands and fall parts must make sense (M2)", () => {
     const issues = issuesOf(() =>
       parseRules({

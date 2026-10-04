@@ -97,6 +97,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   ingress: [],
   creatures: ["items"],
   needs: [],
+  spells: [],
 };
 
 let defaults: Rules | null = null;
@@ -205,6 +206,7 @@ function crossCheck(r: Rules): RulesIssue[] {
 
   // Appearance.
   dupes("appearance", r.appearance.slots, "slots");
+  dupes("spells", r.spells.spells, "spells");
   r.appearance.slots.forEach((s, i) => {
     if (s.part !== undefined && !byId.has(s.part)) add("appearance", `slots[${i}].part`, `no body part "${s.part}"`);
   });

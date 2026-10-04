@@ -5,9 +5,9 @@
  * velocity (no flings), heal fills from max, fly flips the Fly ability
  * bit (and lands the avatar when revoked mid-air is left to gravity).
  *
- * Heal also makes the body whole (M2). God-mode waits for damage to exist (M2/M3), mana for its first
- * spender, and time/weather for a runtime clock design — all noted in
- * the roadmap row rather than faked here.
+ * Heal also makes the body whole (M2), and the gateway fills the mana pool
+ * with it. God-mode waits for damage to exist (M2/M3), and time/weather for
+ * a runtime clock design — both noted in the roadmap row rather than faked here.
  */
 
 import { hasComponent } from "bitecs";

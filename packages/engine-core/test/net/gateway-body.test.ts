@@ -5,11 +5,13 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage, type TreatmentMessage, type SkillsMessage, type AdminResult } from "@mmo-engine/protocol";
+import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage, type TreatmentMessage, type SkillsMessage, type AdminResult, type ManaMessage, type SpellMessage } from "@mmo-engine/protocol";
 import { CombatSystem } from "../../src/combat.js";
 import { Gateway } from "../../src/net/gateway.js";
 import { BodySystem } from "../../src/body.js";
 import { MasterySystem } from "../../src/stats/mastery-system.js";
+import { MagicSystem } from "../../src/magic.js";
+import * as C from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import { HeadlessClient } from "./headless-client.js";
@@ -206,3 +208,50 @@ describe("gateway: skills (M4)", () => {
   });
 });
 
+
+describe("gateway: magic", () => {
+  it("sends the player's mana, casts Mend, and says how it goes", async () => {
+    const { rules } = loadGameRules();
+    const world = new SimWorld();
+    const magic = new MagicSystem(rules.spells);
+    const mend = rules.spells.spells.find((s) => s.id === "mend")!;
+    now = 1_000_000;
+    gw = new Gateway({ clock: () => now, world, credentialStore: await makeCredentialStore(), systems: [magic], magic });
+    const port = await gw.listen();
+    gw.frame(now);
+    const tick = (n: number): void => {
+      for (let i = 0; i < n; i++) {
+        now += 1000 / 30;
+        gw!.frame(now);
+      }
+    };
+    const client = new HeadlessClient();
+    await client.connect(`ws://127.0.0.1:${port}`);
+    const first = client.waitFor(MessageType.Magic, 1);
+    const welcome = await client.hello("user-a", { username: "user-a", password: TEST_PASSWORD });
+    assert.deepEqual(decodeControl<ManaMessage>((await first)[0]), { kind: "mana", current: rules.spells.defaultMax, max: rules.spells.defaultMax });
+
+    const error = async (msg: unknown): Promise<ErrorMessage> => {
+      const p = client.waitFor(MessageType.Error, 1);
+      client.sendRaw(MessageType.Magic, encodeControl(msg));
+      return decodeControl<ErrorMessage>((await p)[0]);
+    };
+    assert.equal((await error({ kind: "cast", spell: "fireball" })).code, 4005);
+    assert.equal((await error({ kind: "cast" })).code, 4003);
+
+    const me = world.resolveWireId(BigInt(welcome.player_entity));
+    C.Health.current[me] = 40;
+    const events = client.waitFor(MessageType.Magic, 3);
+    client.sendRaw(MessageType.Magic, encodeControl({ kind: "cast", spell: "mend" }));
+    const deadline = Date.now() + 2000;
+    while (!magic.castingOf(me) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    tick(Math.ceil(mend.castSeconds * 30) + 7);
+    const msgs = (await events).map((b) => decodeControl<SpellMessage | ManaMessage>(b));
+    const spells = msgs.filter((m): m is SpellMessage => m.kind === "spell");
+    assert.deepEqual(spells.map((m) => m.state), ["started", "done"]);
+    assert.equal(spells[1].amount, mend.effect.amount);
+    const mana = msgs.find((m): m is ManaMessage => m.kind === "mana")!;
+    assert.equal(mana.current, rules.spells.defaultMax - mend.mana);
+    await client.close();
+  });
+});

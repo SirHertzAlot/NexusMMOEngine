@@ -46,6 +46,9 @@ import {
   type TreatMessage,
   type TreatmentMessage,
   type SkillsMessage,
+  type CastMessage,
+  type ManaMessage,
+  type SpellMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -102,6 +105,10 @@ export interface MirrorEvents {
   onTreatment?(t: TreatmentMessage): void;
   /** The player's skills, item familiarity or disciplines changed (also on joining; roadmap M4, protocol 0x1b). */
   onSkills?(s: SkillsMessage): void;
+  /** The player's mana changed (also on joining; protocol 0x1c). */
+  onMana?(m: ManaMessage): void;
+  /** A cast the player makes or receives started, completed or stopped (protocol 0x1c). */
+  onSpell?(s: SpellMessage): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -136,6 +143,8 @@ export class MirrorClient {
   body: BodyMessage | null = null;
   /** The player's skills, familiarity and disciplines, as last sent (M4, 0x1b). */
   skills: SkillsMessage | null = null;
+  /** The player's mana pool, as last sent (0x1c); null until one arrives. */
+  mana: ManaMessage | null = null;
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -268,6 +277,23 @@ export class MirrorClient {
     if (target !== undefined) msg.target = target;
     if (part !== undefined) msg.part = part;
     this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl(msg)));
+  }
+
+  /**
+   * Cast a spell (0x1c) on `target` (a character's wire id; absent:
+   * yourself). Progress arrives as onSpell, refusals as 4005 errors.
+   */
+  cast(spell: string, target?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: CastMessage = { kind: "cast", spell };
+    if (target !== undefined) msg.target = target;
+    this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl(msg)));
+  }
+
+  /** Stop the cast under way (0x1c). */
+  stopCasting(): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl({ kind: "cast", stop: true } satisfies CastMessage)));
   }
 
   /** Stop the treatment under way (M4, 0x1a). */
@@ -666,6 +692,14 @@ export class MirrorClient {
         this.skills = decodeControl<SkillsMessage>(payload);
         this.events.onSkills?.(this.skills);
         break;
+      case MessageType.Magic: {
+        const m = decodeControl<ManaMessage | SpellMessage>(payload);
+        if (m.kind === "mana") {
+          this.mana = m;
+          this.events.onMana?.(m);
+        } else this.events.onSpell?.(m);
+        break;
+      }
       case MessageType.Treat:
         this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
         break;

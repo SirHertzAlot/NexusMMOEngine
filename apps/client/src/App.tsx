@@ -25,6 +25,7 @@ import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState }
 import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
+import { spellNotice } from "./ui/spell-notice.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -196,6 +197,10 @@ export function App(): React.ReactElement {
         const text = disarmNotice(h, clientRef.current?.playerEntity?.toString() ?? null);
         if (text) setNotice({ text, at: performance.now() });
       },
+      onSpell: (sp) => {
+        const text = spellNotice(sp, clientRef.current?.playerEntity?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
       onSkills: (next) => {
         const [text] = disciplineNotices(skillsRef.current, next);
         skillsRef.current = next;
@@ -336,6 +341,8 @@ export function App(): React.ReactElement {
   }, []);
   // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
   const onTreat = useCallback(() => clientRef.current?.treat(), []);
+  // G casts Mend on yourself (mana's first spender).
+  const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -376,6 +383,7 @@ export function App(): React.ReactElement {
           onBag={toggleBag}
           onStance={onStance}
           onTreat={onTreat}
+          onMend={onMend}
           onNearDrop={setNearDrop}
           combat={combat}
           onCombat={setCombatView}
