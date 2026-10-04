@@ -133,3 +133,16 @@ export interface LifeMessage {
   cause?: "part" | "bleeding" | "other";
   part?: string;
 }
+
+/**
+ * C->S (catalog 0x19, M3): how the player's next blows are struck. A
+ * technique the rules know ("cut", "thrust", "bludgeon": a stick can cut,
+ * a sword can bludgeon) and the body part aimed at. A field left out is
+ * unchanged; null goes back to the default (the held item's own technique,
+ * the body's root part). Refusals are 4005.
+ */
+export interface StanceMessage {
+  kind: "stance";
+  technique?: string | null;
+  aim?: string | null;
+}

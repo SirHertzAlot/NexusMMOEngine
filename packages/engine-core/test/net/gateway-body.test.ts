@@ -5,7 +5,8 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { decodeControl, MessageType, type BodyMessage } from "@mmo-engine/protocol";
+import { decodeControl, encodeControl, MessageType, type BodyMessage, type ErrorMessage } from "@mmo-engine/protocol";
+import { CombatSystem } from "../../src/combat.js";
 import { Gateway } from "../../src/net/gateway.js";
 import { BodySystem } from "../../src/body.js";
 import { SimWorld } from "../../src/world.js";
@@ -61,6 +62,34 @@ describe("gateway: body", () => {
     assert.equal(leg.state, "harmed");
     assert.ok(leg.bleeding);
     assert.ok(leg.hp < 1);
+    await client.close();
+  });
+
+  it("takes the player's stance, and refuses what the rules don't know (M3)", async () => {
+    const { rules, hooks } = loadGameRules();
+    const world = new SimWorld();
+    const body = new BodySystem(rules.body, hooks);
+    const combat = new CombatSystem(30, undefined, { hooks, body, techniques: () => Object.keys(rules.combat.techniques) });
+    now = 1_000_000;
+    gw = new Gateway({ clock: () => now, world, credentialStore: await makeCredentialStore(), systems: [combat, body], body });
+    const port = await gw.listen();
+    gw.frame(now);
+    const client = new HeadlessClient();
+    await client.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await client.hello("user-a", { username: "user-a", password: TEST_PASSWORD });
+    const avatar = world.resolveWireId(BigInt(welcome.player_entity));
+    const error = async (msg: unknown): Promise<ErrorMessage> => {
+      const p = client.waitFor(MessageType.Error, 1);
+      client.sendRaw(MessageType.Stance, encodeControl(msg));
+      return decodeControl<ErrorMessage>((await p)[0]);
+    };
+    assert.equal((await error({ kind: "stance", technique: "smash" })).code, 4005);
+    assert.equal((await error({ kind: "stance", aim: "tail" })).code, 4005);
+    assert.equal((await error({ kind: "stance", technique: 3 })).code, 4003);
+    client.sendRaw(MessageType.Stance, encodeControl({ kind: "stance", technique: "bludgeon", aim: "head" }));
+    const deadline = Date.now() + 2000;
+    while (combat.stanceOf(avatar).aim !== "head" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(combat.stanceOf(avatar), { technique: "bludgeon", aim: "head" });
     await client.close();
   });
 });

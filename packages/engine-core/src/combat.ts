@@ -17,6 +17,10 @@
  * Runs after IntentSystem (which sets the walking velocity) and before
  * IntegrateSystem (which moves by it).
  *
+ * Stances (M3): `setStance` picks the technique a character's blows use
+ * (any item can cut, thrust or bludgeon, at its own fit for it) and the
+ * part they aim at; precision decides whether they land there.
+ *
  * Defence (M3): with skills, a facing guard is a contest (the rules'
  * resolveDefence): the defender's Blocking or Parrying, whichever is
  * better, against the attacker's technique. A win stops the blow
@@ -101,6 +105,14 @@ export interface CombatDamage {
   skills?: CombatSkills;
   /** Body parts (M2): blows land on parts; absent means whole-body Health. */
   body?: BodySystem;
+  /** The rules' technique ids (a stance may name only these); absent: no stances. */
+  techniques?: () => readonly string[];
+}
+
+/** How an entity strikes (M3, catalog 0x19): its own technique and aim, or the defaults. */
+export interface Stance {
+  technique?: string;
+  aim?: string;
 }
 
 export class CombatSystem implements SimSystem {
@@ -114,6 +126,8 @@ export class CombatSystem implements SimSystem {
   private hits: HitEvent[] = [];
   /** The last entity to damage each target. */
   private readonly attackers = new Map<number, number>();
+  /** Chosen techniques and aims (absent: the weapon's technique, the body's root). */
+  private readonly stances = new Map<number, Stance>();
 
   constructor(
     private readonly tickHz = 30,
@@ -126,6 +140,28 @@ export class CombatSystem implements SimSystem {
   /** Who last hurt `e` (for death credit), if anyone. */
   lastAttacker(e: number): number | undefined {
     return this.attackers.get(e);
+  }
+
+  /**
+   * Choose how `e` strikes (M3): a field left undefined is unchanged, null
+   * resets it. Returns an error for an unknown technique or body part.
+   */
+  setStance(e: number, technique: string | null | undefined, aim: string | null | undefined): string | null {
+    const known = this.damage?.techniques?.() ?? [];
+    if (typeof technique === "string" && !known.includes(technique)) return `no technique "${technique}" (${known.join(", ")})`;
+    const parts = this.damage?.body?.parts ?? [];
+    if (typeof aim === "string" && !parts.includes(aim)) return `no body part "${aim}"`;
+    const st = { ...this.stances.get(e) };
+    if (technique !== undefined) st.technique = technique ?? undefined;
+    if (aim !== undefined) st.aim = aim ?? undefined;
+    if (st.technique === undefined && st.aim === undefined) this.stances.delete(e);
+    else this.stances.set(e, st);
+    return null;
+  }
+
+  /** How `e` strikes now. */
+  stanceOf(e: number): Stance {
+    return this.stances.get(e) ?? {};
   }
 
   /** The blows struck since the last call. */
@@ -141,6 +177,7 @@ export class CombatSystem implements SimSystem {
       const live = new Set<number>(eids as unknown as number[]);
       for (const e of this.held.keys()) if (!live.has(e)) this.held.delete(e);
       for (const e of this.queued) if (!live.has(e)) this.queued.delete(e);
+      for (const e of this.stances.keys()) if (!live.has(e)) this.stances.delete(e);
     }
     const tick = sim.currentTick;
     for (let i = 0; i < eids.length; i++) {
@@ -208,7 +245,10 @@ export class CombatSystem implements SimSystem {
 
   private strike(sim: SimWorld, e: number, tick: number): void {
     const dmg = this.damage!;
-    const w = dmg.weaponOf?.(e) ?? FIST;
+    const held = dmg.weaponOf?.(e) ?? FIST;
+    // A chosen technique (M3): any item can be swung any way; its fit for it is the item's.
+    const stance = this.stances.get(e);
+    const w = stance?.technique ? { ...held, technique: stance.technique } : held;
     const reach = w.reach + ARM_REACH;
     const yaw = Action.yaw[e];
     const fx = Math.sin(yaw);
@@ -239,7 +279,7 @@ export class CombatSystem implements SimSystem {
         const body = dmg.body;
         const arm = body ? body.armFactor(sim, e) : 1;
         part = body
-          ? dmg.hooks.resolveLanding({ aim: body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
+          ? dmg.hooks.resolveLanding({ aim: stance?.aim ?? body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
         const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part });
         amount = blow.amount * arm;

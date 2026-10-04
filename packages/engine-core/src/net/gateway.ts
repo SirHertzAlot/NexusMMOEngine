@@ -46,6 +46,7 @@
  * `clock` in options for deterministic heartbeat/grace math.
  */
 
+import { z } from "zod";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -334,6 +335,15 @@ export interface GatewayOptions {
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
+
+/** 0x19 stance (M3): ids are checked against the rules by CombatSystem. */
+const StanceSchema = z
+  .object({
+    kind: z.literal("stance"),
+    technique: z.string().min(1).max(32).nullable().optional(),
+    aim: z.string().min(1).max(32).nullable().optional(),
+  })
+  .strict();
 
 /**
  * Despawn login avatars restored from a snapshot. In a gateway-owned
@@ -1357,6 +1367,9 @@ export class Gateway {
         break;
       case MessageType.Item:
         this.onItem(s, payload);
+        break;
+      case MessageType.Stance:
+        this.onStance(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -2683,6 +2696,41 @@ export class Gateway {
       ),
       this.tick,
     );
+  }
+
+  /**
+   * The player's stance (catalog 0x19, M3): the technique and aim of their
+   * blows. In-world sessions only; shares the pickup bucket (key presses).
+   * A bad shape is 4003, an unknown technique or part 4005.
+   */
+  private onStance(s: ClientSession, payload: Uint8Array): void {
+    const combat = this.systems.find((x): x is CombatSystem => x instanceof CombatSystem);
+    if (!combat || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "stance outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed stance");
+      return;
+    }
+    const parsed = StanceSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed stance");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return;
+    const err = combat.setStance(avatar, parsed.data.technique, parsed.data.aim);
+    if (err) this.sendError(s, 4005, err);
   }
 
   /**

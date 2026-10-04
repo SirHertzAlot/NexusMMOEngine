@@ -258,11 +258,15 @@ describe("body in combat", () => {
   const SWORD: Weapon = { technique: "cut", item: { mass: 1.2, edge: 0.8, point: 0.3, hardness: 0.6 }, reach: 0.9 };
   const hitTick = (move: number): number => 1 + Math.round(combatMove(move)!.hitAt! * 30);
 
+  let skill = 0;
+  const skills = { get: () => skill, train: () => undefined, techniqueSkill: (t: string) => rules.combat.techniques[t]?.skill };
+
   function fight() {
+    skill = 0;
     const w = setup();
     const e = w.make(0, 0);
     const t = w.make(0, 1);
-    const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => SWORD, body: w.body });
+    const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => SWORD, body: w.body, techniques: () => Object.keys(rules.combat.techniques), skills });
     const systems = [new IntentSystem(), combat, w.body, new IntegrateSystem()];
     let tick = 0;
     const run = (ticks: number, buttons = 0): void => {
@@ -300,5 +304,31 @@ describe("body in combat", () => {
     f.run(hitTick(Move.SwordA) + 2, IntentButton.Attack);
     assert.equal(f.combat.drainHits().length, 0);
     assert.equal(C.Action.move[f.e], Move.None);
+  });
+
+  it("a stance picks the technique and the aim (M3)", () => {
+    const f = fight();
+    assert.match(f.combat.setStance(f.e, "smash", undefined)!, /no technique "smash"/);
+    assert.match(f.combat.setStance(f.e, undefined, "tail")!, /no body part "tail"/);
+    assert.equal(f.combat.setStance(f.e, "thrust", "head"), null);
+    assert.deepEqual(f.combat.stanceOf(f.e), { technique: "thrust", aim: "head" });
+    skill = rules.skills.max; // a master lands where they aim (95 %)
+    let onHead = 0;
+    for (let i = 0; i < 12; i++) {
+      C.Health.current[f.t] = 100;
+      C.Transform.pz[f.e] = 0; // the swing's lunge carried it forward
+      f.body.respawned(f.sim, f.t, { clearInjuries: true, restoreParts: true });
+      f.run(60, IntentButton.Attack);
+      f.run(40);
+      for (const h of f.combat.drainHits()) {
+        if (h.part !== "head") continue;
+        onHead++;
+        const thrust = hooks.computeDamage({ technique: "thrust", skill, item: SWORD.item, part: "head" }).amount;
+        assert.ok(near(h.amount, thrust, 1e-3), "the sword's point, not its edge");
+      }
+    }
+    assert.ok(onHead >= 8, `aimed at the head, landed there ${onHead} times`);
+    assert.equal(f.combat.setStance(f.e, null, null), null);
+    assert.deepEqual(f.combat.stanceOf(f.e), {});
   });
 });

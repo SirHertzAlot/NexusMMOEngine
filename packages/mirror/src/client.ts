@@ -42,6 +42,7 @@ import {
   type ErrorMessage,
   type HelloMessage,
   type BodyMessage,
+  type StanceMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -232,6 +233,19 @@ export class MirrorClient {
   pickup(entity: bigint): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
+  }
+
+  /**
+   * How the player's blows are struck (M3, 0x19): a technique ("cut",
+   * "thrust", "bludgeon") and the body part aimed at. Undefined leaves a
+   * field as it is, null resets it; refusals arrive as 4005 errors.
+   */
+  stance(technique: string | null | undefined, aim: string | null | undefined): void {
+    if (!this.socket || this.closed) return;
+    const msg: StanceMessage = { kind: "stance" };
+    if (technique !== undefined) msg.technique = technique;
+    if (aim !== undefined) msg.aim = aim;
+    this.send(this.socket, encodeEnvelope(MessageType.Stance, encodeControl(msg)));
   }
 
   /** Ask to drop an item from the bag at the player's feet (M3a, 0x13). */
