@@ -3,6 +3,7 @@
  *
  * Tabs: ECS Inspector (read-only entity browser), Play Mode (owned
  * local server + debug overlays), Terrain (sculpt the world heightmap),
+ * PICG Graphs (the hierarchical graph editor, E7),
  * Art Asset Pipeline (pack scan / validation / browser load test),
  * Characters (read-only character records), Gameplay Tables (item bases,
  * creatures, loot and death rules), Rules (gameplay tunables).
@@ -16,16 +17,18 @@ import { PlayModePanel } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { CharacterRecordPanel } from "./character-view.js";
+import { GraphEditorPanel } from "./graph-editor.js";
 
 import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 
-type Tab = "ecs" | "play" | "terrain" | "assets" | "tables" | "rules" | "characters";
+type Tab = "ecs" | "play" | "terrain" | "graphs" | "assets" | "tables" | "rules" | "characters";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "ecs", label: "ECS Inspector" },
   { id: "play", label: "Play Mode" },
   { id: "terrain", label: "Terrain" },
+  { id: "graphs", label: "PICG Graphs" },
   { id: "tables", label: "Gameplay Tables" },
   { id: "assets", label: "Art Assets" },
   { id: "rules", label: "Rules" },
@@ -70,6 +73,7 @@ export function App(): React.JSX.Element {
         {tab === "ecs" && <EcsInspectorPanel />}
         {tab === "play" && <PlayModePanel />}
         {tab === "terrain" && <TerrainEditorPanel />}
+        {tab === "graphs" && <GraphEditorPanel />}
         {tab === "tables" && <TablesPanel />}
         {tab === "assets" && <AssetInspectorPanel />}
         {tab === "rules" && <RulesPanel />}

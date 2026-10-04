@@ -22,6 +22,11 @@
  *                                    (path-traversal guarded)
  *   GET  /api/editor/pcg/library   → the PICG asset library: each asset's
  *                                    AssetRef hash and graph parameters (E6)
+ *   GET  /api/editor/pcg/docs      → the PICG graphs and parts (E7)
+ *   GET  /api/editor/pcg/doc?file= → one of them
+ *   PUT  /api/editor/pcg/doc       → save one {file, doc}: validated with a
+ *                                    cook preparation of every graph it
+ *                                    affects; 422 + issues when refused
  *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
  *   GET  /api/editor/rules/:name   → one rules file's parsed content
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
@@ -68,7 +73,7 @@ import {
 } from "./rules-host.js";
 import { pathToFileURL } from "node:url";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
-import { readPcgLibrary } from "./pcg-host.js";
+import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -803,6 +808,41 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url === "/api/editor/pcg/library" && req.method === "GET") {
             sendJson(res, 200, { ok: true, ...readPcgLibrary(repoRoot) });
+            return;
+          }
+          if (url === "/api/editor/pcg/docs" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, docs: listPcgDocuments(repoRoot) });
+            return;
+          }
+          if (url.startsWith("/api/editor/pcg/doc?") && req.method === "GET") {
+            const file = new URL(url, "http://localhost").searchParams.get("file") ?? "";
+            sendJson(res, 200, { ok: true, ...readPcgDocument(repoRoot, file) });
+            return;
+          }
+          if (url === "/api/editor/pcg/doc" && req.method === "PUT") {
+            let body: { file?: unknown; doc?: unknown };
+            try {
+              body = JSON.parse(await readBody(req)) as { file?: unknown; doc?: unknown };
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            if (typeof body.file !== "string" || body.doc === undefined) {
+              sendJson(res, 400, { ok: false, error: 'need a JSON body shaped like {"file": …, "doc": …}' });
+              return;
+            }
+            try {
+              savePcgDocument(repoRoot, body.file, body.doc);
+            } catch (err) {
+              const issues = (err as { issues?: unknown }).issues;
+              sendJson(res, (err as { status?: number }).status ?? 500, {
+                ok: false,
+                error: err instanceof Error ? err.message : String(err),
+                ...(Array.isArray(issues) ? { issues } : {}),
+              });
+              return;
+            }
+            sendJson(res, 200, { ok: true, file: body.file });
             return;
           }
           if (url.startsWith("/assets/") && req.method === "GET") {
