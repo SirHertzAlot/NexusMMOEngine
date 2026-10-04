@@ -2,12 +2,14 @@
  * CharacterSheet (roadmap U9): attributes and derived stats from the
  * stats message (0x0f), with modifier deltas, and skills by family with
  * their peaks (M1), and the body's injuries from the body message (0x18,
- * M2) with a doll whose parts are clicked to treat them (M4).
+ * M2) with a doll whose parts are clicked to treat them (M4), and the
+ * disciplines and item familiarity from the skills message (0x1b, M4).
  */
 
 import { useState } from "react";
-import type { BodyMessage, SkillLineMessage, StatLineMessage } from "@mmo-engine/protocol";
+import type { BodyMessage, SkillLineMessage, SkillsMessage, StatLineMessage } from "@mmo-engine/protocol";
 import { InjuriesSection } from "./body-doll.js";
+import { DisciplinesSection, FamiliaritySection } from "./disciplines.js";
 
 /** Modifier delta text: "+2", "-1", or "" when unmodified. */
 export function statDelta(line: StatLineMessage): string {
@@ -114,6 +116,7 @@ export function CharacterSheet({
   skillMax = 100,
   body = null,
   onTreat,
+  mastery = null,
 }: {
   name: string | null;
   attributes: StatLineMessage[];
@@ -123,6 +126,8 @@ export function CharacterSheet({
   /** The player's body (0x18) for the injuries section; clicking a part treats it. */
   body?: BodyMessage | null;
   onTreat?: (part: string) => void;
+  /** The skills message (0x1b) for disciplines and familiarity. */
+  mastery?: SkillsMessage | null;
 }): React.ReactElement {
   return (
     <div className="pointer-events-auto max-h-[calc(100vh-8rem)] w-72 overflow-y-auto rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
@@ -132,6 +137,8 @@ export function CharacterSheet({
         <SheetSection title="attributes" lines={attributes} />
         <SheetSection title="stats" lines={stats} />
         <SkillsSection skills={skills} max={skillMax} />
+        <DisciplinesSection mastery={mastery} />
+        <FamiliaritySection mastery={mastery} />
       </div>
     </div>
   );
