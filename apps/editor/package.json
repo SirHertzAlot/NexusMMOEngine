@@ -1,13 +1,15 @@
 {
   "dependencies": {
     "@mmo-engine/art": "0.1.0",
+    "@mmo-engine/dungeon": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/rules": "0.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.1",
     "zod": "^3.23.8",
-    "@mmo-engine/mirror": "0.1.0"
+    "@mmo-engine/mirror": "0.1.0",
+    "@mmo-engine/picg": "0.1.0"
   },
   "description": "Rogue Engine Editor customization: dockable ECS inspector, local-server play mode, and art asset pipeline \u2014 one shell, three inspectors",
   "devDependencies": {
@@ -26,7 +28,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && tsc -p tsconfig.json && vite build",
-    "build:deps": "npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/engine-core && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror",
+    "build:deps": "npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/engine-core && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/dungeon && npm run build:deps --workspace=@mmo-engine/client && npm run build:lib --workspace=@mmo-engine/client",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",

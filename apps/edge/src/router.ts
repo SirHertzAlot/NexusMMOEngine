@@ -6,12 +6,10 @@
  * channel, `"local:<module>"` hands it to a handler registered on the edge.
  */
 import { readFileSync } from "node:fs";
+import type { ChannelLike } from "@mmo-engine/channel";
 
+export type { ChannelLike };
 export interface RouteEntry { packetType: string; destination: string; }
-export interface ChannelLike {
-  request(type: string, payload: unknown, id: string): Promise<unknown>;
-  readonly status: "up" | "down" | "unknown";
-}
 export interface RouterCtx { channel: ChannelLike; modules: Record<string, (payload: unknown) => Promise<unknown> | unknown>; }
 
 const LOCAL_DESTINATION = /^local:[a-z0-9_]+$/;

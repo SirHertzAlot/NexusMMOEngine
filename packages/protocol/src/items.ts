@@ -89,6 +89,32 @@ export interface HitMessage {
   /** The target's health after the blow, and its maximum. */
   health: number;
   max: number;
+  /**
+   * Body parts (M2): the part the blow landed on, its state after it, and
+   * the parts it cut off (that part and everything below it). Absent on
+   * dodges and on bodies without parts.
+   */
+  part?: string;
+  state?: PartStateName;
+  lost?: string[];
+  /** A parry took the attacker's weapon (M4): it falls at the attacker's feet. */
+  disarmed?: boolean;
+}
+
+/** A body part's state (docs/MASTERY-AND-COMBAT.md §4.2). */
+export type PartStateName = "healthy" | "harmed" | "maimed" | "dismembered";
+
+/**
+ * S->C (catalog 0x18, M2): the player's own body, part by part: when it
+ * changes (at most a few times a second), and on joining. `hp` is the
+ * share of each part's own health left (0..1); `bleeding` an open wound.
+ */
+export interface BodyMessage {
+  kind: "body";
+  entity: string;
+  parts: { id: string; name: string; hp: number; state: PartStateName; bleeding: boolean }[];
+  blood: number;
+  bloodMax: number;
 }
 
 /**
@@ -105,4 +131,110 @@ export interface LifeMessage {
   state: "dead" | "alive";
   killer?: string;
   respawnAt?: number;
+  /** What killed it (dead, M2): a vital part (`part` names it), blood loss, or anything else. */
+  cause?: "part" | "bleeding" | "other";
+  part?: string;
+}
+
+/**
+ * C->S (catalog 0x19, M3): how the player's next blows are struck. A
+ * technique the rules know ("cut", "thrust", "bludgeon": a stick can cut,
+ * a sword can bludgeon) and the body part aimed at. A field left out is
+ * unchanged; null goes back to the default (the held item's own technique,
+ * the body's root part). Refusals are 4005.
+ */
+export interface StanceMessage {
+  kind: "stance";
+  technique?: string | null;
+  aim?: string | null;
+}
+
+/**
+ * C->S (catalog 0x1a, M4): treat a body part with Medicine. `target` is the
+ * patient's wire entity (absent: yourself); `part` a body part id (absent:
+ * the most urgent: a stump, the worst bleeding, then a maimed part).
+ * `stop: true` stops the treatment under way. Refusals are 4005.
+ */
+export interface TreatMessage {
+  kind: "treat";
+  target?: string;
+  part?: string;
+  stop?: boolean;
+}
+
+/** What a treatment does: stop a wound bleeding, close a stump, set a maimed part. */
+export type TreatmentName = "bandage" | "stump" | "set";
+
+/**
+ * S->C (catalog 0x1a, M4): a treatment started (with how long it takes),
+ * worked, failed, or stopped (the healer moved, fought, went out of reach,
+ * or it was no longer needed). Sent to the healer and the patient.
+ */
+export interface TreatmentMessage {
+  kind: "treatment";
+  healer: string;
+  patient: string;
+  part: string;
+  treatment: TreatmentName;
+  state: "started" | "done" | "failed" | "stopped";
+  seconds?: number;
+}
+
+/**
+ * S->C (catalog 0x1b, M4): the player's own skills (0..max, and the
+ * highest each has been), their familiarity with each item family used
+ * (0..1), and the disciplines they have earned (`active`: the skills are at
+ * its levels now, so what it unlocks can be used). `requires` names each
+ * discipline's skill levels, and `toward` lists the ones not yet earned,
+ * so the character sheet can show the way to them. Sent on joining and
+ * whenever a value (to a tenth) changes.
+ */
+export interface SkillsMessage {
+  kind: "skills";
+  max: number;
+  skills: { id: string; name: string; value: number; peak: number }[];
+  familiarity: { family: string; value: number }[];
+  disciplines: { id: string; name: string; active: boolean; unlocks: string[]; requires?: DisciplineRequirement[] }[];
+  /** Disciplines not yet earned, in rules order (absent from older servers). */
+  toward?: { id: string; name: string; unlocks: string[]; requires: DisciplineRequirement[] }[];
+}
+
+/** A skill (`skills` id) a discipline needs, and the level. */
+export interface DisciplineRequirement {
+  skill: string;
+  level: number;
+}
+
+/**
+ * C->S (catalog 0x1c): cast a spell (`spells.json` id) on `target` (a
+ * character's wire id; absent: yourself), or `stop: true` the cast under
+ * way. Refusals (unknown spell, too far, cooling down, not enough mana) are 4005.
+ */
+export interface CastMessage {
+  kind: "cast";
+  spell?: string;
+  target?: string;
+  stop?: boolean;
+}
+
+/** S->C (catalog 0x1c): the player's own mana pool, on joining and when it changes (to a whole point). */
+export interface ManaMessage {
+  kind: "mana";
+  current: number;
+  max: number;
+}
+
+/**
+ * S->C (catalog 0x1c): a cast started (with how long it takes), completed
+ * (`amount`: the health a heal restored), or stopped (the caster moved,
+ * fought, the target went out of reach or died). Sent to caster and target.
+ */
+export interface SpellMessage {
+  kind: "spell";
+  caster: string;
+  target: string;
+  spell: string;
+  state: "started" | "done" | "stopped";
+  seconds?: number;
+  amount?: number;
 }

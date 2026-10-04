@@ -6,13 +6,17 @@
  * foot it trains Athletics, once per `USE_EVERY_SECONDS` of effort. Both
  * are plain-ground uses of fixed difficulty (no target, so no repeat
  * falloff); the numbers are proposed defaults. Exposure has no weather to
- * train against yet. Saved with the character (M1b, in the gateway); not on
- * the wire yet (U9 character sheet waits on a flatc regen).
+ * train against yet. Saved with the character (M1b, in the gateway), and
+ * sent to its player as the 0x1b `skills` message (M4).
+ *
+ * Disciplines (M4, §2.4): a character has earned a discipline once every
+ * skill it requires has reached its level (by peak: a title is kept), and
+ * can use what it unlocks while the skills are there now (by value).
  */
 
 import { defineQuery, hasComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
-import type { SkillsRules } from "@mmo-engine/rules";
+import type { Discipline, SkillsRules } from "@mmo-engine/rules";
 import { Health, Locomotion, PlayerIntent } from "../components.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
@@ -23,6 +27,16 @@ export const USE_EVERY_SECONDS = 5;
 export const SWIM_DIFFICULTY = 0.4;
 export const ATHLETICS_DIFFICULTY = 0.3;
 
+/** A discipline as one character has it. */
+export interface DisciplineView {
+  id: string;
+  name: string;
+  /** The skills are at its levels now: what it unlocks can be used. */
+  active: boolean;
+  /** Special techniques it unlocks. */
+  unlocks: readonly string[];
+}
+
 export class MasterySystem implements SimSystem {
   readonly name = "mastery";
   readonly index: SkillIndex;
@@ -32,7 +46,12 @@ export class MasterySystem implements SimSystem {
   private readonly swim: number;
   private readonly athletics: number;
 
-  constructor(rules: SkillsRules, private readonly clock: () => number = Date.now) {
+  constructor(
+    rules: SkillsRules,
+    private readonly clock: () => number = Date.now,
+    /** The rules' disciplines (disciplines.json); absent: none. */
+    private disciplines: readonly Discipline[] = [],
+  ) {
     this.index = new SkillIndex(rules);
     this.swim = this.index.of("swimming");
     this.athletics = this.index.of("athletics");
@@ -46,6 +65,48 @@ export class MasterySystem implements SimSystem {
       this.sheets.set(eid, s);
     }
     return s;
+  }
+
+  /** New disciplines (rules hot reload). */
+  setDisciplines(disciplines: readonly Discipline[]): void {
+    this.disciplines = disciplines;
+  }
+
+  /** The disciplines `eid` has earned, in rules order. */
+  disciplinesOf(eid: number): DisciplineView[] {
+    const sheet = this.sheets.get(eid);
+    if (!sheet) return [];
+    const out: DisciplineView[] = [];
+    for (const d of this.disciplines) {
+      let earned = true;
+      let active = true;
+      for (const [id, level] of Object.entries(d.requires)) {
+        const i = this.index.of(id);
+        const peak = i < 0 ? 0 : sheet.peak[i];
+        const now = i < 0 ? 0 : sheet.value[i];
+        if (peak < level) earned = false;
+        if (now < level) active = false;
+      }
+      if (earned) out.push({ id: d.id, name: d.name, active, unlocks: d.unlocks });
+    }
+    return out;
+  }
+
+  /** The disciplines `eid` hasn't earned yet, in rules order: what the character sheet shows the way to. */
+  goalsOf(eid: number): Discipline[] {
+    const earned = new Set(this.disciplinesOf(eid).map((d) => d.id));
+    return this.disciplines.filter((d) => !earned.has(d.id));
+  }
+
+  /** The rules' discipline `id`, or undefined. */
+  discipline(id: string): Discipline | undefined {
+    return this.disciplines.find((d) => d.id === id);
+  }
+
+  /** Whether `eid` can use `technique` now: an active discipline of its unlocks it. */
+  knows(eid: number, technique: string): boolean {
+    if (!this.sheets.has(eid)) return false;
+    return this.disciplinesOf(eid).some((v) => v.active && v.unlocks.includes(technique));
   }
 
   forget(eid: number): void {

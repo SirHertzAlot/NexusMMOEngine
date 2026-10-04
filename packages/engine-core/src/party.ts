@@ -3,8 +3,10 @@
  * leader invites, kicks and promotes, anyone leaves. Invites lapse after 60 s,
  * a party down to one member disbands, and a member who logs out is removed
  * after 5 minutes. Members are keyed by lower-cased display name. Pure state
- * with an injected clock: the gateway owns sockets and fan-out. In memory; a
- * restart disbands every party.
+ * with an injected clock: the gateway owns sockets and fan-out. Parties write
+ * through to a `PartyStore` (SQLite in the server, S3b), so they survive a
+ * restart: everyone comes back offline and has the usual 5 minutes to log in.
+ * Invites are not kept.
  */
 
 import { z } from "zod";
@@ -33,6 +35,29 @@ export interface PartyMember {
 /** What a party op did: `notify` are the display names whose view changed. */
 export type PartyResult = { ok: true; notify: string[] } | { ok: false; reason: string };
 
+/** A stored party: member keys in join order, with their display names. */
+export interface PartyRecord {
+  id: number;
+  leader: string;
+  members: Array<{ key: string; name: string }>;
+}
+
+/** Synchronous write-through storage; `memoryPartyStore` is the default. */
+export interface PartyStore {
+  loadAll(): PartyRecord[];
+  saveParty(p: PartyRecord): void;
+  deleteParty(id: number): void;
+}
+
+export function memoryPartyStore(): PartyStore {
+  const parties = new Map<number, PartyRecord>();
+  return {
+    loadAll: () => [...parties.values()].map((p) => structuredClone(p)),
+    saveParty: (p) => void parties.set(p.id, structuredClone(p)),
+    deleteParty: (id) => void parties.delete(id),
+  };
+}
+
 interface Party {
   id: number;
   /** Join order: the longest-standing member is first. */
@@ -53,7 +78,31 @@ export class PartyBook {
   /** Display names by key. */
   private readonly names = new Map<string, string>();
 
-  constructor(private readonly clock: () => number = Date.now) {}
+  constructor(
+    private readonly clock: () => number = Date.now,
+    private readonly store: PartyStore = memoryPartyStore(),
+  ) {
+    const now = clock();
+    for (const r of store.loadAll()) {
+      const party: Party = { id: r.id, members: r.members.map((m) => m.key), leader: r.leader };
+      this.parties.set(r.id, party);
+      for (const m of r.members) {
+        this.byMember.set(m.key, r.id);
+        this.names.set(m.key, m.name);
+        // A restart is a logout for everyone: the offline timer starts now.
+        this.offline.set(m.key, now);
+      }
+      this.nextId = Math.max(this.nextId, r.id + 1);
+    }
+  }
+
+  private save(party: Party): void {
+    this.store.saveParty({
+      id: party.id,
+      leader: party.leader,
+      members: party.members.map((m) => ({ key: m, name: this.display(m) })),
+    });
+  }
 
   private partyFor(name: string): Party | undefined {
     const pid = this.byMember.get(key(name));
@@ -118,6 +167,7 @@ export class PartyBook {
     if (party.members.length >= PARTY_MAX) return { ok: false, reason: "party is full" };
     party.members.push(n);
     this.byMember.set(n, party.id);
+    this.save(party);
     return { ok: true, notify: this.partyOf(name) };
   }
 
@@ -144,6 +194,7 @@ export class PartyBook {
     const t = key(target);
     if (t === party.leader || !party.members.includes(t)) return { ok: false, reason: "not in your party" };
     party.leader = t;
+    this.save(party);
     return { ok: true, notify: party.members.map((m) => this.display(m)) };
   }
 
@@ -178,9 +229,11 @@ export class PartyBook {
       const left = party.members.map((m) => this.display(m));
       for (const m of party.members) this.byMember.delete(m);
       this.parties.delete(pid);
+      this.store.deleteParty(pid);
       return left;
     }
     if (party.leader === k) party.leader = party.members[0] as string;
+    this.save(party);
     return party.members.map((m) => this.display(m));
   }
 }

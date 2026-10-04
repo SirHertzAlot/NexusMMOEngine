@@ -1,8 +1,7 @@
 /**
  * SettingsMenu — the player's way into settings, top right: graphics
- * quality, controls (remappable, U4), UI scale (U4), and leaving the
- * world. Audio waits for an audio engine; sliders with nothing behind
- * them would be dead UI, so it stays out (docs/ROADMAP.md U4).
+ * quality, UI scale, audio volumes, controls (remappable), and leaving
+ * the world (docs/ROADMAP.md U4).
  */
 
 import { useEffect, useState } from "react";
@@ -17,6 +16,7 @@ import {
   type Bindings,
 } from "../input/bindings.js";
 import { UI_SCALES, type UiScale } from "./ui-scale.js";
+import { AUDIO_BUSES, BUS_LABELS, type AudioBus, type Volumes } from "../audio/volumes.js";
 
 export function SettingsMenu({
   quality,
@@ -27,6 +27,9 @@ export function SettingsMenu({
   onResetBindings,
   uiScale,
   onUiScale,
+  volumes,
+  onVolumes,
+  onPreview,
 }: {
   /** The quality setting as shown ("auto (high)", "low", ...). */
   quality: string;
@@ -37,6 +40,10 @@ export function SettingsMenu({
   onResetBindings: () => void;
   uiScale: UiScale;
   onUiScale: (s: UiScale) => void;
+  volumes: Volumes;
+  onVolumes: (v: Volumes) => void;
+  /** Play a sample of what a bus carries, after its slider is let go. */
+  onPreview: (bus: AudioBus) => void;
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [rebinding, setRebinding] = useState<{ action: ActionId; index: number } | null>(null);
@@ -46,11 +53,11 @@ export function SettingsMenu({
         ⚙ menu
       </Button>
       {open && (
-        <div className="flex w-64 flex-col gap-1.5 rounded-md bg-slate-950/85 p-2 shadow backdrop-blur-sm">
+        <div className="flex max-h-[calc(100vh-11rem)] w-64 flex-col gap-1.5 overflow-y-auto rounded-md bg-slate-950/85 p-2 shadow backdrop-blur-sm">
           <Button size="sm" variant="secondary" onClick={onQuality} title="Cycle the graphics quality">
             graphics: {quality}
           </Button>
-          <div className="flex items-center justify-between gap-2 px-1 pt-1">
+          <div className="flex flex-col gap-1 px-1 pt-1">
             <span className="text-xs text-muted-foreground">interface size</span>
             <div className="flex gap-1">
               {UI_SCALES.map((s) => (
@@ -58,6 +65,7 @@ export function SettingsMenu({
                   key={s}
                   size="sm"
                   variant={s === uiScale ? "default" : "outline"}
+                  className="flex-1"
                   onClick={() => onUiScale(s)}
                   title={`UI scale ${s}%`}
                 >
@@ -66,6 +74,29 @@ export function SettingsMenu({
               ))}
             </div>
           </div>
+          <div className="flex items-center justify-between px-1 pt-1">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">audio</span>
+            <Button
+              size="sm"
+              variant={volumes.muted ? "default" : "ghost"}
+              className="h-6 !px-2 text-xs"
+              aria-pressed={volumes.muted}
+              onClick={() => onVolumes({ ...volumes, muted: !volumes.muted })}
+            >
+              {volumes.muted ? "muted" : "mute"}
+            </Button>
+          </div>
+          <VolumeSlider label="master" value={volumes.master} disabled={volumes.muted} onChange={(master) => onVolumes({ ...volumes, master })} onRelease={() => onPreview("interface")} />
+          {AUDIO_BUSES.map((b) => (
+            <VolumeSlider
+              key={b}
+              label={BUS_LABELS[b]}
+              value={volumes[b]}
+              disabled={volumes.muted}
+              onChange={(v) => onVolumes({ ...volumes, [b]: v })}
+              onRelease={() => onPreview(b)}
+            />
+          ))}
           <div className="px-1 pt-1 text-xs uppercase tracking-wide text-muted-foreground">controls</div>
           {ACTIONS.map((a) => (
             <div key={a} className="flex items-center justify-between gap-2 px-1">
@@ -110,6 +141,41 @@ export function SettingsMenu({
         </div>
       )}
     </div>
+  );
+}
+
+/** One 0–100 % volume row. */
+function VolumeSlider({
+  label,
+  value,
+  disabled,
+  onChange,
+  onRelease,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onChange: (v: number) => void;
+  onRelease: () => void;
+}): React.ReactElement {
+  const pct = Math.round(value * 100);
+  return (
+    <label className={`flex items-center gap-2 px-1 ${disabled ? "opacity-50" : ""}`}>
+      <span className="w-16 text-xs text-muted-foreground">{label}</span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={pct}
+        disabled={disabled}
+        aria-label={`${label} volume`}
+        className="h-1.5 flex-1 cursor-pointer accent-primary"
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        onPointerUp={onRelease}
+      />
+      <span className="w-8 text-right text-xs tabular-nums text-foreground">{pct}</span>
+    </label>
   );
 }
 

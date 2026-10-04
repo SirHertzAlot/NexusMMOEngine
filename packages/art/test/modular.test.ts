@@ -15,7 +15,7 @@ import {
   starterArmour,
 } from "../src/character/modular-catalog.js";
 import { canonicalSkeleton, partScene } from "../src/convert/convert-modular.js";
-import { canonicalLook, effectiveColours, heldOf, lookToJson, parseLook, resolveLook, validateLook, withHeld, type CharacterLook } from "../src/character/look.js";
+import { canonicalLook, effectiveColours, heldOf, lookToJson, lostOf, parseLook, resolveLook, validateLook, withHeld, withLost, type CharacterLook } from "../src/character/look.js";
 import { DEFAULT_COLOURS } from "../src/character/colour-slots.js";
 
 describe("part names", () => {
@@ -181,6 +181,14 @@ describe("character looks", () => {
     assert.ok(!wrong.includes("Chr_Eyebrow_Male_02") && wrong.includes("Chr_Torso_Female_01"), "other-gender parts fall back");
   });
 
+  it("leaves out the slots of lost body parts (M3)", () => {
+    const look: CharacterLook = { gender: "male", parts: { helmet: "Chr_HelmetAttachment_01" }, colours: {} };
+    const all = resolveLook(catalog, look).map((p) => p.slot);
+    const less = resolveLook(catalog, look, new Set(["armUpperRight", "armLowerRight", "handRight", "helmet"])).map((p) => p.slot);
+    assert.equal(all.length - less.length, 4);
+    assert.ok(!less.includes("handRight") && !less.includes("helmet") && less.includes("handLeft"));
+  });
+
   it("validates a new character: appearance free, armour locked, colours hex", () => {
     const ok: CharacterLook = { gender: "female", parts: { head: "Chr_Head_Female_01", hair: "Chr_Hair_05", eyebrows: "Chr_Eyebrow_Female_01" }, colours: { skin: "#8d5524", hair: "#1c1c1c" } };
     assert.deepEqual(validateLook(catalog, ok, { creation: true }), []);
@@ -242,5 +250,21 @@ describe("held weapons in the appearance (M3b)", () => {
     assert.deepEqual(heldOf("{"), {});
     assert.deepEqual(heldOf(JSON.stringify({ held: { main: "<script>", off: 3 } })), {});
     assert.deepEqual(heldOf(look), {});
+  });
+});
+
+describe("lost parts in the appearance (M3)", () => {
+  const look = withHeld(lookToJson({ gender: "male", parts: {}, colours: {} }), { main: "pack/SM_Wep_Sword_01" });
+  it("withLost adds and clears lost slots, keeping the look and what is held; lostOf reads them back", () => {
+    const hurt = withLost(look, ["handRight", "armLowerRight", "handRight"]);
+    assert.deepEqual(lostOf(hurt), ["armLowerRight", "handRight"]);
+    assert.deepEqual(heldOf(hurt), heldOf(look));
+    assert.deepEqual(parseLook(hurt), parseLook(look));
+    assert.equal(withLost(hurt, []), look, "nothing lost: no lost key");
+  });
+  it("lostOf ignores garbage and unknown slots", () => {
+    assert.deepEqual(lostOf("{"), []);
+    assert.deepEqual(lostOf(JSON.stringify({ lost: ["tail", 3, "legLeft"] })), ["legLeft"]);
+    assert.deepEqual(lostOf(look), []);
   });
 });

@@ -11,7 +11,7 @@ index and the status board, not the spec.
 | Status | Meaning |
 |---|---|
 | ✅ | Built and merged |
-| 🚧 | In progress (a branch or an open PR) |
+| 🚧 | In progress: partly built and merged, or on a branch or open PR |
 | ⏭️ | Next up |
 | 📋 | Planned |
 
@@ -19,6 +19,38 @@ index and the status board, not the spec.
 or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
+
+## At a glance (2026-10-04)
+
+**84 items built, 11 in progress, 34 planned** (26 of the planned are the
+modular editor's slices). The game is playable end to end: `npm start`
+bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
+biomes and wild creatures), combat and the body (stances, defence
+contests, injuries, bleeding, dismemberment, Medicine, disciplines, mana
+and Mend), items and saves, quests and dialog, dungeon runs with the
+party, chat, parties, guilds, friends and blocks (all persisted) are in,
+with every player screen for them. The editor has play mode with the
+game view and debugger, selection cards, the PICG graph editor, the
+dungeon view and world-scale terrain editing. The edge/core split (E1 to
+E6) and the world server's migration and stress harness are built.
+
+What is left, by area:
+
+- **Modular editor** (1c): the docking shell, scenes and game flow,
+  modules, the database editor and production tools, EA1 to EA26.
+- **Editor and admin**: the developer panels leave the client (E5), the
+  play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
+  mode, time and weather), and the appearance editor (A6).
+- **Gameplay**: armour and the rest of equipment (U10), recorded and
+  positional sounds (U4b), dungeon results ingested by the world server
+  (D4), ragdolls and character collision.
+- **Scale**: the client cutover to the edge (E3b), binary mirror frames
+  (E5a, E5b), the region↔world event stream (S2), accounts on the world
+  server (C1).
+- **Checks**: Helgrind on the threaded addons, telemetry graphs in the
+  editor (T2).
+- **CI**: GitHub Actions is out of credits, so every change is checked
+  locally with `npm test` and valgrind.
 
 ## Where things live
 
@@ -46,16 +78,16 @@ Doc: [`EDITOR.md`](EDITOR.md)
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ✅ | `scripts/dev.mjs`; the client's `dev:tools` script (Vite mode `devtools`) |
+| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ✅ | `scripts/start.mjs` (`npm start -- --dev`); the client's `dev:tools` script (Vite mode `devtools`) |
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
 | E3 | Art asset pipeline: pack models to GLB, previews | ✅ | |
-| E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ⏭️ | Prerequisite for E5; shares the client's renderer (a shared package, not a copy) |
-| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | Interim: in the developer client (`npm run dev`), not the player's. Moves into the editor with E4 |
-| E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) §6 |
-| E7 | PICG slice 4: hierarchical graph editor | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) |
-| E8 | D3: dungeon view: pool browser, 3D view, edits as patches | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §3.5 |
-| E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | 📋 | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 4 |
+| E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ✅ | Play-mode game view: the client's `WorldCanvas` in the Play Mode tab via `@mmo-engine/client/render`, stats row, lazy-loaded (#92) |
+| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111); removing the interim panels from the developer client follows |
+| E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | ✅ | Selection card in the play-mode debugger: click an entity, see every mirror component and, for a PICG asset, its graph, shape, seed and exposed parameters (#113) |
+| E7 | PICG slice 4: hierarchical graph editor | ✅ | PICG Graphs tab: graphs and linked parts on a canvas, enter and climb the hierarchy, node properties and parameter defaults, undo, saves validated by a cook preparation (#115) |
+| E8 | D3: dungeon view: pool browser, 3D view, edits as patches | ✅ | Dungeons tab: pool browser with map thumbnails and bake more, 3D view with picking, room role and archetype, spawn pin and rank, prop move, add and remove, saved as a validated patch over the bake (#118); applying patches at re-bake is next |
+| E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | ✅ | Terrain tab at world scale: world map with click to jump, the area follows the camera, brushes to 256 m, regenerate a region or area from the world spec (#121); the "sculpt 3 km out, see it in game" check is open |
 | E10 | Character record view (read-only) | ✅ | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
 | E11 | Rules editor: every `content/rules/*.json` tunable listed, edited as a tree, validated on save | ✅ | Loopback `/api/editor/rules` routes (whitelisted names, path-confined, write only when valid; strict across files); Rules tab with tree editor and per-path errors. Opened from opencode's work; no screenshot yet |
 
@@ -70,12 +102,48 @@ stay read-only here; this edits the running game.
 
 | # | Item | Status | Needs |
 |---|---|---|---|
-| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands |
-| A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays |
+| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands; the admin console is also in the editor's play-mode debugger (#111) |
+| A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays; click-to-pick in the editor's game view (E6) picks the entity |
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
-| A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 🚧 | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; god-mode needs damage (M2/M3), mana its spender, time/weather a runtime clock design |
+| A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 🚧 | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; god-mode needs damage (M2/M3), mana its spender, time/weather a runtime clock design; `injure {part, kind?, amount?}` (#99) and `skill {id, value}` (#112) live; `heal` also fills mana and makes the body whole |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
 | A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
+
+## 1c. Modular editor
+
+Doc: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) §10. A docking
+editor with workspaces for every engine feature, scenes and game flow,
+loadable modules, a database editor and production tools.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
+| EA1 | Docking shell, workspaces and toolbar | 📋 | |
+| EA2 | MVC contracts | 📋 | |
+| EA3 | Editor modules | 📋 | |
+| EA4 | Scene documents | 📋 | |
+| EA5 | Scene viewport editing | 📋 | |
+| EA6 | Play the scene | 📋 | |
+| EA7 | Game flow | 📋 | |
+| EA8 | Flow editor and play from a node | 📋 | |
+| EA9 | Server modules | 📋 | |
+| EA10 | C++ modules | 📋 | |
+| EA11 | Sidecars | 📋 | |
+| EA12 | Edge modules | 📋 | |
+| EA13 | Existing tools as modules | 📋 | |
+| EA14 | The play menu | 📋 | |
+| EA15 | Fill every workspace | 📋 | |
+| EA16 | Persistence core and the Database workspace | 📋 | |
+| EA17 | Database functions and caches | 📋 | |
+| EA18 | Version control | 📋 | |
+| EA19 | Build and deploy | 📋 | |
+| EA20 | Quest and dialog editor | 📋 | |
+| EA21 | Animation | 📋 | |
+| EA22 | VFX and materials | 📋 | |
+| EA23 | HUD layout editor | 📋 | |
+| EA24 | Audio | 📋 | |
+| EA25 | Localization | 📋 | |
+| EA26 | Automated playtests | 📋 | |
 
 ## 2. Game client: the player's interface
 
@@ -87,17 +155,19 @@ Everything here is React DOM over the world canvas, fed by the server
 | # | Item | Status | Needs |
 |---|---|---|---|
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
-| U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
-| U3 | Hunger and thirst meters | ✅ | Survival needs as rules on the server (new, alongside M1). Server side done (`needs.json`, `Needs` component, `NeedsSystem`). Wire and HUD meters deferred (no data on the wire yet; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
-| U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
-| U5 | Nameplates (name, guild tag) | 📋 | C3 |
-| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers (S2) and party (S3) commands live (`/w /p /invite /kick /promote /accept /leave`); guild commands live (S4); reply awaits |
+| U2 | **Player frame**: health, mana and stamina bars | ✅ | Health, stamina and mana live; mana from 0x1c, plus a cast bar for the player's own casts (#123) |
+| U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); not persisted yet, and `restore()` waits for food and drink items |
+| U4 | Settings: graphics quality, controls, audio, UI scale | ✅ | Controls remappable + UI scale 90–125%; audio: Web Audio buses, synthesized first cues, master/combat/interface/ambience volumes and mute, persisted (#106) |
+| U5 | Nameplates (name, guild tag) | ✅ | Built with C3: sprite nameplates from the `names` fan-out, guild tags (S4), creature names (U12a) |
+| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | ✅ | Say/yell/emote tabs, history, whispers, party and guild commands; `/r` and `/reply` answer the last whisper (#95) |
 | U7 | Party frames | ✅ | Member list (leader star, online dot, lead/kick for the leader), invite card with accept, leave. Per-member health and region are not on the wire yet, so rows show name and presence only (deferred with the party stats message) |
-| U8 | Social window: friends, presence, blocks, guild roster | 🚧 | Friends frame live (presence dot, whisper, remove; `/friend` `/unfriend`); block list UI awaits; guild roster ships in the guild frame (S4) |
-| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills await M1, injuries M2 |
-| U10 | Inventory and equipment | 📋 | M3 (items), C1 crafting (built) |
-| U11 | Quest log and tracker, dialog | 📋 | P1 |
-| U12 | Injury display and hit feedback | 📋 | M2 |
+| U8 | Social window: friends, presence, blocks, guild roster | ✅ | Friends frame (presence, whisper, remove), block list (`/block` `/unblock`, a block button per friend, unblock offline) (#105), guild roster in the guild frame |
+| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | ✅ | Attributes and derived stats; skills by family with peaks (#110); the body's injuries on a doll, click a part to treat it (#124); disciplines and familiarity (#127) |
+| U10 | Inventory and equipment | 🚧 | First cut shipped (U10a: bag grid, drag to equip, comparison tooltip); armour slots and the rest of equipment await M3 |
+| U11 | Quest log and tracker, dialog | ✅ | Quest givers with ! and ? markers, E to talk, npc dialog with numbered replies, quest log (J) and tracker (#125) |
+| U12 | Injury display and hit feedback | ✅ | Hit feedback and target frame (U12a); injuries on a body doll in the player frame (#124) |
+| U13 | Follow the party into dungeon runs and back | ✅ | Entrances in the world, party enter, run HUD, result and return (#126) |
+| U4b | Recorded sounds and positional audio | 📋 | U4 |
 
 ## 3. Characters, combat and social
 
@@ -105,19 +175,19 @@ Everything here is React DOM over the world canvas, fed by the server
 |---|---|---|---|
 | C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
-| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | 🚧 | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
+| C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | ✅ | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
-| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not on the wire yet |
+| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; skills on the wire (#110); Exposure waits on weather |
 | M1b | Skills saved with the character | ✅ | `character_skills` table in the character store; the gateway saves a character's `SkillSheet` with its state and restores it on entering the world, applying deterioration for the time away |
-| M2 | Body parts, injuries, healing, death and respawn | 📋 | 〃 |
-| M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); combat skills (M3c) feed damage and train from landed hits, blocks and dodges; the rest is open |
-| M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
+| M2 | Body parts, injuries, healing, death and respawn | ✅ | `BodySystem`: blows land on parts (harm, maim, dismember), wounds bleed and clot, parts heal, injuries slow, lame and weaken; a vital part or blood loss kills; respawn clears it (#93). Exposure waits on weather |
+| M3 | Items and melee: combat phases, fit and power, defence, dismemberment | ✅ | Stances (technique and aim, 0x19, R/T), fit and power per technique, precision and landing, defence contests (#94), damage kinds, dismemberment shown on every client (#99), dropped hands (#104). Armour waits for armour items |
+| M4 | Disciplines, familiarity, disarms, Medicine | ✅ | Medicine treats wounds, stumps and maimed parts (0x1a, #109); item familiarity, disciplines and the Blade Master disarm (0x1b, #112). Other unlocks (sweep, lunge, throwDown, reattach) are data only so far |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
-| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | Whispers, blocks and friends with presence live; friends persist across restarts (SQLite `data/friends.db`); the world-server event stream is deferred |
-| S3 | Parties | ✅ | 〃 |
+| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | Whispers, blocks and friends with presence live, persisted in `social.db` (S2c); the world-server event stream deferred; unblocking no longer needs the target online (#105) |
+| S3 | Parties | ✅ | Persisted by `SqlitePartyStore` (`parties.db`); members return offline after a restart with the 5 min window (#102) |
 | S4 | Guilds | ✅ | `GuildBook` (500 members, ranks leader/officer/member/recruit, officer invites, MOTD, 200-entry officer log, 60 s invites), guild chat, `GuildState` pushes, tags on the names rows, guild frame + `/g /gcreate /ginvite /gkick /grank /gmotd /gaccept /gleave`. Persisted by `SqliteGuildStore` (`guilds.db`: guilds, members, 200-line log per guild); `purge` awaits a character-delete path |
-| P1 | Progression graphs: quests and dialog | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
+| P1 | Progression graphs: quests and dialog | ✅ | `content/quests/` (stages, steps, templates, authored quests, npcs, dialog graphs), WFC board quests, `QuestService` with logs in `quests.db` (#103); client screens are U11 |
 
 ## 4. World, content and generation
 
@@ -126,8 +196,8 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | World bake (4 × 4 km, climate-driven survey, glaciers, volcano) | ✅ | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 1 |
 | — | Server streaming of chunks round players | ✅ | 〃 Phase 2 |
 | — | Client terrain: streamed chunks near, the coarse map to the horizon, water, sky, weather | ✅ | 〃 Phase 3, [`CLIENT-FX.md`](CLIENT-FX.md) |
-| — | Client terrain LOD rings and fewer terrain draw calls | 📋 | 〃 Phase 3 |
-| — | Biome registry: scatter sets and creature tables per biome | 📋 | 〃 Phase 5 |
+| — | Client terrain LOD rings and fewer terrain draw calls | ✅ | 〃 Phase 3: 289 → 25 terrain draw calls for a 17×17 area (#114) |
+| — | Biome registry: scatter sets and creature tables per biome | ✅ | 〃 Phase 5: `content/biomes.json`; `MMO_WILD_CREATURES=1` spawns packs per chunk (#96) |
 | W1 | WFC solver (`packages/wfc`) | ✅ | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
 | W2 | Formations: WFC decides what, scatter and the raymarcher decide where | ✅ | 〃 |
 | D1 | Dungeon layouts, `dungeon:bake` | ✅ | 〃 |
@@ -137,7 +207,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | R2 | Prefab builder | ✅ | 〃 |
 | L1 | Loot pool bake | ✅ | 〃 |
 | C1 (crafting) | Materials, recipes, tradability | ✅ | 〃 |
-| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 📋 | 〃 §3.4. Shells are prebaked (`dungeon:bake`, `<id>.shell.pcgm`) ✅ |
+| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Next: results ingested by the world server |
 | PCG1 | PICG native cook addon | ✅ | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 
@@ -163,7 +233,15 @@ split's slices, not the editor's E items.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | 🚧 | Core channel stubbed until E2: core-bound packets answer `core.unavailable` |
+| E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | ✅ | (#83) |
+| E2 | Internal channel edge↔core (`packages/channel`): framed TCP, heartbeats, reconnect | ✅ | (#89) |
+| E3 | Core serves the edge channel; durable sessions; tick, delta and snapshot pushes | ✅ | Additive: players still connect to the core (#100) |
+| E3b | Client cutover: the edge serves the client protocol, the core drops its player listener | 📋 | |
+| E4 | Degraded mode and resync on the edge | ✅ | The edge holds players through a core outage (#101) |
+| E5 | Measure the split (`npm run bench:e5`, [`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md)) | ✅ | 0 hung requests through crash, restart and freeze; mirror encoding a little over budget (#108) |
+| E5a | Binary mirror frames on the channel | 📋 | |
+| E5b | Push encode off the tick (if E5a is not enough) | 📋 | |
+| E6 | Network health: `/metrics`, JSON network logs, Prometheus and Grafana configs | ✅ | (#117) |
 
 ## 6. World server
 
@@ -172,9 +250,9 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 | # | Item | Status |
 |---|---|---|
 | A | Core and registry: `WorldCore`, SurrealDB schema, webrpc, region auth, heartbeats | ✅ |
-| B | Region migration (border hand-off) | 📋 |
+| B | Region migration (border hand-off) | ✅ (arbitration #119, live hand-off #122) |
 | C | Accounts on the world server | 📋 (folded into C1 above) |
-| D | Stress harness and the published number | 📋 |
+| D | Stress harness and the published number | ✅ (`npm run stress:world`, [`WORLD-STRESS-RESULTS.md`](WORLD-STRESS-RESULTS.md), #120) |
 
 ## 7. Alpha
 
@@ -195,7 +273,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2a | Item ledger: append-only, valid and transaction time, tombstones | ✅ | Bags, hands and ground items survive restarts; owners are entity ids, so P2b maps them to saved characters |
 | P2b | Character save: position, health, inventory, equipment | ✅ | Position, health and stamina saved on the 1 s timer, on leaving and on shutdown, restored on entering; bags and hands already persist via P2a |
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
-| L3 | Pool rebake keeps held items | 📋 | P2a |
+| L3 | Pool rebake keeps held items | ✅ | `npm run loot:rebake`; merged in #81 |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
 | T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
 
@@ -203,8 +281,49 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
-- **2026-10-03**: S2c friend persistence: `FriendBook` writes through a `FriendStore` (in-memory default, `SqliteFriendStore` in the server at `data/friends.db`) and reloads on start, so friends lists survive a restart. No protocol change. SQLite/TS only, so no valgrind run. The world-server event stream stays deferred.
+Newest first. One line per merged PR or decision.
 
+- **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
+- **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.
+- **2026-10-04**: M4 client: the character sheet shows disciplines (active, lapsed, progress toward the rest) and familiarity. (#127)
+- **2026-10-04**: D4 player side: entrances in the world, party enter, a run HUD, the result and the return (U13). (#126)
+- **2026-10-04**: World server B2: players handed across region borders live (`bye` redirect with a migration ticket, hello with the ticket). (#122)
+- **2026-10-04**: U11 quest UI: quest givers drawn with ! / ? markers, E to talk, npc dialog with numbered replies, quest log (J), tracker and quest notices. (#125)
+- **2026-10-04**: U12/U9 injury display: a body doll on the player frame while hurt, and a body section on the character sheet (blood, injuries worst first, click to treat). (#124)
+- **2026-10-04**: U2 mana bar on the player frame and a cast bar while casting (0x1c mana and spell messages). (#123)
+- **2026-10-04**: E9 world-scale terrain editing: world map, the area follows the camera, brushes to 256 m, regenerate a region or area. (#121)
+- **2026-10-04**: E8 the editor dungeon view: pool browser, 3D view with picking, edits saved as validated patches. (#118)
+- **2026-10-04**: E7 the hierarchical PICG graph editor. (#115)
+- **2026-10-04**: E6 selection cards in the editor's play mode. (#113)
+- **2026-10-04**: E5 the developer panels move into the editor's play-mode debugger. (#111)
+- **2026-10-04**: E4 the editor's play mode embeds the client's renderer (game view). (#92)
+- **2026-10-04**: U3 + U9: hunger, thirst and skills on the stats message (0x0f `needs`, `skills`, `skillMax`); the player frame shows hunger and thirst; the character sheet lists skills by family with peaks. (#110)
+- **2026-10-04**: U4 audio: `AudioEngine` (Web Audio buses, unlocks on first gesture, pauses with the tab), synthesized cues and an audio section in settings (master, combat, interface, ambience, mute; persisted). (#106)
+- **2026-10-04**: U8 block list: `BlocksState` on 0x11, names kept with blocks (`social.db`), unblock offline; client `/block` `/unblock`, a block button per friend and a folded blocked list. (#105)
+- **2026-10-04**: U8 fix: the friends list stacks above the player frame instead of covering the health and stamina bars. (#98)
+- **2026-10-04**: U6 chat reply: `/r` and `/reply` whisper the last character who whispered you; whispers read from/to and are tinted. (#95)
+- **2026-10-04**: D4 dungeon instances, first cut: runs from the baked pool, loot kept on report (`MMO_DUNGEONS`, `MMO_INSTANCE_HOST`). (#107)
+- **2026-10-04**: P1 quests and dialog: `content/quests/`, WFC board quests, `QuestService` with logs in `quests.db`; additive on 0x11 (`kind:"quest"`). (#103)
+- **2026-10-04**: Biome registry: `content/biomes.json` holds each biome's ecology multipliers and creature table; `MMO_WILD_CREATURES=1` spawns each chunk's packs as it loads. (#96)
+- **2026-10-04**: Mana and Mend, its first spender (`spells.json`, protocol v21 0x1c). (#116)
+- **2026-10-04**: M4b: item familiarity, disciplines and disarms; 0x1b skills (protocol v20); admin `skill`. (#112)
+- **2026-10-04**: M4a: Medicine treats wounds, stumps and maimed parts (protocol v19, 0x1a). (#109)
+- **2026-10-04**: M3 stances: protocol v18 0x19 `stance`; R/T pick the technique and the aim. (#104)
+- **2026-10-04**: M3 lost parts shown: a severed part's slots ride the replicated look as `lost`, every client hides them until respawn or heal. Admin `injure`. (#99)
+- **2026-10-04**: M3 defence contests: a facing guard is a skill contest (`resolveDefence`); a maimed or severed hand drops its item and can't equip again. (#94)
+- **2026-10-04**: M2 body parts and injuries: `BodySystem` (harm, maim, dismember, bleeding, healing, death by a vital part or blood loss). Protocol v17: 0x18 `body`. (#93)
+- **2026-10-04**: World server D: the stress harness (`npm run stress:world`) and the regions-per-box number ([`WORLD-STRESS-RESULTS.md`](WORLD-STRESS-RESULTS.md)). (#120)
+- **2026-10-04**: World server B1: migration arbitration (begin, get, commit, abort, expiry, CAS) and the region `MigrationCoordinator`; 5.4 ms median hand-off. (#119)
+- **2026-10-04**: Terrain LOD rings + 4×4 block batching: 289 → 25 terrain draw calls for a 17×17 streamed area. (#114)
+- **2026-10-04**: Edge/core E6: `/metrics` (edge, channel and core), JSON network logs, Prometheus config, Grafana dashboard, k6 soak. (#117)
+- **2026-10-04**: Edge/core E5: the split measured (`npm run bench:e5`): 0 hung requests through crash, restart and freeze; 60k+ req/s channel; mirror encoding a little over budget (follow-up E5a). (#108)
+- **2026-10-04**: Edge/core E4: the edge holds players through a core outage and resyncs sessions when it returns. (#101)
+- **2026-10-04**: Edge/core E3 (additive): engine-core serves the edge's channel beside the gateway; sessions persist in world.db. (#100)
+- **2026-10-04**: Edge/core E2: `packages/channel` links the edge to the core: framed TCP, heartbeats, reconnect. (#89)
+- **2026-10-04**: Modular editor plan ([`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md)): docking shell, workspaces, scenes and game flow, modules, a database editor and production tools, slices EA0 to EA26. (#91)
+- **2026-10-04**: S3b party persistence: `SqlitePartyStore` (`parties.db`); a restart no longer disbands parties. (#102)
+- **2026-10-03**: S2c friends and blocks persistence: `SqliteSocialStore` (`social.db`) behind `GatewayOptions.socialStore`, write-through from `FriendBook` and `BlockList`. Friends lists and blocks now survive restarts.
+- **2026-10-03**: Roadmap brought up to date: an "At a glance" summary; U3, U10, U12 and M2 marked in progress, U5, C3 and L3 built; the update log put back in date order under its heading. README layout lists the editor, edge and every package.
 - **2026-10-03**: Valgrind without Docker: `npm run valgrind:memcheck` and `valgrind:perf` call `memcheck.mjs` and `perf.mjs` directly again on the host's valgrind; the Docker launcher (`launch.mjs`, `Dockerfile`, `docker-run.sh`) is gone, replacing the container repair below. On Windows, run them from WSL.
 - **2026-10-03**: Edge/core split E1 edge skeleton: new `apps/edge` process (Express `GET /health`, client WebSocket) routes packets by type from strictly validated `content/edge/routes.json` to local modules (`ping`) or the core; the core channel is a stub until E2, so core-bound packets answer `core.unavailable` (the contract E4 reuses). Graceful SIGTERM/SIGINT. Valgrind not run (skipped at the user's request).
 - **2026-10-03**: Valgrind repaired: the container run (`docker-run.sh`) rebuilt every addon from scratch on every run, silently (Jolt takes minutes), so `npm run valgrind:*` looked hung, and two runs at once corrupted the shared volume. Addons now rebuild only when their sources change (hash in the volume), runs are serialised with `flock`, progress is printed and a failed addon build shows its log. Verified: `valgrind:memcheck -- physics` clean in 16 s, `valgrind:perf` all 8 workloads in 84 s (container Node is v25; the baseline is from v22, so deltas are indicative only). Valgrind/perf are no longer paused.
@@ -212,8 +331,6 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 - **2026-10-03**: E11 rules editor: a Rules tab in the editor lists every `content/rules/*.json`, edits it as a tree and validates on save with the `@mmo-engine/rules` schemas and cross-file checks; invalid saves write nothing and show per-path errors. Save is strict (any invalid rules file blocks). Perf and valgrind runs paused.
 - **2026-10-03**: T1 ingress hardening: 64 KiB frame cap, per-session token buckets for intents (40/s, burst 60) and pickups (5/s, burst 10), drops counted, 100 violations in 10 s disconnects. Numbers in `content/rules/ingress.json`, editable in the editor's rules tab. Built by opencode, reviewed by Claude. Live reload of limits not wired (`Gateway.updateIngress` is ready).
 - **2026-10-02**: M2a damage (in progress): attack moves strike once on their `hitAt` tick; living targets with Health in reach and the 120° cone take `computeDamage` for the held weapon (fists when empty), whole-body (D1). A facing guard takes 0.25, a roll in its i-frames none. Health clamps at 0 (death is M2b). Protocol v12: 0x16 `hit`.
-Newest first. One line per merged PR or decision.
-
 - **2026-10-02**: ED1 gameplay tables: the editor's Gameplay Tables tab edits item bases, creatures, loot and death rules, validates through the host (`/api/editor/rules`) and saves to `content/rules`; a refused save lists its issues and writes nothing. A running server's `RulesReloader` watches the folder and swaps the tables on its next tick (`HooksDelegate`, `CreatureSystem.setRules`, `ItemService.setLoot`, `ItemDefs.applyRules`); a bad file is refused and the running rules stay.
 - **2026-10-02**: U10a bag panel: drag a bag item onto its hand slot to equip it (the slot lights only for the right hand), drag a held item onto the bag to put it away, double-click equips. Hovering an item shows a tooltip beside the bag with its stats and the signed change against what it would replace, by the server's swap rules (`displaced`). The held items' stat totals sit under the hands. Drops send the same 0x13 equip/unequip, so the server still decides.
 - **2026-10-02**: U12a hit feedback: struck entities flash red for 0.15 s (hits and blocks; dodges don't), a top-centre target frame shows the target's name and health from `hit` messages (you target what you strike, or your attacker when nothing is targeted; left click selects the hovered entity; cleared when it despawns), creatures get nameplates via the names message, and the player frame's health updates on each hit.

@@ -195,6 +195,11 @@ describe("InputState interface keys (M3a)", () => {
     const input = new InputState();
     assert.equal(input.uiActionFor("KeyE"), "interact");
     assert.equal(input.uiActionFor("KeyB"), "bag");
+    assert.equal(input.uiActionFor("KeyR"), "technique", "R: next technique (M3)");
+    assert.equal(input.uiActionFor("KeyT"), "aim", "T: next aim (M3)");
+    assert.equal(input.uiActionFor("KeyH"), "treat", "H: treat your worst wound (M4)");
+    assert.equal(input.uiActionFor("KeyG"), "mend", "G: cast Mend (mana)");
+    assert.equal(input.uiActionFor("KeyJ"), "quests", "J: quest log (P1)");
     assert.equal(input.uiActionFor("KeyW"), null);
     input.consumeDirty();
     input.keyDown("KeyE");

@@ -2,6 +2,34 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-04 — Players cross region borders with a one-time ticket, not
+  a world-scoped session (WORLD-SERVER-SPEC slice B2).**
+  - **How a player crosses.** The source region begins the migration, then
+    sends the client `bye` with a redirect: the target's endpoint, the
+    migration id and a 32-byte ticket. Only the ticket's SHA-256 goes into
+    the migration record. The target checks the ticket against that hash
+    before spawning the player, commits, and hands out its own session
+    token. If the target refuses, the client goes back to the source with
+    its old token, and the source still has the player.
+  - **Why a ticket.** The spec's world-scoped tokens need the world server
+    to issue and revoke sessions. That is a bigger change, and each region
+    keeping its own sessions works for one hand-off at a time. A ticket
+    can't be reused, and it never sits in the world's store or logs in a
+    form anyone can present.
+  - **What the hand-off doesn't carry yet.** Bags, parties and guilds stay
+    in the region that made them until regions share persistence.
+
+- **2026-10-04 — Plan on 16 regions per 4-core box; the world server is
+  not the bottleneck (WORLD-SERVER-SPEC slice D).** The stress harness
+  (`npm run stress:world`) runs one world process and N region processes.
+  Each region is a real gateway at 30 Hz, with 500 entities and 100
+  players crossing borders. With 16 regions every hand-off committed, at
+  a p99 of 15 ms, while the world server used 15% of one core. At 24
+  regions the region ticks overran a 30 Hz frame. So a box's region count
+  is set by region CPU, about 4 regions per core. The world server should
+  serve far more regions spread over several boxes. Hand-off payloads
+  aren't a bottleneck, so the direct A→B transfer (slice B+) waits.
+  Numbers: `docs/WORLD-STRESS-RESULTS.md`.
 - **2026-10-01 — Items on the ground are ordinary entities; the item
   itself lives in the ItemService (roadmap M3a).** A ground item is a
   Transform and an AssetRef (its model; variant `GROUND_ITEM_VARIANT`,

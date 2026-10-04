@@ -7,6 +7,11 @@
  * navmesh tile bounds (protocol 0x0a). Stop disconnects the client and
  * kills ONLY the server process the editor started, then restores the
  * pre-play UI state via the controller hooks.
+ *
+ * While it runs, the game view (ROADMAP E4, game-view.tsx) shows the
+ * world through the client's own renderer, driven by the same mirror
+ * client the overlays query, with the renderer's numbers beside it, and
+ * the debugger's panels over it (ROADMAP E5, play-debugger.tsx).
  */
 
 import * as React from "react";
@@ -14,6 +19,11 @@ import type { DebugResponse, DebugQuery } from "@mmo-engine/protocol";
 import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
 import { connectMirror } from "./mirror-connect.js";
+import type { MirrorClient } from "@mmo-engine/mirror";
+import type { HudData } from "@mmo-engine/client/render";
+
+// The game view and its debugger (three.js, R3F, the client's scene) load only when play mode first runs.
+const PlayDebugger = React.lazy(() => import("./play-debugger.js").then((m) => ({ default: m.PlayDebugger })));
 import {
   Badge,
   Button,
@@ -50,6 +60,10 @@ export function PlayModePanel(): React.JSX.Element {
     tiles: null,
   });
   const [overlayError, setOverlayError] = React.useState<string | null>(null);
+  // The game view's mirror client (the same one the overlays query) and its last state time.
+  const [mirror, setMirror] = React.useState<MirrorClient | null>(null);
+  const lastStateAt = React.useRef(0);
+  const [hud, setHud] = React.useState<HudData | null>(null);
 
   const controllerRef = React.useRef<PlayModeController | null>(null);
   if (!controllerRef.current) {
@@ -63,11 +77,18 @@ export function PlayModePanel(): React.JSX.Element {
           server.url,
           "mmo-editor-play",
           { username: server.username, password: server.password },
-          () => {},
+          () => {
+            lastStateAt.current = performance.now();
+          },
         );
+        setMirror(c);
         return {
           debug: (q) => c.debug(q as DebugQuery),
-          disconnect: () => c.disconnect(),
+          disconnect: () => {
+            setMirror(null);
+            setHud(null);
+            c.disconnect();
+          },
         };
       },
       {
@@ -169,6 +190,20 @@ export function PlayModePanel(): React.JSX.Element {
             )}
           </div>
 
+          {running && mirror && server && (
+            <div className="flex flex-col gap-2">
+              <React.Suspense fallback={<p className="text-xs text-muted-foreground">Loading the game view…</p>}>
+                <PlayDebugger
+                  client={mirror}
+                  url={server.url}
+                  lastStateAt={() => lastStateAt.current}
+                  onHud={setHud}
+                />
+              </React.Suspense>
+              <GameViewStats hud={hud} />
+            </div>
+          )}
+
           {pmState === "error" && detail && (
             <div className="rounded-md border border-red-900 bg-red-950/40 p-3 text-xs text-red-200">
               <span className="font-semibold">Play mode failed: </span>
@@ -244,6 +279,14 @@ export function PlayModePanel(): React.JSX.Element {
                 aria-label="Entity wire id"
                 disabled={!running}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEntityId(mirror?.playerEntity?.toString() ?? "")}
+                disabled={!running || mirror?.playerEntity == null}
+              >
+                My avatar
+              </Button>
             </div>
             <OverlayWaypoints response={overlays.waypoints} enabled={running} />
           </div>
@@ -264,6 +307,29 @@ export function PlayModePanel(): React.JSX.Element {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** The renderer's once-a-second numbers under the game view. */
+function GameViewStats({ hud }: { hud: HudData | null }): React.JSX.Element {
+  if (!hud) return <p className="text-xs text-muted-foreground">Waiting for the first frame… click the view to steer the avatar (Esc releases the mouse).</p>;
+  const cells: Array<[string, string]> = [
+    ["fps", String(hud.fps)],
+    ["tick", String(hud.tick)],
+    ["entities", String(hud.entities)],
+    ["position", `${hud.px.toFixed(1)}, ${hud.py.toFixed(1)}, ${hud.pz.toFixed(1)}`],
+    ["time", hud.time ?? "fixed"],
+    ["weather", hud.weather ?? "clear"],
+  ];
+  return (
+    <div className="grid grid-cols-3 gap-2 font-mono text-xs sm:grid-cols-6" data-testid="game-view-stats">
+      {cells.map(([k, v]) => (
+        <div key={k}>
+          <Label>{k}</Label>
+          <p>{v}</p>
+        </div>
+      ))}
     </div>
   );
 }

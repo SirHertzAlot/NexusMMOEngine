@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "quests": {
+    "goblin-trouble": {
+      "name": "Goblin trouble",
+      "giver": "warden",
+      "summary": "Goblins have been seen at the old watchtower. Warden Hale wants them gone before they settle in.",
+      "steps": [
+        { "id": "brief", "text": "Speak with Warden Hale.", "objective": { "type": "talk", "npc": "warden" } },
+        { "id": "tower", "text": "Go to the old watchtower.", "objective": { "type": "reach", "place": "the old watchtower" } },
+        { "id": "clear", "text": "Kill the goblins at the watchtower (3).", "objective": { "type": "kill", "kind": "goblin", "count": 3 } },
+        { "id": "report", "text": "Report back to Warden Hale.", "objective": { "type": "talk", "npc": "warden" } }
+      ],
+      "rewards": [{ "base": "sword" }]
+    },
+    "standing-stones": {
+      "name": "The standing stones",
+      "giver": "warden",
+      "summary": "With the tower quiet, the warden wants to know what draws the goblins to the old stones.",
+      "after": ["goblin-trouble"],
+      "steps": [
+        { "id": "stones", "text": "Search the standing stones.", "objective": { "type": "reach", "place": "the standing stones" } },
+        { "id": "report", "text": "Tell Warden Hale what you found.", "objective": { "type": "talk", "npc": "warden" } }
+      ],
+      "rewards": [{ "base": "amulet" }]
+    }
+  }
+}

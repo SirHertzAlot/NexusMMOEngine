@@ -46,6 +46,9 @@
  * `clock` in options for deterministic heartbeat/grace math.
  */
 
+import * as crypto from "node:crypto";
+import { z } from "zod";
+import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -57,13 +60,20 @@ import {
   type AccountMessage,
   type AdminCommand,
   type AdminResult,
+  type ByeMessage,
   type ChatBroadcast,
   type PartyState,
   type FriendsState,
+  type BlocksState,
   type GuildState,
   type DebugQuery,
   type DebugResponse,
   type ErrorMessage,
+  type BodyMessage,
+  type TreatmentMessage,
+  type SkillsMessage,
+  type ManaMessage,
+  type SpellMessage,
   type HitMessage,
   type LifeMessage,
   type NamesMessage,
@@ -79,7 +89,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
-import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
@@ -99,8 +109,10 @@ import {
   parseHello,
   RegisterSchema,
   SessionManager,
+  USERNAME_RE,
   verifyPassword,
   type CredentialStore,
+  type SessionStore,
 } from "../auth/index.js";
 import {
   attachChunkHeights,
@@ -113,9 +125,10 @@ import {
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
-import { PartyBook, PartyOpSchema, type PartyResult } from "../party.js";
+import { PartyBook, PartyOpSchema, type PartyResult, type PartyStore } from "../party.js";
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
-import { FriendBook, FriendSchema, type FriendStore } from "../friends.js";
+import { FriendBook, FriendSchema } from "../friends.js";
+import type { SocialStore } from "../social-store.js";
 import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
@@ -123,9 +136,13 @@ import { DeathSystem } from "../death.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import type { EntityPosition, MigrationHost } from "../world/migration.js";
+import type { MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
+import { Mana, type MagicSystem } from "../magic.js";
+import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
-import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
+import { parseLook, withHeld, withLost, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
   checkNewLook,
@@ -178,8 +195,10 @@ export interface GatewayOptions {
   characterStore?: CharacterStore;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
-  /** Friend persistence (S2c). Default: in memory; the production server passes a SqliteFriendStore. */
-  friendStore?: FriendStore;
+  /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
+  partyStore?: PartyStore;
+  /** Friends and blocks persistence (S2c). Default: in memory; the production server passes a SqliteSocialStore. */
+  socialStore?: SocialStore;
   /**
    * The modular part catalog new characters' looks are checked against;
    * null/absent = structural checks only (a server without the art).
@@ -189,6 +208,8 @@ export interface GatewayOptions {
   maxCharacters?: number;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
+  /** Durable session tokens (edge/core split E3); absent = memory only. */
+  sessionStore?: SessionStore;
   /** Auth rate limit: { maxFailures, windowMs }. Defaults 5 / 60_000. */
   authRateLimit?: { maxFailures?: number; windowMs?: number };
   /**
@@ -258,6 +279,16 @@ export interface GatewayOptions {
    */
   mastery?: MasterySystem;
   /**
+   * The body system in the tick list (M2): each player is sent their own
+   * body (0x18) as it changes. Default: no body messages.
+   */
+  body?: BodySystem;
+  /**
+   * The magic system in the tick list (mana): each player is sent their
+   * mana (0x1c) as it changes, and casts spells through it. Default: none.
+   */
+  magic?: MagicSystem;
+  /**
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
    */
@@ -318,9 +349,45 @@ export interface GatewayOptions {
    * passes `game.rules.ingress` here.
    */
   ingress?: Partial<IngressLimits>;
+  /**
+   * Features outside the gateway that own a 0x11 `kind` (quests: "quest").
+   * Each gets that kind's messages from characters in the world, and hears
+   * when they enter and leave (see ./extension.ts).
+   */
+  extensions?: GatewayExtension[];
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
+
+/** 0x19 stance (M3): ids are checked against the rules by CombatSystem. */
+const StanceSchema = z
+  .object({
+    kind: z.literal("stance"),
+    technique: z.string().min(1).max(32).nullable().optional(),
+    aim: z.string().min(1).max(32).nullable().optional(),
+  })
+  .strict();
+
+/** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
+const TreatSchema = z
+  .object({
+    kind: z.literal("treat"),
+    target: z.string().regex(/^\d{1,20}$/).optional(),
+    part: z.string().min(1).max(32).optional(),
+    stop: z.boolean().optional(),
+  })
+  .strict();
+
+/** 0x1c cast: the spell is checked against the rules by MagicSystem. */
+const CastSchema = z
+  .object({
+    kind: z.literal("cast"),
+    spell: z.string().min(1).max(32).optional(),
+    target: z.string().regex(/^\d{1,20}$/).optional(),
+    stop: z.boolean().optional(),
+  })
+  .strict()
+  .refine((m) => m.stop === true || m.spell !== undefined);
 
 /**
  * Despawn login avatars restored from a snapshot. In a gateway-owned
@@ -352,9 +419,26 @@ export interface AdminLogEntry {
 
 const HEARTBEAT_INTERVAL_MS = 5000;
 const MAX_MISSED_HEARTBEATS = 3;
+/** One finished tick, as the gateway hands it to tick listeners (E3). */
+export interface GatewayTick {
+  tick: number;
+  /** The FlatBuffers delta every client got this tick. */
+  delta: Uint8Array;
+  /** This tick's gameplay events: hits (0x16) and deaths/respawns (0x17). */
+  events: Array<HitMessage | LifeMessage>;
+  /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
+  fullState(): Uint8Array;
+}
+
+type QueuedIntentFields = Parameters<SimWorld["queueIntent"]>[1];
+
 const DISCONNECT_GRACE_MS = 30000;
 const SNAPSHOT_EVERY_TICKS = 300;
 const TICK_HZ = 30;
+/** How often a player's body is checked for changes to send (catalog 0x18): 5 times a second. */
+const BODY_EVERY_TICKS = 6;
+/** How often a player's skills are checked for a change worth sending (0x1b, M4). */
+const SKILLS_EVERY_TICKS = 30;
 /** Admin command log keeps the last N entries (roadmap A1). */
 const ADMIN_LOG_SIZE = 200;
 /**
@@ -439,6 +523,30 @@ export function resolveIngressLimits(partial: Partial<IngressLimits> | undefined
  * — the username charset is shared with the credential store, so only
  * well-formed names can ever match.
  */
+const sha256Hex = (s: string): string => crypto.createHash("sha256").update(s).digest("hex");
+
+/** A player's hand-off state (Gateway.handoffSerialize), checked on arrival. */
+const HandoffStateSchema = z.object({
+  username: z.string().regex(USERNAME_RE),
+  character: z.object({ id: z.number().int(), name: z.string().max(64), look: z.string().max(4096) }).nullable(),
+  pos: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
+  health: z.number().finite(),
+  stamina: z.number().finite(),
+  mana: z.number().finite().nullable().optional(),
+  skills: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).nullable(),
+  ticketHash: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+function parseHandoffState(state: unknown): z.infer<typeof HandoffStateSchema> | null {
+  const r = HandoffStateSchema.safeParse(state);
+  return r.success ? r.data : null;
+}
+
+/** A discipline's `requires` map as the wire's list (M4). */
+function requirements(requires: Readonly<Record<string, number>>): { skill: string; level: number }[] {
+  return Object.entries(requires).map(([skill, level]) => ({ skill, level }));
+}
+
 function parseAdminList(raw: string | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
@@ -467,10 +575,12 @@ export class Gateway {
       | "credentialStore"
       | "characterStore"
       | "guildStore"
-      | "friendStore"
+      | "socialStore"
+      | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
       | "sessionTtlMs"
+      | "sessionStore"
       | "authRateLimit"
       | "textFilter"
       | "debugSource"
@@ -479,6 +589,8 @@ export class Gateway {
       | "ingress"
       | "groundHeightAt"
       | "mastery"
+      | "body"
+      | "magic"
       | "creatures"
       | "spawnPoint"
       | "worldInfo"
@@ -487,6 +599,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "extensions"
       | "items"
     >
   > & { port: number };
@@ -518,6 +631,12 @@ export class Gateway {
   private readonly chunkSource: ChunkDataSource | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
+  private readonly body: BodySystem | null;
+  private readonly magic: MagicSystem | null;
+  /** The body message last sent to each session, as its JSON (see sendBody). */
+  private readonly bodySent = new WeakMap<ClientSession, string>();
+  private readonly skillsSent = new WeakMap<ClientSession, string>();
+  private readonly manaSent = new WeakMap<ClientSession, string>();
   /** Play counters and tick timing (T2); read by the admin `stats` command. */
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
@@ -526,13 +645,14 @@ export class Gateway {
   private readonly dayClock: DayClock | null;
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
-  private readonly blocks = new BlockList();
+  private readonly blocks: BlockList;
   private readonly friends: FriendBook;
   /** Parties, in memory (S3). */
-  private readonly parties = new PartyBook(() => this.clock());
+  private readonly parties: PartyBook;
   private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
   private readonly textFilter: TextFilter;
+  private readonly extensions = new Map<string, GatewayExtension>();
   /** Items (see GatewayOptions.items); shared with the systems list. */
   private readonly items: ItemService | null;
   /** Bag owners for sessions that play no character: one negative id per account. */
@@ -548,8 +668,13 @@ export class Gateway {
   private abuseDisconnects = 0;
   /** Identity map, now keyed by session token: token -> clientId. */
   private readonly tokenToClient = new Map<string, string>();
+  /** Region migration (B2): hand-off tickets by entity, between serialize and redirect. */
+  private readonly handoffTickets = new Map<string, string>();
+  /** Region migration (B2): arrived players waiting for their client, by clientId. */
+  private readonly handoffArrivals = new Map<string, { migrationId: string; ticketHash: string }>();
+  private acceptMigration: ((migrationId: string, verify: (m: MigrationRecord) => boolean) => Promise<boolean>) | null = null;
   /** The stats version last sent to each session (see sendStats). */
-  private readonly statsSent = new WeakMap<ClientSession, number>();
+  private readonly statsSent = new WeakMap<ClientSession, string>();
   /** Usernames allowed admin commands (GatewayOptions.admins). */
   private readonly admins: Set<string>;
   /** Development server: every account is an admin (GatewayOptions.devServer). */
@@ -606,7 +731,9 @@ export class Gateway {
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
-    this.friends = new FriendBook(opts.friendStore);
+    this.parties = new PartyBook(() => this.clock(), opts.partyStore);
+    this.blocks = new BlockList(opts.socialStore);
+    this.friends = new FriendBook(opts.socialStore);
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
@@ -615,6 +742,8 @@ export class Gateway {
     this.chunkSource = opts.chunkSource ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.mastery = opts.mastery ?? null;
+    this.body = opts.body ?? null;
+    this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
     this.worldInfo = opts.worldInfo ?? null;
@@ -624,12 +753,14 @@ export class Gateway {
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
     this.textFilter = opts.textFilter ?? allowAllText;
+    for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
+      store: opts.sessionStore,
     });
     this.rateLimiter = new AuthRateLimiter({
       ...opts.authRateLimit,
@@ -720,6 +851,26 @@ export class Gateway {
     this.tickTimer.unref();
   }
 
+  /**
+   * A way in for a character arriving from another world (a dungeon
+   * instance, roadmap D4): a session token for `username`, already entered
+   * as `character`. The client says hello with `{token}` and lands here as
+   * that character, at the spawn point; nothing is asked of the account's
+   * password. Tokens last as long as any session's (sessionTtlMs).
+   */
+  admit(username: string, character: { id: number; name: string; look: string }): string {
+    const token = this.authSessions.create(`admit-${character.id}`, username);
+    const auth = this.authSessions.get(token);
+    if (auth) auth.character = { ...character };
+    return token;
+  }
+
+  /** The character names in `name`'s party, `name` included (just `[name]` without a party). */
+  partyOf(name: string): string[] {
+    const members = this.parties.partyOf(name);
+    return members.length > 0 ? members : [name];
+  }
+
   /** Advance the fixed-timestep loop manually (tests). Returns ticks run. */
   frame(nowMs: number): number {
     return this.loop.frame(nowMs);
@@ -766,12 +917,70 @@ export class Gateway {
     return session ? { username: session.username } : null;
   }
 
+  // ------------------------------------------------------------ edge channel (E3)
+  //
+  // What the core's channel server (src/channel-server.ts) needs from the
+  // gateway: the tick stream, password login, session lookups and intents
+  // addressed by session token. Players still connect here directly until
+  // the edge serves the client protocol.
+
+  private readonly tickListeners: Array<(t: GatewayTick) => void> = [];
+
+  /** Called after every tick's broadcast. */
+  addTickListener(cb: (t: GatewayTick) => void): void {
+    this.tickListeners.push(cb);
+  }
+
+  private readonly tickTimeListeners: Array<(ms: number) => void> = [];
+
+  /** Called with each tick's wall time in ms, once the tick is done (E6). */
+  addTickTimeListener(cb: (ms: number) => void): void {
+    this.tickTimeListeners.push(cb);
+  }
+
+  /**
+   * Password login for a caller that is not a socket (the edge). Same
+   * credential check and per-caller rate limit as a hello; the session is
+   * not bound to a connection until a client presents its token.
+   */
+  async channelLogin(username: string, password: string, caller = "channel"): Promise<{ ok: true; token: string; playerId: string } | { ok: false; reason: string }> {
+    if (this.rateLimiter.isLimited(caller)) return { ok: false, reason: "too many attempts, try again later" };
+    if (!(await this.checkPassword(username, password))) {
+      this.rateLimiter.recordFailure(caller);
+      return { ok: false, reason: "auth failed" };
+    }
+    this.rateLimiter.recordSuccess(caller);
+    return { ok: true, token: this.authSessions.create("", username), playerId: username };
+  }
+
+  /** Every live session token. */
+  liveSessionTokens(): string[] {
+    return this.authSessions.tokens();
+  }
+
+  /**
+   * Queue an intent for the player a session token is in the world as.
+   * Sanitized like a socket's intent; refused when the token has no player.
+   */
+  queueTokenIntent(token: string, intent: QueuedIntentFields): "ok" | "no_session" | "no_player" | "bad_intent" {
+    if (!this.authSessions.get(token)) return "no_session";
+    const clientId = this.tokenToClient.get(token);
+    const s = clientId ? this.sessions.get(clientId) : undefined;
+    if (!s || !s.welcomed || s.playerEntity === null) return "no_player";
+    const clean = sanitizeIntent(intent);
+    if (clean === null) return "bad_intent";
+    this.world.queueIntent(parseWireEntityId(s.playerEntity).slot, clean);
+    return "ok";
+  }
+
   // ------------------------------------------------------------ tick
 
   private onTick(tick: number): void {
     const t0 = performance.now();
     this.runTick(tick);
-    this.telemetry.tickMs(performance.now() - t0);
+    const ms = performance.now() - t0;
+    this.telemetry.tickMs(ms);
+    for (const l of this.tickTimeListeners) l(ms);
   }
 
   private runTick(tick: number): void {
@@ -781,8 +990,14 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
-    this.sendHits(sim, tick);
-    this.sendLife(sim, tick);
+    const events: Array<HitMessage | LifeMessage> = [
+      ...this.sendHits(sim, tick),
+      ...this.sendLife(sim, tick),
+    ];
+    this.dropFromUselessHands(sim);
+    this.showLostParts(sim);
+    this.sendTreatments(sim);
+    this.sendSpells(sim);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -794,12 +1009,16 @@ export class Gateway {
     sim.endTick();
 
     this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
+    for (const l of this.tickListeners) {
+      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshot(this.withHeights(collectFullState(this.world, tick))) });
+    }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
   }
 
   /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
-  private sendHits(sim: SimWorld, tick: number): void {
+  private sendHits(sim: SimWorld, tick: number): HitMessage[] {
+    const all: HitMessage[] = [];
     for (const s of this.systems) {
       if (!(s instanceof CombatSystem)) continue;
       const hits = s.drainHits();
@@ -818,19 +1037,26 @@ export class Gateway {
             amount: h.amount,
             health: C.Health.current[h.target],
             max: C.Health.max[h.target],
+            ...(h.part !== undefined ? { part: h.part, state: h.state } : {}),
+            ...(h.lost ? { lost: h.lost } : {}),
+            ...(h.disarmed ? { disarmed: true } : {}),
       }));
+      this.dropDisarmed(sim, hits);
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
       }
+      all.push(...msgs);
     }
+    return all;
   }
 
   /**
    * Tell every welcomed player about deaths and respawns this tick (catalog
    * 0x17), and write a dying character's death record when the rules ask.
    */
-  private sendLife(sim: SimWorld, tick: number): void {
+  private sendLife(sim: SimWorld, tick: number): LifeMessage[] {
+    const all: LifeMessage[] = [];
     for (const s of this.systems) {
       if (!(s instanceof DeathSystem)) continue;
       const events = s.drainEvents();
@@ -842,6 +1068,10 @@ export class Gateway {
           if (hasComponent(sim.ecs, C.PlayerIntent, ev.target)) this.telemetry.death();
           if (ev.killer !== undefined && hasComponent(sim.ecs, C.PlayerIntent, ev.killer)) this.telemetry.kill();
           if (ev.killer !== undefined) m.killer = String(sim.wireId(ev.killer));
+          if (ev.cause) {
+            m.cause = ev.cause.cause;
+            if (ev.cause.part !== undefined) m.part = ev.cause.part;
+          }
           m.respawnAt = ev.outcome && ev.outcome.respawnInSeconds >= 0 ? ev.respawnAt : 0;
           const id = this.characterIdOf(ev.target);
           if (id !== null && ev.outcome?.record) {
@@ -854,6 +1084,77 @@ export class Gateway {
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /**
+   * A player's hand maimed or cut off (M3): what it held falls at their
+   * feet, and their look and bag are brought up to date.
+   */
+  private dropFromUselessHands(sim: SimWorld): void {
+    if (!this.body || !this.items) return;
+    const lost = this.body.drainDropped();
+    if (lost.length === 0) return;
+    for (const s of this.sessions.values()) {
+      if (s.playerEntity === null) continue;
+      const avatar = sim.resolveWireId(s.playerEntity);
+      let changed = false;
+      for (const l of lost) if (l.e === avatar && this.items.dropHeld(sim, this.holderOf(s), avatar, l.hand)) changed = true;
+      if (!changed) continue;
+      this.refreshAvatarLook(avatar, this.holderOf(s));
+      this.sendInventory(s);
+    }
+  }
+
+  /** A parry took a player's weapon (M4): it falls at their feet, and their look and bag follow. */
+  private dropDisarmed(sim: SimWorld, hits: readonly { source: number; disarmed?: boolean }[]): void {
+    if (!this.items) return;
+    for (const h of hits) {
+      if (!h.disarmed) continue;
+      for (const s of this.sessions.values()) {
+        if (s.playerEntity === null || sim.resolveWireId(s.playerEntity) !== h.source) continue;
+        if (!this.items.dropHeld(sim, this.holderOf(s), h.source, "main")) continue;
+        this.refreshAvatarLook(h.source, this.holderOf(s));
+        this.sendInventory(s);
+      }
+    }
+  }
+
+  /**
+   * Parts cut off, or grown back (M3): the look every client draws hides
+   * the slots of what is gone (`lost` in the appearance JSON, next to `held`).
+   */
+  private showLostParts(sim: SimWorld): void {
+    if (!this.body) return;
+    for (const e of this.body.drainLooks()) {
+      if (!hasComponent(sim.ecs, C.Appearance, e)) continue;
+      sim.setLook(e, withLost(sim.lookJson(C.Appearance.look[e]), this.body.lostSlots(e)));
+    }
+  }
+
+  /** Tell healers and patients how their treatments go (catalog 0x1a, M4). */
+  private sendTreatments(sim: SimWorld): void {
+    if (!this.body) return;
+    const events = this.body.drainTreatments();
+    if (events.length === 0) return;
+    for (const r of this.sessions.values()) {
+      if (!r.welcomed || r.playerEntity === null) continue;
+      const avatar = sim.resolveWireId(r.playerEntity);
+      for (const ev of events) {
+        if (ev.healer !== avatar && ev.patient !== avatar) continue;
+        const m: TreatmentMessage = {
+          kind: "treatment",
+          healer: String(sim.wireId(ev.healer)),
+          patient: String(sim.wireId(ev.patient)),
+          part: ev.part,
+          treatment: ev.treatment,
+          state: ev.state,
+          ...(ev.seconds !== undefined ? { seconds: Math.round(ev.seconds * 10) / 10 } : {}),
+        };
+        this.sendEnvelope(r, MessageType.Treat, encodeControl(m));
       }
     }
   }
@@ -888,6 +1189,190 @@ export class Gateway {
       n++;
     }
     return n;
+  }
+
+  // ---------------------------------------------- region migration (B2)
+  //
+  // WORLD-SERVER-SPEC §6: the gateway is the ECS side of a border hand-off
+  // (MigrationHost). A player is the migrating entity `player:<username>`;
+  // the region's MigrationCoordinator decides when and where. The source
+  // sends the client a `bye` redirect with a one-time ticket whose hash
+  // rides in the migration record; the target spawns the avatar without a
+  // socket and lets in the client whose migration hello carries that ticket.
+
+  /** Where each player in the world stands, for MigrationCoordinator.observe. */
+  migrationPositions(): EntityPosition[] {
+    const out: EntityPosition[] = [];
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || s.playerEntity === null || this.handoffArrivals.has(s.clientId)) continue;
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0) continue;
+      out.push({ entityId: `player:${s.username}`, x: C.Transform.px[eid], z: C.Transform.pz[eid] });
+    }
+    return out;
+  }
+
+  /** The gateway's side of a hand-off, for this region's MigrationCoordinator. */
+  migrationHost(): MigrationHost {
+    return {
+      serialize: (id) => this.handoffSerialize(id),
+      instantiate: (id, state, migrationId) => this.handoffInstantiate(id, state, migrationId),
+      drop: (id) => this.handoffDrop(id),
+      has: (id) => this.handoffSession(id) !== undefined,
+      redirect: (id, endpoint, migrationId) => this.handoffRedirect(id, endpoint, migrationId),
+    };
+  }
+
+  /**
+   * How a migration hello is let in: the region's coordinator accepts the
+   * migration (`MigrationCoordinator.accept`), checking the record with
+   * `verify` first. Unset, a migration hello is refused.
+   */
+  setMigrationAcceptor(accept: (migrationId: string, verify: (m: MigrationRecord) => boolean) => Promise<boolean>): void {
+    this.acceptMigration = accept;
+  }
+
+  private handoffSession(entityId: string): ClientSession | undefined {
+    if (!entityId.startsWith("player:")) return undefined;
+    const username = entityId.slice("player:".length);
+    for (const s of this.sessions.values()) {
+      if (s.username === username && s.playerEntity !== null) return s;
+    }
+    return undefined;
+  }
+
+  private handoffSerialize(entityId: string): Record<string, unknown> | null {
+    const s = this.handoffSession(entityId);
+    if (!s || s.playerEntity === null) return null;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return null;
+    const ticket = crypto.randomBytes(32).toString("hex");
+    this.handoffTickets.set(entityId, ticket);
+    const auth = this.authSessions.get(s.token);
+    const T = C.Transform;
+    return {
+      username: s.username,
+      character: auth?.character ?? null,
+      pos: [T.px[eid], T.py[eid], T.pz[eid]],
+      health: C.Health.current[eid],
+      stamina: C.Stamina.current[eid],
+      mana: hasComponent(this.world.ecs, Mana, eid) ? Mana.current[eid] : null,
+      skills: this.mastery ? this.mastery.sheetOf(eid).save() : null,
+      ticketHash: sha256Hex(ticket),
+    };
+  }
+
+  private handoffRedirect(entityId: string, endpoint: string, migrationId: string): void {
+    const s = this.handoffSession(entityId);
+    const ticket = this.handoffTickets.get(entityId);
+    this.handoffTickets.delete(entityId);
+    if (!s || !ticket) return;
+    const bye: ByeMessage = { reason: "redirect", redirect: { endpoint, migration: migrationId, ticket } };
+    this.sendEnvelope(s, MessageType.Bye, encodeControl(bye));
+  }
+
+  /** The target region took the player: remove the avatar here, unsaved (it isn't ours to save). */
+  private handoffDrop(entityId: string): void {
+    const s = this.handoffSession(entityId);
+    if (!s || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    this.mastery?.forget(eid);
+    this.world.despawn(parseWireEntityId(s.playerEntity).slot);
+    s.playerEntity = null;
+    this.handoffArrivals.delete(s.clientId);
+    if (this.tokenToClient.get(s.token) === s.clientId) this.tokenToClient.delete(s.token);
+    this.authSessions.revoke(s.token);
+    this.sessions.delete(s.clientId);
+    if (s.socket) {
+      try {
+        s.socket.close(4000, "moved to another region");
+      } catch {
+        /* ignore */
+      }
+      s.socket = null;
+    }
+  }
+
+  /**
+   * Spawn an arriving player from its handed-over state, as a session
+   * waiting for its client (the disconnect grace period applies: a client
+   * that never comes is despawned like any other).
+   */
+  private handoffInstantiate(entityId: string, state: Record<string, unknown> | null, migrationId: string): void {
+    const st = parseHandoffState(state);
+    if (!st || `player:${st.username}` !== entityId) return;
+    const now = this.clock();
+    const s: ClientSession = {
+      clientId: `c${++this.clientSeq}`,
+      token: this.authSessions.create("", st.username),
+      playerEntity: null,
+      lastAckedTick: 0n,
+      lastSnapshotTick: 0n,
+      sendQueue: [],
+      missedHeartbeats: 0,
+      lastPingMs: 0,
+      connectedAtMs: now,
+      socket: null,
+      welcomed: true,
+      joining: false,
+      lastIntentTick: 0n,
+      droppedIntents: 0,
+      intentTokens: this.ingress.intentBurst,
+      intentRefillMs: now,
+      pickupTokens: this.ingress.pickupBurst,
+      pickupRefillMs: now,
+      droppedPickups: 0,
+      violations: 0,
+      violationWindowStartMs: now,
+      lastSeenMs: now,
+      disconnectedAtMs: now,
+      needsResync: false,
+      remoteIp: "",
+      username: st.username,
+      choosingCharacter: false,
+      character: st.character ? { id: st.character.id, name: st.character.name } : null,
+      isAdmin: this.devServer || this.admins.has(st.username),
+      lastChatMs: {},
+    };
+    this.authSessions.rebind(s.token, s.clientId);
+    const auth = this.authSessions.get(s.token);
+    if (auth && st.character) auth.character = st.character;
+    if (st.character) this.evictCharacter(st.character.id, s);
+    s.playerEntity = this.spawnPlayerEntity(st.character?.look ?? DEFAULT_LOOK_JSON, st.character?.id ?? null);
+    const eid = this.world.resolveWireId(s.playerEntity);
+    const T = C.Transform;
+    [T.px[eid], T.py[eid], T.pz[eid]] = st.pos;
+    C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
+    C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
+    if (st.mana != null && this.magic) {
+      this.magic.ensure(this.world, eid);
+      Mana.current[eid] = Math.min(st.mana, Mana.max[eid]);
+    }
+    if (st.skills && this.mastery) this.mastery.sheetOf(eid).load(st.skills);
+    this.sessions.set(s.clientId, s);
+    this.tokenToClient.set(s.token, s.clientId);
+    this.handoffArrivals.set(s.clientId, { migrationId, ticketHash: st.ticketHash });
+  }
+
+  /**
+   * A migration hello: the coordinator accepts the migration (checking the
+   * ticket against the record before anything spawns), then the client
+   * takes over the session `handoffInstantiate` made, like a token
+   * reconnect. Returns that session's token, or null to refuse.
+   */
+  private async handoffArrive(migrationId: string, ticket: string): Promise<string | null> {
+    if (!this.acceptMigration) return null;
+    const hash = sha256Hex(ticket);
+    const verify = (m: MigrationRecord): boolean => (m.entityState as { ticketHash?: unknown } | null)?.ticketHash === hash;
+    if (!(await this.acceptMigration(migrationId, verify))) return null;
+    for (const s of this.sessions.values()) {
+      const a = this.handoffArrivals.get(s.clientId);
+      if (!a || a.migrationId !== migrationId) continue;
+      if (a.ticketHash !== hash) return null;
+      this.handoffArrivals.delete(s.clientId);
+      return s.token;
+    }
+    return null;
   }
 
   /**
@@ -952,21 +1437,125 @@ export class Gateway {
         this.deliver(s, deltaEnv, tick);
       }
       this.sendStats(s, tick);
+      if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
+      if (tick % BODY_EVERY_TICKS === 0) this.sendMana(s, tick);
+      if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
   }
 
   /**
-   * The player's own stats (catalog §0x0f), when they changed since they
-   * were last sent to this session; `force` sends them regardless (on
-   * joining or re-attaching, the client has none yet).
+   * The player's own body (catalog 0x18, M2), when it changed since it was
+   * last sent to this session (checked every BODY_EVERY_TICKS); `force`
+   * sends it regardless (on joining or re-attaching).
+   */
+  private sendBody(s: ClientSession, tick: number, force = false): void {
+    if (!this.body || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0 || !this.body.has(this.world, eid)) return;
+    const v = this.body.view(eid);
+    // Display values: hp to a hundredth, blood to a tenth, so healing ticks don't resend every check.
+    const msg: BodyMessage = {
+      kind: "body",
+      entity: s.playerEntity.toString(),
+      parts: v.parts.map((p) => ({ ...p, hp: Math.round(p.hp * 100) / 100 })),
+      blood: Math.round(v.blood * 10) / 10,
+      bloodMax: v.bloodMax,
+    };
+    const json = JSON.stringify(msg);
+    if (!force && this.bodySent.get(s) === json) return;
+    this.bodySent.set(s, json);
+    this.deliver(s, encodeEnvelope(MessageType.Body, encodeControl(msg)), tick);
+  }
+
+  /**
+   * The player's own mana (catalog 0x1c), when it changed (to a whole
+   * point) since last sent; `force` sends it regardless (joining, re-attaching).
+   */
+  private sendMana(s: ClientSession, tick: number, force = false): void {
+    if (!this.magic || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return;
+    this.magic.ensure(this.world, eid);
+    const msg: ManaMessage = { kind: "mana", current: Math.floor(Mana.current[eid]), max: Math.round(Mana.max[eid]) };
+    const json = JSON.stringify(msg);
+    if (!force && this.manaSent.get(s) === json) return;
+    this.manaSent.set(s, json);
+    this.deliver(s, encodeEnvelope(MessageType.Magic, encodeControl(msg)), tick);
+  }
+
+  /** Tell casters and targets how their casts go (catalog 0x1c). */
+  private sendSpells(sim: SimWorld): void {
+    if (!this.magic) return;
+    const events = this.magic.drainEvents();
+    if (events.length === 0) return;
+    for (const r of this.sessions.values()) {
+      if (!r.welcomed || r.playerEntity === null) continue;
+      const avatar = sim.resolveWireId(r.playerEntity);
+      for (const ev of events) {
+        if (ev.caster !== avatar && ev.target !== avatar) continue;
+        const m: SpellMessage = {
+          kind: "spell",
+          caster: String(sim.wireId(ev.caster)),
+          target: String(sim.wireId(ev.target)),
+          spell: ev.spell,
+          state: ev.state,
+          ...(ev.seconds !== undefined ? { seconds: Math.round(ev.seconds * 10) / 10 } : {}),
+          ...(ev.amount !== undefined ? { amount: Math.round(ev.amount * 10) / 10 } : {}),
+        };
+        this.sendEnvelope(r, MessageType.Magic, encodeControl(m));
+      }
+    }
+  }
+
+  /**
+   * The player's own skills, item familiarity and disciplines (catalog
+   * 0x1b, M4), when they changed (to a tenth) since last sent; `force`
+   * sends them regardless (on joining or re-attaching).
+   */
+  private sendSkills(s: ClientSession, tick: number, force = false): void {
+    if (!this.mastery || s.playerEntity === null) return;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0) return;
+    const sheet = this.mastery.sheetOf(eid);
+    const rules = this.mastery.index.rules;
+    const tenth = (v: number): number => Math.round(v * 10) / 10;
+    const msg: SkillsMessage = {
+      kind: "skills",
+      max: rules.max,
+      skills: rules.skills.map((k, i) => ({ id: k.id, name: k.name, value: tenth(sheet.value[i]), peak: tenth(sheet.peak[i]) })),
+      familiarity: sheet.families().map(([family, value]) => ({ family, value: Math.round(value * 1000) / 1000 })),
+      disciplines: this.mastery.disciplinesOf(eid).map((d) => {
+        const rule = this.mastery!.discipline(d.id);
+        return { id: d.id, name: d.name, active: d.active, unlocks: [...d.unlocks], ...(rule ? { requires: requirements(rule.requires) } : {}) };
+      }),
+      toward: this.mastery.goalsOf(eid).map((d) => ({ id: d.id, name: d.name, unlocks: [...d.unlocks], requires: requirements(d.requires) })),
+    };
+    const json = JSON.stringify(msg);
+    if (!force && this.skillsSent.get(s) === json) return;
+    this.skillsSent.set(s, json);
+    this.deliver(s, encodeEnvelope(MessageType.Skills, encodeControl(msg)), tick);
+  }
+
+  /**
+   * The player's own stats (catalog §0x0f): attributes and derived stats,
+   * hunger and thirst (U3) and skills (U9), when any of them changed since
+   * they were last sent to this session at display precision; `force`
+   * sends them regardless (on joining or re-attaching, the client has none
+   * yet). Meters move by whole points and skills by tenths, so a steady
+   * drain or a training session costs a message every few seconds, not
+   * every tick.
    */
   private sendStats(s: ClientSession, tick: number, force = false): void {
     if (s.playerEntity === null) return;
     const eid = this.world.resolveWireId(s.playerEntity);
     if (eid < 0) return;
     const version = this.world.stats.version(eid);
-    if (version === 0 || (!force && this.statsSent.get(s) === version)) return;
-    this.statsSent.set(s, version);
+    if (version === 0) return;
+    const needs = this.needsLine(eid);
+    const skills = this.skillLines(eid);
+    const key = `${version}|${needs ? `${needs.hunger},${needs.hungerMax},${needs.thirst},${needs.thirstMax}` : ""}|${skills ? skills.map((k) => `${k.value}/${k.peak}`).join(",") : ""}`;
+    if (!force && this.statsSent.get(s) === key) return;
+    this.statsSent.set(s, key);
     const sheet = this.world.stats.sheet(eid)!;
     // Display values: 4 decimals is plenty, and keeps float noise off the wire.
     const round = (v: number): number => Math.round(v * 1e4) / 1e4;
@@ -975,8 +1564,36 @@ export class Gateway {
       entity: s.playerEntity.toString(),
       attributes: sheet.filter((l) => l.attribute).map(line),
       stats: sheet.filter((l) => !l.attribute).map(line),
+      ...(needs ? { needs } : {}),
+      ...(skills && this.mastery ? { skills, skillMax: this.mastery.index.rules.max } : {}),
     };
     this.deliver(s, encodeEnvelope(MessageType.Stats, encodeControl(msg)), tick);
+  }
+
+  /** Hunger and thirst in whole points (U3), or undefined without the Needs component. */
+  private needsLine(eid: number): StatsMessage["needs"] {
+    if (!hasComponent(this.world.ecs, C.Needs, eid)) return undefined;
+    // Ceil, so a meter reads 0 only when it is empty and hurting.
+    return {
+      hunger: Math.ceil(C.Needs.hunger[eid]),
+      hungerMax: Math.round(C.Needs.hungerMax[eid]),
+      thirst: Math.ceil(C.Needs.thirst[eid]),
+      thirstMax: Math.round(C.Needs.thirstMax[eid]),
+    };
+  }
+
+  /** Every skill to a tenth (U9), or undefined when this server runs no mastery. */
+  private skillLines(eid: number): StatsMessage["skills"] {
+    if (!this.mastery) return undefined;
+    const sheet = this.mastery.sheetOf(eid);
+    const tenth = (v: number): number => Math.round(v * 10) / 10;
+    return this.mastery.index.rules.skills.map((k, i) => ({
+      id: k.id,
+      name: k.name,
+      family: k.family,
+      value: tenth(sheet.value[i]),
+      peak: tenth(sheet.peak[i]),
+    }));
   }
 
   /** Queue-or-send one enveloped message, preserving order, bounded. */
@@ -1118,6 +1735,7 @@ export class Gateway {
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
+    this.extensionsLeave(s);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -1136,6 +1754,7 @@ export class Gateway {
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
+      this.extensionsLeave(s);
       // Re-arm: if the close event never arrives, the session is still
       // correctly parked. If it does arrive, the guard ignores it.
       void sock;
@@ -1186,6 +1805,15 @@ export class Gateway {
         break;
       case MessageType.Item:
         this.onItem(s, payload);
+        break;
+      case MessageType.Stance:
+        this.onStance(s, payload);
+        break;
+      case MessageType.Treat:
+        this.onTreat(s, payload);
+        break;
+      case MessageType.Magic:
+        this.onCast(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -1278,7 +1906,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, items, give, drop, loot",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1318,7 +1946,7 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
-    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly") {
+    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly" || cmd.command === "injure" || cmd.command === "skill") {
       res = this.runPlayerCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
@@ -1487,7 +2115,35 @@ export class Gateway {
       if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
       const r = applyHeal(this.world, target.wireId);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+      const healed = this.world.resolveWireId(target.wireId);
+      if (this.magic && healed >= 0) this.magic.refill(this.world, healed);
       return { kind: "admin", command, ok: true, message: r.message };
+    }
+    if (command === "injure") {
+      const parsed = InjureArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) return { kind: "admin", command, ok: false, message: "usage: injure {part, kind?: cut|blunt|thrust, amount?, entity?}" };
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      const eid = this.world.resolveWireId(target.wireId);
+      if (!this.body || eid < 0 || !hasComponent(this.world.ecs, C.Health, eid)) return { kind: "admin", command, ok: false, message: "no body to injure" };
+      if (!this.body.parts.includes(parsed.data.part)) return { kind: "admin", command, ok: false, message: `no body part "${parsed.data.part}" (parts: ${this.body.parts.join(", ")})` };
+      const r = this.body.applyBlow(this.world, eid, parsed.data.part, parsed.data.kind, parsed.data.amount ?? C.Health.max[eid]);
+      return { kind: "admin", command, ok: true, message: `${r.part} ${r.state}${r.lost.length > 0 ? ` (lost ${r.lost.join(", ")})` : ""}` };
+    }
+    if (command === "skill") {
+      const parsed = SkillArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) return { kind: "admin", command, ok: false, message: "usage: skill {id, value, entity?}" };
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      const eid = this.world.resolveWireId(target.wireId);
+      const i = this.mastery?.index.of(parsed.data.id) ?? -1;
+      if (!this.mastery || eid < 0) return { kind: "admin", command, ok: false, message: "no skills there" };
+      if (i < 0) return { kind: "admin", command, ok: false, message: `no skill "${parsed.data.id}" (skills: ${this.mastery.index.ids.join(", ")})` };
+      const sheet = this.mastery.sheetOf(eid);
+      const v = Math.min(this.mastery.index.rules.max, parsed.data.value);
+      sheet.value[i] = v;
+      sheet.peak[i] = Math.max(sheet.peak[i], v);
+      return { kind: "admin", command, ok: true, message: `${parsed.data.id} ${v}` };
     }
     const parsed = FlyArgsSchema.safeParse(args ?? {});
     if (!parsed.success) {
@@ -1531,6 +2187,11 @@ export class Gateway {
     let to: string | undefined;
     try {
       const raw = decodeControl<unknown>(payload);
+      const ext = typeof raw === "object" && raw !== null ? this.extensions.get(String((raw as { kind?: unknown }).kind)) : undefined;
+      if (ext) {
+        ext.onMessage(this.extensionPlayer(s), raw);
+        return;
+      }
       if (typeof raw === "object" && raw !== null && (raw as { kind?: unknown }).kind === "block") {
         this.onBlock(s, raw);
         return;
@@ -1861,23 +2522,41 @@ export class Gateway {
       return;
     }
     const key = parsed.data.name.toLowerCase();
-    let account: string | undefined;
-    for (const r of this.sessions.values()) {
-      if ((r.character?.name ?? r.username).toLowerCase() === key) account = r.username;
+    // Unblocking matches the block list first, so a character who is offline can still come off it (U8).
+    if (!parsed.data.on) {
+      const listed = this.blocks.accountNamed(s.username, parsed.data.name);
+      if (listed !== undefined) {
+        this.blocks.remove(s.username, listed);
+        this.sendSystem(s, `unblocked ${parsed.data.name}`);
+        this.pushBlocks(s);
+        return;
+      }
     }
-    // Only online characters resolve until the character store is asked by name.
-    if (account === undefined) {
+    let target: ClientSession | undefined;
+    for (const r of this.sessions.values()) {
+      if ((r.character?.name ?? r.username).toLowerCase() === key) target = r;
+    }
+    // Blocking resolves only online characters until the character store is asked by name.
+    if (target === undefined) {
       this.sendSystem(s, NOT_ONLINE);
       return;
     }
+    const account = target.username;
     if (!parsed.data.on) {
       this.blocks.remove(s.username, account);
       this.sendSystem(s, `unblocked ${parsed.data.name}`);
-    } else if (this.blocks.add(s.username, account)) {
+    } else if (this.blocks.add(s.username, account, target.character?.name ?? target.username)) {
       this.sendSystem(s, `blocked ${parsed.data.name}`);
     } else {
       this.sendSystem(s, "cannot block");
     }
+    this.pushBlocks(s);
+  }
+
+  /** Send a session its block list (U8). */
+  private pushBlocks(s: ClientSession): void {
+    const msg: BlocksState = { kind: "blocks", blocked: this.blocks.names(s.username) };
+    this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
   }
 
   /**
@@ -1966,6 +2645,17 @@ export class Gateway {
       sessionToken = this.authSessions.create(s.clientId, username);
       // eslint-disable-next-line no-console
       console.log(`[gateway] hello client=${clientLabel} via=password`);
+    } else if (parsed.kind === "migration") {
+      const token = await this.handoffArrive(parsed.value.migration, parsed.value.ticket);
+      if (!token) {
+        this.rateLimiter.recordFailure(s.remoteIp);
+        this.sendErrorAndClose(s, 4002, "auth failed");
+        return;
+      }
+      this.rateLimiter.recordSuccess(s.remoteIp);
+      sessionToken = token;
+      // eslint-disable-next-line no-console
+      console.log(`[gateway] hello client=${clientLabel} via=migration`);
     } else {
       const sess = this.authSessions.get(parsed.value.token);
       if (!sess) {
@@ -2004,6 +2694,9 @@ export class Gateway {
       this.sendWelcome(known);
       this.sendFreshSnapshot(known);
       this.sendStats(known, this.tick, true);
+      this.sendBody(known, this.tick, true);
+      this.sendSkills(known, this.tick, true);
+      this.sendMana(known, this.tick, true);
       this.sendInventory(known);
       return;
     }
@@ -2070,6 +2763,9 @@ export class Gateway {
     this.sendWelcome(s);
     this.sendFreshSnapshot(s);
     this.sendStats(s, this.tick, true);
+    this.sendBody(s, this.tick, true);
+    this.sendSkills(s, this.tick, true);
+    this.sendMana(s, this.tick, true);
     this.sendInventory(s);
   }
 
@@ -2478,7 +3174,26 @@ export class Gateway {
     for (const n of this.guilds.guildOf(who)) this.pushGuild(n);
     this.pushGuild(who);
     this.pushFriends(who);
+    this.pushBlocks(s);
     this.friendPresence(s);
+    for (const ext of this.extensions.values()) ext.onEnter?.(this.extensionPlayer(s));
+  }
+
+  /** The session as an extension sees it (see ./extension.ts). */
+  private extensionPlayer(s: ClientSession): ExtensionPlayer {
+    return {
+      characterId: s.character?.id ?? null,
+      username: s.username,
+      name: s.character?.name ?? s.username,
+      entity: () => (s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity)),
+      send: (msg) => this.sendEnvelope(s, MessageType.Chat, encodeControl(msg)),
+      refreshInventory: () => this.sendInventory(s),
+    };
+  }
+
+  private extensionsLeave(s: ClientSession): void {
+    if (!s.welcomed) return;
+    for (const ext of this.extensions.values()) ext.onLeave?.(this.extensionPlayer(s));
   }
 
   /** Full baseline snapshot, e.g. on join or re-attach. */
@@ -2499,6 +3214,131 @@ export class Gateway {
       ),
       this.tick,
     );
+  }
+
+  /**
+   * The player's stance (catalog 0x19, M3): the technique and aim of their
+   * blows. In-world sessions only; shares the pickup bucket (key presses).
+   * A bad shape is 4003, an unknown technique or part 4005.
+   */
+  private onStance(s: ClientSession, payload: Uint8Array): void {
+    const combat = this.systems.find((x): x is CombatSystem => x instanceof CombatSystem);
+    if (!combat || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "stance outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed stance");
+      return;
+    }
+    const parsed = StanceSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed stance");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return;
+    const err = combat.setStance(avatar, parsed.data.technique, parsed.data.aim);
+    if (err) this.sendError(s, 4005, err);
+  }
+
+  /**
+   * Treat a body part (catalog 0x1a, M4): yourself or a character in reach.
+   * In-world sessions only; shares the pickup bucket. A bad shape is 4003,
+   * a refusal (too far, nothing to treat, no usable hand) 4005; how it goes
+   * comes back as `treatment` events.
+   */
+  private onTreat(s: ClientSession, payload: Uint8Array): void {
+    if (!this.body || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "treat outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed treat");
+      return;
+    }
+    const parsed = TreatSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed treat");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const healer = sim.resolveWireId(s.playerEntity);
+    if (healer < 0) return;
+    if (parsed.data.stop) {
+      this.body.stop(healer);
+      return;
+    }
+    const patient = parsed.data.target === undefined ? healer : sim.resolveWireId(BigInt(parsed.data.target));
+    if (patient < 0) {
+      this.sendError(s, 4005, "no one to treat");
+      return;
+    }
+    const err = this.body.treat(sim, healer, patient, parsed.data.part);
+    if (err) this.sendError(s, 4005, err);
+  }
+
+  /**
+   * Cast a spell (catalog 0x1c): on yourself or a character in reach. In-world
+   * sessions only; shares the pickup bucket. A bad shape is 4003, a refusal
+   * (unknown spell, too far, cooling down, not enough mana) 4005; how it
+   * goes comes back as `spell` events.
+   */
+  private onCast(s: ClientSession, payload: Uint8Array): void {
+    if (!this.magic || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "cast outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed cast");
+      return;
+    }
+    const parsed = CastSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed cast");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const caster = sim.resolveWireId(s.playerEntity);
+    if (caster < 0) return;
+    if (parsed.data.stop) {
+      this.magic.stop(caster);
+      return;
+    }
+    const target = parsed.data.target === undefined ? caster : sim.resolveWireId(BigInt(parsed.data.target));
+    if (target < 0) {
+      this.sendError(s, 4005, "no one to cast on");
+      return;
+    }
+    const err = this.magic.cast(sim, caster, parsed.data.spell!, target);
+    if (err) this.sendError(s, 4005, err);
   }
 
   /**
@@ -2547,7 +3387,11 @@ export class Gateway {
     } else if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
     } else if (a.action === "equip") {
-      result = this.items.equip(holder, a.item);
+      // A maimed or lost hand (M3) can't take hold of anything.
+      const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
+      result = hands?.some((h) => this.body!.armFactor(this.world, avatar, h) === 0)
+        ? { ok: false as const, error: "that hand can't hold anything" }
+        : this.items.equip(holder, a.item);
     } else {
       result = this.items.unequip(holder, a.hand);
     }

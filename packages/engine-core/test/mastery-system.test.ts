@@ -69,3 +69,67 @@ describe("MasterySystem", () => {
     assert.equal(sys.sheetOf(e).get("athletics"), 0);
   });
 });
+
+describe("disciplines and familiarity (M4)", () => {
+  const all = loadRules(fileURLToPath(new URL("../../../../content/rules", import.meta.url)));
+  const blade = all.disciplines.disciplines.find((d) => d.id === "bladeMaster")!;
+  const make = () => {
+    const sys = new MasterySystem(all.skills, () => 1000, all.disciplines.disciplines);
+    const sheet = sys.sheetOf(7);
+    const set = (id: string, value: number, peak = value): void => {
+      const i = sys.index.of(id);
+      sheet.value[i] = value;
+      sheet.peak[i] = peak;
+    };
+    return { sys, sheet, set };
+  };
+
+  it("earns a discipline when every skill it needs is at its level", () => {
+    const { sys, set } = make();
+    assert.deepEqual(sys.disciplinesOf(7), []);
+    for (const [id, level] of Object.entries(blade.requires)) set(id, level - 1);
+    assert.deepEqual(sys.disciplinesOf(7), []);
+    assert.equal(sys.knows(7, "disarm"), false);
+    for (const [id, level] of Object.entries(blade.requires)) set(id, level);
+    assert.deepEqual(sys.disciplinesOf(7), [{ id: "bladeMaster", name: blade.name, active: true, unlocks: blade.unlocks }]);
+    assert.equal(sys.knows(7, "disarm"), true);
+    assert.equal(sys.knows(7, "sweep"), false);
+    assert.equal(sys.knows(8, "disarm"), false, "nobody else");
+  });
+
+  it("lists the disciplines not yet earned as goals", () => {
+    const { sys, set } = make();
+    const all_ = all.disciplines.disciplines.map((d) => d.id);
+    assert.deepEqual(sys.goalsOf(7).map((d) => d.id), all_);
+    for (const [id, level] of Object.entries(blade.requires)) set(id, level);
+    assert.deepEqual(sys.goalsOf(7).map((d) => d.id), all_.filter((id) => id !== "bladeMaster"));
+    assert.equal(sys.discipline("bladeMaster"), blade);
+    assert.equal(sys.discipline("nope"), undefined);
+  });
+
+  it("keeps the title after the skills decay, but not its technique", () => {
+    const { sys, set } = make();
+    for (const [id, level] of Object.entries(blade.requires)) set(id, level - 10, level);
+    assert.deepEqual(sys.disciplinesOf(7).map((d) => [d.id, d.active]), [["bladeMaster", false]]);
+    assert.equal(sys.knows(7, "disarm"), false);
+  });
+
+  it("familiarity grows with use, up to 1, and is saved with the skills", () => {
+    const { sys, sheet } = make();
+    const per = all.skills.familiarity.perUse;
+    assert.equal(sheet.familiarity("sword"), 0);
+    sheet.useFamily("sword", 1000);
+    sheet.useFamily("sword", 1000);
+    assert.ok(Math.abs(sheet.familiarity("sword") - 2 * per) < 1e-9);
+    for (let i = 0; i < Math.ceil(1 / per) + 5; i++) sheet.useFamily("axe", 2000);
+    assert.equal(sheet.familiarity("axe"), 1);
+    const saved = sheet.save();
+    assert.deepEqual(saved["fam:axe"], [1000, 1000, 2000]);
+    const back = new MasterySystem(all.skills, () => 1000).sheetOf(1);
+    back.load(saved);
+    assert.equal(back.familiarity("axe"), 1);
+    assert.ok(Math.abs(back.familiarity("sword") - 2 * per) < 1e-3);
+    assert.deepEqual(back.families().map(([f]) => f).sort(), ["axe", "sword"]);
+    void sys;
+  });
+});

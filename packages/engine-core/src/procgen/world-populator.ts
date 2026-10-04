@@ -9,12 +9,15 @@
  *
  * MMO_SCATTER picks one; by default it's ecology when the art packs are
  * on this machine (clients here can draw them), else pcg. MMO_ECOLOGY
- * names another ecology plan file.
+ * names another ecology plan file. The ecology plan's per-biome multipliers
+ * come from the biome registry (content/biomes.json, or MMO_BIOMES; see
+ * biome-registry.ts).
  */
 
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadEcologyPlan } from "./ecology.js";
+import { applyBiomeScatter, checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, ecologyGroups, loadBiomeRegistry, type BiomeRegistry } from "./biome-registry.js";
 import { makeEcologyPopulator, makeScatterPopulator } from "./scatter-spawn.js";
 import type { SimWorld } from "../world.js";
 import type { ChunkDataSource } from "./chunk-source.js";
@@ -49,6 +52,8 @@ export function makeWorldPopulator(opts: {
   terrain?: ChunkDataSource;
   /** world.db's formation tiles, and the terrain version they're solved on. */
   formationTiles?: { store: FormationTileStore; terrainVersion: string };
+  /** Per-biome scatter multipliers (default: loaded from MMO_BIOMES or content/biomes.json). */
+  biomes?: BiomeRegistry;
   log?: (line: string) => void;
 }): WorldPopulator {
   const kind = process.env.MMO_SCATTER || (fs.existsSync(ART_MANIFEST) ? "ecology" : "pcg");
@@ -59,10 +64,14 @@ export function makeWorldPopulator(opts: {
     return { ...p, planHash: p.planHash, kind };
   }
   const file = process.env.MMO_ECOLOGY || DEFAULT_ECOLOGY_PLAN;
-  const { plan, hash } = loadEcologyPlan(file);
+  const loaded = loadEcologyPlan(file);
+  const registry = opts.biomes ?? loadBiomeRegistry(process.env.MMO_BIOMES || DEFAULT_BIOME_REGISTRY).registry;
+  const problems = checkBiomeRegistry(registry, { scatterGroups: ecologyGroups(loaded.plan) });
+  if (problems.length > 0) throw new Error(`biome registry against ecology plan "${loaded.plan.name}": ${problems.join("; ")}`);
+  const { plan, hash } = applyBiomeScatter(loaded.plan, loaded.hash, registry);
   opts.log?.(
     `[scatter] ecology plan "${plan.name}": ${plan.layers.length} layers` +
-      `${opts.biomeAt ? ", by biome" : ""}${opts.waterAt ? ", by water" : ""} (${file})`,
+      `${opts.biomeAt ? `, by biome (${Object.keys(registry.biomes).length} in the registry)` : ""}${opts.waterAt ? ", by water" : ""} (${file})`,
   );
   const p = makeEcologyPopulator(opts.worldSeed, opts.chunkWorldSize, {
     plan,

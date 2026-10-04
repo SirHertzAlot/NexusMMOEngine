@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "partySize": [1, 5],
+  "timeLimitMinutes": 45,
+  "reentry": true,
+  "emptyTeardownSeconds": 120,
+  "maxInstances": 8,
+  "fallbackCreature": "goblin",
+  "lootRollsPerKill": [0, 1],
+  "bossLootRolls": [2, 3],
+  "commit": "on-report"
+}

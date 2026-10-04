@@ -26,10 +26,20 @@ import {
   type AccountMessage,
   type AdminCommand,
   type AdminResult,
+  type ByeMessage,
   type ChatBroadcast,
   type ChatChannel,
   type FriendMessage,
   type FriendsState,
+  type BlocksState,
+  type DialogMessage,
+  type DungeonEntranceView,
+  type DungeonMessage,
+  type DungeonOp,
+  type NpcView,
+  type NpcsMessage,
+  type QuestLogMessage,
+  type QuestOp,
   type GuildMessage,
   type PartyMessage,
   type PartyState,
@@ -41,6 +51,14 @@ import {
   type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
+  type BodyMessage,
+  type StanceMessage,
+  type TreatMessage,
+  type TreatmentMessage,
+  type SkillsMessage,
+  type CastMessage,
+  type ManaMessage,
+  type SpellMessage,
   type HitMessage,
   type LifeMessage,
   type IntentFields,
@@ -85,12 +103,38 @@ export interface MirrorEvents {
   onParty?(p: PartyState): void;
   onGuild?(g: GuildState): void;
   onFriends?(f: FriendsState): void;
+  /** The block list (U8), on login and after each block or unblock. */
+  onBlocks?(b: BlocksState): void;
+  /** The player's quest log (P1), on entering the world and after every change. */
+  onQuests?(q: QuestLogMessage): void;
+  /** Who gives quests and where, with their markers (P1), on entering and when a marker changes. */
+  onNpcs?(n: NpcsMessage): void;
+  /** An npc's line and the replies open to the player, or the dialog closed (P1). */
+  onDialog?(d: DialogMessage): void;
+  /** Dungeon instances (D4): entrances on entering, a transfer into a run, the run's state, its end. */
+  onDungeon?(d: DungeonMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
   onLife?(l: LifeMessage): void;
+  /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
+  onBody?(b: BodyMessage): void;
+  /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
+  onTreatment?(t: TreatmentMessage): void;
+  /** The player's skills, item familiarity or disciplines changed (also on joining; roadmap M4, protocol 0x1b). */
+  onSkills?(s: SkillsMessage): void;
+  /** The player's mana changed (also on joining; protocol 0x1c). */
+  onMana?(m: ManaMessage): void;
+  /** A cast the player makes or receives started, completed or stopped (protocol 0x1c). */
+  onSpell?(s: SpellMessage): void;
+  /**
+   * The player crossed into another region and this client moved to its
+   * server (WORLD-SERVER-SPEC §6). onWelcome fired first, with the new
+   * region's player entity; `url` is the server the client now talks to.
+   */
+  onRegionChange?(url: string): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -121,6 +165,16 @@ export class MirrorClient {
   account: AccountMessage | null = null;
   /** The player's own attributes and stats, from the last stats message; null until one arrives. */
   stats: StatsMessage | null = null;
+  /** The player's own body (parts, injuries, blood), from the last body message; null until one arrives. */
+  body: BodyMessage | null = null;
+  /** The player's skills, familiarity and disciplines, as last sent (M4, 0x1b). */
+  skills: SkillsMessage | null = null;
+  /** The player's mana pool, as last sent (0x1c); null until one arrives. */
+  mana: ManaMessage | null = null;
+  /** Quest givers and their markers (P1), as last sent; the world draws them. */
+  npcs: NpcView[] = [];
+  /** Dungeon entrances (D4), as last sent; the world draws them. */
+  entrances: DungeonEntranceView[] = [];
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -139,6 +193,11 @@ export class MirrorClient {
   readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
   private socket: SocketLike | null = null;
+  /** The server this client talks to, and the name it gave in its hello (for a region redirect). */
+  private url: string | null = null;
+  private clientName = "";
+  /** A region redirect is in progress: socket closes are part of it, not the end. */
+  private handingOff = false;
   /** Server tick the last intent was sent at (-1: none on this connection). */
   private intentSentAt = -1;
   /** Intents held back for the next authoritative ticks, oldest first (one goes per tick). */
@@ -229,6 +288,55 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
   }
 
+  /**
+   * How the player's blows are struck (M3, 0x19): a technique ("cut",
+   * "thrust", "bludgeon") and the body part aimed at. Undefined leaves a
+   * field as it is, null resets it; refusals arrive as 4005 errors.
+   */
+  stance(technique: string | null | undefined, aim: string | null | undefined): void {
+    if (!this.socket || this.closed) return;
+    const msg: StanceMessage = { kind: "stance" };
+    if (technique !== undefined) msg.technique = technique;
+    if (aim !== undefined) msg.aim = aim;
+    this.send(this.socket, encodeEnvelope(MessageType.Stance, encodeControl(msg)));
+  }
+
+  /**
+   * Treat a body part with Medicine (M4, 0x1a): `target` a character's wire
+   * id (absent: yourself), `part` a body part (absent: the most urgent).
+   * Progress arrives as onTreatment; refusals as 4005 errors.
+   */
+  treat(target?: string, part?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: TreatMessage = { kind: "treat" };
+    if (target !== undefined) msg.target = target;
+    if (part !== undefined) msg.part = part;
+    this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl(msg)));
+  }
+
+  /**
+   * Cast a spell (0x1c) on `target` (a character's wire id; absent:
+   * yourself). Progress arrives as onSpell, refusals as 4005 errors.
+   */
+  cast(spell: string, target?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: CastMessage = { kind: "cast", spell };
+    if (target !== undefined) msg.target = target;
+    this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl(msg)));
+  }
+
+  /** Stop the cast under way (0x1c). */
+  stopCasting(): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl({ kind: "cast", stop: true } satisfies CastMessage)));
+  }
+
+  /** Stop the treatment under way (M4, 0x1a). */
+  stopTreating(): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Treat, encodeControl({ kind: "treat", stop: true } satisfies TreatMessage)));
+  }
+
   /** Ask to drop an item from the bag at the player's feet (M3a, 0x13). */
   dropItem(item: number): void {
     if (!this.socket || this.closed) return;
@@ -282,6 +390,22 @@ export class MirrorClient {
   block(name: string, on: boolean): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl({ kind: "block", name, on })));
+  }
+
+  /**
+   * A quest op (P1, on the chat envelope): talk to an npc in range, pick a
+   * reply of the open dialog, close it, or abandon a quest. Answers come
+   * back as onDialog / onQuests, refusals as system chat lines.
+   */
+  quest(op: QuestOp): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
+  }
+
+  /** A dungeon op (D4, on the chat envelope): ask for a run at an entrance, or the run's state. */
+  dungeon(op: DungeonOp): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
   }
 
   private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {
@@ -361,6 +485,8 @@ export class MirrorClient {
     if (this.socket) throw new Error("mirror-client: already connected");
     const socket = this.createSocket(url);
     this.socket = socket;
+    this.url = url;
+    this.clientName = payload.client;
     socket.onmessage = (data) => this.onMessage(data);
 
     await new Promise<void>((resolve, reject) => {
@@ -409,7 +535,9 @@ export class MirrorClient {
    * place and the newer intent queues behind it, a tick later.
    */
   sendIntent(intent: IntentFields): void {
-    if (!this.socket || this.playerEntity == null) return;
+    // Mid-redirect the new socket hasn't been welcomed yet: the target would
+    // answer an intent before hello with 4003. Input resumes on its welcome.
+    if (!this.socket || this.playerEntity == null || this.handingOff) return;
     const q = this.pendingIntents;
     if (this.serverTick <= this.intentSentAt || q.length > 0) {
       const last = q[q.length - 1];
@@ -423,7 +551,7 @@ export class MirrorClient {
   }
 
   private transmitIntent(intent: IntentFields): void {
-    if (!this.socket || this.playerEntity == null) return;
+    if (!this.socket || this.playerEntity == null || this.handingOff) return;
     this.intentSentAt = this.serverTick;
     const payload = encodeIntentMessage(
       BigInt(this.serverTick),
@@ -548,7 +676,9 @@ export class MirrorClient {
       case MessageType.Error: {
         const err = decodeControl<ErrorMessage>(payload);
         this.lastError = err;
-        this.events.onError(err);
+        // A target region refusing a redirect isn't the player's error:
+        // the client falls back to the region it came from.
+        if (!this.handingOff) this.events.onError(err);
         this.settle(new Error(`hello rejected: ${err.code} ${err.message}`));
         this.debugReject?.(
           new Error(`debug rejected: ${err.code} ${err.message}`),
@@ -583,10 +713,20 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage>(payload);
         if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
+        else if (m.kind === "blocks") this.events.onBlocks?.(m);
+        else if (m.kind === "quests") this.events.onQuests?.(m);
+        else if (m.kind === "npcs") {
+          this.npcs = m.npcs;
+          this.events.onNpcs?.(m);
+        } else if (m.kind === "dialog") this.events.onDialog?.(m);
+        else if (m.kind === "dungeon") {
+          if (m.op === "entrances") this.entrances = m.entrances;
+          this.events.onDungeon?.(m);
+        }
         else this.events.onChat?.(m);
         break;
       }
@@ -611,9 +751,31 @@ export class MirrorClient {
       case MessageType.Life:
         this.events.onLife?.(decodeControl<LifeMessage>(payload));
         break;
-      case MessageType.Bye:
-        this.disconnect();
+      case MessageType.Body:
+        this.body = decodeControl<BodyMessage>(payload);
+        this.events.onBody?.(this.body);
         break;
+      case MessageType.Skills:
+        this.skills = decodeControl<SkillsMessage>(payload);
+        this.events.onSkills?.(this.skills);
+        break;
+      case MessageType.Magic: {
+        const m = decodeControl<ManaMessage | SpellMessage>(payload);
+        if (m.kind === "mana") {
+          this.mana = m;
+          this.events.onMana?.(m);
+        } else this.events.onSpell?.(m);
+        break;
+      }
+      case MessageType.Treat:
+        this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
+        break;
+      case MessageType.Bye: {
+        const bye = decodeControl<ByeMessage>(payload);
+        if (bye.redirect) void this.followRedirect(bye.redirect);
+        else this.disconnect();
+        break;
+      }
       default:
         break;
     }
@@ -673,7 +835,63 @@ export class MirrorClient {
     if (next !== undefined) this.transmitIntent(next);
   }
 
+  /**
+   * The server handed the player to another region (a `bye` redirect):
+   * close this socket and join the target with the redirect's ticket. If
+   * the target won't have us, reconnect here with the session token: this
+   * region keeps the player until the target commits (WORLD-SERVER-SPEC §6).
+   */
+  private async followRedirect(r: NonNullable<ByeMessage["redirect"]>): Promise<void> {
+    if (this.handingOff) return;
+    const from = this.url;
+    const token = this.sessionToken;
+    this.handingOff = true;
+    this.dropSocket();
+    try {
+      const hello: HelloMessage = {
+        protocol: PROTOCOL_VERSION,
+        client: this.clientName,
+        want_snapshot: true,
+        migration: r.migration,
+        ticket: r.ticket,
+      };
+      await this.welcomeOf(this.openAndHandshake(r.endpoint, MessageType.Hello, hello));
+      this.handingOff = false;
+      this.events.onRegionChange?.(r.endpoint);
+      return;
+    } catch {
+      this.dropSocket();
+    }
+    try {
+      if (!from || !token) throw new Error("mirror-client: nowhere to fall back to");
+      await this.connect(from, this.clientName, { token });
+      this.handingOff = false;
+    } catch {
+      this.dropSocket();
+      this.handingOff = false;
+      this.onClose();
+    }
+  }
+
+  /** Close the current socket without treating it as the end of the connection. */
+  private dropSocket(): void {
+    const old = this.socket;
+    this.socket = null;
+    if (!old) return;
+    old.onmessage = null;
+    old.onclose = null;
+    old.onerror = null;
+    old.onopen = null;
+    old.close();
+  }
+
   private onClose(): void {
+    if (this.handingOff) {
+      // Part of a redirect: followRedirect decides what comes next.
+      this.socket = null;
+      this.settle(new Error("mirror-client: connection closed"));
+      return;
+    }
     this.closed = true;
     this.socket = null;
     this.settle(new Error("mirror-client: connection closed"));

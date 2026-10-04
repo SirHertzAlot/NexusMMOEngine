@@ -21,8 +21,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
-import type { ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
-import type { InventoryMessage, ItemView, StatsMessage } from "@mmo-engine/protocol";
+import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
+import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
+import type { NpcView, QuestView } from "@mmo-engine/protocol";
+import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
+import type { DungeonMessage } from "@mmo-engine/protocol";
+import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
+import { treatmentNotice } from "./ui/treatment-notice.js";
+import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
+import { spellNotice } from "./ui/spell-notice.js";
+import { CastBar, nextCast, type CastState } from "./ui/cast-bar.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -39,13 +47,16 @@ import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
-import { parseChatCommand } from "./ui/chat-command.js";
+import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel } from "./ui/bag-panel.js";
 import { PerfHud } from "./ui/perf-hud.js";
 import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
+import { AudioEngine } from "./audio/engine.js";
+import { loadVolumes, saveVolumes, type AudioBus, type Volumes } from "./audio/volumes.js";
+import type { Cue } from "./audio/cues.js";
 import {
   ACTIONS,
   ACTION_LABELS,
@@ -58,6 +69,11 @@ import {
 } from "./input/bindings.js";
 import { DEV_TOOLS } from "./dev-tools.js";
 import type { DevLayout } from "./ui/dev-layout.js";
+
+/** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
+const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
+const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
+
 import {
   Button,
   Card,
@@ -93,6 +109,10 @@ const DEFAULT_URL =
     ? "wss://localhost:7777"
     : "ws://localhost:7777";
 
+/** What each settings slider plays when let go (U4 audio). */
+const PREVIEW_CUE: Partial<Record<AudioBus, Cue>> = { effects: "hit", interface: "whisper" };
+const HIT_CUE: Record<"hit" | "blocked" | "dodged", Cue> = { hit: "hit", blocked: "block", dodged: "dodge" };
+
 export function App(): React.ReactElement {
   const [screen, setScreen] = useState<Screen>("login");
   const [mode, setMode] = useState<AuthMode>("login");
@@ -122,6 +142,33 @@ export function App(): React.ReactElement {
   }, []);
   const onResetBindings = useCallback(() => setBindings(resetBindings()), [setBindings]);
   const setUiScale = useCallback((s: UiScale) => setUiScaleState(s), []);
+  // Audio (U4): volumes persisted per browser; the engine starts on the first click or key.
+  const [volumes, setVolumesState] = useState<Volumes>(loadVolumes);
+  const [audio] = useState(() => new AudioEngine(volumes));
+  const setVolumes = useCallback(
+    (v: Volumes) => {
+      saveVolumes(v);
+      audio.setVolumes(v);
+      setVolumesState(v);
+    },
+    [audio],
+  );
+  const previewBus = useCallback((b: AudioBus) => {
+    const cue = PREVIEW_CUE[b];
+    if (cue) audio.play(cue);
+  }, [audio]);
+  useEffect(() => {
+    const unlock = (): void => audio.unlock();
+    const onVisibility = (): void => audio.setHidden(document.hidden);
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [audio]);
   const [activeQuality, setActiveQuality] = useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   const [account, setAccount] = useState<AccountMessage | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
@@ -130,28 +177,63 @@ export function App(): React.ReactElement {
   const [party, setParty] = useState<PartyState | null>(null);
   const [guild, setGuild] = useState<GuildState | null>(null);
   const [friends, setFriends] = useState<FriendsState | null>(null);
+  const [blocked, setBlocked] = useState<BlocksState["blocked"]>([]);
   const [chatChannel, setChatChannel] = useState<ChatChannel>("say");
+  // `/r` (U6): the last character who whispered us; the name ref lets the socket callback tell our echoes apart.
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const characterNameRef = useRef<string | null>(null);
+  characterNameRef.current = characterName;
   // Character sheet (U9): the latest stats message lines, plus panel toggle.
-  const [sheet, setSheet] = useState<{ attributes: StatsMessage["attributes"]; stats: StatsMessage["stats"] } | null>(null);
+  // Also carries hunger and thirst (U3) for the player frame, and skills for the sheet.
+  const [sheet, setSheet] = useState<StatsMessage | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The player's body (0x18): injuries on the player frame's doll and the sheet.
+  const [body, setBody] = useState<BodyMessage | null>(null);
+  // Mana (0x1c) for the player frame, and the player's own cast under way for the cast bar.
+  const [mana, setMana] = useState<ManaMessage | null>(null);
+  const [cast, setCast] = useState<CastState | null>(null);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
   const [bagOpen, setBagOpen] = useState(false);
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
+  // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
+  const [quests, setQuests] = useState<QuestView[] | null>(null);
+  const [questsOpen, setQuestsOpen] = useState(false);
+  const [npcs, setNpcs] = useState<NpcView[]>([]);
+  const [nearNpc, setNearNpc] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  const questsRef = useRef<QuestView[] | null>(null);
+  // Dungeon runs (D4): where the player is with a run, the entrance they stand in,
+  // and the region to come back to (its address and session token) while away.
+  const [run, setRun] = useState<DungeonRun | null>(null);
+  const runRef = useRef<DungeonRun | null>(null);
+  runRef.current = run;
+  const [nearEntrance, setNearEntrance] = useState<string | null>(null);
+  const regionRef = useRef<{ url: string; token: string } | null>(null);
+  // The server and name as of this render, for socket callbacks made in an earlier one
+  // (a region hand-off changes the server mid-session).
+  const urlRef = useRef(url);
+  urlRef.current = url;
+  const usernameRef = useRef(username);
+  usernameRef.current = username;
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
+  // The last skills message (M4): a discipline new since it is announced.
+  const skillsRef = useRef<SkillsMessage | null>(null);
+  const [mastery, setMastery] = useState<SkillsMessage | null>(null);
   const [assets] = useState(() => new PlaceholderAssets());
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
 
   /** Shared MirrorClient construction with the standard callbacks. */
-  const createClient = (): MirrorClient =>
-    new MirrorClient((u) => new BrowserSocket(u), {
+  const createClient = (): MirrorClient => {
+    skillsRef.current = null;
+    const c: MirrorClient = new MirrorClient((u) => new BrowserSocket(u), {
       onWelcome: (_w: WelcomeMessage) => {
         sessionTokenRef.current = _w.session_token;
         setCharacterName(_w.character?.name ?? null);
@@ -167,23 +249,132 @@ export function App(): React.ReactElement {
         else setError(`server error ${e.code}: ${e.message}`);
       },
       onClose: () => {
+        // A client we moved away from (into or out of a dungeon) closing is expected.
+        if (clientRef.current !== c) return;
+        // The dungeon's port closing after the run: back to the world.
+        const r = runRef.current;
+        if (r && (r.phase === "in" || r.phase === "ended")) {
+          void leaveDungeon();
+          return;
+        }
         // The server sends an error frame before closing on every
         // rejection; keep that reason instead of masking it.
         setError((prev) => prev ?? "connection closed");
         setScreen("login");
       },
-      onChat: (c) => setChatLines((prev) => [...prev.slice(-49), c]),
+      // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
+      // asset requests go to the server that has the player now.
+      onRegionChange: setUrl,
+      onChat: (c) => {
+        setChatLines((prev) => [...prev.slice(-49), c]);
+        setReplyTo((prev) => replyTarget(prev, c, characterNameRef.current));
+      },
       onParty: setParty,
       onGuild: setGuild,
       onFriends: setFriends,
-      onStats: (s) => setSheet({ attributes: s.attributes, stats: s.stats }),
+      onBlocks: (b) => setBlocked(b.blocked),
+      onQuests: (q) => {
+        const notices = questNotices(questsRef.current, q.quests);
+        questsRef.current = q.quests;
+        setQuests(q.quests);
+        const text = notices[notices.length - 1];
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onNpcs: (n) => setNpcs(n.npcs),
+      onDialog: (d) => setDialog("closed" in d ? null : d),
+      onStats: setSheet,
+      onBody: setBody,
       onInventory: (inv) => {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
       },
-      onHit: (h) => combat.hit(h, clientRef.current?.playerEntity ?? null),
+      onHit: (h) => {
+        const player = clientRef.current?.playerEntity ?? null;
+        combat.hit(h, player);
+        // Only blows the player gives or takes make a sound, for now.
+        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(HIT_CUE[h.outcome]);
+        const text = disarmNotice(h, player?.toString() ?? null);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onMana: setMana,
+      onSpell: (sp) => {
+        const me = clientRef.current?.playerEntity?.toString() ?? null;
+        setCast((prev) => nextCast(prev, sp, me, performance.now()));
+        const text = spellNotice(sp, me);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onSkills: (next) => {
+        const [text] = disciplineNotices(skillsRef.current, next);
+        skillsRef.current = next;
+        setMastery(next);
+        if (text) setNotice({ text, at: performance.now() });
+      },
       onLife: (l) => combat.life(l),
+      onTreatment: (t) => {
+        const c = clientRef.current;
+        const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
+        const text = treatmentNotice(t, c?.playerEntity?.toString() ?? null, name);
+        if (text) setNotice({ text, at: performance.now() });
+      },
+      onDungeon: (d) => onDungeon(d),
     });
+    return c;
+  };
+
+  /** Dungeon messages (D4): a transfer moves the player in; state and the end update the run. */
+  const onDungeon = (d: DungeonMessage): void => {
+    if (d.op === "transfer") void hop(d.endpoint, d.token, { phase: "entering", dungeon: d.dungeon });
+    else if (d.op === "state") setRun((prev) => (prev && prev.phase !== "leaving" ? { phase: "in", dungeon: d.dungeon, state: d, at: performance.now() } : prev));
+    else if (d.op === "ended") setRun((prev) => ({ phase: "ended", dungeon: prev?.dungeon ?? "", result: d }));
+  };
+
+  /**
+   * Move the player's connection to another gateway (a dungeon instance,
+   * or back to the region) with a token it already knows: the new client
+   * says hello with it and lands straight in the world as the same
+   * character. The old client is let go; its close is expected.
+   */
+  const hop = async (endpoint: string, token: string, transit: Extract<DungeonRun, { phase: "entering" | "leaving" }>): Promise<void> => {
+    if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url: urlRef.current, token: sessionTokenRef.current };
+    setRun(transit);
+    setDialog(null);
+    setNearDrop(null);
+    setNearNpc(null);
+    setNearEntrance(null);
+    combat.select(null);
+    setCombatView(null);
+    const old = clientRef.current;
+    const next = createClient();
+    clientRef.current = next;
+    old?.disconnect();
+    try {
+      await next.join(endpoint, usernameRef.current || "mirror", { token });
+      if (transit.phase === "entering") setRun((prev) => (prev?.phase === "entering" ? { phase: "in", dungeon: transit.dungeon, state: null, at: 0 } : prev));
+      else {
+        regionRef.current = null;
+        setRun(null);
+      }
+      setScreen("world");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      if (transit.phase === "entering") void leaveDungeon();
+      else {
+        setRun(null);
+        setScreen("login");
+      }
+    }
+  };
+
+  /** Back to the open world from a run, with the region's own token. */
+  const leaveDungeon = async (): Promise<void> => {
+    const region = regionRef.current;
+    const dungeon = runRef.current?.dungeon ?? "";
+    if (!region) {
+      setRun(null);
+      return;
+    }
+    await hop(region.url, region.token, { phase: "leaving", dungeon });
+  };
 
   /**
    * Run one handshake (login, register, or token reconnect) against a
@@ -258,15 +449,30 @@ export function App(): React.ReactElement {
     clientRef.current = null;
     setAccount(null);
     setChatLines([]);
+    setReplyTo(null);
     setParty(null);
     setGuild(null);
     setFriends(null);
+    setBlocked([]);
     setSheet(null);
     setSheetOpen(false);
+    setBody(null);
+    setMastery(null);
+    setMana(null);
+    setCast(null);
     setBag(null);
     setHands({ main: null, off: null });
     setBagOpen(false);
     setNearDrop(null);
+    setQuests(null);
+    questsRef.current = null;
+    setQuestsOpen(false);
+    setNpcs([]);
+    setNearNpc(null);
+    setDialog(null);
+    setRun(null);
+    regionRef.current = null;
+    setNearEntrance(null);
     combat.select(null);
     setCombatView(null);
     setScreen("login");
@@ -274,6 +480,15 @@ export function App(): React.ReactElement {
 
   // ---- world -------------------------------------------------------------
   const client = screen === "world" ? clientRef.current : null;
+  // Audio cues from what the player sees (U4): wind in the world, a chime for whispers to us, a blip for notices.
+  useEffect(() => audio.setAmbience(screen === "world"), [audio, screen]);
+  useEffect(() => {
+    const l = chatLines.at(-1);
+    if (l?.channel === "whisper" && l.from.toLowerCase() !== characterName?.toLowerCase()) audio.play("whisper");
+  }, [audio, chatLines, characterName]);
+  useEffect(() => {
+    if (notice) audio.play("notice");
+  }, [audio, notice]);
   // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
   const pcg = useMemo(
     () => (client ? new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken) : undefined),
@@ -292,6 +507,31 @@ export function App(): React.ReactElement {
 
   const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
+  const toggleQuests = useCallback(() => setQuestsOpen((o) => !o), []);
+  const onReply = useCallback((index: number) => clientRef.current?.quest({ kind: "quest", op: "reply", index }), []);
+  const onCloseDialog = useCallback(() => clientRef.current?.quest({ kind: "quest", op: "close" }), []);
+  // Stance (M3): R turns to the next technique, T to the next aim; the server keeps it.
+  const stance = useRef<{ technique: number; aim: number }>({ technique: -1, aim: 0 });
+  const onStance = useCallback((which: "technique" | "aim") => {
+    const c = clientRef.current;
+    if (!c) return;
+    const known = new Set(c.body?.parts.filter((p) => p.state !== "dismembered").map((p) => p.id) ?? AIMS);
+    const aims = AIMS.filter((a) => known.has(a));
+    const st = stance.current;
+    if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
+    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
+    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    c.stance(technique, aim);
+    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
+    setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
+  }, []);
+  // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
+  const onTreat = useCallback(() => clientRef.current?.treat(), []);
+  // The sheet's body doll treats the part clicked.
+  const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
+  // G casts Mend on yourself (mana's first spender).
+  const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
@@ -314,7 +554,15 @@ export function App(): React.ReactElement {
     );
   }
 
+  if (client && (run?.phase === "entering" || run?.phase === "leaving")) {
+    return (
+      <div className="relative h-full w-full bg-background">
+        <DungeonTransit run={run} />
+      </div>
+    );
+  }
   if (client) {
+    const entrance = nearEntrance ? client.entrances.find((e) => e.id === nearEntrance) : undefined;
     return (
       <div className="relative h-full w-full">
         <WorldCanvas
@@ -330,7 +578,14 @@ export function App(): React.ReactElement {
           onGpu={onGpu}
           onHud={setHud}
           onBag={toggleBag}
+          onStance={onStance}
+          onTreat={onTreat}
+          onMend={onMend}
           onNearDrop={setNearDrop}
+          onQuests={toggleQuests}
+          onNearNpc={setNearNpc}
+          onNearEntrance={setNearEntrance}
+          instance={run !== null}
           combat={combat}
           onCombat={setCombatView}
         />
@@ -340,14 +595,62 @@ export function App(): React.ReactElement {
             pick up <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
           </div>
         )}
+        {!nearDrop && !dialog && nearNpc && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            talk to <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
+          </div>
+        )}
+        {!nearDrop && !dialog && !nearNpc && entrance && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            enter <span className="text-violet-300">{entrance.name}</span>
+            {party && party.members.length > 1 ? <span className="text-muted-foreground"> with your party</span> : null}
+          </div>
+        )}
+        {run?.phase === "in" && (
+          <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
+            <DungeonHud run={run} />
+          </div>
+        )}
+        {run?.phase === "ended" && (
+          <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
+            <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
+          </div>
+        )}
+        {dialog && (
+          <div className="absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
+            <DialogPanel dialog={dialog} onReply={onReply} onClose={onCloseDialog} />
+          </div>
+        )}
+        {quests && (
+          <div className="absolute right-4 top-16 z-10">
+            <QuestTracker quests={quests} />
+          </div>
+        )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
-        <PlayerFrame
-          name={characterName}
-          hp={combatView?.hp ?? hud.hp}
-          maxHp={combatView?.maxHp ?? hud.maxHp}
-          sp={hud.sp}
-          maxSp={hud.maxSp}
-        />
+        {/* Bottom-left stack: friends above the player frame, so neither covers the other. */}
+        <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <FriendsFrame
+            friends={friends}
+            blocked={blocked}
+            onBlock={(n) => client?.block(n, true)}
+            onUnblock={(n) => client?.block(n, false)}
+            onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
+            onRemove={(n) => client?.friend(n, false)}
+          />
+          <PlayerFrame
+            name={characterName}
+            hp={combatView?.hp ?? hud.hp}
+            maxHp={combatView?.maxHp ?? hud.maxHp}
+            sp={hud.sp}
+            maxSp={hud.maxSp}
+            mana={mana}
+            needs={sheet?.needs}
+            body={body}
+          />
+          <CastBar cast={cast} />
+        </div>
         <TargetFrame target={combatView?.target ?? null} />
         {DEV_TOOLS ? (
           <DevHud
@@ -442,6 +745,9 @@ export function App(): React.ReactElement {
             onResetBindings={onResetBindings}
             uiScale={uiScale}
             onUiScale={setUiScale}
+            volumes={volumes}
+            onVolumes={setVolumes}
+            onPreview={previewBus}
           />
         )}
         <PartyFrame
@@ -462,20 +768,17 @@ export function App(): React.ReactElement {
           onRank={(name, rank) => client?.guild("setRank", { name, rank })}
           onInviteExpired={() => setGuild((g) => (g ? { ...g, invite: undefined } : g))}
         />
-        <FriendsFrame
-          friends={friends}
-          onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
-          onRemove={(n) => client?.friend(n, false)}
-        />
         <ChatPanel
           lines={chatLines}
+          self={characterName}
           channel={chatChannel}
           onChannel={setChatChannel}
           onSend={(line) => {
-            const c = parseChatCommand(line, chatChannel);
+            const c = parseChatCommand(line, chatChannel, replyTo);
             if (c.kind === "party") client?.party(c.op, c.name);
             else if (c.kind === "guild") client?.guild(c.op, c);
             else if (c.kind === "friend") client?.friend(c.name, c.on);
+            else if (c.kind === "block") client?.block(c.name, c.on);
             else if (c.kind === "chat") client?.chat(c.channel, c.text, c.to);
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
@@ -490,9 +793,13 @@ export function App(): React.ReactElement {
               onUnequip={(hand) => client?.unequip(hand)}
             />
           )}
+          {questsOpen && quests && <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />}
           {sheetOpen && sheet && (
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} />
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
           )}
+          <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
+            quests
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
             sheet
           </Button>

@@ -104,6 +104,17 @@ parameters. The same works for:
 
 The editor's graph view (PICG slices 3 and 4) is where these graphs are drawn.
 
+**Built (P1, quests and dialog):** `content/quests/` holds the stages, step
+types (objective, text, tags given, needed and excluded) and templates;
+`engine-core/src/quests/generate.ts` collapses a template with the WFC
+solver (one slot per stage, a "seq" edge between every pair of slots for
+needs and exclusions) and binds it to the giver's world: a creature kind
+living near, one of the giver's places, an item base. Authored quests and
+dialog graphs (lines, replies with conditions and actions) sit beside them.
+A region's `QuestService` runs dialog, quest logs (saved in `quests.db`),
+progress from kills, places, bags and talks, and hand-in with rewards; each
+quest giver's board offers every character one generated quest a day.
+
 ### 2.4 Raymarching
 
 Raymarching comes in at two points. Which matters most to you is an open question (§10):
@@ -190,6 +201,29 @@ collider, its navmesh input and what clients draw.
 
 A result is committed only once it is reported. If an instance crashes before
 reporting, its run didn't happen. That choice is yours (§10).
+
+**Built (D4, first cut):** `packages/engine-core/src/dungeons/`. The region's
+`InstanceManager` is a gateway extension: `{kind:"dungeon", op:"enter",
+entrance}` from a party member standing at an entrance
+(`content/dungeons/entrances.json`) picks a pool layout by the entrance's rank
+and themes and starts a `DungeonInstance` in-process: its own SimWorld and
+Gateway on an ephemeral port, running stats, creatures, intents, combat, death,
+stamina and integration, with the layout grid as its collider
+(`DungeonWallSystem`; the prebaked shell is what clients draw). Instead of the
+migration handoff, each party member online gets a `transfer` message with the
+instance's endpoint and a token (`Gateway.admit`) and says hello there as their
+character, at the entrance; their region avatar stays at the entrance. Every
+spawn point gets one creature (its baked species when that has creature rules,
+else the rules' fallback) and dead creatures stay down. A run ends cleared
+(boss room empty), on timeout, or abandoned (empty for a while), and hands one
+result to the region: kills, deaths, and loot rolled per kill from the mob
+pool. The region commits it then, items into bags and the batch into
+`<data>/instances.db` (unreported), where the world server's ingest will pick
+it up once that endpoint exists. The run rules are data
+(`content/dungeons/instances.json`), the proposed answers to §10.2: parties of
+1 to 5, 45 minutes, re-entry while the run lasts, abandoned after 2 minutes
+empty, at most 8 runs per region, nothing kept until the run reports. Not yet:
+depleted nodes, chests and traps, skill gains, the client's transfer.
 
 ### 3.5 Editor (D3)
 

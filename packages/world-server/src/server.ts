@@ -15,6 +15,9 @@
  *                           Unset = registration disabled.
  *   WORLD_HEARTBEAT_INTERVAL_MS  lease interval (default 5000)
  *   WORLD_HEARTBEAT_TIMEOUT_MS   stale reaping threshold (default 15000)
+ *   WORLD_MIGRATION_TIMEOUT_MS   a hand-off not committed within this
+ *                                expires; the source keeps the entity
+ *                                (default 10000)
  *
  * Durable local dev: `npm run db --workspace=@mmo-engine/world-server`
  * (needs the `surrealdb` binary on PATH) with
@@ -35,6 +38,9 @@ const HEARTBEAT_INTERVAL_MS = Number(
 );
 const HEARTBEAT_TIMEOUT_MS = Number(
   process.env.WORLD_HEARTBEAT_TIMEOUT_MS ?? 15000,
+);
+const MIGRATION_TIMEOUT_MS = Number(
+  process.env.WORLD_MIGRATION_TIMEOUT_MS ?? 10000,
 );
 
 async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<void> }> {
@@ -67,6 +73,7 @@ async function main(): Promise<void> {
     store,
     heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
     heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+    migrationTimeoutMs: MIGRATION_TIMEOUT_MS,
     apiKeyHash,
   });
 
@@ -86,6 +93,17 @@ async function main(): Promise<void> {
   }, Math.max(1000, Math.floor(HEARTBEAT_TIMEOUT_MS / 3)));
   reaper.unref();
 
+  // Migration expiry (spec §6): also covers restart recovery, since a
+  // migration begun before a crash is just an old `begun` row.
+  const expirer = setInterval(async () => {
+    try {
+      for (const id of await core.expireMigrations()) console.log(`[world] migration ${id} expired`);
+    } catch (err) {
+      console.error("[world] migration expiry error", err);
+    }
+  }, Math.max(250, Math.floor(MIGRATION_TIMEOUT_MS / 4)));
+  expirer.unref();
+
   const server = app.listen(PORT, () => {
     console.log(`[world] listening on :${PORT} (webrpc /rpc/World/*)`);
   });
@@ -93,6 +111,7 @@ async function main(): Promise<void> {
   const shutdown = async (sig: string) => {
     console.log(`[world] ${sig}: shutting down`);
     clearInterval(reaper);
+    clearInterval(expirer);
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await close();
     process.exit(0);

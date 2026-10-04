@@ -78,6 +78,42 @@ The **Play Mode** tab drives a full local loop:
      backend (protocol v3 `0x0a` `tiles` query).
    - **Waypoints** — per-entity path status (`active`/`idle`/`failed`/
      `unknown`) and live waypoint list (`0x0a` `waypoints` query).
+   - **Game view** (ROADMAP E4) — the world drawn by the game client's
+     own renderer (`WorldCanvas`, imported from `apps/client/src/render`
+     through `@mmo-engine/client/render`: a Vite alias to the source, and
+     tsconfig paths to the built client's types), on the same mirror
+     client the overlays query. Click the view to steer the avatar with
+     the default bindings (Esc frees the mouse); fps, tick, entities,
+     position, time of day and weather show under it. The view loads on
+     first use, so the other tabs never download the renderer. Terrain
+     surfaces come from the client's `public/` folder (the editor's
+     `publicDir`), when fetched.
+   - **Debugger** (ROADMAP E5) — the developer client's own dockable
+     panels (`DevHud`, `PerfHud`, `AdminConsole`, through
+     `@mmo-engine/client/debug`) drawn over the game view: drag a panel
+     by its title, resize it from its corner, fade, fold or close it; the
+     "dev" menu reopens panels or resets the layout, and ` hides them all.
+     *status* (tick, time, weather, fps, entities, position, movement,
+     the GPU, a warning on software rendering), *performance* (the last
+     minute of fps, frame time, draw calls and triangles over every pass,
+     props by level of detail, GPU memory, network in and out, JS heap),
+     *tools* (wireframe terrain, quality preset, FX showcase, maximize the
+     view to the window — Esc restores it — and the admin console) and
+     *controls* (the key bindings). The panels sit inside the view and
+     follow its size; the layout is kept per browser. The play server
+     lists the editor's play user in `MMO_ADMINS`, so the admin console
+     works on the server the editor owns.
+   - **Selection card** (ROADMAP E6, PICG slice 3) — the debugger's
+     *selection* panel: left-click an entity in the game view (or "my
+     avatar") and it lists every component the mirror holds for it, field
+     by field. When its AssetRef names a PICG library asset
+     (`content/pcg/index.json`), the card adds the asset: its graph, which
+     cooked shape the entity's variant picks and that shape's seed (the
+     server cook's own mapping), and the graph's exposed parameters with
+     their values, ranges and an ● where the asset overrides the graph
+     default. The view-model is `src/inspectors/selection.ts` (pure TS);
+     the library comes from `GET /api/editor/pcg/library` (`src/pcg-host.ts`,
+     read-only, confined to `content/pcg`).
 4. **Stop** — disconnects the client, kills the owned server process
    group, and restores the pre-play editor state (form fields, auto-
    refresh, entity selection).
@@ -93,6 +129,103 @@ SIGTERM → SIGKILL after 5 s, state restore) so one failing step never
 skips the rest. Only the process the host launched is ever signaled —
 nothing is killed by port. If the dev server itself exits, its exit hook
 kills the owned group.
+
+## 2b. PICG Graphs (hierarchical graph editor, ROADMAP E7)
+
+The **PICG Graphs** tab edits the PICG library (`content/pcg`): the asset
+graphs (`trees/*.pcg`) and the parts they link (`parts/*.pcgsubgraph`).
+
+- **Canvas** — the graph flows downwards: inputs on a node's top edge,
+  outputs on its bottom. Drag a node to move it, drag the background to
+  pan, wheel to zoom.
+- **Hierarchy** — double-click a `SubgraphAsset` node (⤵ open) to open the
+  part it links, or a `Subgraph` node to enter its embedded definition;
+  the breadcrumb (`Oak › Trunk`) climbs back out. A part whose GUID isn't
+  in the index is outlined red.
+- **Details** — the selected node's properties (numbers, booleans, text,
+  JSON) and, at a graph's root, its parameters' defaults with their
+  target (`trunk/sweep.radiusScale`) and range. A field commits on Enter
+  or blur; a value that doesn't parse turns red and isn't applied.
+- **Undo / Redo / Revert / Save** — every open document keeps its own
+  edits and undo (a drag is one step), so a tree and its trunk can be
+  changed together; Save sends every edited document to the dev host.
+
+**Saving is validated the way the server cooks.** `PUT /api/editor/pcg/doc`
+(`src/pcg-host.ts`) checks node and edge structure, then runs
+`prepareForCook` (linked parts inlined, parameters applied) on every
+library graph the document reaches, with the candidate in place: renaming
+the trunk part's `sweep` node is refused because oak, birch and pine all
+target `trunk/sweep`. Only files `content/pcg/index.json` names are read
+or written, confined to `content/pcg`, written back with 2-space JSON. The
+region server loads the library when it starts, so a saved edit shows in play
+mode on its next start.
+
+The model and view-model are `src/inspectors/graph-editor.ts` (pure TS,
+tested with `node:test`); `src/ui/graph-editor.tsx` only draws them.
+
+## 2c. Dungeons (pool, 3D view, patches, ROADMAP E8)
+
+The **Dungeons** tab is DUNGEONS-AND-LOOT.md §3.5 for the baked pool in
+`<dataDir>/dungeons` (`npm run dungeon:bake`).
+
+- **Pool:** every baked dungeon with the map thumbnail its bake wrote, its
+  theme, rooms, rank, boss and how many edits its patch carries (red when the
+  patch is stale). **Bake into the pool** runs the same CLI (count 1 to 50,
+  seed or `random`, rank) and always writes the maps.
+- **3D view:** one block per floor cell, tinted by its room's role, walls,
+  torches, spawn spheres coloured by tier (larger when pinned), and props
+  (grey layout, lilac dressing, cyan edited or added). Drag to orbit, wheel to
+  zoom, right-drag to pan. Click a room's floor, a spawn or a prop to select
+  it; drag a selected prop to move it (one undo step per drag).
+- **Details:** a room's role and dressing archetype; a spawn's pin and rank
+  (1 to 5); a prop's position, or remove it. **Place prop** adds one where you
+  click. Anything set back to its baked value drops out of the patch, and
+  "Back to the bake" clears a room's or a spawn's edits.
+
+**Edits are a patch, never a change to the bake.** Save writes
+`<id>.patch.json` (`mmo-dungeon-patch/1`) beside the baked file, after
+`PUT /api/editor/dungeons/<id>/patch` (`src/dungeon-host.ts`) checks it
+against the layout: the layout's hash (a patch made for another bake is
+stale), room ids and roles (exactly one entrance and one boss), the dressing's
+archetypes, spawn ranks, and that every moved or added prop stands on a floor
+cell. Saving an empty patch removes the file. Only ids the pool's index lists
+are read, so no path comes from a request.
+
+The model and view-model are `src/inspectors/dungeon-view.ts` (pure TS,
+tested with `node:test`); `src/ui/dungeon-scene.ts` draws them with three.js
+and `src/ui/dungeon-view.tsx` is the panel.
+
+## 2d. Terrain at world scale (ROADMAP E9)
+
+The **Terrain** tab sculpts one area of the stored world at a time (its
+outer edge pinned to the unloaded neighbours). For a baked world
+(OPEN-WORLD-PLAN.md Phase 4) it also has:
+
+- **World map:** the whole world at the welcome's ~16 m resolution (the
+  client's biome ground colours, lit by a hillshade, sea and lakes over
+  them), the region grid, the loaded area (cyan), the camera (white) and
+  the spawn (gold). Hover shows a cell's biome and height; click loads the
+  area there, at the radius in the Area box.
+- **Follow camera:** pan the view (middle-drag) and once the camera is half
+  the area's radius from its centre the area round it loads, keeping the
+  camera where it is. It pauses while anything is unsaved, since loading
+  another area would drop the edits.
+- **Mountain-scale brushes:** the radius slider runs 1 to 256 m on a log
+  scale, and raise or lower up to 40 m/s. Load an area wider than the brush:
+  a brush that reaches the pinned edge rises as a plateau.
+- **Regenerate from the world spec:** the loaded area or one region of the
+  spec's region grid goes back to what the bake makes of the spec, and
+  nothing else changes. `terrain-tool regenerate` re-runs the survey
+  (~10 s for 4 km), rebuilds that range's tiles and survey-map cells, and
+  blends a 48 m band along each edge from the stored neighbour (exactly, at
+  the edge) to the fresh ground, so no seam opens. Props there are re-seated
+  as a save does, and a running server is refused (play mode is stopped
+  first). It refuses a spec that isn't the one this world was baked from
+  (name, seed, size or biome list). The SurrealDB chunk catalog isn't
+  updated.
+
+The map and follow logic are `src/inspectors/world-map.ts` (pure TS,
+tested); the tool side is `packages/engine-core/src/terrain/region-regen.ts`.
 
 ## 3. Art Asset Pipeline
 

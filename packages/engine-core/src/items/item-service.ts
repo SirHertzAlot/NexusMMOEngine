@@ -130,6 +130,17 @@ export class ItemService implements SimSystem {
   }
 
   /**
+   * What a hand holds falls at the avatar's feet (a hand maimed or lost,
+   * M3): anyone may take it. Returns whether the hand held anything.
+   */
+  dropHeld(sim: SimWorld, character: number, avatar: number, hand: "main" | "off"): boolean {
+    const item = this.store.hands(character)[hand === "main" ? HandSlot.Main : HandSlot.Off];
+    if (!item) return false;
+    this.placeOnGround(sim, item, Transform.px[avatar] + 0.4, Transform.pz[avatar], 0);
+    return true;
+  }
+
+  /**
    * Hold an item from the bag (M3b): it goes to its hand, and what that
    * hand held goes back to the bag. A two-handed item empties both hands;
    * an off-hand item displaces a two-handed one. Refused when the item
@@ -160,6 +171,13 @@ export class ItemService implements SimSystem {
     this.store.hold(character, item, hand === HAND_CODE.off ? HandSlot.Off : HandSlot.Main);
     for (const o of out) this.store.putInBag(character, o);
     return { ok: true, message: `holding ${this.defs.names[def]}` };
+  }
+
+  /** The hands holding `item` would take (null: it can't be held, or isn't in the bag). */
+  handsFor(character: number, item: number): ("main" | "off")[] | null {
+    if (!this.store.inBagOf(character, item)) return null;
+    const hand = this.defs.hand[this.store.defs[this.store.slot(item)]];
+    return hand === HAND_CODE.main ? ["main"] : hand === HAND_CODE.off ? ["off"] : hand === HAND_CODE.both ? ["main", "off"] : null;
   }
 
   /** Put what a hand holds back in the bag. */

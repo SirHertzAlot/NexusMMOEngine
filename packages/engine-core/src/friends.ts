@@ -1,10 +1,11 @@
 /**
  * Friends list (roadmap S2b): who each character follows, by character name.
- * Written through to a FriendStore (SQLite in the server, S2c), so lists
- * survive a restart; blocks stay in memory. A friend can only be added while online (the only time
+ * Writes through to a `SocialStore` (SQLite in the server, S2c), so lists
+ * survive a restart. A friend can only be added while online (the only time
  * a name resolves without a character-store lookup), but stays listed offline.
  */
 import { z } from "zod";
+import { memorySocialStore, type SocialStore } from "./social-store.js";
 
 export const FRIEND_LIMIT = 100;
 
@@ -36,15 +37,30 @@ export function memoryFriendStore(): FriendStore {
   };
 }
 
+type FriendPersistence = Pick<SocialStore, "loadFriends" | "addFriend" | "removeFriend">;
+
+function friendPersistence(store: SocialStore | FriendStore): FriendPersistence {
+  if ("loadFriends" in store) return store;
+  return {
+    loadFriends: () => store.loadAll().flatMap(({ owner, friends }) =>
+      friends.map((friend) => ({ owner, friend })),
+    ),
+    addFriend: (owner, friend) => store.add(owner, friend),
+    removeFriend: (owner, friend) => store.remove(owner, friend),
+  };
+}
+
 export class FriendBook {
   /** owner key -> (friend key -> display name) */
   private readonly lists = new Map<string, Map<string, string>>();
+  private readonly store: FriendPersistence;
 
-  constructor(private readonly store: FriendStore = memoryFriendStore()) {
-    for (const { owner, friends } of store.loadAll()) {
-      const list = new Map<string, string>();
-      for (const f of friends) list.set(f.toLowerCase(), f);
-      this.lists.set(owner.toLowerCase(), list);
+  constructor(store: SocialStore | FriendStore = memorySocialStore()) {
+    this.store = friendPersistence(store);
+    for (const r of this.store.loadFriends()) {
+      let list = this.lists.get(r.owner);
+      if (!list) this.lists.set(r.owner, (list = new Map()));
+      list.set(r.friend.toLowerCase(), r.friend);
     }
   }
 
@@ -57,13 +73,13 @@ export class FriendBook {
     if (list.has(f)) return "exists";
     if (list.size >= FRIEND_LIMIT) return "full";
     list.set(f, friend);
-    this.store.add(owner, friend);
+    this.store.addFriend(o, friend);
     return "ok";
   }
 
   remove(owner: string, friend: string): boolean {
     const gone = this.lists.get(owner.toLowerCase())?.delete(friend.toLowerCase()) ?? false;
-    if (gone) this.store.remove(owner, friend);
+    if (gone) this.store.removeFriend(owner, friend);
     return gone;
   }
 
