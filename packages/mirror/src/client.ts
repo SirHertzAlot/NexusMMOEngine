@@ -32,6 +32,9 @@ import {
   type FriendsState,
   type BlocksState,
   type DialogMessage,
+  type DungeonEntranceView,
+  type DungeonMessage,
+  type DungeonOp,
   type NpcView,
   type NpcsMessage,
   type QuestLogMessage,
@@ -107,6 +110,8 @@ export interface MirrorEvents {
   onNpcs?(n: NpcsMessage): void;
   /** An npc's line and the replies open to the player, or the dialog closed (P1). */
   onDialog?(d: DialogMessage): void;
+  /** Dungeon instances (D4): entrances on entering, a transfer into a run, the run's state, its end. */
+  onDungeon?(d: DungeonMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
@@ -161,6 +166,8 @@ export class MirrorClient {
   mana: ManaMessage | null = null;
   /** Quest givers and their markers (P1), as last sent; the world draws them. */
   npcs: NpcView[] = [];
+  /** Dungeon entrances (D4), as last sent; the world draws them. */
+  entrances: DungeonEntranceView[] = [];
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -379,6 +386,12 @@ export class MirrorClient {
    * back as onDialog / onQuests, refusals as system chat lines.
    */
   quest(op: QuestOp): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
+  }
+
+  /** A dungeon op (D4, on the chat envelope): ask for a run at an entrance, or the run's state. */
+  dungeon(op: DungeonOp): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
   }
@@ -682,7 +695,7 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage>(payload);
         if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
@@ -692,6 +705,10 @@ export class MirrorClient {
           this.npcs = m.npcs;
           this.events.onNpcs?.(m);
         } else if (m.kind === "dialog") this.events.onDialog?.(m);
+        else if (m.kind === "dungeon") {
+          if (m.op === "entrances") this.entrances = m.entrances;
+          this.events.onDungeon?.(m);
+        }
         else this.events.onChat?.(m);
         break;
       }

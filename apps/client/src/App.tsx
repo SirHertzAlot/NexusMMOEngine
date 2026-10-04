@@ -25,6 +25,8 @@ import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState,
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
 import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
+import type { DungeonMessage } from "@mmo-engine/protocol";
+import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -202,6 +204,13 @@ export function App(): React.ReactElement {
   const [nearNpc, setNearNpc] = useState<string | null>(null);
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
   const questsRef = useRef<QuestView[] | null>(null);
+  // Dungeon runs (D4): where the player is with a run, the entrance they stand in,
+  // and the region to come back to (its address and session token) while away.
+  const [run, setRun] = useState<DungeonRun | null>(null);
+  const runRef = useRef<DungeonRun | null>(null);
+  runRef.current = run;
+  const [nearEntrance, setNearEntrance] = useState<string | null>(null);
+  const regionRef = useRef<{ url: string; token: string } | null>(null);
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
 
   const clientRef = useRef<MirrorClient | null>(null);
@@ -217,7 +226,7 @@ export function App(): React.ReactElement {
   /** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient => {
     skillsRef.current = null;
-    return new MirrorClient((u) => new BrowserSocket(u), {
+    const c: MirrorClient = new MirrorClient((u) => new BrowserSocket(u), {
       onWelcome: (_w: WelcomeMessage) => {
         sessionTokenRef.current = _w.session_token;
         setCharacterName(_w.character?.name ?? null);
@@ -233,6 +242,14 @@ export function App(): React.ReactElement {
         else setError(`server error ${e.code}: ${e.message}`);
       },
       onClose: () => {
+        // A client we moved away from (into or out of a dungeon) closing is expected.
+        if (clientRef.current !== c) return;
+        // The dungeon's port closing after the run: back to the world.
+        const r = runRef.current;
+        if (r && (r.phase === "in" || r.phase === "ended")) {
+          void leaveDungeon();
+          return;
+        }
         // The server sends an error frame before closing on every
         // rejection; keep that reason instead of masking it.
         setError((prev) => prev ?? "connection closed");
@@ -288,7 +305,64 @@ export function App(): React.ReactElement {
         const text = treatmentNotice(t, c?.playerEntity?.toString() ?? null, name);
         if (text) setNotice({ text, at: performance.now() });
       },
+      onDungeon: (d) => onDungeon(d),
     });
+    return c;
+  };
+
+  /** Dungeon messages (D4): a transfer moves the player in; state and the end update the run. */
+  const onDungeon = (d: DungeonMessage): void => {
+    if (d.op === "transfer") void hop(d.endpoint, d.token, { phase: "entering", dungeon: d.dungeon });
+    else if (d.op === "state") setRun((prev) => (prev && prev.phase !== "leaving" ? { phase: "in", dungeon: d.dungeon, state: d, at: performance.now() } : prev));
+    else if (d.op === "ended") setRun((prev) => ({ phase: "ended", dungeon: prev?.dungeon ?? "", result: d }));
+  };
+
+  /**
+   * Move the player's connection to another gateway (a dungeon instance,
+   * or back to the region) with a token it already knows: the new client
+   * says hello with it and lands straight in the world as the same
+   * character. The old client is let go; its close is expected.
+   */
+  const hop = async (endpoint: string, token: string, transit: Extract<DungeonRun, { phase: "entering" | "leaving" }>): Promise<void> => {
+    if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url, token: sessionTokenRef.current };
+    setRun(transit);
+    setDialog(null);
+    setNearDrop(null);
+    setNearNpc(null);
+    setNearEntrance(null);
+    combat.select(null);
+    setCombatView(null);
+    const old = clientRef.current;
+    const next = createClient();
+    clientRef.current = next;
+    old?.disconnect();
+    try {
+      await next.join(endpoint, username || "mirror", { token });
+      if (transit.phase === "entering") setRun((prev) => (prev?.phase === "entering" ? { phase: "in", dungeon: transit.dungeon, state: null, at: 0 } : prev));
+      else {
+        regionRef.current = null;
+        setRun(null);
+      }
+      setScreen("world");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      if (transit.phase === "entering") void leaveDungeon();
+      else {
+        setRun(null);
+        setScreen("login");
+      }
+    }
+  };
+
+  /** Back to the open world from a run, with the region's own token. */
+  const leaveDungeon = async (): Promise<void> => {
+    const region = regionRef.current;
+    const dungeon = runRef.current?.dungeon ?? "";
+    if (!region) {
+      setRun(null);
+      return;
+    }
+    await hop(region.url, region.token, { phase: "leaving", dungeon });
   };
 
   /**
@@ -384,6 +458,9 @@ export function App(): React.ReactElement {
     setNpcs([]);
     setNearNpc(null);
     setDialog(null);
+    setRun(null);
+    regionRef.current = null;
+    setNearEntrance(null);
     combat.select(null);
     setCombatView(null);
     setScreen("login");
@@ -465,7 +542,15 @@ export function App(): React.ReactElement {
     );
   }
 
+  if (client && (run?.phase === "entering" || run?.phase === "leaving")) {
+    return (
+      <div className="relative h-full w-full bg-background">
+        <DungeonTransit run={run} />
+      </div>
+    );
+  }
   if (client) {
+    const entrance = nearEntrance ? client.entrances.find((e) => e.id === nearEntrance) : undefined;
     return (
       <div className="relative h-full w-full">
         <WorldCanvas
@@ -487,6 +572,7 @@ export function App(): React.ReactElement {
           onNearDrop={setNearDrop}
           onQuests={toggleQuests}
           onNearNpc={setNearNpc}
+          onNearEntrance={setNearEntrance}
           combat={combat}
           onCombat={setCombatView}
         />
@@ -500,6 +586,23 @@ export function App(): React.ReactElement {
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             talk to <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
+          </div>
+        )}
+        {!nearDrop && !dialog && !nearNpc && entrance && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            enter <span className="text-violet-300">{entrance.name}</span>
+            {party && party.members.length > 1 ? <span className="text-muted-foreground"> with your party</span> : null}
+          </div>
+        )}
+        {run?.phase === "in" && (
+          <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
+            <DungeonHud run={run} />
+          </div>
+        )}
+        {run?.phase === "ended" && (
+          <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
+            <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
           </div>
         )}
         {dialog && (

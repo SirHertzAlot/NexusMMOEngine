@@ -1,7 +1,9 @@
 /**
  * InstanceManager (roadmap D4): the region side of dungeon instances.
  *
- * It is the region gateway's `dungeon` extension. A party asks at an
+ * It is the region gateway's `dungeon` extension. Each player entering
+ * the world is told where the entrances are (`{kind:"dungeon",
+ * op:"entrances", entrances}`). A party asks at an
  * entrance (`{kind:"dungeon", op:"enter", entrance}` from a member standing
  * within its radius); the manager picks a pool layout that fits the
  * entrance's rank and themes, starts a DungeonInstance, and sends each
@@ -72,6 +74,9 @@ export class InstanceManager implements GatewayExtension {
 
   onEnter(p: ExtensionPlayer): void {
     if (p.characterId !== null) this.online.set(p.characterId, p);
+    // Where runs start, so the client can draw the entrances and ask at one.
+    const entrances = Object.entries(this.opts.content.entrances).map(([id, e]) => ({ id, name: e.name, x: e.x, z: e.z, radius: e.radius }));
+    p.send({ kind: "dungeon", op: "entrances", entrances });
   }
 
   onLeave(p: ExtensionPlayer): void {
