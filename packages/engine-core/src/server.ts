@@ -495,7 +495,7 @@ async function main(): Promise<void> {
     dropper.setCreatures(g.rules.creatures.creatures);
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
-    bodyRef?.setRules(sim, g.rules.body);
+    bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
   const combatSkills: CombatSkills = {
@@ -507,7 +507,7 @@ async function main(): Promise<void> {
     techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
   };
   // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
-  const body = new BodySystem(game.rules.body, hooks);
+  const body = new BodySystem(game.rules.body, hooks, game.rules.appearance);
   bodyRef = body;
   const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body });
   // Players come back at the spawn point (placement lives in the gateway,

@@ -80,7 +80,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
-import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
@@ -129,7 +129,7 @@ import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { MasterySystem } from "../stats/mastery-system.js";
 import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
-import { parseLook, withHeld, type ModularCatalog } from "@mmo-engine/art/character";
+import { parseLook, withHeld, withLost, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
   checkNewLook,
@@ -882,6 +882,7 @@ export class Gateway {
       ...this.sendLife(sim, tick),
     ];
     this.dropFromUselessHands(sim);
+    this.showLostParts(sim);
 
     const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
@@ -988,6 +989,18 @@ export class Gateway {
       if (!changed) continue;
       this.refreshAvatarLook(avatar, this.holderOf(s));
       this.sendInventory(s);
+    }
+  }
+
+  /**
+   * Parts cut off, or grown back (M3): the look every client draws hides
+   * the slots of what is gone (`lost` in the appearance JSON, next to `held`).
+   */
+  private showLostParts(sim: SimWorld): void {
+    if (!this.body) return;
+    for (const e of this.body.drainLooks()) {
+      if (!hasComponent(sim.ecs, C.Appearance, e)) continue;
+      sim.setLook(e, withLost(sim.lookJson(C.Appearance.look[e]), this.body.lostSlots(e)));
     }
   }
 
@@ -1436,7 +1449,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, fly, items, give, drop, loot",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1476,7 +1489,7 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
-    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly") {
+    } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly" || cmd.command === "injure") {
       res = this.runPlayerCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
@@ -1646,6 +1659,17 @@ export class Gateway {
       const r = applyHeal(this.world, target.wireId);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
       return { kind: "admin", command, ok: true, message: r.message };
+    }
+    if (command === "injure") {
+      const parsed = InjureArgsSchema.safeParse(args ?? {});
+      if (!parsed.success) return { kind: "admin", command, ok: false, message: "usage: injure {part, kind?: cut|blunt|thrust, amount?, entity?}" };
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+      const eid = this.world.resolveWireId(target.wireId);
+      if (!this.body || eid < 0 || !hasComponent(this.world.ecs, C.Health, eid)) return { kind: "admin", command, ok: false, message: "no body to injure" };
+      if (!this.body.parts.includes(parsed.data.part)) return { kind: "admin", command, ok: false, message: `no body part "${parsed.data.part}" (parts: ${this.body.parts.join(", ")})` };
+      const r = this.body.applyBlow(this.world, eid, parsed.data.part, parsed.data.kind, parsed.data.amount ?? C.Health.max[eid]);
+      return { kind: "admin", command, ok: true, message: `${r.part} ${r.state}${r.lost.length > 0 ? ` (lost ${r.lost.join(", ")})` : ""}` };
     }
     const parsed = FlyArgsSchema.safeParse(args ?? {});
     if (!parsed.success) {

@@ -32,7 +32,7 @@
 import * as THREE from "three";
 import { labelSprite } from "./element-fx.js";
 import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type VelocityRow } from "@mmo-engine/protocol";
-import { parseLook, heldOf } from "@mmo-engine/art/browser";
+import { parseLook, heldOf, lostOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
@@ -472,11 +472,13 @@ export class EntityLayer {
     tracked.look = lookJson;
     if (!look || !this.kit) return;
     tracked.female = look.gender === "female";
+    // Parts cut off in a fight (M3) are not drawn until the body is whole again.
+    const lost = new Set(lostOf(lookJson));
     if (tracked.character) {
-      tracked.character.setLook(look).catch((e: unknown) => console.warn(`[world] ${e instanceof Error ? e.message : e}`));
+      tracked.character.setLook(look, lost).catch((e: unknown) => console.warn(`[world] ${e instanceof Error ? e.message : e}`));
       return;
     }
-    const character = this.kit.create(look);
+    const character = this.kit.create(look, lost);
     character.relaxArms();
     this.group.remove(tracked.object);
     this.pickMap.delete(tracked.object);

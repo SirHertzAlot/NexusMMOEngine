@@ -35,6 +35,17 @@ export const HealArgsSchema = z
 
 export type HealArgs = z.infer<typeof HealArgsSchema>;
 
+/** `injure {part, kind?, amount?, entity?}` (M3): a blow on one body part, for testing injuries. */
+export const InjureArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    part: z.string().min(1).max(32),
+    kind: z.enum(["cut", "blunt", "thrust"]).default("cut"),
+    /** Health points; default: the part's whole health (a cut that severs it). */
+    amount: z.number().finite().positive().max(100000).optional(),
+  })
+  .strict();
+
 export const FlyArgsSchema = z
   .object({
     entity: z.string().min(1).max(32).default("me"),

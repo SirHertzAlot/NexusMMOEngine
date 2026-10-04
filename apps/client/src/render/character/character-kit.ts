@@ -16,7 +16,7 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { effectiveColours, resolveLook, type CharacterLook, type RiggedCatalog } from "@mmo-engine/art/browser";
+import { effectiveColours, resolveLook, type CharacterLook, type RiggedCatalog, type Slot } from "@mmo-engine/art/browser";
 import { CharacterMaterial, type CharacterTextures } from "./character-material.js";
 import { applyToon, type ToonOptions } from "../toon/toon-material.js";
 import { addOutline, OutlineMaterial, type OutlineOptions } from "../toon/outline.js";
@@ -148,11 +148,11 @@ export class CharacterKit {
    * A new character at once (its root can go in the scene now); its parts
    * appear as they load. Load failures are reported, not thrown.
    */
-  create(look: CharacterLook): ModularCharacter {
+  create(look: CharacterLook, lost?: ReadonlySet<Slot>): ModularCharacter {
     const material = new CharacterMaterial(this.textures, effectiveColours(look));
     if (this.style.toon) applyToon(material, this.style.toon);
     const character = new ModularCharacter(this, this.rig.clone(true), material);
-    character.setLook(look).catch((e: unknown) => console.warn(`[character] ${e instanceof Error ? e.message : e}`));
+    character.setLook(look, lost).catch((e: unknown) => console.warn(`[character] ${e instanceof Error ? e.message : e}`));
     return character;
   }
 
@@ -197,12 +197,12 @@ export class ModularCharacter {
     return this.look;
   }
 
-  /** Show `look`: parts are swapped in place, colours updated. */
-  async setLook(look: CharacterLook): Promise<void> {
+  /** Show `look`: parts are swapped in place, colours updated. `lost`: slots of body parts it no longer has (M3). */
+  async setLook(look: CharacterLook, lost?: ReadonlySet<Slot>): Promise<void> {
     const generation = ++this.generation;
     this.look = look;
     this.material.setColours(effectiveColours(look));
-    const wanted = resolveLook(this.kit.catalog, look).map((p) => p.name);
+    const wanted = resolveLook(this.kit.catalog, look, lost).map((p) => p.name);
     const templates = await Promise.all(wanted.map((n) => this.kit.templateOf(n)));
     // A newer setLook started while these loaded: it wins.
     if (generation !== this.generation) return;
