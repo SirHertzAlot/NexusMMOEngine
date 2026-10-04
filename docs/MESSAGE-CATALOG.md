@@ -222,6 +222,20 @@ are additive kinds, so older clients ignore them. Types: `@mmo-engine/protocol`
 
 Refusals come as system chat lines (`{kind:"chat", channel:"system", text}`). Quests need a character: an account playing without one gets no log.
 
+## Dungeon instances (D4, on 0x11)
+
+Additive kinds on the chat envelope (0x11), like quests. The region's
+`InstanceManager` and each instance's gateway handle them
+(`packages/engine-core/src/dungeons/`).
+
+| Direction | Message | Meaning |
+|---|---|---|
+| C→S (region) | `{kind:"dungeon", op:"enter", entrance}` | Ask for a run at an entrance (within its radius). Starts one for the party members online, or lets a member back into their party's run. Refusals are system chat lines. |
+| S→C (region) | `{kind:"dungeon", op:"transfer", endpoint, token, instance, dungeon}` | Go play there: connect to `endpoint` and say hello with `{token}`; you enter as the same character, at the dungeon's entrance. Sent to each member. |
+| S→C (instance) | `{kind:"dungeon", op:"state", dungeon, secondsLeft, creaturesLeft, bossLeft}` | On entering and every 5 s. |
+| C→S (instance) | `{kind:"dungeon", op:"state"}` | Ask for the state now. |
+| S→C (instance) | `{kind:"dungeon", op:"ended", outcome, items}` | The run is over: `outcome` `"cleared"`, `"timeout"` or `"abandoned"`; `items` this character earned, put in their bag in the region. The instance closes shortly after; reconnect to the region with its own token. |
+
 ## Session & reconnect semantics (slice 1.3, auth updated slice 1.4)
 
 - **Identity.** The server-issued session token is the client identity.

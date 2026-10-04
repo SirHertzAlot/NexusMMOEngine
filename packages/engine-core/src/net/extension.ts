@@ -10,6 +10,8 @@
 export interface ExtensionPlayer {
   /** The character's id (null: an account playing without a character). */
   readonly characterId: number | null;
+  /** The account (what a token for another world is issued to). */
+  readonly username: string;
   readonly name: string;
   /** The avatar's entity, or -1 when it is gone. */
   entity(): number;

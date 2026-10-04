@@ -816,6 +816,26 @@ export class Gateway {
     this.tickTimer.unref();
   }
 
+  /**
+   * A way in for a character arriving from another world (a dungeon
+   * instance, roadmap D4): a session token for `username`, already entered
+   * as `character`. The client says hello with `{token}` and lands here as
+   * that character, at the spawn point; nothing is asked of the account's
+   * password. Tokens last as long as any session's (sessionTtlMs).
+   */
+  admit(username: string, character: { id: number; name: string; look: string }): string {
+    const token = this.authSessions.create(`admit-${character.id}`, username);
+    const auth = this.authSessions.get(token);
+    if (auth) auth.character = { ...character };
+    return token;
+  }
+
+  /** The character names in `name`'s party, `name` included (just `[name]` without a party). */
+  partyOf(name: string): string[] {
+    const members = this.parties.partyOf(name);
+    return members.length > 0 ? members : [name];
+  }
+
   /** Advance the fixed-timestep loop manually (tests). Returns ticks run. */
   frame(nowMs: number): number {
     return this.loop.frame(nowMs);
@@ -2874,6 +2894,7 @@ export class Gateway {
   private extensionPlayer(s: ClientSession): ExtensionPlayer {
     return {
       characterId: s.character?.id ?? null,
+      username: s.username,
       name: s.character?.name ?? s.username,
       entity: () => (s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity)),
       send: (msg) => this.sendEnvelope(s, MessageType.Chat, encodeControl(msg)),

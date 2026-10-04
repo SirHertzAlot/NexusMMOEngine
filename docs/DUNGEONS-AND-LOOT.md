@@ -202,6 +202,29 @@ collider, its navmesh input and what clients draw.
 A result is committed only once it is reported. If an instance crashes before
 reporting, its run didn't happen. That choice is yours (§10).
 
+**Built (D4, first cut):** `packages/engine-core/src/dungeons/`. The region's
+`InstanceManager` is a gateway extension: `{kind:"dungeon", op:"enter",
+entrance}` from a party member standing at an entrance
+(`content/dungeons/entrances.json`) picks a pool layout by the entrance's rank
+and themes and starts a `DungeonInstance` in-process: its own SimWorld and
+Gateway on an ephemeral port, running stats, creatures, intents, combat, death,
+stamina and integration, with the layout grid as its collider
+(`DungeonWallSystem`; the prebaked shell is what clients draw). Instead of the
+migration handoff, each party member online gets a `transfer` message with the
+instance's endpoint and a token (`Gateway.admit`) and says hello there as their
+character, at the entrance; their region avatar stays at the entrance. Every
+spawn point gets one creature (its baked species when that has creature rules,
+else the rules' fallback) and dead creatures stay down. A run ends cleared
+(boss room empty), on timeout, or abandoned (empty for a while), and hands one
+result to the region: kills, deaths, and loot rolled per kill from the mob
+pool. The region commits it then, items into bags and the batch into
+`<data>/instances.db` (unreported), where the world server's ingest will pick
+it up once that endpoint exists. The run rules are data
+(`content/dungeons/instances.json`), the proposed answers to §10.2: parties of
+1 to 5, 45 minutes, re-entry while the run lasts, abandoned after 2 minutes
+empty, at most 8 runs per region, nothing kept until the run reports. Not yet:
+depleted nodes, chests and traps, skill gains, the client's transfer.
+
 ### 3.5 Editor (D3)
 
 - A dungeon pool browser, with the map thumbnails the bake writes (`--png`).

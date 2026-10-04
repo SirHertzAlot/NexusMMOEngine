@@ -35,6 +35,12 @@
  *   MMO_ECOLOGY    an ecology plan file (default: content/ecology/wilds.ecology.json)
  *   MMO_QUESTS     quest and dialog content dir (default: the repo's
  *                  content/quests); quest logs live in <data>/quests.db
+ *   MMO_DUNGEONS   dungeon instance rules and entrances dir (default: the
+ *                  repo's content/dungeons); layouts come from the pool at
+ *                  <data>/dungeons (npm run dungeon:bake), runs are kept in
+ *                  <data>/instances.db
+ *   MMO_INSTANCE_HOST host clients reach instances at (default localhost;
+ *                  each instance listens on its own free port)
  *   MMO_BIOMES     the biome registry: per-biome scatter multipliers and
  *                  creature tables (default: content/biomes.json)
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
@@ -134,6 +140,10 @@ import { BotSystem } from "./bots.js";
 import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { QuestService } from "./quests/quest-service.js";
 import { SqliteQuestStore } from "./quests/quest-store.js";
+import { loadDungeonContent, DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
+import { DungeonPool } from "./dungeons/pool.js";
+import { InstanceManager } from "./dungeons/manager.js";
+import { SqliteInstanceResultStore } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
@@ -573,6 +583,31 @@ async function main(): Promise<void> {
     `[quests] ${Object.keys(questContent.quests).length} quest(s), ${Object.keys(questContent.templates).length} template(s), ` +
       `${Object.keys(questContent.npcs).length} npc(s) (${questDir})`,
   );
+  // Dungeon instances (D4): the gateway's "dungeon" extension starts a
+  // sandbox gateway per run from the prebaked pool and commits its result.
+  const dungeonDir = process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT;
+  const dungeonPool = new DungeonPool(path.join(DATA_DIR, "dungeons"));
+  const instanceHost = process.env.MMO_INSTANCE_HOST || "localhost";
+  const dungeons = new InstanceManager({
+    content: loadDungeonContent(dungeonDir),
+    pool: dungeonPool,
+    game: () => game,
+    credentialStore,
+    characterStore,
+    partyOf: (name) => gw.partyOf(name),
+    weaponOf: (character) => {
+      const def = items.mainHandDef(character);
+      if (def < 0) return null;
+      const d = itemDefs.defs;
+      return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def] };
+    },
+    lootPool: () => itemDefs.defs.ofSource("mob"),
+    grant: (character, def) => items.give(character, def).ok,
+    endpoint: (p) => `ws://${instanceHost}:${p}`,
+    results: new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db")),
+    log: (l) => console.log(l),
+  });
+  console.log(`[dungeons] ${dungeonPool.entries.length} layout(s) in the pool (${path.join(DATA_DIR, "dungeons")})`);
   const combatSkills: CombatSkills = {
     get: (e, id) => mastery.sheetOf(e).get(id),
     train: (e, id, difficulty, key) => {
@@ -611,7 +646,7 @@ async function main(): Promise<void> {
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
-    extensions: [quests],
+    extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
@@ -718,6 +753,8 @@ async function main(): Promise<void> {
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
       console.log(`[server] shutdown save on ${signal}: tick ${result.tick}`);
+      // Runs still going report now, so their loot is in the ledger flush below.
+      dungeons.endAll();
       gw.saveCharacters();
       itemLedger.flush();
       itemLedger.close();
