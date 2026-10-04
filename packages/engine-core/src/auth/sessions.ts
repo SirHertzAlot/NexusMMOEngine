@@ -9,9 +9,10 @@
  * - Tokens are 128-bit-entropy opaque handles (crypto.randomBytes(32),
  *   hex). They carry no claims — the server is the source of truth, so
  *   there is nothing to forge and nothing to expire client-side.
- * - Sessions live ONLY in memory (architecture brief §8): a restart
- *   invalidates them, which is the safe default. Accounts stay durable
- *   in the CredentialStore — never in-memory-only.
+ * - Sessions live in memory unless a SessionStore is given (edge/core
+ *   split E3: the production server keeps them in SQLite so a core
+ *   restart does not log every player out). Without a store a restart
+ *   invalidates them. Accounts stay durable in the CredentialStore.
  * - Expiry is lazy on get() plus a periodic sweep() (the gateway calls
  *   it from its heartbeat tick). No timers per session.
  */
@@ -33,11 +34,24 @@ export interface AuthSession {
   character?: { id: number; name: string; look: string };
 }
 
+/**
+ * Durable backing for sessions. The manager keeps its in-memory map as the
+ * working set and writes through; `load` seeds it at construction.
+ */
+export interface SessionStore {
+  load(): AuthSession[];
+  put(s: AuthSession): void;
+  delete(token: string): void;
+  deleteExpired(nowMs: number): void;
+}
+
 export interface SessionManagerOptions {
   /** Default 24 h. */
   ttlMs?: number;
   /** Clock for expiry math; default Date.now. Inject in tests. */
   clock?: () => number;
+  /** Write-through durable store; absent = memory only. */
+  store?: SessionStore;
 }
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -46,6 +60,7 @@ export class SessionManager {
   private readonly sessions = new Map<string, AuthSession>();
   private readonly ttlMs: number;
   private readonly clock: () => number;
+  private readonly store: SessionStore | null;
 
   constructor(opts: SessionManagerOptions = {}) {
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
@@ -55,17 +70,24 @@ export class SessionManager {
       );
     }
     this.clock = opts.clock ?? Date.now;
+    this.store = opts.store ?? null;
+    if (this.store) {
+      this.store.deleteExpired(this.clock());
+      for (const s of this.store.load()) this.sessions.set(s.token, s);
+    }
   }
 
   /** Issue a token for an authenticated user. */
   create(clientId: string, username: string): string {
     const token = randomBytes(32).toString("hex");
-    this.sessions.set(token, {
+    const s: AuthSession = {
       token,
       clientId,
       username,
       expiresAt: this.clock() + this.ttlMs,
-    });
+    };
+    this.sessions.set(token, s);
+    this.store?.put(s);
     return token;
   }
 
@@ -78,6 +100,7 @@ export class SessionManager {
     if (!s) return null;
     if (s.expiresAt <= this.clock()) {
       this.sessions.delete(token);
+      this.store?.delete(token);
       return null;
     }
     return s;
@@ -92,6 +115,7 @@ export class SessionManager {
   /** Invalidate a token immediately (logout). */
   revoke(token: string): void {
     this.sessions.delete(token);
+    this.store?.delete(token);
   }
 
   /** Drop all expired sessions. Returns the number removed. */
@@ -104,13 +128,23 @@ export class SessionManager {
         removed += 1;
       }
     }
+    if (removed > 0) this.store?.deleteExpired(now);
     return removed;
+  }
+
+  /** Every live (unexpired) token. */
+  tokens(): string[] {
+    const now = this.clock();
+    const out: string[] = [];
+    for (const [token, s] of this.sessions) if (s.expiresAt > now) out.push(token);
+    return out;
   }
 
   size(): number {
     return this.sessions.size;
   }
 
+  /** Drop the working set (shutdown); a durable store keeps its rows. */
   clear(): void {
     this.sessions.clear();
   }

@@ -12,7 +12,18 @@ not drop player connections. Plan: [`docs/EDGE-CORE-SPLIT.md`](../../docs/EDGE-C
 > `CORE_CHANNEL_PORT`. The edge boots whether or not the core is running
 > and keeps reconnecting in the background; while the core is
 > unreachable every core-bound packet answers `core.unavailable`, and
-> local routes keep working. E3 makes engine-core serve the channel.
+> local routes keep working. Since E3 engine-core serves the channel
+> beside its player port; players still connect to the core until the
+> client moves onto the edge.
+
+## Core streams
+
+- `src/tick-buffer.ts`: the last 3600 ticks of the core's gameplay
+  events from the `tick.events` push (`getTickBuffer()`), for content
+  systems such as Q9's mythic evaluator.
+- `src/mirror-buffer.ts`: the newest `snapshot` (every 300 ticks) and
+  `tick.delta` (every tick), base64 FlatBuffers as pushed. A client the
+  edge serves will get the latest snapshot first, then live deltas.
 
 ## Run
 

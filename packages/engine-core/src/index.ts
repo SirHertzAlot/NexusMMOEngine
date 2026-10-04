@@ -286,3 +286,15 @@ export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social
 
 export { DeathSystem, type LifeEvent } from "./death.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
+
+// Edge/core split E3: the core's end of the internal channel.
+export {
+  startCoreChannel,
+  createCoreChannelHandler,
+  pushTick,
+  isSnapshotTick,
+  coreChannelPort,
+  SNAPSHOT_EVERY_TICKS,
+} from "./channel-server.js";
+export type { CoreChannel, CoreChannelHost, IntentPayload, MythicHooks } from "./channel-server.js";
+export type { GatewayTick } from "./net/gateway.js";
