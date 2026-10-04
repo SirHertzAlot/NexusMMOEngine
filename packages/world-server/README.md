@@ -44,6 +44,7 @@ WORLD_URL=http://localhost:7780 WORLD_API_KEY=<secret> REGION_ID=region-1 \
 | `WORLD_API_KEY` | — | Bootstrap key regions register with; unset = registration disabled |
 | `WORLD_HEARTBEAT_INTERVAL_MS` | `5000` | Lease heartbeat interval |
 | `WORLD_HEARTBEAT_TIMEOUT_MS` | `15000` | Stale-region reaping threshold |
+| `WORLD_MIGRATION_TIMEOUT_MS` | `10000` | A migration not committed within this expires; the source keeps the entity |
 
 Region side (`engine-core`): `WORLD_URL`, `WORLD_API_KEY`, `REGION_ID`
 (default `region-1`), `REGION_CHUNK_RANGE` (`"x0,z0,x1,z1"`, default
@@ -58,3 +59,30 @@ the body; every other method needs `Authorization: Bearer <token>`
 from the lease. Errors are `{code, msg}` with the HTTP status.
 `GET /healthz` for probes. See `world.ridl` — the contract source of
 truth.
+
+## Migration (slice B)
+
+The world arbitrates border hand-offs (spec §6); it never moves entities
+itself.
+
+| Method | Who may call | What it does |
+|---|---|---|
+| `ListRegions` | any region | Every region's id, chunk range, endpoint and liveness. Regions re-fetch it when `registryVersion` in a heartbeat ack changes. |
+| `BeginMigration` | the source | Records the entity state (a JSON object, at most 64 KiB) as `begun`. One open migration per entity; the target must be live. |
+| `GetMigration` | source or target | The record, entity state included. The target reads the state from here, which is also its backstop when the source has died. |
+| `CommitMigration` | the target | `begun` → `committed`: the target has authority. A repeat is fine; after expiry or abort it is a 409. |
+| `AbortMigration` | source or target | `begun` → `aborted`, with a reason. Fine on an aborted or expired one, 409 on a committed one. |
+
+`begun` migrations older than `WORLD_MIGRATION_TIMEOUT_MS` become
+`expired` (a timer, which also recovers migrations left by a crash).
+Commit and expiry are compare-and-set on `begun`, so exactly one wins.
+Every heartbeat ack lists the region's migrations that are `begun` or
+resolved within the last minute; regions treat repeats as no-ops.
+Mutating calls carry an `opId` and are deduplicated.
+
+The region side is `MigrationCoordinator` in engine-core
+(`src/world/migration.ts`). It begins hand-offs for entities standing in
+another live region's chunks, aborts them when the entity walks back,
+drops the entity when the ack says `committed`, takes incoming entities
+(`accept`) and backs up a dead source.
+

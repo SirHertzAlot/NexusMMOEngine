@@ -17,7 +17,7 @@
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
 import { Surreal } from "surrealdb";
-import type { RegionRecord, WorldStore } from "./types.js";
+import type { MigrationRecord, MigrationState, RegionRecord, WorldStore } from "./types.js";
 
 export interface SurrealStoreOptions {
   url: string;
@@ -31,6 +31,10 @@ const SCHEMA = `
 DEFINE TABLE IF NOT EXISTS region SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS regionId ON region TYPE string;
 DEFINE FIELD IF NOT EXISTS chunkRange ON region TYPE object;
+DEFINE FIELD IF NOT EXISTS chunkRange.x0 ON region TYPE int;
+DEFINE FIELD IF NOT EXISTS chunkRange.x1 ON region TYPE int;
+DEFINE FIELD IF NOT EXISTS chunkRange.z0 ON region TYPE int;
+DEFINE FIELD IF NOT EXISTS chunkRange.z1 ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS endpoint ON region TYPE string;
 DEFINE FIELD IF NOT EXISTS capacity ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS load ON region TYPE float;
@@ -45,6 +49,11 @@ DEFINE TABLE IF NOT EXISTS op_dedup SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS meta SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_region_regionId ON region FIELDS regionId UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_region_tokenHash ON region FIELDS tokenHash;
+-- Slice B. Schemaless: entityState is an arbitrary serialized ECS blob.
+DEFINE TABLE IF NOT EXISTS migration SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_migration_id ON migration FIELDS migrationId UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_migration_entity ON migration FIELDS entityId, state;
+DEFINE INDEX IF NOT EXISTS idx_migration_state ON migration FIELDS state, createdAt;
 `;
 
 /** First (only) statement's result. */
@@ -72,6 +81,11 @@ function strip(record: Record<string, unknown>): RegionRecord {
   return rest as unknown as RegionRecord;
 }
 
+function migration(record: Record<string, unknown>): MigrationRecord {
+  const { id, ...rest } = record;
+  return { ...(rest as unknown as MigrationRecord), entityState: rest["entityState"] ?? null };
+}
+
 export class SurrealWorldStore implements WorldStore {
   private db = new Surreal();
   private readonly opts: SurrealStoreOptions;
@@ -82,16 +96,18 @@ export class SurrealWorldStore implements WorldStore {
 
   async connect(): Promise<void> {
     await this.db.connect(this.opts.url);
-    await this.db.use({
-      namespace: this.opts.namespace,
-      database: this.opts.database,
-    });
+    // Sign in before `use`: on SurrealDB 3.2 selecting a namespace that
+    // doesn't exist yet fails unless the session may create it.
     if (this.opts.username) {
       await this.db.signin({
         username: this.opts.username,
         password: this.opts.password ?? "",
       });
     }
+    await this.db.use({
+      namespace: this.opts.namespace,
+      database: this.opts.database,
+    });
     await this.db.query(SCHEMA);
     const meta = singleRow<Record<string, unknown>>(
       await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
@@ -216,5 +232,60 @@ export class SurrealWorldStore implements WorldStore {
     await this.db.query(
       "UPDATE ONLY meta SET version = version + 1 WHERE id = meta:registry",
     );
+  }
+
+  // -- migrations (slice B) --
+
+  async createMigration(m: MigrationRecord): Promise<void> {
+    await this.db.query("CREATE ONLY migration CONTENT $data", { data: { ...m } });
+  }
+
+  async getMigration(migrationId: string): Promise<MigrationRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY migration WHERE migrationId = $id LIMIT 1", { id: migrationId }),
+    );
+    return row === null ? null : migration(row);
+  }
+
+  async getBegunMigrationForEntity(entityId: string): Promise<MigrationRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY migration WHERE entityId = $e AND state = 'begun' LIMIT 1", { e: entityId }),
+    );
+    return row === null ? null : migration(row);
+  }
+
+  async resolveMigration(migrationId: string, to: Exclude<MigrationState, "begun">, reason: string, now: number): Promise<MigrationRecord | null> {
+    // One statement, so the state check and the write are atomic.
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query(
+        "UPDATE migration SET state = $to, reason = $reason, updatedAt = $now WHERE migrationId = $id AND state = 'begun' RETURN AFTER",
+        { id: migrationId, to, reason, now },
+      ),
+    );
+    return rows.length > 0 ? migration(rows[0]) : null;
+  }
+
+  async listMigrationsForRegion(regionId: string, sinceMs: number): Promise<MigrationRecord[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query(
+        "SELECT * FROM migration WHERE (fromRegion = $r OR toRegion = $r) AND (state = 'begun' OR updatedAt >= $since)",
+        { r: regionId, since: sinceMs },
+      ),
+    );
+    return rows.map(migration);
+  }
+
+  async listBegunBefore(cutoffMs: number): Promise<string[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT migrationId FROM migration WHERE state = 'begun' AND createdAt < $cutoff", { cutoff: cutoffMs }),
+    );
+    return rows.map((r) => r["migrationId"] as string);
+  }
+
+  async pruneMigrations(cutoffMs: number): Promise<number> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("DELETE migration WHERE state != 'begun' AND updatedAt < $cutoff RETURN BEFORE", { cutoff: cutoffMs }),
+    );
+    return rows.length;
   }
 }
