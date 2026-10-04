@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
-import type { InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
+import type { BodyMessage, InventoryMessage, ItemView, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -182,6 +182,8 @@ export function App(): React.ReactElement {
   // Also carries hunger and thirst (U3) for the player frame, and skills for the sheet.
   const [sheet, setSheet] = useState<StatsMessage | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The player's body (0x18): injuries on the player frame's doll and the sheet.
+  const [body, setBody] = useState<BodyMessage | null>(null);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
@@ -232,6 +234,7 @@ export function App(): React.ReactElement {
       onFriends: setFriends,
       onBlocks: (b) => setBlocked(b.blocked),
       onStats: setSheet,
+      onBody: setBody,
       onInventory: (inv) => {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
@@ -343,6 +346,7 @@ export function App(): React.ReactElement {
     setBlocked([]);
     setSheet(null);
     setSheetOpen(false);
+    setBody(null);
     setBag(null);
     setHands({ main: null, off: null });
     setBagOpen(false);
@@ -399,6 +403,8 @@ export function App(): React.ReactElement {
   }, []);
   // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
   const onTreat = useCallback(() => clientRef.current?.treat(), []);
+  // The sheet's body doll treats the part clicked.
+  const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
   const toggleShowcase = (): void => setShowcase((v) => !v);
@@ -470,6 +476,7 @@ export function App(): React.ReactElement {
             sp={hud.sp}
             maxSp={hud.maxSp}
             needs={sheet?.needs}
+            body={body}
           />
         </div>
         <TargetFrame target={combatView?.target ?? null} />
@@ -615,7 +622,7 @@ export function App(): React.ReactElement {
             />
           )}
           {sheetOpen && sheet && (
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} />
+            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} />
           )}
           <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
             sheet
