@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel } from "./play-mode.js";
+import { PlayModePanel, playUiStore, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { CharacterRecordPanel } from "./character-view.js";
@@ -161,7 +161,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
       { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimPreview /> },
-      { id: "vfx", label: "VFX", icon: "sparkles", kind: "panel", panel: <VfxPreview /> },
+      { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <VfxPreview /> },
       { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPreview /> },
     ],
     leftTitle: "Library",
@@ -1536,7 +1536,7 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   if (props.workspace === "database") return <SchemaTree />;
   if (props.workspace === "flow") return <WidgetList />;
   if (props.workspace === "story") return <StoryTree />;
-  if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} />;
+  if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} onView={props.onView} />;
   if (props.workspace === "release") return <ReleaseTree />;
   if (props.workspace === "liveops") return <LiveOpsTree />;
   if (props.workspace === "gameplay" || props.workspace === "dungeons") {
@@ -1565,24 +1565,7 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
     );
   }
   if (props.workspace === "debug") {
-    return (
-      <ul className="flex flex-col gap-0.5 text-sm">
-        {[["Owned server", "dns", true], ["Tick timings", "timer", false], ["Per-system costs", "bar_chart", false]].map(([label, icon, on]) => (
-          <li key={label as string}>
-            <span
-              className="flex h-10 items-center gap-3 rounded-full px-3"
-              style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-            >
-              <MIcon name={icon as string} size={20} />
-              {label as string}
-            </span>
-          </li>
-        ))}
-        <li className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-          The Play mode panel owns the server lifecycle; timings arrive with E5.
-        </li>
-      </ul>
-    );
+    return <DebugTree />;
   }
   return (
     <EmptyState
@@ -1854,6 +1837,69 @@ function ReleaseTree(): React.JSX.Element {
           <p key={k} className="flex"><span>{k}</span><span className="ml-auto" style={{ color: "var(--m3-on-surface)" }}>{v}</span></p>
         ))}
       </div>
+    </div>
+  );
+}
+/** Debug sessions dock: live server state plus the overlay controls the
+ *  Play mode panel itself uses — same store, both directions. */
+function DebugTree(): React.JSX.Element {
+  const t = useTree();
+  const { entityId, autoRefresh, pmState } = playUiStore.use();
+  const stagedGroup = (id: string, icon: string, label: string, leaves: string[]): React.JSX.Element => (
+    <div key={id}>
+      <TreeItem
+        icon={icon} label={label}
+        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
+        selected={false} onPick={() => t.toggle(id)}
+        menu={crudMenu(label, "EA · debug")}
+      />
+      {t.open.includes(id) && leaves.map((l) => (
+        <TreeItem
+          key={l} icon="chevron_right" label={l} depth={1}
+          menu={crudMenu(l, "EA · debug")}
+          onPick={() => notify(`${l} — staged for EA · debug (E5 overlays)`)}
+        />
+      ))}
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-0.5">
+      <TreeItem
+        icon="dns" label="Owned server" trailing={pmState}
+        hasKids expanded={t.open.includes("server")} onToggle={() => t.toggle("server")}
+        selected={false} onPick={() => t.toggle("server")}
+      />
+      {t.open.includes("server") && (
+        <p className="px-3 py-1 pl-11 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+          Start and Stop live in the Play mode panel; this dock mirrors its state and overlays.
+        </p>
+      )}
+      <div className="flex items-center gap-2 py-1.5 pl-11 pr-1.5">
+        <input
+          value={entityId}
+          onChange={(e) => setPlayEntityId(e.target.value)}
+          placeholder="Entity wire id…"
+          aria-label="Overlay entity wire id"
+          title="Waypoint overlay entity — same field as the Play mode panel"
+          className="m3-focus h-8 min-w-0 flex-1 rounded-lg border bg-transparent px-2 font-mono text-xs"
+          style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface)" }}
+        />
+      </div>
+      <button
+        onClick={() => setPlayAutoRefresh(!autoRefresh)}
+        aria-pressed={autoRefresh}
+        className="m3-focus flex h-9 items-center gap-3 rounded-full px-3 text-left text-sm"
+        style={{ color: "var(--m3-on-surface)" }}
+      >
+        <MIcon name={autoRefresh ? "check_box" : "check_box_outline_blank"} size={19} />
+        Auto-refresh overlays
+        <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>2 s</span>
+      </button>
+      {stagedGroup("timings", "timer", "Tick timings", ["Per-tick p50 / p99", "Slow systems list"])}
+      {stagedGroup("costs", "bar_chart", "Per-system costs", ["System cost table", "Budget alerts"])}
+      <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+        Timings arrive with E5; entity and refresh already drive the live overlays.
+      </p>
     </div>
   );
 }

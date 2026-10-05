@@ -11,6 +11,7 @@
 import * as React from "react";
 import { MIcon, TreeItem, OverflowMenu, IconButton, notify, staged } from "./components.js";
 import type { MenuItem } from "./components.js";
+import { assetUiStore, setAssetFilter, setAssetPreview, useAssetManifest } from "./asset-inspector.js";
 
 // ---------------------------------------------------------------- shared UI state
 // Doc §3.1: selection is a shared model, not panel state — picking in any
@@ -22,7 +23,7 @@ interface Listener {
   (): void;
 }
 
-function createStore<T>(initial: T): {
+export function createStore<T>(initial: T): {
   get: () => T;
   set: (next: T | ((prev: T) => T)) => void;
   subscribe: (fn: () => void) => () => void;
@@ -1764,7 +1765,7 @@ export function ClipList(): React.JSX.Element {
 }
 
 /** Left library for Art & audio: clips, effects, or events per active view. */
-export function ArtAudioTree({ view }: { view: string }): React.JSX.Element {
+export function ArtAudioTree({ view, onView }: { view: string; onView?: (view: string) => void }): React.JSX.Element {
   if (view === "animation") return <ClipList />;
   const { effect, event } = artStore.use();
   if (view === "vfx") {
@@ -1779,7 +1780,7 @@ export function ArtAudioTree({ view }: { view: string }): React.JSX.Element {
                 className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
                 style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
               >
-                <MIcon name="sparkles" size={15} />{e}
+                <MIcon name="auto_awesome" size={15} />{e}
                 <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
               </button>
             </li>
@@ -1814,14 +1815,105 @@ export function ArtAudioTree({ view }: { view: string }): React.JSX.Element {
     );
   }
   return (
-    <ul className="flex flex-col gap-0.5">
-      {[["Art pack", "scanned"], ["Models", "38"], ["Textures", "112"], ["Audio", "24 clips"]].map(([l, t]) => (
-        <li key={l} className="flex h-10 items-center gap-3 rounded-full px-3 text-sm" style={{ color: "var(--m3-on-surface)" }}>
-          <span style={{ color: "var(--m3-on-surface-variant)" }}><MIcon name="folder" size={19} /></span>{l}
-          <span className="ml-auto text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{t}</span>
-        </li>
+    <AssetLibraryTree onView={onView} />
+  );
+}
+
+/** Library dock for the assets view: manifest groups with counts, a dock
+ *  search that filters the panel's model table, and model picks that
+ *  preview in the panel — same shared store, both directions. */
+function AssetLibraryTree({ onView }: { onView?: (view: string) => void }): React.JSX.Element {
+  const { scan, loading, refresh } = useAssetManifest();
+  const { filter, previewId } = assetUiStore.use();
+  const [open, setOpen] = React.useState<string[]>(["models"]);
+  const toggle = (id: string): void => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const models = scan?.manifest?.models ?? [];
+  const textures = scan?.manifest?.textures ?? [];
+  const needle = filter.trim().toLowerCase();
+  const shown = models.filter((m) => needle === "" || m.id.toLowerCase().includes(needle)).slice(0, 12);
+  const group = (id: string, label: string, trailing: string, kids: React.ReactNode): React.JSX.Element => (
+    <div key={id} className="mb-1">
+      <TreeItem
+        icon="folder" label={label} trailing={trailing}
+        hasKids expanded={open.includes(id)} onToggle={() => toggle(id)}
+        selected={false} onPick={() => toggle(id)}
+        menu={[
+          { label: "Rescan pack", icon: "refresh", run: () => void refresh() },
+          "sep",
+          { label: "Reveal in file browser", icon: "folder_open", stagedFor: "EA · art & audio" },
+        ]}
+      />
+      {open.includes(id) && kids}
+    </div>
+  );
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <MIcon name="search" size={17} />
+        <input
+          value={filter}
+          onChange={(e) => setAssetFilter(e.target.value)}
+          placeholder="Filter models…"
+          aria-label="Filter asset models"
+          className="m3-focus h-8 min-w-0 flex-1 rounded-lg border bg-transparent px-2 font-mono text-xs"
+          style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface)" }}
+        />
+      </div>
+      {group("pack", scan?.manifest?.name ?? "Art pack", scan?.manifest ? `v${scan.manifest.version}` : loading ? "…" : "missing", (
+        <>
+          <p className="px-3 py-1 pl-11 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+            {scan?.manifest ? `${models.length} models · ${textures.length} textures` : "drop art into assets/, then rescan"}
+          </p>
+          <button
+            onClick={() => void refresh()}
+            className="m3-focus ml-11 flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium"
+            style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
+          >
+            <MIcon name="refresh" size={15} />{loading ? "Scanning…" : "Rescan"}
+          </button>
+        </>
       ))}
-    </ul>
+      {group("models", "Models", String(models.length), (
+        <>
+          {shown.map((m) => (
+            <TreeItem
+              key={m.id} icon="description" label={m.id} depth={1} mono
+              selected={m.id === previewId}
+              onPick={() => setAssetPreview(m.id)}
+              menu={[
+                { label: `Preview ${m.id}`, icon: "visibility", run: () => setAssetPreview(m.id) },
+                "sep",
+                { label: "Reveal in file browser", icon: "folder_open", stagedFor: "EA · art & audio" },
+              ]}
+            />
+          ))}
+          {models.length > shown.length && (
+            <p className="px-3 py-1 pl-11 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+              +{models.length - shown.length} more — narrow the filter
+            </p>
+          )}
+        </>
+      ))}
+      {group("textures", "Textures", String(textures.length), (
+        <>
+          {textures.slice(0, 12).map((t) => (
+            <TreeItem
+              key={t.id} icon="image" label={t.id} depth={1} mono
+              menu={[{ label: "Reveal in file browser", icon: "folder_open", stagedFor: "EA · art & audio" }]}
+              onPick={() => notify(`${t.id} — texture preview arrives with the art pipeline slice`)}
+            />
+          ))}
+        </>
+      ))}
+      <button
+        onClick={() => (onView ? onView("audio") : notify("Audio events — open the Audio view"))}
+        className="m3-focus flex h-9 w-full items-center gap-3 rounded-full px-3 text-left text-sm"
+        style={{ color: "var(--m3-on-surface)" }}
+      >
+        <MIcon name="audio_file" size={19} />Audio
+        <span className="ml-auto text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>24 clips →</span>
+      </button>
+    </div>
   );
 }
 
@@ -1952,7 +2044,7 @@ export function VfxPreview(): React.JSX.Element {
                 className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
                 style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
               >
-                <MIcon name="sparkles" size={15} />{e}
+                <MIcon name="auto_awesome" size={15} />{e}
                 <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
               </button>
             );
