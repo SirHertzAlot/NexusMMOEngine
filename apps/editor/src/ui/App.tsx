@@ -904,7 +904,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       style={{ background: "var(--m3-surface-0)", borderTop: "1px solid var(--m3-surface-2)" }}
     >
       <nav
-        className="m3-scroll flex min-w-0 flex-1 items-center gap-px overflow-x-auto"
+        className="m3-scroll flex min-w-0 flex-1 items-center justify-center gap-px overflow-x-auto"
         aria-label="Workspaces"
       >
         {WORKSPACES.map((w) => {
