@@ -2,21 +2,119 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Bundled M3 type + icons (OFL/Apache: Roboto Flex, Roboto Mono,
+ * Material Symbols Rounded — same files the concept mockups use,
+ * vendored in src/fonts so Vite bundles them in dev and dist-app;
+ * the editor's publicDir belongs to the client's surfaces).
+ */
+@font-face {
+  font-family: "Roboto Flex";
+  font-style: normal;
+  font-weight: 300 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("./fonts/flex-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Roboto Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/mono-latin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Roboto Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/mono-latin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Material Symbols Rounded";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("./fonts/msr.woff2") format("woff2");
+}
+
+/* Material Symbol glyph: ligature icon, never letter-spaced or wrapped. */
+.ms {
+  font-family: "Material Symbols Rounded", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
+  white-space: nowrap;
+  user-select: none;
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/*
+ * Material Design 3 dark scheme for the editor shell.
+ * UI-ONLY: token values taken from the concept mockups
+ * (sources/m3b.html, sources/m3c.html, ux-05..ux-19).
+ * Seed-generated roles; panels sit on tonal surfaces, never on
+ * borders and shadows (EDITOR-ARCHITECTURE.md §3.2).
+ * Tertiary (#FFB59A / #7A2E12) is reserved for play state.
+ */
+
 :root {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 14%;
-  --card-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 217 32% 22%;
-  --secondary-foreground: 210 40% 98%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 217 32% 20%;
-  --accent-foreground: 210 40% 98%;
-  --border: 217 32% 24%;
-  --input: 217 32% 24%;
-  --ring: 217 91% 60%;
+  /* M3 seed roles — primary */
+  --m3-primary: #b9c3ff;
+  --m3-on-primary: #1f2d82;
+  --m3-primary-container: #36449a;
+  --m3-on-primary-container: #dee0ff;
+  /* secondary */
+  --m3-secondary: #c3c5dd;
+  --m3-secondary-container: #434659;
+  --m3-on-secondary-container: #dfe1f9;
+  /* tertiary — play only */
+  --m3-tertiary: #ffb59a;
+  --m3-tertiary-container: #7a2e12;
+  --m3-on-tertiary-container: #ffdbce;
+  /* error */
+  --m3-error: #ffb4ab;
+  --m3-error-container: #93000a;
+  --m3-on-error-container: #ffdad6;
+  /* success (editor extension, same tone logic) */
+  --m3-success: #9cd67d;
+  --m3-success-container: #1f5110;
+  /* surface-container ladder */
+  --m3-surface: #121318;
+  --m3-surface-0: #0d0e13;
+  --m3-surface-1: #1a1b21;
+  --m3-surface-2: #1e1f25;
+  --m3-surface-3: #292a2f;
+  --m3-surface-4: #34343a;
+  --m3-on-surface: #e3e1e9;
+  --m3-on-surface-variant: #c6c5d0;
+  --m3-outline: #90909a;
+  --m3-outline-variant: #46464f;
+
+  /* Legacy shadcn-style aliases — kept so existing inspector
+     panels render unchanged on the new tonal surfaces. */
+  --background: 18 19 24;
+  --foreground: 227 225 233;
+  --card: 26 27 33;
+  --card-foreground: 227 225 233;
+  --primary: 185 195 255;
+  --primary-foreground: 31 45 130;
+  --secondary: 67 70 89;
+  --secondary-foreground: 223 225 249;
+  --muted-foreground: 198 197 208;
+  --accent: 67 70 89;
+  --accent-foreground: 223 225 249;
+  --border: 70 70 79;
+  --input: 144 144 154;
+  --ring: 185 195 255;
+
+  --m3-font-ui: "Roboto Flex", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --m3-font-mono: "Roboto Mono", ui-monospace, "JetBrains Mono", monospace;
 }
 
 * {
@@ -31,23 +129,47 @@ body,
 }
 
 body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: var(--m3-surface);
+  color: var(--m3-on-surface);
+  font-family: var(--m3-font-ui);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-.bg-background { background-color: hsl(var(--background)); }
-.bg-card { background-color: hsl(var(--card)); }
-.bg-primary { background-color: hsl(var(--primary)); }
-.bg-secondary { background-color: hsl(var(--secondary)); }
-.bg-accent { background-color: hsl(var(--accent)); }
-.text-foreground { color: hsl(var(--foreground)); }
-.text-card-foreground { color: hsl(var(--card-foreground)); }
-.text-primary-foreground { color: hsl(var(--primary-foreground)); }
-.text-secondary-foreground { color: hsl(var(--secondary-foreground)); }
-.text-accent-foreground { color: hsl(var(--accent-foreground)); }
-.text-muted-foreground { color: hsl(var(--muted-foreground)); }
+/* Legacy aliases used by existing panels */
+.bg-background { background-color: rgb(var(--background)); }
+.bg-card { background-color: rgb(var(--card)); }
+.bg-primary { background-color: rgb(var(--primary)); }
+.bg-secondary { background-color: rgb(var(--secondary)); }
+.bg-accent { background-color: rgb(var(--accent)); }
+.text-foreground { color: rgb(var(--foreground)); }
+.text-card-foreground { color: rgb(var(--card-foreground)); }
+.text-primary-foreground { color: rgb(var(--primary-foreground)); }
+.text-secondary-foreground { color: rgb(var(--secondary-foreground)); }
+.text-accent-foreground { color: rgb(var(--accent-foreground)); }
+.text-muted-foreground { color: rgb(var(--muted-foreground)); }
 .border-input { border-color: hsl(var(--input)); }
 .ring-ring { --tw-ring-color: hsl(var(--ring)); }
-.ring-offset-background { --tw-ring-offset-color: hsl(var(--background)); }
+.ring-offset-background { --tw-ring-offset-color: rgb(var(--background)); }
+
+/* M3 scrollbar — thin, tonal, cockpit density */
+.m3-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.m3-scroll::-webkit-scrollbar-thumb {
+  background: var(--m3-surface-4);
+  border-radius: 5px;
+  border: 2px solid var(--m3-surface-1);
+}
+.m3-scroll { scrollbar-color: var(--m3-surface-4) var(--m3-surface-1); }
+
+/* M3 focus ring — primary, shown on keyboard focus only */
+.m3-focus:focus-visible {
+  outline: 2px solid var(--m3-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
