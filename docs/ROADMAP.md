@@ -181,6 +181,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Performance instrumentation: frame, renderer, GPU memory and network counters | ✅ | Feeds E5 |
 | — | manifold + Clipper2 (`addon-geometry`): cell outlines, polygon Booleans, CSG solids; prebaked dungeon shells | ✅ | |
 | — | Valgrind: memcheck gate for every addon's tests; callgrind instruction-count baselines for headless workloads (`npm run valgrind:memcheck`, `valgrind:perf`) | ✅ | Found and fixed a tile-bake leak and a Recast tile-cache overflow |
+| — | Valgrind dashboard (`npm run valgrind:dashboard`): memcheck, callgrind and history views with charts, run-from-page, run comparison, and a regression gate (`valgrind:check`); debug builds for file:line (`valgrind:build-debug`); Valgrind tab in the editor. Suppressions deliberately not added: Node/V8 noise stays visible as part of the engine's cost | ✅ | Leak locator / performance linter mapping stacks to code is next |
 | — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 
@@ -364,3 +365,4 @@ Newest first. One line per merged PR or decision.
 - **2026-09-30**: DetourTileCache merged (#42): static bodies cut the
   navmesh.
 - **2026-09-29**: DetourCrowd (#40) and uWebSockets.js (#39) merged.
+- **2026-10-05**: Valgrind dashboard: standalone `scripts/valgrind/dashboard.mjs` (loopback only) with Memcheck, Callgrind and History views, inline SVG charts and plain-language help. Errors classed engine / via engine / runtime with the same rule as `memcheck.mjs`; nothing is suppressed. Hotspot drill-down, compare two runs, Node-version mismatch warning, run/cancel jobs from the page, `valgrind:record` (local, `--promote` to `perf/history.json`), `valgrind:check` gate (new engine errors, callgrind regressions), `valgrind:build-debug` for file:line. Editor Valgrind tab frames it. Perf not re-measured (tooling only).

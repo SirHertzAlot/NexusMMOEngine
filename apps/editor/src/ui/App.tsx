@@ -21,9 +21,10 @@ import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 
 import { RulesPanel } from "./rules-editor.js";
+import { ValgrindPanel } from "./valgrind-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 
-type Tab = "ecs" | "play" | "terrain" | "graphs" | "dungeons" | "assets" | "tables" | "rules" | "characters";
+type Tab = "ecs" | "play" | "terrain" | "graphs" | "dungeons" | "assets" | "tables" | "rules" | "characters" | "valgrind";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "ecs", label: "ECS Inspector" },
@@ -35,6 +36,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "assets", label: "Art Assets" },
   { id: "rules", label: "Rules" },
   { id: "characters", label: "Characters" },
+  { id: "valgrind", label: "Valgrind" },
 ];
 
 export function App(): React.JSX.Element {
@@ -81,6 +83,7 @@ export function App(): React.JSX.Element {
         {tab === "assets" && <AssetInspectorPanel />}
         {tab === "rules" && <RulesPanel />}
         {tab === "characters" && <CharacterRecordPanel />}
+        {tab === "valgrind" && <ValgrindPanel />}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-muted-foreground">

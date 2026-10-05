@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Valgrind dashboard</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --fg:#e6e8ee; --mut:#8a92a3; --ok:#3ecf8e; --bad:#ff5d5d; --warn:#f5a524; --acc:#6c8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:1000px; margin:0 auto; padding:24px 16px; }
+  header { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; align-items:center; margin-bottom:8px; }
+  h1 { font-size:18px; margin:0; } h2 { font-size:14px; margin:24px 0 8px; } .mut { color:var(--mut); font-size:12px; }
+  button, label.btn { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:6px 14px; cursor:pointer; font:inherit; }
+  label.btn { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  button:focus-visible, summary:focus-visible, a:focus-visible, label.btn:focus-within { outline:2px solid var(--acc); outline-offset:2px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:16px 0; }
+  .stat, details.card, .panel { background:var(--card); border:1px solid var(--line); border-radius:8px; }
+  .stat { padding:12px; } .stat b { display:block; font-size:26px; } .panel { padding:12px 16px; margin:12px 0; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+  .filters { display:flex; gap:6px; margin-bottom:12px; }
+  .filters button { background:transparent; color:var(--mut); padding:4px 12px; }
+  .filters button[aria-pressed=true] { background:var(--acc); color:#fff; }
+  details.card { margin-bottom:10px; } details.card > summary { padding:12px 16px; cursor:pointer; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; }
+  .badge.ok { background:#3ecf8e22; } .badge.bad { background:#ff5d5d22; } .badge.warn { background:#f5a52422; } .badge.mut { background:#ffffff14; color:var(--mut); }
+  .body { border-top:1px solid var(--line); padding:12px 16px; }
+  code { font:12px ui-monospace,monospace; color:var(--mut); word-break:break-all; }
+  details.err { background:#ffffff08; border-radius:6px; padding:8px 12px; margin-top:8px; }
+  details.err summary { cursor:pointer; } ol { margin:8px 0 0; padding-left:20px; font:12px ui-monospace,monospace; }
+  nav { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:20px; }
+  nav a { padding:8px 16px; color:var(--mut); text-decoration:none; border-bottom:2px solid transparent; }
+  nav a[aria-current=page] { color:var(--fg); border-color:var(--acc); }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:right; padding:8px 12px; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; } th { color:var(--mut); font-weight:500; font-size:12px; }
+  .bar { height:6px; background:var(--line); border-radius:3px; min-width:80px; } .bar i { display:block; height:100%; border-radius:3px; background:var(--acc); }
+  details.help { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 16px; margin:12px 0; }
+  details.help summary { cursor:pointer; font-weight:600; } details.help p, details.help li { color:var(--mut); margin:6px 0; } details.help b { color:var(--fg); }
+  svg text { fill:var(--mut); font:11px system-ui,sans-serif; } svg .grid { stroke:var(--line); } .legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:6px; font-size:12px; color:var(--mut); }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
+  .runbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:-8px 0 16px; }
+  .runbar button { background:transparent; border:1px solid var(--line); color:var(--fg); padding:4px 12px; }
+  .runbar button:hover:not(:disabled) { border-color:var(--acc); } .runbar button:disabled { opacity:.45; cursor:default; }
+  .runbar button.stop { border-color:var(--bad); color:var(--bad); }
+  pre.log { background:#0b0d11; border:1px solid var(--line); border-radius:6px; padding:10px; max-height:260px; overflow:auto; font:12px ui-monospace,monospace; color:var(--mut); white-space:pre-wrap; margin:0 0 16px; }
+  .banner { border:1px solid var(--warn); background:#f5a52414; border-radius:8px; padding:10px 14px; margin:12px 0; }
+  button.link { background:none; border:0; padding:0; color:var(--acc); font:inherit; cursor:pointer; text-align:left; } button.link:hover { text-decoration:underline; }
+  tr.drill td { text-align:left; background:#ffffff06; } tr.drill ol { margin:4px 0; }
+  select { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; font:inherit; max-width:100%; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+  .drop { outline:2px dashed var(--acc); outline-offset:-8px; }
+</style>
+</head>
+<body>
+<main>
+  <nav id="nav" aria-label="Test categories"></nav>
+  <div class="runbar" role="group" aria-label="Run jobs">
+    <span class="mut">Run:</span>
+    <button data-job="memcheck" title="npm run valgrind:memcheck (minutes: valgrind is 20-50x slower)">Memcheck</button>
+    <button data-job="perf" title="npm run valgrind:perf">Callgrind perf</button>
+    <button data-job="record" title="Save a local snapshot of the current results">Record snapshot</button>
+    <button data-job="promote" title="Record, and append to the committed perf/history.json">Record + commit to history</button>
+    <button id="stop" class="stop" hidden>Stop</button>
+    <span id="runstate" class="mut" role="status"></span>
+  </div>
+  <pre id="runlog" class="log" hidden></pre>
+
+  <section id="memcheck">
+    <header>
+      <div><h1>Memcheck: memory errors</h1><div class="mut">Reports from valgrind-out/memcheck. Drop XML files anywhere to add more.</div></div>
+      <div><label class="btn">Open files…<input id="pick" type="file" accept=".xml" multiple hidden></label> <button id="reload">Reload</button></div>
+    </header>
+    <details class="help"><summary>How to read this</summary>
+      <p>Memcheck runs each addon's tests under Valgrind and reports memory mistakes. Each card below is one test run (one addon); the number is how many distinct errors it found.</p>
+      <ul>
+        <li><b>Leak_DefinitelyLost</b>: memory was allocated and nothing points to it any more, so it can never be freed. Small leaks (tens of bytes) at startup are usually harmless; a leak inside a function that is called repeatedly grows without limit.</li>
+        <li><b>UninitCondition</b>: a branch depended on a value that was never set. Real bugs do this, but so does Node's own JIT compiler, so check who is in the stack.</li>
+        <li><b class="bad">ENGINE</b>: the code at fault is ours. The first frame after the allocator is in one of our addons (<code>*.node</code>). Same rule as <code>npm run valgrind:memcheck</code>, and the only class that fails <code>valgrind:check</code>.</li>
+        <li><b class="warn">VIA ENGINE</b>: our code is on the stack but the fault is inside Node or V8, for example a native object that was never finalised at exit. Often harmless, but it is our allocation, so read it.</li>
+        <li><b>RUNTIME</b>: Node, V8 or libc only. It appears in every run whatever the engine does. Nothing is suppressed or hidden, since it is part of what the engine costs; it just doesn't gate.</li>
+        <li><b>Hotspots</b> group errors by where they start, engine first. Click one to see its stacks. With addons built by <code>npm run valgrind:build-debug</code>, our frames show file and line.</li>
+      </ul>
+    </details>
+    <div class="stats" id="stats"></div>
+    <div class="panel"><b>Errors per report</b><div class="mut"><span class="bad">Red</span> is a fault in our code, <span class="warn">amber</span> is Node or V8 faulting through our code, grey is Node runtime noise.</div><div id="errchart"></div></div>
+    <div class="panel"><b>Hotspots</b><div class="mut">Where errors originate, most frequent first.</div><div id="hotspots"></div></div>
+    <div class="filters" id="filters" role="group" aria-label="Filter reports"></div>
+    <p id="msg" class="mut" role="status"></p>
+    <div id="list"></div>
+  </section>
+
+  <section id="callgrind" hidden>
+    <header><div><h1>Callgrind: CPU cost</h1><div class="mut" id="cgnote"></div></div><button id="cgreload">Reload</button></header>
+    <details class="help"><summary>How to read this</summary>
+      <p>Callgrind counts the CPU instructions (<b>Ir</b>) a workload executes, running each workload's operation (one tick, one physics step, one cook…) many times.</p>
+      <ul>
+        <li><b>Ir / op</b> is instructions per operation. Unlike wall-clock time it barely changes between runs of the same code, so a change means the code, not the machine, changed.</li>
+        <li><b>Baseline</b> is the committed reference in <code>perf/callgrind-baseline.json</code>. <b>Change</b> is the difference; beyond ±3% it is flagged.</li>
+        <li>A <b class="bad">slower</b> flag is a regression, or an intended cost that needs the baseline updated. <b class="ok">Faster</b> is an improvement. This includes the engine's own core cost: nothing is filtered out.</li>
+        <li>Counts are only comparable on the same Node version as the baseline. When the two differ the tab says so and colours everything amber instead of red or green.</li>
+        <li><b>Not measured</b> means the latest run has no result for that workload, for example it was skipped or not run.</li>
+      </ul>
+    </details>
+    <div id="cgbanner"></div>
+    <div class="stats" id="cgstats"></div>
+    <div class="panel"><b>Change vs baseline</b><div class="mut">Bars to the right are slower, to the left faster. Dotted lines mark the ±3% threshold.</div><div id="cgchart"></div></div>
+    <p id="cgmsg" class="mut" role="status"></p>
+    <div id="cglist"></div>
+  </section>
+
+  <section id="history" hidden>
+    <header><div><h1>History</h1><div class="mut">Runs over time. Record one with <code>npm run valgrind:record</code>; add <code>-- --promote</code> to commit it to perf/history.json.</div></div><button id="hreload">Reload</button></header>
+    <details class="help"><summary>How to read this</summary>
+      <ul>
+        <li>Each point is one recorded run (a snapshot of memcheck and callgrind results at that moment, with the git commit it was taken at).</li>
+        <li><b>Committed</b> runs live in <code>perf/history.json</code> and are shared through git. <b>Local</b> runs are only on this machine in <code>valgrind-out/history</code>.</li>
+        <li>The CPU chart shows each workload as a percentage of its first recorded value (100% = unchanged); a line climbing is a regression over time.</li>
+        <li>The memory chart shows error counts. A rising <b>engine</b> line is a new leak in our code.</li>
+        <li>Runs on different Node versions or with uncommitted changes (<b>dirty</b>) are marked, since they aren't strictly comparable.</li>
+        <li><b>Compare two runs</b> shows what changed between any two: per-workload CPU cost, error counts, and which errors in our code appeared or went away.</li>
+      </ul>
+    </details>
+    <p id="hmsg" class="mut" role="status"></p>
+    <div class="panel"><b>CPU cost, % of first run</b><div id="hcpu"></div></div>
+    <div class="panel"><b>Memcheck errors</b><div id="hmem"></div></div>
+    <div class="panel"><b>Compare two runs</b>
+      <div class="row"><label class="mut">From <select id="cmpA"></select></label><label class="mut">to <select id="cmpB"></select></label></div>
+      <div id="cmpOut"></div>
+    </div>
+    <div id="hlist"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const txt = (el, tag) => el?.getElementsByTagName(tag)[0]?.textContent.trim() ?? "";
+const fmt = (x) => x >= 1e9 ? (x / 1e9).toFixed(2) + " G" : x >= 1e6 ? (x / 1e6).toFixed(2) + " M" : x >= 1e3 ? (x / 1e3).toFixed(1) + " k" : String(Math.round(x));
+const stat = (l, v, c = "", sub = "") => `<div class="stat"><span class="mut">${l}</span><b class="${c}">${v}</b><span class="mut">${sub}</span></div>`;
+const PALETTE = ["#6c8cff", "#3ecf8e", "#f5a524", "#ff5d5d", "#b678ff", "#4fd1d9", "#ff8fb1", "#c3d94e"];
+
+/* ---------- charts (inline SVG, no dependencies) ---------- */
+function lineChart(labels, series, { yfmt = (v) => v, base = null, min = null } = {}) {
+  const W = 940, H = 240, L = 52, R = 12, T = 10, B = 28;
+  const vals = series.flatMap((s) => s.values).filter((v) => v !== null);
+  if (!vals.length) return '<p class="mut">No data.</p>';
+  let lo = Math.min(...vals, base ?? Infinity), hi = Math.max(...vals, base ?? -Infinity);
+  if (hi - lo < 2) { const c = (hi + lo) / 2; lo = c - 1; hi = c + 1; }
+  const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+  if (min !== null) lo = Math.max(min, lo);
+  const x = (i) => L + (labels.length === 1 ? (W - L - R) / 2 : (i / (labels.length - 1)) * (W - L - R));
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let g = "";
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + ((hi - lo) * k) / 4;
+    g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${esc(yfmt(v))}</text>`;
+  }
+  if (base !== null) g += `<line x1="${L}" x2="${W - R}" y1="${y(base)}" y2="${y(base)}" stroke="#8a92a3" stroke-dasharray="4 4"/>`;
+  const step = Math.max(1, Math.ceil(labels.length / 8));
+  labels.forEach((l, i) => { if (i % step === 0 || i === labels.length - 1) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="${labels.length > 1 && i === labels.length - 1 ? "end" : labels.length > 1 && i === 0 ? "start" : "middle"}">${esc(l)}</text>`; });
+  const lines = series.map((s, si) => {
+    const c = PALETTE[si % PALETTE.length];
+    const pts = s.values.map((v, i) => (v === null ? null : [x(i), y(v), v, i])).filter(Boolean);
+    return `<polyline fill="none" stroke="${c}" stroke-width="2" points="${pts.map((p) => p[0] + "," + p[1]).join(" ")}"/>` +
+      pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${c}"><title>${esc(s.name)} · ${esc(labels[p[3]])}: ${esc(yfmt(p[2]))}</title></circle>`).join("");
+  }).join("");
+  const legend = series.map((s, si) => `<span><i style="background:${PALETTE[si % PALETTE.length]}"></i>${esc(s.name)}</span>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${g}${lines}</svg><div class="legend">${legend}</div>`;
+}
+
+function hbars(rows, { stacked = false, zero = false, marks = [] } = {}) {
+  // rows: [{label, parts:[{v,color,title}]}]; zero: diverging bars around 0
+  const W = 940, rowH = 26, L = 150, R = 60, H = rows.length * rowH + 8;
+  const all = rows.flatMap((r) => r.parts.map((p) => p.v));
+  const max = Math.max(1, ...(zero ? all.map(Math.abs).concat(marks.map(Math.abs)) : rows.map((r) => r.parts.reduce((a, p) => a + p.v, 0))));
+  const span = W - L - R, mid = zero ? L + span / 2 : L;
+  const sx = (v) => (zero ? (v / max) * (span / 2) : (v / max) * span);
+  let g = zero ? marks.map((m) => `<line x1="${mid + sx(m)}" x2="${mid + sx(m)}" y1="0" y2="${H}" stroke="#8a92a3" stroke-dasharray="2 4"/>`).join("") + `<line x1="${mid}" x2="${mid}" y1="0" y2="${H}" stroke="#2a2f3a"/>` : "";
+  rows.forEach((r, i) => {
+    const yy = i * rowH + 4; let off = 0;
+    g += `<text x="${L - 8}" y="${yy + 15}" text-anchor="end">${esc(r.label)}</text>`;
+    for (const p of r.parts) {
+      const w = Math.abs(sx(p.v)), xx = zero ? (p.v < 0 ? mid - w : mid) : mid + off;
+      if (w > 0) g += `<rect x="${xx}" y="${yy}" width="${Math.max(w, 2)}" height="18" rx="3" fill="${p.color}"><title>${esc(p.title)}</title></rect>`;
+      off += w;
+    }
+    const total = r.parts.reduce((a, p) => a + p.v, 0);
+    g += `<text x="${zero ? W - R + 6 : mid + off + 6}" y="${yy + 14}">${esc(r.right ?? total)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${g}</svg>`;
+}
+
+/* ---------- memcheck ---------- */
+const failing = (r) => r.invalid || r.errors.length > 0;
+// Same rule as scripts/valgrind/memcheck.mjs (isOurs) and lib.mjs (parseErrors).
+const RUNTIME_FRAME = /vgpreload_|\/libc[.-]|\/libstdc\+\+|\/libm[.-]|\/libgcc|ld-linux/;
+const CLS = { engine: ["ENGINE", "bad", "#ff5d5d"], via: ["VIA ENGINE", "warn", "#f5a524"], runtime: ["RUNTIME", "mut", "#4a5163"] };
+const badge = (c) => `<span class="badge ${CLS[c][1]}">${CLS[c][0]}</span>`;
+let reports = [], filter = "all";
+
+function parse(name, xml) {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const r = { name, command: "", status: "", time: "", errors: [], invalid: false };
+  if (doc.getElementsByTagName("parsererror").length) { r.invalid = true; return r; }
+  const root = doc.documentElement, kids = [...root.children];
+  const cmd = [...root.querySelectorAll("preamble > line")].map((l) => l.textContent).find((l) => l.startsWith("Command:"));
+  r.command = (cmd ?? "").replace("Command:", "").trim();
+  const st = kids.filter((c) => c.tagName === "status").pop();
+  r.status = txt(st, "state"); r.time = txt(st, "time");
+  r.errors = kids.filter((c) => c.tagName === "error").map((e) => {
+    const x = e.getElementsByTagName("xwhat")[0];
+    const stack = [...(e.getElementsByTagName("stack")[0]?.getElementsByTagName("frame") ?? [])].map((f) => ({
+      fn: txt(f, "fn") || txt(f, "ip"), obj: txt(f, "obj"),
+      loc: txt(f, "file") ? `${txt(f, "file")}:${txt(f, "line")}` : null,
+      where: txt(f, "file") ? `${txt(f, "file")}:${txt(f, "line")}` : txt(f, "obj").split("/").pop(),
+    }));
+    const first = stack.find((f) => !RUNTIME_FRAME.test(f.obj)), ours = stack.find((f) => f.obj.endsWith(".node"));
+    const cls = first?.obj.endsWith(".node") ? "engine" : ours ? "via" : "runtime";
+    const o = cls === "runtime" ? first : ours;
+    return { kind: txt(e, "kind"), title: x ? txt(x, "text") : txt(e, "what"), bytes: Number(txt(x, "leakedbytes")) || 0, stack, cls, origin: o?.fn ?? "unknown", loc: o?.loc ?? null };
+  });
+  return r;
+}
+
+function renderMemcheck() {
+  const bad = reports.filter(failing).length;
+  const all = reports.flatMap((r) => r.errors);
+  const n = (c) => all.filter((e) => e.cls === c).length;
+  const leaked = all.reduce((a, e) => a + e.bytes, 0);
+  $("stats").innerHTML = stat("Reports", reports.length) + stat("Failing", bad, bad ? "bad" : "ok", "any error, any origin") +
+    stat("Engine errors", n("engine"), n("engine") ? "bad" : "ok", "fault in our addons") + stat("Via engine", n("via"), n("via") ? "warn" : "ok", "ours on the stack") +
+    stat("Runtime", n("runtime"), "", "Node / V8 / libc") + stat("Leaked", leaked + " B", leaked ? "warn" : "ok", "definite leaks");
+  $("errchart").innerHTML = reports.length ? hbars(reports.map((r) => ({
+    label: r.name.replace(/\.xml$/, ""),
+    parts: ["engine", "via", "runtime"].map((c) => ({ v: r.errors.filter((e) => e.cls === c).length, color: CLS[c][2], title: CLS[c][0].toLowerCase() + " errors" })),
+  })), { stacked: true }) : '<p class="mut">No reports.</p>';
+  const groups = new Map();
+  for (const r of reports) for (const e of r.errors) {
+    const key = e.cls + "|" + e.kind + "|" + e.origin;
+    const g = groups.get(key) ?? { cls: e.cls, kind: e.kind, origin: e.origin, loc: e.loc, count: 0, bytes: 0, stacks: new Map() };
+    g.count++; g.bytes += e.bytes; g.stacks.set(r.name.replace(/\.xml$/, ""), e.stack); groups.set(key, g);
+  }
+  const order = { engine: 0, via: 1, runtime: 2 };
+  hot = [...groups.values()].sort((a, b) => order[a.cls] - order[b.cls] || b.count - a.count || b.bytes - a.bytes);
+  $("hotspots").innerHTML = hot.length ? `<table><thead><tr><th>Origin</th><th style="text-align:left">Kind</th><th style="text-align:left">Reports</th><th>Count</th><th>Bytes</th></tr></thead><tbody>${hot.map((g, i) =>
+    `<tr><td>${badge(g.cls)} <button class="link" data-hot="${i}" aria-expanded="${openHot.has(i)}"><code>${esc(g.origin)}</code></button>${g.loc ? ` <span class="mut">${esc(g.loc)}</span>` : ""}</td><td style="text-align:left">${esc(g.kind)}</td><td style="text-align:left" class="mut">${esc([...g.stacks.keys()].join(", "))}</td><td>${g.count}</td><td>${g.bytes || "—"}</td></tr>` +
+    (openHot.has(i) ? `<tr class="drill"><td colspan="5">${[...g.stacks].map(([name, st]) => `<div class="mut">${esc(name)}</div><ol>${st.map((f) => `<li>${esc(f.fn)} <span class="mut">${esc(f.where)}</span></li>`).join("")}</ol>`).join("")}</td></tr>` : "")).join("")}</tbody></table>` : '<p class="mut">No errors.</p>';
+  $("filters").innerHTML = ["all", "failing", "clean"].map((f) => `<button data-f="${f}" aria-pressed="${filter === f}">${f}</button>`).join("");
+  $("list").innerHTML = reports.filter((r) => filter === "all" || (filter === "failing") === failing(r)).map((r) => {
+    const b = failing(r), eng = r.errors.filter((e) => e.cls === "engine").length;
+    const label = r.invalid ? "INVALID" : b ? `${r.errors.length} ERROR${r.errors.length > 1 ? "S" : ""}` : "CLEAN";
+    const errors = r.errors.map((e) => `<details class="err"><summary>${badge(e.cls)} <code>${esc(e.kind)}</code> ${esc(e.title)}</summary><ol>${
+      e.stack.map((f) => `<li>${esc(f.fn)} <span class="mut">${esc(f.where)}</span></li>`).join("")}</ol></details>`).join("");
+    return `<details class="card"${eng ? " open" : ""}><summary><span class="badge ${b ? "bad" : "ok"}">${label}</span><strong>${esc(r.name.replace(/\.xml$/, ""))}</strong>
+      <span class="mut">${esc(r.status)} ${esc(r.time)}</span></summary>
+      <div class="body">${r.command ? `<code>${esc(r.command)}</code>` : ""}${b ? errors : '<p class="mut">No errors reported.</p>'}</div></details>`;
+  }).join("");
+}
+let hot = []; const openHot = new Set();
+
+async function loadMemcheck() {
+  $("msg").textContent = "Loading…";
+  try {
+    const { files } = await (await fetch("/api/reports")).json();
+    reports = files.map((f) => parse(f.name, f.xml));
+    $("msg").textContent = files.length ? "" : "No reports yet. Run `npm run valgrind:memcheck`, or drop XML files here.";
+  } catch (e) { $("msg").textContent = "Could not load reports: " + e.message; }
+  renderMemcheck();
+}
+async function addFiles(files) {
+  const added = await Promise.all([...files].map(async (f) => parse(f.name, await f.text())));
+  reports = [...reports.filter((r) => !added.some((a) => a.name === r.name)), ...added];
+  renderMemcheck();
+}
+
+/* ---------- callgrind ---------- */
+const THRESHOLD = 3;
+async function getJson(url, what) {
+  const res = await fetch(url);
+  if (res.status === 404) throw new Error("the dashboard server is out of date. Stop it and rerun `npm run valgrind:dashboard`");
+  return res.json();
+}
+async function loadCallgrind() {
+  $("cgmsg").textContent = "Loading…";
+  try {
+    const d = await getJson("/api/callgrind");
+    const w = d.workloads, m = w.filter((x) => x.irPerOp !== null);
+    const off = d.nodeMismatch; // counts from another Node than the baseline aren't comparable
+    const slower = m.filter((x) => x.deltaPct > THRESHOLD).length, faster = m.filter((x) => x.deltaPct < -THRESHOLD).length;
+    $("cgbanner").innerHTML = off ? `<div class="banner" role="alert"><b class="warn">Not comparable.</b> The baseline was measured on Node ${esc(d.baselineNode)} but the latest run used ${esc(d.runNode)}, so every change below may come from the Node upgrade rather than from the engine. Re-measure the baseline on one Node with <code>npm run valgrind:perf -- --update</code>, or run with the baseline's Node.</div>` : "";
+    $("cgnote").textContent = "Instructions per operation vs perf/callgrind-baseline.json" + (d.baselineNode ? " (baseline Node " + d.baselineNode + ")" : "") + ". Refresh with `npm run valgrind:perf`.";
+    $("cgstats").innerHTML = stat("Workloads", w.length) + stat("Measured", m.length) + (off ? stat("Over baseline", slower, "warn", "not comparable") + stat("Under baseline", faster, "warn", "not comparable") : stat("Slower than baseline", slower, slower ? "bad" : "ok") + stat("Faster", faster, "ok"));
+    $("cgchart").innerHTML = m.length ? hbars(m.map((x) => ({
+      label: x.name, right: (x.deltaPct > 0 ? "+" : "") + x.deltaPct.toFixed(1) + "%",
+      parts: [{ v: x.deltaPct, color: off ? "#f5a524" : x.deltaPct > THRESHOLD ? "#ff5d5d" : "#3ecf8e", title: x.name + " " + x.deltaPct.toFixed(2) + "% vs baseline" }],
+    })), { zero: true, marks: [-THRESHOLD, THRESHOLD] }) : '<p class="mut">No data.</p>';
+    const max = Math.max(1, ...m.map((x) => x.irPerOp));
+    $("cglist").innerHTML = w.length ? `<table><thead><tr><th>Workload</th><th>Ir / op</th><th>Baseline</th><th>Change</th><th>Relative cost</th></tr></thead><tbody>${
+      w.map((x) => {
+        const c = x.deltaPct === null ? "mut" : off ? "warn" : x.deltaPct > THRESHOLD ? "bad" : "ok";
+        return `<tr><td><strong>${esc(x.name)}</strong> <span class="mut">per ${esc(x.unit)}</span></td><td>${x.irPerOp === null ? "—" : fmt(x.irPerOp)}</td><td>${x.baseline === null ? "—" : fmt(x.baseline)}</td>
+          <td class="${c}">${x.deltaPct === null ? "not measured" : (x.deltaPct > 0 ? "+" : "") + x.deltaPct.toFixed(2) + "%"}</td>
+          <td><div class="bar"><i style="width:${x.irPerOp === null ? 0 : (x.irPerOp / max) * 100}%"></i></div></td></tr>`;
+      }).join("")}</tbody></table>` : "";
+    $("cgmsg").textContent = w.length ? "" : "No callgrind results yet. Run `npm run valgrind:perf`.";
+  } catch (e) { $("cgmsg").textContent = "Could not load results: " + e.message; }
+}
+
+/* ---------- history ---------- */
+async function loadHistory() {
+  $("hmsg").textContent = "Loading…";
+  try {
+    const d = await getJson("/api/history");
+    const runs = [...d.committed, ...d.local].sort((a, b) => a.time.localeCompare(b.time));
+    $("hmsg").textContent = runs.length ? (runs.length === 1 ? "One run so far; record more to see trends." : "") : "No runs recorded yet. Run `npm run valgrind:record`.";
+    const labels = runs.map((r) => r.time.slice(5, 16).replace("T", " "));
+    const names = [...new Set(runs.flatMap((r) => Object.keys(r.callgrind ?? {})))].sort();
+    const first = Object.fromEntries(names.map((n) => [n, runs.map((r) => r.callgrind?.[n]?.irPerOp).find((v) => v !== undefined)]));
+    $("hcpu").innerHTML = names.length ? lineChart(labels, names.map((n) => ({ name: n, values: runs.map((r) => { const v = r.callgrind?.[n]?.irPerOp; return v === undefined ? null : (v / first[n]) * 100; }) })), { yfmt: (v) => v.toFixed(1) + "%", base: 100 }) : '<p class="mut">No callgrind data in any run.</p>';
+    $("hmem").innerHTML = runs.length ? lineChart(labels, [
+      { name: "all errors", values: runs.map((r) => r.memcheck?.errors ?? null) },
+      { name: "engine errors", values: runs.map((r) => r.memcheck?.engineErrors ?? null) },
+    ], { yfmt: (v) => v.toFixed(0), min: 0 }) : "";
+    $("hlist").innerHTML = runs.length ? `<table><thead><tr><th>Run</th><th>Commit</th><th>Node</th><th>Errors</th><th>Engine</th><th>Leaked B</th><th>Workloads</th></tr></thead><tbody>${[...runs].reverse().map((r) =>
+      `<tr><td>${esc(r.time.slice(0, 16).replace("T", " "))} <span class="badge ${r.source === "committed" ? "ok" : "mut"}">${r.source.toUpperCase()}</span></td>
+       <td><code>${esc(r.commit)}</code>${r.dirty ? ' <span class="badge warn">dirty</span>' : ""}</td><td>${esc(r.node)}</td>
+       <td>${r.memcheck?.errors ?? "—"}</td><td class="${r.memcheck?.engineErrors ? "bad" : ""}">${r.memcheck?.engineErrors ?? "—"}</td><td>${r.memcheck?.leakedBytes ?? "—"}</td><td>${Object.keys(r.callgrind ?? {}).length}</td></tr>`).join("")}</tbody></table>` : "";
+    fillCompare(runs);
+  } catch (e) { $("hmsg").textContent = "Could not load history: " + e.message; }
+}
+
+let cmpRuns = [];
+const runName = (r) => `${r.time.slice(0, 16).replace("T", " ")} · ${r.commit}${r.dirty ? " (dirty)" : ""} · ${r.source}`;
+function fillCompare(runs) {
+  cmpRuns = runs;
+  const opts = runs.map((r, i) => `<option value="${i}">${esc(runName(r))}</option>`).join("");
+  $("cmpA").innerHTML = opts; $("cmpB").innerHTML = opts;
+  if (runs.length > 1) { $("cmpA").value = runs.length - 2; $("cmpB").value = runs.length - 1; }
+  renderCompare();
+}
+function renderCompare() {
+  const a = cmpRuns[$("cmpA").value], b = cmpRuns[$("cmpB").value];
+  if (!a || !b) { $("cmpOut").innerHTML = '<p class="mut">Record at least one run to compare.</p>'; return; }
+  const off = a.node !== b.node;
+  const warn = [off ? `These runs used different Node versions (${esc(a.node)} and ${esc(b.node)}), so CPU changes may come from Node.` : "", a.dirty || b.dirty ? "At least one run had uncommitted changes, so it can't be tied to a commit exactly." : ""].filter(Boolean);
+  const names = [...new Set([...Object.keys(a.callgrind ?? {}), ...Object.keys(b.callgrind ?? {})])].sort();
+  const cpu = names.map((n) => {
+    const x = a.callgrind?.[n]?.irPerOp, y = b.callgrind?.[n]?.irPerOp, d = x && y ? ((y - x) / x) * 100 : null;
+    const c = d === null ? "mut" : off ? "warn" : d > THRESHOLD ? "bad" : d < -THRESHOLD ? "ok" : "";
+    return `<tr><td><strong>${esc(n)}</strong></td><td>${x ? fmt(x) : "—"}</td><td>${y ? fmt(y) : "—"}</td><td class="${c}">${d === null ? "n/a" : (d > 0 ? "+" : "") + d.toFixed(2) + "%"}</td></tr>`;
+  }).join("");
+  const m = (r, k) => r.memcheck?.[k] ?? 0;
+  const mem = [["Errors", "errors"], ["In our code", "engineErrors"], ["Via our code", "viaErrors"], ["Leaked bytes", "leakedBytes"]].map(([l, k]) => {
+    const d = m(b, k) - m(a, k);
+    return `<tr><td>${l}</td><td>${m(a, k)}</td><td>${m(b, k)}</td><td class="${d > 0 ? "bad" : d < 0 ? "ok" : ""}">${d > 0 ? "+" : ""}${d}</td></tr>`;
+  }).join("");
+  const keyed = (r) => r.memcheck?.engineKeys && r.memcheck?.viaKeys;
+  let keys = '<p class="mut">One of these runs was recorded before per-error tracking, so individual errors can\'t be compared.</p>';
+  if (keyed(a) && keyed(b)) {
+    const diff = (k, l) => { const A = new Set(a.memcheck[k]), B = new Set(b.memcheck[k]);
+      return [...B].filter((x) => !A.has(x)).map((x) => `<li><span class="badge bad">NEW</span> ${l}: <code>${esc(x.split("|").join("  "))}</code></li>`).concat([...A].filter((x) => !B.has(x)).map((x) => `<li><span class="badge ok">GONE</span> ${l}: <code>${esc(x.split("|").join("  "))}</code></li>`)); };
+    const rows = [...diff("engineKeys", "our code"), ...diff("viaKeys", "via our code")];
+    keys = rows.length ? `<ul>${rows.join("")}</ul>` : '<p class="mut">The same errors in our code in both runs.</p>';
+  }
+  $("cmpOut").innerHTML = warn.map((w) => `<div class="banner">${w}</div>`).join("") +
+    `<table><thead><tr><th>CPU, per op</th><th>From</th><th>To</th><th>Change</th></tr></thead><tbody>${cpu || '<tr><td colspan="4" class="mut">No callgrind data.</td></tr>'}</tbody></table>` +
+    `<table style="margin-top:12px"><thead><tr><th>Memcheck</th><th>From</th><th>To</th><th>Change</th></tr></thead><tbody>${mem}</tbody></table>` + keys;
+}
+$("cmpA").onchange = renderCompare; $("cmpB").onchange = renderCompare;
+
+/* ---------- running jobs ---------- */
+let polling = null, wasRunning = false;
+const jobButtons = () => document.querySelectorAll("[data-job]");
+function showRun(run) {
+  const running = Boolean(run?.running);
+  jobButtons().forEach((b) => { b.disabled = running; });
+  $("stop").hidden = !running;
+  $("runlog").hidden = !run;
+  $("runlog").textContent = run?.log ?? "";
+  if (running) $("runlog").scrollTop = $("runlog").scrollHeight;
+  $("runstate").textContent = !run ? "" : running ? `Running ${run.name}… ${run.seconds}s` : `${run.name} finished${run.exitCode === 0 ? "" : " with exit code " + run.exitCode}.`;
+  if (running && !polling) polling = setInterval(pollRun, 1500);
+  if (!running && polling) { clearInterval(polling); polling = null; }
+  if (wasRunning && !running) VIEWS[currentView()][1](); // the job wrote new results
+  wasRunning = running;
+}
+async function pollRun() { try { showRun((await (await fetch("/api/run")).json()).run); } catch { /* server gone; try again */ } }
+async function post(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "X-Valgrind-Dashboard": "1", "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+  return res.json();
+}
+document.querySelector(".runbar").onclick = async (e) => {
+  if (e.target.id === "stop") return showRun((await post("/api/run/cancel")).run);
+  const job = e.target.dataset?.job;
+  if (!job) return;
+  const d = await post("/api/run", { job });
+  if (d.error && !d.run) $("runstate").textContent = d.error; else showRun(d.run);
+};
+fetch("/api/run").then((r) => (r.status === 404 ? Promise.reject() : r.json())).then((d) => showRun(d.run))
+  .catch(() => { document.querySelector(".runbar").hidden = true; }); // an older server without /api/run
+
+/* ---------- shell ---------- */
+const VIEWS = { memcheck: ["Memcheck", loadMemcheck], callgrind: ["Callgrind perf", loadCallgrind], history: ["History", loadHistory] };
+const currentView = () => (VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : "memcheck");
+function route() {
+  const v = currentView();
+  $("nav").innerHTML = Object.entries(VIEWS).map(([id, [label]]) => `<a href="#${id}"${id === v ? ' aria-current="page"' : ""}>${label}</a>`).join("");
+  for (const id of Object.keys(VIEWS)) $(id).hidden = id !== v;
+  VIEWS[v][1]();
+}
+addEventListener("hashchange", route);
+$("reload").onclick = loadMemcheck; $("cgreload").onclick = loadCallgrind; $("hreload").onclick = loadHistory;
+$("pick").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+$("filters").onclick = (e) => { if (e.target.dataset.f) { filter = e.target.dataset.f; renderMemcheck(); } };
+$("hotspots").onclick = (e) => { const b = e.target.closest("[data-hot]"); if (b) { const i = Number(b.dataset.hot); openHot.has(i) ? openHot.delete(i) : openHot.add(i); renderMemcheck(); } };
+addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("drop"); });
+addEventListener("dragleave", () => document.body.classList.remove("drop"));
+addEventListener("drop", (e) => { e.preventDefault(); document.body.classList.remove("drop"); addFiles(e.dataTransfer.files); });
+route();
+</script>
+</body>
+</html>
