@@ -1955,7 +1955,69 @@ export function AnimDetails(): React.JSX.Element {
   );
 }
 
+/** Per-clip animation data (sample): locomotion state, combat move and
+ *  timeline tracks. Loop clips build a loop timeline; combat clips build
+ *  a hit/cancel timeline. */
+export interface AnimClipData {
+  loco: string;
+  move: string;
+  frames: number;
+  fps: number;
+  kind: "loop" | "combat";
+  hitAt?: number;
+  cancelEnd?: number;
+  sound?: string;
+  vfx?: string;
+  travel?: string;
+  source: string;
+}
+
+export const ANIM_CLIPS: Record<string, AnimClipData> = {
+  Idle_Loop: { loco: "Idle", move: "idle.breathe", frames: 120, fps: 30, kind: "loop", sound: "idle.breath", source: "UAL · retargeted Synty" },
+  Walk_Fwd: { loco: "Walk", move: "walk.fwd", frames: 32, fps: 30, kind: "loop", sound: "step.grass", travel: "1.1 m / loop", source: "UAL · retargeted Synty" },
+  Jog_Fwd: { loco: "Jog", move: "jog.fwd", frames: 24, fps: 30, kind: "loop", sound: "step.grass", travel: "1.8 m / loop", source: "UAL · retargeted Synty" },
+  Jog_Strafe_L: { loco: "Jog", move: "jog.strafe", frames: 24, fps: 30, kind: "loop", sound: "step.grass", source: "UAL · retargeted Synty" },
+  Sprint_Fwd: { loco: "Sprint", move: "sprint.fwd", frames: 20, fps: 30, kind: "loop", sound: "step.rock", travel: "3.4 m / loop", source: "UAL · retargeted Synty" },
+  Swim_Fwd: { loco: "Swim", move: "swim.fwd", frames: 40, fps: 30, kind: "loop", source: "UAL · retargeted Synty" },
+  Sword_Slash_R: { loco: "Idle", move: "sword.slash", frames: 24, fps: 30, kind: "combat", hitAt: 12.5, cancelEnd: 22, sound: "hit.sword", vfx: "trail.sword · hit.spark", travel: "1.2 m", source: "KI · retargeted Synty" },
+  Axe_Chop: { loco: "Idle", move: "axe.chop", frames: 30, fps: 30, kind: "combat", hitAt: 16, cancelEnd: 27, sound: "hit.axe", vfx: "hit.spark", travel: "0.8 m", source: "KI · retargeted Synty" },
+  Block_Hold: { loco: "Idle", move: "block.hold", frames: 18, fps: 30, kind: "combat", hitAt: 2, cancelEnd: 18, sound: "block.shield", source: "KI · retargeted Synty" },
+  Hit_React_F: { loco: "Idle", move: "hit.react", frames: 16, fps: 30, kind: "combat", hitAt: 4, cancelEnd: 14, source: "CMU · retargeted Synty" },
+  Death_Back: { loco: "Idle", move: "death.back", frames: 48, fps: 30, kind: "combat", hitAt: 10, cancelEnd: 48, source: "CMU · retargeted Synty" },
+};
+
+type AnimTrack = [string, number, number, string, string];
+
+function animTracks(id: string, d: AnimClipData): AnimTrack[] {
+  if (d.kind === "loop") {
+    const rows: AnimTrack[] = [
+      ["clip", 0, d.frames, "#434659", `${id} · ${d.source}`],
+      ["loop", 0, d.frames, "#1F5110", `loop 0–${d.frames}`],
+    ];
+    if (d.travel) rows.push(["root motion", 0, d.frames, "#3a3355", `travel ${d.travel}`]);
+    if (d.sound) rows.push(["sound", 0, Math.min(4, d.frames), "#36449A", d.sound]);
+    return rows;
+  }
+  const hit = d.hitAt ?? Math.round(d.frames / 2);
+  const cancel = d.cancelEnd ?? d.frames;
+  const rows: AnimTrack[] = [
+    ["clip", 0, d.frames, "#434659", `${id} · ${d.source}`],
+    ["wind-up", 0, hit, "#5a3a1a", `wind-up 0–${hit}`],
+    ["hit", hit, hit + 1.5, "#93000A", ""],
+    ["cancel window", hit + 3.5, cancel, "#1F5110", `cancel ${hit + 3.5}–${cancel}`],
+  ];
+  if (d.travel) rows.push(["root motion", Math.max(0, hit - 6.5), hit + 2.5, "#3a3355", `travel ${d.travel}`]);
+  if (d.sound) rows.push(["sound", hit, hit + 2, "#36449A", d.sound]);
+  if (d.vfx) rows.push(["vfx", hit - 1.5, hit + 2.5, "#7A2E12", d.vfx]);
+  rows.push(["target reaction", hit + 0.5, hit + 5.5, "#434659", "Hit_React_F · CMU"]);
+  rows.push(["camera", hit + 0.5, hit + 2, "#1F5110", "shake 0.2"]);
+  return rows;
+}
+
 export function AnimPreview(): React.JSX.Element {
+  const { clip } = artStore.use();
+  const data = ANIM_CLIPS[clip] ?? ANIM_CLIPS["Jog_Fwd"];
+  const tracks = animTracks(clip, data);
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · Art & audio (§7c.4)">Clips, the locomotion state machine and the combat timeline.</PreviewBadge>
@@ -1966,7 +2028,7 @@ export function AnimPreview(): React.JSX.Element {
               [380, 40, "Air", "mode = air"], [380, 140, "Sprint", "speed > 5.5"], [30, 180, "Swim", "mode = swim"],
             ].map(([x, y, t, s]) => (
               <g key={t as string}>
-                <rect x={x as number} y={y as number} width="130" height="52" rx="10" fill={t === "Jog" ? "#36449A" : "#292A2F"} stroke={t === "Jog" ? "#B9C3FF" : "#46464F"} strokeWidth={t === "Jog" ? 2 : 1} />
+                <rect x={x as number} y={y as number} width="130" height="52" rx="10" fill={t === data.loco ? "#36449A" : "#292A2F"} stroke={t === data.loco ? "#B9C3FF" : "#46464F"} strokeWidth={t === data.loco ? 2 : 1} />
                 <text x={(x as number) + 12} y={(y as number) + 22} fill="#E3E1E9" fontSize="12" fontWeight="600">{t}</text>
                 <text x={(x as number) + 12} y={(y as number) + 40} fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">{s}</text>
               </g>
@@ -1984,24 +2046,14 @@ export function AnimPreview(): React.JSX.Element {
             <text x="272" y="120" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">0.2 s</text>
           </svg>
           <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-            <p className="mb-2 text-sm"><span className="font-mono font-semibold">sword.slash</span> <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>COMBAT_MOVES · 24 frames · 30 fps · server ticks shown</span></p>
-            {[
-              ["clip", 0, 24, "#434659", "Sword_Slash_R · retargeted Synty"],
-              ["wind-up", 0, 8, "#5a3a1a", "wind-up 0–8"],
-              ["hit", 12.5, 14, "#93000A", ""],
-              ["cancel window", 16, 22, "#1F5110", "cancel 16–22"],
-              ["root motion", 6, 15, "#3a3355", "travel 1.2 m"],
-              ["sound", 12.5, 14.5, "#36449A", "hit.sword"],
-              ["vfx", 11, 15, "#7A2E12", "trail.sword · hit.spark"],
-              ["target reaction", 13, 18, "#434659", "Hit_React_F · CMU"],
-              ["camera", 13, 14.5, "#1F5110", "shake 0.2"],
-            ].map(([label, a, b, bg, text]) => (
+            <p className="mb-2 text-sm"><span className="font-mono font-semibold">{data.move}</span> <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>COMBAT_MOVES · {data.frames} frames · {data.fps} fps · server ticks shown</span></p>
+            {tracks.map(([label, a, b, bg, text]) => (
               <div key={label as string} className="flex items-center gap-2" style={{ height: 30 }}>
                 <span className="w-28 flex-none text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</span>
                 <div className="relative h-5 flex-1 rounded-md" style={{ background: "var(--m3-surface-1)" }}>
                   <span
                     className="absolute top-0 h-full overflow-hidden whitespace-nowrap rounded-md px-2 font-mono text-[11px] leading-5"
-                    style={{ left: `${(a as number) / 24 * 100}%`, width: `${((b as number) - (a as number)) / 24 * 100}%`, background: bg as string, color: "#E3E1E9" }}
+                    style={{ left: `${(a as number) / data.frames * 100}%`, width: `${((b as number) - (a as number)) / data.frames * 100}%`, background: bg as string, color: "#E3E1E9" }}
                   >
                     {text}
                   </span>
@@ -2009,10 +2061,10 @@ export function AnimPreview(): React.JSX.Element {
               </div>
             ))}
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <OutlinedField label="Condition" value="speed > 1.8" />
+              <OutlinedField label="Condition" value={data.kind === "loop" ? "always · loops" : "combat input"} />
               <OutlinedField label="Crossfade" value="0.20 s" />
             </div>
-            <p className="mt-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Played on: Human F · Human M · Goblin · Blend space: jog (fwd / strafe L–R / back)</p>
+            <p className="mt-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Played on: Human F · Human M · Goblin · {clip} · {data.source}</p>
           </div>
         </div>
       </div>
@@ -2024,12 +2076,80 @@ export const EFFECTS: Array<[string, string]> = [
   ["element.storm", "orb"], ["aura.heal", "quarks"], ["trail.sword", "trail"], ["hit.spark", "quarks"],
 ];
 
+/** Per-effect particle data (sample): emitter tuning, palette, quality
+ *  budgets and the signal that drives it. */
+export interface VfxEffectData {
+  rate: string;
+  life: string;
+  speed: string;
+  shape: string;
+  colors: [string, string, string];
+  seed: number;
+  duration: string;
+  budgets: Array<[string, number, string]>;
+  overBudgetNote: string | null;
+  signals: Array<[string, string]>;
+}
+
+export const VFX_EFFECTS: Record<string, VfxEffectData> = {
+  "campfire.embers": {
+    rate: "80 /s", life: "1.6 s", speed: "0.8–2.4", shape: "cone 18°",
+    colors: ["#FFE9D6", "#E8A37A", "#8a4a2a"], seed: 11, duration: "0.67 / 1.60 s",
+    budgets: [["low", 140, "210 / 150"], ["medium", 52, "210 / 400"], ["high", 26, "210 / 800"], ["ultra", 13, "210 / 1600"]],
+    overBudgetNote: "Low is over budget: lower the rate or drop to 60 % on low.",
+    signals: [["prefab: campfire", "attach"], ["night only", "time of day"], ["wind drift", "weather"]],
+  },
+  "weather.snow": {
+    rate: "400 /s", life: "6.0 s", speed: "1.0–2.0", shape: "box 40×1×40",
+    colors: ["#FFFFFF", "#C9D6E8", "#8fa3bd"], seed: 23, duration: "looping",
+    budgets: [["low", 80, "800 / 1000"], ["medium", 40, "800 / 2000"], ["high", 20, "800 / 4000"], ["ultra", 10, "800 / 8000"]],
+    overBudgetNote: null,
+    signals: [["biome has snow", "climate"], ["wind drift", "weather"]],
+  },
+  "weather.rain": {
+    rate: "900 /s", life: "1.1 s", speed: "18–22", shape: "box 30×1×30",
+    colors: ["#DCE9F5", "#9FB8D0", "#5f748c"], seed: 37, duration: "looping",
+    budgets: [["low", 90, "900 / 1000"], ["medium", 45, "900 / 2000"], ["high", 22, "900 / 4000"], ["ultra", 11, "900 / 8000"]],
+    overBudgetNote: null,
+    signals: [["biome has rain", "climate"], ["splash on hit", "collision"]],
+  },
+  "element.storm": {
+    rate: "60 /s", life: "0.9 s", speed: "6–14", shape: "sphere 2.5",
+    colors: ["#E8F4FF", "#9CC8FF", "#3d5a80"], seed: 51, duration: "0.80 / 1.20 s",
+    budgets: [["low", 120, "180 / 150"], ["medium", 45, "180 / 400"], ["high", 22, "180 / 800"], ["ultra", 11, "180 / 1600"]],
+    overBudgetNote: "Low is over budget: shorten life to 0.7 s on low.",
+    signals: [["spell: storm", "cast"], ["lightning flash", "light"]],
+  },
+  "aura.heal": {
+    rate: "36 /s", life: "2.2 s", speed: "0.4–1.0", shape: "torus 1.2",
+    colors: ["#E4FFE4", "#9CD67D", "#2d6a2d"], seed: 67, duration: "loop while buffed",
+    budgets: [["low", 36, "72 / 200"], ["medium", 18, "72 / 400"], ["high", 9, "72 / 800"], ["ultra", 4, "72 / 1600"]],
+    overBudgetNote: null,
+    signals: [["buff: regen", "status"], ["pulse on tick", "server tick"]],
+  },
+  "trail.sword": {
+    rate: "120 /s", life: "0.35 s", speed: "0–1", shape: "ribbon",
+    colors: ["#FFFFFF", "#B9C3FF", "#5a6a9a"], seed: 83, duration: "swing only",
+    budgets: [["low", 60, "120 / 200"], ["medium", 30, "120 / 400"], ["high", 15, "120 / 800"], ["ultra", 7, "120 / 1600"]],
+    overBudgetNote: null,
+    signals: [["sword.slash · swing", "combat move"], ["blade socket", "attach"]],
+  },
+  "hit.spark": {
+    rate: "200 /s", life: "0.4 s", speed: "4–12", shape: "burst",
+    colors: ["#FFF6E0", "#E8A33D", "#7A2E12"], seed: 97, duration: "one-shot",
+    budgets: [["low", 66, "100 / 150"], ["medium", 25, "100 / 400"], ["high", 12, "100 / 800"], ["ultra", 6, "100 / 1600"]],
+    overBudgetNote: null,
+    signals: [["hit confirmed", "combat"], ["surface decal", "collision"]],
+  },
+};
+
 export function VfxPreview(): React.JSX.Element {
   const { effect } = artStore.use();
+  const data = VFX_EFFECTS[effect] ?? VFX_EFFECTS["campfire.embers"];
   const dots = React.useMemo(() => {
-    const r = rnd(1337);
+    const r = rnd(data.seed);
     return Array.from({ length: 130 }, () => ({ x: 30 + r() * 240, y: 20 + Math.pow(r(), 1.6) * 250, s: 1 + r() * 3, o: 0.25 + r() * 0.75 }));
-  }, []);
+  }, [data.seed]);
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · Art & audio (§7c.5)">Particles, materials, post and quality tiers with per-tier budgets.</PreviewBadge>
@@ -2060,7 +2180,7 @@ export function VfxPreview(): React.JSX.Element {
           <div className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-xl" style={{ background: "#0a0a0e", aspectRatio: "4/5" }}>
             <svg viewBox="0 0 300 330" className="absolute inset-0 h-full w-full" aria-hidden="true">
               {dots.map((d, i) => (
-                <circle key={i} cx={d.x} cy={d.y} r={d.s} fill={d.y > 220 ? "#FFE9D6" : d.y > 140 ? "#E8A37A" : "#8a4a2a"} opacity={d.o} />
+                <circle key={i} cx={d.x} cy={d.y} r={d.s} fill={d.y > 220 ? data.colors[0] : d.y > 140 ? data.colors[1] : data.colors[2]} opacity={d.o} />
               ))}
               <ellipse cx="150" cy="300" rx="70" ry="12" fill="#3d2417" opacity="0.8" />
             </svg>
@@ -2069,12 +2189,12 @@ export function VfxPreview(): React.JSX.Element {
               <div className="h-1 flex-1 rounded-full" style={{ background: "var(--m3-surface-4)" }}>
                 <div className="h-full w-[42%] rounded-full" style={{ background: "var(--m3-primary)" }} />
               </div>
-              <span className="font-mono">0.67 / 1.60 s</span>
+              <span className="font-mono">{data.duration}</span>
             </div>
           </div>
           <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
             <p className="mb-2 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>TOON.SKIN · RAMP</p>
-            <div className="h-5 overflow-hidden rounded-md" style={{ background: "linear-gradient(90deg,#4a1f14,#8a4a2a 45%,#E8A37A 70%,#FFE9D6)" }} />
+            <div className="h-5 overflow-hidden rounded-md" style={{ background: `linear-gradient(90deg,${data.colors[2]},${data.colors[1]} 45%,${data.colors[0]} 70%,#FFFFFF)` }} />
             <div className="mt-2 grid grid-cols-2 gap-2">
               <OutlinedField label="Outline" value="1.6 px" />
               <OutlinedField label="Rim" value="0.35" />
@@ -2088,10 +2208,10 @@ export function VfxPreview(): React.JSX.Element {
             EMITTER · {effect.split(".")[1]?.toUpperCase() ?? effect.toUpperCase()}
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <OutlinedField label="Rate" value="80 /s" />
-            <OutlinedField label="Life" value="1.6 s" />
-            <OutlinedField label="Speed" value="0.8–2.4" />
-            <OutlinedField label="Shape" value="cone 18°" />
+            <OutlinedField label="Rate" value={data.rate} />
+            <OutlinedField label="Life" value={data.life} />
+            <OutlinedField label="Speed" value={data.speed} />
+            <OutlinedField label="Shape" value={data.shape} />
           </div>
           <SectionLabel>Size over life</SectionLabel>
           <svg viewBox="0 0 200 60" className="w-full rounded-lg" style={{ background: "var(--m3-surface-1)" }} aria-hidden="true">
@@ -2099,15 +2219,14 @@ export function VfxPreview(): React.JSX.Element {
             <circle cx="110" cy="14" r="4" fill="#B9C3FF" />
           </svg>
           <SectionLabel>Colour over life</SectionLabel>
-          <div className="h-4 rounded-full" style={{ background: "linear-gradient(90deg,#FFE9D6,#E8A37A,#8a4a2a)" }} />
+          <div className="h-4 rounded-full" style={{ background: `linear-gradient(90deg,${data.colors[0]},${data.colors[1]},${data.colors[2]})` }} />
           <SectionLabel>Budget per quality tier</SectionLabel>
-          <BarRow label="low" pct={140} text="210 / 150" bar="#FFB4AB" />
-          <BarRow label="medium" pct={52} text="210 / 400" bar="#9CD67D" />
-          <BarRow label="high" pct={26} text="210 / 800" bar="#9CD67D" />
-          <BarRow label="ultra" pct={13} text="210 / 1600" bar="#9CD67D" />
-          <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Low is over budget: lower the rate or drop to 60 % on low.</p>
+          {data.budgets.map(([tier, pct, text]) => (
+            <BarRow key={tier as string} label={tier as string} pct={pct as number} text={text as string} bar={(pct as number) > 100 ? "#FFB4AB" : "#9CD67D"} />
+          ))}
+          {data.overBudgetNote && <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{data.overBudgetNote}</p>}
           <SectionLabel>Signals</SectionLabel>
-          {[["prefab: campfire", "attach"], ["night only", "time of day"], ["wind drift", "weather"]].map(([a, b]) => (
+          {data.signals.map(([a, b]) => (
             <p key={a} className="flex text-xs"><span style={{ color: "var(--m3-on-surface)" }}>{a}</span><span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{b}</span></p>
           ))}
         </div>
@@ -2123,6 +2242,106 @@ export const AUDIO_EVENTS: Array<[string, Array<[string, string]>]> = [
   ["music", [["music.login", "stream"], ["music.coast", "stream"]]],
   ["ui", [["ui.click", "1 clip"]]],
 ];
+
+/** Per-event audio data (sample): clip files, mixer fields, firing moves
+ *  and 3D attenuation. Clip rows derive names from the event id. */
+export interface AudioEventData {
+  bus: string;
+  spatial: boolean;
+  clips: Array<[string, string, number, string]>;
+  pitch: string;
+  vol: string;
+  dist: string;
+  voices: string;
+  firedBy: string[];
+  atten: string;
+}
+
+function audioClips(id: string, count: number, seedBase: number): Array<[string, string, number, string]> {
+  const base = id.split(".").reverse()[0] ?? id;
+  const r = rnd(seedBase);
+  return Array.from({ length: count }, (_, i) => {
+    const n = `${base}_${String(i + 1).padStart(2, "0")}.ogg`;
+    const dur = `${(0.3 + r() * 0.4).toFixed(2)} s · /assets/audio`;
+    return [n, dur, Math.round(r() * 60), i === count - 1 ? "w 0.3" : "w 1"];
+  });
+}
+
+export const AUDIO_EVENT_DATA: Record<string, AudioEventData> = {
+  "hit.sword": {
+    bus: "effects", spatial: true,
+    clips: [["sword_hit_01.ogg", "0.42 s · /assets/audio", 11, "w 1"], ["sword_hit_02.ogg", "0.38 s · /assets/audio", 23, "w 1"], ["sword_hit_03.ogg", "0.51 s · /assets/audio", 37, "w 1"], ["sword_hit_heavy.ogg", "0.66 s · /assets/audio", 51, "w 0.3"]],
+    pitch: "0.92–1.08", vol: "-3 to 0 dB", dist: "28 m", voices: "6, steal oldest",
+    firedBy: ["sword.slash · hit frame 13", "sword.heavy · hit frame 19", "combat: weapon class sword"],
+    atten: "28 m · -9.4 dB · pan R 0.38",
+  },
+  "hit.axe": {
+    bus: "effects", spatial: true, clips: audioClips("hit.axe", 3, 71),
+    pitch: "0.88–1.04", vol: "-2 to 0 dB", dist: "26 m", voices: "6, steal oldest",
+    firedBy: ["axe.chop · hit frame 16", "combat: weapon class axe"],
+    atten: "26 m · -8.8 dB · pan R 0.31",
+  },
+  "block.shield": {
+    bus: "effects", spatial: true, clips: audioClips("block.shield", 2, 73),
+    pitch: "0.95–1.05", vol: "-4 to -1 dB", dist: "20 m", voices: "4, steal oldest",
+    firedBy: ["block.hold · raised", "combat: blocked outcome"],
+    atten: "20 m · -7.2 dB · pan R 0.22",
+  },
+  "death.goblin": {
+    bus: "effects", spatial: true, clips: audioClips("death.goblin", 2, 79),
+    pitch: "0.9–1.1", vol: "-3 to 0 dB", dist: "30 m", voices: "6, steal oldest",
+    firedBy: ["death.back · frame 10", "loot: corpse spawn"],
+    atten: "30 m · -10.1 dB · pan L 0.12",
+  },
+  "step.grass": {
+    bus: "effects", spatial: true, clips: audioClips("step.grass", 6, 83),
+    pitch: "0.94–1.06", vol: "-9 to -6 dB", dist: "12 m", voices: "8, steal oldest",
+    firedBy: ["walk.fwd · footfall", "jog.fwd · footfall", "surface: grass"],
+    atten: "12 m · -5.4 dB · pan C",
+  },
+  "step.rock": {
+    bus: "effects", spatial: true, clips: audioClips("step.rock", 6, 89),
+    pitch: "0.9–1.1", vol: "-8 to -5 dB", dist: "14 m", voices: "8, steal oldest",
+    firedBy: ["sprint.fwd · footfall", "surface: rock"],
+    atten: "14 m · -6.0 dB · pan C",
+  },
+  "step.wood": {
+    bus: "effects", spatial: true, clips: audioClips("step.wood", 5, 97),
+    pitch: "0.92–1.08", vol: "-8 to -5 dB", dist: "14 m", voices: "8, steal oldest",
+    firedBy: ["walk.fwd · footfall", "surface: wood"],
+    atten: "14 m · -6.0 dB · pan C",
+  },
+  "amb.coast.day": {
+    bus: "ambience", spatial: false, clips: audioClips("amb.coast.day", 2, 101),
+    pitch: "1.0", vol: "-12 dB", dist: "—", voices: "1, loop",
+    firedBy: ["scene: Starter Coast", "time: day"],
+    atten: "2D bed · no panning",
+  },
+  "amb.rain": {
+    bus: "ambience", spatial: false, clips: audioClips("amb.rain", 2, 103),
+    pitch: "1.0", vol: "-10 dB", dist: "—", voices: "1, loop",
+    firedBy: ["weather: rain", "biome has rain"],
+    atten: "2D bed · no panning",
+  },
+  "music.login": {
+    bus: "music", spatial: false, clips: audioClips("music.login", 1, 107),
+    pitch: "1.0", vol: "-6 dB", dist: "—", voices: "1, stream",
+    firedBy: ["scene: login", "flow: boot → login"],
+    atten: "2D · ducks -6 dB under voice",
+  },
+  "music.coast": {
+    bus: "music", spatial: false, clips: audioClips("music.coast", 1, 109),
+    pitch: "1.0", vol: "-6 dB", dist: "—", voices: "1, stream",
+    firedBy: ["scene: Starter Coast", "flow: world"],
+    atten: "2D · ducks -6 dB under voice",
+  },
+  "ui.click": {
+    bus: "ui", spatial: false, clips: audioClips("ui.click", 1, 113),
+    pitch: "0.98–1.02", vol: "-4 dB", dist: "—", voices: "4, steal newest",
+    firedBy: ["button press", "palette open"],
+    atten: "2D · no panning",
+  },
+};
 
 function Waveform({ seed, bars = 72 }: { seed: number; bars?: number }): React.JSX.Element {
   const r = rnd(seed);
@@ -2141,6 +2360,7 @@ function Waveform({ seed, bars = 72 }: { seed: number; bars?: number }): React.J
 
 export function AudioPreview(): React.JSX.Element {
   const { event } = artStore.use();
+  const data = AUDIO_EVENT_DATA[event] ?? AUDIO_EVENT_DATA["hit.sword"];
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · Art & audio (§7c.7)">Sound events, the mixer and 3D preview with per-event budgets.</PreviewBadge>
@@ -2168,10 +2388,10 @@ export function AudioPreview(): React.JSX.Element {
         </div>
         <div className="flex flex-col gap-3">
           <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-            <p className="mb-2 text-sm"><strong>{event}</strong> <Pill tone="info">bus: effects</Pill> <Pill tone="ok">3D</Pill>
+            <p className="mb-2 text-sm"><strong>{event}</strong> <Pill tone="info">bus: {data.bus}</Pill> {data.spatial ? <Pill tone="ok">3D</Pill> : <Pill tone="plain">2D</Pill>}
               <span className="float-right font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>content/audio/events.json</span>
             </p>
-            {[["sword_hit_01.ogg", "0.42 s · /assets/audio", 11, "w 1"], ["sword_hit_02.ogg", "0.38 s · /assets/audio", 23, "w 1"], ["sword_hit_03.ogg", "0.51 s · /assets/audio", 37, "w 1"], ["sword_hit_heavy.ogg", "0.66 s · /assets/audio", 51, "w 0.3"]].map(([f, meta, seed, w]) => (
+            {data.clips.map(([f, meta, seed, w]) => (
               <div key={f as string} className="mb-2 flex items-center gap-3 rounded-xl p-2" style={{ background: "var(--m3-surface-1)" }}>
                 <MIcon name="play_circle" size={22} />
                 <div className="w-44 flex-none">
@@ -2183,14 +2403,14 @@ export function AudioPreview(): React.JSX.Element {
               </div>
             ))}
             <div className="mt-2 grid grid-cols-2 gap-2 xl:grid-cols-4">
-              <OutlinedField label="Pitch" value="0.92–1.08" />
-              <OutlinedField label="Volume" value="-3 to 0 dB" />
-              <OutlinedField label="Max distance" value="28 m" />
-              <OutlinedField label="Voices" value="6, steal oldest" />
+              <OutlinedField label="Pitch" value={data.pitch} />
+              <OutlinedField label="Volume" value={data.vol} />
+              <OutlinedField label="Max distance" value={data.dist} />
+              <OutlinedField label="Voices" value={data.voices} />
             </div>
             <SectionLabel>Fired by</SectionLabel>
             <div className="flex flex-wrap gap-1.5 text-xs">
-              {["sword.slash · hit frame 13", "sword.heavy · hit frame 19", "combat: weapon class sword"].map((c) => (
+              {data.firedBy.map((c) => (
                 <span key={c} className="rounded-full border px-3 py-1.5" style={{ borderColor: "var(--m3-outline-variant)" }}>{c}</span>
               ))}
             </div>
@@ -2223,7 +2443,7 @@ export function AudioPreview(): React.JSX.Element {
             <text x="112" y="104" fill="#FFB59A" fontSize="10" fontFamily="Roboto Mono, monospace">{event}</text>
             <text x="150" y="52" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">listener ▶</text>
           </svg>
-          <p className="text-center font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>28 m · -9.4 dB · pan R 0.38</p>
+          <p className="text-center font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{data.atten}</p>
           <SectionLabel>Hooks</SectionLabel>
           {["footsteps by surface (6 surfaces)", "ambience by weather and time of day", "music by game-flow scene"].map((h) => (
             <p key={h} className="text-[12.5px]" style={{ color: "var(--m3-on-surface)" }}>{h}</p>
@@ -3497,6 +3717,7 @@ export function applyDeepSelection(sel: string): { workspace: string; view: stri
       artStore.set((p) => ({ ...p, effect: rest }));
       return { workspace: "artaudio", view: "vfx" };
     case "event":
+      if (!AUDIO_EVENTS.some((group) => group[1].some((evt) => evt[0] === rest))) return null;
       artStore.set((p) => ({ ...p, event: rest }));
       return { workspace: "artaudio", view: "audio" };
     case "widget":
