@@ -30,6 +30,8 @@ import {
   HudPreview,
   LiveOpsDetails,
   DatabaseRowDetails,
+  FlowDetails,
+  FlowGraphPreview,
   HudDetails,
   LiveOpsPreview,
   PipelinePreview,
@@ -90,7 +92,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "flow", label: "Flow & UI", icon: "account_tree",
     views: [
-      { id: "flow", label: "Flow graph", icon: "account_tree", kind: "soon", soon: { icon: "account_tree", title: "Flow graph arrives with the scenes slice", body: "Login → character creation → world as a validated document (§6). The client runs today's hard-coded screens until then." } },
+      { id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowGraphPreview /> },
       { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudPreview /> },
     ],
     leftTitle: "Widgets",
@@ -1860,6 +1862,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "database") return <DatabaseRowDetails />;
   if (workspace === "release") return <ReleaseDeployDetails />;
   if (workspace === "flow" && view === "hud") return <HudDetails />;
+  if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <StoryDetails />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
   if (workspace === "gameplay") {

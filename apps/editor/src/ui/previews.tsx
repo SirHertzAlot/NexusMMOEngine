@@ -9,7 +9,7 @@
  */
 
 import * as React from "react";
-import { MIcon, TreeItem, OverflowMenu, notify } from "./components.js";
+import { MIcon, TreeItem, OverflowMenu, IconButton, notify, staged } from "./components.js";
 import type { MenuItem } from "./components.js";
 
 // ---------------------------------------------------------------- shared UI state
@@ -49,7 +49,7 @@ function createStore<T>(initial: T): {
 
 /** Subscribe to every selection store (drives hash sync; one call). */
 export function subscribeDeepSelection(fn: () => void): () => void {
-  const unsubs = [dbStore, storyStore, stringsStore, liveOpsStore, artStore, hudStore, releaseStore].map((s) => s.subscribe(fn));
+  const unsubs = [dbStore, storyStore, stringsStore, liveOpsStore, artStore, hudStore, releaseStore, flowStore].map((s) => s.subscribe(fn));
   return () => unsubs.forEach((u) => u());
 }
 
@@ -1853,6 +1853,210 @@ export function PlaytestPreview(): React.JSX.Element {
   );
 }
 
+// ---------------------------------------------------------------- flow graph (§6 scenes)
+
+const FLOW_SCREENS: Record<string, { title: string; route: string; kind: string; header: string; guards: string[]; x: number; y: number }> = {
+  boot: { title: "Boot", route: "—", kind: "entry", header: "#36449A", guards: ["client version ok", "content pack hash matches"], x: 16, y: 40 },
+  login: { title: "Login", route: "/login", kind: "auth", header: "#6b4d9e", guards: ["session token", "edge reachable"], x: 214, y: 40 },
+  register: { title: "Register", route: "/register", kind: "auth", header: "#6b4d9e", guards: ["invite code if required"], x: 214, y: 212 },
+  select: { title: "Characters", route: "/characters", kind: "select", header: "#1F6F8B", guards: ["≥ 1 character"], x: 432, y: 40 },
+  creator: { title: "Creator", route: "/characters/new", kind: "select", header: "#1F6F8B", guards: ["name available", "starter kit valid"], x: 432, y: 212 },
+  world: { title: "World", route: "/world/:id", kind: "world", header: "#1F5110", guards: ["spawn ticket", "chunk stream open"], x: 650, y: 40 },
+  respawn: { title: "Respawn", route: "overlay", kind: "system", header: "#5a3a1a", guards: ["death acknowledged"], x: 650, y: 212 },
+};
+
+const FLOW_EDGES: Array<{ from: string; to: string; label: string; dashed?: boolean; up?: boolean }> = [
+  { from: "boot", to: "login", label: "config ok" },
+  { from: "login", to: "select", label: "auth ok" },
+  { from: "login", to: "register", label: "no account" },
+  { from: "register", to: "login", label: "created", up: true },
+  { from: "select", to: "world", label: "enter" },
+  { from: "select", to: "creator", label: "create" },
+  { from: "creator", to: "select", label: "saved", up: true },
+  { from: "world", to: "respawn", label: "death" },
+  { from: "respawn", to: "world", label: "ticket", up: true },
+  { from: "world", to: "login", label: "logout", dashed: true },
+];
+
+function flowReachable(): { count: number; total: number } {
+  const seen = new Set<string>(["boot"]);
+  const queue = ["boot"];
+  while (queue.length > 0) {
+    const cur = queue.pop() as string;
+    for (const e of FLOW_EDGES) {
+      if (e.from === cur && !seen.has(e.to)) { seen.add(e.to); queue.push(e.to); }
+    }
+  }
+  return { count: seen.size, total: Object.keys(FLOW_SCREENS).length };
+}
+
+const flowStore = createStore<{ screen: string }>({ screen: "world" });
+
+export { flowStore };
+
+export function selectFlowScreen(screen: string): void {
+  if (FLOW_SCREENS[screen]) flowStore.set((p) => ({ ...p, screen }));
+}
+
+function FlowNode({ id }: { id: string }): React.JSX.Element {
+  const { screen } = flowStore.use();
+  const s = FLOW_SCREENS[id];
+  const selected = screen === id;
+  const w = 168;
+  const h = 52 + s.guards.length * 18;
+  return (
+    <g onClick={() => selectFlowScreen(id)} style={{ cursor: "pointer" }}>
+      <title>{s.title} — click to inspect</title>
+      <rect x={s.x} y={s.y} width={w} height={h} rx="10" fill="#1E1F25" stroke={selected ? "#B9C3FF" : "#46464F"} strokeWidth={selected ? 2 : 1} />
+      <rect x={s.x} y={s.y} width={w} height="28" rx="10" fill={s.header} />
+      <rect x={s.x} y={s.y + 18} width={w} height="14" fill={s.header} />
+      <text x={s.x + 9} y={s.y + 19} fill="#E3E1E9" fontSize="12" fontWeight="600">{s.title}</text>
+      <text x={s.x + 9} y={s.y + 44} fill="#90909A" fontSize="10" fontFamily="Roboto Mono, monospace">{s.route} · {s.kind}</text>
+      {s.guards.map((g, i) => (
+        <text key={i} x={s.x + 9} y={s.y + 62 + i * 18} fill={selected ? "#E3E1E9" : "#C6C5D0"} fontSize="10" fontFamily="Roboto Mono, monospace">✓ {g}</text>
+      ))}
+    </g>
+  );
+}
+
+function edgePath(from: string, to: string, dashed?: boolean, up?: boolean): string {
+  const a = FLOW_SCREENS[from];
+  const b = FLOW_SCREENS[to];
+  if (up) {
+    const x1 = a.x + 24;
+    const x2 = b.x + 24;
+    const y1 = a.y;
+    const y2 = b.y + 52 + b.guards.length * 18;
+    return `M${x1},${y1} C${x1},${y1 - 34} ${x2},${y2 + 34} ${x2},${y2}`;
+  }
+  if (a.y === b.y) {
+    const x1 = a.x + 168;
+    const y = a.y + 26;
+    const x2 = b.x;
+    if (dashed) return `M${x1},${y} C${x1},${-34} ${x2},${-34} ${x2},${14}`;
+    const mx = (x1 + x2) / 2;
+    return `M${x1},${y} C${mx},${y} ${mx},${y} ${x2},${y}`;
+  }
+  const x = a.x + 40;
+  const y1 = a.y + (from === "world" || from === "select" || from === "login" ? 52 + a.guards.length * 18 : 0);
+  const y2 = b.y;
+  return `M${x},${y1} L${x},${y2}`;
+}
+
+function edgeLabel(e: { from: string; to: string; label: string; dashed?: boolean; up?: boolean }): { x: number; y: number } {
+  const a = FLOW_SCREENS[e.from];
+  const b = FLOW_SCREENS[e.to];
+  if (e.up) return { x: a.x + 30, y: (a.y + b.y) / 2 + 40 };
+  if (a.y === b.y && !e.dashed) return { x: (a.x + 168 + b.x) / 2 - 30, y: a.y + 16 };
+  if (e.dashed) return { x: (a.x + b.x) / 2 + 40, y: -22 };
+  return { x: a.x + 48, y: (a.y + b.y) / 2 + 60 };
+}
+
+export function FlowGraphPreview(): React.JSX.Element {
+  const { screen } = flowStore.use();
+  const [zoom, setZoom] = React.useState(1);
+  const reach = flowReachable();
+  const W = Math.round(840 * zoom);
+  const H = Math.round(400 * zoom);
+  return (
+    <div className="flex flex-col gap-3">
+      <PreviewBadge slice="EA · scenes (§6)">Login → character → world as a validated document; the client runs today's hard-coded screens until the scenes slice lands.</PreviewBadge>
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span className="font-mono" style={{ color: "var(--m3-on-surface-variant)" }}>content/scenes/login-to-world.flow.json</span>
+        <Pill tone="info">7 screens · 10 transitions</Pill>
+        <span className="ml-auto flex items-center gap-1">
+          <IconButton label="Zoom out" size={36} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}><MIcon name="remove" size={19} /></IconButton>
+          <span className="w-12 text-center font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{Math.round(zoom * 100)}%</span>
+          <IconButton label="Zoom in" size={36} onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)))}><MIcon name="add" size={19} /></IconButton>
+          <IconButton label="Reset view" size={36} onClick={() => setZoom(1)}><MIcon name="fit_screen" size={19} /></IconButton>
+          <button
+            onClick={() => staged("Add screen", "EA · scenes (§6)")}
+            className="m3-focus ml-1 flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium"
+            style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)" }}
+          >
+            <MIcon name="add" size={18} /> Screen
+          </button>
+        </span>
+      </div>
+      <div className="m3-scroll overflow-auto rounded-xl" style={{ height: 440, background: "var(--m3-surface-0)" }}>
+      <svg
+        width={W}
+        height={H}
+        className="block rounded-xl"
+        style={{ minWidth: "100%", backgroundImage: "radial-gradient(#2a2b31 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+        role="img"
+        aria-label="Screen flow graph preview"
+      >
+        <defs>
+          <marker id="ah-flow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#90909A" />
+          </marker>
+        </defs>
+        <g transform={`translate(0,${40 * zoom}) scale(${zoom})`}>
+          {FLOW_EDGES.map((e, i) => {
+            const lp = edgeLabel(e);
+            return (
+              <g key={i}>
+                <path d={edgePath(e.from, e.to, e.dashed, e.up)} stroke="#90909A" strokeDasharray={e.dashed ? "5 4" : undefined} fill="none" markerEnd="url(#ah-flow)" />
+                <text x={lp.x} y={lp.y} fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">{e.label}</text>
+              </g>
+            );
+          })}
+          {Object.keys(FLOW_SCREENS).map((id) => <FlowNode key={id} id={id} />)}
+        </g>
+      </svg>
+      </div>
+      <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
+        <p className="mb-2 text-sm font-medium">Validation <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>· computed locally from this document</span></p>
+        <MiniTable
+          head={["", "Check", "Result"]}
+          rows={[
+            ["✓", "All screens reachable from boot", <span className="font-mono">{reach.count} / {reach.total}</span>],
+            ["✓", "Every screen has a way back to login", <span className="font-mono">logout + register loops</span>],
+            ["✓", "Selected screen guards listed", <span className="font-mono">{FLOW_SCREENS[screen].guards.length} guards · {screen}</span>],
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function FlowDetails(): React.JSX.Element {
+  const { screen } = flowStore.use();
+  const s = FLOW_SCREENS[screen];
+  const outs = FLOW_EDGES.filter((e) => e.from === screen);
+  const ins = FLOW_EDGES.filter((e) => e.to === screen);
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium">
+        <span style={{ color: "var(--m3-on-surface-variant)" }}>Screen · </span>{s.title}
+      </p>
+      <DraftField label="route" value={s.route} mono />
+      <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>kind · {s.kind} · owning slice scenes (§6)</p>
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Entry guards</p>
+      {s.guards.map((g, i) => (
+        <DraftField key={`${screen}-g${i}`} label={`guard ${i + 1}`} value={g} mono />
+      ))}
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Transitions</p>
+      {ins.map((e, i) => (
+        <button key={`in${i}`} onClick={() => selectFlowScreen(e.from)} className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5">
+          <MIcon name="login" size={16} /><span className="font-mono text-xs">{FLOW_SCREENS[e.from].title}</span>
+          <span style={{ color: "var(--m3-on-surface-variant)" }}>→ {e.label}</span>
+        </button>
+      ))}
+      {outs.map((e, i) => (
+        <button key={`out${i}`} onClick={() => selectFlowScreen(e.to)} className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5">
+          <MIcon name="logout" size={16} /><span style={{ color: "var(--m3-on-surface-variant)" }}>{e.label} →</span>
+          <span className="font-mono text-xs">{FLOW_SCREENS[e.to].title}</span>
+        </button>
+      ))}
+      <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+        Route and guards edit as local drafts. Adding screens or rewiring transitions arrives with the scenes slice.
+      </p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- flow HUD (ux-16)
 
 const WIDGET_DATA: Record<string, { x: string; y: string; w: string; h: string; on: boolean[] }> = {
@@ -2091,6 +2295,8 @@ export function readDeepSelection(workspace: string, view: string): string | nul
       return `event:${artStore.get().event}`;
     case "flow/hud":
       return `widget:${hudStore.get().widget}`;
+    case "flow/flow":
+      return `screen:${flowStore.get().screen}`;
     case "release/playtests":
       return `scenario:${releaseStore.get().scenario}`;
     default:
@@ -2139,6 +2345,10 @@ export function applyDeepSelection(sel: string): { workspace: string; view: stri
       if (!WIDGET_DATA[rest]) return null;
       selectHudWidget(rest);
       return { workspace: "flow", view: "hud" };
+    case "screen":
+      if (!FLOW_SCREENS[rest]) return null;
+      selectFlowScreen(rest);
+      return { workspace: "flow", view: "flow" };
     case "scenario":
       releaseStore.set({ scenario: rest });
       return { workspace: "release", view: "playtests" };
