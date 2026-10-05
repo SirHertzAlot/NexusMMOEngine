@@ -43,8 +43,11 @@ import {
   VfxPreview,
   WidgetList,
   PLAYERS,
+  applyDeepSelection,
   liveOpsStore,
+  readDeepSelection,
   storyStore,
+  subscribeDeepSelection,
 } from "./previews.js";
 
 // ---------------------------------------------------------------- config
@@ -176,8 +179,8 @@ const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "databa
 type RunMode = "edit" | "simulate" | "play";
 
 export function App(): React.JSX.Element {
-  const [workspace, setWorkspace] = React.useState<WorkspaceId>("gameplay");
-  const [view, setView] = React.useState<string>("tables");
+  const [workspace, setWorkspace] = React.useState<WorkspaceId>(() => initialHashLocation().workspace);
+  const [view, setView] = React.useState<string>(() => initialHashLocation().view);
   const [leftTab, setLeftTab] = React.useState<string>("left");
   const [rightTab, setRightTab] = React.useState<string>("details");
   const [bottomTab, setBottomTab] = React.useState<string>("output");
@@ -283,7 +286,44 @@ export function App(): React.JSX.Element {
     else goPlay();
   }
 
-  // Ctrl K opens the command palette (§3.5); Esc closes menus.
+  // Deep links (#/workspace/view/selection): read once on load and on
+  // browser back/forward; write (replaceState, no history spam) on change.
+  // Selection changes re-render the shell via the store subscription so the
+  // hash — and any pasted link — always reflects the live selection.
+  const [, setSelTick] = React.useState(0);
+  React.useEffect(() => subscribeDeepSelection(() => setSelTick((t) => t + 1)), []);
+  React.useEffect(() => {
+    parseHash();
+    window.addEventListener("hashchange", parseHash);
+    return () => window.removeEventListener("hashchange", parseHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useEffect(() => {
+    const sel = readDeepSelection(workspace, view);
+    const h = `#/${workspace}/${view}${sel ? `/${encodeURIComponent(sel)}` : ""}`;
+    if (window.location.hash !== h) window.history.replaceState(null, "", h);
+  });
+
+  function parseHash(): void {
+    const loc = parseHashString(window.location.hash);
+    if (!loc) return;
+    if (loc.sel !== null) {
+      const implied = applyDeepSelection(loc.sel);
+      if (implied) {
+        const iws = WORKSPACES.find((w) => w.id === implied.workspace);
+        const iv = iws?.views.find((x) => x.id === implied.view);
+        if (iws && iv) {
+          setWorkspace(iws.id as WorkspaceId);
+          setView(iv.id);
+          return;
+        }
+      }
+    }
+    setWorkspace(loc.workspace);
+    setView(loc.view);
+  }
+
+  // Ctrl K opens the command palette (§3.5); Ctrl Shift S opens layout save; Esc closes menus.
   React.useEffect(() => {
     function onKey(e: KeyboardEvent): void {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -588,6 +628,33 @@ function Divider({ vertical = false, title, onLive, onCommit, onReset }: {
 
 function workspaceLabel(id: WorkspaceId): string {
   return WORKSPACES.find((w) => w.id === id)?.label.toLowerCase() ?? id;
+}
+
+/** Parse a deep-link hash into shell state (null = not a link; use defaults).
+ *  Also feeds the useState initializers so the first paint already matches
+ *  the link — no mount-effect race with the hash writer (StrictMode-safe). */
+function parseHashString(hash: string): { workspace: WorkspaceId; view: string; sel: string | null } | null {
+  const m = hash.match(/^#\/([\w-]+)\/([\w-]+)(?:\/(.+))?$/);
+  if (!m) return null;
+  const ws = WORKSPACES.find((w) => w.id === m[1]);
+  if (!ws) return null;
+  const v = ws.views.find((x) => x.id === m[2]);
+  if (!v) return null;
+  return { workspace: ws.id as WorkspaceId, view: v.id, sel: m[3] !== undefined ? decodeURIComponent(m[3]) : null };
+}
+
+let hashClaimed: string | null = null;
+
+function initialHashLocation(): { workspace: WorkspaceId; view: string } {
+  if (typeof window === "undefined") return { workspace: "gameplay", view: "tables" };
+  const loc = parseHashString(window.location.hash) ?? { workspace: "gameplay", view: "tables", sel: null };
+  // Claim the selection synchronously (not in an effect) so the first
+  // hash write already reflects it — idempotent across StrictMode retries.
+  if (loc.sel !== null && hashClaimed !== window.location.hash) {
+    hashClaimed = window.location.hash;
+    applyDeepSelection(loc.sel);
+  }
+  return loc;
 }
 
 // ---------------------------------------------------------------- menu bar

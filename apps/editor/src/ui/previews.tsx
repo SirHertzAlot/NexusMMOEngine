@@ -25,26 +25,32 @@ interface Listener {
 function createStore<T>(initial: T): {
   get: () => T;
   set: (next: T | ((prev: T) => T)) => void;
+  subscribe: (fn: () => void) => () => void;
   use: () => T;
 } {
   let value = initial;
   const listeners = new Set<Listener>();
+  const subscribe = (fn: () => void): (() => void) => {
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  };
   return {
     get: () => value,
     set: (next) => {
       value = typeof next === "function" ? (next as (prev: T) => T)(value) : next;
       listeners.forEach((l) => l());
     },
-    use: () => React.useSyncExternalStore(
-      (fn) => {
-        listeners.add(fn);
-        return () => {
-          listeners.delete(fn);
-        };
-      },
-      () => value,
-    ),
+    subscribe,
+    use: () => React.useSyncExternalStore(subscribe, () => value),
   };
+}
+
+/** Subscribe to every selection store (drives hash sync; one call). */
+export function subscribeDeepSelection(fn: () => void): () => void {
+  const unsubs = [dbStore, storyStore, stringsStore, liveOpsStore, artStore, hudStore, releaseStore].map((s) => s.subscribe(fn));
+  return () => unsubs.forEach((u) => u());
 }
 
 /** M3 outlined field with local draft editing: type, Enter commits, Esc reverts. */
@@ -495,6 +501,7 @@ export function LiveOpsDetails(): React.JSX.Element {
           <span style={{ color: color as string }}>{tag}</span> {text}
         </p>
       ))}
+      <EcsChips components={["CharacterRef", "Transform", "Velocity", "Health", "Stamina", "Appearance"]} caption={`${player} in the live world is these components plus ledger rows. The Scene workspace ECS inspector reads them; BackendClient.inspect dumps them.`} />
     </div>
   );
 }
@@ -813,6 +820,7 @@ export function DatabaseRowDetails(): React.JSX.Element {
       {[`characters[${rowId}] · ${base.name}`, "deaths · 6 rows", `item_latest · owner ${rowId} · 14`].map((r) => (
         <p key={r} className="font-mono text-xs" style={{ color: "var(--m3-on-surface)" }}>{r}</p>
       ))}
+      <EcsChips components={["Transform", "Health", "Stamina", "CharacterRef"]} caption={`character_state[${rowId}] is the persisted shadow of a live entity carrying these components.`} />
       <SectionLabel>Mode</SectionLabel>
       <div className="flex h-9 items-center overflow-hidden rounded-full text-sm" style={{ border: "1px solid var(--m3-outline-variant)" }}>
         {["Live", "Read", "Maintenance"].map((m, i) => (
@@ -1037,6 +1045,7 @@ export function StoryDetails(): React.JSX.Element {
           </p>
         ))}
       </div>
+      <EcsChips components={["Spawner", "Transform"]} caption="Quest slots instantiate spawner entities carrying these components — the link between the graph above and the ECS base." />
       <SectionLabel>Beat history</SectionLabel>
       {[["forum", "hale.intro.1", "Hale"], ["forum", "hale.intro.2", "Hale"], ["call_split", "3 replies", "player"], ["flag", "sets warden_hale.step", "on accept"]].map(([icon, label, trailing]) => (
         <p key={label} className="flex items-center gap-2 text-xs" style={{ color: "var(--m3-on-surface)" }}>
@@ -1064,6 +1073,8 @@ const stringsStore = createStore<{ row: string | null; drafts: Record<string, st
   row: "hale.intro.1",
   drafts: {},
 });
+
+export { stringsStore };
 
 function StrCell({ id, lang, v }: { id: string; lang: string; v: string }): React.JSX.Element {
   const { drafts } = stringsStore.use();
@@ -1732,8 +1743,13 @@ export function ReleaseDeployDetails(): React.JSX.Element {
   );
 }
 
+const releaseStore = createStore<{ scenario: string }>({ scenario: "camp-loop" });
+
+export { releaseStore };
+
 export function PlaytestPreview(): React.JSX.Element {
-  const [scen, setScen] = React.useState("camp-loop");
+  const { scenario } = releaseStore.use();
+  const scen = scenario;
   const trail = "M40,120 C90,60 120,140 170,90 S260,40 320,80 S420,150 480,110 S560,60 640,100";
   return (
     <div className="flex flex-col gap-3">
@@ -1750,15 +1766,31 @@ export function PlaytestPreview(): React.JSX.Element {
           ].map(([s, d, st]) => {
             const on = s === scen;
             return (
-              <button
+              <div
                 key={s as string}
-                onClick={() => setScen(s as string)}
-                className="m3-focus w-full rounded-xl px-3 py-2 text-left"
+                className="group flex items-center gap-0.5 rounded-xl px-1 py-0.5"
                 style={on ? { background: "var(--m3-secondary-container)" } : undefined}
               >
-                <span className="flex items-center font-mono text-xs font-semibold">{s}<span className="ml-auto"><Pill tone={st === "passed" ? "ok" : st === "failed" ? "err" : "warn"}>{st as string}</Pill></span></span>
-                <span className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{d}</span>
-              </button>
+                <button
+                  onClick={() => releaseStore.set({ scenario: s as string })}
+                  className="m3-focus min-w-0 flex-1 rounded-xl px-2 py-1.5 text-left"
+                >
+                  <span className="flex items-center font-mono text-xs font-semibold">{s}<span className="ml-auto"><Pill tone={st === "passed" ? "ok" : st === "failed" ? "err" : "warn"}>{st as string}</Pill></span></span>
+                  <span className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{d}</span>
+                </button>
+                <span className="flex-none opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <OverflowMenu
+                    label={`${s} actions`}
+                    items={[
+                      { label: `Inspect ${s}`, icon: "search", run: () => releaseStore.set({ scenario: s as string }) },
+                      { label: "Run scenario", icon: "play_arrow", stagedFor: "EA · release" },
+                      "sep",
+                      { label: "Duplicate", icon: "content_copy", stagedFor: "EA · release" },
+                      { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · release" },
+                    ]}
+                  />
+                </span>
+              </div>
             );
           })}
         </div>
@@ -1874,15 +1906,27 @@ export function WidgetList(): React.JSX.Element {
         {WIDGETS.map(([w, tag]) => {
           const on = w === widget;
           return (
-            <li key={w}>
+            <li key={w} className="group flex items-center gap-0.5 rounded-full" style={on ? { background: "var(--m3-secondary-container)" } : undefined}>
               <button
                 onClick={() => selectHudWidget(w)}
-                className="m3-focus flex h-10 w-full items-center gap-3 rounded-full px-3 text-sm"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
+                className="m3-focus flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full px-3 text-sm"
+                style={on ? { color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
               >
                 <MIcon name="widgets" size={19} />{w}
                 <span className="ml-auto text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
               </button>
+              <span className="flex-none opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <OverflowMenu
+                  label={`${w} actions`}
+                  items={[
+                    { label: `Inspect ${w}`, icon: "search", run: () => selectHudWidget(w) },
+                    "sep",
+                    { label: "Rename…", icon: "edit", stagedFor: "EA · flow & UI" },
+                    { label: "Duplicate", icon: "content_copy", stagedFor: "EA · flow & UI" },
+                    { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · flow & UI" },
+                  ]}
+                />
+              </span>
             </li>
           );
         })}
@@ -1972,8 +2016,7 @@ export function HudPreview(): React.JSX.Element {
   );
 }
 
-export function HudDetails(): React.JSX.Element {
-  const widget = useHudWidget();
+export function HudDetails(): React.JSX.Element {  const widget = useHudWidget();
   const d = useHudGeom(widget);
   const on = (WIDGET_DATA[widget] ?? WIDGET_DATA["Quest tracker"]).on;
   const scenes = ["World", "Dungeon", "Arena", "Cut scene"];
@@ -2014,6 +2057,114 @@ export function HudDetails(): React.JSX.Element {
       <p className="text-xs" style={{ color: "#9CD67D" }}>✓ Fits 1280 × 720</p>
       <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
         Saved to content/ui/hud.json. Players' own moves stay in their settings on top.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- deep links & ECS base
+// Everything deep-links: the shell encodes workspace + view + selection in
+// the URL hash, and every inspector drills to the ECS base — the engine's
+// building blocks. Selection state stays in the shared stores above; this
+// section only translates between stores and hash keys.
+
+/** Read the current deep selection for a workspace view (null = none). */
+export function readDeepSelection(workspace: string, view: string): string | null {
+  switch (`${workspace}/${view}`) {
+    case "database/grid": {
+      const s = dbStore.get();
+      return `row:${s.table}/${s.rowId}`;
+    }
+    case "story/quests":
+      return `node:${storyStore.get().node}`;
+    case "story/strings": {
+      const r = stringsStore.get().row;
+      return r ? `string:${r}` : null;
+    }
+    case "liveops/overview":
+      return `player:${liveOpsStore.get().player}`;
+    case "artaudio/animation":
+      return `clip:${artStore.get().clip}`;
+    case "artaudio/vfx":
+      return `effect:${artStore.get().effect}`;
+    case "artaudio/audio":
+      return `event:${artStore.get().event}`;
+    case "flow/hud":
+      return `widget:${hudStore.get().widget}`;
+    case "release/playtests":
+      return `scenario:${releaseStore.get().scenario}`;
+    default:
+      return null;
+  }
+}
+
+/** Apply a deep-selection key; returns the workspace/view it implies. */
+export function applyDeepSelection(sel: string): { workspace: string; view: string } | null {
+  const i = sel.indexOf(":");
+  if (i < 0) return null;
+  const kind = sel.slice(0, i);
+  const rest = sel.slice(i + 1);
+  switch (kind) {
+    case "row": {
+      const slash = rest.lastIndexOf("/");
+      if (slash < 0) return null;
+      const table = rest.slice(0, slash);
+      const rowId = Number(rest.slice(slash + 1));
+      if (!TABLE_INFO[table] || !Number.isInteger(rowId)) return null;
+      dbStore.set((p) => ({ ...p, table, rowId }));
+      return { workspace: "database", view: "grid" };
+    }
+    case "node":
+      if (!QUEST_NODES[rest]) return null;
+      storyStore.set((p) => ({ ...p, node: rest }));
+      return { workspace: "story", view: "quests" };
+    case "string":
+      stringsStore.set((p) => ({ ...p, row: rest }));
+      return { workspace: "story", view: "strings" };
+    case "player":
+      liveOpsStore.set({ player: rest });
+      return { workspace: "liveops", view: "overview" };
+    case "clip":
+      if (!CLIPS.some(([c]) => c === rest)) return null;
+      artStore.set((p) => ({ ...p, clip: rest }));
+      return { workspace: "artaudio", view: "animation" };
+    case "effect":
+      if (!EFFECTS.some(([e]) => e === rest)) return null;
+      artStore.set((p) => ({ ...p, effect: rest }));
+      return { workspace: "artaudio", view: "vfx" };
+    case "event":
+      artStore.set((p) => ({ ...p, event: rest }));
+      return { workspace: "artaudio", view: "audio" };
+    case "widget":
+      if (!WIDGET_DATA[rest]) return null;
+      selectHudWidget(rest);
+      return { workspace: "flow", view: "hud" };
+    case "scenario":
+      releaseStore.set({ scenario: rest });
+      return { workspace: "release", view: "playtests" };
+    default:
+      return null;
+  }
+}
+
+/** ECS base layer: the authoritative components a document decomposes to. */
+export function EcsChips({ components, caption }: { components: string[]; caption?: string }): React.JSX.Element {
+  return (
+    <div>
+      <SectionLabel>Decomposes to · ECS base</SectionLabel>
+      <div className="flex flex-wrap gap-1.5">
+        {components.map((c) => (
+          <span
+            key={c}
+            className="rounded-md px-2 py-1 font-mono text-[11px]"
+            style={{ background: "var(--m3-surface-4)", color: "var(--m3-on-surface)" }}
+          >
+            {c}
+          </span>
+        ))}
+      </div>
+      <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+        {caption ?? "Authoritative components — the Scene workspace ECS inspector reads them live; the editor never writes a running simulation."}
       </p>
     </div>
   );
