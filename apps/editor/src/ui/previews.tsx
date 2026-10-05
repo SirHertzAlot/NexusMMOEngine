@@ -1856,13 +1856,13 @@ export function PlaytestPreview(): React.JSX.Element {
 // ---------------------------------------------------------------- flow graph (§6 scenes)
 
 const FLOW_SCREENS: Record<string, { title: string; route: string; kind: string; header: string; guards: string[]; x: number; y: number }> = {
-  boot: { title: "Boot", route: "—", kind: "entry", header: "#36449A", guards: ["client version ok", "content pack hash matches"], x: 16, y: 40 },
-  login: { title: "Login", route: "/login", kind: "auth", header: "#6b4d9e", guards: ["session token", "edge reachable"], x: 214, y: 40 },
-  register: { title: "Register", route: "/register", kind: "auth", header: "#6b4d9e", guards: ["invite code if required"], x: 214, y: 212 },
-  select: { title: "Characters", route: "/characters", kind: "select", header: "#1F6F8B", guards: ["≥ 1 character"], x: 432, y: 40 },
-  creator: { title: "Creator", route: "/characters/new", kind: "select", header: "#1F6F8B", guards: ["name available", "starter kit valid"], x: 432, y: 212 },
-  world: { title: "World", route: "/world/:id", kind: "world", header: "#1F5110", guards: ["spawn ticket", "chunk stream open"], x: 650, y: 40 },
-  respawn: { title: "Respawn", route: "overlay", kind: "system", header: "#5a3a1a", guards: ["death acknowledged"], x: 650, y: 212 },
+  boot: { title: "Boot", route: "—", kind: "entry", header: "#36449A", guards: ["client version ok", "content pack hash matches"], x: 12, y: 40 },
+  login: { title: "Login", route: "/login", kind: "auth", header: "#6b4d9e", guards: ["session token", "edge reachable"], x: 226, y: 40 },
+  register: { title: "Register", route: "/register", kind: "auth", header: "#6b4d9e", guards: ["invite code if required"], x: 226, y: 196 },
+  select: { title: "Characters", route: "/characters", kind: "select", header: "#1F6F8B", guards: ["≥ 1 character"], x: 458, y: 40 },
+  creator: { title: "Creator", route: "/characters/new", kind: "select", header: "#1F6F8B", guards: ["name available", "starter kit valid"], x: 458, y: 196 },
+  world: { title: "World", route: "/world/:id", kind: "world", header: "#1F5110", guards: ["spawn ticket", "chunk stream open"], x: 690, y: 40 },
+  respawn: { title: "Respawn", route: "overlay", kind: "system", header: "#5a3a1a", guards: ["death acknowledged"], x: 690, y: 196 },
 };
 
 const FLOW_EDGES: Array<{ from: string; to: string; label: string; dashed?: boolean; up?: boolean }> = [
@@ -1878,19 +1878,44 @@ const FLOW_EDGES: Array<{ from: string; to: string; label: string; dashed?: bool
   { from: "world", to: "login", label: "logout", dashed: true },
 ];
 
-function flowReachable(): { count: number; total: number } {
+function flowReachable(edges: FlowEdgeView[]): { count: number; total: number } {
   const seen = new Set<string>(["boot"]);
   const queue = ["boot"];
   while (queue.length > 0) {
     const cur = queue.pop() as string;
-    for (const e of FLOW_EDGES) {
+    for (const e of edges) {
       if (e.from === cur && !seen.has(e.to)) { seen.add(e.to); queue.push(e.to); }
     }
   }
   return { count: seen.size, total: Object.keys(FLOW_SCREENS).length };
 }
 
-const flowStore = createStore<{ screen: string }>({ screen: "world" });
+export interface FlowEdgeDraft {
+  id: number;
+  from: string;
+  to: string;
+  label: string;
+}
+
+export interface FlowEdgeView {
+  from: string;
+  to: string;
+  label: string;
+  dashed?: boolean;
+  up?: boolean;
+  /** index into FLOW_EDGES when this is a shipped edge */
+  shipped?: number;
+  /** id when this is a local draft edge */
+  draft?: number;
+}
+
+const flowStore = createStore<{
+  screen: string;
+  drafts: FlowEdgeDraft[];
+  removed: number[];
+  connectFrom: string | null;
+  seq: number;
+}>({ screen: "world", drafts: [], removed: [], connectFrom: null, seq: 1 });
 
 export { flowStore };
 
@@ -1898,16 +1923,96 @@ export function selectFlowScreen(screen: string): void {
   if (FLOW_SCREENS[screen]) flowStore.set((p) => ({ ...p, screen }));
 }
 
+/** Shipped edges minus locally-removed, plus local drafts. */
+export function getFlowEdges(): FlowEdgeView[] {
+  const { drafts, removed } = flowStore.get();
+  const kept = FLOW_EDGES.flatMap((e, i) =>
+    removed.includes(i) ? [] : [{ ...e, shipped: i }],
+  );
+  return [...kept, ...drafts.map((d) => ({ from: d.from, to: d.to, label: d.label, dashed: true, draft: d.id }))];
+}
+
+export function flowDraftCount(): number {
+  const { drafts, removed } = flowStore.get();
+  return drafts.length + removed.length;
+}
+
+export function startFlowConnect(from: string): void {
+  if (!FLOW_SCREENS[from]) return;
+  flowStore.set((p) => ({ ...p, screen: from, connectFrom: from }));
+  notify(`Connecting from ${FLOW_SCREENS[from].title} — click a target screen, Esc cancels`);
+}
+
+export function cancelFlowConnect(): void {
+  flowStore.set((p) => ({ ...p, connectFrom: null }));
+}
+
+export function completeFlowConnect(to: string): void {
+  const { connectFrom } = flowStore.get();
+  if (!connectFrom || !FLOW_SCREENS[to]) return;
+  if (to === connectFrom) {
+    notify("A screen cannot transition to itself — pick another target");
+    return;
+  }
+  const exists = getFlowEdges().some((e) => e.from === connectFrom && e.to === to);
+  if (exists) {
+    notify(`${FLOW_SCREENS[connectFrom].title} → ${FLOW_SCREENS[to].title} already exists`);
+    flowStore.set((p) => ({ ...p, connectFrom: null }));
+    return;
+  }
+  const from = connectFrom;
+  flowStore.set((p) => ({
+    ...p,
+    connectFrom: null,
+    screen: to,
+    seq: p.seq + 1,
+    drafts: [...p.drafts, { id: p.seq, from, to, label: `to ${FLOW_SCREENS[to].title.toLowerCase()}` }],
+  }));
+  notify(`Draft transition ${FLOW_SCREENS[from].title} → ${FLOW_SCREENS[to].title} — local, ships with the scenes slice`);
+}
+
+export function removeFlowEdge(shipped: number): void {
+  const e = FLOW_EDGES[shipped];
+  flowStore.set((p) => (p.removed.includes(shipped) ? p : { ...p, removed: [...p.removed, shipped] }));
+  if (e) notify(`Removed ${FLOW_SCREENS[e.from].title} → ${FLOW_SCREENS[e.to].title} locally — Reset document restores it`);
+}
+
+export function deleteFlowDraft(id: number): void {
+  flowStore.set((p) => ({ ...p, drafts: p.drafts.filter((d) => d.id !== id) }));
+}
+
+export function renameFlowDraft(id: number, label: string): void {
+  flowStore.set((p) => ({ ...p, drafts: p.drafts.map((d) => (d.id === id ? { ...d, label } : d)) }));
+}
+
+export function resetFlowDrafts(): void {
+  flowStore.set((p) => ({ ...p, drafts: [], removed: [] }));
+  notify("Flow document reset to the shipped version");
+}
+
 function FlowNode({ id }: { id: string }): React.JSX.Element {
-  const { screen } = flowStore.use();
+  const { screen, connectFrom } = flowStore.use();
   const s = FLOW_SCREENS[id];
   const selected = screen === id;
+  const source = connectFrom === id;
   const w = 168;
   const h = 52 + s.guards.length * 18;
+  const oy = s.y + 26;
+  const grab = (ev: React.MouseEvent): void => {
+    ev.stopPropagation();
+    if (connectFrom === id) cancelFlowConnect();
+    else startFlowConnect(id);
+  };
   return (
-    <g onClick={() => selectFlowScreen(id)} style={{ cursor: "pointer" }}>
-      <title>{s.title} — click to inspect</title>
-      <rect x={s.x} y={s.y} width={w} height={h} rx="10" fill="#1E1F25" stroke={selected ? "#B9C3FF" : "#46464F"} strokeWidth={selected ? 2 : 1} />
+    <g
+      onClick={() => {
+        if (connectFrom) completeFlowConnect(id);
+        else selectFlowScreen(id);
+      }}
+      style={{ cursor: connectFrom ? "crosshair" : "pointer" }}
+    >
+      <title>{connectFrom ? `Connect ${FLOW_SCREENS[connectFrom].title} → ${s.title}` : `${s.title} — click to inspect`}</title>
+      <rect x={s.x} y={s.y} width={w} height={h} rx="10" fill="#1E1F25" stroke={source ? "#E8C33D" : selected ? "#B9C3FF" : "#46464F"} strokeWidth={source || selected ? 2 : 1} />
       <rect x={s.x} y={s.y} width={w} height="28" rx="10" fill={s.header} />
       <rect x={s.x} y={s.y + 18} width={w} height="14" fill={s.header} />
       <text x={s.x + 9} y={s.y + 19} fill="#E3E1E9" fontSize="12" fontWeight="600">{s.title}</text>
@@ -1915,14 +2020,61 @@ function FlowNode({ id }: { id: string }): React.JSX.Element {
       {s.guards.map((g, i) => (
         <text key={i} x={s.x + 9} y={s.y + 62 + i * 18} fill={selected ? "#E3E1E9" : "#C6C5D0"} fontSize="10" fontFamily="Roboto Mono, monospace">✓ {g}</text>
       ))}
+      {/* input port (left) — click completes a pending connection here */}
+      <circle
+        cx={s.x}
+        cy={oy}
+        r={14}
+        fill="transparent"
+        style={{ cursor: "crosshair" }}
+        onClick={(ev) => {
+          ev.stopPropagation();
+          if (connectFrom) completeFlowConnect(id);
+          else selectFlowScreen(id);
+        }}
+      >
+        <title>{connectFrom ? `Connect here → ${s.title}` : `${s.title} input — start from another node's output port`}</title>
+      </circle>
+      <circle
+        cx={s.x}
+        cy={oy}
+        r={connectFrom && connectFrom !== id ? 8 : 6}
+        fill={connectFrom && connectFrom !== id ? "#E8C33D" : "#1E1F25"}
+        stroke={connectFrom && connectFrom !== id ? "#E8C33D" : "#90909A"}
+        strokeWidth="1.5"
+        pointerEvents="none"
+      />
+      {/* output port (right) — click to start a connection from here */}
+      <circle
+        cx={s.x + w}
+        cy={oy}
+        r={14}
+        fill="transparent"
+        style={{ cursor: "crosshair" }}
+        onClick={grab}
+      >
+        <title>{source ? "Cancel connection" : `Connect from ${s.title} — then click a target`}</title>
+      </circle>
+      <circle
+        cx={s.x + w}
+        cy={oy}
+        r={source ? 8 : 6}
+        fill={source ? "#E8C33D" : "#1E1F25"}
+        stroke={source ? "#E8C33D" : "#90909A"}
+        strokeWidth={source ? 2.5 : 1.5}
+        pointerEvents="none"
+      />
+      {source && (
+        <text x={s.x + w + 12} y={oy + 4} fill="#E8C33D" fontSize="10" fontFamily="Roboto Mono, monospace">from here…</text>
+      )}
     </g>
   );
 }
 
-function edgePath(from: string, to: string, dashed?: boolean, up?: boolean): string {
-  const a = FLOW_SCREENS[from];
-  const b = FLOW_SCREENS[to];
-  if (up) {
+function edgePath(e: FlowEdgeView): string {
+  const a = FLOW_SCREENS[e.from];
+  const b = FLOW_SCREENS[e.to];
+  if (e.up) {
     const x1 = a.x + 24;
     const x2 = b.x + 24;
     const y1 = a.y;
@@ -1933,42 +2085,84 @@ function edgePath(from: string, to: string, dashed?: boolean, up?: boolean): str
     const x1 = a.x + 168;
     const y = a.y + 26;
     const x2 = b.x;
-    if (dashed) return `M${x1},${y} C${x1},${-34} ${x2},${-34} ${x2},${14}`;
+    if (e.dashed && !e.draft) return `M${x1},${y} C${x1},${-34} ${x2},${-34} ${x2},${14}`;
+    if (e.dashed) return `M${x1},${y} C${x1 + 40},${y} ${x2 - 30},${y} ${x2},${y}`;
     const mx = (x1 + x2) / 2;
     return `M${x1},${y} C${mx},${y} ${mx},${y} ${x2},${y}`;
   }
-  const x = a.x + 40;
-  const y1 = a.y + (from === "world" || from === "select" || from === "login" ? 52 + a.guards.length * 18 : 0);
+  if (a.x === b.x) {
+    if (a.y < b.y) {
+      const x = a.x + 40;
+      const y1 = a.y + 52 + a.guards.length * 18;
+      return `M${x},${y1} L${x},${b.y}`;
+    }
+    // draft edge back up the same column
+    const x1 = a.x + 24;
+    const x2 = b.x + 24;
+    const y1 = a.y;
+    const y2 = b.y + 52 + b.guards.length * 18;
+    return `M${x1},${y1} C${x1},${y1 - 34} ${x2},${y2 + 34} ${x2},${y2}`;
+  }
+  // draft diagonal across columns: right edge of source to top of target
+  const x1 = a.x + 168;
+  const y1 = a.y + 26;
+  const x2 = b.x + 84;
   const y2 = b.y;
-  return `M${x},${y1} L${x},${y2}`;
+  return `M${x1},${y1} C${x1 + 44},${y1} ${x2},${y2 - 44} ${x2},${y2}`;
 }
 
-function edgeLabel(e: { from: string; to: string; label: string; dashed?: boolean; up?: boolean }): { x: number; y: number } {
+function edgeLabel(e: FlowEdgeView): { x: number; y: number } {
   const a = FLOW_SCREENS[e.from];
   const b = FLOW_SCREENS[e.to];
   if (e.up) return { x: a.x + 30, y: (a.y + b.y) / 2 + 40 };
-  if (a.y === b.y && !e.dashed) return { x: (a.x + 168 + b.x) / 2 - 30, y: a.y + 16 };
-  if (e.dashed) return { x: (a.x + b.x) / 2 + 40, y: -22 };
-  return { x: a.x + 48, y: (a.y + b.y) / 2 + 60 };
+  if (a.y === b.y && !e.dashed) return { x: (a.x + 168 + b.x) / 2, y: a.y + 14 };
+  if (e.dashed && !e.draft) return { x: (a.x + b.x) / 2 + 40, y: -22 };
+  if (a.x === b.x) return { x: a.x + 48, y: (a.y + b.y) / 2 + 60 };
+  return { x: (a.x + 168 + b.x + 84) / 2 - 24, y: (a.y + b.y) / 2 - 6 };
 }
 
 export function FlowGraphPreview(): React.JSX.Element {
-  const { screen } = flowStore.use();
+  const { screen, connectFrom } = flowStore.use();
   const [zoom, setZoom] = React.useState(1);
-  const reach = flowReachable();
-  const W = Math.round(840 * zoom);
+  const edges = getFlowEdges();
+  const drafts = flowDraftCount();
+  const reach = flowReachable(edges);
+  const backToLogin = (() => {
+    const seen = new Set<string>(["login"]);
+    const queue = ["login"];
+    while (queue.length > 0) {
+      const cur = queue.pop() as string;
+      for (const e of edges) {
+        if (e.to === cur && !seen.has(e.from)) { seen.add(e.from); queue.push(e.from); }
+      }
+    }
+    return { count: seen.size, total: Object.keys(FLOW_SCREENS).length };
+  })();
+  const W = Math.round(880 * zoom);
   const H = Math.round(400 * zoom);
+  React.useEffect(() => {
+    if (!connectFrom) return;
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Escape") cancelFlowConnect();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [connectFrom]);
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · scenes (§6)">Login → character → world as a validated document; the client runs today's hard-coded screens until the scenes slice lands.</PreviewBadge>
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span className="font-mono" style={{ color: "var(--m3-on-surface-variant)" }}>content/scenes/login-to-world.flow.json</span>
-        <Pill tone="info">7 screens · 10 transitions</Pill>
+        <Pill tone="info">7 screens · {edges.length} transitions</Pill>
+        {drafts > 0 && <Pill tone="warn">◈ {drafts} local draft{ drafts === 1 ? "" : "s"}</Pill>}
         <span className="ml-auto flex items-center gap-1">
           <IconButton label="Zoom out" size={36} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}><MIcon name="remove" size={19} /></IconButton>
           <span className="w-12 text-center font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{Math.round(zoom * 100)}%</span>
           <IconButton label="Zoom in" size={36} onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)))}><MIcon name="add" size={19} /></IconButton>
           <IconButton label="Reset view" size={36} onClick={() => setZoom(1)}><MIcon name="fit_screen" size={19} /></IconButton>
+          {drafts > 0 && (
+            <IconButton label="Reset document to the shipped version" size={36} onClick={resetFlowDrafts}><MIcon name="restart_alt" size={19} /></IconButton>
+          )}
           <button
             onClick={() => staged("Add screen", "EA · scenes (§6)")}
             className="m3-focus ml-1 flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium"
@@ -1978,6 +2172,13 @@ export function FlowGraphPreview(): React.JSX.Element {
           </button>
         </span>
       </div>
+      {connectFrom && (
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[13px]" style={{ background: "rgba(232,163,61,.14)", color: "#E8A33D" }}>
+          <MIcon name="cable" size={18} />
+          <span>Connecting from <strong>{FLOW_SCREENS[connectFrom].title}</strong> — click a node's input port or body. Port on the right starts over.</span>
+          <button onClick={cancelFlowConnect} className="m3-focus ml-auto rounded-full px-3 py-1 font-medium" style={{ border: "1px solid #E8A33D" }}>Cancel (Esc)</button>
+        </div>
+      )}
       <div className="m3-scroll overflow-auto rounded-xl" style={{ height: 440, background: "var(--m3-surface-0)" }}>
       <svg
         width={W}
@@ -1993,12 +2194,22 @@ export function FlowGraphPreview(): React.JSX.Element {
           </marker>
         </defs>
         <g transform={`translate(0,${40 * zoom}) scale(${zoom})`}>
-          {FLOW_EDGES.map((e, i) => {
+          {edges.map((e) => {
             const lp = edgeLabel(e);
+            const custom = e.draft !== undefined;
+            const centered = !custom && !e.dashed && FLOW_SCREENS[e.from].y === FLOW_SCREENS[e.to].y;
             return (
-              <g key={i}>
-                <path d={edgePath(e.from, e.to, e.dashed, e.up)} stroke="#90909A" strokeDasharray={e.dashed ? "5 4" : undefined} fill="none" markerEnd="url(#ah-flow)" />
-                <text x={lp.x} y={lp.y} fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">{e.label}</text>
+              <g key={custom ? `d${e.draft}` : `s${e.shipped}`} opacity={connectFrom ? 0.45 : 1}>
+                <path
+                  d={edgePath(e)}
+                  stroke={custom ? "#B9C3FF" : "#90909A"}
+                  strokeWidth={custom ? 2 : 1.5}
+                  strokeDasharray={e.dashed ? "5 4" : undefined}
+                  fill="none"
+                  markerEnd="url(#ah-flow)"
+                />
+                <text x={lp.x} y={lp.y} textAnchor={centered ? "middle" : undefined} fill={custom ? "#B9C3FF" : "#C6C5D0"} fontSize="10" fontFamily="Roboto Mono, monospace">
+                  {custom ? `◈ ${e.label}` : e.label}</text>
               </g>
             );
           })}
@@ -2011,9 +2222,14 @@ export function FlowGraphPreview(): React.JSX.Element {
         <MiniTable
           head={["", "Check", "Result"]}
           rows={[
-            ["✓", "All screens reachable from boot", <span className="font-mono">{reach.count} / {reach.total}</span>],
-            ["✓", "Every screen has a way back to login", <span className="font-mono">logout + register loops</span>],
+            [reach.count === reach.total ? "✓" : "⚠", "All screens reachable from boot", <span className="font-mono">{reach.count} / {reach.total}</span>],
+            [backToLogin.count === backToLogin.total ? "✓" : "⚠", "Every screen has a way back to login", <span className="font-mono">{backToLogin.count} / {backToLogin.total}</span>],
             ["✓", "Selected screen guards listed", <span className="font-mono">{FLOW_SCREENS[screen].guards.length} guards · {screen}</span>],
+            ...(drafts > 0 ? [[
+              "◈",
+              "Local draft transitions (reset restores shipped)",
+              <span key="d" className="font-mono">{drafts} pending</span>,
+            ]] : []),
           ]}
         />
       </div>
@@ -2022,10 +2238,11 @@ export function FlowGraphPreview(): React.JSX.Element {
 }
 
 export function FlowDetails(): React.JSX.Element {
-  const { screen } = flowStore.use();
+  const { screen, connectFrom } = flowStore.use();
   const s = FLOW_SCREENS[screen];
-  const outs = FLOW_EDGES.filter((e) => e.from === screen);
-  const ins = FLOW_EDGES.filter((e) => e.to === screen);
+  const edges = getFlowEdges();
+  const outs = edges.filter((e) => e.from === screen);
+  const ins = edges.filter((e) => e.to === screen);
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium">
@@ -2033,25 +2250,54 @@ export function FlowDetails(): React.JSX.Element {
       </p>
       <DraftField label="route" value={s.route} mono />
       <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>kind · {s.kind} · owning slice scenes (§6)</p>
+      <button
+        onClick={() => (connectFrom === screen ? cancelFlowConnect() : startFlowConnect(screen))}
+        className="m3-focus mt-1 flex h-9 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium"
+        style={connectFrom === screen
+          ? { border: "1px solid #E8A33D", color: "#E8A33D" }
+          : { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
+      >
+        <MIcon name="cable" size={18} />{connectFrom === screen ? "Cancel connection" : "Connect from here"}
+      </button>
       <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Entry guards</p>
       {s.guards.map((g, i) => (
         <DraftField key={`${screen}-g${i}`} label={`guard ${i + 1}`} value={g} mono />
       ))}
-      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Transitions</p>
-      {ins.map((e, i) => (
-        <button key={`in${i}`} onClick={() => selectFlowScreen(e.from)} className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5">
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Transitions in</p>
+      {ins.map((e) => (
+        <button key={e.draft !== undefined ? `d${e.draft}` : `s${e.shipped}`} onClick={() => selectFlowScreen(e.from)} className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5">
           <MIcon name="login" size={16} /><span className="font-mono text-xs">{FLOW_SCREENS[e.from].title}</span>
-          <span style={{ color: "var(--m3-on-surface-variant)" }}>→ {e.label}</span>
+          <span style={{ color: "var(--m3-on-surface-variant)" }}>→ {e.draft !== undefined ? `◈ ${e.label}` : e.label}</span>
         </button>
       ))}
-      {outs.map((e, i) => (
-        <button key={`out${i}`} onClick={() => selectFlowScreen(e.to)} className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5">
-          <MIcon name="logout" size={16} /><span style={{ color: "var(--m3-on-surface-variant)" }}>{e.label} →</span>
-          <span className="font-mono text-xs">{FLOW_SCREENS[e.to].title}</span>
-        </button>
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Transitions out</p>
+      {outs.map((e) => (
+        <div key={e.draft !== undefined ? `d${e.draft}` : `s${e.shipped}`} className="rounded-lg px-1 py-0.5 hover:bg-white/5">
+          <div className="flex items-center gap-2 px-1 py-1 text-[12.5px]">
+            <MIcon name="logout" size={16} />
+            <button onClick={() => selectFlowScreen(e.to)} className="m3-focus rounded px-1 text-left">
+              <span style={{ color: "var(--m3-on-surface-variant)" }}>{e.draft !== undefined ? `◈ ${e.label}` : e.label} →</span>
+              <span className="font-mono text-xs"> {FLOW_SCREENS[e.to].title}</span>
+            </button>
+            {e.draft !== undefined ? (
+              <button onClick={() => deleteFlowDraft(e.draft as number)} title="Delete draft transition" aria-label={`Delete draft transition ${e.label}`} className="m3-focus ml-auto grid h-8 w-8 place-items-center rounded-full">
+                <MIcon name="delete" size={17} />
+              </button>
+            ) : (
+              <button onClick={() => removeFlowEdge(e.shipped as number)} title="Remove transition (local draft)" aria-label={`Remove transition ${e.label}`} className="m3-focus ml-auto grid h-8 w-8 place-items-center rounded-full">
+                <MIcon name="link_off" size={17} />
+              </button>
+            )}
+          </div>
+          {e.draft !== undefined && (
+            <div className="px-1 pb-1">
+              <DraftField label="transition label" value={e.label} mono onCommit={(next) => renameFlowDraft(e.draft as number, next)} />
+            </div>
+          )}
+        </div>
       ))}
       <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Route and guards edit as local drafts. Adding screens or rewiring transitions arrives with the scenes slice.
+        Routes, guards and transitions edit as local drafts — Reset document restores the shipped graph; the scenes slice persists them.
       </p>
     </div>
   );
