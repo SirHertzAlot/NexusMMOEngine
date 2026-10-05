@@ -903,36 +903,262 @@ export function QueryPreview(): React.JSX.Element {
 
 // ---------------------------------------------------------------- story (ux-13, ux-18)
 
-const QUEST_NODES: Record<string, { title: string; header: string; lines: string[] }> = {
-  talk: { title: "Talk to Warden Hale", header: "#36449A", lines: ["Hale · Starter Coast", "dialog: hale.intro"] },
-  clear: { title: "Clear a goblin camp", header: "#7A2E12", lines: ["slot: goblin camp ≤ 2 chunks", "seed 1337 · camp at 3,1", "kill 6 · goblin"] },
-  return: { title: "Return to Hale", header: "#36449A", lines: ["dialog: hale.return"] },
-  reward: { title: "Reward", header: "#1F5110", lines: ["40 silver", "loot: hale_reward", "standing +10"] },
-  refused: { title: "Refused", header: "#5a3a1a", lines: ['"I\'ll think about it"', "leads nowhere"] },
-  collect: { title: "Collect goblin ears", header: "#7A2E12", lines: ["3 × goblin_ear", "drop 60 % (goblin_quest)"] },
-  optional: { title: "Optional: the tower", header: "#3a3355", lines: ["instance: watchtower", "slot: dungeon pool · d1"] },
-  bonus: { title: "Bonus reward", header: "#1F5110", lines: ["loot: tower_cache", "unlocks: tower-key"] },
+const QUEST_NODES: Record<string, { title: string; header: string; lines: string[]; w: number; home: { x: number; y: number } }> = {
+  talk: { title: "Talk to Warden Hale", header: "#36449A", lines: ["Hale · Starter Coast", "dialog: hale.intro"], w: 150, home: { x: 20, y: 40 } },
+  clear: { title: "Clear a goblin camp", header: "#7A2E12", lines: ["slot: goblin camp ≤ 2 chunks", "seed 1337 · camp at 3,1", "kill 6 · goblin"], w: 190, home: { x: 250, y: 30 } },
+  return: { title: "Return to Hale", header: "#36449A", lines: ["dialog: hale.return"], w: 150, home: { x: 520, y: 40 } },
+  reward: { title: "Reward", header: "#1F5110", lines: ["40 silver", "loot: hale_reward", "standing +10"], w: 150, home: { x: 730, y: 40 } },
+  refused: { title: "Refused", header: "#5a3a1a", lines: ['"I\'ll think about it"', "leads nowhere"], w: 150, home: { x: 20, y: 220 } },
+  collect: { title: "Collect goblin ears", header: "#7A2E12", lines: ["3 × goblin_ear", "drop 60 % (goblin_quest)"], w: 190, home: { x: 250, y: 220 } },
+  optional: { title: "Optional: the tower", header: "#3a3355", lines: ["instance: watchtower", "slot: dungeon pool · d1"], w: 170, home: { x: 520, y: 220 } },
+  bonus: { title: "Bonus reward", header: "#1F5110", lines: ["loot: tower_cache", "unlocks: tower-key"], w: 150, home: { x: 730, y: 220 } },
 };
 
-const storyStore = createStore<{ node: string; lines: Record<string, string[]> }>({
+const QUEST_EDGES: Array<{ from: string; to: string; label?: string; dashed?: boolean }> = [
+  { from: "talk", to: "clear" },
+  { from: "clear", to: "return" },
+  { from: "return", to: "reward" },
+  { from: "talk", to: "refused", label: "refuse", dashed: true },
+  { from: "clear", to: "collect", label: "camp cleared" },
+  { from: "collect", to: "optional", dashed: true },
+  { from: "optional", to: "bonus" },
+  { from: "collect", to: "return", label: "3 ears" },
+];
+
+export interface QuestEdgeDraft {
+  id: number;
+  from: string;
+  to: string;
+  label: string;
+}
+
+export interface QuestEdgeView {
+  from: string;
+  to: string;
+  label: string;
+  dashed?: boolean;
+  shipped?: number;
+  draft?: number;
+}
+
+const storyStore = createStore<{
+  node: string;
+  lines: Record<string, string[]>;
+  pos: Record<string, { x: number; y: number }>;
+  edgeDrafts: QuestEdgeDraft[];
+  edgeRemoved: number[];
+  seq: number;
+  bend: Record<string, { x: number; y: number }>;
+}>({
   node: "clear",
   lines: {},
+  pos: {},
+  edgeDrafts: [],
+  edgeRemoved: [],
+  seq: 1,
+  bend: {},
 });
 
 export { storyStore };
 
-function QuestNode({ id, x, y, w }: { id: string; x: number; y: number; w: number }): React.JSX.Element {
+function questBox(id: string): { x: number; y: number; w: number; h: number } {
+  const n = QUEST_NODES[id];
+  const o = storyStore.get().pos[id];
+  const rendered = storyStore.get().lines[id] ?? n.lines;
+  return { x: o?.x ?? n.home.x, y: o?.y ?? n.home.y, w: n.w, h: 34 + rendered.length * 20 };
+}
+
+export function moveQuestNode(id: string, x: number, y: number): void {
+  const n = QUEST_NODES[id];
+  if (!n) return;
+  const cx = Math.min(900 - n.w, Math.max(0, Math.round(x)));
+  const cy = Math.min(300, Math.max(0, Math.round(y)));
+  storyStore.set((p) => ({ ...p, pos: { ...p.pos, [id]: { x: cx, y: cy } } }));
+}
+
+/** Shipped quest edges minus locally-removed, plus local drafts. */
+export function getQuestEdges(): QuestEdgeView[] {
+  const { edgeDrafts, edgeRemoved } = storyStore.get();
+  const kept = QUEST_EDGES.flatMap((e, i) =>
+    edgeRemoved.includes(i) ? [] : [{ ...e, label: e.label ?? "", shipped: i }],
+  );
+  return [...kept, ...edgeDrafts.map((d) => ({ from: d.from, to: d.to, label: d.label, dashed: true, draft: d.id }))];
+}
+
+export function questDraftCount(): number {
+  const { pos, edgeDrafts, edgeRemoved, bend } = storyStore.get();
+  return Object.keys(pos).length + edgeDrafts.length + edgeRemoved.length + Object.keys(bend).length;
+}
+
+export function resetStoryLayout(): void {
+  storyStore.set((p) => ({ ...p, pos: {}, edgeDrafts: [], edgeRemoved: [], bend: {} }));
+  notify("Quest graph reset to the shipped version");
+}
+
+/** Identity key for a quest edge (shipped index or draft id). */
+export function questEdgeKey(e: QuestEdgeView): string {
+  return e.draft !== undefined ? `d${e.draft}` : `s${e.shipped}`;
+}
+
+export function setQuestBend(key: string, x: number, y: number): void {
+  const cx = Math.min(900, Math.max(0, Math.round(x)));
+  const cy = Math.min(340, Math.max(0, Math.round(y)));
+  storyStore.set((p) => ({ ...p, bend: { ...p.bend, [key]: { x: cx, y: cy } } }));
+}
+
+export function clearQuestBend(key: string): void {
+  storyStore.set((p) => {
+    if (!p.bend[key]) return p;
+    const bend = { ...p.bend };
+    delete bend[key];
+    return { ...p, bend };
+  });
+}
+
+/** Rewire a quest edge's target by dragging it onto another step. Local only. */
+export function rewireQuestEdge(edge: QuestEdgeView, to: string): void {
+  if (!QUEST_NODES[to]) return;
+  if (to === edge.from) {
+    notify("A step cannot transition to itself");
+    return;
+  }
+  if (to === edge.to) return;
+  const dup = getQuestEdges().some(
+    (e) => e.from === edge.from && e.to === to && e.draft !== edge.draft && e.shipped !== edge.shipped,
+  );
+  if (dup) {
+    notify(`${QUEST_NODES[edge.from].title} → ${QUEST_NODES[to].title} already exists`);
+    return;
+  }
+  if (edge.draft !== undefined) {
+    const id = edge.draft;
+    storyStore.set((p) => ({ ...p, node: to, edgeDrafts: p.edgeDrafts.map((d) => (d.id === id ? { ...d, to } : d)) }));
+  } else {
+    const shipped = edge.shipped as number;
+    const label = QUEST_EDGES[shipped].label ?? `to ${QUEST_NODES[to].title.toLowerCase()}`;
+    const oldKey = questEdgeKey(edge);
+    storyStore.set((p) => {
+      const bend = { ...p.bend };
+      if (bend[oldKey]) {
+        bend[`d${p.seq}`] = bend[oldKey];
+        delete bend[oldKey];
+      }
+      return {
+        ...p,
+        node: to,
+        seq: p.seq + 1,
+        bend,
+        edgeRemoved: p.edgeRemoved.includes(shipped) ? p.edgeRemoved : [...p.edgeRemoved, shipped],
+        edgeDrafts: [...p.edgeDrafts, { id: p.seq, from: edge.from, to, label }],
+      };
+    });
+  }
+  notify(`Rewired ${QUEST_NODES[edge.from].title} → ${QUEST_NODES[to].title} locally — Reset restores the shipped graph`);
+}
+
+export function removeQuestEdge(shipped: number): void {
+  const e = QUEST_EDGES[shipped];
+  storyStore.set((p) => (p.edgeRemoved.includes(shipped) ? p : { ...p, edgeRemoved: [...p.edgeRemoved, shipped] }));
+  if (e) notify(`Removed ${QUEST_NODES[e.from].title} → ${QUEST_NODES[e.to].title} locally — Reset restores it`);
+}
+
+export function deleteQuestDraft(id: number): void {
+  storyStore.set((p) => ({ ...p, edgeDrafts: p.edgeDrafts.filter((d) => d.id !== id) }));
+}
+
+export interface QuestEdgeGeom {
+  d: string;
+  lx: number;
+  ly: number;
+  anchor?: "middle" | "end";
+  cx: number;
+  cy: number;
+}
+
+export function questEdgeGeom(e: QuestEdgeView): QuestEdgeGeom {
+  const a = questBox(e.from);
+  const b = questBox(e.to);
+  let p0: [number, number];
+  let p1: [number, number];
+  let c: [number, number];
+  let off: [number, number] = [0, 0];
+  let anchor: "middle" | "end" | undefined;
+  const bend = storyStore.get().bend[questEdgeKey(e)];
+  if (Math.abs(a.y - b.y) < 40) {
+    // Same row: right edge to left edge at mid heights.
+    p0 = [a.x + a.w, a.y + Math.min(40, a.h / 2)];
+    p1 = [b.x, b.y + Math.min(40, b.h / 2)];
+    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    off = [0, -10];
+    anchor = "middle";
+  } else if (Math.abs(a.x + a.w / 2 - (b.x + b.w / 2)) < 40) {
+    // Same column: straight down through node centers, straight back up.
+    const x = Math.round((a.x + a.w / 2 + (b.x + b.w / 2)) / 2);
+    const down = a.y < b.y;
+    p0 = down ? [x, a.y + a.h] : [a.x + 24, a.y];
+    p1 = down ? [x, b.y] : [b.x + 24, b.y + b.h];
+    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    off = down ? [8, 4] : [-8, 4];
+    anchor = down ? undefined : "end";
+  } else {
+    // Diagonal: right edge of source to top center of target, gently bowed.
+    p0 = [a.x + a.w, a.y + 26];
+    p1 = [b.x + b.w / 2, b.y];
+    const mx = (p0[0] + p1[0]) / 2;
+    const my = (p0[1] + p1[1]) / 2;
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const len = Math.hypot(dx, dy) || 1;
+    c = bend ? [bend.x, bend.y] : [mx + (-dy / len) * 30, my + (dx / len) * 30];
+    off = [-10, -8];
+  }
+  const qx = (p0[0] + 2 * c[0] + p1[0]) / 4;
+  const qy = (p0[1] + 2 * c[1] + p1[1]) / 4;
+  return {
+    d: `M${r1(p0[0])},${r1(p0[1])} Q${r1(c[0])},${r1(c[1])} ${r1(p1[0])},${r1(p1[1])}`,
+    lx: r1(qx + off[0]),
+    ly: r1(qy + off[1]),
+    anchor,
+    cx: r1(c[0]),
+    cy: r1(c[1]),
+  };
+}
+
+function QuestNode({ id }: { id: string }): React.JSX.Element {
   const { node, lines } = storyStore.use();
   const n = QUEST_NODES[id];
+  const box = questBox(id);
+  const { x, y, w } = box;
   const rendered = lines[id] ?? n.lines;
   const selected = node === id;
   const h = 34 + rendered.length * 20;
+  const drag = React.useRef<{ sx: number; sy: number; ox: number; oy: number; k: number } | null>(null);
   return (
     <g
-      onClick={() => storyStore.set((p) => ({ ...p, node: id }))}
-      style={{ cursor: "pointer" }}
+      data-qnode={id}
+      onPointerDown={(ev) => {
+        if (ev.button !== 0 && ev.pointerType === "mouse") return;
+        ev.stopPropagation();
+        graphDragMoved.moved = false;
+        const k = 900 / ((ev.currentTarget as SVGGElement).ownerSVGElement?.getBoundingClientRect().width || 900);
+        drag.current = { sx: ev.clientX, sy: ev.clientY, ox: x, oy: y, k };
+        (ev.currentTarget as SVGGElement).setPointerCapture?.(ev.pointerId);
+      }}
+      onPointerMove={(ev) => {
+        const d = drag.current;
+        if (!d) return;
+        if (Math.abs(ev.clientX - d.sx) + Math.abs(ev.clientY - d.sy) <= 4) return;
+        graphDragMoved.moved = true;
+        moveQuestNode(id, d.ox + (ev.clientX - d.sx) * d.k, d.oy + (ev.clientY - d.sy) * d.k);
+      }}
+      onPointerUp={() => { drag.current = null; }}
+      onClick={() => {
+        if (graphDragMoved.moved) { graphDragMoved.moved = false; return; }
+        storyStore.set((p) => ({ ...p, node: id }));
+      }}
+      style={{ cursor: "pointer", touchAction: "none" }}
     >
-      <title>{n.title} — click to inspect</title>
+      <title>{n.title} — click to inspect, drag to move</title>
       <rect x={x} y={y} width={w} height={h} rx="10" fill="#1E1F25" stroke={selected ? "#B9C3FF" : "#46464F"} strokeWidth={selected ? 2 : 1} />
       <rect x={x} y={y} width={w} height="30" rx="10" fill={n.header} />
       <rect x={x} y={y + 20} width={w} height="14" fill={n.header} />
@@ -945,56 +1171,170 @@ function QuestNode({ id, x, y, w }: { id: string; x: number; y: number; w: numbe
 }
 
 export function QuestPreview(): React.JSX.Element {
+  interface QuestWire { edge: QuestEdgeView; sx: number; sy: number; x: number; y: number }
+  const wireRef = React.useRef<QuestWire | null>(null);
+  const [wire, setWire] = React.useState<QuestWire | null>(null);
+  const setWireBoth = (w: QuestWire | null): void => {
+    wireRef.current = w;
+    setWire(w);
+  };
+  const svgRef = React.useRef<SVGSVGElement | null>(null);
+  const toUnits = (clientX: number, clientY: number): { x: number; y: number } => {
+    const r = svgRef.current?.getBoundingClientRect();
+    if (!r || r.width === 0) return { x: 0, y: 0 };
+    const k = 900 / r.width;
+    return { x: (clientX - r.left) * k, y: (clientY - r.top) * k };
+  };
+  const dropWire = (clientX: number, clientY: number): void => {
+    const w = wireRef.current;
+    setWireBoth(null);
+    if (!w) return;
+    const target = (document.elementFromPoint(clientX, clientY) as Element | null)?.closest?.("[data-qnode]");
+    const to = target?.getAttribute("data-qnode") ?? null;
+    if (to) {
+      graphDragMoved.moved = true;
+      rewireQuestEdge(w.edge, to);
+    }
+  };
+  React.useEffect(() => {
+    if (!wire) return;
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Escape") setWireBoth(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wire]);
+  const edges = getQuestEdges();
+  const dirty = questDraftCount();
+  // Subscribe so node drags and edge rewires repaint paths, not just nodes.
+  storyStore.use();
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · Story (§7c.3)">Quest and dialog graphs with the dialog tester and quest state.</PreviewBadge>
       <div className="flex items-center gap-2 text-[13px]">
         <span className="font-mono" style={{ color: "var(--m3-on-surface-variant)" }}>content/quests/warden-hale.quest.json</span>
         <Pill tone="info">1 slot · generated</Pill>
+        {dirty > 0 && <Pill tone="warn">◈ {dirty} local draft{dirty === 1 ? "" : "s"}</Pill>}
         <span className="ml-auto flex gap-2">
           <Pill tone="plain">◈ Seed 1337</Pill>
           <Pill tone="plain">▷ Play from step</Pill>
         </span>
       </div>
-      <svg viewBox="0 0 900 340" className="w-full rounded-xl" style={{ background: "var(--m3-surface-0)", backgroundImage: "radial-gradient(#2a2b31 1px, transparent 1px)", backgroundSize: "22px 22px" }} role="img" aria-label="Quest graph preview">
+      <svg ref={svgRef} viewBox="0 0 900 340" className="w-full rounded-xl" style={{ background: "var(--m3-surface-0)", backgroundImage: "radial-gradient(#2a2b31 1px, transparent 1px)", backgroundSize: "22px 22px", touchAction: "none" }} role="img" aria-label="Quest graph preview">
         <defs>
           <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M0,0 L8,4 L0,8 Z" fill="#90909A" />
           </marker>
         </defs>
-        {/* top row */}
-        <path d="M170,80 C210,80 210,70 250,70" stroke="#90909A" fill="none" markerEnd="url(#ah)" />
-        <path d="M440,70 C480,70 480,80 520,80" stroke="#90909A" fill="none" markerEnd="url(#ah)" />
-        <path d="M670,80 C700,80 700,80 730,80" stroke="#90909A" fill="none" markerEnd="url(#ah)" />
-        {/* refuse branch */}
-        <path d="M95,132 L95,220" stroke="#90909A" strokeDasharray="5 4" fill="none" />
-        <text x="102" y="180" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">refuse</text>
-        {/* collect branch */}
-        <path d="M345,142 L345,220" stroke="#90909A" fill="none" />
-        <text x="352" y="185" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">camp cleared</text>
-        {/* collect → optional → bonus */}
-        <path d="M440,262 L520,262" stroke="#90909A" strokeDasharray="5 4" fill="none" markerEnd="url(#ah)" />
-        <path d="M690,262 L730,262" stroke="#90909A" fill="none" markerEnd="url(#ah)" />
-        {/* collect → return (3 ears handoff) */}
-        <path d="M420,240 C480,220 500,160 540,120" stroke="#90909A" fill="none" markerEnd="url(#ah)" />
-        <text x="478" y="170" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">3 ears</text>
-        <QuestNode id="talk" x={20} y={40} w={150} />
-        <QuestNode id="clear" x={250} y={30} w={190} />
-        <QuestNode id="return" x={520} y={40} w={150} />
-        <QuestNode id="reward" x={730} y={40} w={150} />
-        <QuestNode id="refused" x={20} y={220} w={150} />
-        <QuestNode id="collect" x={250} y={220} w={190} />
-        <QuestNode id="optional" x={520} y={220} w={170} />
-        <QuestNode id="bonus" x={730} y={220} w={150} />
+        {edges.map((e) => {
+          const geom = questEdgeGeom(e);
+          const custom = e.draft !== undefined;
+          const key = questEdgeKey(e);
+          return (
+            <g key={key} className="group">
+              <title>Drag to rewire onto another step</title>
+              <path
+                d={geom.d}
+                stroke="rgba(0,0,0,0)"
+                strokeWidth={14}
+                pointerEvents="stroke"
+                fill="none"
+                style={{ cursor: "grab" }}
+                onPointerDown={(ev) => {
+                  if (ev.button !== 0 && ev.pointerType === "mouse") return;
+                  ev.stopPropagation();
+                  graphDragMoved.moved = false;
+                  (ev.currentTarget as SVGPathElement).setPointerCapture?.(ev.pointerId);
+                  const p = toUnits(ev.clientX, ev.clientY);
+                  const sp = questBox(e.from);
+                  setWireBoth({ edge: e, sx: sp.x + sp.w, sy: sp.y + 26, x: p.x, y: p.y });
+                }}
+                onPointerMove={(ev) => {
+                  const w0 = wireRef.current;
+                  if (!w0 || w0.edge.draft !== e.draft || w0.edge.shipped !== e.shipped) return;
+                  const p = toUnits(ev.clientX, ev.clientY);
+                  if (Math.abs(p.x - w0.sx) + Math.abs(p.y - w0.sy) > 6) graphDragMoved.moved = true;
+                  setWireBoth({ ...w0, x: p.x, y: p.y });
+                }}
+                onPointerUp={(ev) => {
+                  if (wireRef.current) dropWire(ev.clientX, ev.clientY);
+                }}
+              />
+              <path
+                d={geom.d}
+                stroke={custom ? "#B9C3FF" : "#90909A"}
+                strokeWidth={custom ? 2 : 1.5}
+                strokeDasharray={e.dashed ? "5 4" : undefined}
+                fill="none"
+                pointerEvents="none"
+                markerEnd="url(#ah)"
+              />
+              <BendHandle
+                x={geom.cx}
+                y={geom.cy}
+                accent={custom || storyStore.get().bend[key] !== undefined}
+                toUnits={toUnits}
+                onMove={(x, y) => setQuestBend(key, x, y)}
+                onReset={() => clearQuestBend(key)}
+              />
+            </g>
+          );
+        })}
+        {wire && (
+          <path
+            d={`M${wire.sx},${wire.sy} C${wire.sx + 44},${wire.sy} ${wire.x},${wire.y - 44} ${wire.x},${wire.y}`}
+            stroke="#B9C3FF"
+            strokeWidth={2}
+            strokeDasharray="5 4"
+            fill="none"
+            pointerEvents="none"
+            markerEnd="url(#ah)"
+          />
+        )}
+        {Object.keys(QUEST_NODES).map((id) => <QuestNode key={id} id={id} />)}
+        {/* labels paint above nodes so tight gaps stay readable */}
+        {edges.map((e) => {
+          if (e.label === "") return null;
+          const geom = questEdgeGeom(e);
+          const custom = e.draft !== undefined;
+          return (
+            <text
+              key={custom ? `dl${e.draft}` : `sl${e.shipped}`}
+              x={geom.lx}
+              y={geom.ly}
+              textAnchor={geom.anchor}
+              fill={custom ? "#B9C3FF" : "#C6C5D0"}
+              fontSize="10"
+              fontFamily="Roboto Mono, monospace"
+              pointerEvents="none"
+              stroke="var(--m3-surface-0)"
+              strokeWidth={3}
+              paintOrder="stroke"
+            >
+              {custom ? `◈ ${e.label}` : e.label}
+            </text>
+          );
+        })}
       </svg>
       <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-        <p className="mb-2 text-sm font-medium">Validation</p>
+        <p className="mb-2 flex items-center text-sm font-medium">Validation
+          {dirty > 0 && (
+            <button onClick={resetStoryLayout} className="m3-focus ml-auto rounded-full px-3 py-1 text-xs font-medium" style={{ border: "1px solid var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
+              Reset layout
+            </button>
+          )}
+        </p>
         <MiniTable
           head={["", "Problem", "Where"]}
           rows={[
             ["ⓘ", "Reply leads nowhere", <span className="font-mono">hale.intro › reply 3</span>],
             ["⚠", "3 lines missing in fr", <span className="font-mono">hale.intro</span>],
             ["✓", "Reward items exist", <span className="font-mono">loot: hale_reward</span>],
+            ...(dirty > 0 ? [[
+              "◈",
+              "Local layout drafts (reset restores shipped)",
+              <span key="d" className="font-mono">{dirty} pending</span>,
+            ]] : []),
           ]}
         />
       </div>
@@ -1915,7 +2255,9 @@ const flowStore = createStore<{
   removed: number[];
   connectFrom: string | null;
   seq: number;
-}>({ screen: "world", drafts: [], removed: [], connectFrom: null, seq: 1 });
+  pos: Record<string, { x: number; y: number }>;
+  bend: Record<string, { x: number; y: number }>;
+}>({ screen: "world", drafts: [], removed: [], connectFrom: null, seq: 1, pos: {}, bend: {} });
 
 export { flowStore };
 
@@ -1933,8 +2275,28 @@ export function getFlowEdges(): FlowEdgeView[] {
 }
 
 export function flowDraftCount(): number {
-  const { drafts, removed } = flowStore.get();
-  return drafts.length + removed.length;
+  const { drafts, removed, pos, bend } = flowStore.get();
+  return drafts.length + removed.length + Object.keys(pos).length + Object.keys(bend).length;
+}
+
+/** Identity key for an edge (shipped index or draft id). */
+export function flowEdgeKey(e: FlowEdgeView): string {
+  return e.draft !== undefined ? `d${e.draft}` : `s${e.shipped}`;
+}
+
+export function setFlowBend(key: string, x: number, y: number): void {
+  const cx = Math.min(960, Math.max(-80, Math.round(x)));
+  const cy = Math.min(460, Math.max(-80, Math.round(y)));
+  flowStore.set((p) => ({ ...p, bend: { ...p.bend, [key]: { x: cx, y: cy } } }));
+}
+
+export function clearFlowBend(key: string): void {
+  flowStore.set((p) => {
+    if (!p.bend[key]) return p;
+    const bend = { ...p.bend };
+    delete bend[key];
+    return { ...p, bend };
+  });
 }
 
 export function startFlowConnect(from: string): void {
@@ -1981,53 +2343,184 @@ export function deleteFlowDraft(id: number): void {
   flowStore.set((p) => ({ ...p, drafts: p.drafts.filter((d) => d.id !== id) }));
 }
 
+/** Rewire an edge's target by dragging it onto another screen. Shipped
+ *  edges become remove-plus-draft; drafts update in place. Local only. */
+export function rewireFlowEdge(edge: FlowEdgeView, to: string): void {
+  if (!FLOW_SCREENS[to]) return;
+  const fromTitle = FLOW_SCREENS[edge.from].title;
+  if (to === edge.from) {
+    notify("A screen cannot transition to itself");
+    return;
+  }
+  if (to === edge.to) return;
+  const dup = getFlowEdges().some(
+    (e) => e.from === edge.from && e.to === to && e.draft !== edge.draft && e.shipped !== edge.shipped,
+  );
+  if (dup) {
+    notify(`${fromTitle} → ${FLOW_SCREENS[to].title} already exists`);
+    return;
+  }
+  if (edge.draft !== undefined) {
+    const id = edge.draft;
+    flowStore.set((p) => ({ ...p, screen: to, drafts: p.drafts.map((d) => (d.id === id ? { ...d, to } : d)) }));
+  } else {
+    const shipped = edge.shipped as number;
+    const label = FLOW_EDGES[shipped].label;
+    const oldKey = flowEdgeKey(edge);
+    flowStore.set((p) => {
+      const bend = { ...p.bend };
+      // A rewired edge keeps its shape under its new draft identity.
+      if (bend[oldKey]) {
+        bend[`d${p.seq}`] = bend[oldKey];
+        delete bend[oldKey];
+      }
+      return {
+        ...p,
+        screen: to,
+        seq: p.seq + 1,
+        bend,
+        removed: p.removed.includes(shipped) ? p.removed : [...p.removed, shipped],
+        drafts: [...p.drafts, { id: p.seq, from: edge.from, to, label }],
+      };
+    });
+  }
+  notify(`Rewired ${fromTitle} → ${FLOW_SCREENS[to].title} locally — Reset document restores the shipped graph`);
+}
+
 export function renameFlowDraft(id: number, label: string): void {
   flowStore.set((p) => ({ ...p, drafts: p.drafts.map((d) => (d.id === id ? { ...d, label } : d)) }));
 }
 
 export function resetFlowDrafts(): void {
-  flowStore.set((p) => ({ ...p, drafts: [], removed: [] }));
+  flowStore.set((p) => ({ ...p, drafts: [], removed: [], pos: {}, bend: {} }));
   notify("Flow document reset to the shipped version");
 }
 
-function FlowNode({ id }: { id: string }): React.JSX.Element {
-  const { screen, connectFrom } = flowStore.use();
+/** Effective node position: shipped home overridden by a local drag. */
+export function flowPos(id: string): { x: number; y: number } {
   const s = FLOW_SCREENS[id];
+  const o = flowStore.get().pos[id];
+  return { x: o?.x ?? s.x, y: o?.y ?? s.y };
+}
+
+export function moveFlowNode(id: string, x: number, y: number): void {
+  if (!FLOW_SCREENS[id]) return;
+  const cx = Math.min(860, Math.max(-80, Math.round(x)));
+  const cy = Math.min(380, Math.max(-60, Math.round(y)));
+  flowStore.set((p) => ({ ...p, pos: { ...p.pos, [id]: { x: cx, y: cy } } }));
+}
+
+/** Set while a node drag (not a click) is in flight — clicks check and clear it. */
+const graphDragMoved = { moved: false };
+
+/** Midpoint handle that bends an edge's line. Drag to shape, double-click
+ *  to straighten. Hidden until hover (draft edges always show it). */
+function BendHandle({ x, y, accent, toUnits, onMove, onReset }: {
+  x: number;
+  y: number;
+  accent: boolean;
+  toUnits: (clientX: number, clientY: number) => { x: number; y: number };
+  onMove: (x: number, y: number) => void;
+  onReset: () => void;
+}): React.JSX.Element {
+  const drag = React.useRef<{ sx: number; sy: number } | null>(null);
+  return (
+    <g opacity={accent ? 1 : 0} className="group-hover:opacity-100">
+      <circle
+        cx={x}
+        cy={y}
+        r={13}
+        fill="rgba(0,0,0,0)"
+        style={{ cursor: "move" }}
+        onPointerDown={(ev) => {
+          if (ev.button !== 0 && ev.pointerType === "mouse") return;
+          ev.stopPropagation();
+          graphDragMoved.moved = false;
+          drag.current = { sx: ev.clientX, sy: ev.clientY };
+          (ev.currentTarget as SVGCircleElement).setPointerCapture?.(ev.pointerId);
+        }}
+        onPointerMove={(ev) => {
+          const d = drag.current;
+          if (!d) return;
+          if (Math.abs(ev.clientX - d.sx) + Math.abs(ev.clientY - d.sy) <= 4) return;
+          graphDragMoved.moved = true;
+          const p = toUnits(ev.clientX, ev.clientY);
+          onMove(p.x, p.y);
+        }}
+        onPointerUp={() => { drag.current = null; }}
+        onDoubleClick={(ev) => {
+          ev.stopPropagation();
+          onReset();
+        }}
+      >
+        <title>Drag to shape the line · double-click to straighten</title>
+      </circle>
+      <circle cx={x} cy={y} r={4.5} fill="#1E1F25" stroke={accent ? "#B9C3FF" : "#90909A"} strokeWidth={1.5} pointerEvents="none" />
+      <circle cx={x} cy={y} r={1.5} fill={accent ? "#B9C3FF" : "#90909A"} pointerEvents="none" />
+    </g>
+  );
+}
+
+function FlowNode({ id, zoom }: { id: string; zoom: number }): React.JSX.Element {
+  const { screen, connectFrom, pos } = flowStore.use();
+  const s = FLOW_SCREENS[id];
+  const nx = pos[id]?.x ?? s.x;
+  const ny = pos[id]?.y ?? s.y;
   const selected = screen === id;
   const source = connectFrom === id;
   const w = 168;
   const h = 52 + s.guards.length * 18;
-  const oy = s.y + 26;
+  const oy = ny + 26;
   const grab = (ev: React.MouseEvent): void => {
+    if (graphDragMoved.moved) { graphDragMoved.moved = false; return; }
     ev.stopPropagation();
     if (connectFrom === id) cancelFlowConnect();
     else startFlowConnect(id);
   };
+  const drag = React.useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
   return (
     <g
+      data-fnode={id}
+      onPointerDown={(ev) => {
+        if (ev.button !== 0 && ev.pointerType === "mouse") return;
+        ev.stopPropagation();
+        graphDragMoved.moved = false;
+        drag.current = { sx: ev.clientX, sy: ev.clientY, ox: nx, oy: ny };
+        (ev.currentTarget as SVGGElement).setPointerCapture?.(ev.pointerId);
+      }}
+      onPointerMove={(ev) => {
+        const d = drag.current;
+        if (!d) return;
+        if (Math.abs(ev.clientX - d.sx) + Math.abs(ev.clientY - d.sy) <= 4) return;
+        graphDragMoved.moved = true;
+        moveFlowNode(id, d.ox + (ev.clientX - d.sx) / zoom, d.oy + (ev.clientY - d.sy) / zoom);
+      }}
+      onPointerUp={() => { drag.current = null; }}
       onClick={() => {
+        if (graphDragMoved.moved) { graphDragMoved.moved = false; return; }
         if (connectFrom) completeFlowConnect(id);
         else selectFlowScreen(id);
       }}
-      style={{ cursor: connectFrom ? "crosshair" : "pointer" }}
+      style={{ cursor: connectFrom ? "crosshair" : "pointer", touchAction: "none" }}
     >
-      <title>{connectFrom ? `Connect ${FLOW_SCREENS[connectFrom].title} → ${s.title}` : `${s.title} — click to inspect`}</title>
-      <rect x={s.x} y={s.y} width={w} height={h} rx="10" fill="#1E1F25" stroke={source ? "#E8C33D" : selected ? "#B9C3FF" : "#46464F"} strokeWidth={source || selected ? 2 : 1} />
-      <rect x={s.x} y={s.y} width={w} height="28" rx="10" fill={s.header} />
-      <rect x={s.x} y={s.y + 18} width={w} height="14" fill={s.header} />
-      <text x={s.x + 9} y={s.y + 19} fill="#E3E1E9" fontSize="12" fontWeight="600">{s.title}</text>
-      <text x={s.x + 9} y={s.y + 44} fill="#90909A" fontSize="10" fontFamily="Roboto Mono, monospace">{s.route} · {s.kind}</text>
+      <title>{connectFrom ? `Connect ${FLOW_SCREENS[connectFrom].title} → ${s.title}` : `${s.title} — click to inspect, drag to move`}</title>
+      <rect x={nx} y={ny} width={w} height={h} rx="10" fill="#1E1F25" stroke={source ? "#E8C33D" : selected ? "#B9C3FF" : "#46464F"} strokeWidth={source || selected ? 2 : 1} />
+      <rect x={nx} y={ny} width={w} height="28" rx="10" fill={s.header} />
+      <rect x={nx} y={ny + 18} width={w} height="14" fill={s.header} />
+      <text x={nx + 9} y={ny + 19} fill="#E3E1E9" fontSize="12" fontWeight="600">{s.title}</text>
+      <text x={nx + 9} y={ny + 44} fill="#90909A" fontSize="10" fontFamily="Roboto Mono, monospace">{s.route} · {s.kind}</text>
       {s.guards.map((g, i) => (
-        <text key={i} x={s.x + 9} y={s.y + 62 + i * 18} fill={selected ? "#E3E1E9" : "#C6C5D0"} fontSize="10" fontFamily="Roboto Mono, monospace">✓ {g}</text>
+        <text key={i} x={nx + 9} y={ny + 62 + i * 18} fill={selected ? "#E3E1E9" : "#C6C5D0"} fontSize="10" fontFamily="Roboto Mono, monospace">✓ {g}</text>
       ))}
       {/* input port (left) — click completes a pending connection here */}
       <circle
-        cx={s.x}
+        cx={nx}
         cy={oy}
         r={14}
         fill="transparent"
         style={{ cursor: "crosshair" }}
         onClick={(ev) => {
+          if (graphDragMoved.moved) { graphDragMoved.moved = false; return; }
           ev.stopPropagation();
           if (connectFrom) completeFlowConnect(id);
           else selectFlowScreen(id);
@@ -2036,7 +2529,7 @@ function FlowNode({ id }: { id: string }): React.JSX.Element {
         <title>{connectFrom ? `Connect here → ${s.title}` : `${s.title} input — start from another node's output port`}</title>
       </circle>
       <circle
-        cx={s.x}
+        cx={nx}
         cy={oy}
         r={connectFrom && connectFrom !== id ? 8 : 6}
         fill={connectFrom && connectFrom !== id ? "#E8C33D" : "#1E1F25"}
@@ -2046,7 +2539,7 @@ function FlowNode({ id }: { id: string }): React.JSX.Element {
       />
       {/* output port (right) — click to start a connection from here */}
       <circle
-        cx={s.x + w}
+        cx={nx + w}
         cy={oy}
         r={14}
         fill="transparent"
@@ -2056,7 +2549,7 @@ function FlowNode({ id }: { id: string }): React.JSX.Element {
         <title>{source ? "Cancel connection" : `Connect from ${s.title} — then click a target`}</title>
       </circle>
       <circle
-        cx={s.x + w}
+        cx={nx + w}
         cy={oy}
         r={source ? 8 : 6}
         fill={source ? "#E8C33D" : "#1E1F25"}
@@ -2065,65 +2558,93 @@ function FlowNode({ id }: { id: string }): React.JSX.Element {
         pointerEvents="none"
       />
       {source && (
-        <text x={s.x + w + 12} y={oy + 4} fill="#E8C33D" fontSize="10" fontFamily="Roboto Mono, monospace">from here…</text>
+        <text x={nx + w + 12} y={oy + 4} fill="#E8C33D" fontSize="10" fontFamily="Roboto Mono, monospace">from here…</text>
       )}
     </g>
   );
 }
 
-function edgePath(e: FlowEdgeView): string {
-  const a = FLOW_SCREENS[e.from];
-  const b = FLOW_SCREENS[e.to];
-  if (e.up) {
-    const x1 = a.x + 24;
-    const x2 = b.x + 24;
-    const y1 = a.y;
-    const y2 = b.y + 52 + b.guards.length * 18;
-    return `M${x1},${y1} C${x1},${y1 - 34} ${x2},${y2 + 34} ${x2},${y2}`;
-  }
-  if (a.y === b.y) {
-    const x1 = a.x + 168;
-    const y = a.y + 26;
-    const x2 = b.x;
-    if (e.dashed && !e.draft) return `M${x1},${y} C${x1},${-34} ${x2},${-34} ${x2},${14}`;
-    if (e.dashed) return `M${x1},${y} C${x1 + 40},${y} ${x2 - 30},${y} ${x2},${y}`;
-    const mx = (x1 + x2) / 2;
-    return `M${x1},${y} C${mx},${y} ${mx},${y} ${x2},${y}`;
-  }
-  if (a.x === b.x) {
-    if (a.y < b.y) {
-      const x = a.x + 40;
-      const y1 = a.y + 52 + a.guards.length * 18;
-      return `M${x},${y1} L${x},${b.y}`;
-    }
-    // draft edge back up the same column
-    const x1 = a.x + 24;
-    const x2 = b.x + 24;
-    const y1 = a.y;
-    const y2 = b.y + 52 + b.guards.length * 18;
-    return `M${x1},${y1} C${x1},${y1 - 34} ${x2},${y2 + 34} ${x2},${y2}`;
-  }
-  // draft diagonal across columns: right edge of source to top of target
-  const x1 = a.x + 168;
-  const y1 = a.y + 26;
-  const x2 = b.x + 84;
-  const y2 = b.y;
-  return `M${x1},${y1} C${x1 + 44},${y1} ${x2},${y2 - 44} ${x2},${y2}`;
+export interface FlowEdgeGeom {
+  d: string;
+  /** label position */
+  lx: number;
+  ly: number;
+  anchor?: "middle" | "end";
+  /** draggable control point */
+  cx: number;
+  cy: number;
 }
 
-function edgeLabel(e: FlowEdgeView): { x: number; y: number } {
-  const a = FLOW_SCREENS[e.from];
-  const b = FLOW_SCREENS[e.to];
-  if (e.up) return { x: a.x + 30, y: (a.y + b.y) / 2 + 40 };
-  if (a.y === b.y && !e.dashed) return { x: (a.x + 168 + b.x) / 2, y: a.y + 14 };
-  if (e.dashed && !e.draft) return { x: (a.x + b.x) / 2 + 40, y: -22 };
-  if (a.x === b.x) return { x: a.x + 48, y: (a.y + b.y) / 2 + 60 };
-  return { x: (a.x + 168 + b.x + 84) / 2 - 24, y: (a.y + b.y) / 2 - 6 };
+/** Full edge geometry: endpoints follow dragged nodes, the control point
+ *  follows the bend handle (default = route midpoint, i.e. straight). */
+export function flowEdgeGeom(e: FlowEdgeView): FlowEdgeGeom {
+  const a = { ...FLOW_SCREENS[e.from], ...flowPos(e.from) };
+  const b = { ...FLOW_SCREENS[e.to], ...flowPos(e.to) };
+  let p0: [number, number];
+  let p1: [number, number];
+  let c: [number, number];
+  // Label offset from the curve midpoint (keeps tuned placement, rides bends).
+  let off: [number, number] = [0, 0];
+  let anchor: "middle" | "end" | undefined;
+  const bend = flowStore.get().bend[flowEdgeKey(e)];
+  if (e.dashed && !e.draft && Math.abs(a.y - b.y) < 40) {
+    // Shipped logout loop arcs over the top.
+    p0 = [a.x + 168, a.y + 26];
+    p1 = [b.x, 14];
+    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, -60];
+    off = [40, -8];
+  } else if (Math.abs(a.y - b.y) < 40) {
+    // Same row: right edge to left edge.
+    p0 = [a.x + 168, a.y + 26];
+    p1 = [b.x, b.y + 26];
+    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    off = [0, -10];
+    anchor = "middle";
+  } else if (Math.abs(a.x - b.x) < 40) {
+    // Same column: straight down, straight back up. Down-labels sit right
+    // of the line, up-labels left, so a pair never overlaps.
+    const x = Math.round((a.x + b.x) / 2 + 84);
+    const down = a.y < b.y;
+    p0 = down ? [x, a.y + 52 + a.guards.length * 18] : [a.x + 24, a.y];
+    p1 = down ? [x, b.y] : [b.x + 24, b.y + 52 + b.guards.length * 18];
+    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    off = down ? [8, 4] : [-8, 4];
+    anchor = down ? undefined : "end";
+  } else {
+    // Diagonal: right edge of source to top of target, gently bowed.
+    p0 = [a.x + 168, a.y + 26];
+    p1 = [b.x + 84, b.y];
+    const mx = (p0[0] + p1[0]) / 2;
+    const my = (p0[1] + p1[1]) / 2;
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const len = Math.hypot(dx, dy) || 1;
+    c = bend ? [bend.x, bend.y] : [mx + (-dy / len) * 36, my + (dx / len) * 36];
+    off = [-24, -6];
+  }
+  const qx = (p0[0] + 2 * c[0] + p1[0]) / 4;
+  const qy = (p0[1] + 2 * c[1] + p1[1]) / 4;
+  return {
+    d: `M${r1(p0[0])},${r1(p0[1])} Q${r1(c[0])},${r1(c[1])} ${r1(p1[0])},${r1(p1[1])}`,
+    lx: r1(qx + off[0]),
+    ly: r1(qy + off[1]),
+    anchor,
+    cx: r1(c[0]),
+    cy: r1(c[1]),
+  };
+}
+
+function r1(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 
 export function FlowGraphPreview(): React.JSX.Element {
   const { screen, connectFrom } = flowStore.use();
   const [zoom, setZoom] = React.useState(1);
+  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const [grabbing, setGrabbing] = React.useState(false);
+  const frameRef = React.useRef<HTMLDivElement | null>(null);
+  const dragSt = React.useRef<{ x: number; y: number; px: number; py: number; moved: boolean } | null>(null);
   const edges = getFlowEdges();
   const drafts = flowDraftCount();
   const reach = flowReachable(edges);
@@ -2140,14 +2661,43 @@ export function FlowGraphPreview(): React.JSX.Element {
   })();
   const W = Math.round(880 * zoom);
   const H = Math.round(400 * zoom);
+  interface WireDrag { edge: FlowEdgeView; sx: number; sy: number; x: number; y: number }
+  // Ref is the truth for pointer handlers; state mirrors it for rendering.
+  const wireRef = React.useRef<WireDrag | null>(null);
+  const [wire, setWire] = React.useState<WireDrag | null>(null);
+  const setWireBoth = (w: WireDrag | null): void => {
+    wireRef.current = w;
+    setWire(w);
+  };
+  const svgRef = React.useRef<SVGSVGElement | null>(null);
+  const toUnits = (clientX: number, clientY: number): { x: number; y: number } => {
+    const r = svgRef.current?.getBoundingClientRect();
+    if (!r) return { x: 0, y: 0 };
+    return { x: (clientX - r.left - pan.x) / zoom, y: (clientY - r.top - (40 * zoom + pan.y)) / zoom };
+  };
+  const dropWire = (clientX: number, clientY: number): void => {
+    const w = wireRef.current;
+    setWireBoth(null);
+    if (!w) return;
+    const target = (document.elementFromPoint(clientX, clientY) as Element | null)?.closest?.("[data-fnode]");
+    const to = target?.getAttribute("data-fnode") ?? null;
+    if (to) {
+      // Swallow the click that follows the drop so the target isn't
+      // selected twice / connected twice.
+      graphDragMoved.moved = true;
+      rewireFlowEdge(w.edge, to);
+    }
+  };
   React.useEffect(() => {
-    if (!connectFrom) return;
+    if (!connectFrom && !wire) return;
     const onKey = (ev: KeyboardEvent): void => {
-      if (ev.key === "Escape") cancelFlowConnect();
+      if (ev.key !== "Escape") return;
+      cancelFlowConnect();
+      setWireBoth(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [connectFrom]);
+  }, [connectFrom, wire]);
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · scenes (§6)">Login → character → world as a validated document; the client runs today's hard-coded screens until the scenes slice lands.</PreviewBadge>
@@ -2159,7 +2709,7 @@ export function FlowGraphPreview(): React.JSX.Element {
           <IconButton label="Zoom out" size={36} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}><MIcon name="remove" size={19} /></IconButton>
           <span className="w-12 text-center font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{Math.round(zoom * 100)}%</span>
           <IconButton label="Zoom in" size={36} onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)))}><MIcon name="add" size={19} /></IconButton>
-          <IconButton label="Reset view" size={36} onClick={() => setZoom(1)}><MIcon name="fit_screen" size={19} /></IconButton>
+          <IconButton label="Reset view" size={36} onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}><MIcon name="fit_screen" size={19} /></IconButton>
           {drafts > 0 && (
             <IconButton label="Reset document to the shipped version" size={36} onClick={resetFlowDrafts}><MIcon name="restart_alt" size={19} /></IconButton>
           )}
@@ -2179,8 +2729,47 @@ export function FlowGraphPreview(): React.JSX.Element {
           <button onClick={cancelFlowConnect} className="m3-focus ml-auto rounded-full px-3 py-1 font-medium" style={{ border: "1px solid #E8A33D" }}>Cancel (Esc)</button>
         </div>
       )}
-      <div className="m3-scroll overflow-auto rounded-xl" style={{ height: 440, background: "var(--m3-surface-0)" }}>
+      <div
+        ref={frameRef}
+        className="overflow-hidden rounded-xl"
+        style={{
+          height: 440,
+          background: "var(--m3-surface-0)",
+          cursor: grabbing ? "grabbing" : "grab",
+          touchAction: "none",
+          userSelect: grabbing ? "none" : undefined,
+        }}
+        onPointerDown={(ev) => {
+          if (ev.button !== 0 && ev.pointerType === "mouse") return;
+          const frame = frameRef.current;
+          if (!frame) return;
+          graphDragMoved.moved = false;
+          frame.setPointerCapture?.(ev.pointerId);
+          dragSt.current = { x: ev.clientX, y: ev.clientY, px: pan.x, py: pan.y, moved: false };
+          setGrabbing(true);
+        }}
+        onPointerMove={(ev) => {
+          const d = dragSt.current;
+          if (!d) return;
+          const dx = ev.clientX - d.x;
+          const dy = ev.clientY - d.y;
+          if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+          if (d.moved) {
+            graphDragMoved.moved = true;
+            setPan({ x: d.px + dx, y: d.py + dy });
+          }
+        }}
+        onPointerUp={() => {
+          dragSt.current = null;
+          setGrabbing(false);
+        }}
+        onPointerCancel={() => {
+          dragSt.current = null;
+          setGrabbing(false);
+        }}
+      >
       <svg
+        ref={svgRef}
         width={W}
         height={H}
         className="block rounded-xl"
@@ -2193,27 +2782,96 @@ export function FlowGraphPreview(): React.JSX.Element {
             <path d="M0,0 L8,4 L0,8 Z" fill="#90909A" />
           </marker>
         </defs>
-        <g transform={`translate(0,${40 * zoom}) scale(${zoom})`}>
+        <g transform={`translate(${pan.x},${40 * zoom + pan.y}) scale(${zoom})`}>
           {edges.map((e) => {
-            const lp = edgeLabel(e);
+            const geom = flowEdgeGeom(e);
             const custom = e.draft !== undefined;
-            const centered = !custom && !e.dashed && FLOW_SCREENS[e.from].y === FLOW_SCREENS[e.to].y;
+            const key = flowEdgeKey(e);
             return (
-              <g key={custom ? `d${e.draft}` : `s${e.shipped}`} opacity={connectFrom ? 0.45 : 1}>
+              <g key={key} className="group" opacity={connectFrom ? 0.45 : 1}>
+                <title>Drag to rewire onto another screen</title>
+                {/* fat invisible grab path */}
                 <path
-                  d={edgePath(e)}
+                  d={geom.d}
+                  stroke="rgba(0,0,0,0)"
+                  strokeWidth={14}
+                  pointerEvents="stroke"
+                  fill="none"
+                  style={{ cursor: "grab" }}
+                  onPointerDown={(ev) => {
+                    if (ev.button !== 0 && ev.pointerType === "mouse") return;
+                    ev.stopPropagation();
+                    graphDragMoved.moved = false;
+                    (ev.currentTarget as SVGPathElement).setPointerCapture?.(ev.pointerId);
+                    const p = toUnits(ev.clientX, ev.clientY);
+                    const sp = flowPos(e.from);
+                    setWireBoth({ edge: e, sx: sp.x + 168, sy: sp.y + 26, x: p.x, y: p.y });
+                  }}
+                  onPointerMove={(ev) => {
+                    const w0 = wireRef.current;
+                    if (!w0 || w0.edge.draft !== e.draft || w0.edge.shipped !== e.shipped) return;
+                    const p = toUnits(ev.clientX, ev.clientY);
+                    if (Math.abs(p.x - w0.sx) + Math.abs(p.y - w0.sy) > 6 / zoom) graphDragMoved.moved = true;
+                    setWireBoth({ ...w0, x: p.x, y: p.y });
+                  }}
+                  onPointerUp={(ev) => {
+                    if (wireRef.current) dropWire(ev.clientX, ev.clientY);
+                  }}
+                />
+                <path
+                  d={geom.d}
                   stroke={custom ? "#B9C3FF" : "#90909A"}
                   strokeWidth={custom ? 2 : 1.5}
                   strokeDasharray={e.dashed ? "5 4" : undefined}
                   fill="none"
+                  pointerEvents="none"
                   markerEnd="url(#ah-flow)"
                 />
-                <text x={lp.x} y={lp.y} textAnchor={centered ? "middle" : undefined} fill={custom ? "#B9C3FF" : "#C6C5D0"} fontSize="10" fontFamily="Roboto Mono, monospace">
-                  {custom ? `◈ ${e.label}` : e.label}</text>
+                <BendHandle
+                  x={geom.cx}
+                  y={geom.cy}
+                  accent={custom || flowStore.get().bend[key] !== undefined}
+                  toUnits={toUnits}
+                  onMove={(x, y) => setFlowBend(key, x, y)}
+                  onReset={() => clearFlowBend(key)}
+                />
               </g>
             );
           })}
-          {Object.keys(FLOW_SCREENS).map((id) => <FlowNode key={id} id={id} />)}
+          {wire && (
+            <path
+              d={`M${wire.sx},${wire.sy} C${wire.sx + 44},${wire.sy} ${wire.x},${wire.y - 44} ${wire.x},${wire.y}`}
+              stroke="#B9C3FF"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              fill="none"
+              pointerEvents="none"
+              markerEnd="url(#ah-flow)"
+            />
+          )}
+          {Object.keys(FLOW_SCREENS).map((id) => <FlowNode key={id} id={id} zoom={zoom} />)}
+          {/* labels paint above nodes so tight gaps stay readable */}
+          {edges.map((e) => {
+            const geom = flowEdgeGeom(e);
+            const custom = e.draft !== undefined;
+            return (
+              <text
+                key={custom ? `dl${e.draft}` : `sl${e.shipped}`}
+                x={geom.lx}
+                y={geom.ly}
+                textAnchor={geom.anchor}
+                fill={custom ? "#B9C3FF" : "#C6C5D0"}
+                fontSize="10"
+                fontFamily="Roboto Mono, monospace"
+                pointerEvents="none"
+                stroke="var(--m3-surface-0)"
+                strokeWidth={3}
+                paintOrder="stroke"
+              >
+                {custom ? `◈ ${e.label}` : e.label}
+              </text>
+            );
+          })}
         </g>
       </svg>
       </div>
@@ -2227,7 +2885,7 @@ export function FlowGraphPreview(): React.JSX.Element {
             ["✓", "Selected screen guards listed", <span className="font-mono">{FLOW_SCREENS[screen].guards.length} guards · {screen}</span>],
             ...(drafts > 0 ? [[
               "◈",
-              "Local draft transitions (reset restores shipped)",
+              "Local drafts — moves, rewires, removals (reset restores shipped)",
               <span key="d" className="font-mono">{drafts} pending</span>,
             ]] : []),
           ]}
