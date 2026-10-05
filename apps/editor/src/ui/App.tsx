@@ -1741,9 +1741,9 @@ function LiveOpsTree(): React.JSX.Element {
           ))}
         </>
       ))}
-      {group("chat", "forum", "Chat & events", "5 channels", <>{scopeLeaf("chat", "All channels", { kind: "chat" })}</>)}
-      {group("ledger", "receipt_long", "Item ledger", "128k events", <>{scopeLeaf("ledger", "Recent events", { kind: "ledger" })}</>)}
-      {group("telemetry", "monitoring", "Telemetry", "tick p99", <>{scopeLeaf("telemetry", "Tick budget", { kind: "telemetry" })}</>)}
+      {group("chat", "forum", "Chat & events", "5", <>{scopeLeaf("chat", "All channels", { kind: "chat" })}</>)}
+      {group("ledger", "receipt_long", "Item ledger", "128k", <>{scopeLeaf("ledger", "Recent events", { kind: "ledger" })}</>)}
+      {group("telemetry", "monitoring", "Telemetry", "p99", <>{scopeLeaf("telemetry", "Tick budget", { kind: "telemetry" })}</>)}
     </div>
   );
 }
