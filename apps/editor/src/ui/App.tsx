@@ -729,6 +729,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   };
 
   return (
+    <>
     <div
       className="flex h-12 flex-none items-center gap-1.5 px-3"
       style={{ background: "var(--m3-surface-0)" }}
@@ -802,32 +803,6 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
           )}
         </span>
       ))}
-      <nav
-        className="m3-scroll ml-2 flex min-w-0 flex-1 items-center gap-px overflow-x-auto rounded-full p-[3px]"
-        aria-label="Workspaces"
-        style={{ background: "var(--m3-surface-1)" }}
-      >
-        {WORKSPACES.map((w) => {
-          const on = w.id === workspace;
-          return (
-            <button
-              key={w.id}
-              aria-current={on ? "page" : undefined}
-              onClick={() => onPick(w.id)}
-              title={SOON_WS.has(w.id) ? `${w.label} — module slot (EA slice)` : PREVIEW_WS.has(w.id) ? `${w.label} — preview over sample data` : w.label}
-              className="m3-focus flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-[5px] text-xs font-medium"
-              style={
-                on
-                  ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }
-                  : { background: "transparent", color: "var(--m3-on-surface-variant)" }
-              }
-            >
-              <MIcon name={w.icon} size={15} />
-              {w.label}
-            </button>
-          );
-        })}
-      </nav>
       <button
         onClick={onSearch}
         className="m3-focus ml-auto flex h-8 flex-none items-center gap-2 rounded-full px-3 text-[13px]"
@@ -924,6 +899,37 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
         </ShellDialog>
       )}
     </div>
+    <div
+      className="flex h-10 flex-none items-center px-3"
+      style={{ background: "var(--m3-surface-0)", borderTop: "1px solid var(--m3-surface-2)" }}
+    >
+      <nav
+        className="m3-scroll flex min-w-0 flex-1 items-center gap-px overflow-x-auto"
+        aria-label="Workspaces"
+      >
+        {WORKSPACES.map((w) => {
+          const on = w.id === workspace;
+          return (
+            <button
+              key={w.id}
+              aria-current={on ? "page" : undefined}
+              onClick={() => onPick(w.id)}
+              title={SOON_WS.has(w.id) ? `${w.label} — module slot (EA slice)` : PREVIEW_WS.has(w.id) ? `${w.label} — preview over sample data` : w.label}
+              className="m3-focus flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-[5px] text-[13px] font-medium"
+              style={
+                on
+                  ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }
+                  : { background: "transparent", color: "var(--m3-on-surface-variant)" }
+              }
+            >
+              <MIcon name={w.icon} size={16} />
+              {w.label}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+    </>
   );
 }
 
