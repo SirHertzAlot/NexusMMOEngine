@@ -275,13 +275,14 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active}
       title={title ?? label}
       onClick={onClick}
-      className="m3-focus grid shrink-0 place-items-center rounded-full transition-colors"
+      className="m3-focus m3-iconbtn grid shrink-0 place-items-center rounded-full"
       style={{
         width: size,
         height: size,
-        background: active ? "var(--m3-secondary-container)" : "transparent",
+        background: active ? "var(--m3-secondary-container)" : undefined,
         color: active ? "var(--m3-on-secondary-container)" : "var(--m3-on-surface-variant)",
       }}
     >

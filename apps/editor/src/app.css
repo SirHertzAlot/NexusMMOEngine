@@ -167,6 +167,21 @@ body {
   outline-offset: 2px;
 }
 
+/* M3 icon button — hover and press feedback (active tools keep their
+   container color from the inline style, which wins over this default) */
+.m3-iconbtn {
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+}
+.m3-iconbtn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--m3-on-surface);
+}
+.m3-iconbtn:active {
+  background: rgba(255, 255, 255, 0.13);
+  transform: scale(0.9);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

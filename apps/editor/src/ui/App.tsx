@@ -742,15 +742,17 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       style={{ background: "var(--m3-surface-0)" }}
     >
       <span
-        className="grid h-[30px] w-[30px] flex-none place-items-center text-sm font-extrabold"
+        className="flex-none select-none text-[15px] font-extrabold"
         style={{
-          borderRadius: 9,
+          letterSpacing: "0.18em",
           background: "linear-gradient(135deg, var(--m3-primary), #7f8cff 55%, var(--m3-tertiary))",
-          color: "var(--m3-on-primary)",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          color: "transparent",
         }}
-        aria-hidden="true"
+        aria-label="Nexus editor"
       >
-        N
+        NEXUS
       </span>
       {(Object.keys(menus) as Array<keyof typeof menus>).map((m) => (
         <span key={m} className="relative hidden sm:inline">
@@ -1017,6 +1019,8 @@ function Toolbar(props: {
     docks: { left: boolean; right: boolean; bottom: boolean };
   };
 }): React.JSX.Element {
+  // Active viewport tool (UI-only toggle: the scenes/viewport slices own it).
+  const [tool, setTool] = React.useState<"select" | "move" | "rotate" | "scale" | "snap">("select");
   return (
     <div
       className="relative flex h-[52px] flex-none items-center gap-1 px-3"
@@ -1033,11 +1037,11 @@ function Toolbar(props: {
         aria-label="Transform tools"
         style={{ borderLeft: "1px solid var(--m3-outline-variant)", paddingLeft: 8 }}
       >
-        <IconButton label="Select (V)" active size={36}><MIcon name="nearby" size={20} /></IconButton>
-        <IconButton label="Move (W)" size={36}><MIcon name="open_with" size={20} /></IconButton>
-        <IconButton label="Rotate (E)" size={36}><MIcon name="rotate_right" size={20} /></IconButton>
-        <IconButton label="Scale (R)" size={36}><MIcon name="expand" size={20} /></IconButton>
-        <IconButton label="Snap" size={36}><MIcon name="grid_on" size={20} /></IconButton>
+        <IconButton label="Select (V)" active={tool === "select"} onClick={() => setTool("select")} size={36}><MIcon name="nearby" size={20} /></IconButton>
+        <IconButton label="Move (W)" active={tool === "move"} onClick={() => setTool("move")} size={36}><MIcon name="open_with" size={20} /></IconButton>
+        <IconButton label="Rotate (E)" active={tool === "rotate"} onClick={() => setTool("rotate")} size={36}><MIcon name="rotate_right" size={20} /></IconButton>
+        <IconButton label="Scale (R)" active={tool === "scale"} onClick={() => setTool("scale")} size={36}><MIcon name="expand" size={20} /></IconButton>
+        <IconButton label="Snap" active={tool === "snap"} onClick={() => setTool(tool === "snap" ? "select" : "snap")} size={36}><MIcon name="grid_on" size={20} /></IconButton>
       </div>
 
       {/* play cluster — segmented mode + split Play, always centered.
