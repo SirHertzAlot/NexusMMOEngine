@@ -48,7 +48,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0"
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/ws": "^8.18.1"
   },
   "optionalDependencies": {
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.71.0"
