@@ -287,9 +287,9 @@ export function MiniTable({ head, rows, mono = false, crud, addLabel }: {
             )}
           </tr>
         ))}
-      </tbody>
-    </table>
-    </div>
+          </tbody>
+        </table>
+      </div>
   );
 }
 
@@ -353,9 +353,92 @@ export const PLAYERS: Array<[string, string, string, string, string, string]> = 
   ["Hale", "Starter Coast", "0,0", "39 ms", "fighting", "190"],
 ];
 
-const liveOpsStore = createStore<{ player: string }>({ player: "Aria" });
+const liveOpsStore = createStore<{ player: string; scope: LiveOpsScope }>({
+  player: "Aria",
+  scope: { kind: "all" },
+});
 
 export { liveOpsStore };
+
+/** Drill-down scope for the Live ops workspace. Account/guild/party
+ *  scopes filter the players table; telemetry/chat/ledger swap in their
+ *  dedicated section. Sample org data until the sessions endpoint lands. */
+export type LiveOpsScope =
+  | { kind: "all" }
+  | { kind: "account"; name: string }
+  | { kind: "guild"; name: string }
+  | { kind: "party"; name: string }
+  | { kind: "telemetry" }
+  | { kind: "chat" }
+  | { kind: "ledger" };
+
+export const LIVEOPS_ACCOUNTS: Record<string, string[]> = {
+  aria: ["Aria"],
+  bram: ["Bram"],
+  shell: ["Cass", "Fenn"],
+  dov: ["Dov"],
+  elin: ["Elin"],
+  gale: ["Gale"],
+  hale: ["Hale"],
+};
+
+export const LIVEOPS_GUILDS: Record<string, string[]> = {
+  "Coast Wardens": ["Aria", "Bram", "Dov", "Hale"],
+  "Ember Company": ["Cass", "Fenn"],
+};
+
+export const LIVEOPS_PARTIES: Record<string, string[]> = {
+  "party-1": ["Aria", "Hale"],
+  "party-2": ["Cass"],
+};
+
+export function selectLiveOpsPlayer(player: string): void {
+  liveOpsStore.set((p) => ({ ...p, player }));
+}
+
+export function selectLiveOpsScope(scope: LiveOpsScope): void {
+  liveOpsStore.set((p) => ({ ...p, scope }));
+}
+
+export function clearLiveOpsScope(): void {
+  liveOpsStore.set((p) => ({ ...p, scope: { kind: "all" } }));
+}
+
+/** Whether a character row belongs in a scope (pure, tested). */
+export function playerVisibleInScope(name: string, scope: LiveOpsScope): boolean {
+  switch (scope.kind) {
+    case "all":
+    case "telemetry":
+    case "chat":
+    case "ledger":
+      return true;
+    case "account":
+      return (LIVEOPS_ACCOUNTS[scope.name] ?? []).includes(name);
+    case "guild":
+      return (LIVEOPS_GUILDS[scope.name] ?? []).includes(name);
+    case "party":
+      return (LIVEOPS_PARTIES[scope.name] ?? []).includes(name);
+  }
+}
+
+export function liveOpsScopeLabel(scope: LiveOpsScope): string {
+  switch (scope.kind) {
+    case "all":
+      return "All players";
+    case "account":
+      return `Account ${scope.name}`;
+    case "guild":
+      return `Guild ${scope.name}`;
+    case "party":
+      return `Party ${scope.name}`;
+    case "telemetry":
+      return "Telemetry";
+    case "chat":
+      return "Chat & events";
+    case "ledger":
+      return "Item ledger";
+  }
+}
 
 function playerStats(name: string): { hp: string; sp: string; extra: string } {
   let h = 0;
@@ -368,7 +451,10 @@ function playerStats(name: string): { hp: string; sp: string; extra: string } {
 }
 
 export function LiveOpsPreview(): React.JSX.Element {
-  const { player } = liveOpsStore.use();
+  const { player, scope } = liveOpsStore.use();
+  const scoped = scope.kind !== "all";
+  const section = scope.kind === "telemetry" || scope.kind === "chat" || scope.kind === "ledger" ? scope.kind : null;
+  const visible = PLAYERS.filter(([c]) => playerVisibleInScope(c, scope));
   return (
     <div className="flex flex-col gap-3">
       <PreviewBadge slice="EA · Live ops (A1–A5)">Stat tiles, charts and the players table bind to the admin console and telemetry.</PreviewBadge>
@@ -394,8 +480,18 @@ export function LiveOpsPreview(): React.JSX.Element {
         </div>
       </div>
       <div className="overflow-x-auto rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
-        <div className="flex items-center p-3 pb-0 text-sm font-medium">
-          Players
+        <div className="flex items-center gap-2 p-3 pb-0 text-sm font-medium">
+          {section === null ? "Players" : liveOpsScopeLabel(scope)}
+          {scoped && (
+            <button
+              onClick={clearLiveOpsScope}
+              title="Clear scope — back to all players"
+              className="m3-focus rounded-full px-2.5 py-1 font-mono text-[11px]"
+              style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
+            >
+              {liveOpsScopeLabel(scope)} ✕
+            </button>
+          )}
           <button
             onClick={() => notify("Add player — staged for EA · live ops (seeded editor accounts in play setups)")}
             title="Add player (staged)"
@@ -415,12 +511,12 @@ export function LiveOpsPreview(): React.JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {PLAYERS.map(([c, s, r, rtt, st, a]) => {
+            {visible.map(([c, s, r, rtt, st, a]) => {
               const on = c === player;
               return (
                 <tr
                   key={c}
-                  onClick={() => liveOpsStore.set({ player: c })}
+                  onClick={() => selectLiveOpsPlayer(c)}
                   className="group cursor-pointer"
                   title={`Inspect ${c} in the admin console`}
                   style={{ borderBottom: "1px solid #2a2b31", background: on ? "#2b2f4a" : undefined }}
@@ -436,7 +532,7 @@ export function LiveOpsPreview(): React.JSX.Element {
                       <OverflowMenu
                         label={`${c} actions`}
                         items={[
-                          { label: `Inspect ${c}`, icon: "search", run: () => liveOpsStore.set({ player: c }) },
+                          { label: `Inspect ${c}`, icon: "search", run: () => selectLiveOpsPlayer(c) },
                           "sep",
                           { label: "Teleport…", icon: "teleport", stagedFor: "EA · live ops" },
                           { label: "Send message…", icon: "mail", stagedFor: "EA · live ops" },
@@ -450,6 +546,7 @@ export function LiveOpsPreview(): React.JSX.Element {
             })}
           </tbody>
         </table>
+        {section !== null && <LiveOpsSection section={section} />}
       </div>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {[
@@ -472,12 +569,77 @@ export function LiveOpsPreview(): React.JSX.Element {
   );
 }
 
+/** Dedicated panel for telemetry/chat/ledger scopes (sample data until
+ *  the sessions/telemetry endpoints land — same badge as the preview). */
+export function LiveOpsSection({ section }: { section: "telemetry" | "chat" | "ledger" }): React.JSX.Element {
+  if (section === "telemetry") {
+    return (
+      <div className="mt-3 rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
+        <p className="mb-2 text-sm font-medium">Tick budget <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>· binds TelemetrySnapshot.tick when live</span></p>
+        <MiniTable
+          head={["Window", "p50", "p99", "Budget"]}
+          rows={[
+            ["10 s", "2.1 ms", "9.7 ms", "33 ms"],
+            ["1 min", "2.4 ms", "11.2 ms", "33 ms"],
+            ["1 h", "2.2 ms", "14.8 ms", "33 ms"],
+          ]}
+        />
+        <p className="mt-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
+          Series bind per-bucket kills/deaths/pickups/drops plus damage dealt/taken (60 × 10 s windows).
+        </p>
+      </div>
+    );
+  }
+  if (section === "chat") {
+    return (
+      <div className="mt-3 rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
+        <p className="mb-2 text-sm font-medium">Channels <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>· binds ChatBroadcast/FriendsState/PartyState/GuildState when live</span></p>
+        <MiniTable
+          head={["Channel", "Traffic/min", "Moderation"]}
+          rows={[
+            ["say · Starter Coast", "812", "—"],
+            ["yell · Ember Peaks", "96", "1 muted"],
+            ["party · party-1", "143", "—"],
+            ["guild · Coast Wardens", "88", "—"],
+            ["whisper", "211", "2 blocked"],
+          ]}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
+      <p className="mb-2 text-sm font-medium">Item ledger <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>· binds item_events rows when live</span></p>
+      <MiniTable
+        mono
+        head={["seq", "item", "tick", "kind", "def", "owner"]}
+        rows={[
+          ["991204", "40112", "881203", "drop", "goblin_ear", "—"],
+          ["991205", "40113", "881204", "pickup", "goblin_ear", "Aria"],
+          ["991206", "88210", "881207", "give", "health_potion", "Bram"],
+          ["991207", "40113", "881209", "trade", "goblin_ear", "Hale"],
+        ]}
+      />
+    </div>
+  );
+}
+
 export function LiveOpsDetails(): React.JSX.Element {
-  const { player } = liveOpsStore.use();
+  const { player, scope } = liveOpsStore.use();
   const st = playerStats(player);
   return (
     <div className="flex flex-col gap-2 font-mono text-xs leading-relaxed">
       <p className="font-sans text-sm font-medium" style={{ color: "var(--m3-on-surface)" }}>Admin console</p>
+      {scope.kind !== "all" && (
+        <button
+          onClick={clearLiveOpsScope}
+          title="Clear scope — back to all players"
+          className="m3-focus rounded-lg px-2 py-1.5 text-left text-[12px]"
+          style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
+        >
+          Scope: {liveOpsScopeLabel(scope)} ✕
+        </button>
+      )}
       <p style={{ color: "var(--m3-on-surface-variant)" }}>&gt; inspect {player}</p>
       <p style={{ color: "var(--m3-on-surface)" }}>Health {st.hp} · Stamina {st.sp} · {st.extra}</p>
       <p style={{ color: "var(--m3-on-surface-variant)" }}>&gt; teleport {player} 120 0 -40</p>
@@ -3232,7 +3394,7 @@ export function applyDeepSelection(sel: string): { workspace: string; view: stri
       stringsStore.set((p) => ({ ...p, row: rest }));
       return { workspace: "story", view: "strings" };
     case "player":
-      liveOpsStore.set({ player: rest });
+      selectLiveOpsPlayer(rest);
       return { workspace: "liveops", view: "overview" };
     case "clip":
       if (!CLIPS.some(([c]) => c === rest)) return null;

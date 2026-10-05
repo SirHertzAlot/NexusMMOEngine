@@ -21,6 +21,7 @@ import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import type { MenuItem } from "./components.js";
+import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
   AnimPreview,
@@ -48,6 +49,12 @@ import {
   applyDeepSelection,
   liveOpsStore,
   readDeepSelection,
+  selectLiveOpsPlayer,
+  selectLiveOpsScope,
+  liveOpsScopeLabel,
+  LIVEOPS_ACCOUNTS,
+  LIVEOPS_GUILDS,
+  LIVEOPS_PARTIES,
   storyStore,
   subscribeDeepSelection,
 } from "./previews.js";
@@ -1629,40 +1636,114 @@ function WorldTree(): React.JSX.Element {
   );
 }
 
-/** Live ops scopes (ux-08). Players bind to the admin console selection. */
+/** Live ops scopes (ux-08). Players bind to the admin console selection;
+ *  account/guild/party leaves scope the preview table, telemetry/chat/
+ *  ledger leaves swap in their section. */
 function LiveOpsTree(): React.JSX.Element {
   const t = useTree();
-  const names = PLAYERS.map(([c]) => c);
+  const { scope } = liveOpsStore.use();
+  const group = (id: string, icon: string, label: string, trailing: string, kids: React.ReactNode): React.JSX.Element => (
+    <div key={id}>
+      <TreeItem
+        icon={icon} label={label} trailing={trailing}
+        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
+        selected={false} onPick={() => t.toggle(id)}
+        menu={crudMenu(label, "EA · live ops")}
+      />
+      {t.open.includes(id) && kids}
+    </div>
+  );
+  const scopeLeaf = (id: string, label: string, s: LiveOpsScope, depth = 1): React.JSX.Element => (
+    <TreeItem
+      key={id} icon="chevron_right" label={label} depth={depth} mono
+      selected={scope.kind !== "all" && liveOpsScopeLabel(scope) === liveOpsScopeLabel(s)}
+      onPick={() => selectLiveOpsScope(s)}
+      menu={crudMenu(label, "EA · live ops")}
+    />
+  );
+  const playerLeaf = (n: string): React.JSX.Element => (
+    <TreeItem
+      key={n} icon="person" label={n} depth={1}
+      selected={false}
+      onPick={() => selectLiveOpsPlayer(n)}
+      menu={crudMenu(n, "EA · live ops")}
+    />
+  );
   return (
     <div className="flex flex-col gap-0.5">
-      <TreeItem
-        icon="groups" label="Players" trailing="214"
-        hasKids expanded={t.open.includes("players")} onToggle={() => t.toggle("players")}
-        selected={t.sel === "players"} onPick={() => t.pick("players")}
-        menu={crudMenu("Players", "EA · live ops")}
-      />
-      {t.open.includes("players") && names.map((n) => (
-        <TreeItem
-          key={n} icon="person" label={n} depth={1}
-          selected={false}
-          onPick={() => liveOpsStore.set({ player: n })}
-          menu={crudMenu(n, "EA · live ops")}
-        />
+      {group("players", "groups", "Players", "214", <>{PLAYERS.map(([c]) => playerLeaf(c))}</>)}
+      {group("accounts", "badge", "Accounts", String(Object.keys(LIVEOPS_ACCOUNTS).length), (
+        <>
+          {Object.entries(LIVEOPS_ACCOUNTS).map(([a, members]) => (
+            <div key={a}>
+              <TreeItem
+                icon="chevron_right" label={a} depth={1} mono
+                hasKids expanded={t.open.includes(`account:${a}`)} onToggle={() => t.toggle(`account:${a}`)}
+                selected={false}
+                onPick={() => selectLiveOpsScope({ kind: "account", name: a })}
+                menu={crudMenu(a, "EA · live ops")}
+              />
+              {t.open.includes(`account:${a}`) && members.map((m) => (
+                <TreeItem
+                  key={m} icon="person" label={m} depth={2}
+                  selected={false}
+                  onPick={() => selectLiveOpsPlayer(m)}
+                  menu={crudMenu(m, "EA · live ops")}
+                />
+              ))}
+            </div>
+          ))}
+        </>
       ))}
-      {[
-        ["badge", "Accounts", ""],
-        ["diversity_3", "Guilds", ""],
-        ["group", "Parties", ""],
-        ["forum", "Chat & events", ""],
-        ["receipt_long", "Item ledger", ""],
-        ["monitoring", "Telemetry", ""],
-      ].map(([icon, label]) => (
-        <TreeItem
-          key={label} icon={icon} label={label}
-          selected={t.sel === label} onPick={() => t.pick(label)}
-          menu={crudMenu(label, "EA · live ops")}
-        />
+      {group("guilds", "diversity_3", "Guilds", String(Object.keys(LIVEOPS_GUILDS).length), (
+        <>
+          {Object.entries(LIVEOPS_GUILDS).map(([g, members]) => (
+            <div key={g}>
+              <TreeItem
+                icon="chevron_right" label={g} depth={1}
+                hasKids expanded={t.open.includes(`guild:${g}`)} onToggle={() => t.toggle(`guild:${g}`)}
+                selected={false}
+                onPick={() => selectLiveOpsScope({ kind: "guild", name: g })}
+                menu={crudMenu(g, "EA · live ops")}
+              />
+              {t.open.includes(`guild:${g}`) && members.map((m) => (
+                <TreeItem
+                  key={m} icon="person" label={m} depth={2}
+                  selected={false}
+                  onPick={() => selectLiveOpsPlayer(m)}
+                  menu={crudMenu(m, "EA · live ops")}
+                />
+              ))}
+            </div>
+          ))}
+        </>
       ))}
+      {group("parties", "group", "Parties", String(Object.keys(LIVEOPS_PARTIES).length), (
+        <>
+          {Object.entries(LIVEOPS_PARTIES).map(([p, members]) => (
+            <div key={p}>
+              <TreeItem
+                icon="chevron_right" label={p} depth={1} mono
+                hasKids expanded={t.open.includes(`party:${p}`)} onToggle={() => t.toggle(`party:${p}`)}
+                selected={false}
+                onPick={() => selectLiveOpsScope({ kind: "party", name: p })}
+                menu={crudMenu(p, "EA · live ops")}
+              />
+              {t.open.includes(`party:${p}`) && members.map((m) => (
+                <TreeItem
+                  key={m} icon="person" label={m} depth={2}
+                  selected={false}
+                  onPick={() => selectLiveOpsPlayer(m)}
+                  menu={crudMenu(m, "EA · live ops")}
+                />
+              ))}
+            </div>
+          ))}
+        </>
+      ))}
+      {group("chat", "forum", "Chat & events", "5 channels", <>{scopeLeaf("chat", "All channels", { kind: "chat" })}</>)}
+      {group("ledger", "receipt_long", "Item ledger", "128k events", <>{scopeLeaf("ledger", "Recent events", { kind: "ledger" })}</>)}
+      {group("telemetry", "monitoring", "Telemetry", "tick p99", <>{scopeLeaf("telemetry", "Tick budget", { kind: "telemetry" })}</>)}
     </div>
   );
 }
