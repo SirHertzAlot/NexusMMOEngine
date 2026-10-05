@@ -31,6 +31,12 @@ import type {
   DebugQuery,
   DebugResponse,
 } from "@mmo-engine/protocol";
+import {
+  parseInspectEntity,
+  parseTelemetrySnapshot,
+  type InspectEntity,
+  type TelemetrySnapshot,
+} from "./backend-models.js";
 
 /** Minimal surface BackendClient drives (MirrorClient satisfies it). */
 export interface ClientLike {
@@ -238,6 +244,19 @@ export class BackendClient {
   /** Drop N mob-pool items around the caller. */
   async loot(count?: number): Promise<AdminResult> {
     return this.must().admin("loot", count === undefined ? {} : { count });
+  }
+
+  /** Typed telemetry: the `stats` message is JSON — parse, don't scrape. */
+  async statsSnapshot(): Promise<TelemetrySnapshot> {
+    const res = await this.must().admin("stats");
+    return parseTelemetrySnapshot(BackendClient.assertAdminOk(res));
+  }
+
+  /** Typed entity dump: parses the `inspect` text (provisional format —
+   *  a future `inspect --json` retires the parser, not the callers). */
+  async inspectEntity(entity: string = "me"): Promise<InspectEntity> {
+    const res = await this.inspect(entity);
+    return parseInspectEntity(BackendClient.assertAdminOk(res));
   }
 
   // ---------------------------------------------------------- lifecycle
