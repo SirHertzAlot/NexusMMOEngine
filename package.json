@@ -2,7 +2,6 @@
   "description": "Authoritative, data-oriented, ECS-capable procedural-generation MMO engine (slice 1.1 scaffolding)",
   "devDependencies": {
     "@types/node": "^25.0.0",
-    "@types/ws": "^8.18.1",
     "typescript": "^5.6.3"
   },
   "engines": {

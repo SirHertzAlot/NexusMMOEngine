@@ -283,6 +283,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
 - **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
 - **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.
 - **2026-10-04**: M4 client: the character sheet shows disciplines (active, lapsed, progress toward the rest) and familiarity. (#127)

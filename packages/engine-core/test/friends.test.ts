@@ -1,7 +1,11 @@
 /** FriendBook (roadmap S2b): add/remove, caps, case-insensitivity, watchers, schema. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { FRIEND_LIMIT, FriendBook, FriendSchema } from "../src/friends.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { FRIEND_LIMIT, FriendBook, FriendSchema, memoryFriendStore } from "../src/friends.js";
+import { SqliteFriendStore } from "../src/friend-store.js";
 
 describe("FriendBook", () => {
   it("adds, lists in order and removes case-insensitively", () => {
@@ -35,5 +39,39 @@ describe("FriendBook", () => {
     assert.ok(FriendSchema.safeParse({ kind: "friend", name: " Bob ", on: true }).success);
     assert.ok(!FriendSchema.safeParse({ kind: "friend", name: "", on: true }).success);
     assert.ok(!FriendSchema.safeParse({ kind: "friend", name: "Bob", on: true, x: 1 }).success);
+  });
+});
+
+describe("friend persistence", () => {
+  it("a book reloads its lists from the store", () => {
+    const store = memoryFriendStore();
+    const a = new FriendBook(store);
+    a.add("Ann", "Bob");
+    a.add("Ann", "Cy");
+    a.add("Dee", "Bob");
+    a.remove("Ann", "bob");
+    const b = new FriendBook(store);
+    assert.deepEqual(b.list("ann"), ["Cy"]);
+    assert.deepEqual(b.watchers("bob"), ["dee"]);
+  });
+
+  it("the SQLite store survives reopening the file", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "friends-"));
+    const file = path.join(dir, "friends.db");
+    const stores: SqliteFriendStore[] = [];
+    try {
+      stores.push(new SqliteFriendStore(file));
+      const a = new FriendBook(stores[0]);
+      a.add("Ann", "Bob");
+      a.add("Ann", "Cy");
+      a.remove("Ann", "Bob");
+      stores[0].close();
+      stores.push(new SqliteFriendStore(file));
+      const b = new FriendBook(stores[1]);
+      assert.deepEqual(b.list("Ann"), ["Cy"]);
+    } finally {
+      for (const s of stores) s.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
