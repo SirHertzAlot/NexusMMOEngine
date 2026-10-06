@@ -23,6 +23,7 @@ import { loadDungeonContent, parseDungeonContent, type DungeonContent } from "..
 import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/pool.js";
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
 import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
+import type { Weapon } from "../../src/combat.js";
 import { InstanceManager } from "../../src/dungeons/manager.js";
 import { MemoryInstanceResultStore, SqliteInstanceResultStore } from "../../src/dungeons/results.js";
 import { HeadlessClient } from "../net/headless-client.js";
@@ -190,7 +191,14 @@ describe("dungeon instance", () => {
 });
 
 describe("instance manager", () => {
-  async function region(dungeons: DungeonContent, partySizes?: [number, number]) {
+  async function region(
+    dungeons: DungeonContent,
+    partySizes?: [number, number],
+    extra?: {
+      weaponOf?: (characterId: number) => Weapon | null;
+      train?: (characterId: number, skill: string, difficulty: number, key: number) => void;
+    },
+  ) {
     SimWorld.resetEntityCursorForTesting();
     const dir = poolDir([fixture()]);
     dirs.push(dir);
@@ -205,6 +213,8 @@ describe("instance manager", () => {
       credentialStore, characterStore: characters, partyOf: (n) => gw.partyOf(n),
       lootPool: () => [42], grant: (c, d) => (granted.push([c, d]), true),
       endpoint: (p) => `ws://127.0.0.1:${p}`, results, transport: "ws",
+      ...(extra?.weaponOf ? { weaponOf: extra.weaponOf } : {}),
+      ...(extra?.train ? { train: extra.train } : {}),
     });
     const gate = content.entrances["barrow-gate"];
     gw = new Gateway({ credentialStore, characterStore: characters, extensions: [mgr], spawnPoint: { x: gate.x + 14, z: gate.z + 14 } /* the first avatar stands 14 m off it, on the gate */, transport: "ws" });
@@ -273,6 +283,38 @@ describe("instance manager", () => {
     assert.equal(r.results.unreported()[0].kills[0].count, 1);
     assert.ok(r.granted.every(([, d]) => d === 42));
     assert.equal(r.mgr.count, 0);
+  });
+
+  it("commit trains the killer's weapon skill, one use per kill", async () => {
+    const trained: Array<[number, string, number, number]> = [];
+    const r = await region(content, undefined, {
+      weaponOf: () => ({ technique: "cut", item: { mass: 1, edge: 1, point: 0, hardness: 1 }, reach: 1 }),
+      train: (c, s, d, k) => void trained.push([c, s, d, k]),
+    });
+    const a = await r.join("alice", "Alice");
+    await until(() => ctl(a).some((m) => m.op === "entrances"));
+    ask(a);
+    await until(() => ctl(a).some((m) => m.op === "transfer"));
+    const t = ctl(a).find((m) => m.op === "transfer")!;
+    const inside = new HeadlessClient();
+    closers.push(() => inside.close());
+    await inside.connect(t.endpoint as string);
+    const w = await inside.hello("t", { token: t.token as string });
+    const inst = r.mgr.instances()[0];
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    for (const e of [...inst.creatures.entities()]) {
+      C.Health.current[e] = 0;
+      onDeath(inst.world, { tick: 1, target: e, state: "dead", killer: avatar });
+    }
+    inst.end("cleared");
+    assert.equal(trained.length, 3);
+    for (const [c, s, d, k] of trained) {
+      assert.equal(c, trained[0][0]);
+      assert.equal(s, "cutting");
+      assert.equal(d, 0.5);
+      assert.equal(k, trained[0][3]);
+    }
   });
 
   it("refuses a party outside its size", async () => {

@@ -23,7 +23,7 @@
 
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
-import type { Weapon } from "../combat.js";
+import { FIGHT_DIFFICULTY, type Weapon } from "../combat.js";
 import type { GameRules } from "../rules/boot.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
@@ -45,6 +45,12 @@ export interface InstanceManagerOptions {
   lootPool?: () => readonly number[];
   /** Put item definition `def` in a character's bag; false when it couldn't. */
   grant: (characterId: number, def: number) => boolean;
+  /**
+   * Train one use of a skill for a character (dungeon skill gains).
+   * The manager calls it once per kill for the killer's weapon skill;
+   * absent: runs grant loot but train nothing.
+   */
+  train?: (characterId: number, skill: string, difficulty: number, key: number) => void;
   /** The address clients reach an instance's port at. */
   endpoint: (port: number) => string;
   results: InstanceResultStore;
@@ -187,6 +193,20 @@ export class InstanceManager implements GatewayExtension {
     for (const l of result.loot) {
       if (this.opts.grant(l.characterId, l.def)) granted++;
       else lost++;
+    }
+    // Skill gains: one use of the killer's weapon skill per kill, at the
+    // same difficulty as an open-world landed hit, keyed by victim kind
+    // for repeat falloff. Deaths train nothing: per-hit defence events
+    // never enter the batch.
+    const train = this.opts.train;
+    if (train) {
+      const techniques = this.opts.game().rules.combat.techniques;
+      for (const k of result.kills) {
+        const skill = techniques[this.opts.weaponOf?.(k.characterId)?.technique ?? ""]?.skill;
+        if (!skill) continue;
+        const key = hashId(k.kind);
+        for (let i = 0; i < k.count; i++) train(k.characterId, skill, FIGHT_DIFFICULTY, key);
+      }
     }
     this.opts.results.record(result, granted, lost);
     this.opts.onCommitted?.(result);
