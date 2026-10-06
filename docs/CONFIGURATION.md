@@ -140,7 +140,7 @@ never printed; only its argon2id hash is stored. 8–128 characters.
 |---|---|---|
 | Server URL | Login screen | Defaults to `ws://localhost:7777` (`wss://` when the page is served over HTTPS). |
 | `?preview=character` | Client URL | The character creator with no server, for working on looks and the creation UI. |
-| Port | `npm run dev --workspace=@mmo-engine/client -- --port <n>` | Vite's port (default 5173). |
+| Port | `npm run client -- --port <n>` | Vite's port (default 5173). |
 | Screen effects | HUD button | **effects off** renders without post-processing, for weak GPUs. |
 
 The editor's Play Mode and Terrain panels use the same world folder as

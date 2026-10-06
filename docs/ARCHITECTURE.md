@@ -82,13 +82,22 @@ packages/scatter     the scatter plan language and its JS reference impl.
 packages/picg        PCG graph handling: linked subgraphs, parameters, mesh
                      decode, the asset library index.
 packages/wfc         Wave Function Collapse over an arbitrary graph.
-packages/dungeon     procedural dungeon layout and bake.
+packages/placement   formation placement (WFC decides what, this decides where).
+packages/dungeon     procedural dungeon layout and bake, plus baked geometry.
+packages/species     species ecology and spawn tables.
+packages/compose     ranks, prefabs, loot pools at bake time.
+packages/crafting    materials, recipes, tradability.
 packages/engine-core the authoritative server: tick loop, world, net, persist.
 packages/world-server the region registry (world-level service).
+packages/channel     the edge↔core internal channel (framed TCP).
+packages/nethealth   network metrics helpers shared by edge and core.
 packages/bench       the tick-budget benchmark harness.
 packages/addons/*    the C++ N-API addons.
-apps/client          the browser game client (React 19 + React Three Fiber).
+apps/client          the player-facing browser game client (React 19 + React
+                     Three Fiber).
 apps/editor          the standalone editor companion.
+apps/edge            the edge process: client WebSocket + packet router
+                     (edge/core split).
 ```
 
 `engine-core`'s build script spells this order out rather than relying on the

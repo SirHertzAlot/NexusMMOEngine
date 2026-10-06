@@ -22,8 +22,6 @@ By the end you will have:
 | **Node.js** | 22 or newer (CI runs 24) | Server, tools, client build | [nodejs.org](https://nodejs.org) |
 | **C++17 compiler** | — | The native addons (Jolt physics, Recast navigation, FastNoise2, PICG, scatter) compile during `npm install` through node-gyp | Windows: Visual Studio 2022 Build Tools with *Desktop development with C++*. macOS: `xcode-select --install`. Linux: `sudo apt install build-essential` |
 | **Python 3** | 3.8+ | node-gyp needs it | Usually present. Windows: the Microsoft Store or python.org |
-| **bash** | — | `npm run codegen` is a bash script | Built in on Linux/macOS. Windows: Git Bash (comes with Git for Windows) |
-| **flatc** | 25.x | Generates the FlatBuffers bindings | Linux: vendored at `third_party/flatc/flatc`. macOS: `brew install flatbuffers`. Windows: download `flatc.exe` from the [FlatBuffers releases](https://github.com/google/flatbuffers/releases) and put it on your `PATH` |
 | **A WebGL 2 browser** | Chrome, Edge or Firefox | The client | On a laptop with two GPUs, give the browser the fast one (see [Troubleshooting](#troubleshooting)) |
 | SurrealDB server | optional | Only for a *durable* world server | [surrealdb.com/install](https://surrealdb.com/install) |
 
@@ -37,7 +35,17 @@ FastNoise2 and PICG are vendored in the repo and compiled directly by node-gyp.
 git clone https://github.com/SirHertzAlot/NexusMMOEngine.git
 cd NexusMMOEngine
 npm install        # installs every workspace and compiles the native addons (several minutes the first time)
+```
+
+`npm start` (next section's shortcut) does the rest itself: it regenerates
+the FlatBuffers bindings, bakes the world, the loot pool and ten dungeons
+when they are missing, then starts the server and the client. You only need
+to run these steps yourself when you change the schema or want a fresh
+bake:
+
+```bash
 npm run codegen    # packages/schema/mmo_engine.fbs -> C++ and TypeScript bindings
+npm run bake:world
 ```
 
 Optional but worthwhile: prove the install with the test suite.
@@ -48,8 +56,8 @@ npm test           # builds everything, runs all 16 suites (a few minutes)
 
 ## 3. Bake a world
 
-The server can boot without a bake, but you would get a small, nearly flat
-legacy area. The real thing is a baked world:
+`npm start` bakes a world automatically the first time. To do it (or force a
+re-bake) yourself:
 
 ```bash
 npm run bake:world
@@ -77,42 +85,42 @@ Without them the terrain uses flat biome colours. With them it blends
 grass, rock, sand, snow and mud by biome, slope and height. The files go to
 `apps/client/public/surfaces/` and are never committed.
 
-## 5. Start the game server
+## 5. Start the game
 
 ```bash
-npm run server
+npm start
 ```
 
-Wait for `[server] listening on ws://0.0.0.0:7777`.
-It builds every package first, so the first start takes a moment.
+That runs the missing setup (codegen, bakes), then starts the authoritative
+server (ws://localhost:7777) and the browser client (http://localhost:5173)
+together. Ctrl+C stops both. For separate processes, see
+[CONFIGURATION.md](CONFIGURATION.md): `npm start -- --server` runs only the
+game server, `npm run editor` the editor, `npm run world` the world server.
 
 Some settings worth trying (full list in [CONFIGURATION.md](CONFIGURATION.md)):
 
 ```bash
-MMO_BOTS=10 npm run server                # ten computer-driven characters near spawn: sparring pairs and wanderers
-MMO_DAY_SECONDS=600 npm run server        # a ten-minute day, to watch the sun set
-MMO_PLAYER_ABILITIES=swim,fly npm run server   # players can fly (F)
+MMO_BOTS=10 npm start                # ten computer-driven characters near spawn: sparring pairs and wanderers
+MMO_DAY_SECONDS=600 npm start        # a ten-minute day, to watch the sun set
+MMO_PLAYER_ABILITIES=swim,fly npm start   # players can fly (F)
 ```
+
+`npm start` forwards its arguments on, so `MMO_BOTS=10 npm start -- --server`
+also works.
 
 In PowerShell:
 
 ```powershell
 $env:MMO_BOTS = "10"
-npm run server
+npm start
 ```
 
 Settings set this way stay set in that terminal until you close it
 (`Remove-Item Env:MMO_BOTS` clears one).
 
-## 6. Start the client and play
+## 6. Play
 
-In a second terminal:
-
-```bash
-npm run client
-```
-
-Open **http://localhost:5173**, then:
+With `npm start` running, open **http://localhost:5173**, then:
 
 1. Leave the server URL at `ws://localhost:7777`.
 2. Choose **Create account**, pick a username and password, and connect.
@@ -158,10 +166,14 @@ works the same.
 npm run editor           # http://localhost:5174
 ```
 
-Four panels: a read-only **ECS Inspector**, **Play Mode** (starts its own
-local server and shows navmesh and path overlays), **Terrain** (sculpt the
-baked world's heightmap) and **Art Assets** (scan, validate and preview the
-art pack). See [EDITOR.md](EDITOR.md).
+The editor is a docking workspace with a tab per area: **World** (terrain at
+world scale), **Scene** (the read-only ECS inspector), **Characters** (a
+read-only record view), **Gameplay** (rules and gameplay tables), **Dungeons &
+PCG** (baked-pool browser, 3D view, patches, graph editor), **Live ops**
+(tick and activity telemetry), **Debug** (play mode with the client's world
+view and the debugger's performance graphs), **Database**, **Story** (quests
+and strings), **Art & audio** (the art asset pipeline), and **Release**
+(pipeline and playtests). See [EDITOR.md](EDITOR.md).
 
 ## 8. Optional: the world server
 
@@ -170,7 +182,7 @@ npm run world            # http://localhost:7780, in-memory store
 ```
 
 The game server only talks to it when started with `WORLD_URL` and
-`WORLD_API_KEY` (see [CONFIGURATION.md](CONFIGURATION.md#world-server-registration)).
+`WORLD_API_KEY` (see [CONFIGURATION.md](CONFIGURATION.md#world-server)).
 On its own, the game server runs as a standalone region, which is the
 normal development setup.
 
@@ -187,14 +199,9 @@ normal development setup.
 
 **`npm install` fails with `EPERM: operation not permitted, unlink ... physics.node`.**
 A running game server has the physics addon loaded, and Windows cannot
-replace a loaded file. Stop every `npm run server` / `npm run world`
-terminal (Ctrl+C) and install again. If the addons haven't changed, `npm
+replace a loaded file. Stop every server (`npm start` / `npm run editor`,
+Ctrl+C) and install again. If the addons haven't changed, `npm
 install --ignore-scripts` also works while servers run.
-
-**`npm run codegen` says `no flatc found`.**
-Install `flatc` (see [Prerequisites](#1-prerequisites)) and make sure
-`flatc --version` works in the shell you run npm from. On Windows, run it
-from Git Bash or a terminal where Git Bash's `bash` is on the `PATH`.
 
 **The client runs at a few frames per second.**
 The HUD's `gpu` line shows which GPU the browser got. On laptops with
@@ -204,7 +211,8 @@ button skips the screen effects for weak GPUs.
 
 **Port already in use.**
 Another server is running. Stop it, or pick other ports: `MMO_PORT` for the
-game server, `npm run dev --workspace=@mmo-engine/client -- --port 5180` for the client.
+game server; the client's Vite dev server takes `--port`, e.g.
+`npm run client -- --port 5180`.
 
 **Newly added scenery doesn't appear where I've been.**
 Chunks are populated once, the first time a player comes near, and saved.

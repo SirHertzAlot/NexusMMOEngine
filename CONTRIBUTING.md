@@ -9,20 +9,18 @@ it explains what the pieces are and which way the data flows.
 ## 1. Prerequisites
 
 Same as a player: Node.js 22 or newer (CI runs 24), a C++17 compiler, Python
-3, and bash. The full table, with per-platform instructions, is in
+3. The full table, with per-platform instructions, is in
 [GETTING-STARTED.md](docs/GETTING-STARTED.md#1-prerequisites).
 
-Two gotchas cost real time, so they are repeated here:
+One gotcha costs real time, so it is repeated here: if a build fails with
+`EPERM: operation not permitted, unlink ... physics.node`, a game server is
+still running and has the native addon loaded. Windows cannot replace a
+loaded file — stop every server (Ctrl+C) and install again.
 
-- **`flatc` must be on your `PATH`.** `npm run codegen` is a bash script that
-  prefers the vendored `third_party/flatc/flatc`, but that binary is a Linux
-  x86_64 build. On Windows and macOS it is not executable, so a system
-  `flatc` 25.x is what actually gets used. Verify with `flatc --version`.
-- **Use Git Bash on Windows, not WSL's `bash`.** If `bash` resolves to
-  `C:\WINDOWS\system32\bash.exe`, codegen fails with
-  `set: pipefail: invalid option name`. Either put
-  `C:\Program Files\Git\bin` ahead of it on `PATH`, or run the commands from
-  a Git Bash terminal.
+`npm run codegen` is a Node script (`scripts/codegen.mjs`) and picks the
+vendored flatc for your platform (`third_party/flatc/flatc`, `flatc.exe`,
+or `flatc-macos`); you do not need bash or a system flatc. A system flatc
+on PATH stays the fallback.
 
 ## 2. Set up
 
@@ -167,13 +165,12 @@ fast. Prefer changing a rules file over adding a branch in the engine.
 4. `npm test`
 
 Note what CI does **not** cover: it does not lint, and it does not build the
-browser clients' production bundles. A change that only breaks
-`npm run client:build` can pass CI. Build the apps yourself when you touch
-them.
+browser apps' production bundles. A change that only breaks
+`npm run build --workspace=@mmo-engine/client` can pass CI. Build the apps
+yourself when you touch them.
 
 CI runs on Linux. Windows-specific behaviour (the native addon builds, the
-POSIX-mode tests that skip themselves, the `flatc` situation above) is on you
-to verify locally.
+POSIX-mode tests that skip themselves) is on you to verify locally.
 
 ## 7. Things that must never be committed
 

@@ -24,8 +24,10 @@ npm run client
 npm run surfaces:fetch
 ```
 
-Create an account in the client (or seed one headlessly — see the
-[root README](../../README.md#quick-start)), then log in. Session tokens live
+Create an account in the client's **Create account** tab (to seed one
+headlessly instead, see
+[CONFIGURATION.md](../../docs/CONFIGURATION.md#accounts-from-the-command-line)),
+then log in. Session tokens live
 in memory only; the **reconnect** button re-hellos with the stored token.
 
 The character creator is reachable with no server at all, which is the fast
