@@ -284,6 +284,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-06**: Editor scope tree (in progress): shared data-driven outliner (`ScopeNode` + `flattenVisible`/`breadcrumb`/`toggleOpen`, `ScopeTree` over `TreeItem`), proven on the World tree with identical rows; LiveOps/story/release/database trees follow instead of reimplementing open/selected/expand.
 - **2026-10-06**: E5 complete: developer panels no longer mount in the player client. `npm run dev` now starts the server and editor; debugger controls remain exclusively in the editor's Play Mode.
 - **2026-10-06**: D4 region report (in progress): `WorldClient.reportDungeonResults` sends the region's unreported dungeon runs to the world with the bearer token and returns the ingested instance ids; the world's `ReportDungeonResults` ingest is the next slice.
 - **2026-10-06**: D4 world ingest (in progress): `WorldCore.reportDungeonResults` records one `dungeon_run` row per run (Memory + Surreal stores), idempotent on `instance`, 403 on region mismatch, 404 on unknown region. Next: the webrpc route/Zod/RIDL and the region flush marking `instances.db` rows reported.

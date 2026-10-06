@@ -9,6 +9,7 @@
  */
 
 import * as React from "react";
+import { flattenVisible, type ScopeNode } from "./scope-tree.js";
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -673,6 +674,47 @@ export function TreeItem({ icon, label, trailing, depth = 0, expanded, onToggle,
         </span>
       )}
     </div>
+  );
+}
+
+// ------------------------------------------------------- data-driven tree
+
+/**
+ * A whole outliner from data. Rows, expand state and highlight come from
+ * the scope-tree helpers; view code supplies only the node list, what a
+ * pick means, and the row menu. View-specific node fields ride along via
+ * `T extends ScopeNode` (e.g. a selection kind per row).
+ */
+export function ScopeTree<T extends ScopeNode>({ nodes, open, selected, onToggle, onPick, menuFor }: {
+  nodes: readonly T[];
+  open: readonly string[];
+  selected: string | null;
+  onToggle: (id: string) => void;
+  onPick: (node: T) => void;
+  menuFor?: (node: T) => Array<MenuItem | "sep">;
+}): React.JSX.Element {
+  return (
+    <>
+      {flattenVisible(nodes, open).map(({ node, depth, hasKids }) => {
+        const full = node as T;
+        return (
+          <TreeItem
+            key={node.id}
+            icon={node.icon ?? "chevron_right"}
+            label={node.label}
+            trailing={node.trailing}
+            depth={depth}
+            mono={node.mono}
+            hasKids={hasKids}
+            expanded={open.includes(node.id)}
+            onToggle={() => onToggle(node.id)}
+            selected={selected === node.id}
+            onPick={() => onPick(full)}
+            menu={menuFor?.(full)}
+          />
+        );
+      })}
+    </>
   );
 }
 
