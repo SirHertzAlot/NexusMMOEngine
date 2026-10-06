@@ -137,6 +137,7 @@ import { CharacterRef } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
+import { SkillSheet } from "./stats/mastery.js";
 import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
@@ -606,6 +607,19 @@ async function main(): Promise<void> {
     },
     lootPool: () => itemDefs.defs.ofSource("mob"),
     grant: (character, def) => items.give(character, def).ok,
+    // Dungeon skill gains: the region holds no live sheet for members
+    // away in an instance (the gateway forgets sheets on leave and
+    // reloads them on return), so training round-trips the character's
+    // saved sheet instead of racing the sim.
+    train: (character, skill, difficulty, key) => {
+      const i = mastery.index.of(skill);
+      if (i < 0) return;
+      const sheet = new SkillSheet(mastery.index);
+      const saved = characterStore.loadSkills?.(character);
+      if (saved) sheet.load(saved);
+      sheet.train(i, difficulty, key, Date.now());
+      characterStore.saveSkills?.(character, sheet.save());
+    },
     endpoint: (p) => `ws://${instanceHost}:${p}`,
     results: instanceResults,
     log: (l) => console.log(l),
