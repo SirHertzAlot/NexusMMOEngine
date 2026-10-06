@@ -222,8 +222,12 @@ pool. The region commits it then, items into bags and the batch into
 it up once that endpoint exists. The run rules are data
 (`content/dungeons/instances.json`), the proposed answers to §10.2: parties of
 1 to 5, 45 minutes, re-entry while the run lasts, abandoned after 2 minutes
-empty, at most 8 runs per region, nothing kept until the run reports. Not yet:
-depleted nodes, chests and traps, skill gains, the client's transfer.
+empty, at most 8 runs per region, nothing kept until the run reports. Skill
+gains: the region's commit trains one use of each killer's weapon skill per
+kill, at the open-world hit difficulty and keyed by victim kind, through the
+character's saved sheet (no live sheet exists while its owner is away in the
+instance). The client's transfer (hop in and back out, run HUD, result) rides
+the `transfer`/`ended` messages. Not yet: depleted nodes, chests and traps.
 
 ### 3.5 Editor (D3)
 

@@ -206,7 +206,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | R2 | Prefab builder | ✅ | 〃 |
 | L1 | Loot pool bake | ✅ | 〃 |
 | C1 (crafting) | Materials, recipes, tradability | ✅ | 〃 |
-| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Next: results ingested by the world server |
+| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Skill gains: commit trains the killer's weapon skill, one use per kill at open-world difficulty through the character skill store. Next: results ingested by the world server; depleted nodes, chests and traps |
 | PCG1 | PICG native cook addon | ✅ | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 
@@ -282,6 +282,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-06**: D4 skill gains (in progress): committing a run trains one use of each killer's weapon skill per kill (open-world hit difficulty, keyed by victim kind) through the character's saved skill sheet; deaths train nothing. Nodes, chests and traps remain.
 - **2026-10-06**: T2 Live Ops telemetry: the editor reads the protected `stats` admin snapshot through `BackendClient`, refreshes once per server bucket without overlapping requests, and renders tick p50/p99/max plus kills, pickups and damage series. Connection and refresh failures remain visible; player, region and audit data stay staged.
 - **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
 - **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
