@@ -24,6 +24,7 @@ import {
   BeginMigrationSchema,
   CommitMigrationSchema,
   DeregisterSchema,
+  DungeonResultsReportSchema,
   GetMigrationSchema,
   HeartbeatSchema,
   RegisterRegionSchema,
@@ -171,6 +172,19 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
     authed(req, res, async (regionId) => {
       const { migrationId } = GetMigrationSchema.parse(req.body ?? {});
       return { migration: await core.getMigration(regionId, migrationId) };
+    }),
+  );
+
+  // -- Slice D4: the region's committed dungeon runs ----------------------
+  // Idempotent on `instance`: the region replays its `instances.db`
+  // unreported rows until the world confirms them ingested.
+
+  r.post("/rpc/World/ReportDungeonResults", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = DungeonResultsReportSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.reportDungeonResults(regionId, input);
     }),
   );
 

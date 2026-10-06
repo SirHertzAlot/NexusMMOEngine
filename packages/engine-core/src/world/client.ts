@@ -14,6 +14,7 @@ import type {
   RegionInfo,
   RegionLease,
 } from "@mmo-engine/world-server";
+import type { InstanceResult } from "../dungeons/instance.js";
 
 export interface WorldTransport {
   /**
@@ -197,6 +198,23 @@ export class WorldClient {
   async listRegions(): Promise<RegionInfo[]> {
     const res = await this.transport.call("ListRegions", {}, this.token());
     return res["regions"] as RegionInfo[];
+  }
+
+  /**
+   * Report committed dungeon runs (roadmap D4): the region's
+   * `InstanceResultStore.unreported()` batch. Throws on transport
+   * failure (like the migration ops): the caller keeps the rows
+   * unreported and retries later. The world ingests them idempotently
+   * once `ReportDungeonResults` exists there (next slice; today the
+   * world answers 501 and nothing is marked reported).
+   */
+  async reportDungeonResults(results: readonly InstanceResult[]): Promise<string[]> {
+    const res = await this.transport.call(
+      "ReportDungeonResults",
+      { input: { regionId: this.opts.regionId, results } },
+      this.token(),
+    );
+    return res["ingested"] as string[];
   }
 
   async beginMigration(entityId: string, toRegion: string, entityState: Record<string, unknown> | null): Promise<string> {

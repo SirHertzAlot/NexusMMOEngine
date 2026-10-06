@@ -38,6 +38,7 @@ import { GameView } from "./game-view.js";
 import { Button } from "./components.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
+import { editorSelection } from "./editor-selection.js";
 
 /** How often the selection card re-reads the picked entity (the mirror changes every tick). */
 const CARD_REFRESH_MS = 250;
@@ -67,11 +68,26 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [combat] = React.useState(() => new CombatFeedback());
   const library = usePcgLibrary();
   const [card, setCard] = React.useState<SelectionCard | null>(null);
+  const selectedWireId = React.useRef<string | null>(null);
   React.useEffect(() => {
     const read = (): void => {
       const target = combat.target;
       const entity = target !== null ? client.state.get(target) : undefined;
-      setCard(entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null);
+      const next = entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null;
+      setCard(next);
+      if (next?.wireId === selectedWireId.current) return;
+      selectedWireId.current = next?.wireId ?? null;
+      if (!next) {
+        editorSelection.clear("viewport");
+        return;
+      }
+      editorSelection.select({
+        source: "viewport",
+        kind: next.kind,
+        id: next.wireId,
+        label: next.name ?? next.kind,
+        components: next.components,
+      });
     };
     read();
     const t = setInterval(read, CARD_REFRESH_MS);

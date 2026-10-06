@@ -46,8 +46,7 @@ What is left, by area:
 - **Scale**: the client cutover to the edge (E3b), binary mirror frames
   (E5a, E5b), the region↔world event stream (S2), accounts on the world
   server (C1).
-- **Checks**: Helgrind on the threaded addons, telemetry graphs in the
-  editor (T2).
+- **Checks**: Helgrind on the threaded addons.
 - **CI**: GitHub Actions is out of credits, so every change is checked
   locally with `npm test` and valgrind.
 
@@ -205,7 +204,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | R2 | Prefab builder | ✅ | 〃 |
 | L1 | Loot pool bake | ✅ | 〃 |
 | C1 (crafting) | Materials, recipes, tradability | ✅ | 〃 |
-| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Next: results ingested by the world server |
+| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Region side: `WorldClient.reportDungeonResults` sends the `instances.db` unreported batch over webrpc (`ReportDungeonResults`, validated), and the save timer flushes it with no overlapping requests, marking only what the world confirms. World side: `WorldCore.reportDungeonResults` records one `dungeon_run` row per run, idempotent on `instance`. Still open: depleted nodes, chests and traps, skill gains, the client's transfer |
 | PCG1 | PICG native cook addon | ✅ | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 
@@ -273,7 +272,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
 | L3 | Pool rebake keeps held items | ✅ | `npm run loot:rebake`; merged in #81 |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
-| T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
+| T2 | Play telemetry in Live Ops (typed `stats` snapshots, 10 s bucket-aligned polling, tick and activity graphs) | ✅ | α1 |
 
 ---
 
@@ -282,6 +281,10 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-06**: E5 complete: developer panels no longer mount in the player client. `npm run dev` now starts the server and editor; debugger controls remain exclusively in the editor's Play Mode.
+- **2026-10-06**: D4 region report (in progress): `WorldClient.reportDungeonResults` sends the region's unreported dungeon runs to the world with the bearer token and returns the ingested instance ids; the world's `ReportDungeonResults` ingest is the next slice.
+- **2026-10-06**: D4 world ingest (in progress): `WorldCore.reportDungeonResults` records one `dungeon_run` row per run (Memory + Surreal stores), idempotent on `instance`, 403 on region mismatch, 404 on unknown region. Next: the webrpc route/Zod/RIDL and the region flush marking `instances.db` rows reported.
+- **2026-10-06**: D4 results end to end: the webrpc `ReportDungeonResults` route (strict Zod bounds, bearer auth, RIDL updated) ingests idempotently, and the region's save timer flushes `instances.db` unreported rows through it with no overlapping in-flight POSTs, marking only confirmed ids. A slow or dead world never stalls the tick and never stacks requests.
+- **2026-10-06**: T2 Live Ops telemetry: the editor reads the protected `stats` admin snapshot through `BackendClient`, refreshes once per server bucket without overlapping requests, and renders tick p50/p99/max plus kills, pickups and damage series. Connection and refresh failures remain visible; player, region and audit data stay staged.
 - **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
 - **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
 - **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.

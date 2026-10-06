@@ -23,6 +23,7 @@ import {
   type RegionLease,
   type RegionRecord,
   type RegisterRegionInput,
+  type ReportDungeonResultsInput,
   type SnapshotReportInput,
 } from "./types.js";
 
@@ -271,6 +272,25 @@ export class WorldCoreImpl implements WorldCore {
     }
     await this.store.pruneMigrations(now - MIGRATION_HISTORY_MS);
     return expired;
+  }
+
+  /**
+   * Ingest a region's committed dungeon runs (roadmap D4): one row per
+   * run, idempotent on `instance`, so a retried batch (at-least-once
+   * delivery) never records a run twice. The region marks its
+   * `instances.db` rows reported for every id returned.
+   */
+  async reportDungeonResults(caller: string, input: ReportDungeonResultsInput): Promise<{ ingested: string[] }> {
+    if (caller !== input.regionId) throw new WorldError(403, "regionId does not match token");
+    const region = await this.store.getRegion(input.regionId);
+    if (region === null) throw new WorldError(404, "unknown region");
+    const now = Date.now();
+    const ingested: string[] = [];
+    for (const r of input.results) {
+      await this.store.recordDungeonRun({ ...r, regionId: input.regionId, reportedAt: now });
+      ingested.push(r.instance);
+    }
+    return { ingested };
   }
 
   /** The migration, if `caller` is its source or target. */

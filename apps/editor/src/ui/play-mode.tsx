@@ -19,6 +19,7 @@ import type { DebugResponse, DebugQuery } from "@mmo-engine/protocol";
 import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
 import { connectMirror } from "./mirror-connect.js";
+import { createStore } from "./previews.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -49,12 +50,28 @@ interface OverlaySnapshot {
   tiles: DebugResponse | null;
 }
 
+/** Shared play-mode UI state: the debug dock drives the same entity-id
+ *  and auto-refresh the overlays query, and mirrors the lifecycle state. */
+export interface PlayUiState {
+  entityId: string;
+  autoRefresh: boolean;
+  pmState: PlayModeState;
+}
+
+export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle" });
+
+export function setPlayEntityId(entityId: string): void {
+  playUiStore.set((p) => ({ ...p, entityId }));
+}
+
+export function setPlayAutoRefresh(autoRefresh: boolean): void {
+  playUiStore.set((p) => ({ ...p, autoRefresh }));
+}
+
 export function PlayModePanel(): React.JSX.Element {
-  const [pmState, setPmState] = React.useState<PlayModeState>("idle");
   const [detail, setDetail] = React.useState<string | undefined>();
   const [busy, setBusy] = React.useState(false);
-  const [entityId, setEntityId] = React.useState("");
-  const [autoRefresh, setAutoRefresh] = React.useState(true);
+  const { entityId, autoRefresh, pmState } = playUiStore.use();
   const [overlays, setOverlays] = React.useState<OverlaySnapshot>({
     waypoints: null,
     tiles: null,
@@ -93,17 +110,17 @@ export function PlayModePanel(): React.JSX.Element {
       },
       {
         // Snapshot the overlay inputs; they come back verbatim on exit.
-        onEnterPlay: () => ({ entityId, autoRefresh }),
+        onEnterPlay: () => ({ entityId: playUiStore.get().entityId, autoRefresh: playUiStore.get().autoRefresh }),
         onExitPlay: (saved) => {
           const s = saved as { entityId: string; autoRefresh: boolean } | null;
           if (s) {
-            setEntityId(s.entityId);
-            setAutoRefresh(s.autoRefresh);
+            setPlayEntityId(s.entityId);
+            setPlayAutoRefresh(s.autoRefresh);
           }
           setOverlays({ waypoints: null, tiles: null });
         },
         onStateChange: (s, d) => {
-          setPmState(s);
+          playUiStore.set((p) => ({ ...p, pmState: s }));
           setDetail(d);
         },
       },
@@ -260,7 +277,7 @@ export function PlayModePanel(): React.JSX.Element {
               id="pm-autorefresh"
               type="checkbox"
               checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
+              onChange={(e) => setPlayAutoRefresh(e.target.checked)}
               disabled={!running}
             />
             <Label htmlFor="pm-autorefresh">Auto-refresh (2 s)</Label>
@@ -274,7 +291,7 @@ export function PlayModePanel(): React.JSX.Element {
             <div className="mt-2 flex gap-2">
               <Input
                 value={entityId}
-                onChange={(e) => setEntityId(e.target.value)}
+                onChange={(e) => setPlayEntityId(e.target.value)}
                 placeholder="entity wire id…"
                 aria-label="Entity wire id"
                 disabled={!running}
@@ -282,7 +299,7 @@ export function PlayModePanel(): React.JSX.Element {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEntityId(mirror?.playerEntity?.toString() ?? "")}
+                onClick={() => setPlayEntityId(mirror?.playerEntity?.toString() ?? "")}
                 disabled={!running || mirror?.playerEntity == null}
               >
                 My avatar

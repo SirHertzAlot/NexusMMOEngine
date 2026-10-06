@@ -91,3 +91,48 @@ export const GetMigrationSchema = z.object({ migrationId: MIGRATION_ID }).strict
 
 /** Bearer token format: 256-bit hex. */
 export const BearerTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);
+
+/** One committed dungeon run (roadmap D4): mirrors the region's InstanceResult. */
+const DungeonKillSchema = z
+  .object({
+    characterId: z.number().int().min(0).max(4294967295),
+    kind: z.string().min(1).max(64),
+    count: z.number().int().min(1).max(1_000_000),
+  })
+  .strict();
+
+const DungeonDeathSchema = z
+  .object({
+    characterId: z.number().int().min(0).max(4294967295),
+    count: z.number().int().min(1).max(1_000_000),
+  })
+  .strict();
+
+const DungeonLootSchema = z
+  .object({
+    characterId: z.number().int().min(0).max(4294967295),
+    def: z.number().int().min(0).max(10_000_000),
+  })
+  .strict();
+
+export const DungeonRunResultSchema = z
+  .object({
+    instance: z.string().min(1).max(128),
+    dungeon: z.string().min(1).max(128),
+    entrance: z.string().min(1).max(64),
+    outcome: z.enum(["cleared", "timeout", "abandoned"]),
+    startedAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    endedAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    members: z.array(z.number().int().min(0).max(4294967295)).max(16),
+    kills: z.array(DungeonKillSchema).max(1024),
+    deaths: z.array(DungeonDeathSchema).max(16),
+    loot: z.array(DungeonLootSchema).max(1024),
+  })
+  .strict();
+
+export const DungeonResultsReportSchema = z
+  .object({
+    regionId: REGION_ID,
+    results: z.array(DungeonRunResultSchema).max(512),
+  })
+  .strict();

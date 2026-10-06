@@ -92,7 +92,7 @@ scripts/                # codegen (flatc vendored), dev launcher, valgrind
 
 ```sh
 npm install        # workspaces + native toolchain (node-gyp builds template addon)
-npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts}
+npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts} (scripts/codegen.mjs)
 npm test           # builds TS packages, runs all node:test suites + native addon test
 ```
 
@@ -113,6 +113,13 @@ both): it installs dependencies (`npm ci`, also after the lockfile
 changes), generates the FlatBuffers bindings, and bakes the world, the
 loot pool and 10 dungeons into the data folder. The first start takes a
 few minutes; after that it goes straight to the server.
+
+It runs the same on Linux, macOS and Windows (PowerShell or cmd, no bash
+or WSL). It needs Node 22 or newer, Python 3, and a C++17 compiler for the
+native addons: on Windows the Visual Studio Build Tools with "Desktop
+development with C++", on macOS Xcode's command line tools
+(`xcode-select --install`), on Linux `build-essential`. flatc is vendored
+for all three.
 
 Create an account in the client's "Create account" tab and log in. Every
 other command (bakes, tools, benchmarks, servers, the admin console, chat
