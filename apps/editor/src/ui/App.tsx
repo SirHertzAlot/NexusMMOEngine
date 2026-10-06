@@ -21,6 +21,7 @@ import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import type { MenuItem } from "./components.js";
+import { editorSelection, useEditorSelection } from "./editor-selection.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
@@ -1578,6 +1579,23 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
 
 function WorldTree(): React.JSX.Element {
   const t = useTree();
+  const pick = (id: string, label: string, kind: string, trailing?: string): void => {
+    t.pick(id);
+    editorSelection.select({
+      source: "outliner",
+      kind,
+      id,
+      label,
+      components: [{
+        name: "Outliner node",
+        fields: [
+          { key: "workspace", value: "World" },
+          { key: "kind", value: kind },
+          ...(trailing ? [{ key: "status", value: trailing }] : []),
+        ],
+      }],
+    });
+  };
   const item = (id: string, icon: string, label: string, trailing?: string, depth = 0, slice = "EA · world (E9)"): React.JSX.Element => (
     <TreeItem
       icon={icon}
@@ -1585,19 +1603,19 @@ function WorldTree(): React.JSX.Element {
       trailing={trailing}
       depth={depth}
       selected={t.sel === id}
-      onPick={() => t.pick(id)}
+      onPick={() => pick(id, label, "world item", trailing)}
       menu={crudMenu(label, slice)}
     />
   );
   return (
     <div className="flex flex-col gap-0.5">
-      <TreeItem icon="public" label="default.world" trailing="4 × 4 km" hasKids expanded={t.open.includes("world")} onToggle={() => t.toggle("world")} selected={t.sel === "world"} onPick={() => t.pick("world")} menu={crudMenu("default.world", "EA · world (E9)")} />
+      <TreeItem icon="public" label="default.world" trailing="4 × 4 km" hasKids expanded={t.open.includes("world")} onToggle={() => t.toggle("world")} selected={t.sel === "world"} onPick={() => pick("world", "default.world", "world", "4 × 4 km")} menu={crudMenu("default.world", "EA · world (E9)")} />
       {t.open.includes("world") && (
         <>
-          <TreeItem icon="grid_view" label="Regions" trailing="4" depth={1} hasKids expanded={t.open.includes("regions")} onToggle={() => t.toggle("regions")} selected={t.sel === "regions"} onPick={() => t.pick("regions")} menu={crudMenu("Regions", "EA · world (E9)")} />
+          <TreeItem icon="grid_view" label="Regions" trailing="4" depth={1} hasKids expanded={t.open.includes("regions")} onToggle={() => t.toggle("regions")} selected={t.sel === "regions"} onPick={() => pick("regions", "Regions", "collection", "4")} menu={crudMenu("Regions", "EA · world (E9)")} />
           {t.open.includes("regions") && ["Region 0,0", "Region 1,0"].map((r) => (
             <div key={r}>
-              <TreeItem icon="terrain" label={r} trailing={r === "Region 0,0" ? "loaded" : undefined} depth={2} hasKids expanded={t.open.includes(r)} onToggle={() => t.toggle(r)} selected={t.sel === r} onPick={() => t.pick(r)} menu={crudMenu(r, "EA · world (E9)")} />
+              <TreeItem icon="terrain" label={r} trailing={r === "Region 0,0" ? "loaded" : undefined} depth={2} hasKids expanded={t.open.includes(r)} onToggle={() => t.toggle(r)} selected={t.sel === r} onPick={() => pick(r, r, "region", r === "Region 0,0" ? "loaded" : undefined)} menu={crudMenu(r, "EA · world (E9)")} />
               {t.open.includes(r) && (
                 <>
                   {item(`${r}-chunks`, "grid_on", "chunks 8 × 8", "1,024", 3)}
@@ -1606,7 +1624,7 @@ function WorldTree(): React.JSX.Element {
               )}
             </div>
           ))}
-          <TreeItem icon="forest" label="Ecology: wilds" depth={1} hasKids expanded={t.open.includes("eco")} onToggle={() => t.toggle("eco")} selected={t.sel === "eco"} onPick={() => t.pick("eco")} menu={crudMenu("Ecology: wilds", "EA · world (E9)")} />
+          <TreeItem icon="forest" label="Ecology: wilds" depth={1} hasKids expanded={t.open.includes("eco")} onToggle={() => t.toggle("eco")} selected={t.sel === "eco"} onPick={() => pick("eco", "Ecology: wilds", "ecology")} menu={crudMenu("Ecology: wilds", "EA · world (E9)")} />
           {t.open.includes("eco") && ["oak", "birch", "pine"].map((s) => (
             <span key={s}>{item(`eco-${s}`, "park", s, "pcg", 2)}</span>
           ))}
@@ -1995,6 +2013,8 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
 // ---------------------------------------------------------------- right dock
 
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
+  const selection = useEditorSelection();
+  if (selection) return <SelectionDetails selection={selection} />;
   if (workspace === "liveops") return <LiveOpsDetails />;
   if (workspace === "database") return <DatabaseRowDetails />;
   if (workspace === "release") return <ReleaseDeployDetails />;
@@ -2027,6 +2047,39 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
           Live values from the open panel appear here once Details binds to the selection model (§3.1). Edits stay
           validated — a refused save writes nothing.
         </p>
+      </div>
+    );
+  }
+
+  function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
+    return (
+      <div className="flex flex-col gap-3 text-xs">
+        <div>
+          <p className="text-sm font-semibold">{selection.label}</p>
+          <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+            {selection.kind} · {selection.id}
+          </p>
+        </div>
+        <span className="w-fit rounded-md px-2 py-1 text-[11px] font-medium" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>
+          Selected from {selection.source.replace("-", " ")}
+        </span>
+        {selection.components.length === 0 ? (
+          <p style={{ color: "var(--m3-on-surface-variant)" }}>No component data is available for this selection.</p>
+        ) : (
+          selection.components.map((component) => (
+            <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>
+              <p className="mb-2 font-medium">{component.name}</p>
+              <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 font-mono text-[11px]">
+                {component.fields.map((field) => (
+                  <React.Fragment key={field.key}>
+                    <dt style={{ color: "var(--m3-on-surface-variant)" }}>{field.key}</dt>
+                    <dd className="text-right">{field.value}</dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+            </section>
+          ))
+        )}
       </div>
     );
   }
