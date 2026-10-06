@@ -218,6 +218,12 @@ viewport, the outliner or the ECS list sets one selection model every
 controller reads. Every document edit is a `Command` with `do` and `undo`,
 so undo spans panels the way it does in Unity.
 
+The shell implements this selection path with `EditorSelectionModel`.
+The World outliner, ECS entity list and Play Mode viewport publish a
+selection's source, identity and component fields; the Details dock reads
+that one model and decomposes the selected object. More panel controllers
+can join the same model without adding selection-specific shell state.
+
 **Existing panels map without rewrites.** `EcsInspector` becomes the
 controller of the play-mode outliner, `PlayModeController` the toolbar's,
 rules and tables keep their stores as models. EA2 moves them behind the
