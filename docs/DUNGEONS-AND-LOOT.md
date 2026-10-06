@@ -231,7 +231,10 @@ the `transfer`/`ended` messages. Chests: each run places `chestsPerRun`
 chests in the lowest-id non-entrance rooms; a member opens the nearest one
 in reach (`{op:"open"}`, 3 m) for 1–2 rolls from the chest pool into the
 run's loot, and the run state names each chest for the HUD's open button.
-Not yet: depleted nodes and traps.
+Traps: each run arms `trapsPerRun` traps in the lowest-id non-entrance
+rooms; a member inside the trigger radius springs one for `trapHarm`
+Health, once, and the run state names each trap and whether it is sprung.
+Not yet: depleted nodes.
 
 ### 3.5 Editor (D3)
 

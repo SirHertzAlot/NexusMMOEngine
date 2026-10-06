@@ -51,7 +51,7 @@ export interface InstanceLayout {
   walkable: Uint8Array;
   /** World position of the entrance room's centre. */
   entrance: { x: number; z: number };
-  /** The entrance room's id (chests never spawn there). */
+  /** The entrance room's id (chests and traps never spawn there). */
   entranceRoom: number;
   bossRoom: number;
   /** Room centres in world coordinates, for chest placement. */
