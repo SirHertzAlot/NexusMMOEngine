@@ -147,7 +147,7 @@ import { SqliteQuestStore } from "./quests/quest-store.js";
 import { loadDungeonContent, DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { DungeonPool } from "./dungeons/pool.js";
 import { InstanceManager } from "./dungeons/manager.js";
-import { SqliteInstanceResultStore } from "./dungeons/results.js";
+import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
@@ -590,6 +590,8 @@ async function main(): Promise<void> {
   const dungeonDir = process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT;
   const dungeonPool = new DungeonPool(path.join(DATA_DIR, "dungeons"));
   const instanceHost = process.env.MMO_INSTANCE_HOST || "localhost";
+  // Committed runs wait here until the world confirms them ingested.
+  const instanceResults = new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db"));
   const dungeons = new InstanceManager({
     content: loadDungeonContent(dungeonDir),
     pool: dungeonPool,
@@ -619,7 +621,7 @@ async function main(): Promise<void> {
       characterStore.saveSkills?.(character, sheet.save());
     },
     endpoint: (p) => `ws://${instanceHost}:${p}`,
-    results: new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db")),
+    results: instanceResults,
     log: (l) => console.log(l),
   });
   console.log(`[dungeons] ${dungeonPool.entries.length} layout(s) in the pool (${path.join(DATA_DIR, "dungeons")})`);
@@ -766,6 +768,10 @@ async function main(): Promise<void> {
     }
   }
 
+  // A slow or dead world server must never stall the region: dungeon
+  // reports never overlap (no pile-up of in-flight POSTs) and never
+  // touch the tick loop (this timer only).
+  let dungeonFlushInFlight = false;
   const saveTimer = setInterval(() => {
     itemLedger.flush();
     gw.saveCharacters();
@@ -786,6 +792,23 @@ async function main(): Promise<void> {
           sim.liveEntityCount,
           digest,
         );
+        // Dungeon runs (D4): fold the committed batch into the next world
+        // report. Rows stay unreported until the world confirms them
+        // ingested, so a failed flush retries on the next save. Skipped
+        // while one is in flight: a hung world must not stack up POSTs.
+        if (!dungeonFlushInFlight) {
+          dungeonFlushInFlight = true;
+          void flushInstanceResults(instanceResults, (results) => worldClient.reportDungeonResults(results)).then(
+            ({ reported }) => {
+              dungeonFlushInFlight = false;
+              if (reported > 0) console.log(`[server] reported ${reported} dungeon run(s) to the world`);
+            },
+            (err: unknown) => {
+              dungeonFlushInFlight = false;
+              console.warn(`[server] dungeon report: ${(err as Error).message}`);
+            },
+          );
+        }
       }
       nextSaveTick += SAVE_EVERY_TICKS;
     }
