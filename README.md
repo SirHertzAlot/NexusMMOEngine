@@ -97,8 +97,8 @@ npm test           # builds TS packages, runs all node:test suites + native addo
 ```sh
 npm start                  # everything: setup, the server and the player's client
                            # → http://localhost:5173
-npm start -- --dev         # the client with its developer panels (` hides them);
-                           # same as npm run dev
+npm start -- --dev         # the server and editor development environment
+                           # → http://localhost:5174; same as npm run dev
 npm start -- --server      # the server only
 npm run editor             # the editor (inspectors, play mode, art pipeline)
 ```

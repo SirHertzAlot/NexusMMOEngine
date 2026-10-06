@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-06 — Developer tooling mounts only in the editor's Play Mode
+  (ROADMAP E5).** The player client no longer has a `devtools` mode or mounts
+  the debugger panels. `npm run dev` starts the server and editor instead.
+  The debugger's shared components remain available to the editor, which
+  owns its panel layout, admin console, renderer controls and performance
+  views. This closes the temporary dual-surface period without duplicating
+  debugger code.
 - **2026-10-04 — Codegen is a Node script with flatc vendored for Linux,
   Windows and macOS.** `npm start` failed on Windows at its first build:
   `scripts/codegen.sh` (run by `npm run codegen` and by the schema

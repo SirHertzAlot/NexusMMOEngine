@@ -42,8 +42,6 @@
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",
-    "predev:tools": "npm run build:deps",
-    "dev:tools": "vite --mode devtools",
     "preview": "vite preview",
     "pretest": "npm run build:deps",
     "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",

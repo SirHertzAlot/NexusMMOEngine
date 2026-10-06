@@ -15,7 +15,7 @@ export default defineConfig({
     // source: one renderer, not a copy (types: tsconfig paths, the built client).
     alias: {
       "@mmo-engine/client/render": resolve(repoRoot, "apps/client/src/render/index.ts"),
-      // The play-mode debugger's panels (E5): the developer client's own.
+      // The play-mode debugger's shared panels (E5).
       "@mmo-engine/client/debug": resolve(repoRoot, "apps/client/src/ui/debug.ts"),
     },
   },
