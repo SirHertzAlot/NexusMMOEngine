@@ -1143,7 +1143,7 @@ in the new structure. This is the seed for the tool implementation list.
 | Rules editor | editor tab (E11) | `core`: document panel |
 | Character records | editor tab (E10) | `characters` module: panel |
 | Admin console | client (A1 to A4) | `core`: Output log console in play mode; click-to-pick from the viewport |
-| Play telemetry graphs | server done, graphs wait on E5 (T2) | `debugger` module |
+| Play telemetry graphs | Live Ops reads typed `stats` snapshots at the server's bucket cadence (T2) | `liveops` workspace |
 | PICG selection cards, graph editor | planned (E6, E7) | `picg` module: Details cards and a graph panel |
 | Dungeon view | planned (E8) | `dungeon` module: `instance` scene tools |
 | World-scale editing | planned (E9) | `world` module: `world` scene tools |

@@ -12,6 +12,8 @@ import * as React from "react";
 import { MIcon, TreeItem, OverflowMenu, IconButton, notify, staged } from "./components.js";
 import type { MenuItem } from "./components.js";
 import { assetUiStore, setAssetFilter, setAssetPreview, useAssetManifest } from "./asset-inspector.js";
+import { Chart } from "./charts.js";
+import { LiveOpsTelemetry } from "./liveops-telemetry.js";
 
 // ---------------------------------------------------------------- shared UI state
 // Doc §3.1: selection is a shared model, not panel state — picking in any
@@ -152,56 +154,6 @@ export function Pill({ tone = "plain", children }: { tone?: Tone; children: Reac
     >
       {children}
     </span>
-  );
-}
-
-export function StatTile({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: string }): React.JSX.Element {
-  return (
-    <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-      <p className="text-[13px]" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</p>
-      <p className="text-2xl font-medium" style={accent ? { color: accent } : undefined}>
-        {value}
-      </p>
-      <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{sub}</p>
-    </div>
-  );
-}
-
-/** SVG line chart with area fill (decorative, sample data). */
-export function Chart({ points, color, height = 120, fill = true, caption }: {
-  points: number[];
-  color: string;
-  height?: number;
-  fill?: boolean;
-  caption?: string;
-}): React.JSX.Element {
-  const w = 300;
-  const max = Math.max(...points);
-  const min = Math.min(...points);
-  const span = max - min || 1;
-  const step = w / (points.length - 1);
-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - 8 - ((p - min) / span) * (height - 20)).toFixed(1)}`).join(" ");
-  const id = React.useId().replace(/:/g, "");
-  return (
-    <div>
-      <svg viewBox={`0 0 ${w} ${height}`} className="w-full" style={{ display: "block" }} aria-hidden="true">
-        {fill && (
-          <>
-            <defs>
-              <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-                <stop offset="100%" stopColor={color} stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d={`${path} L${w},${height} L0,${height} Z`} fill={`url(#${id})`} />
-          </>
-        )}
-        <path d={path} fill="none" stroke={color} strokeWidth="1.5" />
-      </svg>
-      {caption && (
-        <p className="mt-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{caption}</p>
-      )}
-    </div>
   );
 }
 
@@ -458,28 +410,8 @@ export function LiveOpsPreview(): React.JSX.Element {
   const visible = PLAYERS.filter(([c]) => playerVisibleInScope(c, scope));
   return (
     <div className="flex flex-col gap-3">
-      <PreviewBadge slice="EA · Live ops (A1–A5)">Stat tiles, charts and the players table bind to the admin console and telemetry.</PreviewBadge>
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <StatTile label="Players online" value="214" sub="▲ 18 in the last hour" />
-        <StatTile label="Server tick p99" value="9.7 ms" sub="budget 33 ms" accent="#9CD67D" />
-        <StatTile label="Edge ↔ core RTT" value="41 ms" sub="p99 62 ms" />
-        <StatTile label="Regions" value="4 / 4 up" sub="world server healthy" accent="#9CD67D" />
-        <StatTile label="Sidecars" value="2 running" sub="weather-ai · dungeon.layout" />
-      </div>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-        <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="mb-2 text-sm font-medium">Players</p>
-          <Chart points={[42, 58, 74, 88, 82, 96, 118, 142, 168, 190, 214]} color="#B9C3FF" />
-        </div>
-        <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="mb-2 text-sm font-medium">Tick time</p>
-          <Chart points={[8, 10, 9, 11, 9, 22, 10, 9, 8, 9, 8]} color="#9CD67D" caption="spike at 14:31 · region 1,0 bake" />
-        </div>
-        <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="mb-2 text-sm font-medium">Edge ↔ core</p>
-          <Chart points={[40, 44, 38, 42, 46, 62, 44, 40, 39, 41, 41]} color="#FFB59A" caption="frames 1.9k/s · channel up · 0 resyncs" />
-        </div>
-      </div>
+      <PreviewBadge slice="EA · Live ops (A1–A5)">Players, regions and audit data remain staged. Server telemetry below is live and read-only.</PreviewBadge>
+      <LiveOpsTelemetry />
       <div className="overflow-x-auto rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
         <div className="flex items-center gap-2 p-3 pb-0 text-sm font-medium">
           {section === null ? "Players" : liveOpsScopeLabel(scope)}
