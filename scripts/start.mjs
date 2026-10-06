@@ -19,8 +19,8 @@
  *
  *   npm start                  setup, the server and the player's client
  *   npm start -- --server      setup and the server only
- *   npm start -- --dev         the client with its developer panels
- *                              (performance graphs, wireframe, FX showcase)
+ *   npm start -- --dev         the server and editor development environment
+ *                              (http://localhost:5174)
  *   npm start -- --no-setup    skip the setup checks
  *
  * `npm run dev` is `npm start -- --dev`.
@@ -89,13 +89,14 @@ function setup() {
 
 if (!flag("--no-setup")) setup();
 
-// ---- the server and the client
+// ---- the server and development surface
 
 const SERVER = { name: "server", args: ["run", "server"] };
 const CLIENT = {
   name: "client",
-  args: ["run", dev ? "dev:tools" : "dev", "--workspace=@mmo-engine/client"],
+  args: ["run", "dev", "--workspace=@mmo-engine/client"],
 };
+const EDITOR = { name: "editor", args: ["run", "dev", "--workspace=@mmo-engine/editor"] };
 
 const children = [];
 let stopping = false;
@@ -155,8 +156,8 @@ let clientStarted = serverOnly;
 run(SERVER, (line) => {
   if (clientStarted || !/listening on/.test(line)) return;
   clientStarted = true;
-  run(CLIENT);
-  log(`open http://localhost:5173${dev ? " (developer panels: ` hides them)" : ""}`);
+  run(dev ? EDITOR : CLIENT);
+  log(dev ? "open http://localhost:5174 (editor)" : "open http://localhost:5173");
 });
 
 process.on("SIGINT", () => stop(0));

@@ -20,9 +20,9 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-04)
+## At a glance (2026-10-06)
 
-**84 items built, 11 in progress, 34 planned** (26 of the planned are the
+**85 items built, 10 in progress, 34 planned** (26 of the planned are the
 modular editor's slices). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -38,8 +38,7 @@ What is left, by area:
 
 - **Modular editor** (1c): the docking shell, scenes and game flow,
   modules, the database editor and production tools, EA1 to EA26.
-- **Editor and admin**: the developer panels leave the client (E5), the
-  play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
+- **Editor and admin**: the play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
   mode, time and weather), and the appearance editor (A6).
 - **Gameplay**: armour and the rest of equipment (U10), recorded and
   positional sounds (U4b), dungeon results ingested by the world server
@@ -64,11 +63,10 @@ What is left, by area:
   inspection, navmesh and path overlays.
 
 `npm run client` starts the player's client, `npm run dev` the
-development environment (the server and the developer client), and
-`npm run editor` the editor.
+development environment (the server and editor), and `npm run editor`
+the editor alone.
 
-Debug views that are still in the client today move to the editor's play
-mode (E4, E5) and are then removed from the client.
+Developer tooling is mounted only in the editor's play mode.
 
 ---
 
@@ -78,12 +76,12 @@ Doc: [`EDITOR.md`](EDITOR.md)
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ✅ | `scripts/start.mjs` (`npm start -- --dev`); the client's `dev:tools` script (Vite mode `devtools`) |
+| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` starts the server and editor development environment | ✅ | `scripts/start.mjs` (`npm start -- --dev`) starts `@mmo-engine/editor`; `npm run editor` starts the editor alone |
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
 | E3 | Art asset pipeline: pack models to GLB, previews | ✅ | |
 | E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ✅ | Play-mode game view: the client's `WorldCanvas` in the Play Mode tab via `@mmo-engine/client/render`, stats row, lazy-loaded (#92) |
-| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111); removing the interim panels from the developer client follows |
+| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | ✅ | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111). The client no longer mounts developer panels. |
 | E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | ✅ | Selection card in the play-mode debugger: click an entity, see every mirror component and, for a PICG asset, its graph, shape, seed and exposed parameters (#113) |
 | E7 | PICG slice 4: hierarchical graph editor | ✅ | PICG Graphs tab: graphs and linked parts on a canvas, enter and climb the hierarchy, node properties and parameter defaults, undo, saves validated by a cook preparation (#115) |
 | E8 | D3: dungeon view: pool browser, 3D view, edits as patches | ✅ | Dungeons tab: pool browser with map thumbnails and bake more, 3D view with picking, room role and archetype, spawn pin and rank, prop move, add and remove, saved as a validated patch over the bake (#118); applying patches at re-bake is next |
@@ -283,6 +281,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-06**: E5 complete: developer panels no longer mount in the player client. `npm run dev` now starts the server and editor; debugger controls remain exclusively in the editor's Play Mode.
 - **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
 - **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
 - **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.

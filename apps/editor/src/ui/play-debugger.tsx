@@ -1,7 +1,7 @@
 /**
  * Play-mode debugger (ROADMAP E5) — the developer panels over the game view.
  *
- * The developer client's own dockable HUD (`@mmo-engine/client/debug`):
+ * The shared dockable HUD (`@mmo-engine/client/debug`):
  * panels you drag, resize, fade, fold and close, ` hides them all, and
  * the "dev" menu reopens them or resets the layout. Here they sit inside
  * the game view rather than the window, and the layout is kept per

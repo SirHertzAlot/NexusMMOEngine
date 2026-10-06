@@ -18,8 +18,8 @@ npm run server --workspace=@mmo-engine/engine-core
 
 # 3. start the client (http://localhost:5173): the player's client ...
 npm run client
-#    ... or, from the repo root, the server and the client with its
-#    developer panels together (instead of steps 2 and 3)
+#    ... or, from the repo root, the server and editor together
+#    (instead of steps 2 and 3)
 npm run dev
 
 # optional, one-time: textured ground (CC0, ~23 MB, git-ignored)
@@ -27,12 +27,10 @@ npm run surfaces:fetch
 ```
 
 Log in with the seeded credentials. The player's client shows the world
-and a settings menu (graphics quality, leave the world). The developer
-client (`npm run dev`, Vite mode `devtools`) shows the dev panels
-instead: status, performance graphs, tools (wireframe, FX showcase,
-**reconnect (token)**, which re-hellos with the in-memory session token)
-and controls. Drag a panel by its title, resize it from its corner, fade
-it, fold or close it; the "dev" menu reopens panels; ` hides them all.
+and a settings menu (graphics quality, controls, audio, UI scale, leave
+the world). The editor's Play Mode is the developer surface: it owns the
+server it launches and hosts the debugger panels, performance graphs,
+admin console, wireframe terrain, and FX showcase.
 
 ## Layout
 
@@ -63,20 +61,18 @@ src/
                  scattering and aerial perspective (@takram/three-atmosphere)
     follow-camera.ts  third-person camera rig (mouse look + wheel distance)
     assets.ts    AssetProvider — THE seam for Joey's future art pipeline
-    perf-stats.ts  once-a-second performance samples (frame time, draw
-                 calls, triangles over every pass, GPU memory, props by
-                 level of detail, network rates, heap), a minute kept
+    perf-stats.ts  once-a-second performance samples for the editor's
+                 debugger (frame time, draw calls, triangles over every
+                 pass, GPU memory, props by level of detail, network
+                 rates, heap), a minute kept
   ui/
     components.tsx shadcn-style Button/Input/Card/Label (no CLI scaffold)
-    dev-panels.tsx the dev HUD: panels you drag (title bar), resize
-                 (corner), fade, fold or close; the "dev" menu reopens
-                 them; ` hides them all (layout: dev-layout.ts, localStorage)
-    perf-hud.tsx   the performance panel: a sparkline per measure with one
+    debug.ts       shared debugger exports, mounted only by the editor
+    dev-panels.tsx dockable debugger panel shell; the editor owns its layout
+    perf-hud.tsx   performance panel: a sparkline per measure with one
                  crosshair across all of them, and the props' LOD split
-  dev-tools.ts   DEV_TOOLS: running as the developer client (npm run dev)
   App.tsx        login screen + world screen (WorldCanvas) + the player's
-                 settings menu (ui/settings-menu.tsx) or, with DEV_TOOLS,
-                 the dev panels
+                 settings menu (ui/settings-menu.tsx)
 ```
 
 ## Tests

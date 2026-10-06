@@ -32,7 +32,7 @@ npm passes flags to a script only after `--`, as in
 | Command | What it does |
 |---|---|
 | `npm start` | Setup, then the server and the player's client |
-| `npm start -- --dev` | The same with the developer client: performance graphs, wireframe, FX showcase, admin console (`` ` `` hides them) |
+| `npm start -- --dev` | Setup, then the server and editor development environment |
 | `npm start -- --server` | Setup and the server only |
 | `npm start -- --no-setup` | Skip the setup checks |
 | `npm run dev` | Same as `npm start -- --dev` |
@@ -146,8 +146,8 @@ The full list with explanations is at the top of
 
 ## In game: the admin console
 
-The developer client (`npm start -- --dev`) has an admin console. Commands
-work for admin accounts: everyone on a server started with
+The editor's Play Mode debugger has an admin console. Commands work for
+admin accounts: everyone on a server started with
 `MMO_DEV_SERVER=1`, or the names in `MMO_ADMINS`. Type a command, then its
 arguments as JSON (`teleport {"x":10,"z":-4}`), or `me` for yourself
 (`inspect me`).
@@ -204,4 +204,3 @@ The defaults. Every key except the mouse can be remapped in settings.
 | J | Quest log |
 | H | Treat your worst wound |
 | G | Cast Mend on yourself |
-| `` ` `` | Hide the developer panels (developer client) |
