@@ -234,8 +234,9 @@ contracts; behaviour does not change.
 The editor's visual language follows Google's
 [Material Design 3](https://m3.material.io/), dark scheme first, adapted
 for a dense desktop tool. Concept mockups of scene editing, play mode, the
-flow editor and the Modules window go with the PR (kept out of the repo
-like all media).
+flow editor and the Modules window live in
+[`editor-update-refs/`](editor-update-refs/). They are documentation assets
+only: the editor loads no runtime data from them.
 
 - **Colour roles, not colours.** One seed colour generates the scheme
   (primary, secondary, tertiary, error, and the surface-container ladder)
