@@ -27,6 +27,7 @@ import {
   Label,
   SectionTitle,
 } from "./components.js";
+import { editorSelection } from "./editor-selection.js";
 
 const ALL_COMPONENTS: ComponentKind[] = [
   "transform",
@@ -96,6 +97,7 @@ export function EcsInspectorPanel(): React.JSX.Element {
     client?.disconnect();
     setClient(null);
     setSelected(null);
+    editorSelection.clear("entity-list");
   }
 
   // Poll while connected so the list stays fresh even between deltas.
@@ -233,7 +235,19 @@ export function EcsInspectorPanel(): React.JSX.Element {
                 {rows.slice(0, 300).map((r) => (
                   <button
                     key={r.wireId}
-                    onClick={() => setSelected(r.wireId)}
+                    onClick={() => {
+                      setSelected(r.wireId);
+                      editorSelection.select({
+                        source: "entity-list",
+                        kind: "entity",
+                        id: r.wireId,
+                        label: r.label,
+                        components: (inspector.getEntity(r.wireId) ?? []).map((component) => ({
+                          name: component.component,
+                          fields: component.fields,
+                        })),
+                      });
+                    }}
                     className={
                       "flex w-full items-center justify-between gap-2 border-b border-border/50 px-3 py-1.5 text-left text-xs hover:bg-accent " +
                       (selected === r.wireId ? "bg-accent" : "")

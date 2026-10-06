@@ -218,6 +218,12 @@ viewport, the outliner or the ECS list sets one selection model every
 controller reads. Every document edit is a `Command` with `do` and `undo`,
 so undo spans panels the way it does in Unity.
 
+The shell implements this selection path with `EditorSelectionModel`.
+The World outliner, ECS entity list and Play Mode viewport publish a
+selection's source, identity and component fields; the Details dock reads
+that one model and decomposes the selected object. More panel controllers
+can join the same model without adding selection-specific shell state.
+
 **Existing panels map without rewrites.** `EcsInspector` becomes the
 controller of the play-mode outliner, `PlayModeController` the toolbar's,
 rules and tables keep their stores as models. EA2 moves them behind the
@@ -228,8 +234,9 @@ contracts; behaviour does not change.
 The editor's visual language follows Google's
 [Material Design 3](https://m3.material.io/), dark scheme first, adapted
 for a dense desktop tool. Concept mockups of scene editing, play mode, the
-flow editor and the Modules window go with the PR (kept out of the repo
-like all media).
+flow editor and the Modules window live in
+[`editor-update-refs/`](editor-update-refs/). They are documentation assets
+only: the editor loads no runtime data from them.
 
 - **Colour roles, not colours.** One seed colour generates the scheme
   (primary, secondary, tertiary, error, and the surface-container ladder)
