@@ -38,6 +38,7 @@ import { GameView } from "./game-view.js";
 import { Button } from "./components.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
+import { PlayTelemetryPanel } from "./telemetry-panel.js";
 
 /** How often the selection card re-reads the picked entity (the mirror changes every tick). */
 const CARD_REFRESH_MS = 250;
@@ -195,6 +196,11 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
           {" "}· mouse look (click the view; Esc frees the pointer) · wheel zoom · ` hides the panels
         </div>
       ),
+    },
+    {
+      id: "telemetry",
+      title: "play telemetry",
+      content: <PlayTelemetryPanel client={client} />,
     },
   ];
 

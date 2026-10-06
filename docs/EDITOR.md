@@ -97,6 +97,9 @@ The **Play Mode** tab drives a full local loop:
      the GPU, a warning on software rendering), *performance* (the last
      minute of fps, frame time, draw calls and triangles over every pass,
      props by level of detail, GPU memory, network in and out, JS heap),
+     *play telemetry* (T2: authoritative kills, deaths, pickups, drops,
+     damage dealt/taken in 10-second buckets over the last 10 minutes,
+     plus tick p50/p99/max),
      *tools* (wireframe terrain, quality preset, FX showcase, maximize the
      view to the window — Esc restores it — and the admin console) and
      *controls* (the key bindings). The panels sit inside the view and
