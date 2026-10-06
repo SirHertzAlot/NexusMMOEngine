@@ -20,9 +20,10 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-04)
+## At a glance (2026-10-06)
 
-**84 items built, 11 in progress, 34 planned** (26 of the planned are the
+**85 items built, 14 in progress, 30 planned** (22 of the planned are the
+modular editor's slices).
 modular editor's slices). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -36,10 +37,12 @@ E6) and the world server's migration and stress harness are built.
 
 What is left, by area:
 
-- **Modular editor** (1c): the docking shell, scenes and game flow,
-  modules, the database editor and production tools, EA1 to EA26.
-- **Editor and admin**: the developer panels leave the client (E5), the
-  play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
+- **Modular editor** (1c): the docking shell, workspace navigation,
+  persistent layouts, deep links, display-side data contracts, and a
+  UI-only flow graph are in progress. Scenes, executable game flow,
+  modules, the database editor, and production tools remain EA1 to EA26
+  follow-on work.
+- **Editor and admin**: the play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
   mode, time and weather), and the appearance editor (A6).
 - **Gameplay**: armour and the rest of equipment (U10), recorded and
   positional sounds (U4b), dungeon results ingested by the world server
@@ -63,11 +66,10 @@ What is left, by area:
   inspection, navmesh and path overlays.
 
 `npm run client` starts the player's client, `npm run dev` the
-development environment (the server and the developer client), and
-`npm run editor` the editor.
+development environment (the server and editor), and `npm run editor`
+the editor alone.
 
-Debug views that are still in the client today move to the editor's play
-mode (E4, E5) and are then removed from the client.
+Developer tooling is mounted only in the editor's play mode.
 
 ---
 
@@ -77,12 +79,12 @@ Doc: [`EDITOR.md`](EDITOR.md)
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ✅ | `scripts/start.mjs` (`npm start -- --dev`); the client's `dev:tools` script (Vite mode `devtools`) |
+| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` starts the server and editor development environment | ✅ | `scripts/start.mjs` (`npm start -- --dev`) starts `@mmo-engine/editor`; `npm run editor` starts the editor alone |
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
 | E3 | Art asset pipeline: pack models to GLB, previews | ✅ | |
 | E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ✅ | Play-mode game view: the client's `WorldCanvas` in the Play Mode tab via `@mmo-engine/client/render`, stats row, lazy-loaded (#92) |
-| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111); removing the interim panels from the developer client follows |
+| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | ✅ | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111). The client no longer mounts developer panels. |
 | E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | ✅ | Selection card in the play-mode debugger: click an entity, see every mirror component and, for a PICG asset, its graph, shape, seed and exposed parameters (#113) |
 | E7 | PICG slice 4: hierarchical graph editor | ✅ | PICG Graphs tab: graphs and linked parts on a canvas, enter and climb the hierarchy, node properties and parameter defaults, undo, saves validated by a cook preparation (#115) |
 | E8 | D3: dungeon view: pool browser, 3D view, edits as patches | ✅ | Dungeons tab: pool browser with map thumbnails and bake more, 3D view with picking, room role and archetype, spawn pin and rank, prop move, add and remove, saved as a validated patch over the bake (#118); applying patches at re-bake is next |
@@ -117,14 +119,14 @@ loadable modules, a database editor and production tools.
 | # | Item | Status | Notes |
 |---|---|---|---|
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
-| EA1 | Docking shell, workspaces and toolbar | 📋 | |
-| EA2 | MVC contracts | 📋 | |
+| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
+| EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
 | EA3 | Editor modules | 📋 | |
 | EA4 | Scene documents | 📋 | |
 | EA5 | Scene viewport editing | 📋 | |
 | EA6 | Play the scene | 📋 | |
-| EA7 | Game flow | 📋 | |
-| EA8 | Flow editor and play from a node | 📋 | |
+| EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
+| EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
 | EA9 | Server modules | 📋 | |
 | EA10 | C++ modules | 📋 | |
 | EA11 | Sidecars | 📋 | |
@@ -283,6 +285,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-06**: Editor scope tree (in progress): shared data-driven outliner (`ScopeNode` + `flattenVisible`/`breadcrumb`/`toggleOpen`, `ScopeTree` over `TreeItem`), proven on the World tree with identical rows; LiveOps/story/release/database trees follow instead of reimplementing open/selected/expand.
+- **2026-10-06**: E5 complete: developer panels no longer mount in the player client. `npm run dev` now starts the server and editor; debugger controls remain exclusively in the editor's Play Mode.
 - **2026-10-06**: D4 region report (in progress): `WorldClient.reportDungeonResults` sends the region's unreported dungeon runs to the world with the bearer token and returns the ingested instance ids; the world's `ReportDungeonResults` ingest is the next slice.
 - **2026-10-06**: D4 world ingest (in progress): `WorldCore.reportDungeonResults` records one `dungeon_run` row per run (Memory + Surreal stores), idempotent on `instance`, 403 on region mismatch, 404 on unknown region. Next: the webrpc route/Zod/RIDL and the region flush marking `instances.db` rows reported.
 - **2026-10-06**: D4 results end to end: the webrpc `ReportDungeonResults` route (strict Zod bounds, bearer auth, RIDL updated) ingests idempotently, and the region's save timer flushes `instances.db` unreported rows through it with no overlapping in-flight POSTs, marking only confirmed ids. A slow or dead world never stalls the tick and never stacks requests.

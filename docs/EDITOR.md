@@ -88,8 +88,8 @@ The **Play Mode** tab drives a full local loop:
      first use, so the other tabs never download the renderer. Terrain
      surfaces come from the client's `public/` folder (the editor's
      `publicDir`), when fetched.
-   - **Debugger** (ROADMAP E5) — the developer client's own dockable
-     panels (`DevHud`, `PerfHud`, `AdminConsole`, through
+   - **Debugger** (ROADMAP E5) — the editor's dockable panels
+     (`DevHud`, `PerfHud`, `AdminConsole`, through
      `@mmo-engine/client/debug`) drawn over the game view: drag a panel
      by its title, resize it from its corner, fade, fold or close it; the
      "dev" menu reopens panels or resets the layout, and ` hides them all.

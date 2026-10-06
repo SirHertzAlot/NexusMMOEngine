@@ -6,13 +6,9 @@ regional state; the edge/core split and world server support client ingress
 and region coordination. The React Three Fiber client mirrors authoritative
 state and is never the source of truth.
 
-**Decisions (locked):** JS world (bitECS) with C++ systems (physics,
-collision, pathfinding, procgen) as in-process N-API addons; SQLite embedded
-in each region process, SurrealDB for world-server state, FlatBuffers
-contract shared by C++ and JS; 30 Hz fixed sim tick; multiplayer from the
-start. Full rationale lives in
-[`docs/DECISIONS.md`](docs/DECISIONS.md) and the
-[`mmo-engine` skill](../../skills/mmo-engine/SKILL.md).
+**Documentation:** the full index is [`docs/README.md`](docs/README.md);
+start with [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md). Full
+engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 **Roadmap:** what's built, in progress and next, with a running update
 log, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). Pick an item there to
@@ -101,8 +97,8 @@ npm test           # builds TS packages, runs all node:test suites + native addo
 ```sh
 npm start                  # everything: setup, the server and the player's client
                            # → http://localhost:5173
-npm start -- --dev         # the client with its developer panels (` hides them);
-                           # same as npm run dev
+npm start -- --dev         # the server and editor development environment
+                           # → http://localhost:5174; same as npm run dev
 npm start -- --server      # the server only
 npm run editor             # the editor (inspectors, play mode, art pipeline)
 ```

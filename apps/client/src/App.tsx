@@ -6,11 +6,8 @@
  * (docs/MESSAGE-CATALOG.md §0x0c–0x0e). The world screen is WorldCanvas
  * (a React Three Fiber scene whose frame loop samples the Interpolator,
  * syncs the world, and forwards changed input as PlayerIntent events)
- * under the player's interface (for now, the settings menu). With
- * `npm run dev` (dev-tools.ts) it shows the developer panels instead
- * (ui/dev-panels.tsx): status, performance graphs (ui/perf-hud.tsx),
- * tools and controls, each movable, resizable, fadeable, and ` hides
- * them all. They move to the editor's play mode later (docs/ROADMAP.md).
+ * under the player's interface. Developer tooling belongs in the editor's
+ * play mode; this app only renders player-facing controls.
  *
  * The session token lives in a ref (memory only) — reconnect presents
  * it via the token hello variant (docs/MESSAGE-CATALOG.md).
@@ -35,14 +32,12 @@ import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
 import { CombatFeedback } from "./render/combat-feedback.js";
-import type { GpuInfo } from "./render/gpu.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { TargetFrame } from "./ui/target-frame.js";
-import { AdminConsole } from "./ui/admin-console.js";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
@@ -50,25 +45,18 @@ import { GuildFrame } from "./ui/guild-frame.js";
 import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel } from "./ui/bag-panel.js";
-import { PerfHud } from "./ui/perf-hud.js";
-import { DevHud, type Viewport } from "./ui/dev-panels.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
 import { loadVolumes, saveVolumes, type AudioBus, type Volumes } from "./audio/volumes.js";
 import type { Cue } from "./audio/cues.js";
 import {
-  ACTIONS,
-  ACTION_LABELS,
-  FIXED_MOUSE,
   loadBindings,
   prettyCode,
   resetBindings,
   saveBindings,
   type Bindings,
 } from "./input/bindings.js";
-import { DEV_TOOLS } from "./dev-tools.js";
-import type { DevLayout } from "./ui/dev-layout.js";
 
 /** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
 const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
@@ -87,22 +75,7 @@ import {
 type Screen = "login" | "connecting" | "characters" | "world";
 type AuthMode = "login" | "register";
 
-const MODE_LABEL = ["walking", "swimming", "flying"];
 const QUALITY_CYCLE: ("auto" | QualityTier)[] = ["auto", ...QUALITY_TIERS];
-
-/** Where the dev panels start (and return to on "reset layout"): status and performance top left, tools top right. */
-function devLayoutDefaults(vp: Viewport): DevLayout {
-  const panel = (x: number, y: number, w: number, open = true) => ({ x, y, w, h: null, opacity: 0.9, open, collapsed: false });
-  return {
-    hidden: false,
-    panels: {
-      status: panel(16, 16, 320),
-      perf: panel(16, 104, 320),
-      tools: panel(vp.width - 16 - 300, 16, 300),
-      controls: panel(16, vp.height - 140, 380, false),
-    },
-  };
-}
 
 const DEFAULT_URL =
   typeof window !== "undefined" && window.location.protocol === "https:"
@@ -125,9 +98,6 @@ export function App(): React.ReactElement {
     tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null, perf: [],
     hp: null, maxHp: null, sp: null, maxSp: null,
   });
-  const [gpu, setGpu] = useState<GpuInfo | null>(null);
-  const [wireframe, setWireframe] = useState(false);
-  const [showcase, setShowcase] = useState(false);
   // Graphics quality: "auto" follows the GPU and the frame rate; a preset pins it.
   const [quality, setQuality] = useState<"auto" | QualityTier>("auto");
   // Remappable keyboard bindings + UI scale (U4), persisted per browser.
@@ -427,15 +397,6 @@ export function App(): React.ReactElement {
   };
 
   /** Reconnect with the stored session token (skips the password). */
-  const reconnectWithToken = (): Promise<void> => {
-    const token = sessionTokenRef.current;
-    if (!token) return Promise.resolve();
-    disconnect();
-    return runHandshake((client) =>
-      client.join(url, username || "mirror", { token }),
-    );
-  };
-
   const usernameOk = /^[A-Za-z0-9_-]{3,32}$/.test(username);
   const passwordOk = password.length >= 8;
   const canSubmit =
@@ -495,17 +456,6 @@ export function App(): React.ReactElement {
     // One service per joined client (the URL it joined with).
     [client],
   );
-  const onGpu = (info: GpuInfo): void => {
-    setGpu(info);
-    if (info.software) {
-      console.warn(
-        `[client] software WebGL (${info.renderer}): enable hardware acceleration ` +
-          `in browser settings (chrome://gpu shows why it is off).`,
-      );
-    }
-  };
-
-  const toggleWireframe = (): void => setWireframe((w) => !w);
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
   const toggleQuests = useCallback(() => setQuestsOpen((o) => !o), []);
   const onReply = useCallback((index: number) => clientRef.current?.quest({ kind: "quest", op: "reply", index }), []);
@@ -532,7 +482,6 @@ export function App(): React.ReactElement {
   const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
-  const toggleShowcase = (): void => setShowcase((v) => !v);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
 
@@ -570,12 +519,11 @@ export function App(): React.ReactElement {
           assets={assets}
           pcg={pcg}
           lastStateAt={() => lastStateAtRef.current}
-          wireframe={wireframe}
-          showcase={showcase}
+          wireframe={false}
+          showcase={false}
           bindings={bindings}
           quality={quality}
           onQuality={onQuality}
-          onGpu={onGpu}
           onHud={setHud}
           onBag={toggleBag}
           onStance={onStance}
@@ -652,104 +600,19 @@ export function App(): React.ReactElement {
           <CastBar cast={cast} />
         </div>
         <TargetFrame target={combatView?.target ?? null} />
-        {DEV_TOOLS ? (
-          <DevHud
-            defaults={devLayoutDefaults}
-            panels={[
-              {
-                id: "status",
-                title: characterName ?? "mirror client",
-                label: "status",
-                badge: gpu?.software && (
-                  <span
-                    className="shrink-0 rounded border border-amber-400/60 px-1 text-[10px] text-amber-300"
-                    title="Software rendering: hardware acceleration is off, so fps will stay in single digits. Enable it in browser settings (see chrome://gpu)."
-                  >
-                    ⚠ software GPU
-                  </span>
-                ),
-                content: (
-                  <div className="text-muted-foreground tabular-nums">
-                    tick <span className="text-foreground">{hud.tick}</span>
-                    {hud.time && <> · <span className="text-foreground">{hud.time}</span></>}
-                    {hud.weather && <> · <span className="text-foreground">{hud.weather}</span></>}
-                    {" "}· <span className="text-foreground">{hud.fps}</span> fps · pos{" "}
-                    <span className="text-foreground">
-                      {hud.px.toFixed(0)}, {hud.py.toFixed(0)}, {hud.pz.toFixed(0)}
-                    </span>
-                    {hud.mode !== null && hud.mode !== 0 && <> · {MODE_LABEL[hud.mode] ?? hud.mode}</>}
-                    {hud.breath < 1 && <> · air {Math.round(hud.breath * 100)}%</>}
-                    {gpu && (
-                      <div className="truncate" title={gpu.renderer}>
-                        gpu <span className="text-foreground">{gpu.renderer}</span>
-                      </div>
-                    )}
-                  </div>
-                ),
-              },
-              { id: "perf", title: "performance", content: <PerfHud samples={hud.perf} /> },
-              {
-                id: "tools",
-                title: "tools",
-                content: (
-                  <>
-                    <div className="flex flex-wrap gap-1.5">
-                    <Button size="sm" variant="secondary" onClick={toggleWireframe}>
-                      {wireframe ? "solid terrain" : "wireframe terrain"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={cycleQuality}
-                      title={activeQuality?.detected ? `this GPU's preset: ${activeQuality.detected}` : "detecting the GPU…"}
-                    >
-                      quality: {quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={toggleShowcase}>
-                      {showcase ? "hide FX" : "FX showcase"}
-                    </Button>
-                    {sessionTokenRef.current && (
-                      <Button size="sm" variant="secondary" onClick={() => void reconnectWithToken()}>
-                        reconnect (token)
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" onClick={disconnect}>
-                      disconnect
-                    </Button>
-                    </div>
-                    <AdminConsole client={client} />
-                  </>
-                ),
-              },
-              {
-                id: "controls",
-                title: "controls",
-                content: (
-                  <div className="text-muted-foreground">
-                    {ACTIONS.map((a) => `${ACTION_LABELS[a]}: ${bindings[a].map(prettyCode).join("/")}`).join(" · ")}
-                    <br />
-                    {FIXED_MOUSE.map((m) => `${m.label}: ${m.code === "Mouse0" ? "left click" : "right click"}`).join(" · ")}
-                    {" "}· mouse look (click canvas; Esc frees the pointer) · wheel zoom
-                  </div>
-                ),
-              },
-            ]}
-          />
-        ) : (
-          <SettingsMenu
-            quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
-            onQuality={cycleQuality}
-            onDisconnect={disconnect}
-            bindings={bindings}
-            onBindings={setBindings}
-            onResetBindings={onResetBindings}
-            uiScale={uiScale}
-            onUiScale={setUiScale}
-            volumes={volumes}
-            onVolumes={setVolumes}
-            onPreview={previewBus}
-          />
-        )}
+        <SettingsMenu
+          quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+          onQuality={cycleQuality}
+          onDisconnect={disconnect}
+          bindings={bindings}
+          onBindings={setBindings}
+          onResetBindings={onResetBindings}
+          uiScale={uiScale}
+          onUiScale={setUiScale}
+          volumes={volumes}
+          onVolumes={setVolumes}
+          onPreview={previewBus}
+        />
         <PartyFrame
           party={party}
           self={characterName}
