@@ -293,6 +293,7 @@ export type {
 export { SqliteGuildStore } from "./guild-store.js";
 export { SqlitePartyStore } from "./party-store.js";
 export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social-store.js";
+export { SqliteFriendStore } from "./friend-store.js";
 
 export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
 export { Mana, MagicSystem, type SpellEvent } from "./magic.js";

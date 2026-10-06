@@ -1,20 +1,63 @@
 # MMO Engine
 
 An authoritative, extensible, data-oriented, ECS-capable procedural-generation
-MMO engine. One Node.js process is the authority — it simulates the world,
-persists it, and streams it; the three.js client is a mirror, never the
-source of truth.
+MMO engine. Each region's `engine-core` process owns its simulation and
+regional state; the edge/core split and world server support client ingress
+and region coordination. The React Three Fiber client mirrors authoritative
+state and is never the source of truth.
 
 **Decisions (locked):** JS world (bitECS) with C++ systems (physics,
 collision, pathfinding, procgen) as in-process N-API addons; SQLite embedded
-in the Node process; FlatBuffers contract shared by C++ and JS; 30 Hz fixed
-sim tick; multiplayer from the start. Full rationale lives in
+in each region process, SurrealDB for world-server state, FlatBuffers
+contract shared by C++ and JS; 30 Hz fixed sim tick; multiplayer from the
+start. Full rationale lives in
 [`docs/DECISIONS.md`](docs/DECISIONS.md) and the
 [`mmo-engine` skill](../../skills/mmo-engine/SKILL.md).
 
 **Roadmap:** what's built, in progress and next, with a running update
 log, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). Pick an item there to
 help.
+
+## Implemented features
+
+The engine is playable end to end, from account creation through the
+authoritative world and back. The [roadmap](docs/ROADMAP.md) tracks which
+features are complete, in progress, or still planned; this section
+summarizes the capabilities already present.
+
+- **World simulation and rendering:** a fixed 30 Hz, server-authoritative
+  ECS simulation with streamed world chunks, a climate-driven 4 × 4 km
+  world, water, sky and weather, terrain LOD, biomes and optional wild
+  creature packs. The client uses React Three Fiber and interpolates server
+  snapshots and deltas without client-side prediction.
+- **Generation and content:** WFC formations, baked and dressed dungeons,
+  species and creature spawn tables, ranks and prefab composition, PICG
+  asset cooking, loot pools, and material/recipe data.
+- **Characters and gameplay:** account and character sign-in/creation,
+  movement and stamina, attributes and use-based skills, weapon stances,
+  combat and defense, body-part injuries, bleeding, healing, death and
+  respawn, creature AI, mana and spells, hunger and thirst, ground loot,
+  and a first-cut inventory/equipment flow.
+- **Social and progression:** region chat, whispers, friends, blocks,
+  parties, guilds, quests and dialog. Character data, skills, items, social
+  lists, parties, guilds and quest progress have persistence as tracked in
+  the roadmap. Dungeon runs include party entry, a run HUD, results and
+  return to the world.
+- **Player experience:** login and character screens, health/resource and
+  needs meters, character and injury views, inventory, chat/social,
+  party/guild features, quest screens, remappable controls, UI scaling and
+  configurable audio.
+- **Editor and operations:** a standalone editor with a play-mode game
+  view and debugger, read-only ECS inspection, rules and gameplay-table
+  editing, PICG graph editing, dungeon tools, world-scale terrain editing,
+  and an art pipeline. The edge/core split includes framed internal
+  transport, outage recovery and network metrics; the world server
+  provides a region registry, migration hand-offs and a stress harness.
+
+Some areas remain partial rather than finished: inventory/equipment still
+needs the remaining armor and equipment work, and the client cutover to the
+edge, world-server accounts/social event stream, and the modular editor are
+not complete. See the roadmap for exact scope and dependencies.
 
 ## Repo layout
 
@@ -49,7 +92,7 @@ scripts/                # codegen (flatc vendored), dev launcher, valgrind
 
 ```sh
 npm install        # workspaces + native toolchain (node-gyp builds template addon)
-npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts}
+npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts} (scripts/codegen.mjs)
 npm test           # builds TS packages, runs all node:test suites + native addon test
 ```
 
@@ -70,6 +113,13 @@ both): it installs dependencies (`npm ci`, also after the lockfile
 changes), generates the FlatBuffers bindings, and bakes the world, the
 loot pool and 10 dungeons into the data folder. The first start takes a
 few minutes; after that it goes straight to the server.
+
+It runs the same on Linux, macOS and Windows (PowerShell or cmd, no bash
+or WSL). It needs Node 22 or newer, Python 3, and a C++17 compiler for the
+native addons: on Windows the Visual Studio Build Tools with "Desktop
+development with C++", on macOS Xcode's command line tools
+(`xcode-select --install`), on Linux `build-essential`. flatc is vendored
+for all three.
 
 Create an account in the client's "Create account" tab and log in. Every
 other command (bakes, tools, benchmarks, servers, the admin console, chat

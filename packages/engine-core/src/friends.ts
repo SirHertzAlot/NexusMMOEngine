@@ -15,12 +15,49 @@ export const FriendSchema = z
 
 export type FriendResult = "ok" | "self" | "full" | "exists";
 
+/** Synchronous write-through storage; `memoryFriendStore` is the default. */
+export interface FriendStore {
+  /** Every owner's friends (display names), in add order. */
+  loadAll(): Array<{ owner: string; friends: string[] }>;
+  add(owner: string, friend: string): void;
+  remove(owner: string, friend: string): void;
+}
+
+export function memoryFriendStore(): FriendStore {
+  const all = new Map<string, Map<string, string>>();
+  return {
+    loadAll: () => [...all].map(([owner, m]) => ({ owner, friends: [...m.values()] })),
+    add: (owner, friend) => {
+      const key = owner.toLowerCase();
+      let m = all.get(key);
+      if (!m) all.set(key, (m = new Map()));
+      m.set(friend.toLowerCase(), friend);
+    },
+    remove: (owner, friend) => void all.get(owner.toLowerCase())?.delete(friend.toLowerCase()),
+  };
+}
+
+type FriendPersistence = Pick<SocialStore, "loadFriends" | "addFriend" | "removeFriend">;
+
+function friendPersistence(store: SocialStore | FriendStore): FriendPersistence {
+  if ("loadFriends" in store) return store;
+  return {
+    loadFriends: () => store.loadAll().flatMap(({ owner, friends }) =>
+      friends.map((friend) => ({ owner, friend })),
+    ),
+    addFriend: (owner, friend) => store.add(owner, friend),
+    removeFriend: (owner, friend) => store.remove(owner, friend),
+  };
+}
+
 export class FriendBook {
   /** owner key -> (friend key -> display name) */
   private readonly lists = new Map<string, Map<string, string>>();
+  private readonly store: FriendPersistence;
 
-  constructor(private readonly store: SocialStore = memorySocialStore()) {
-    for (const r of store.loadFriends()) {
+  constructor(store: SocialStore | FriendStore = memorySocialStore()) {
+    this.store = friendPersistence(store);
+    for (const r of this.store.loadFriends()) {
       let list = this.lists.get(r.owner);
       if (!list) this.lists.set(r.owner, (list = new Map()));
       list.set(r.friend.toLowerCase(), r.friend);

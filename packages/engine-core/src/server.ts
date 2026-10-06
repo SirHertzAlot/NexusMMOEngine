@@ -119,6 +119,8 @@ import {
   MigrationCoordinator,
   waterSurfaceFromMaps,
   type ChunkBounds,
+  SqlitePartyStore,
+  SqliteSocialStore,
 } from "./index.js";
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
@@ -150,8 +152,6 @@ import { CreatureSystem } from "./creatures.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
-import { SqliteSocialStore } from "./social-store.js";
-import { SqlitePartyStore } from "./party-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";

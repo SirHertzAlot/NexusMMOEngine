@@ -2,7 +2,6 @@
   "description": "Authoritative, data-oriented, ECS-capable procedural-generation MMO engine (slice 1.1 scaffolding)",
   "devDependencies": {
     "@types/node": "^25.0.0",
-    "@types/ws": "^8.18.1",
     "typescript": "^5.6.3"
   },
   "engines": {
@@ -17,7 +16,7 @@
     "client": "npm run dev --workspace=@mmo-engine/client",
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
-    "codegen": "bash scripts/codegen.sh",
+    "codegen": "node scripts/codegen.mjs",
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",
     "editor:test": "npm test --workspace=@mmo-engine/editor",
