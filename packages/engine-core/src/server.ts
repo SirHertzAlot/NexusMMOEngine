@@ -606,6 +606,7 @@ async function main(): Promise<void> {
       return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def] };
     },
     lootPool: () => itemDefs.defs.ofSource("mob"),
+    chestPool: () => itemDefs.defs.ofSource("chest"),
     grant: (character, def) => items.give(character, def).ok,
     // Dungeon skill gains: the region holds no live sheet for members
     // away in an instance (the gateway forgets sheets on leave and

@@ -35,6 +35,12 @@ export function secondsLeft(state: DungeonState, at: number, now: number): numbe
   return Math.max(0, state.secondsLeft - (now - at) / 1000);
 }
 
+/** Ids of the run's chests still closed (the HUD's open button). */
+export function unopenedChests(state: DungeonState | null): string[] {
+  if (!state) return [];
+  return state.chests.filter((c) => !c.opened).map((c) => c.id);
+}
+
 const OUTCOME: Record<DungeonEnded["outcome"], { title: string; tone: string; line: string }> = {
   cleared: { title: "Dungeon cleared", tone: "text-yellow-300", line: "The boss is slain." },
   timeout: { title: "Out of time", tone: "text-orange-300", line: "The dungeon closes behind you." },
@@ -48,8 +54,8 @@ export function outcomeText(r: DungeonEnded): { title: string; tone: string; lin
   return { ...o, loot };
 }
 
-/** Top-centre while inside: the dungeon's name, the clock, and what's left to kill. */
-export function DungeonHud({ run }: { run: Extract<DungeonRun, { phase: "in" }> }): React.ReactElement {
+/** Top-centre while inside: the dungeon's name, the clock, what's left to kill, and the chest button. */
+export function DungeonHud({ run, onOpen }: { run: Extract<DungeonRun, { phase: "in" }>; onOpen: () => void }): React.ReactElement {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     const t = setInterval(() => setNow(performance.now()), 500);
@@ -57,6 +63,7 @@ export function DungeonHud({ run }: { run: Extract<DungeonRun, { phase: "in" }> 
   }, []);
   const s = run.state;
   const left = s ? secondsLeft(s, run.at, now) : null;
+  const closed = unopenedChests(s);
   return (
     <div className="pointer-events-none rounded-lg border border-violet-400/30 bg-card/85 px-4 py-2 text-center text-card-foreground shadow-sm" aria-label="dungeon">
       <div className="text-sm font-semibold text-violet-200">{run.dungeon}</div>
@@ -66,6 +73,16 @@ export function DungeonHud({ run }: { run: Extract<DungeonRun, { phase: "in" }> 
           <span>{s.creaturesLeft} left</span>
           <span className={s.bossLeft > 0 ? "text-red-300" : "text-yellow-300"}>{s.bossLeft > 0 ? "boss awaits" : "boss slain"}</span>
         </div>
+      )}
+      {closed.length > 0 && (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`open chest (${closed.length} unopened)`}
+          className="m3-focus pointer-events-auto mt-1.5 w-full rounded-full border border-amber-300/40 px-3 py-1 text-xs text-amber-200"
+        >
+          🎁 open chest{closed.length === 1 ? "" : "s"} ({closed.length})
+        </button>
       )}
     </div>
   );

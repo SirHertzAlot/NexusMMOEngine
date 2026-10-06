@@ -43,6 +43,7 @@ export interface InstanceManagerOptions {
   partyOf: (name: string) => string[];
   weaponOf?: (characterId: number) => Weapon | null;
   lootPool?: () => readonly number[];
+  chestPool?: () => readonly number[];
   /** Put item definition `def` in a character's bag; false when it couldn't. */
   grant: (characterId: number, def: number) => boolean;
   /**
@@ -150,6 +151,7 @@ export class InstanceManager implements GatewayExtension {
         characterStore: this.opts.characterStore,
         weaponOf: this.opts.weaponOf,
         lootPool: this.opts.lootPool?.() ?? [],
+        chestPool: this.opts.chestPool?.() ?? [],
         onEnd: (result) => this.commit(result),
         transport: this.opts.transport,
         now: this.now,

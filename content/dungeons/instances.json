@@ -8,5 +8,8 @@
   "fallbackCreature": "goblin",
   "lootRollsPerKill": [0, 1],
   "bossLootRolls": [2, 3],
+  "chestsPerRun": 3,
+  "chestLootRolls": [1, 2],
+  "chestOpenRadiusM": 3,
   "commit": "on-report"
 }

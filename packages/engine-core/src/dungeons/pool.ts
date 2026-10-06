@@ -51,7 +51,11 @@ export interface InstanceLayout {
   walkable: Uint8Array;
   /** World position of the entrance room's centre. */
   entrance: { x: number; z: number };
+  /** The entrance room's id (chests never spawn there). */
+  entranceRoom: number;
   bossRoom: number;
+  /** Room centres in world coordinates, for chest placement. */
+  rooms: { id: number; x: number; z: number }[];
   spawns: LayoutSpawn[];
 }
 
@@ -93,7 +97,9 @@ export function readLayout(json: unknown): InstanceLayout {
     height: f.height,
     walkable,
     entrance: { x: cellCentre(Math.round(entrance.cx)), z: cellCentre(Math.round(entrance.cy)) },
+    entranceRoom: f.entrance,
     bossRoom: f.boss,
+    rooms: f.rooms.map((r) => ({ id: r.id, x: cellCentre(Math.round(r.cx)), z: cellCentre(Math.round(r.cy)) })),
     spawns: f.spawns.map((s) => ({ x: cellCentre(s.x), z: cellCentre(s.y), tier: s.tier, room: s.room, species: species.get(`${s.x},${s.y}`) ?? "" })),
   };
 }

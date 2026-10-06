@@ -558,7 +558,7 @@ export function App(): React.ReactElement {
         )}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
-            <DungeonHud run={run} />
+            <DungeonHud run={run} onOpen={() => clientRef.current?.dungeon({ kind: "dungeon", op: "open" })} />
           </div>
         )}
         {run?.phase === "ended" && (
