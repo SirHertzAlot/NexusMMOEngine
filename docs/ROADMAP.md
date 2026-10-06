@@ -20,9 +20,9 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-04)
+## At a glance (2026-10-06)
 
-**84 items built, 11 in progress, 34 planned** (26 of the planned are the
+**84 items built, 15 in progress, 30 planned** (22 of the planned are the
 modular editor's slices). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -36,8 +36,11 @@ E6) and the world server's migration and stress harness are built.
 
 What is left, by area:
 
-- **Modular editor** (1c): the docking shell, scenes and game flow,
-  modules, the database editor and production tools, EA1 to EA26.
+- **Modular editor** (1c): the docking shell, workspace navigation,
+  persistent layouts, deep links, display-side data contracts, and a
+  UI-only flow graph are in progress. Scenes, executable game flow,
+  modules, the database editor, and production tools remain EA1 to EA26
+  follow-on work.
 - **Editor and admin**: the developer panels leave the client (E5), the
   play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
   mode, time and weather), and the appearance editor (A6).
@@ -117,14 +120,14 @@ loadable modules, a database editor and production tools.
 | # | Item | Status | Notes |
 |---|---|---|---|
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
-| EA1 | Docking shell, workspaces and toolbar | 📋 | |
-| EA2 | MVC contracts | 📋 | |
+| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
+| EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
 | EA3 | Editor modules | 📋 | |
 | EA4 | Scene documents | 📋 | |
 | EA5 | Scene viewport editing | 📋 | |
 | EA6 | Play the scene | 📋 | |
-| EA7 | Game flow | 📋 | |
-| EA8 | Flow editor and play from a node | 📋 | |
+| EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
+| EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
 | EA9 | Server modules | 📋 | |
 | EA10 | C++ modules | 📋 | |
 | EA11 | Sidecars | 📋 | |
