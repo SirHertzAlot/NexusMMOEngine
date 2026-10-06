@@ -47,8 +47,7 @@ What is left, by area:
 - **Scale**: the client cutover to the edge (E3b), binary mirror frames
   (E5a, E5b), the region↔world event stream (S2), accounts on the world
   server (C1).
-- **Checks**: Helgrind on the threaded addons, telemetry graphs in the
-  editor (T2).
+- **Checks**: Helgrind on the threaded addons.
 - **CI**: GitHub Actions is out of credits, so every change is checked
   locally with `npm test` and valgrind.
 
@@ -275,7 +274,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
 | L3 | Pool rebake keeps held items | ✅ | `npm run loot:rebake`; merged in #81 |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
-| T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
+| T2 | Play telemetry in Live Ops (typed `stats` snapshots, 10 s bucket-aligned polling, tick and activity graphs) | ✅ | α1 |
 
 ---
 
@@ -283,6 +282,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-06**: T2 Live Ops telemetry: the editor reads the protected `stats` admin snapshot through `BackendClient`, refreshes once per server bucket without overlapping requests, and renders tick p50/p99/max plus kills, pickups and damage series. Connection and refresh failures remain visible; player, region and audit data stay staged.
 - **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
 - **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
 - **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.
