@@ -19,8 +19,9 @@ import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
-import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import type { MenuItem } from "./components.js";
+import type { ScopeNode } from "./scope-tree.js";
 import { editorSelection, useEditorSelection } from "./editor-selection.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
@@ -1577,63 +1578,68 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   );
 }
 
+/** World outliner rows as data; the shared ScopeTree renders them. */
+interface WorldNode extends ScopeNode {
+  kind: string;
+  children?: WorldNode[];
+}
+
+const WORLD_NODES: WorldNode[] = [
+  {
+    id: "world", label: "default.world", icon: "public", trailing: "4 × 4 km", kind: "world",
+    children: [
+      {
+        id: "regions", label: "Regions", icon: "grid_view", trailing: "4", kind: "collection",
+        children: ["Region 0,0", "Region 1,0"].map((r) => ({
+          id: r, label: r, icon: "terrain", trailing: r === "Region 0,0" ? "loaded" : undefined, kind: "region",
+          children: [
+            { id: `${r}-chunks`, label: "chunks 8 × 8", icon: "grid_on", trailing: "1,024", kind: "world item" },
+            { id: `${r}-cache`, label: "tile cache", icon: "cached", trailing: "212 tiles", kind: "world item" },
+          ],
+        })),
+      },
+      {
+        id: "eco", label: "Ecology: wilds", icon: "forest", kind: "ecology",
+        children: ["oak", "birch", "pine"].map((s) => (
+          { id: `eco-${s}`, label: s, icon: "park", trailing: "pcg", kind: "world item" }
+        )),
+      },
+      { id: "formations", label: "Formations", icon: "grid_on", trailing: "WFC", kind: "world item" },
+      { id: "coast", label: "Coast and sea", icon: "waves", kind: "world item" },
+      { id: "sky", label: "Sky, day and weather", icon: "wb_sunny", kind: "world item" },
+      { id: "nav", label: "Navmesh tiles", icon: "account_tree", trailing: "212", kind: "world item" },
+    ],
+  },
+];
+
 function WorldTree(): React.JSX.Element {
   const t = useTree();
-  const pick = (id: string, label: string, kind: string, trailing?: string): void => {
-    t.pick(id);
-    editorSelection.select({
-      source: "outliner",
-      kind,
-      id,
-      label,
-      components: [{
-        name: "Outliner node",
-        fields: [
-          { key: "workspace", value: "World" },
-          { key: "kind", value: kind },
-          ...(trailing ? [{ key: "status", value: trailing }] : []),
-        ],
-      }],
-    });
-  };
-  const item = (id: string, icon: string, label: string, trailing?: string, depth = 0, slice = "EA · world (E9)"): React.JSX.Element => (
-    <TreeItem
-      icon={icon}
-      label={label}
-      trailing={trailing}
-      depth={depth}
-      selected={t.sel === id}
-      onPick={() => pick(id, label, "world item", trailing)}
-      menu={crudMenu(label, slice)}
-    />
-  );
   return (
     <div className="flex flex-col gap-0.5">
-      <TreeItem icon="public" label="default.world" trailing="4 × 4 km" hasKids expanded={t.open.includes("world")} onToggle={() => t.toggle("world")} selected={t.sel === "world"} onPick={() => pick("world", "default.world", "world", "4 × 4 km")} menu={crudMenu("default.world", "EA · world (E9)")} />
-      {t.open.includes("world") && (
-        <>
-          <TreeItem icon="grid_view" label="Regions" trailing="4" depth={1} hasKids expanded={t.open.includes("regions")} onToggle={() => t.toggle("regions")} selected={t.sel === "regions"} onPick={() => pick("regions", "Regions", "collection", "4")} menu={crudMenu("Regions", "EA · world (E9)")} />
-          {t.open.includes("regions") && ["Region 0,0", "Region 1,0"].map((r) => (
-            <div key={r}>
-              <TreeItem icon="terrain" label={r} trailing={r === "Region 0,0" ? "loaded" : undefined} depth={2} hasKids expanded={t.open.includes(r)} onToggle={() => t.toggle(r)} selected={t.sel === r} onPick={() => pick(r, r, "region", r === "Region 0,0" ? "loaded" : undefined)} menu={crudMenu(r, "EA · world (E9)")} />
-              {t.open.includes(r) && (
-                <>
-                  {item(`${r}-chunks`, "grid_on", "chunks 8 × 8", "1,024", 3)}
-                  {item(`${r}-cache`, "cached", "tile cache", "212 tiles", 3)}
-                </>
-              )}
-            </div>
-          ))}
-          <TreeItem icon="forest" label="Ecology: wilds" depth={1} hasKids expanded={t.open.includes("eco")} onToggle={() => t.toggle("eco")} selected={t.sel === "eco"} onPick={() => pick("eco", "Ecology: wilds", "ecology")} menu={crudMenu("Ecology: wilds", "EA · world (E9)")} />
-          {t.open.includes("eco") && ["oak", "birch", "pine"].map((s) => (
-            <span key={s}>{item(`eco-${s}`, "park", s, "pcg", 2)}</span>
-          ))}
-          {item("formations", "grid_on", "Formations", "WFC", 1)}
-          {item("coast", "waves", "Coast and sea", undefined, 1)}
-          {item("sky", "wb_sunny", "Sky, day and weather", undefined, 1)}
-          {item("nav", "account_tree", "Navmesh tiles", "212", 1)}
-        </>
-      )}
+      <ScopeTree
+        nodes={WORLD_NODES}
+        open={t.open}
+        selected={t.sel}
+        onToggle={(id) => t.toggle(id)}
+        onPick={(n) => {
+          t.pick(n.id);
+          editorSelection.select({
+            source: "outliner",
+            kind: n.kind,
+            id: n.id,
+            label: n.label,
+            components: [{
+              name: "Outliner node",
+              fields: [
+                { key: "workspace", value: "World" },
+                { key: "kind", value: n.kind },
+                ...(n.trailing ? [{ key: "status", value: n.trailing }] : []),
+              ],
+            }],
+          });
+        }}
+        menuFor={(n) => crudMenu(n.label, "EA · world (E9)")}
+      />
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
         Region editing, bakes and the tile cache arrive with world-scale editing (E9).
       </p>
