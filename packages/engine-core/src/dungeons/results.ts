@@ -17,6 +17,24 @@ export interface InstanceResultStore {
   markReported(instances: readonly string[]): void;
 }
 
+/**
+ * Flush the region's unreported dungeon runs to the world (roadmap D4):
+ * sends the whole `unreported()` batch and marks only the instance ids
+ * the world confirmed ingested. An empty batch sends nothing. A failed
+ * report throws and marks nothing, so the batch retries on the next
+ * flush. Runs off the tick loop (the server's 1 s save timer).
+ */
+export async function flushInstanceResults(
+  store: InstanceResultStore,
+  report: (results: InstanceResult[]) => Promise<readonly string[]>,
+): Promise<{ reported: number }> {
+  const batch = store.unreported();
+  if (batch.length === 0) return { reported: 0 };
+  const ingested = await report(batch);
+  store.markReported(ingested);
+  return { reported: ingested.length };
+}
+
 export class MemoryInstanceResultStore implements InstanceResultStore {
   readonly rows: { result: InstanceResult; granted: number; lost: number; reported: boolean }[] = [];
   record(result: InstanceResult, granted: number, lost: number): void {
