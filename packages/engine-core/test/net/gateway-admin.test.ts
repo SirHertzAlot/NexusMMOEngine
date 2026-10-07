@@ -13,10 +13,13 @@ import {
   MessageType,
   type AdminResult,
   type ErrorMessage,
+  type SkillsMessage,
 } from "@mmo-engine/protocol";
 import { Gateway, type GatewayOptions } from "../../src/net/gateway.js";
 import { HeadlessClient, type HelloAuth } from "./headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
+import { MasterySystem } from "../../src/stats/mastery-system.js";
+import { loadGameRules } from "../../src/rules/boot.js";
 
 let now = 0;
 let gw: Gateway | null = null;
@@ -267,6 +270,39 @@ describe("gateway: admin console", () => {
     assert.equal(decodeControl<ErrorMessage>(err).code, 4003);
     await alice.close();
     await other.close();
+  });
+
+  it("god toggles invulnerability on the avatar", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const client = await joinClient(url, "alice");
+    const on = await admin(client, "god", { on: true });
+    assert.equal(on.ok, true);
+    assert.match(on.message, /god-mode on for/);
+    const off = await admin(client, "god", { on: false });
+    assert.equal(off.ok, true);
+    assert.match(off.message, /god-mode off for/);
+    await client.close();
+  });
+
+  it("god on maxes every skill; god off keeps them", async () => {
+    const { rules } = loadGameRules();
+    const mastery = new MasterySystem(rules.skills, () => 1000, rules.disciplines.disciplines);
+    const url = await startGateway({ admins: ["alice"], mastery, systems: [mastery] });
+    const client = await joinClient(url, "alice");
+    const on = await admin(client, "god", { on: true });
+    assert.equal(on.ok, true);
+    const skillsP = client.waitFor(MessageType.Skills, 1);
+    for (let i = 0; i < 30; i++) gw!.frame((now += 100));
+    const [payload] = await skillsP;
+    const msg = decodeControl<SkillsMessage>(payload);
+    assert.ok(msg.skills.length > 0);
+    for (const s of msg.skills) {
+      assert.equal(s.value, msg.max);
+      assert.equal(s.peak, msg.max);
+    }
+    const off = await admin(client, "god", { on: false });
+    assert.equal(off.ok, true);
+    await client.close();
   });
 
   it("spawnlist names the table; spawn plants at me; despawn removes", async () => {

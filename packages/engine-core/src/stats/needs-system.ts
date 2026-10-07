@@ -14,7 +14,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
 import type { NeedsRules } from "@mmo-engine/rules";
-import { Health, Locomotion, Needs, PlayerIntent } from "../components.js";
+import { God, Health, Locomotion, Needs, PlayerIntent } from "../components.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 
@@ -57,7 +57,7 @@ export class NeedsSystem implements SimSystem {
       let dmg = 0;
       if (Needs.hunger[e] === 0) dmg += hunger.damagePerSecond;
       if (Needs.thirst[e] === 0) dmg += thirst.damagePerSecond;
-      if (dmg > 0) Health.current[e] = Math.max(0, Health.current[e] - dmg * dtSeconds);
+      if (dmg > 0 && !hasComponent(sim.ecs, God, e)) Health.current[e] = Math.max(0, Health.current[e] - dmg * dtSeconds);
     }
   }
 }

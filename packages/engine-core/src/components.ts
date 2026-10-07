@@ -96,6 +96,13 @@ export const Needs = defineComponent({
 });
 
 /**
+ * God mode (A4): a tag, never replicated. Every Health-loss path
+ * (combat blows, hunger, drowning, traps) skips a carrier; the `god`
+ * admin command adds and removes it.
+ */
+export const God = defineComponent();
+
+/**
  * BodyConfig — rigid-body description for the Jolt physics addon
  * (Phase 2). JS owns this component (authoritative config); the native
  * world owns the simulated state and writes results back into
@@ -152,6 +159,7 @@ export const COMPONENT_IDS = {
   Stamina: 12,
   CharacterRef: 13,
   Needs: 14,
+  God: 15,
 } as const;
 
 const U32 = 0xffffffffn;
