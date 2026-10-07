@@ -230,6 +230,21 @@ test("dungeon results over webrpc: ingest, idempotent replay, bad input 400", as
   assert.equal(noToken.status, 401);
 });
 
+test("presence over webrpc: report, query, bad input 400", async () => {
+  const { base } = await boot();
+  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
+  const token = (reg.json["lease"] as Record<string, unknown>)["token"] as string;
+  const set = await rpc(base, "SetPresence", { input: { regionId: "r1", names: ["Aria"] } }, token);
+  assert.equal(set.status, 200);
+  const got = await rpc(base, "QueryPresence", { input: { regionId: "r1", names: ["Aria", "Nobody"] } }, token);
+  assert.equal(got.status, 200);
+  assert.deepEqual(got.json["online"], { Aria: "r1", Nobody: null });
+  const bad = await rpc(base, "SetPresence", { input: { regionId: "r1", names: [""] } }, token);
+  assert.equal(bad.status, 400);
+  const noToken = await rpc(base, "QueryPresence", { input: { regionId: "r1", names: ["Aria"] } });
+  assert.equal(noToken.status, 401);
+});
+
 test("non-JSON content-type is rejected with 415", async () => {
   const { base } = await boot();
   const res = await fetch(`${base}/rpc/World/RegisterRegion`, {

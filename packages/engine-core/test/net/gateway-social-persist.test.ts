@@ -62,6 +62,36 @@ afterEach(async () => {
   dir = "";
 });
 
+describe("gateway: cross-region friends presence", () => {
+  it("shows friends playing on other regions as online", async () => {
+    const reported: string[][] = [];
+    now = 1_000_000;
+    gw = new Gateway({
+      clock: () => now,
+      disconnectGraceMs: 1000,
+      credentialStore: await makeCredentialStore(),
+      presence: {
+        report: (names) => void reported.push(names),
+        query: async (names) => Object.fromEntries(names.map((n) => [n, n === "user-a" ? "r2" : null])),
+      },
+    });
+    const port = await gw.listen();
+    gw.frame(now);
+    const url = `ws://127.0.0.1:${port}`;
+    const a = await join(url, "alice");
+    const b = await join(url, "user-a");
+    a.sendRaw(MessageType.Chat, encodeControl({ kind: "friend", name: "user-a", on: true }));
+    await until(() => (lastFriends(a)?.friends.length ?? 0) === 1);
+    await b.close();
+    await until(() => lastFriends(a)?.friends[0]?.online === false);
+    assert.ok(reported.length > 0, "logins and logouts report presence");
+    await gw.syncPresence();
+    await until(() => lastFriends(a)?.friends[0]?.online === true);
+    assert.deepEqual(lastFriends(a)!.friends, [{ name: "user-a", online: true }]);
+    await a.close();
+  });
+});
+
 describe("gateway: friends and blocks persist", () => {
   it("brings back the friends list and blocks after a restart", async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "social-gw-"));

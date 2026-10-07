@@ -117,4 +117,18 @@ export class MemoryWorldStore implements WorldStore {
       .filter((r) => regionId === undefined || r.regionId === regionId)
       .map((r) => ({ ...r }));
   }
+
+  private presence = new Map<string, Set<string>>();
+
+  async setPresence(regionId: string, names: string[]): Promise<void> {
+    this.presence.set(regionId, new Set(names));
+  }
+
+  async queryPresence(names: string[]): Promise<Map<string, string | null>> {
+    const found = new Map<string, string>();
+    for (const [regionId, online] of this.presence) {
+      for (const n of names) if (online.has(n) && !found.has(n)) found.set(n, regionId);
+    }
+    return new Map(names.map((n) => [n, found.get(n) ?? null]));
+  }
 }

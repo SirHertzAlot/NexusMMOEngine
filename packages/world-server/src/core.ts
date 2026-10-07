@@ -20,10 +20,12 @@ import {
   type RegionInfo,
   type HeartbeatAck,
   type HeartbeatInput,
+  type QueryPresenceInput,
   type RegionLease,
   type RegionRecord,
   type RegisterRegionInput,
   type ReportDungeonResultsInput,
+  type SetPresenceInput,
   type SnapshotReportInput,
 } from "./types.js";
 
@@ -291,6 +293,27 @@ export class WorldCoreImpl implements WorldCore {
       ingested.push(r.instance);
     }
     return { ingested };
+  }
+
+  /**
+   * Replace the region's online character names (roadmap S2 presence):
+   * the world directory behind cross-region friends lists. State, not
+   * events: a re-report writes the same rows, and an empty report logs
+   * the region's characters out.
+   */
+  async setPresence(caller: string, input: SetPresenceInput): Promise<void> {
+    if (caller !== input.regionId) throw new WorldError(403, "regionId does not match token");
+    if ((await this.store.getRegion(input.regionId)) === null) throw new WorldError(404, "unknown region");
+    await this.store.setPresence(input.regionId, input.names);
+  }
+
+  /** Where queried names play, by region; unknown names map to null. */
+  async queryPresence(caller: string, input: QueryPresenceInput): Promise<{ online: Record<string, string | null> }> {
+    if (caller !== input.regionId) throw new WorldError(403, "regionId does not match token");
+    if ((await this.store.getRegion(input.regionId)) === null) throw new WorldError(404, "unknown region");
+    const online: Record<string, string | null> = {};
+    for (const [name, region] of await this.store.queryPresence(input.names)) online[name] = region;
+    return { online };
   }
 
   /** The migration, if `caller` is its source or target. */

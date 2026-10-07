@@ -158,6 +158,19 @@ import {
   type CharacterStore,
 } from "../characters/index.js";
 
+/**
+ * Cross-region presence (roadmap S2): the world directory behind friends
+ * lists elsewhere. The region reports its online character names and
+ * asks where names play; merges only ever add online rows, so a slow
+ * world delays presence but never flaps it.
+ */
+export interface PresenceAdapter {
+  /** Replace this region's online character names; fire-and-forget. */
+  report(names: string[]): void;
+  /** Region per name for characters online anywhere; null when nowhere. */
+  query(names: string[]): Promise<Record<string, string | null>>;
+}
+
 export interface GatewayOptions {
   /** Port to bind; 0 = ephemeral (listen() returns the actual port). */
   port?: number;
@@ -201,6 +214,11 @@ export interface GatewayOptions {
   partyStore?: PartyStore;
   /** Friends and blocks persistence (S2c). Default: in memory; the production server passes a SqliteSocialStore. */
   socialStore?: SocialStore;
+  /**
+   * Cross-region presence (S2): the world directory behind friends lists
+   * elsewhere. Absent: presence stays local (unit tests, standalone dev).
+   */
+  presence?: PresenceAdapter;
   /**
    * The modular part catalog new characters' looks are checked against;
    * null/absent = structural checks only (a server without the art).
@@ -578,6 +596,7 @@ export class Gateway {
       | "characterStore"
       | "guildStore"
       | "socialStore"
+      | "presence"
       | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
@@ -651,6 +670,8 @@ export class Gateway {
   /** Who blocks whom, by account (S2). */
   private readonly blocks: BlockList;
   private readonly friends: FriendBook;
+  /** Cross-region presence adapter (S2); null: presence stays local. */
+  private readonly presence: PresenceAdapter | null;
   /** Parties, in memory (S3). */
   private readonly parties: PartyBook;
   private readonly guilds: GuildBook;
@@ -738,6 +759,7 @@ export class Gateway {
     this.parties = new PartyBook(() => this.clock(), opts.partyStore);
     this.blocks = new BlockList(opts.socialStore);
     this.friends = new FriendBook(opts.socialStore);
+    this.presence = opts.presence ?? null;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
@@ -2550,23 +2572,78 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
   }
 
+  /** Character names playing here (welcomed, connected): the presence report. */
+  private onlineNames(): string[] {
+    const out: string[] = [];
+    for (const s of this.sessions.values()) {
+      if (s.welcomed && s.socket) out.push(s.character?.name ?? s.username);
+    }
+    return out;
+  }
+
   /** Tell everyone who lists this character as a friend that its presence changed (S2b). */
   private friendPresence(s: ClientSession): void {
     if (!s.welcomed) return;
+    this.presence?.report(this.onlineNames());
     for (const w of this.friends.watchers(s.character?.name ?? s.username)) this.pushFriends(w);
+  }
+
+  /** Last friends list sent, per viewer: cross-region refreshes only re-push on change. */
+  private readonly lastFriendsPush = new Map<string, string>();
+
+  /** A viewer's friends with local presence (S2b). */
+  private friendRows(name: string, elsewhere: Record<string, string | null> = {}): { name: string; online: boolean }[] {
+    const r = this.findOnline(name);
+    return this.friends.list(name).map((f) => {
+      const o = this.findOnline(f);
+      if (o !== undefined) {
+        // A friend who blocks you looks offline, so presence never leaks past a block.
+        return { name: f, online: !this.blocks.isBlocked(o.username, r?.username ?? "") };
+      }
+      // Cross-region (S2): no username to check blocks against, so a
+      // blocked player elsewhere still shows online (documented gap).
+      return { name: f, online: elsewhere[f] != null };
+    });
   }
 
   /** Send a character their friends list with presence (S2b). */
   private pushFriends(name: string): void {
     const r = this.findOnline(name);
     if (!r) return;
-    const friends = this.friends.list(name).map((f) => {
-      const o = this.findOnline(f);
-      // A friend who blocks you looks offline, so presence never leaks past a block.
-      return { name: f, online: o !== undefined && !this.blocks.isBlocked(o.username, r.username) };
-    });
+    const friends = this.friendRows(name);
     const msg: FriendsState = { kind: "friends", friends };
     this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+    this.lastFriendsPush.set(name.toLowerCase(), JSON.stringify(friends));
+  }
+
+  /**
+   * Refresh friends lists from the world directory (S2 cross-region
+   * presence): report our names, then ask where each online viewer's
+   * locally-offline friends play and re-push lists that gain rows.
+   * Called on a timer by the server; tests drive it directly.
+   */
+  async syncPresence(): Promise<void> {
+    const adapter = this.presence;
+    if (!adapter) return;
+    adapter.report(this.onlineNames());
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || !s.socket) continue;
+      const name = s.character?.name ?? s.username;
+      const missing = this.friends.list(name).filter((f) => !this.findOnline(f));
+      if (missing.length === 0) continue;
+      let elsewhere: Record<string, string | null>;
+      try {
+        elsewhere = await adapter.query(missing);
+      } catch {
+        continue;
+      }
+      if (this.findOnline(name) !== s) continue;
+      const friends = this.friendRows(name, elsewhere);
+      if (this.lastFriendsPush.get(name.toLowerCase()) === JSON.stringify(friends)) continue;
+      const msg: FriendsState = { kind: "friends", friends };
+      this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
+      this.lastFriendsPush.set(name.toLowerCase(), JSON.stringify(friends));
+    }
   }
 
   /** Add or remove a friend (S2b). Adding resolves only online characters, like blocking. */
