@@ -57,6 +57,8 @@ export class ItemDefs {
   readonly power: Float32Array;
   /** HAND_CODE of the hand it is held in. */
   readonly hand: Uint8Array;
+  /** Armour slot it is worn in ("none" for held items). */
+  readonly slot: readonly string[];
   /** The plain attack's technique id, per definition. */
   readonly technique: readonly string[];
   /** Pool seed per definition (picks the model among a base's). */
@@ -77,6 +79,7 @@ export class ItemDefs {
     const stats: Record<string, number>[] = [];
     const models: string[] = [];
     const technique: string[] = [];
+    const slot: string[] = [];
     this.assetHash = new Uint32Array(n);
     this.mass = new Float32Array(n);
     this.length = new Float32Array(n);
@@ -101,6 +104,7 @@ export class ItemDefs {
       stats.push(it.bundle.Stats);
       models.push("");
       technique.push("");
+      slot.push("none");
       this.seeds[i] = it.seed >>> 0;
       this.power[i] = it.bundle.Stats.power ?? 0;
       // Pool ids are unique except for re-rolled commons; the first wins.
@@ -117,6 +121,7 @@ export class ItemDefs {
     this.stats = stats;
     this.models = models;
     this.technique = technique;
+    this.slot = slot;
     this.applyRules(rules);
   }
 
@@ -128,8 +133,10 @@ export class ItemDefs {
   applyRules(rules: Pick<Rules, "items">): void {
     const models = this.models as string[];
     const technique = this.technique as string[];
+    const slot = this.slot as string[];
     for (let i = 0; i < this.count; i++) {
       const phys: ItemBaseRules = rules.items.bases[this.bases[i]] ?? rules.items.fallback;
+      slot[i] = phys.slot;
       const model = phys.models.length > 0 ? phys.models[this.seeds[i] % phys.models.length] : "";
       models[i] = model;
       technique[i] = phys.technique;

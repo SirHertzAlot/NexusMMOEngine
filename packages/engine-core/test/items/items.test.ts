@@ -279,3 +279,34 @@ describe("ItemService held weapons (M3b)", () => {
     assert.equal(items.mainHandDef(9), -1, "empty-handed");
   });
 });
+
+describe("ItemService armour (U10)", () => {
+  const ARULES = (() => {
+    const r = engineDefaults();
+    r.items.bases.helm = { ...r.items.fallback, slot: "head", models: ["pack/SM_Prop_Helm_01"] };
+    return r;
+  })();
+  const APOOL: PoolItemLike[] = [poolItem("h", "helm", "common", "chest", 9, { armour: 5 })];
+
+  it("wears armour from the bag into its slot and back", () => {
+    const defs = new ItemDefs(APOOL, ARULES);
+    const items = new ItemService({ defs, loot: loot(), tickHz: 30 });
+    items.give(1, 0);
+    assert.ok(items.equip(1, 1).ok, "helm wears");
+    assert.deepEqual(items.inventoryOf(1).worn?.head?.id, 1);
+    assert.ok(items.unequip(1, "head").ok, "helm comes off");
+    assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "helm is back in the bag");
+    assert.equal(items.inventoryOf(1).worn?.head, null);
+  });
+
+  it("a new helm displaces the worn one back to the bag", () => {
+    const defs = new ItemDefs(APOOL, ARULES);
+    const items = new ItemService({ defs, loot: loot(), tickHz: 30 });
+    items.give(1, 0);
+    items.give(1, 0);
+    assert.ok(items.equip(1, 1).ok);
+    assert.ok(items.equip(1, 2).ok, "second helm displaces the first");
+    assert.deepEqual(items.inventoryOf(1).worn?.head?.id, 2);
+    assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "first helm is back in the bag");
+  });
+});

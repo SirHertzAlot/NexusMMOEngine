@@ -42,6 +42,8 @@ export const LedgerKind = {
   Ground: 1,
   Bag: 2,
   Hold: 3,
+  /** Worn in an armour slot (slot: the ARMOUR_SLOTS index). */
+  Wear: 5,
   /** Tombstone: the item no longer exists. */
   Destroy: 4,
 } as const;
