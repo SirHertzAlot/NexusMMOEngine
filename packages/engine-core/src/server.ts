@@ -125,7 +125,7 @@ import {
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
-import { RulesError } from "@mmo-engine/rules";
+import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
@@ -527,6 +527,11 @@ async function main(): Promise<void> {
   const restored = items.restore(sim, itemLedger.load());
   items.attachLedger(itemLedger);
   if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
+  // What a blow gets through: worn armour per the rules' armourHalf;
+  // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
+  // beside the formula it feeds. Dungeon runs ask through the same
+  // function, by character id.
+  const wornFactor = (id: number): number => armourFactor(game.rules, items.armourTotal(id));
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   const weaponOf = (e: number): Weapon | null => {
@@ -605,6 +610,7 @@ async function main(): Promise<void> {
       const d = itemDefs.defs;
       return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def] };
     },
+    armourOf: (character) => wornFactor(character),
     lootPool: () => itemDefs.defs.ofSource("mob"),
     chestPool: () => itemDefs.defs.ofSource("chest"),
     grant: (character, def) => items.give(character, def).ok,
@@ -642,7 +648,13 @@ async function main(): Promise<void> {
   bodyRef = body;
   // Mana and spells: casting heals (Mend) spends it.
   const magic = new MagicSystem(game.rules.spells);
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
+  // What a blow gets through: worn armour per the rules' armourHalf;
+  // bots and props wear nothing.
+  const armourOf = (e: number): number => {
+    if (!hasComponent(sim.ecs, CharacterRef, e)) return 1;
+    return wornFactor(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
+  };
+  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, armourOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {

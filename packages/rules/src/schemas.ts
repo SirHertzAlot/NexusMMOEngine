@@ -102,7 +102,7 @@ export const CombatSchema = z.strictObject({
     .strictObject({ novice: z.number().min(0).default(0.4), masterBonus: z.number().min(0).default(1.6), curve: positive.default(1.5) })
     .prefault({}),
   /** damage = base × mass^massPower × fit_eff × power × part multiplier × armour factor. */
-  damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5) }).prefault({}),
+  damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5), armourHalf: positive.default(10) }).prefault({}),
   /** Chance a blow lands on the aimed part: novice + masterBonus × m. */
   precision: z.strictObject({ novice: share.default(0.3), masterBonus: share.default(0.65) }).prefault({}),
   /**

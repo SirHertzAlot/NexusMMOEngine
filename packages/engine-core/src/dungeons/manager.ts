@@ -42,6 +42,8 @@ export interface InstanceManagerOptions {
   /** Character names in a character's party, itself included. */
   partyOf: (name: string) => string[];
   weaponOf?: (characterId: number) => Weapon | null;
+  /** The share of a blow a character's worn armour lets through. */
+  armourOf?: (characterId: number) => number;
   lootPool?: () => readonly number[];
   chestPool?: () => readonly number[];
   /** Put item definition `def` in a character's bag; false when it couldn't. */
@@ -150,6 +152,7 @@ export class InstanceManager implements GatewayExtension {
         credentialStore: this.opts.credentialStore,
         characterStore: this.opts.characterStore,
         weaponOf: this.opts.weaponOf,
+        armourOf: this.opts.armourOf,
         lootPool: this.opts.lootPool?.() ?? [],
         chestPool: this.opts.chestPool?.() ?? [],
         onEnd: (result) => this.commit(result),

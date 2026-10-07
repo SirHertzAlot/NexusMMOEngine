@@ -17,7 +17,7 @@ const DT = 1 / 30;
 const { hooks } = loadGameRules();
 const SWORD: Weapon = { technique: "cut", item: { mass: 1.2, edge: 0.8, point: 0.3, hardness: 0.6 }, reach: 0.9 };
 
-function setup(weapon: Weapon | null = SWORD, skills?: CombatSkills) {
+function setup(weapon: Weapon | null = SWORD, skills?: CombatSkills, armourOf?: (target: number) => number) {
   SimWorld.resetEntityCursorForTesting();
   const sim = new SimWorld();
   const make = (comps: object[], x: number, z: number): number => {
@@ -38,7 +38,7 @@ function setup(weapon: Weapon | null = SWORD, skills?: CombatSkills) {
     C.Health.current[t] = C.Health.max[t] = 100;
     return t;
   };
-  const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => weapon, skills });
+  const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => weapon, skills, armourOf });
   const systems = [new IntentSystem(), combat, new IntegrateSystem()];
   let tick = 0;
   const run = (ticks: number, buttons = 0, lookYaw = 0): void => {
@@ -69,6 +69,21 @@ describe("combat damage", () => {
     assert.ok(Math.abs(C.Health.current[t] - (100 - hits[0].amount)) < 1e-3);
     w.run(10);
     assert.equal(w.combat.drainHits().length, 0, "one strike per move");
+  });
+
+  it("worn armour scales the blow by its factor", () => {
+    const w = setup(SWORD, undefined, () => 0.5);
+    const t = w.target(0, 1); // ahead (+Z, yaw 0)
+    w.run(hitTick(Move.SwordA), IntentButton.Attack);
+    const hits = w.combat.drainHits();
+    assert.equal(hits.length, 1);
+    assert.ok(Math.abs(C.Health.current[t] - (100 - hits[0].amount)) < 1e-3);
+    const plain = setup();
+    const p = plain.target(0, 1);
+    plain.run(hitTick(Move.SwordA), IntentButton.Attack);
+    const base = plain.combat.drainHits()[0].amount;
+    assert.ok(base > 0);
+    assert.ok(Math.abs(hits[0].amount - base * 0.5) < 1e-2);
   });
 
   it("a god takes no damage from a landed hit", () => {

@@ -117,6 +117,8 @@ export interface CombatDamage {
   hooks: RuleHooks;
   /** The weapon an entity holds; null or absent means fists. */
   weaponOf?: (e: number) => Weapon | null;
+  /** The share of a blow the target's worn armour lets through (0..1); absent means 1. */
+  armourOf?: (target: number) => number;
   /** Skills behind power and defence; absent means skill 0 and no training. */
   skills?: CombatSkills;
   /** Body parts (M2): blows land on parts; absent means whole-body Health. */
@@ -300,7 +302,8 @@ export class CombatSystem implements SimSystem {
           ? dmg.hooks.resolveLanding({ aim: stance?.aim ?? body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
         const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
-        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, familiarity });
+        const armourFactor = dmg.armourOf?.(t) ?? 1;
+        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, armourFactor, familiarity });
         if (w.family) sk?.useFamily?.(e, w.family);
         amount = blow.amount * arm;
         // The guard holds only against what it faces; a landed block trains Blocking.

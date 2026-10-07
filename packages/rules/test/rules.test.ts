@@ -11,6 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  armourFactor,
   createHooks,
   decaySkill,
   defenceChance,
@@ -64,6 +65,12 @@ describe("our game's rules (content/rules)", () => {
     assert.ok(Math.abs(novice.amount - 4.3) < 0.05, `novice with a sword: ${novice.amount}`);
     assert.ok(Math.abs(masterStick.amount - 29) < 0.5, `master with a stick: ${masterStick.amount}`);
     assert.ok(Math.abs(masterSword.amount - 45) < 0.5, `master with a sword: ${masterSword.amount}`);
+  });
+
+  it("armour halves the blow at armourHalf total, bare skin lets all through", () => {
+    assert.equal(armourFactor(rules, 0), 1);
+    assert.equal(armourFactor(rules, rules.combat.damage.armourHalf), 0.5);
+    assert.ok(armourFactor(rules, 1000) < 0.05);
   });
 
   it("deteriorate slowly: ~94 after two months, the floor after about a year", () => {
