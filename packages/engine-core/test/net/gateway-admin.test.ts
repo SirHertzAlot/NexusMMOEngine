@@ -284,6 +284,18 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
+  it("noclip toggles free flight on the avatar", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const client = await joinClient(url, "alice");
+    const on = await admin(client, "noclip", { on: true });
+    assert.equal(on.ok, true);
+    assert.match(on.message, /no-clip on for/);
+    const off = await admin(client, "noclip", { on: false });
+    assert.equal(off.ok, true);
+    assert.match(off.message, /no-clip off for/);
+    await client.close();
+  });
+
   it("god on maxes every skill; god off keeps them", async () => {
     const { rules } = loadGameRules();
     const mastery = new MasterySystem(rules.skills, () => 1000, rules.disciplines.disciplines);

@@ -43,6 +43,7 @@ import {
   Health,
   Locomotion,
   MotionType,
+  Noclip,
   PlayerIntent,
   ShapeKind,
   Transform,
@@ -315,6 +316,14 @@ export class CharacterSystem implements SimSystem {
     const my = PlayerIntent.my[e];
     const py = Transform.py[e];
     const deepHere = canSwim && depth >= SWIM_DEPTH;
+
+    // No-clip: free flight on the intent's vertical axis, no ground clamp,
+    // no gravity, no landing or diving transitions. The breath still runs.
+    if (hasComponent(sim.ecs, Noclip, e)) {
+      L.mode[e] = LocomotionMode.Fly;
+      Velocity.ly[e] = my * FLY_VERTICAL_SPEED * moveSpeedFactor(sim, e);
+      return;
+    }
 
     let mode = L.mode[e];
     if (mode === LocomotionMode.Fly) {

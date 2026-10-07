@@ -103,6 +103,13 @@ export const Needs = defineComponent({
 export const God = defineComponent();
 
 /**
+ * No-clip (A4): a tag, never replicated. Carriers move freely (vertical
+ * intent, no ground clamp, no gravity) and dungeon walls let them pass;
+ * the `noclip` admin command adds and removes it.
+ */
+export const Noclip = defineComponent();
+
+/**
  * BodyConfig — rigid-body description for the Jolt physics addon
  * (Phase 2). JS owns this component (authoritative config); the native
  * world owns the simulated state and writes results back into
@@ -160,6 +167,7 @@ export const COMPONENT_IDS = {
   CharacterRef: 13,
   Needs: 14,
   God: 15,
+  Noclip: 16,
 } as const;
 
 const U32 = 0xffffffffn;

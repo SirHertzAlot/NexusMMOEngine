@@ -8,7 +8,7 @@
  * world; the prebaked shell is what clients draw.
  */
 
-import { defineQuery } from "bitecs";
+import { defineQuery, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
@@ -26,6 +26,12 @@ export class DungeonWallSystem implements SimSystem {
     const seen = new Set<number>();
     for (let i = 0; i < ids.length; i++) {
       const e = ids[i];
+      // No-clip passes through walls: neither corrected nor remembered,
+      // so switching it off inside rock simply accepts the spot.
+      if (hasComponent(sim.ecs, C.Noclip, e)) {
+        this.last.delete(e);
+        continue;
+      }
       seen.add(e);
       const x = C.Transform.px[e];
       const z = C.Transform.pz[e];

@@ -121,6 +121,20 @@ describe("dungeon content and pool", () => {
     walls.step(sim);
     assert.deepEqual([C.Transform.px[e], C.Transform.pz[e]], [3, 5]);
   });
+
+  it("a noclip body passes through walls", () => {
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    const e = sim.spawn();
+    addComponent(sim.ecs, C.Transform, e);
+    addComponent(sim.ecs, C.Velocity, e);
+    addComponent(sim.ecs, C.Noclip, e);
+    const walls = new DungeonWallSystem(readLayout(fixture()));
+    C.Transform.px[e] = -1; // straight into the outer wall
+    C.Transform.pz[e] = 5;
+    walls.step(sim);
+    assert.deepEqual([C.Transform.px[e], C.Transform.pz[e]], [-1, 5]);
+  });
 });
 
 describe("dungeon instance", () => {

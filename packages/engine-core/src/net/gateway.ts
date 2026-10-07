@@ -90,7 +90,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
-import { applyFly, applyGod, applyHeal, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
@@ -1910,7 +1910,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, items, give, drop, loot, time, weather",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1959,6 +1959,25 @@ export class Gateway {
       }
     } else if (cmd.command === "god") {
       res = this.runGodCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "noclip") {
+      const parsed = NoclipArgsSchema.safeParse(cmd.args ?? {});
+      if (!parsed.success) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "usage: noclip {on, entity?}");
+        return;
+      }
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, target.error);
+        return;
+      }
+      res = { kind: "admin", command: cmd.command, ...applyNoclip(this.world, target.wireId, parsed.data.on) };
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
