@@ -3479,7 +3479,7 @@ export class Gateway {
         ? { ok: false as const, error: "that hand can't hold anything" }
         : this.items.equip(holder, a.item);
     } else {
-      result = this.items.unequip(holder, a.hand);
+      result = this.items.unequip(holder, "hand" in a ? a.hand : a.slot);
     }
     if (!result.ok) {
       this.sendError(s, 4005, result.error);

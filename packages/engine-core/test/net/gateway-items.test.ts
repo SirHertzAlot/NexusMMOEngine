@@ -32,10 +32,16 @@ import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
 let now = 0;
 let gw: Gateway | null = null;
 
-const POOL: PoolItemLike[] = ["a", "b", "c"].map((id, i) => ({
-  id, rank: "common", source: "mob", item: "sword", seed: i,
-  bundle: { Identity: { id, name: `Sword ${id}`, base: "sword" }, Rank: { id: "common", color: "#aaaaaa" }, Stats: { power: 10 } },
-}));
+const POOL: PoolItemLike[] = [
+  ...["a", "b", "c"].map((id, i) => ({
+    id, rank: "common", source: "mob", item: "sword", seed: i,
+    bundle: { Identity: { id, name: `Sword ${id}`, base: "sword" }, Rank: { id: "common", color: "#aaaaaa" }, Stats: { power: 10 } },
+  })),
+  {
+    id: "h", rank: "common", source: "chest", item: "helm", seed: 9,
+    bundle: { Identity: { id: "h", name: "Helm h", base: "helm" }, Rank: { id: "common", color: "#aaaaaa" }, Stats: { armour: 5 } },
+  },
+];
 
 function makeItems(): ItemService {
   const rules = engineDefaults();
@@ -44,6 +50,7 @@ function makeItems(): ItemService {
     mass: 1.3, length: 0.9, edge: 0.9, point: 0.8, hardness: 0.9, hand: "main", technique: "cut",
     models: ["pack/SM_Wep_Sword_01"],
   };
+  rules.items.bases.helm = { ...rules.items.fallback, slot: "head", models: ["pack/SM_Prop_Helm_01"] };
   return new ItemService({ defs: new ItemDefs(POOL, rules), loot: rules.loot, tickHz: 30 });
 }
 
@@ -188,6 +195,23 @@ describe("gateway: items", () => {
     await invP3;
     const dressed = await admin(alice, "inspect", { entity: "me" });
     assert.match(dressed.message, /"held":\{"main":"[^"]+"\}/);
+    await alice.close();
+  });
+
+  it("armour equips over the wire into its slot; unequip by slot puts it back", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const alice = await join(url, "alice");
+    const given = await admin(alice, "give", { base: "helm" });
+    assert.equal(given.ok, true, given.message);
+    let invP = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "equip", item: 2 }));
+    const worn = decodeControl<InventoryMessage>((await invP)[0]).worn;
+    assert.equal(worn?.head?.def, "h");
+    invP = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "unequip", slot: "head" }));
+    const bagged = decodeControl<InventoryMessage>((await invP)[0]);
+    assert.ok(bagged.bag.some((i) => i?.def === "h"), "helm is back in the bag");
+    assert.equal(bagged.worn?.head, null);
     await alice.close();
   });
 

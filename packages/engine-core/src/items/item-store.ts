@@ -22,10 +22,17 @@ export const ItemWhere = {
   Bag: 2,
   /** In a character's hand (roadmap M3b). */
   Held: 3,
+  /** Worn in a character's armour slot (roadmap U10). */
+  Worn: 4,
 } as const;
 
 /** Hand slots: index into a character's hands. */
 export const HandSlot = { Main: 0, Off: 1 } as const;
+
+/** Armour slots: index into a character's worn set, in rules slot order. */
+export const ArmourSlot = { head: 0, chest: 1, hands: 2, legs: 3, ring: 4, amulet: 5 } as const;
+export const ARMOUR_SLOTS = ["head", "chest", "hands", "legs", "ring", "amulet"] as const;
+export type ArmourSlotName = (typeof ARMOUR_SLOTS)[number];
 export type ItemWhereCode = (typeof ItemWhere)[keyof typeof ItemWhere];
 
 const INITIAL_CAPACITY = 1024;
@@ -51,6 +58,8 @@ export class ItemStore {
   private readonly bags = new Map<number, Uint32Array>();
   /** Item id held in each hand ([main, off]; 0: empty), per character. */
   private readonly handsOf = new Map<number, Uint32Array>();
+  /** Item id worn in each armour slot (ARMOUR_SLOTS order; 0: empty), per character. */
+  private readonly wornOf = new Map<number, Uint32Array>();
 
   constructor(
     /** Bag slots per character (rules loot.bagSlots). */
@@ -107,6 +116,9 @@ export class ItemStore {
     } else if (row.kind === LedgerKind.Hold && row.slot < 2) {
       this.hands(row.owner)[row.slot] = row.id;
       this.where[slot] = ItemWhere.Held;
+    } else if (row.kind === LedgerKind.Wear && row.slot < ARMOUR_SLOTS.length) {
+      this.worn(row.owner)[row.slot] = row.id;
+      this.where[slot] = ItemWhere.Worn;
     } else {
       this.where[slot] = row.kind === LedgerKind.Create ? ItemWhere.Free : ItemWhere.Ground;
     }
@@ -183,6 +195,23 @@ export class ItemStore {
     return h;
   }
 
+  /** Put an item in a character's armour slot (taken from wherever it was). */
+  wear(character: number, id: number, slot: number): void {
+    const at = this.mustSlot(id);
+    this.takeFromWherever(at, id);
+    this.worn(character)[slot] = id;
+    this.where[at] = ItemWhere.Worn;
+    this.owner[at] = character;
+    this.ledger?.record(LedgerKind.Wear, id, this.defs[at], character, slot, this.durability[at]);
+  }
+
+  /** A character's worn armour: item id per ARMOUR_SLOTS index, 0 when empty. Created empty on first use. */
+  worn(character: number): Uint32Array {
+    let w = this.wornOf.get(character);
+    if (!w) this.wornOf.set(character, (w = new Uint32Array(ARMOUR_SLOTS.length)));
+    return w;
+  }
+
   /** Empty bag slots a character has. */
   emptySlots(character: number): number {
     const bag = this.bag(character);
@@ -215,6 +244,9 @@ export class ItemStore {
     else if (where === ItemWhere.Held) {
       const h = this.handsOf.get(this.owner[slot]);
       if (h) for (let i = 0; i < h.length; i++) if (h[i] === id) h[i] = 0;
+    } else if (where === ItemWhere.Worn) {
+      const w = this.wornOf.get(this.owner[slot]);
+      if (w) for (let i = 0; i < w.length; i++) if (w[i] === id) w[i] = 0;
     }
   }
 

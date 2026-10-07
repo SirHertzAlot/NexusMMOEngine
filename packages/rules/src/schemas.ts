@@ -346,6 +346,9 @@ export const StatsSchema = z.strictObject({
 /** Which hand an item is held in: one hand, the off hand, both, or not held (armour, jewels). */
 export const Hand = z.enum(["main", "off", "both", "none"]);
 
+/** Where worn armour sits: none for held items, a body slot for armour. */
+export const ArmourSlot = z.enum(["none", "head", "chest", "hands", "legs", "ring", "amulet"]);
+
 /**
  * An item base's physical properties (docs/MASTERY-AND-COMBAT.md §3.1):
  * what a blow with it does, not a damage number. A composed item (the loot
@@ -366,6 +369,8 @@ export const ItemBaseRulesSchema = z.strictObject({
   /** Uses before it breaks. */
   durability: z.number().int().positive().default(100),
   hand: Hand.default("none"),
+  /** Armour slot it is worn in (U10); "none" for held items. */
+  slot: ArmourSlot.default("none"),
   /** The technique a plain attack with it uses (a combat.json technique). */
   technique: id.default("bludgeon"),
   /**

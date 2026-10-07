@@ -23,13 +23,15 @@ export type ItemHand = "main" | "off" | "both" | "none";
  * - drop: an item from the bag onto the ground at the player's feet;
  * - equip: an item from the bag into its hand (M3b), swapping what was
  *   there back into the bag (a two-handed item empties both hands);
- * - unequip: what a hand holds back into the bag.
+ *   armour goes to its slot instead (U10);
+ * - unequip: what a hand holds, or an armour slot wears, back into the bag.
  */
 export type ItemAction =
   | { kind: "item"; action: "pickup"; entity: string }
   | { kind: "item"; action: "drop"; item: number }
   | { kind: "item"; action: "equip"; item: number }
-  | { kind: "item"; action: "unequip"; hand: "main" | "off" };
+  | { kind: "item"; action: "unequip"; hand: "main" | "off" }
+  | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 
 /** One item as its holder sees it. */
 export interface ItemView {
@@ -56,12 +58,18 @@ export interface ItemView {
  * S→C (catalog §0x14): the player's bag, whole, after joining and after
  * every change. `bag[i]` is slot i's item, or null when the slot is empty.
  */
+/** Armour slots, in wear order. */
+export const ARMOUR_SLOT_NAMES = ["head", "chest", "hands", "legs", "ring", "amulet"] as const;
+export type ArmourSlotName = (typeof ARMOUR_SLOT_NAMES)[number];
+
 export interface InventoryMessage {
   kind: "inventory";
   bag: Array<ItemView | null>;
   /** What each hand holds (M3b); null: empty. A two-handed item is in `main`. */
   main?: ItemView | null;
   off?: ItemView | null;
+  /** What each armour slot wears (U10); null: empty. Absent from older servers. */
+  worn?: { [slot in ArmourSlotName]?: ItemView | null };
 }
 
 /**
