@@ -44,7 +44,7 @@ import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
 import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
-import { BagPanel } from "./ui/bag-panel.js";
+import { BagPanel, EMPTY_WORN, type Worn } from "./ui/bag-panel.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
@@ -165,6 +165,7 @@ export function App(): React.ReactElement {
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
+  const [worn, setWorn] = useState<Worn>(EMPTY_WORN);
   const [bagOpen, setBagOpen] = useState(false);
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
@@ -257,6 +258,7 @@ export function App(): React.ReactElement {
       onInventory: (inv) => {
         setBag(inv.bag);
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
+        setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
       onHit: (h) => {
         const player = clientRef.current?.playerEntity ?? null;
@@ -423,6 +425,7 @@ export function App(): React.ReactElement {
     setCast(null);
     setBag(null);
     setHands({ main: null, off: null });
+    setWorn(EMPTY_WORN);
     setBagOpen(false);
     setNearDrop(null);
     setQuests(null);
@@ -651,9 +654,10 @@ export function App(): React.ReactElement {
             <BagPanel
               bag={bag}
               hands={hands}
+              worn={worn}
               onDrop={(id) => client?.dropItem(id)}
               onEquip={(id) => client?.equip(id)}
-              onUnequip={(hand) => client?.unequip(hand)}
+              onUnequip={(slot) => client?.unequip(slot)}
             />
           )}
           {questsOpen && quests && <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />}
