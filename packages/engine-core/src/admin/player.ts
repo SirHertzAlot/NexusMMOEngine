@@ -64,6 +64,15 @@ export const FlyArgsSchema = z
 
 export type FlyArgs = z.infer<typeof FlyArgsSchema>;
 
+export const NoclipArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    on: z.boolean(),
+  })
+  .strict();
+
+export type NoclipArgs = z.infer<typeof NoclipArgsSchema>;
+
 export const GodArgsSchema = z
   .object({
     entity: z.string().min(1).max(32).default("me"),
@@ -127,4 +136,15 @@ export function applyGod(world: SimWorld, wireId: bigint, on: boolean): { ok: bo
   if (on) addComponent(world.ecs, C.God, eid);
   else removeComponent(world.ecs, C.God, eid);
   return { ok: true, message: `god-mode ${on ? "on for" : "off for"} ${wireId}` };
+}
+
+/** Grant or revoke no-clip (the Noclip tag: free flight, walls let go). */
+export function applyNoclip(world: SimWorld, wireId: bigint, on: boolean): { ok: boolean; message: string } {
+  const eid = world.resolveWireId(wireId);
+  if (eid < 0 || !hasComponent(world.ecs, C.Locomotion, eid)) {
+    return { ok: false, message: `entity ${wireId} has no Locomotion` };
+  }
+  if (on) addComponent(world.ecs, C.Noclip, eid);
+  else removeComponent(world.ecs, C.Noclip, eid);
+  return { ok: true, message: `no-clip ${on ? "on for" : "off for"} ${wireId}` };
 }
