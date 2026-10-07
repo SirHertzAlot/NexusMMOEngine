@@ -20,6 +20,7 @@
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",
     "editor:test": "npm test --workspace=@mmo-engine/editor",
+    "edge": "npm run server --workspace=@mmo-engine/edge",
     "server": "npm run server --workspace=@mmo-engine/engine-core",
     "bake:world": "npm run bake:world --workspace=@mmo-engine/engine-core",
     "convert:packs": "npm run build --workspace=@mmo-engine/art && npm run convert:packs --workspace=@mmo-engine/art --",

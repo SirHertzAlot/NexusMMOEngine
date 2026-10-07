@@ -43,6 +43,10 @@ service World
   # Slice D4: the region's committed dungeon runs, idempotent on instance
   - ReportDungeonResults(input: ReportDungeonResultsInput) => (ingested: []string)
 
+  # Slice S2: cross-region presence (state: replace + query)
+  - SetPresence(input: SetPresenceInput) => ()
+  - QueryPresence(input: QueryPresenceInput) => (online: map<string,string>)
+
 struct ChunkRange
   - x0: int32
   - x1: int32
@@ -119,6 +123,14 @@ struct SnapshotReportInput
   - tick: uint64
   - entityCount: uint64
   - digest: string
+
+struct SetPresenceInput
+  - regionId: string
+  - names: []string
+
+struct QueryPresenceInput
+  - regionId: string
+  - names: []string
 
 struct ReportDungeonResultsInput
   - regionId: string

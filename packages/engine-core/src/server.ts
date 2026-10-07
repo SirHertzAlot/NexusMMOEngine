@@ -663,9 +663,20 @@ async function main(): Promise<void> {
   }, body);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
+  // Cross-region presence (S2): the gateway reports online names and asks
+  // where friends play; without a world client both are inert. `worldClient`
+  // is declared below and assigned when WORLD_URL is set; these closures
+  // only run once players are around, long after.
   const gw: Gateway = new Gateway({
     port: PORT,
     sessionStore,
+    presence: {
+      report: (names) => void worldClient?.reportPresence(names),
+      query: (names) => {
+        if (!worldClient) return Promise.reject(new Error("no world client"));
+        return worldClient.queryPresence(names);
+      },
+    },
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
     body,
@@ -726,6 +737,7 @@ async function main(): Promise<void> {
   const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
   let worldClient: WorldClient | null = null;
   let migrationTimer: NodeJS.Timeout | null = null;
+  let presenceTimer: NodeJS.Timeout | null = null;
   if (WORLD_URL) {
     const parts = (process.env.REGION_CHUNK_RANGE ?? "0,0,4096,4096")
       .split(",")
@@ -776,6 +788,15 @@ async function main(): Promise<void> {
           console.warn(`[server] migration observe: ${(err as Error).message}`));
       }, 250);
       migrationTimer.unref();
+      // Cross-region presence (S2): refresh friends lists from the world
+      // directory on a slow timer, off the tick loop like everything here.
+      presenceTimer = setInterval(() => {
+        if (worldClient?.registered) {
+          void gw.syncPresence().catch((err: unknown) =>
+            console.warn(`[server] presence sync: ${(err as Error).message}`));
+        }
+      }, 30_000);
+      presenceTimer.unref();
     } else {
       console.warn(`[server] world registration failed; running standalone`);
     }
@@ -841,6 +862,7 @@ async function main(): Promise<void> {
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       if (migrationTimer) clearInterval(migrationTimer);
+      if (presenceTimer) clearInterval(presenceTimer);
       void worldClient?.stop();
       reloader.close();
     },

@@ -92,6 +92,23 @@ export const GetMigrationSchema = z.object({ migrationId: MIGRATION_ID }).strict
 /** Bearer token format: 256-bit hex. */
 export const BearerTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
+/** Character names playing on a region (roadmap S2 presence). */
+const PresenceName = z.string().min(1).max(32);
+
+export const SetPresenceSchema = z
+  .object({
+    regionId: REGION_ID,
+    names: z.array(PresenceName).max(1000),
+  })
+  .strict();
+
+export const QueryPresenceSchema = z
+  .object({
+    regionId: REGION_ID,
+    names: z.array(PresenceName).min(1).max(200),
+  })
+  .strict();
+
 /** One committed dungeon run (roadmap D4): mirrors the region's InstanceResult. */
 const DungeonKillSchema = z
   .object({
