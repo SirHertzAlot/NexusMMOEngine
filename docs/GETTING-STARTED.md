@@ -91,11 +91,15 @@ grass, rock, sand, snow and mud by biome, slope and height. The files go to
 npm start
 ```
 
-That runs the missing setup (codegen, bakes), then starts the authoritative
-server (ws://localhost:7777) and the browser client (http://localhost:5173)
-together. Ctrl+C stops both. For separate processes, see
+That runs the missing setup (codegen, bakes), then starts the region
+server (ws://localhost:7777), the edge (ws://localhost:3001,
+http://localhost:3000) and the browser client (http://localhost:5173)
+together. Ctrl+C stops them all. For separate processes, see
 [CONFIGURATION.md](CONFIGURATION.md): `npm start -- --server` runs only the
-game server, `npm run editor` the editor, `npm run world` the world server.
+game server, `npm run editor` the editor, `npm run world` the world server,
+`npm run edge` the edge. The full split topology (world, region, edge)
+is in [CLI.md](CLI.md#other-servers); players connect to the region until
+the client cutover (E3b).
 
 Some settings worth trying (full list in [CONFIGURATION.md](CONFIGURATION.md)):
 
