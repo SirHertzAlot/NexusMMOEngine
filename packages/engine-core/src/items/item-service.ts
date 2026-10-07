@@ -376,6 +376,7 @@ export class ItemService implements SimSystem {
       rank: defs.ranks[d],
       color: defs.colors[d],
       hand: HAND_NAME[defs.hand[d]],
+      slot: defs.slot[d],
       stats: { ...defs.stats[d] },
       durability: Math.round(this.store.durability[slot]),
       model: defs.models[d],

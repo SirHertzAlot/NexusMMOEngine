@@ -46,6 +46,8 @@ export interface ItemView {
   /** The rank's colour (#rrggbb), for names and borders. */
   color: string;
   hand: ItemHand;
+  /** Armour slot it is worn in (U10); "none" for held items, absent from older servers. */
+  slot?: string;
   /** The composed stats (power, armour, crit, …). */
   stats: Record<string, number>;
   /** Uses left before it breaks. */

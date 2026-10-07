@@ -14,7 +14,7 @@
  */
 
 import { useRef, useState } from "react";
-import type { ItemView } from "@mmo-engine/protocol";
+import { ARMOUR_SLOT_NAMES, type ArmourSlotName, type ItemView } from "@mmo-engine/protocol";
 /** Stats in a fixed, readable order; anything else follows alphabetically. */
 const STAT_ORDER = ["power", "armour", "block", "spell", "speed", "crit", "reach", "health", "stagger"];
 
@@ -45,6 +45,7 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
       <div className="text-xs text-muted-foreground">
         {item.rank} {item.base}
         {HAND_LABEL[item.hand] && <> · {HAND_LABEL[item.hand]}</>}
+        {item.hand === "none" && item.slot && item.slot !== "none" && <> · {item.slot}</>}
       </div>
       <div className="mt-1 grid grid-cols-2 gap-x-3 tabular-nums">
         {statLines(item.stats).map(([k, v]) => (
@@ -61,18 +62,32 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
 
 type Hands = { main: ItemView | null; off: ItemView | null };
 
-/** The hand slot an item goes into (a two-handed item rides in main), or null. */
-export function slotFor(item: ItemView): "main" | "off" | null {
-  if (item.hand === "none") return null;
-  return item.hand === "off" ? "off" : "main";
+/** What each armour slot wears; null: empty. */
+export type Worn = Record<ArmourSlotName, ItemView | null>;
+
+export const EMPTY_WORN: Worn = { head: null, chest: null, hands: null, legs: null, ring: null, amulet: null };
+
+function armourSlotOf(item: ItemView): ArmourSlotName | null {
+  const s = item.slot ?? "none";
+  return (ARMOUR_SLOT_NAMES as readonly string[]).includes(s) ? (s as ArmourSlotName) : null;
 }
 
 /**
- * What equipping `item` pushes out of the hands, by the server's swap
- * rules (ItemService.equip): main replaces main; off replaces off and a
- * two-handed main; two-handed empties both hands.
+ * The slot an item goes into: a hand (a two-handed item rides in main),
+ * an armour slot, or null when it can be neither held nor worn.
  */
-export function displaced(item: ItemView, hands: Hands): ItemView[] {
+export function slotFor(item: ItemView): "main" | "off" | ArmourSlotName | null {
+  if (item.hand !== "none") return item.hand === "off" ? "off" : "main";
+  return armourSlotOf(item);
+}
+
+/**
+ * What equipping `item` pushes out, by the server's swap rules
+ * (ItemService.equip/wear): main replaces main; off replaces off and a
+ * two-handed main; two-handed empties both hands; armour replaces only
+ * what its own slot wears.
+ */
+export function displaced(item: ItemView, hands: Hands, worn: Worn = EMPTY_WORN): ItemView[] {
   const out: ItemView[] = [];
   if (item.hand === "main") {
     if (hands.main) out.push(hands.main);
@@ -82,6 +97,9 @@ export function displaced(item: ItemView, hands: Hands): ItemView[] {
   } else if (item.hand === "both") {
     if (hands.main) out.push(hands.main);
     if (hands.off) out.push(hands.off);
+  } else {
+    const slot = armourSlotOf(item);
+    if (slot && worn[slot]) out.push(worn[slot]);
   }
   return out;
 }
@@ -97,9 +115,9 @@ export function sumStats(items: Array<ItemView | null>): Record<string, number> 
 }
 
 /** Each stat's change from equipping `item`, in statLines order, zeros dropped. */
-export function compareStats(item: ItemView, hands: Hands): Array<[string, number]> {
+export function compareStats(item: ItemView, hands: Hands, worn: Worn = EMPTY_WORN): Array<[string, number]> {
   const gain = { ...item.stats };
-  for (const o of displaced(item, hands)) for (const k in o.stats) gain[k] = (gain[k] ?? 0) - o.stats[k];
+  for (const o of displaced(item, hands, worn)) for (const k in o.stats) gain[k] = (gain[k] ?? 0) - o.stats[k];
   return statLines(gain);
 }
 
@@ -110,9 +128,10 @@ function signed(v: number): string {
   return v > 0 ? `+${v}` : `${v}`;
 }
 
-function ItemTooltip({ item, hands, top }: { item: ItemView; hands: Hands; top: number }): React.ReactElement {
-  const out = displaced(item, hands);
-  const delta = out.length ? compareStats(item, hands) : [];
+function ItemTooltip({ item, hands, worn, top }: { item: ItemView; hands: Hands; worn: Worn; top: number }): React.ReactElement {
+  const out = displaced(item, hands, worn);
+  const delta = out.length ? compareStats(item, hands, worn) : [];
+  const target = slotFor(item);
   return (
     <div
       role="tooltip"
@@ -120,9 +139,9 @@ function ItemTooltip({ item, hands, top }: { item: ItemView; hands: Hands; top: 
       style={{ top }}
     >
       <ItemDetails item={item} />
-      {item.hand !== "none" && (
+      {target !== null && (
         <div className="mt-2 border-t pt-1 text-xs">
-          <div className="text-muted-foreground">{out.length ? `vs ${out.map((o) => o.name).join(" + ")}` : "hand is empty"}</div>
+          <div className="text-muted-foreground">{out.length ? `vs ${out.map((o) => o.name).join(" + ")}` : "slot is empty"}</div>
           {out.length > 0 && (
             <div className="grid grid-cols-2 gap-x-3 tabular-nums">
               {delta.map(([k, v]) => (
@@ -134,7 +153,7 @@ function ItemTooltip({ item, hands, top }: { item: ItemView; hands: Hands; top: 
               {delta.length === 0 && <div className="text-muted-foreground">no change</div>}
             </div>
           )}
-          <div className="mt-1 text-muted-foreground">drag to a hand or double-click to equip</div>
+          <div className="mt-1 text-muted-foreground">drag to its slot or double-click to equip</div>
         </div>
       )}
     </div>
@@ -144,15 +163,17 @@ function ItemTooltip({ item, hands, top }: { item: ItemView; hands: Hands; top: 
 export function BagPanel({
   bag,
   hands,
+  worn,
   onDrop,
   onEquip,
   onUnequip,
 }: {
   bag: Array<ItemView | null>;
   hands: Hands;
+  worn: Worn;
   onDrop: (item: number) => void;
   onEquip: (item: number) => void;
-  onUnequip: (hand: "main" | "off") => void;
+  onUnequip: (slot: "main" | "off" | ArmourSlotName) => void;
 }): React.ReactElement {
   const [focus, setFocus] = useState<number | null>(null);
   const [hover, setHover] = useState<{ id: number; top: number } | null>(null);
@@ -163,7 +184,7 @@ export function BagPanel({
   const shown = focus !== null ? bag.find((i) => i?.id === focus) ?? null : null;
   const hovered = hover !== null ? bag.find((i) => i?.id === hover.id) ?? null : null;
   const used = bag.filter((i) => i !== null).length;
-  const totals = statLines(sumStats([hands.main, hands.off]));
+  const totals = statLines(sumStats([hands.main, hands.off, ...ARMOUR_SLOT_NAMES.map((s) => worn[s])]));
   const draggedItem = (): ItemView | null => {
     const d = dragging.current;
     if (!d?.startsWith("bag:")) return null;
@@ -225,8 +246,51 @@ export function BagPanel({
           );
         })}
       </div>
+      <div className="mb-1 grid grid-cols-3 gap-1" aria-label="armour">
+        {ARMOUR_SLOT_NAMES.map((slot) => {
+          const piece = worn[slot];
+          return (
+            <button
+              key={slot}
+              type="button"
+              className="flex items-center justify-between rounded border bg-background/60 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              style={{
+                ...(piece ? { borderColor: piece.color, color: piece.color } : { opacity: 0.6 }),
+                ...(over === `worn:${slot}` ? { outline: "2px solid currentColor", opacity: 1 } : {}),
+              }}
+              title={piece ? `${piece.name} (${slot}): activate or drag to the bag to take off` : `${slot}: empty`}
+              aria-label={`${slot} slot`}
+              draggable={!!piece}
+              onClick={() => piece && onUnequip(slot)}
+              onDragStart={(e) => {
+                dragging.current = `worn:${slot}`;
+                e.dataTransfer.setData(DRAG_TYPE, dragging.current);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={endDrag}
+              onDragOver={(e) => {
+                const item = draggedItem();
+                if (!item || slotFor(item) !== slot) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setOver(`worn:${slot}`);
+              }}
+              onDragLeave={() => setOver(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                const item = draggedItem();
+                if (item && slotFor(item) === slot) onEquip(item.id);
+                endDrag();
+              }}
+            >
+              <span className="text-muted-foreground">{slot}</span>
+              <span className="truncate">{piece ? piece.base : "—"}</span>
+            </button>
+          );
+        })}
+      </div>
       {totals.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground tabular-nums" aria-label="held stats">
+        <div className="mb-2 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground tabular-nums" aria-label="equipped stats">
           {totals.map(([k, v]) => (
             <span key={k}>
               {k} {v}
@@ -239,7 +303,7 @@ export function BagPanel({
         style={over === "bag" ? { outline: "2px solid currentColor" } : undefined}
         aria-label="bag slots"
         onDragOver={(e) => {
-          if (!dragging.current?.startsWith("hand:")) return;
+          if (!dragging.current?.startsWith("hand:") && !dragging.current?.startsWith("worn:")) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           setOver("bag");
@@ -251,6 +315,7 @@ export function BagPanel({
           e.preventDefault();
           const d = dragging.current;
           if (d?.startsWith("hand:")) onUnequip(d.slice(5) as "main" | "off");
+          else if (d?.startsWith("worn:")) onUnequip(d.slice(5) as ArmourSlotName);
           endDrag();
         }}
       >
@@ -262,13 +327,13 @@ export function BagPanel({
             style={item ? { borderColor: item.color, color: item.color } : undefined}
             aria-label={item ? item.name : "empty"}
             disabled={!item}
-            draggable={!!item && item.hand !== "none"}
+            draggable={!!item && slotFor(item) !== null}
             onMouseEnter={(e) => item && setHover({ id: item.id, top: e.currentTarget.offsetTop })}
             onMouseLeave={() => setHover(null)}
             onFocus={() => item && setFocus(item.id)}
             onClick={() => item && setFocus(item.id)}
             onDoubleClick={() => {
-              if (item && item.hand !== "none") {
+              if (item && slotFor(item) !== null) {
                 onEquip(item.id);
                 setFocus(null);
               }
@@ -286,12 +351,12 @@ export function BagPanel({
           </button>
         ))}
       </div>
-      {hovered && hover && <ItemTooltip item={hovered} hands={hands} top={hover.top} />}
+      {hovered && hover && <ItemTooltip item={hovered} hands={hands} worn={worn} top={hover.top} />}
       {shown ? (
         <div className="mt-2 border-t pt-2">
           <ItemDetails item={shown} />
           <div className="mt-2 flex gap-2">
-            {shown.hand !== "none" && (
+            {slotFor(shown) !== null && (
               <button
                 type="button"
                 className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"

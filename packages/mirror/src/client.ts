@@ -48,6 +48,7 @@ import {
   type DebugQuery,
   type DebugResponse,
   type DropsMessage,
+  type ArmourSlotName,
   type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
@@ -358,10 +359,14 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "equip", item })));
   }
 
-  /** Ask to put what a hand holds back in the bag (M3b, 0x13). */
-  unequip(hand: "main" | "off"): void {
+  /** Ask to put what a hand holds, or an armour slot wears, back in the bag (M3b/U10, 0x13). */
+  unequip(slot: "main" | "off" | ArmourSlotName): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "unequip", hand })));
+    const action =
+      slot === "main" || slot === "off"
+        ? { kind: "item", action: "unequip", hand: slot }
+        : { kind: "item", action: "unequip", slot };
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl(action)));
   }
 
   chat(channel: ChatChannel, text: string, to?: string): void {
