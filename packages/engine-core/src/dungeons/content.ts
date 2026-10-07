@@ -33,6 +33,12 @@ export const InstanceRulesSchema = z.strictObject({
   /** Loot rolls from the mob pool per creature killed, and per boss-room creature. */
   lootRollsPerKill: range,
   bossLootRolls: range,
+  /** Chests placed per run, in the lowest-id non-entrance rooms. */
+  chestsPerRun: z.number().int().min(0).max(64),
+  /** Loot rolls from the chest pool per chest opened. */
+  chestLootRolls: range,
+  /** How close a member must stand to open a chest, metres. */
+  chestOpenRadiusM: z.number().positive().max(100),
   /**
    * "on-report": nothing a run earns is kept until the instance reports its
    * result (a crash before that loses the run). The only mode so far.

@@ -171,6 +171,77 @@ describe("dungeon instance", () => {
     assert.equal(results.length, 1, "reported once");
   });
 
+  it("places chests per run and opens the nearest one into the result loot", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    const now = 2_000_000;
+    const inst = new DungeonInstance({
+      id: "run-chest", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [7, 8, 9], chestPool: [11, 12], onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    // One chest per non-entrance room (the fixture's room 1), closed.
+    assert.deepEqual(inst.chests.map((c) => [c.id, c.opened]), [["chest-0", false]]);
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    // Stand on the chest and open it: its rolls join the result loot.
+    C.Transform.px[avatar] = inst.chests[0].x;
+    C.Transform.pz[avatar] = inst.chests[0].z;
+    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    await until(() => inst.chests[0].opened);
+    // Opening again finds it empty: still one opened chest, no run yet.
+    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    await sleep(100);
+    assert.equal(inst.chests.filter((ch) => ch.opened).length, 1);
+    assert.equal(results.length, 0);
+    inst.end("abandoned");
+    assert.equal(results.length, 1);
+    const loot = results[0].loot.filter((l) => l.characterId === rec.id).map((l) => l.def);
+    assert.ok(loot.length >= 1 && loot.length <= 2, `1-2 chest rolls, got ${loot.length}`);
+    assert.ok(loot.every((d) => [11, 12].includes(d)), "chest rolls come from the chest pool");
+  });
+
+  it("the run state names each chest and whether it is opened", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-chest-state", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], chestPool: [11], onEnd: (r) => results.push(r), now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    await until(() => ctl(c).some((m) => m.op === "state"));
+    assert.deepEqual(
+      ctl(c).find((m) => m.op === "state")!.chests,
+      [{ id: "chest-0", opened: false }],
+    );
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    C.Transform.px[avatar] = inst.chests[0].x;
+    C.Transform.pz[avatar] = inst.chests[0].z;
+    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
+    assert.deepEqual(
+      ctl(c).filter((m) => m.op === "state").at(-1)!.chests,
+      [{ id: "chest-0", opened: true }],
+    );
+  });
+
   it("times out, and an empty run is abandoned", async () => {
     for (const [advance, want] of [[46 * 60_000, "timeout"], [121_000, "abandoned"]] as const) {
       SimWorld.resetEntityCursorForTesting();

@@ -12,7 +12,11 @@
  * is over.
  */
 
-export type DungeonOp = { kind: "dungeon"; op: "enter"; entrance: string } | { kind: "dungeon"; op: "state" };
+export type DungeonOp =
+  | { kind: "dungeon"; op: "enter"; entrance: string }
+  | { kind: "dungeon"; op: "state" }
+  /** Open the nearest unopened chest in reach (the server picks it). */
+  | { kind: "dungeon"; op: "open" };
 
 export interface DungeonEntranceView {
   id: string;
@@ -26,6 +30,6 @@ export type DungeonMessage =
   | { kind: "dungeon"; op: "entrances"; entrances: DungeonEntranceView[] }
   /** Go play there: connect to `endpoint` and say hello with `{token}`. */
   | { kind: "dungeon"; op: "transfer"; endpoint: string; token: string; instance: string; dungeon: string }
-  | { kind: "dungeon"; op: "state"; dungeon: string; secondsLeft: number; creaturesLeft: number; bossLeft: number }
+  | { kind: "dungeon"; op: "state"; dungeon: string; secondsLeft: number; creaturesLeft: number; bossLeft: number; chests: { id: string; opened: boolean }[] }
   /** `items`: what this character earned, put in their bag in the region. */
   | { kind: "dungeon"; op: "ended"; outcome: "cleared" | "timeout" | "abandoned"; items: number };

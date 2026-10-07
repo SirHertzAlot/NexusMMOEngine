@@ -5,7 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatClock, outcomeText, secondsLeft } from "../src/ui/dungeon.js";
+import { formatClock, outcomeText, secondsLeft, unopenedChests, type DungeonState } from "../src/ui/dungeon.js";
 import { entranceAt } from "../src/render/dungeon-entrances.js";
 
 describe("formatClock and secondsLeft", () => {
@@ -16,7 +16,7 @@ describe("formatClock and secondsLeft", () => {
   });
 
   it("counts down locally from the last state", () => {
-    const st = { kind: "dungeon", op: "state", dungeon: "D", secondsLeft: 100, creaturesLeft: 3, bossLeft: 1 } as const;
+    const st: DungeonState = { kind: "dungeon", op: "state", dungeon: "D", secondsLeft: 100, creaturesLeft: 3, bossLeft: 1, chests: [] };
     assert.equal(secondsLeft(st, 1000, 3500), 97.5);
     assert.equal(secondsLeft(st, 0, 1_000_000), 0);
   });
@@ -27,6 +27,21 @@ describe("outcomeText", () => {
     assert.equal(outcomeText({ kind: "dungeon", op: "ended", outcome: "cleared", items: 2 }).title, "Dungeon cleared");
     assert.equal(outcomeText({ kind: "dungeon", op: "ended", outcome: "cleared", items: 1 }).loot, "1 item waiting in your bag.");
     assert.equal(outcomeText({ kind: "dungeon", op: "ended", outcome: "timeout", items: 0 }).loot, "No loot this time.");
+  });
+});
+
+describe("unopenedChests", () => {
+  const st: DungeonState = {
+    kind: "dungeon", op: "state", dungeon: "D", secondsLeft: 100, creaturesLeft: 3, bossLeft: 1,
+    chests: [{ id: "chest-0", opened: false }, { id: "chest-1", opened: true }],
+  };
+  it("lists closed chests, none without a state", () => {
+    assert.deepEqual(unopenedChests(st), ["chest-0"]);
+    assert.deepEqual(unopenedChests(null), []);
+  });
+
+  it("is empty when every chest is opened", () => {
+    assert.deepEqual(unopenedChests({ ...st, chests: [{ id: "chest-0", opened: true }] }), []);
   });
 });
 

@@ -227,7 +227,11 @@ gains: the region's commit trains one use of each killer's weapon skill per
 kill, at the open-world hit difficulty and keyed by victim kind, through the
 character's saved sheet (no live sheet exists while its owner is away in the
 instance). The client's transfer (hop in and back out, run HUD, result) rides
-the `transfer`/`ended` messages. Not yet: depleted nodes, chests and traps.
+the `transfer`/`ended` messages. Chests: each run places `chestsPerRun`
+chests in the lowest-id non-entrance rooms; a member opens the nearest one
+in reach (`{op:"open"}`, 3 m) for 1–2 rolls from the chest pool into the
+run's loot, and the run state names each chest for the HUD's open button.
+Not yet: depleted nodes and traps.
 
 ### 3.5 Editor (D3)
 

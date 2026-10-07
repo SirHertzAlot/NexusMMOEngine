@@ -48,6 +48,14 @@ export interface InstanceMember {
   look: string;
 }
 
+/** A chest placed for the run: opened once, then it stays open. */
+export interface InstanceChest {
+  id: string;
+  x: number;
+  z: number;
+  opened: boolean;
+}
+
 /** What a run earned, reported once at its end (DUNGEONS-AND-LOOT.md §3.4 step 5). */
 export interface InstanceResult {
   instance: string;
@@ -78,6 +86,8 @@ export interface DungeonInstanceOptions {
   weaponOf?: (characterId: number) => Weapon | null;
   /** Item definitions a kill may roll (the mob pool); empty: no loot. */
   lootPool?: readonly number[];
+  /** Item definitions an opened chest may roll (the chest pool); empty: no loot. */
+  chestPool?: readonly number[];
   onEnd: (result: InstanceResult) => void;
   port?: number;
   transport?: TransportKind;
@@ -94,6 +104,8 @@ export class DungeonInstance {
   readonly id: string;
   readonly world = new SimWorld();
   readonly gateway: Gateway;
+  /** Chests placed for the run, in room-id order (`chest-0`, …). */
+  readonly chests: InstanceChest[] = [];
   readonly creatures: CreatureSystem;
   readonly startedAt: number;
   private readonly members = new Map<number, InstanceMember>();
@@ -151,7 +163,9 @@ export class DungeonInstance {
         if (this.online.size === 0) this.emptySince = this.now();
       },
       onMessage: (p, raw) => {
-        if ((raw as { op?: unknown }).op === "state") this.pushState(p);
+        const op = (raw as { op?: unknown }).op;
+        if (op === "state") this.pushState(p);
+        else if (op === "open") this.openFor(p);
         else p.send({ kind: "chat", channel: "system", text: "malformed dungeon op", from: "", entity: "" });
       },
     };
@@ -251,6 +265,11 @@ export class DungeonInstance {
   // ------------------------------------------------------------- inside
 
   private populate(): void {
+    const chestRooms = this.opts.layout.rooms
+      .filter((r) => r.id !== this.opts.layout.entranceRoom)
+      .sort((a, b) => a.id - b.id)
+      .slice(0, Math.max(0, this.opts.rules.chestsPerRun));
+    chestRooms.forEach((r, i) => this.chests.push({ id: `chest-${i}`, x: r.x, z: r.z, opened: false }));
     const rules = this.opts.game.rules.creatures.creatures;
     const fallback = this.opts.rules.fallbackCreature;
     for (const sp of this.opts.layout.spawns) {
@@ -311,6 +330,42 @@ export class DungeonInstance {
     }
   }
 
+  /**
+   * Open the nearest unopened chest in reach of a member. Its rolls join
+   * the run's loot for the opener; an opened chest stays open, so opening
+   * twice (or with nothing left) finds it empty.
+   */
+  private openFor(p: ExtensionPlayer): void {
+    if (p.characterId === null || !this.members.has(p.characterId)) return;
+    const e = p.entity();
+    if (e < 0) return this.notice(p, "you must be inside to open that");
+    const radius2 = this.opts.rules.chestOpenRadiusM ** 2;
+    let best: InstanceChest | null = null;
+    let bestD2 = Infinity;
+    for (const c of this.chests) {
+      if (c.opened) continue;
+      const d2 = (C.Transform.px[e] - c.x) ** 2 + (C.Transform.pz[e] - c.z) ** 2;
+      if (d2 < bestD2) {
+        best = c;
+        bestD2 = d2;
+      }
+    }
+    if (best === null) return this.notice(p, "the chests here are empty");
+    if (bestD2 > radius2) return this.notice(p, "no unopened chest in reach");
+    best.opened = true;
+    const pool = this.opts.chestPool ?? [];
+    if (pool.length > 0) {
+      const [lo, hi] = this.opts.rules.chestLootRolls;
+      const rolls = lo + Math.floor(this.rand() * (hi - lo + 1));
+      for (let i = 0; i < rolls; i++) this.loot.push({ characterId: p.characterId, def: pool[Math.floor(this.rand() * pool.length)] });
+    }
+    this.pushState(p);
+  }
+
+  private notice(p: ExtensionPlayer, text: string): void {
+    p.send({ kind: "chat", channel: "system", text, from: "", entity: "" });
+  }
+
   private pushState(p: ExtensionPlayer): void {
     const left = this.remaining();
     p.send({
@@ -320,6 +375,7 @@ export class DungeonInstance {
       secondsLeft: Math.max(0, Math.round((this.startedAt + this.opts.rules.timeLimitMinutes * 60_000 - this.now()) / 1000)),
       creaturesLeft: left.creatures,
       bossLeft: left.boss,
+      chests: this.chests.map((c) => ({ id: c.id, opened: c.opened })),
     });
   }
 

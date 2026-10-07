@@ -9,7 +9,7 @@ The design behind each item lives in the linked doc; this page is the
 index and the status board, not the spec.
 
 | Status | Meaning |
-|---|---|
+| --- | --- |
 | ✅ | Built and merged |
 | 🚧 | In progress: partly built and merged, or on a branch or open PR |
 | ⏭️ | Next up |
@@ -78,7 +78,7 @@ Developer tooling is mounted only in the editor's play mode.
 Doc: [`EDITOR.md`](EDITOR.md)
 
 | # | Item | Status | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` starts the server and editor development environment | ✅ | `scripts/start.mjs` (`npm start -- --dev`) starts `@mmo-engine/editor`; `npm run editor` starts the editor alone |
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
@@ -102,7 +102,7 @@ server, and logs them. Source definitions (prefabs, species, rules files)
 stay read-only here; this edits the running game.
 
 | # | Item | Status | Needs |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands; the admin console is also in the editor's play-mode debugger (#111) |
 | A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays; click-to-pick in the editor's game view (E6) picks the entity |
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
@@ -117,7 +117,7 @@ editor with workspaces for every engine feature, scenes and game flow,
 loadable modules, a database editor and production tools.
 
 | # | Item | Status | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
 | EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
@@ -154,7 +154,7 @@ Everything here is React DOM over the world canvas, fed by the server
 [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md).
 
 | # | Item | Status | Needs |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | ✅ | Health, stamina and mana live; mana from 0x1c, plus a cast bar for the player's own casts (#123) |
 | U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); not persisted yet, and `restore()` waits for food and drink items |
@@ -173,7 +173,7 @@ Everything here is React DOM over the world canvas, fed by the server
 ## 3. Characters, combat and social
 
 | # | Item | Status | Doc |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
 | C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | ✅ | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
@@ -193,7 +193,7 @@ Everything here is React DOM over the world canvas, fed by the server
 ## 4. World, content and generation
 
 | # | Item | Status | Doc |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | — | World bake (4 × 4 km, climate-driven survey, glaciers, volcano) | ✅ | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 1 |
 | — | Server streaming of chunks round players | ✅ | 〃 Phase 2 |
 | — | Client terrain: streamed chunks near, the coarse map to the horizon, water, sky, weather | ✅ | 〃 Phase 3, [`CLIENT-FX.md`](CLIENT-FX.md) |
@@ -208,14 +208,14 @@ Everything here is React DOM over the world canvas, fed by the server
 | R2 | Prefab builder | ✅ | 〃 |
 | L1 | Loot pool bake | ✅ | 〃 |
 | C1 (crafting) | Materials, recipes, tradability | ✅ | 〃 |
-| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Region side: `WorldClient.reportDungeonResults` sends the `instances.db` unreported batch over webrpc (`ReportDungeonResults`, validated), and the save timer flushes it with no overlapping requests, marking only what the world confirms. World side: `WorldCore.reportDungeonResults` records one `dungeon_run` row per run, idempotent on `instance`. Still open: depleted nodes, chests and traps, skill gains, the client's transfer |
+| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 🚧 | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Region side: `WorldClient.reportDungeonResults` sends the `instances.db` unreported batch over webrpc (`ReportDungeonResults`, validated), and the save timer flushes it with no overlapping requests, marking only what the world confirms. World side: `WorldCore.reportDungeonResults` records one `dungeon_run` row per run, idempotent on `instance`. Skill gains: commit trains the killer's weapon skill per kill. Chests: placed per run from the rules, opened in reach for chest-pool loot, HUD button. Still open: depleted nodes and traps |
 | PCG1 | PICG native cook addon | ✅ | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 
 ## 5. Engine, physics and native libraries
 
 | # | Item | Status | PR |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | — | Jolt physics; automatic colliders for every entity | ✅ | #38 |
 | — | uWebSockets.js transport (ws as fallback) | ✅ | #39 |
 | — | DetourCrowd steering | ✅ | #40 |
@@ -233,7 +233,7 @@ Doc: [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md). Its E1–E6 are the
 split's slices, not the editor's E items.
 
 | # | Item | Status | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | ✅ | (#83) |
 | E2 | Internal channel edge↔core (`packages/channel`): framed TCP, heartbeats, reconnect | ✅ | (#89) |
 | E3 | Core serves the edge channel; durable sessions; tick, delta and snapshot pushes | ✅ | Additive: players still connect to the core (#100) |
@@ -249,7 +249,7 @@ split's slices, not the editor's E items.
 Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 
 | # | Item | Status |
-|---|---|---|
+| --- | --- | --- |
 | A | Core and registry: `WorldCore`, SurrealDB schema, webrpc, region auth, heartbeats | ✅ |
 | B | Region migration (border hand-off) | ✅ (arbitration #119, live hand-off #122) |
 | C | Accounts on the world server | 📋 (folded into C1 above) |
@@ -261,7 +261,7 @@ Doc: [`ALPHA-PLAN.md`](ALPHA-PLAN.md): what alpha means, its exit
 criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 | # | Item | Status | Needs |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ✅ | Pickup (E), bag (B), rank-coloured labels and beams; bags in memory until P2a |
 | M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | ✅ | Held models ride the appearance JSON; equip/unequip on 0x13; starter sword once per character per run |
 | M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | ✅ | M3b |
@@ -284,6 +284,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-06**: D4 chests (in progress): runs place `chestsPerRun` chests in the lowest-id non-entrance rooms; members open the nearest in reach (`{op:"open"}`, 3 m) for 1–2 rolls from the chest pool into the result loot; the run state names each chest and the HUD shows an open button. Depleted nodes and traps remain.
 - **2026-10-06**: Editor scope tree (in progress): shared data-driven outliner (`ScopeNode` + `flattenVisible`/`breadcrumb`/`toggleOpen`, `ScopeTree` over `TreeItem`), proven on the World tree with identical rows; LiveOps/story/release/database trees follow instead of reimplementing open/selected/expand.
 - **2026-10-06**: E5 complete: developer panels no longer mount in the player client. `npm run dev` now starts the server and editor; debugger controls remain exclusively in the editor's Play Mode.
 - **2026-10-06**: D4 region report (in progress): `WorldClient.reportDungeonResults` sends the region's unreported dungeon runs to the world with the bearer token and returns the ingested instance ids; the world's `ReportDungeonResults` ingest is the next slice.
@@ -398,7 +399,6 @@ Newest first. One line per merged PR or decision.
 - **2026-09-30**: U6 chat panel: say/yell/emote tabs, 50-line history,
   send-on-Enter over MirrorClient.chat()/onChat; verified with two live
   clients. Whispers/party/guild/reply await S2–S4.
-
 
 - **2026-09-30**: A4 first slice: `teleport` (ground snap, stilled
   velocity), `heal` (fill from max), `fly` (ability bit) admin commands.
