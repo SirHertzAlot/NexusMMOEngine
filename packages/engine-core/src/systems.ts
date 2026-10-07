@@ -39,6 +39,7 @@ import { Ability, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import {
   AssetRef,
   BodyConfig,
+  God,
   Health,
   Locomotion,
   MotionType,
@@ -362,7 +363,7 @@ export class CharacterSystem implements SimSystem {
     const under = surface !== null && Transform.py[e] + HEAD_HEIGHT < surface;
     const change = under ? -dt / BREATH_SECONDS : (BREATH_RECOVERY * dt) / BREATH_SECONDS;
     L.breath[e] = Math.min(1, Math.max(0, L.breath[e] + change));
-    if (under && L.breath[e] <= 0 && hasComponent(sim.ecs, Health, e)) {
+    if (under && L.breath[e] <= 0 && hasComponent(sim.ecs, Health, e) && !hasComponent(sim.ecs, God, e)) {
       Health.current[e] = Math.max(0, Health.current[e] - DROWN_DAMAGE_PER_SECOND * dt);
     }
   }

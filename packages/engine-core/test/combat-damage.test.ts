@@ -49,7 +49,7 @@ function setup(weapon: Weapon | null = SWORD, skills?: CombatSkills) {
       sim.endTick();
     }
   };
-  return { e, target, combat, run };
+  return { e, target, combat, run, sim };
 }
 
 const hitTick = (move: number): number => 1 + Math.round(combatMove(move)!.hitAt! * 30);
@@ -69,6 +69,17 @@ describe("combat damage", () => {
     assert.ok(Math.abs(C.Health.current[t] - (100 - hits[0].amount)) < 1e-3);
     w.run(10);
     assert.equal(w.combat.drainHits().length, 0, "one strike per move");
+  });
+
+  it("a god takes no damage from a landed hit", () => {
+    const w = setup();
+    const t = w.target(0, 1); // ahead (+Z, yaw 0)
+    addComponent(w.sim.ecs, C.God, t);
+    w.run(hitTick(Move.SwordA), IntentButton.Attack);
+    const hits = w.combat.drainHits();
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].outcome, "hit");
+    assert.equal(C.Health.current[t], 100);
   });
 
   it("misses what is behind, out of reach, or above", () => {

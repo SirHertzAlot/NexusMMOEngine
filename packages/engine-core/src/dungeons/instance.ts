@@ -396,7 +396,7 @@ export class DungeonInstance {
         if (e < 0 || !hasComponent(this.world.ecs, C.Health, e)) continue;
         if ((C.Transform.px[e] - t.x) ** 2 + (C.Transform.pz[e] - t.z) ** 2 > r2) continue;
         t.sprung = true;
-        C.Health.current[e] = Math.max(0, C.Health.current[e] - this.opts.rules.trapHarm);
+        if (!hasComponent(this.world.ecs, C.God, e)) C.Health.current[e] = Math.max(0, C.Health.current[e] - this.opts.rules.trapHarm);
         for (const o of this.online.values()) {
           this.notice(o, "a trap springs shut!");
           this.pushState(o);

@@ -90,7 +90,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
-import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { applyFly, applyGod, applyHeal, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
@@ -1910,7 +1910,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, items, give, drop, loot, time, weather",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, items, give, drop, loot, time, weather",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1952,6 +1952,13 @@ export class Gateway {
       }
     } else if (cmd.command === "teleport" || cmd.command === "heal" || cmd.command === "fly" || cmd.command === "injure" || cmd.command === "skill") {
       res = this.runPlayerCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "god") {
+      res = this.runGodCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -2187,6 +2194,31 @@ export class Gateway {
     if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
     const r = applyFly(this.world, target.wireId, parsed.data.on);
     if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+    return { kind: "admin", command, ok: true, message: r.message };
+  }
+
+  private runGodCommand(s: ClientSession, command: string, args: unknown): AdminResult {
+    const parsed = GodArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command, ok: false, message: "usage: god {on, entity?}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+    const r = applyGod(this.world, target.wireId, parsed.data.on);
+    if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+    // Godhood peaks every skill (value and peak), like a lifetime of use
+    // at once; switching it off keeps what was learned.
+    if (parsed.data.on && this.mastery) {
+      const eid = this.world.resolveWireId(target.wireId);
+      if (eid >= 0) {
+        const sheet = this.mastery.sheetOf(eid);
+        const max = this.mastery.index.rules.max;
+        for (let i = 0; i < sheet.value.length; i++) {
+          sheet.value[i] = max;
+          sheet.peak[i] = max;
+        }
+      }
+    }
     return { kind: "admin", command, ok: true, message: r.message };
   }
 

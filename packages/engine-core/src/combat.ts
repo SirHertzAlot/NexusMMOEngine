@@ -54,7 +54,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
 import type { DamageInput, PartState, RuleHooks } from "@mmo-engine/rules";
-import { Action, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
+import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
 import { ATTACK_COST, DODGE_COST, type StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
@@ -328,7 +328,7 @@ export class CombatSystem implements SimSystem {
           state = r.state;
           if (r.lost.length > 0) lost = r.lost;
         } else if (!body) {
-          Health.current[t] = Math.max(0, Health.current[t] - amount);
+          if (!hasComponent(sim.ecs, God, t)) Health.current[t] = Math.max(0, Health.current[t] - amount);
         }
         this.attackers.set(t, e);
       }

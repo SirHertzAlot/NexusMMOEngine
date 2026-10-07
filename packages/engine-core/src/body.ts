@@ -48,7 +48,7 @@
 
 import { addComponent, defineComponent, defineQuery, hasComponent, Types } from "bitecs";
 import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks, type TreatmentKind } from "@mmo-engine/rules";
-import { Action, Health, PlayerIntent, Transform } from "./components.js";
+import { Action, God, Health, PlayerIntent, Transform } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 
@@ -368,8 +368,14 @@ export class BodySystem implements SimSystem {
    */
   applyBlow(sim: SimWorld, e: number, part: string, kind: DamageKind, amount: number): BlowResult {
     this.ensure(sim, e);
-    this.sync(e);
     const L = this.layout;
+    // A god is never harmed: report the part and its unharmed state.
+    if (hasComponent(sim.ecs, God, e)) {
+      let g = L.index.get(part) ?? L.root;
+      while (this.state(e, g) === DISMEMBERED && L.parent[g] >= 0) g = L.parent[g];
+      return { part: L.ids[g], state: PART_STATES[this.state(e, g)], lost: [] };
+    }
+    this.sync(e);
     let i = L.index.get(part) ?? L.root;
     // A part that is gone can't be struck: the blow lands on what it hung from.
     while (this.state(e, i) === DISMEMBERED && L.parent[i] >= 0) i = L.parent[i];
