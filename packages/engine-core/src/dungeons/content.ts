@@ -33,6 +33,12 @@ export const InstanceRulesSchema = z.strictObject({
   /** Loot rolls from the mob pool per creature killed, and per boss-room creature. */
   lootRollsPerKill: range,
   bossLootRolls: range,
+  /** Traps armed per run, in the lowest-id non-entrance rooms. */
+  trapsPerRun: z.number().int().min(0).max(64),
+  /** Health a sprung trap takes, once, then it is spent. */
+  trapHarm: z.number().min(1).max(1000),
+  /** How close a member must stand to spring a trap, metres. */
+  trapTriggerRadiusM: z.number().positive().max(100),
   /** Chests placed per run, in the lowest-id non-entrance rooms. */
   chestsPerRun: z.number().int().min(0).max(64),
   /** Loot rolls from the chest pool per chest opened. */

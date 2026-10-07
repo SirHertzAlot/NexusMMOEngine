@@ -242,6 +242,67 @@ describe("dungeon instance", () => {
     );
   });
 
+  it("springs a trap under a member for the rules harm, once", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-trap", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], onEnd: (r) => results.push(r), now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    // Traps in the lowest-id non-entrance rooms, unsprung.
+    assert.deepEqual(inst.traps.map((t) => [t.id, t.sprung]), [["trap-0", false]]);
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    C.Transform.px[avatar] = inst.traps[0].x;
+    C.Transform.pz[avatar] = inst.traps[0].z;
+    const before = C.Health.current[avatar];
+    await until(() => inst.traps[0].sprung);
+    assert.equal(before - C.Health.current[avatar], content.rules.trapHarm);
+    // A spent trap never fires again.
+    await sleep(200);
+    assert.equal(before - C.Health.current[avatar], content.rules.trapHarm);
+  });
+
+  it("the run state names each trap and whether it is sprung", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const inst = new DungeonInstance({
+      id: "run-trap-state", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    await until(() => ctl(c).some((m) => m.op === "state"));
+    assert.deepEqual(
+      ctl(c).find((m) => m.op === "state")!.traps,
+      [{ id: "trap-0", sprung: false }],
+    );
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    C.Transform.px[avatar] = inst.traps[0].x;
+    C.Transform.pz[avatar] = inst.traps[0].z;
+    await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
+    assert.deepEqual(
+      ctl(c).filter((m) => m.op === "state").at(-1)!.traps,
+      [{ id: "trap-0", sprung: true }],
+    );
+  });
+
   it("times out, and an empty run is abandoned", async () => {
     for (const [advance, want] of [[46 * 60_000, "timeout"], [121_000, "abandoned"]] as const) {
       SimWorld.resetEntityCursorForTesting();

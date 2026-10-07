@@ -56,6 +56,14 @@ export interface InstanceChest {
   opened: boolean;
 }
 
+/** A trap armed for the run: sprung once under a member, then spent. */
+export interface InstanceTrap {
+  id: string;
+  x: number;
+  z: number;
+  sprung: boolean;
+}
+
 /** What a run earned, reported once at its end (DUNGEONS-AND-LOOT.md §3.4 step 5). */
 export interface InstanceResult {
   instance: string;
@@ -106,6 +114,8 @@ export class DungeonInstance {
   readonly gateway: Gateway;
   /** Chests placed for the run, in room-id order (`chest-0`, …). */
   readonly chests: InstanceChest[] = [];
+  /** Traps armed for the run, in room-id order (`trap-0`, …). */
+  readonly traps: InstanceTrap[] = [];
   readonly creatures: CreatureSystem;
   readonly startedAt: number;
   private readonly members = new Map<number, InstanceMember>();
@@ -265,6 +275,11 @@ export class DungeonInstance {
   // ------------------------------------------------------------- inside
 
   private populate(): void {
+    const trapRooms = this.opts.layout.rooms
+      .filter((r) => r.id !== this.opts.layout.entranceRoom)
+      .sort((a, b) => a.id - b.id)
+      .slice(0, Math.max(0, this.opts.rules.trapsPerRun));
+    trapRooms.forEach((r, i) => this.traps.push({ id: `trap-${i}`, x: r.x, z: r.z, sprung: false }));
     const chestRooms = this.opts.layout.rooms
       .filter((r) => r.id !== this.opts.layout.entranceRoom)
       .sort((a, b) => a.id - b.id)
@@ -320,6 +335,7 @@ export class DungeonInstance {
 
   private direct(): void {
     if (this.outcome) return;
+    this.springTraps();
     const now = this.now();
     if (this.boss.size > 0 && this.remaining().boss === 0) this.end("cleared");
     else if (now - this.startedAt >= this.opts.rules.timeLimitMinutes * 60_000) this.end("timeout");
@@ -366,6 +382,30 @@ export class DungeonInstance {
     p.send({ kind: "chat", channel: "system", text, from: "", entity: "" });
   }
 
+  /**
+   * Spring every armed trap a member stands on. A trap takes the rules
+   * harm once (direct Health damage, like hunger at zero: DeathSystem
+   * below handles the kill) and is spent; the party hears it go off.
+   */
+  private springTraps(): void {
+    const r2 = this.opts.rules.trapTriggerRadiusM ** 2;
+    for (const t of this.traps) {
+      if (t.sprung) continue;
+      for (const p of this.online.values()) {
+        const e = p.entity();
+        if (e < 0 || !hasComponent(this.world.ecs, C.Health, e)) continue;
+        if ((C.Transform.px[e] - t.x) ** 2 + (C.Transform.pz[e] - t.z) ** 2 > r2) continue;
+        t.sprung = true;
+        C.Health.current[e] = Math.max(0, C.Health.current[e] - this.opts.rules.trapHarm);
+        for (const o of this.online.values()) {
+          this.notice(o, "a trap springs shut!");
+          this.pushState(o);
+        }
+        break;
+      }
+    }
+  }
+
   private pushState(p: ExtensionPlayer): void {
     const left = this.remaining();
     p.send({
@@ -376,6 +416,7 @@ export class DungeonInstance {
       creaturesLeft: left.creatures,
       bossLeft: left.boss,
       chests: this.chests.map((c) => ({ id: c.id, opened: c.opened })),
+      traps: this.traps.map((t) => ({ id: t.id, sprung: t.sprung })),
     });
   }
 
