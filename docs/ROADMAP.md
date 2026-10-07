@@ -284,6 +284,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-06**: Edge run story: root `npm run edge`, booted beside the region by `npm start`, and a split-topology recipe (world, region, edge) in CLI.md with the honest note that players still connect to the region until E3b.
 - **2026-10-06**: S2 cross-region presence (in progress): the world keeps a name-to-region directory (report replaces, queries map, Memory + Surreal) served over webrpc with a region client; gateways report on login/logout and merge world rows into friends lists on a 30 s sync (local rows win, merges only add). Cross-region block filtering is a documented gap.
 - **2026-10-06**: U10 armour wear (in progress): bases carry a slot, the store wears one item per slot, equip routes armour there (displacing to the bag), unequip takes a slot over the wire, and worn items persist (Wear ledger kind), rebake, and show in the inventory message. Panel slots and mitigation next.
 - **2026-10-06**: U10 panel slots (in progress): the bag panel shows the six wear slots with unequip buttons, drags a bag item onto its slot to wear it (worn onto the bag to take off), double-click wears, the tooltip compares against the worn piece, and the stat totals include worn gear. Mitigation next.

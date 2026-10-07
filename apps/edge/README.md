@@ -28,8 +28,8 @@ not drop player connections. Plan: [`docs/EDGE-CORE-SPLIT.md`](../../docs/EDGE-C
 ## Run
 
 ```sh
-npm run server --workspace=@mmo-engine/edge   # builds, then boots
-curl localhost:3000/health                    # {"ok":true,"core":"down"} until a core serves the channel
+npm run edge                       # builds, then boots (also started by npm start)
+curl localhost:3000/health         # {"ok":true,"core":"down"} until a core serves the channel
 ```
 
 | Env | Default | What |

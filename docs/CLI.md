@@ -104,14 +104,29 @@ its folder) before engine-core's tests use it.
 
 ## Other servers
 
-The game server runs alone by default. These add the world server and
-the edge in front of it.
+`npm start` boots the region server and the edge together (plus the
+client, or the editor with `--dev`). These run each piece alone.
 
 | Command | What it does |
 |---|---|
+| `npm run server` | The region (port 7777): the gateway players connect to, plus the simulation |
+| `npm run edge` | The edge: client WebSocket (:3001) and HTTP (:3000), packet routing, `GET /metrics` |
 | `npm run world` | The world server (port 7780): region registry, migration, system of record |
 | `npm run world:db` | A local SurrealDB for the world server (needs `surreal` installed) |
-| `npm run server -w @mmo-engine/edge` | The edge: client WebSocket and HTTP, packet routing, `GET /metrics` |
+
+The split topology, three terminals from the repo root:
+
+```sh
+npm run world                                  # the world server on :7780
+WORLD_URL=http://127.0.0.1:7780 WORLD_API_KEY=dev-secret npm run server   # the region, registered
+npm run edge                                   # the edge, linked over the core channel
+```
+
+Players still connect to the region (`ws://localhost:7777`, the login
+screen's server URL) until the client cutover (E3b); the edge answers
+`core.unavailable` for core-bound packets while no core serves the
+channel. `curl localhost:3000/health` reports the link
+(`{"ok":true,"core":"up"|"down"}`).
 
 Prometheus and Grafana configs for `/metrics` are in `docs/prometheus/`
 and `docs/grafana/`.
@@ -140,6 +155,7 @@ Set these before `npm start` or `npm run server`.
 | `MMO_INSTANCE_HOST` | localhost | Host clients reach dungeon instances at |
 | `WORLD_URL`, `WORLD_API_KEY`, `REGION_ID`, `REGION_CHUNK_RANGE`, `REGION_ENDPOINT`, `REGION_CAPACITY` | standalone | Register as a region with a world server |
 | `CORE_CHANNEL_PORT` | 4000 | The edge's internal channel to the core |
+| `EDGE_HTTP_PORT`, `EDGE_WS_PORT` | 3000, 3001 | The edge's HTTP and client WebSocket ports |
 
 The full list with explanations is at the top of
 `packages/engine-core/src/server.ts` and `packages/engine-core/src/bake-world.ts`.

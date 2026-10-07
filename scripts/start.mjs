@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * `npm start`: one command from a fresh clone to a running game. It does
- * whatever setup is missing, then starts the game server and the player's
- * client (http://localhost:5173), each line of their output prefixed with
- * its name. Ctrl+C, or either one exiting, stops both.
+ * whatever setup is missing, then starts the game server, the edge, and
+ * the player's client (http://localhost:5173), each line of their output
+ * prefixed with its name. Ctrl+C, or any one exiting, stops them all.
  *
  * Setup, each step only when needed (a second start goes straight to the
  * server):
@@ -102,6 +102,10 @@ if (!flag("--no-setup")) setup();
 // ---- the server and development surface
 
 const SERVER = { name: "server", args: ["run", "server"] };
+// The edge (client WebSocket :3001, HTTP :3000) boots beside the region
+// and links over the core channel; players still connect to the region
+// directly until the client cutover (E3b).
+const EDGE = { name: "edge", args: ["run", "edge"] };
 const CLIENT = {
   name: "client",
   args: ["run", "dev", "--workspace=@mmo-engine/client"],
@@ -160,11 +164,19 @@ function run(p, onLine = () => {}) {
 }
 
 // The server first: its build compiles the shared packages the client
-// needs too, and the client connects to it. The client starts once the
-// server is listening.
+// needs too, and the client connects to it. The edge boots beside it (it
+// links over the core channel whenever the region is up, independently).
+// The client starts once the server is listening.
 let clientStarted = serverOnly;
+let edgeStarted = false;
 run(SERVER, (line) => {
-  if (clientStarted || !/listening on/.test(line)) return;
+  if (!/listening on/.test(line)) return;
+  if (!edgeStarted) {
+    edgeStarted = true;
+    run(EDGE);
+    log("edge on http://localhost:3000 (health) and ws://localhost:3001");
+  }
+  if (clientStarted) return;
   clientStarted = true;
   run(dev ? EDITOR : CLIENT);
   log(dev ? "open http://localhost:5174 (editor)" : "open http://localhost:5173");
