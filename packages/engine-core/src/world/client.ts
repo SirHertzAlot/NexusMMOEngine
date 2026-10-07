@@ -239,6 +239,38 @@ export class WorldClient {
     return res["migration"] as MigrationRecord;
   }
 
+  /**
+   * Replace the region's online character names (roadmap S2 presence).
+   * Best-effort like snapshots: a failure reports through onError and
+   * the next login/logout retries. Throws nothing.
+   */
+  async reportPresence(names: string[]): Promise<void> {
+    if (this.stopped || !this.lease) return;
+    try {
+      await this.transport.call(
+        "SetPresence",
+        { input: { regionId: this.opts.regionId, names } },
+        this.lease.token,
+      );
+    } catch (err) {
+      this.fail(err, "reportPresence");
+    }
+  }
+
+  /**
+   * Where queried names play, by region id (null: nowhere). Throws on
+   * transport failure, like the migration ops: the caller keeps its
+   * local presence until the world answers.
+   */
+  async queryPresence(names: string[]): Promise<Record<string, string | null>> {
+    const res = await this.transport.call(
+      "QueryPresence",
+      { input: { regionId: this.opts.regionId, names } },
+      this.token(),
+    );
+    return res["online"] as Record<string, string | null>;
+  }
+
   /** Stop heartbeats and best-effort deregister. Never throws. */
   async stop(): Promise<void> {
     this.stopped = true;

@@ -27,7 +27,9 @@ import {
   DungeonResultsReportSchema,
   GetMigrationSchema,
   HeartbeatSchema,
+  QueryPresenceSchema,
   RegisterRegionSchema,
+  SetPresenceSchema,
   SnapshotReportSchema,
 } from "../schema.js";
 import { WorldError } from "../types.js";
@@ -185,6 +187,29 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return core.reportDungeonResults(regionId, input);
+    }),
+  );
+
+  // -- Slice S2: cross-region presence ------------------------------------
+  // State, not events: regions replace their online names; queries map
+  // names to regions for friends lists.
+
+  r.post("/rpc/World/SetPresence", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = SetPresenceSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      await core.setPresence(regionId, input);
+      return {};
+    }),
+  );
+
+  r.post("/rpc/World/QueryPresence", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = QueryPresenceSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.queryPresence(regionId, input);
     }),
   );
 

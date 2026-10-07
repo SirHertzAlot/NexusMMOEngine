@@ -128,6 +128,17 @@ export interface ReportDungeonResultsInput {
   results: DungeonRunResult[];
 }
 
+/** Character names playing on a region (slice S2 presence). */
+export interface SetPresenceInput {
+  regionId: string;
+  names: string[];
+}
+
+export interface QueryPresenceInput {
+  regionId: string;
+  names: string[];
+}
+
 /** A region as other regions see it (ListRegions): no secrets. */
 export interface RegionInfo {
   regionId: string;
@@ -208,6 +219,12 @@ export interface WorldStore {
   recordDungeonRun(run: StoredDungeonRun): Promise<boolean>;
   /** Runs on record, oldest first; filtered by reporting region when given. */
   listDungeonRuns(regionId?: string): Promise<StoredDungeonRun[]>;
+
+  // -- presence (slice S2) --
+  /** Replace the region's online character names. */
+  setPresence(regionId: string, names: string[]): Promise<void>;
+  /** Region per name for characters online now; null when nowhere. */
+  queryPresence(names: string[]): Promise<Map<string, string | null>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +255,17 @@ export interface WorldCore {
    * run is stored only once.
    */
   reportDungeonResults(caller: string, input: ReportDungeonResultsInput): Promise<{ ingested: string[] }>;
+  /**
+   * Replace the region's online character names (slice S2 presence).
+   * `caller` must match `input.regionId`. State, not events: repeats are
+   * harmless, and logging out is an empty report.
+   */
+  setPresence(caller: string, input: SetPresenceInput): Promise<void>;
+  /**
+   * Where queried names play, by region (slice S2 presence). Absent or
+   * offline names map to null. `caller` must be a known region.
+   */
+  queryPresence(caller: string, input: QueryPresenceInput): Promise<{ online: Record<string, string | null> }>;
 }
 
 export interface WorldCoreOptions {
