@@ -216,6 +216,15 @@ export class ItemService implements SimSystem {
     return { ok: true, message: `took off ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
   }
 
+  /** The worn armour stats added up (U10 mitigation feeds on the `armour` total). */
+  armourTotal(character: number): number {
+    let total = 0;
+    for (const id of this.store.worn(character)) {
+      if (id !== 0) total += this.defs.stats[this.store.defs[this.store.slot(id)]]?.armour ?? 0;
+    }
+    return total;
+  }
+
   /** The models a character holds (for its appearance; empty hands are left out). */
   heldModels(character: number): Held {
     const hands = this.store.hands(character);

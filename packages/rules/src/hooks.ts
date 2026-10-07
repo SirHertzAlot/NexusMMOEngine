@@ -175,6 +175,16 @@ export function masteryPower(rules: Rules, m: number): number {
   return p.novice + p.masterBonus * Math.pow(clamp01(m), p.curve);
 }
 
+/**
+ * Share of a blow worn armour lets through: H/(H+total), so `armourHalf`
+ * total halves it. Bare skin lets everything through.
+ */
+export function armourFactor(rules: Rules, total: number): number {
+  const h = rules.combat.damage.armourHalf;
+  if (!(total > 0)) return 1;
+  return h / (h + total);
+}
+
 /** Chance the blow lands where it was aimed. */
 export function precision(rules: Rules, m: number, factor = 1): number {
   const p = rules.combat.precision;

@@ -6,7 +6,11 @@
   },
   "fit": { "closes": 0.8, "masteryPower": 2 },
   "power": { "novice": 0.4, "masterBonus": 1.6, "curve": 1.5 },
-  "damage": { "base": 10, "massPower": 0.5 },
+  "damage": {
+    "base": 10,
+    "massPower": 0.5,
+    "armourHalf": 10
+  },
   "precision": { "novice": 0.3, "masterBonus": 0.65 },
   "defence": { "base": 0.5, "perSkill": 1.0, "min": 0.05, "max": 0.95, "failedLetsThrough": 0.5, "disarmMargin": 0.3 }
 }
