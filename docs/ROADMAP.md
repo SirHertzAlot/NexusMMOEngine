@@ -174,7 +174,7 @@ Everything here is React DOM over the world canvas, fed by the server
 
 | # | Item | Status | Doc |
 | --- | --- | --- | --- |
-| C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
+| C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | ✅ | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; world hash store built (get/upsert, bearer auth, idempotent upsert on opId); gateway switch verified. |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
 | C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | ✅ | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
@@ -284,6 +284,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.
 - **2026-10-06**: D4 complete: veins deferred to crafting actions (no gathering, pouch, or crafting actions exist to yield into); runs, results, skill gains, chests and traps are all built.
 - **2026-10-06**: Edge run story: root `npm run edge`, booted beside the region by `npm start`, and a split-topology recipe (world, region, edge) in CLI.md with the honest note that players still connect to the region until E3b.
 - **2026-10-06**: S2 cross-region presence (in progress): the world keeps a name-to-region directory (report replaces, queries map, Memory + Surreal) served over webrpc with a region client; gateways report on login/logout and merge world rows into friends lists on a 30 s sync (local rows win, merges only add). Cross-region block filtering is a documented gap.
