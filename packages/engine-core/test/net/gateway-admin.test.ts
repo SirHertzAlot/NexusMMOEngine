@@ -217,6 +217,58 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
+  it("time shows the clock and sets it by the hour", async () => {
+    const url = await startGateway({ admins: ["alice"], dayClock: { seconds: 600, offset: 0 } });
+    const client = await joinClient(url, "alice");
+    const show = await admin(client, "time", {});
+    assert.equal(show.ok, true);
+    assert.match(show.message, /([01]\d|2[0-3]):[0-5]\d/);
+    const set = await admin(client, "time", { hour: 6, minute: 30 });
+    assert.equal(set.ok, true);
+    const again = await admin(client, "time", {});
+    assert.match(again.message, /06:30/);
+    await client.close();
+  });
+
+  it("setting the time tells every live client the new day", async () => {
+    const url = await startGateway({ admins: ["alice"], dayClock: { seconds: 600, offset: 0 } });
+    const alice = await joinClient(url, "alice");
+    const other = await joinClient(url, "user-a");
+    const gotP = other.waitFor(MessageType.Chat, 1);
+    const set = await admin(alice, "time", { hour: 12 });
+    assert.equal(set.ok, true);
+    const [payload] = await gotP;
+    const msg = decodeControl<{ kind: string; day: { seconds: number; offset: number } }>(payload);
+    assert.equal(msg.kind, "time");
+    assert.equal(msg.day.seconds, 600);
+    assert.ok(msg.day.offset >= 0 && msg.day.offset < 1);
+    await alice.close();
+    await other.close();
+  });
+
+  it("weather shows the override and forcing one tells every live client", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const alice = await joinClient(url, "alice");
+    const other = await joinClient(url, "user-a");
+    const show = await admin(alice, "weather", {});
+    assert.equal(show.ok, true);
+    assert.match(show.message, /auto/);
+    const gotP = other.waitFor(MessageType.Chat, 1);
+    const set = await admin(alice, "weather", { weather: "rain" });
+    assert.equal(set.ok, true);
+    const [payload] = await gotP;
+    const msg = decodeControl<{ kind: string; weather: string }>(payload);
+    assert.deepEqual(msg, { kind: "weather", weather: "rain" });
+    const again = await admin(alice, "weather", {});
+    assert.match(again.message, /rain/);
+    const errP = alice.waitFor(MessageType.Error, 1);
+    alice.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "weather", args: { weather: "storm" } }));
+    const [err] = await errP;
+    assert.equal(decodeControl<ErrorMessage>(err).code, 4003);
+    await alice.close();
+    await other.close();
+  });
+
   it("spawnlist names the table; spawn plants at me; despawn removes", async () => {
     const url = await startGateway({
       admins: ["alice"],

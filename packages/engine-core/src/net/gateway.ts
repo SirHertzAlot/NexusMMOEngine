@@ -80,6 +80,7 @@ import {
   type StatsMessage,
   type WelcomeMessage,
   type DayClock,
+  type WeatherOverride,
   type WorldInfo,
   Ability,
   LocomotionMode,
@@ -90,6 +91,7 @@ import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
 import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
@@ -643,6 +645,8 @@ export class Gateway {
   private readonly spawnPoint: { x: number; z: number };
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
+  /** Forced weather (`weather` command); auto follows the sky. Resets on restart. */
+  private weatherOverride: WeatherOverride = "auto";
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
   private readonly blocks: BlockList;
@@ -1906,7 +1910,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, items, give, drop, loot, time, weather",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1952,6 +1956,36 @@ export class Gateway {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
         return;
+      }
+    } else if (cmd.command === "time") {
+      const r = runTimeCommand(this.dayClock, this.serverTick, TICK_HZ, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+      if (r.changed && this.dayClock) {
+        const day = { seconds: this.dayClock.seconds, offset: this.dayClock.offset };
+        for (const other of this.sessions.values()) {
+          if (!other.welcomed || other.playerEntity === null) continue;
+          this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "time", day }));
+        }
+      }
+    } else if (cmd.command === "weather") {
+      const r = parseWeatherCommand(this.weatherOverride, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+      if (r.weather !== undefined) {
+        this.weatherOverride = r.weather;
+        for (const other of this.sessions.values()) {
+          if (!other.welcomed || other.playerEntity === null) continue;
+          this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "weather", weather: r.weather }));
+        }
       }
     } else {
       this.logAdmin(s.username, cmd.command, false);
@@ -3163,6 +3197,7 @@ export class Gateway {
       session_token: s.token,
       ...(this.worldInfo ? { world: this.worldInfo } : {}),
       ...(this.dayClock ? { day: this.dayClock } : {}),
+      weather: this.weatherOverride,
       ...(s.character ? { character: s.character } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));

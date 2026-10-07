@@ -555,6 +555,34 @@ describe("MirrorClient dungeons (D4, on 0x11)", () => {
   });
 });
 
+describe("MirrorClient sky (A4, on 0x11)", () => {
+  it("a time broadcast replaces the welcome day clock", async () => {
+    const seen: string[] = [];
+    const { client, socket } = await connectClient(
+      { username: "u", password: "p" },
+      { onTime: (t) => seen.push(`time:${t.day.seconds}`) },
+    );
+    assert.equal(client.day, null);
+    const send = (m: unknown): void => socket.receive(encodeEnvelope(MessageType.Chat, encodeControl(m)));
+    send({ kind: "time", day: { seconds: 600, offset: 0.25 } });
+    assert.deepEqual(client.day, { seconds: 600, offset: 0.25 });
+    assert.deepEqual(seen, ["time:600"]);
+  });
+
+  it("a weather broadcast replaces the override", async () => {
+    const seen: string[] = [];
+    const { client, socket } = await connectClient(
+      { username: "u", password: "p" },
+      { onWeather: (w) => seen.push(`weather:${w.weather}`) },
+    );
+    assert.equal(client.weatherOverride, "auto");
+    const send = (m: unknown): void => socket.receive(encodeEnvelope(MessageType.Chat, encodeControl(m)));
+    send({ kind: "weather", weather: "rain" });
+    assert.equal(client.weatherOverride, "rain");
+    assert.deepEqual(seen, ["weather:rain"]);
+  });
+});
+
 describe("MirrorClient.names (0x12)", () => {
   it("stores names by entity and prunes them on despawn", async () => {
     const { client, socket } = await connectClient({ username: "u", password: "p" });

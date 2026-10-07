@@ -16,7 +16,7 @@ describe("formatClock and secondsLeft", () => {
   });
 
   it("counts down locally from the last state", () => {
-    const st: DungeonState = { kind: "dungeon", op: "state", dungeon: "D", secondsLeft: 100, creaturesLeft: 3, bossLeft: 1, chests: [] };
+    const st: DungeonState = { kind: "dungeon", op: "state", dungeon: "D", secondsLeft: 100, creaturesLeft: 3, bossLeft: 1, chests: [], traps: [] };
     assert.equal(secondsLeft(st, 1000, 3500), 97.5);
     assert.equal(secondsLeft(st, 0, 1_000_000), 0);
   });
@@ -34,6 +34,7 @@ describe("unopenedChests", () => {
   const st: DungeonState = {
     kind: "dungeon", op: "state", dungeon: "D", secondsLeft: 100, creaturesLeft: 3, bossLeft: 1,
     chests: [{ id: "chest-0", opened: false }, { id: "chest-1", opened: true }],
+    traps: [],
   };
   it("lists closed chests, none without a state", () => {
     assert.deepEqual(unopenedChests(st), ["chest-0"]);

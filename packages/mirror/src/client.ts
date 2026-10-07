@@ -65,6 +65,9 @@ import {
   type NamesMessage,
   type RegisterMessage,
   type StatsMessage,
+  type TimeMessage,
+  type WeatherMessage,
+  type WeatherOverride,
   type WelcomeMessage,
   type DayClock,
   type WireLook,
@@ -113,6 +116,10 @@ export interface MirrorEvents {
   onDialog?(d: DialogMessage): void;
   /** Dungeon instances (D4): entrances on entering, a transfer into a run, the run's state, its end. */
   onDungeon?(d: DungeonMessage): void;
+  /** The day clock changed (roadmap A4 `time`): the sky follows from here on. */
+  onTime?(t: TimeMessage): void;
+  /** The weather override changed (roadmap A4 `weather`). */
+  onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
@@ -159,6 +166,8 @@ export class MirrorClient {
   world: WorldInfo | null = null;
   /** The world's day clock, from the welcome; null when the server runs no day cycle. */
   day: DayClock | null = null;
+  /** The weather override, from the welcome or a broadcast; auto follows the sky. */
+  weatherOverride: WeatherOverride = "auto";
   lastError: ErrorMessage | null = null;
   closed = false;
   /** The account's characters, from the last account message (join()). */
@@ -713,8 +722,14 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage>(payload);
-        if (m.kind === "party") this.events.onParty?.(m);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage | TimeMessage | WeatherMessage>(payload);
+        if (m.kind === "time") {
+          this.day = m.day;
+          this.events.onTime?.(m);
+        } else if (m.kind === "weather") {
+          this.weatherOverride = m.weather;
+          this.events.onWeather?.(m);
+        } else if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
         else if (m.kind === "blocks") this.events.onBlocks?.(m);
@@ -794,6 +809,7 @@ export class MirrorClient {
     this.tickHz = w.tick_hz;
     this.world = w.world ?? null;
     this.day = w.day ?? null;
+    this.weatherOverride = w.weather ?? "auto";
     this.events.onWelcome(w);
     this.settle({ kind: "welcome", welcome: w });
   }
