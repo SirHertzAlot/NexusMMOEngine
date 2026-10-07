@@ -10,7 +10,7 @@
  * them without code.
  */
 
-import type { WorldMap } from "@mmo-engine/protocol";
+import type { WeatherOverride, WorldMap } from "@mmo-engine/protocol";
 
 export type WeatherKind = "snow" | "rain" | "ash";
 
@@ -37,8 +37,19 @@ function roll(key: string): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** The weather in `biome` at a server tick. */
-export function weatherAt(rules: WeatherRules, biome: string | null, tick: number, tickHz: number): Weather {
+/**
+ * The weather in `biome` at a server tick, or the server's forced sky:
+ * a forced kind falls at full intensity, forced clear falls nothing.
+ */
+export function weatherAt(
+  rules: WeatherRules,
+  biome: string | null,
+  tick: number,
+  tickHz: number,
+  override: WeatherOverride = "auto",
+): Weather {
+  if (override === "clear") return { kind: null, intensity: 0 };
+  if (override !== "auto") return { kind: override, intensity: 1 };
   const rule = biome ? rules.biomes[biome] : undefined;
   if (!rule) return { kind: null, intensity: 0 };
   const spell = Math.floor(tick / tickHz / (rules.spellMinutes * 60));

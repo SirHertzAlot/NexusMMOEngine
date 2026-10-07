@@ -81,3 +81,4 @@ export { GROUND_ITEM_VARIANT } from "./items.js";
 export type { BodyMessage, PartStateName, StanceMessage, TreatMessage, TreatmentMessage, TreatmentName, SkillsMessage, DisciplineRequirement, CastMessage, ManaMessage, SpellMessage, LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView } from "./items.js";
 export type { DialogMessage, NpcView, NpcsMessage, QuestLogMessage, QuestOp, QuestStepView, QuestView } from "./quests.js";
 export type { DungeonEntranceView, DungeonMessage, DungeonOp } from "./dungeons.js";
+export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";

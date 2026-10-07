@@ -7,6 +7,7 @@
  */
 
 import type { DayClock } from "./day-clock.js";
+import type { WeatherOverride } from "./sky.js";
 import type { WorldInfo } from "./world-info.js";
 
 /** Message type byte. Values are the catalog contract — never renumber. */
@@ -112,6 +113,8 @@ export interface WelcomeMessage {
   world?: WorldInfo;
   /** The world's day clock (see day-clock.ts); absent: no day cycle. */
   day?: DayClock;
+  /** The weather override (see sky.ts); absent: auto. */
+  weather?: WeatherOverride;
   /** The character this connection plays, when it entered as one. */
   character?: { id: number; name: string };
 }

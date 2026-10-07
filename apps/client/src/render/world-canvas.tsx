@@ -549,11 +549,12 @@ function MirrorWorld({
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
-    // Weather where the camera is, the same on every client (biome + tick).
+    // Weather where the camera is, the same on every client (biome + tick),
+    // unless the server forces the sky (`weather`).
     const tick = client.serverTick;
     const hz = client.tickHz || 30;
     const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
-    const weather = weatherAt(WEATHER_RULES, biome, tick, hz);
+    const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
     // Splashes where the player swims and moves.
     const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
