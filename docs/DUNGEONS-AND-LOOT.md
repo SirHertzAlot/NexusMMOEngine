@@ -234,7 +234,9 @@ run's loot, and the run state names each chest for the HUD's open button.
 Traps: each run arms `trapsPerRun` traps in the lowest-id non-entrance
 rooms; a member inside the trigger radius springs one for `trapHarm`
 Health, once, and the run state names each trap and whether it is sprung.
-Not yet: depleted nodes.
+Resource veins are deferred to crafting actions: no material gathering,
+pouch, or crafting actions exist yet, so veins have nothing to yield
+into. When those land, veins place like chests and harvest into them.
 
 ### 3.5 Editor (D3)
 
