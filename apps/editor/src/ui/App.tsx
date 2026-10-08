@@ -420,7 +420,12 @@ export function App(): React.JSX.Element {
         if (action === null) return;
         if (shouldSkipShortcut(e.target)) return;
         e.preventDefault();
-        if (action === "play" || action === "stop") {
+        if (action === "play") {
+          goPlay();
+        } else if (action === "stop") {
+          // Unreachable today (Shift F5 is handled above with the F5
+          // branch), but must stay the real stop, not a navigation.
+          void requestPlayStop();
           goPlay();
         } else {
           const label = TOOL_SHORTCUT_BUTTON_LABELS[action];
@@ -485,6 +490,11 @@ export function App(): React.JSX.Element {
             setPalette(false);
           }}
           onPlay={() => {
+            goPlay();
+            setPalette(false);
+          }}
+          onStop={() => {
+            void requestPlayStop();
             goPlay();
             setPalette(false);
           }}
@@ -1672,10 +1682,11 @@ function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () =>
 
 // ---------------------------------------------------------------- command palette
 
-function CommandPalette({ onClose, onWorkspace, onPlay }: {
+function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
   onClose: () => void;
   onWorkspace: (id: WorkspaceId) => void;
   onPlay: () => void;
+  onStop: () => void;
 }): React.JSX.Element {
   const [q, setQ] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -1691,7 +1702,7 @@ function CommandPalette({ onClose, onWorkspace, onPlay }: {
       })),
     ),
     { label: "Play with the last settings", hint: "F5", icon: "play_arrow", run: onPlay },
-    { label: "Stop play mode", hint: "Shift F5", icon: "stop", run: onPlay },
+    { label: "Stop play mode", hint: "Shift F5", icon: "stop", run: onStop },
   ];
   const hits = commands.filter((c) => c.label.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 12);
 

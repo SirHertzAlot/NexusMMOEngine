@@ -33,8 +33,15 @@ export interface HostServerControl {
   status(): Promise<{ running: boolean; pid?: number; port?: number }>;
 }
 
-/** HTTP adapter over the dev-host routes. */
-export function createHostServerControl(base = ""): HostServerControl {
+/**
+ * HTTP adapter over the dev-host routes. `scene` (EA6) names the scene
+ * Play should run, read at each start: the host boots the server with it
+ * (MMO_SCENE), using the document as given, saved or not.
+ */
+export function createHostServerControl(
+  base = "",
+  scene?: () => { name: string; doc: unknown } | null,
+): HostServerControl {
   let running = false;
   return {
     async start(opts) {
@@ -44,6 +51,16 @@ export function createHostServerControl(base = ""): HostServerControl {
         body: JSON.stringify(
           opts?.bots !== undefined ? { bots: opts.bots } : {},
         ),
+    async start() {
+      const open = scene?.() ?? null;
+      const res = await fetch(`${base}/api/editor/server/start`, {
+        method: "POST",
+        ...(open
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ scene: { name: open.name, content: open.doc } }),
+            }
+          : {}),
       });
       const body = (await res.json()) as {
         ok: boolean;

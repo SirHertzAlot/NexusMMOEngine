@@ -28,10 +28,15 @@ import {
   type SceneNode,
   type Vec3,
 } from "@mmo-engine/scene";
+import { keepLiveTransform, liveTransform, placePrefab, type LiveTransform } from "@mmo-engine/scene";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
+import { openScene } from "../open-scene.js";
+import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
 import { editorSelection } from "./editor-selection.js";
+import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
+import { SceneViewport } from "./scene-viewport.js";
 
 const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
@@ -98,6 +103,31 @@ export function ScenesPanel(): React.JSX.Element {
       components: [{ name: "Scene node", fields: [{ key: "scene", value: sceneName }, { key: "id", value: id }] }],
     });
   };
+  // Selection is shared with the rest of the editor (editor-selection.ts):
+  // picking in the viewport or the outliner publishes the node; a node
+  // selected elsewhere selects it here. The last live entity selected in
+  // play mode stays available to "Keep" after the selection moves on.
+  const shared = useEditorSelection();
+  const [live, setLive] = React.useState<{ label: string; t: LiveTransform } | null>(null);
+  const select = (id: string | null, source: SelectionSource = "outliner"): void => {
+    setSelected(id);
+    const n = id ? findNode(hist.doc, id) : undefined;
+    if (n) editorSelection.select(nodeSelection(source, n));
+    else editorSelection.clear();
+  };
+  React.useEffect(() => {
+    if (!shared) return;
+    if (shared.kind === "scene-node") {
+      if (shared.id !== selected && findNode(hist.doc, shared.id)) setSelected(shared.id);
+      return;
+    }
+    const t = liveTransform(shared.components);
+    if (t) setLive({ label: shared.label, t });
+  }, [shared]);
+  // Play mode runs the open scene, saved or not (open-scene.ts).
+  React.useEffect(() => {
+    openScene.set(open ? { name: open, doc } : null);
+  }, [open, doc]);
 
   const run = (label: string, fn: Parameters<History["apply"]>[1]): void => {
     try {
@@ -206,13 +236,18 @@ export function ScenesPanel(): React.JSX.Element {
         <Button size="sm" variant="outline" disabled={!hist.canUndo} onClick={() => { hist.undo(); setIssues(validateScene(hist.doc)); bump(); }}>Undo</Button>
         <Button size="sm" variant="outline" disabled={!hist.canRedo} onClick={() => { hist.redo(); setIssues(validateScene(hist.doc)); bump(); }}>Redo</Button>
         <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{status}</span>
+        {open && doc.kind !== "frontend" && (
+          <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }} data-testid="play-hint">
+            Play mode runs "{open}"{hist.dirty ? " with your unsaved edits (the file stays as saved)" : ""}
+          </span>
+        )}
       </div>
       {issues.length > 0 && (
         <ul className="rounded-md border border-border p-2 text-xs text-red-500" role="alert">
           {issues.map((i, k) => <li key={k}><code>{i.path || "(scene)"}</code>: {i.message}</li>)}
         </ul>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(180px,1fr)_minmax(260px,2fr)] gap-3">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(150px,1fr)_minmax(320px,3fr)_minmax(220px,1.3fr)] gap-3">
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Outliner">
           <SectionTitle>Outliner</SectionTitle>
           <div className="mb-2 flex gap-1">
@@ -220,11 +255,13 @@ export function ScenesPanel(): React.JSX.Element {
               const id = nextId(doc, "node");
               run("add node", (d) => addNode(d, selected, { id, kind: "group" }));
               pick(id);
+              select(id);
             }}>Add child</Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => {
               if (!node) return;
               run("delete node", (d) => removeNode(d, node.id));
               pick(null);
+              select(null);
             }}>Delete</Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => node && run("move to root", (d) => moveNode(d, node.id, null))}>To root</Button>
           </div>
@@ -236,6 +273,8 @@ export function ScenesPanel(): React.JSX.Element {
               tabIndex={0}
               onClick={() => pick(n.id)}
               onKeyDown={(e) => e.key === "Enter" && pick(n.id)}
+              onClick={() => select(n.id)}
+              onKeyDown={(e) => e.key === "Enter" && select(n.id)}
               className="cursor-pointer rounded px-2 py-1"
               style={{ paddingLeft: 8 + depth * 14, background: n.id === selected ? "var(--m3-secondary-container)" : undefined }}
             >
@@ -243,6 +282,23 @@ export function ScenesPanel(): React.JSX.Element {
             </div>
           ))}
           {open && doc.nodes.length === 0 && <p className="text-xs opacity-70">Empty scene. Add a node.</p>}
+        </section>
+        <section className="min-h-0" aria-label="Viewport">
+          <SceneViewport
+            doc={doc}
+            selected={selected}
+            onSelect={(id) => select(id, "viewport")}
+            onTransform={(id, t) => run("transform", (d) => keepLiveTransform(d, id, t))}
+            onPlace={(prefab, position) => {
+              const placed = placePrefab(hist.doc, prefab, position);
+              run(`place ${prefab}`, () => placed.doc);
+              select(placed.id, "viewport");
+            }}
+            onDelete={(id) => {
+              run("delete node", (d) => removeNode(d, id));
+              select(null);
+            }}
+          />
         </section>
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Details">
           <SectionTitle>Details</SectionTitle>
@@ -257,6 +313,7 @@ export function ScenesPanel(): React.JSX.Element {
                   const id = nextId(doc, "node");
                   run("add node", (d) => addNode(d, null, { id, kind: "group" }));
                   pick(id);
+                  select(id);
                 }}>Add root node</Button>
               </div>
             ) : <p className="text-xs opacity-70">Open or create a scene.</p>
@@ -284,6 +341,15 @@ export function ScenesPanel(): React.JSX.Element {
                   </div>
                 </div>
               ))}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!live}
+                title="Copy the live entity selected in play mode into this node (undoable)"
+                onClick={() => live && run("keep live transform", (d) => keepLiveTransform(d, node.id, live.t))}
+              >
+                {live ? `Keep ${live.label} here` : "Keep (select a live entity in play mode)"}
+              </Button>
               <SectionTitle>Components</SectionTitle>
               {Object.entries(node.components ?? {}).map(([cn, props]) => (
                 <div key={cn} className="rounded-md border border-border p-2">
