@@ -40,6 +40,11 @@
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
+ *   GET  /api/editor/story         → the quest and dialog documents (EA20)
+ *   GET  /api/editor/story/:name   → one document and the rules references
+ *   PUT  /api/editor/story[/:name] → {files} or {content}: validate the whole set, then write; 400
+ *                                    with per-path issues writes nothing
+ *   POST /api/editor/story/check   → {files} → issues, nothing written
  *   GET  /api/editor/characters    → the account's characters (id, name)
  *                                    from <dataDir>/characters.db (read-only)
  *   GET  /api/editor/characters/:id → one character's record: name, look,
@@ -80,6 +85,7 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
+import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
@@ -1004,6 +1010,48 @@ export function editorHost(options: EditorHostOptions): Plugin {
               }
               sendJson(res, 200, { ok: true, name });
               return;
+            }
+            sendJson(res, 404, { ok: false, error: "not found" });
+            return;
+          }
+          // Quest and dialog documents (EA20, story-host.ts).
+          const storyParsed = new URL(req.url ?? "/", "http://localhost");
+          if (storyParsed.pathname === "/api/editor/story" || storyParsed.pathname.startsWith("/api/editor/story/")) {
+            const sub = decodeURIComponent(storyParsed.pathname.slice("/api/editor/story".length + 1));
+            if (req.method === "GET" && sub === "") {
+              sendJson(res, 200, { ok: true, files: storyFileNames() });
+              return;
+            }
+            if (req.method === "GET" && isStoryFile(sub)) {
+              sendJson(res, 200, { ok: true, ...readStoryFile(repoRoot, sub) });
+              return;
+            }
+            if (req.method === "POST" || req.method === "PUT") {
+              let body: { content?: unknown; files?: unknown };
+              try {
+                body = JSON.parse(await readBody(req)) as typeof body;
+              } catch {
+                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+                return;
+              }
+              if (req.method === "POST" && sub === "check") {
+                sendJson(res, 200, { ok: true, issues: await checkStory(repoRoot, body.files as Parameters<typeof checkStory>[1]) });
+                return;
+              }
+              if (req.method === "PUT" && (sub === "" || isStoryFile(sub))) {
+                try {
+                  const changes = sub === "" ? (body.files as Parameters<typeof saveStoryFiles>[1]) : { [sub]: body.content };
+                  sendJson(res, 200, { ok: true, issues: await saveStoryFiles(repoRoot, changes) });
+                } catch (err) {
+                  const issues = (err as { issues?: unknown }).issues;
+                  sendJson(res, (err as { status?: number }).status ?? 500, {
+                    ok: false,
+                    error: err instanceof Error ? err.message : String(err),
+                    ...(Array.isArray(issues) ? { issues } : {}),
+                  });
+                }
+                return;
+              }
             }
             sendJson(res, 404, { ok: false, error: "not found" });
             return;

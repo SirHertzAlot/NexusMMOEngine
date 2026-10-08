@@ -935,7 +935,9 @@ does, in order, with their output.
 
 ### 7c.3 Quest and dialog editor
 
-**Today.** Nothing is built. The roadmap has P1 (progression graphs:
+**Built (EA20).** The editor edits the files the server loads today (`content/quests/{quests,dialogs,npcs,steps}.json`), not the per-document `*.quest.json` and `*.dialog.json` files planned below, which the server cannot run. Code: `story-validate.ts`, `story-host.ts`, `story-model.ts`, `ui/story-editor.tsx`. Not yet: WFC slots, "Play from here", string ids.
+
+**Was.** Nothing was built. The roadmap has P1 (progression graphs:
 quests and dialog, `DUNGEONS-AND-LOOT.md` §9) and U11 (quest log,
 tracker, dialog). That doc puts quests and dialog in the "progression"
 domain, with dialog as beats and replies, generated on the WFC like
