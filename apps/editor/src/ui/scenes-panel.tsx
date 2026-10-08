@@ -33,6 +33,14 @@ import { Button, Input, Label, SectionTitle } from "./components.js";
 
 const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
+/** Scene names become file names: lowercase letters, digits and dashes, starting with a letter or digit. */
+export const SCENE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+/** Whether a prompted scene name may replace the document. */
+export function isValidSceneName(name: string): boolean {
+  return SCENE_NAME_RE.test(name);
+}
+
 /** Flatten the tree for display, keeping depth. */
 function rows(list: SceneNode[], depth = 0): Array<{ node: SceneNode; depth: number }> {
   return list.flatMap((n) => [{ node: n, depth }, ...rows(n.children ?? [], depth + 1)]);
@@ -114,8 +122,12 @@ export function ScenesPanel(): React.JSX.Element {
     );
   };
   const create = (): void => {
-    const name = window.prompt("New scene name (lowercase, digits, dashes)");
+    const name = window.prompt("New scene name (lowercase, digits, dashes): ^[a-z0-9][a-z0-9-]*$");
     if (!name) return;
+    if (!isValidSceneName(name)) {
+      setStatus(`invalid scene name "${name}": use ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and dashes, starting with a letter or digit) - nothing was created`);
+      return;
+    }
     hist.replace(emptyScene(name, "arena"));
     setOpen(name);
     setSelected(null);

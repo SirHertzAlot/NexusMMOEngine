@@ -13,6 +13,7 @@
 import * as React from "react";
 import { edgePath, GraphEditor, parseFieldValue, type GraphDocument, type GraphViewModel, type NodeView, type PropertyView } from "../inspectors/graph-editor.js";
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
+import { pastDragThreshold } from "./drag-threshold.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
 
 const NODE_W = 168;
@@ -342,6 +343,7 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
+        if (!pastDragThreshold(d.sx, d.sy, e.clientX, e.clientY)) return;
         const dx = (e.clientX - d.sx) / view.scale;
         const dy = (e.clientY - d.sy) / view.scale;
         if (d.kind === "pan") setView((v) => ({ ...v, x: d.ox - dx, y: d.oy - dy }));

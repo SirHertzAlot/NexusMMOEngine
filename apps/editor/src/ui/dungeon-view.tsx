@@ -6,7 +6,7 @@
  *   rooms, rank, boss and edit count; "bake more" adds to the pool with
  *   the same CLI as `npm run dungeon:bake`.
  * - 3D view (dungeon-scene.ts): orbit with the mouse; click a room's floor,
- *   a spawn or a prop to select it; drag a selected prop to move it.
+ *   a spawn or a prop to select it; drag a prop to move it.
  * - Details: a room's role and archetype; a spawn's pin and rank; a prop's
  *   position, remove, or add one where you click with "place prop".
  *
@@ -472,10 +472,12 @@ function DungeonCanvas({
           return;
         }
         const hit = s.pick(e.clientX, e.clientY);
-        if (hit?.kind === "prop" && selected?.kind === "prop" && selected.key === hit.key) {
-          // Dragging the selected prop: the camera holds still.
+        if (hit?.kind === "prop") {
+          // Dragging any prop (not just the selected one): the camera holds
+          // still for this gesture. A press without a move still just selects.
           s.setOrbit(false);
           drag.current = { key: hit.key, moved: false };
+          onPick(hit);
           (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
         }
         (e.currentTarget as HTMLCanvasElement).dataset.downX = String(e.clientX);
