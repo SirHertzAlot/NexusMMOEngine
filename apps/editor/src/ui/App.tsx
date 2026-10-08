@@ -14,7 +14,7 @@ import { EcsInspectorPanel } from "./ecs-inspector.js";
 import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
-import { CharacterRecordPanel } from "./character-view.js";
+import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { StoryEditorPanel } from "./story-editor.js";
@@ -94,7 +94,8 @@ type WorkspaceId =
   | "changes"
   | "story"
   | "artaudio"
-  | "release";
+  | "release"
+  | "modules";
 
 interface Workspace {
   id: WorkspaceId;
@@ -131,7 +132,7 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "characters", label: "Characters", icon: "person",
-    views: [{ id: "records", label: "Records", icon: "person", kind: "panel", panel: <CharacterRecordPanel /> }],
+    views: [], // contributed by the characters module (modules/characters/editor)
     leftTitle: "Catalog",
   },
   {
@@ -208,7 +209,26 @@ const WORKSPACES: Workspace[] = [
     ],
     leftTitle: "Profiles",
   },
+  {
+    id: "modules", label: "Modules", icon: "extension",
+    views: [{ id: "modules", label: "Modules", icon: "extension", kind: "panel", panel: <ModulesPanel /> }],
+    leftTitle: "Modules",
+  },
 ];
+
+// Module contributions (EA3): each workspace shows its own views plus the panels enabled
+// modules add; a workspace left with none says which module would fill it. The registry
+// refreshes after every enable/disable, and App re-renders on its version (useModuleRegistry).
+const OWN_VIEWS = new Map(WORKSPACES.map((w) => [w.id, w.views]));
+function syncModuleViews(): void {
+  for (const w of WORKSPACES) {
+    const added = moduleRegistry.panels(w.id).map((p) => ({ id: p.id, label: p.title, icon: p.icon, kind: "panel" as const, panel: p.render() as React.JSX.Element }));
+    const all = [...(OWN_VIEWS.get(w.id) ?? []), ...added];
+    w.views = all.length > 0 ? all : [{ id: "none", label: "Disabled", icon: "extension_off", kind: "soon", soon: { icon: "extension_off", title: `No module contributes to ${w.label}`, body: "Enable one in the Modules workspace." } }];
+  }
+}
+syncModuleViews();
+moduleRegistry.subscribe(syncModuleViews);
 
 const SOON_WS: ReadonlySet<WorkspaceId> = new Set(["network"]);
 /** Workspaces showing mockup-faithful previews over sample data. */
@@ -222,6 +242,7 @@ const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "story"
 type RunMode = "edit" | "simulate" | "play";
 
 export function App(): React.JSX.Element {
+  useModuleRegistry();
   const [workspace, setWorkspace] = React.useState<WorkspaceId>(() => initialHashLocation().workspace);
   const [view, setView] = React.useState<string>(() => initialHashLocation().view);
   const [leftTab, setLeftTab] = React.useState<string>("left");
@@ -1084,6 +1105,11 @@ function ShellDialog({ title, onClose, children }: {
 
 // ---------------------------------------------------------------- toolbar
 
+function ModulesChip(): React.JSX.Element {
+  const n = useModuleRegistry().state?.enabled.length;
+  return <>{n === undefined ? "modules" : `${n} module${n === 1 ? "" : "s"}`}</>;
+}
+
 function Toolbar(props: {
   playMenu: boolean;
   onTogglePlayMenu: () => void;
@@ -1304,7 +1330,7 @@ function Toolbar(props: {
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
           title="Enabled modules (content/modules.json)"
         >
-          <MIcon name="extension" size={15} />6 modules
+          <MIcon name="extension" size={15} /><ModulesChip />
         </span>
         <span className="relative">
           <IconButton
@@ -2201,6 +2227,7 @@ function DebugTree(): React.JSX.Element {
 /** Content browser: real content paths, explorable.
  *  Clicking a document navigates to the workspace that owns it today. */
 function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
+  useModuleRegistry();
   const t = useTree();
   const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode, slice = "EA · content browser"): React.JSX.Element => (
@@ -2274,9 +2301,9 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
           ))}
         </>
       ))}
-      {folder("modules", "modules · 6 enabled", "extension", (
+      {folder("modules", `modules · ${moduleRegistry.state?.enabled.length ?? "?"} enabled`, "extension", (
         <>
-          {["core", "characters", "creatures", "items", "goblin-ai", "weather-ai"].map((m) => file(`modules/${m}/module.json`, m, undefined))}
+          {(moduleRegistry.state?.modules ?? []).map((m) => file(`modules/${m.name}/module.json`, m.name, ["modules", "modules"]))}
         </>
       ))}
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>

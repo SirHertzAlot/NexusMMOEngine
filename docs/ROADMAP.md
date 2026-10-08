@@ -121,7 +121,7 @@ loadable modules, a database editor and production tools.
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
 | EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
-| EA3 | Editor modules | 📋 | |
+| EA3 | Editor modules | 🚧 | `feat/ea3-ea9-modules`: `packages/modules` (manifest schema collecting every problem, discovery, `content/modules.json` set, dependency order); host routes `/api/editor/modules` (list, validated save, apply); the shell imports enabled modules' editor entries dynamically and a Modules workspace enables and disables them; the header count is real; the Characters Records panel is now the `characters` module. Deferred: other panels as modules (EA13), commands and document kinds as contributions, Controller/EditorContext contracts (EA2) |
 | EA4 | Scene documents | 📋 | |
 | EA5 | Scene viewport editing | 📋 | |
 | EA6 | Play the scene | 📋 | |
@@ -131,7 +131,7 @@ loadable modules, a database editor and production tools.
 | EA6 | Play the scene | 🚧 | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
 | EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
 | EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
-| EA9 | Server modules | 📋 | |
+| EA9 | Server modules | 🚧 | `feat/ea3-ea9-modules`: `server.ts`'s systems array is the `core` module's instances in the order `modules/core/module.json` fixes; `MMO_MODULES` (default `content/modules.json`) selects modules; order resolved from `after`/`before`, unknown ids and cycles stop the boot with every problem; `modules/sample-heartbeat` adds a system; "Apply modules" restarts the owned play server. Open: `valgrind:perf` not run (no host valgrind on the Windows dev machine; the tick-order test pins the order instead), play mode does not auto-reconnect after Apply, admin commands / rule hooks / persistence tables contributions |
 | EA10 | C++ modules | 📋 | |
 | EA11 | Sidecars | 📋 | |
 | EA12 | Edge modules | 📋 | |
@@ -314,6 +314,8 @@ Newest first. One line per merged PR or decision.
 - **2026-10-08**: EA7 and EA8 game flow: `content/flow/game.flow.json` drives the client's screens through a pure flow runner in `packages/scene`; the editor's Flow panel edits it as a graph (validated save, refused save writes nothing) and plays from login, character creation or world.
 - **2026-10-08**: EA5 scene viewport: three.js view of the open scene over the terrain, content browser (species, props, PICG), move/rotate/scale gizmo, terrain and grid snap, picking into the shared selection, delete; every edit is a History command.
 - **2026-10-08**: EA6 play the scene: server reads `MMO_SCENE` (`MMO_SCENES` dir) and spawns nodes via the creature and prop paths (restart-safe); Play sends the open (even unsaved) scene without touching content/scenes; "Keep" copies a live entity transform into a node as a command.
+- **2026-10-08**: EA3 editor modules: `packages/modules` (manifest validation, discovery, enabled set, dependency order), `/api/editor/modules` host routes, dynamic import of editor entries, Modules workspace (enable, disable, Apply), real module count in the header; Character records contributed by the `characters` module.
+- **2026-10-08**: EA9 server modules: engine-core assembles the tick's systems from the enabled module set (`assembleServerSystems`); core order unchanged and pinned by a test; `MMO_MODULES`; cycles and unknown system ids refuse the boot; sample module `sample-heartbeat`; "Apply modules" restarts the play server.
 - **2026-10-08**: EA16 first slice: `PersistenceCore` in engine-core (`persist/persistence-core.ts`) with catalog, SELECT-only query (child process, row limit, timeout kill), typed mutations with backup and `admin_log` undo; editor host routes `/api/editor/database/*` (loopback, JSON-only) and the Database workspace (schema tree, grid with pending edits, query, audit log). Mutations refuse while the game server runs; live-state edits deferred.
 - **2026-10-08**: EA20 quest and dialog editor (in progress, branch): Story workspace edits `content/quests/*.json` as the server loads them; saves validate the whole set (server schemas and checks, item and species references, prerequisite cycles, dialog loops with no exit) and write nothing when invalid; dialog tester walks a dialog against an editable mock quest state.
 - **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.

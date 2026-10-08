@@ -1,0 +1,7 @@
+{
+  "name": "characters",
+  "version": "0.1.0",
+  "description": "Editor module: the Characters workspace's Records panel. Disable it and the panel leaves the workspace without a restart.",
+  "dependsOn": ["core"],
+  "editor": { "entry": "editor/index.tsx" }
+}
