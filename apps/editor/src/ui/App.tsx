@@ -39,6 +39,7 @@ import {
 import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
 import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
+import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
@@ -239,7 +240,6 @@ export function App(): React.JSX.Element {
   const [rightW, setRightW] = useLocalStorage("mmo-editor.rightW", 320);
   const [bottomH, setBottomH] = useLocalStorage("mmo-editor.bottomH", 144);
   const [savedLayouts, setSavedLayouts] = useLocalStorage<Record<string, LayoutSnapshot>>("mmo-editor.layouts", {});
-  const [dropHL, setDropHL] = React.useState(false);
 
   // Dock element refs for transient (per-frame) resize without re-render.
   const leftRef = React.useRef<HTMLDivElement>(null);
@@ -368,6 +368,9 @@ export function App(): React.JSX.Element {
   }
 
   // Ctrl K opens the command palette (§3.5); Ctrl Shift S opens layout save; Esc closes menus.
+  // F5 plays, Shift+F5 stops (same goPlay the play cluster uses); V/W/E/R
+  // click the toolbar's transform buttons so one handler owns each tool.
+  // Play/tool keys carry a typing guard and preventDefault (F5 must not reload).
   React.useEffect(() => {
     function onKey(e: KeyboardEvent): void {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -406,10 +409,29 @@ export function App(): React.JSX.Element {
         setPalette(false);
         setPlayMenu(false);
         setLayoutMenu(false);
+      } else {
+        const action = resolveEditorShortcut({
+          key: e.key,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+        });
+        if (action === null) return;
+        if (shouldSkipShortcut(e.target)) return;
+        e.preventDefault();
+        if (action === "play" || action === "stop") {
+          goPlay();
+        } else {
+          const label = TOOL_SHORTCUT_BUTTON_LABELS[action];
+          const btn = document.querySelector(`button[aria-label="${label}"]`);
+          if (btn instanceof HTMLButtonElement) btn.click();
+        }
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -558,31 +580,12 @@ export function App(): React.JSX.Element {
             className="m3-scroll relative min-h-0 flex-1 overflow-auto rounded-xl p-3"
             style={{
               background: "var(--m3-surface-1)",
-              outline: dropHL ? "2px dashed var(--m3-primary)" : undefined,
-              outlineOffset: -2,
-            }}
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes("text/mmo-editor-node")) {
-                e.preventDefault();
-                setDropHL(true);
-              }
-            }}
-            onDragLeave={() => setDropHL(false)}
-            onDrop={(e) => {
-              const name = e.dataTransfer.getData("text/mmo-editor-node");
-              setDropHL(false);
-              if (name) notify(`Drop ${name} to place — staged for the scene viewport slice`);
             }}
           >
             {activeView.kind === "panel" ? (
               activeView.panel
             ) : (
               <EmptyState icon={activeView.soon?.icon ?? "hourglass_empty"} title={activeView.soon?.title ?? "Coming soon"} body={activeView.soon?.body ?? ""} />
-            )}
-            {dropHL && (
-              <div className="pointer-events-none absolute inset-3 flex items-center justify-center rounded-xl text-sm font-medium" style={{ background: "rgba(54,68,154,.25)", color: "var(--m3-on-primary-container)" }}>
-                Drop to place in the open scene
-              </div>
             )}
           </div>
 
@@ -776,7 +779,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       { label: "New Scene", run: staged("New Scene", "EA · scenes"), stagedFor: "EA · scenes" },
       { label: "Open Scene…", run: staged("Open Scene", "EA · scenes"), stagedFor: "EA · scenes" },
       "sep",
-      { label: "Save", kbd: "Ctrl S", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
+      { label: "Save", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
       { label: "Save All", run: staged("Save All", "the open document's slice"), stagedFor: "the open document's slice" },
       { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
       "sep",
@@ -784,32 +787,32 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
     ],
     Edit: [
-      { label: "Undo", kbd: "Ctrl Z", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Redo", kbd: "Ctrl Y", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Undo", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Redo", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
       "sep",
-      { label: "Cut", kbd: "Ctrl X", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Copy", kbd: "Ctrl C", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Paste", kbd: "Ctrl V", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Duplicate", kbd: "Ctrl D", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Delete", kbd: "Del", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Paste", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Duplicate", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Delete", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
       "sep",
-      { label: "Select All", kbd: "Ctrl A", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
+      { label: "Select All", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
     ],
     View: [
       { label: `${docks.left ? "✓ " : ""}Left dock`, run: () => onToggleDock("left") },
       { label: `${docks.right ? "✓ " : ""}Right dock`, run: () => onToggleDock("right") },
       { label: `${docks.bottom ? "✓ " : ""}Bottom dock`, run: () => onToggleDock("bottom") },
       "sep",
-      { label: "Zoom In", kbd: "Ctrl +", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Zoom Out", kbd: "Ctrl -", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Reset Viewport", kbd: "Ctrl 0", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      { label: "Zoom In", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      { label: "Zoom Out", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      { label: "Reset Viewport", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
       "sep",
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],
     Window: [
       ...WORKSPACES.map((w) => ({ label: `Workspace: ${w.label}`, run: () => onGo(w.id) })),
       "sep",
-      { label: "Pop panel into a window", run: staged("Pop panel into a window", "EA · layout") },
+      { label: "Pop panel into a window", run: staged("Pop panel into a window", "EA · layout"), stagedFor: "EA · layout" },
       { label: "Reset layout", run: onResetLayout },
     ],
     Help: [
@@ -870,21 +873,24 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                     return <li key={`sep-${i}`} className="list-none" style={{ borderTop: "1px solid var(--m3-outline-variant)", margin: "4px 2px" }} />;
                   }
                   const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
+                  const stagedRow = it.stagedFor !== undefined;
                   return (
                     <li key={it.label} className="list-none">
                       <button
+                        disabled={stagedRow}
+                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : undefined}
                         onClick={() => {
                           setOpen(null);
                           run();
                         }}
                         className="m3-focus flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                        style={{ color: "var(--m3-on-surface)" }}
+                        style={{ color: "var(--m3-on-surface)", opacity: stagedRow ? 0.55 : undefined }}
                       >
                         {it.label}
-                        {it.stagedFor && (
-                          <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
+                        {stagedRow && (
+                          <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>soon</span>
                         )}
-                        {it.kbd && (
+                        {!stagedRow && it.kbd && (
                           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
                             {it.kbd}
                           </kbd>
@@ -2171,7 +2177,7 @@ function DebugTree(): React.JSX.Element {
     </div>
   );
 }
-/** Content browser: real content paths, explorable, draggable into the viewport.
+/** Content browser: real content paths, explorable.
  *  Clicking a document navigates to the workspace that owns it today. */
 function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
   const t = useTree();
@@ -2196,7 +2202,6 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     <TreeItem
       key={path}
       icon="description" label={name} depth={depth} mono
-      drag={path}
       selected={t.sel === path} onPick={() => {
         t.pick(path);
         if (go) onGo(go[0], go[1]);
@@ -2254,7 +2259,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         </>
       ))}
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Drag a file into the viewport to place it — drop targets stage the scene-viewport slice.
+        Files open in the workspace that owns them — drag-to-place arrives with the scene viewport slice.
       </p>
     </div>
   );
