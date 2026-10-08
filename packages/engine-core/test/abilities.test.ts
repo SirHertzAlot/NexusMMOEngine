@@ -6,6 +6,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { AbilitySystem } from "../src/abilities.js";
+import type { SimWorld } from "../src/world.js";
+const DT = 1 / 30;
+const simAt = (tick: number): SimWorld => ({ currentTick: tick }) as SimWorld;
 
 const HZ = 30;
 const ticks = (ms: number): number => Math.round((ms / 1000) * HZ);
@@ -36,7 +39,7 @@ describe("AbilitySystem", () => {
     s.trigger(1, "slash", 10);
     assert.equal(s.trigger(1, "potion", 11), "queued");
     assert.equal(s.trigger(1, "slash", 12), "queued"); // replaces potion
-    s.step(10 + ticks(1000)); // GCD clears
+    s.step(simAt(10 + ticks(1000)), DT); // GCD clears
     assert.deepEqual(fired, [
       [1, "slash"],
       [1, "slash"],
@@ -49,7 +52,7 @@ describe("AbilitySystem", () => {
     const s = setup(fired);
     s.trigger(1, "potion", 10);
     // GCD (500ms) clears before the 30s cooldown does.
-    s.step(10 + ticks(500));
+    s.step(simAt(10 + ticks(500)), DT);
     assert.equal(s.trigger(1, "potion", 10 + ticks(500) + 1), "rejected");
     assert.equal(s.cooldownLeft(1, "potion", 10 + ticks(500) + 1) > 0, true);
     const ev = s.drainEvents();
@@ -70,7 +73,7 @@ describe("AbilitySystem", () => {
     assert.equal(ev[ev.length - 1].state, "interrupted");
 
     s.trigger(1, "fireball", 30);
-    s.step(30 + ticks(2000));
+    s.step(simAt(30 + ticks(2000)), DT);
     assert.deepEqual(fired, [[1, "fireball"]]);
     assert.equal(s.gcdLeft(1, 30 + ticks(2000)) > 0, true, "the GCD starts when the cast lands");
   });

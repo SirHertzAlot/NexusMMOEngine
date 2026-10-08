@@ -18,7 +18,11 @@
  * DoT/HoT tick on the status's own interval; the owner supplies the
  * damage/heal sinks so this system never touches Health directly.
  * Dispel removes every `dispellable` status at once (one cleanse action).
+ * Changes (applied/removed) drain for the gateway (`drainChanges`).
  */
+
+import type { SimWorld } from "./world.js";
+import type { SimSystem } from "./systems.js";
 
 export interface StatMod {
   /** The stat this touches ("power", "armour", "speed" — the rules' names). */
@@ -60,6 +64,15 @@ export interface ActiveStatus {
   source: number;
 }
 
+/** A buff/debuff gained or lost, for the gateway. */
+export interface StatusChange {
+  tick: number;
+  entity: number;
+  id: string;
+  state: "applied" | "removed";
+  stacks?: number;
+}
+
 interface Active {
   stacks: number;
   expiresAt: number; // Infinity for permanent
@@ -69,10 +82,11 @@ interface Active {
 
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
-export class StatusSystem {
+export class StatusSystem implements SimSystem {
   readonly name = "status";
   private readonly defs = new Map<string, StatusDef>();
   private readonly entities = new Map<number, Map<string, Active>>();
+  private changes: StatusChange[] = [];
 
   constructor(
     private readonly tickHz = 30,
@@ -97,6 +111,7 @@ export class StatusSystem {
       if (def.refresh === "accumulate") act.stacks = Math.min(def.maxStacks, act.stacks + 1);
       if (def.durationMs > 0) act.expiresAt = tick + msToTicks(def.durationMs, this.tickHz);
       act.source = source;
+      this.changes.push({ tick, entity: e, id, state: "applied", stacks: act.stacks });
       return true;
     }
     let byEntity = this.entities.get(e);
@@ -113,6 +128,7 @@ export class StatusSystem {
       source,
     };
     byEntity.set(id, act);
+    this.changes.push({ tick, entity: e, id, state: "applied", stacks: 1 });
     return true;
   }
 
@@ -122,9 +138,15 @@ export class StatusSystem {
     if (!byEntity) return [];
     const removed: string[] = [];
     if (id !== undefined) {
-      if (byEntity.delete(id)) removed.push(id);
+      if (byEntity.delete(id)) {
+        removed.push(id);
+        this.changes.push({ tick, entity: e, id, state: "removed" });
+      }
     } else {
-      for (const key of byEntity.keys()) removed.push(key);
+      for (const key of byEntity.keys()) {
+        removed.push(key);
+        this.changes.push({ tick, entity: e, id: key, state: "removed" });
+      }
       byEntity.clear();
     }
     if (byEntity.size === 0) this.entities.delete(e);
@@ -140,6 +162,7 @@ export class StatusSystem {
       if (this.defs.get(id)?.dispellable) {
         byEntity.delete(id);
         removed.push(id);
+        this.changes.push({ tick, entity: e, id, state: "removed" });
       }
     }
     if (byEntity.size === 0) this.entities.delete(e);
@@ -182,21 +205,35 @@ export class StatusSystem {
     return out;
   }
 
-  /** Forget `e` entirely (despawn). */
-  forget(e: number): void {
+  /** Changes since the last call, for the gateway. */
+  drainChanges(): StatusChange[] {
+    const out = this.changes;
+    if (out.length > 0) this.changes = [];
+    return out;
+  }
+
+  /** Forget `e` entirely (despawn): every status reads as removed. */
+  forget(e: number, tick: number): void {
+    const byEntity = this.entities.get(e);
+    if (byEntity) {
+      for (const id of byEntity.keys()) this.changes.push({ tick, entity: e, id, state: "removed" });
+    }
     this.entities.delete(e);
   }
 
-  step(tick: number): void {
+  step(sim: SimWorld, _dt: number): void {
+    const tick = sim.currentTick;
     for (const [e, byEntity] of this.entities) {
       for (const [id, act] of byEntity) {
         const def = this.defs.get(id);
         if (!def) {
           byEntity.delete(id);
+          this.changes.push({ tick, entity: e, id, state: "removed" });
           continue;
         }
         if (tick >= act.expiresAt) {
           byEntity.delete(id);
+          this.changes.push({ tick, entity: e, id, state: "removed" });
           continue;
         }
         const ot = def.kind === "debuff" ? def.dot : def.hot;

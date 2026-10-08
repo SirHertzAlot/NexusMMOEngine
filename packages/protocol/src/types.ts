@@ -72,6 +72,33 @@ export enum MessageType {
   Skills = 0x1b,
   /** C->S cast a spell; S->C the player's mana and how casts go (catalog 0x1c, roadmap: mana). JSON. */
   Magic = 0x1c,
+  /**
+   * C->S trigger an ability; S->C how abilities go (catalog 0x1d, roadmap
+   * M5). JSON. C->S `{kind:"trigger", id}`; S->C `{kind:"ability", tick,
+   * entity, id, state: "casting" | "queued" | "fired" | "interrupted" |
+   * "rejected", reason?}`.
+   */
+  Ability = 0x1d,
+  /**
+   * S->C telegraphs: warned, resolved, cancelled (catalog 0x1e, roadmap
+   * M5). JSON. `{kind:"telegraph", tick, id, source, shape, state,
+   * ticksUntilHit?, hits?}` — the client draws the warning; the server
+   * decides who is hit.
+   */
+  Telegraph = 0x1e,
+  /**
+   * S->C buff/debuff changes (catalog 0x1f, roadmap M5). JSON.
+   * `{kind:"status", tick, entity, id, state: "applied" | "removed",
+   * stacks?}`.
+   */
+  Status = 0x1f,
+  /**
+   * C->S duel challenge/accept/decline/yield; S->C duel events (catalog
+   * 0x20, roadmap M5). JSON. C->S `{kind:"duel", action: "challenge" |
+   * "accept" | "decline" | "yield", target?}`; S->C `{kind:"duel", tick,
+   * state, a, b, reason?, winner?}`.
+   */
+  Duel = 0x20,
 }
 
 /**
@@ -433,7 +460,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 21; // v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
+export const PROTOCOL_VERSION = 22; // v22 (2026-10-08): M5 combat abilities — 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel. v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).

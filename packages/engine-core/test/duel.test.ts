@@ -6,6 +6,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DuelSystem } from "../src/duel.js";
+import type { SimWorld } from "../src/world.js";
+const DT = 1 / 30;
+const simAt = (tick: number): SimWorld => ({ currentTick: tick }) as SimWorld;
 
 const HZ = 30;
 const ticks = (ms: number): number => Math.round((ms / 1000) * HZ);
@@ -41,7 +44,7 @@ describe("DuelSystem", () => {
   it("unanswered challenges expire", () => {
     const d = new DuelSystem(HZ);
     d.challenge(1, 2, 10);
-    d.step(10 + ticks(30000) + 1);
+    d.step(simAt(10 + ticks(30000) + 1), DT);
     assert.equal(d.accept(2, 10 + ticks(30000) + 2), false, "too late");
     const ev = d.drainEvents();
     assert.equal(ev[ev.length - 1].state, "expired");
@@ -93,7 +96,7 @@ describe("DuelSystem", () => {
     const d = new DuelSystem(HZ, HZ, 60000);
     d.challenge(1, 2, 10);
     d.accept(2, 11);
-    d.step(11 + ticks(60000) + 1);
+    d.step(simAt(11 + ticks(60000) + 1), DT);
     assert.equal(d.inDuel(1), false);
     const ev = d.drainEvents();
     const ended = ev[ev.length - 1];

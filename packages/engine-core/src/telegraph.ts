@@ -19,6 +19,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import { God, Health, Transform } from "./components.js";
 import type { SimWorld } from "./world.js";
+import type { SimSystem } from "./systems.js";
 
 export type TelegraphShape =
   | { kind: "circle"; x: number; z: number; r: number }
@@ -81,7 +82,7 @@ export function inShape(shape: TelegraphShape, x: number, z: number): boolean {
   }
 }
 
-export class TelegraphSystem {
+export class TelegraphSystem implements SimSystem {
   readonly name = "telegraph";
   private readonly query = defineQuery([Transform, Health]);
   private readonly live = new Map<number, Live>();
@@ -121,7 +122,8 @@ export class TelegraphSystem {
     return n;
   }
 
-  step(sim: SimWorld, tick: number): void {
+  step(sim: SimWorld, _dt: number): void {
+    const tick = sim.currentTick;
     for (const [id, live] of this.live) {
       if (tick < live.hitAt) continue;
       this.live.delete(id);

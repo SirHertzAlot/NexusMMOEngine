@@ -41,7 +41,10 @@ interface Duel {
 
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
-export class DuelSystem {
+import type { SimWorld } from "./world.js";
+import type { SimSystem } from "./systems.js";
+
+export class DuelSystem implements SimSystem {
   readonly name = "duel";
   /** Target -> challenge (one incoming challenge at a time; latest wins). */
   private readonly challenges = new Map<number, Challenge>();
@@ -162,7 +165,8 @@ export class DuelSystem {
     if (d) this.endDuel(d, tick, "cancelled");
   }
 
-  step(tick: number): void {
+  step(sim: SimWorld, _dt: number): void {
+    const tick = sim.currentTick;
     for (const [b, c] of this.challenges) {
       if (tick > c.expiresAt) {
         this.challenges.delete(b);

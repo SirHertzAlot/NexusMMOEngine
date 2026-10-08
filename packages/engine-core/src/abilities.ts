@@ -19,6 +19,9 @@
  * per-tick allocations beyond the event list.
  */
 
+import type { SimWorld } from "./world.js";
+import type { SimSystem } from "./systems.js";
+
 export interface AbilityDef {
   id: string;
   /** Global cooldown triggered by firing, ms. */
@@ -54,7 +57,7 @@ interface EntityState {
 
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
-export class AbilitySystem {
+export class AbilitySystem implements SimSystem {
   readonly name = "abilities";
   private readonly defs = new Map<string, AbilityDef>();
   private readonly entities = new Map<number, EntityState>();
@@ -131,7 +134,8 @@ export class AbilitySystem {
     return Math.max(0, (s?.gcdUntil ?? 0) - tick);
   }
 
-  step(tick: number): void {
+  step(sim: SimWorld, _dt: number): void {
+    const tick = sim.currentTick;
     for (const [e, s] of this.entities) {
       if (s.casting && tick >= s.casting.endsAt) {
         const def = this.defs.get(s.casting.id)!;

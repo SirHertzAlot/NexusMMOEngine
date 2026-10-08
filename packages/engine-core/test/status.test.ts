@@ -6,6 +6,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { StatusSystem } from "../src/status.js";
+import type { SimWorld } from "../src/world.js";
+const DT = 1 / 30;
+const simAt = (tick: number): SimWorld => ({ currentTick: tick }) as SimWorld;
 
 const HZ = 30;
 const ticks = (ms: number): number => Math.round((ms / 1000) * HZ);
@@ -72,7 +75,7 @@ describe("StatusSystem", () => {
     const s = setup();
     s.apply(1, "rage", 2, 10);
     assert.equal(s.active(1, 10)[0].expiresIn, ticks(10000));
-    s.step(10 + ticks(10000) + 1);
+    s.step(simAt(10 + ticks(10000) + 1), DT);
     assert.deepEqual(s.active(1, 10 + ticks(10000) + 1), [], "expired");
     assert.deepEqual(s.modifier(1, "power"), { add: 0, mul: 1 }, "modifier gone with it");
   });
@@ -83,7 +86,7 @@ describe("StatusSystem", () => {
     s.apply(1, "poison", 2, 10);
     s.apply(1, "poison", 2, 11); // 2 stacks
     s.apply(1, "regen", 1, 10);
-    s.step(10 + ticks(1000));
+    s.step(simAt(10 + ticks(1000)), DT);
     assert.equal(sinks.damage.length, 1);
     assert.equal(sinks.damage[0][0], 1);
     assert.ok(Math.abs(sinks.damage[0][1] - 12) < 1e-6, `2 stacks x 6 dps x 1s = 12, got ${sinks.damage[0][1]}`);

@@ -65,7 +65,7 @@ describe("TelegraphSystem", () => {
     assert.equal(ev[0].state, "warned");
     assert.equal(ev[0].ticksUntilHit, 30);
 
-    t.step(sim, 10 + 30);
+    sim.beginTick(10 + 30); t.step(sim, 1 / 30);
     ev = t.drainEvents();
     assert.equal(ev.length, 1);
     assert.equal(ev[0].state, "resolved");
@@ -88,7 +88,7 @@ describe("TelegraphSystem", () => {
     const t = new TelegraphSystem(30);
     const id = t.cast(sim, { source: caster, shape: { kind: "circle", x: 0, z: 0, r: 3 }, warnMs: 1000, amount: 25 }, 10);
     assert.equal(t.cancel(id, 20), true);
-    t.step(sim, 10 + 30);
+    sim.beginTick(10 + 30); t.step(sim, 1 / 30);
     const ev = t.drainEvents();
     assert.equal(ev[ev.length - 1].state, "cancelled");
     assert.equal(C.Health.current[inside], 100, "no damage");
@@ -103,7 +103,7 @@ describe("TelegraphSystem", () => {
     t.cast(sim, { source: caster, shape: { kind: "circle", x: 0, z: 0, r: 3 }, warnMs: 1000, amount: 25 }, 10);
     t.cast(sim, { source: caster, shape: { kind: "circle", x: 5, z: 5, r: 2 }, warnMs: 2000, amount: 10 }, 10);
     assert.equal(t.cancelFrom(caster, 15), 2);
-    t.step(sim, 10 + 60);
+    sim.beginTick(10 + 60); t.step(sim, 1 / 30);
     assert.ok(!t.drainEvents().some((e) => e.state === "resolved"), "nothing resolved");
   });
 
@@ -126,7 +126,7 @@ describe("TelegraphSystem", () => {
       },
       10,
     );
-    t.step(sim, 10 + 15);
+    sim.beginTick(10 + 15); t.step(sim, 1 / 30);
     assert.equal(C.Health.current[a], 60);
     assert.equal(C.Health.current[b], 90);
   });
