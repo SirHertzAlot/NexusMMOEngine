@@ -264,6 +264,7 @@ export function IconButton({
   size = 40,
   onClick,
   title,
+  disabled,
 }: {
   label: string;
   children: React.ReactNode;
@@ -271,6 +272,7 @@ export function IconButton({
   size?: 36 | 40;
   onClick?: () => void;
   title?: string;
+  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <button
@@ -279,7 +281,8 @@ export function IconButton({
       aria-pressed={active}
       title={title ?? label}
       onClick={onClick}
-      className="m3-focus m3-iconbtn grid shrink-0 place-items-center rounded-full"
+      disabled={disabled}
+      className="m3-focus m3-iconbtn grid shrink-0 place-items-center rounded-full disabled:opacity-40"
       style={{
         width: size,
         height: size,

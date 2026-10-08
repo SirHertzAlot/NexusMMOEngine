@@ -28,6 +28,9 @@ import {
 } from "../inspectors/dungeon-view.js";
 import type { PoolEntry } from "../dungeon-host.js";
 import { DungeonScene, type Pick } from "./dungeon-scene.js";
+import { getTool } from "./tool-store.js";
+import { canDragDungeonProp } from "./viewport-tools.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -132,6 +135,30 @@ export function DungeonPanel(): React.JSX.Element {
 
   const view = React.useMemo(() => (dungeon && patch ? dungeonView(dungeon, patch) : null), [dungeon, patch]);
   const dirty = patch !== null && JSON.stringify(patch) !== saved;
+
+  // Toolbar Save/Undo/Redo target while a dungeon is open.
+  React.useEffect(() => {
+    if (!dungeon || !patch) return;
+    const target = {
+      label: `dungeon "${dungeon.id}"`,
+      canSave: dirty,
+      canUndo: undo.length > 0,
+      canRedo: redo.length > 0,
+      save: () => void save(),
+      undo: () => {
+        setRedo((r) => [...r, patch]);
+        setPatch(undo[undo.length - 1]);
+        setUndo((u) => u.slice(0, -1));
+      },
+      redo: () => {
+        setUndo((u) => [...u, patch]);
+        setPatch(redo[redo.length - 1]);
+        setRedo((r) => r.slice(0, -1));
+      },
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr_300px]" data-testid="dungeon-panel">
@@ -256,7 +283,7 @@ export function DungeonPanel(): React.JSX.Element {
               Floor tints: <span className="text-emerald-400">entrance</span> · <span className="text-slate-400">combat</span> ·{" "}
               <span className="text-amber-400">elite</span> · <span className="text-yellow-300">treasure</span> · <span className="text-violet-400">shrine</span> ·{" "}
               <span className="text-red-400">boss</span>. Spheres: spawns by tier (green 1, amber 2, red 3). Blocks: props (grey layout, lilac dressing, cyan
-              edited or added). Drag to orbit, wheel to zoom, right-drag to pan.
+              edited or added). Move tool: drag the selected prop to move it. Select: drag to orbit, wheel to zoom, right-drag to pan.
             </p>
           )}
           {notice && <p className="mt-2 text-xs text-emerald-300">{notice}</p>}
@@ -472,7 +499,9 @@ function DungeonCanvas({
           return;
         }
         const hit = s.pick(e.clientX, e.clientY);
-        if (hit?.kind === "prop" && selected?.kind === "prop" && selected.key === hit.key) {
+        // The selected prop drags only with the move tool; otherwise the
+        // gesture orbits (select stays the camera/pick default).
+        if (hit?.kind === "prop" && selected?.kind === "prop" && selected.key === hit.key && canDragDungeonProp(getTool())) {
           // Dragging the selected prop: the camera holds still.
           s.setOrbit(false);
           drag.current = { key: hit.key, moved: false };

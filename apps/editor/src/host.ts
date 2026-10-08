@@ -428,7 +428,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     return true;
   }
 
-  async function startOwned(): Promise<OwnedServer> {
+  async function startOwned(opts?: { bots?: number }): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -501,6 +501,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
         ...process.env,
         MMO_PORT: String(serverPort),
         MMO_DATA_DIR: dataDir,
+        // The Play menu's Bots choice, when the start request carries it.
+        ...(opts?.bots !== undefined ? { MMO_BOTS: String(opts.bots) } : {}),
         // The debugger's admin console (E5): the editor's own play user is
         // an admin of the server it owns, on top of any configured ones.
         MMO_ADMINS: [process.env.MMO_ADMINS, username].filter(Boolean).join(","),
@@ -687,8 +689,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
         }
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
-            await readBody(req);
-            const s = await startOwned();
+            const startBody = await readBody(req);
+            // The only start option honored today: bots → MMO_BOTS.
+            // Anything else in the body is ignored (the Play menu badges
+            // those dimensions "preview" instead of pretending).
+            let bots: number | undefined;
+            try {
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown };
+              if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
+                bots = Math.floor(parsed.bots);
+              }
+            } catch {
+              /* empty / non-JSON body: server defaults */
+            }
+            const s = await startOwned(bots !== undefined ? { bots } : undefined);
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,

@@ -23,6 +23,9 @@ import {
 } from "@mmo-engine/scene";
 import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
 import { MIcon } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { getTool } from "./tool-store.js";
+import { canDragGraphNode } from "./viewport-tools.js";
 
 const NODE_W = 140;
 const NODE_H = 44;
@@ -63,6 +66,24 @@ export function FlowEditor(): React.JSX.Element {
       })
       .catch((e: unknown) => setStatus(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  // Toolbar Save target while the flow is open (no undo stack here —
+  // edits apply directly, so Undo/Redo stay disabled).
+  React.useEffect(() => {
+    if (!doc) return;
+    const snapshot = JSON.stringify(doc);
+    const target = {
+      label: "game flow",
+      canSave: snapshot !== saved,
+      canUndo: false,
+      canRedo: false,
+      save: () => void save(),
+      undo: () => undefined,
+      redo: () => undefined,
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   if (!doc) return <div className="p-4 text-[13px]">Flow: {status}</div>;
 
@@ -174,8 +195,12 @@ export function FlowEditor(): React.JSX.Element {
               style={{ cursor: "grab" }}
               onPointerDown={(ev) => {
                 ev.stopPropagation();
-                const pt = toUnits(ev);
-                drag.current = { id, dx: pt.x - p.x, dy: pt.y - p.y };
+                // Nodes drag only with the move tool; with select a press
+                // picks the node (the canvas has no pan gesture to protect).
+                if (ev.button === 0 && canDragGraphNode(getTool())) {
+                  const pt = toUnits(ev);
+                  drag.current = { id, dx: pt.x - p.x, dy: pt.y - p.y };
+                }
                 setSelected(id);
               }}
             >

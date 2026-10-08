@@ -26,6 +26,9 @@ import {
   type BrushTool,
 } from "@mmo-engine/protocol";
 import { TerrainView } from "../terrain/terrain-view.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { getTool } from "./tool-store.js";
+import { canSculptTerrain } from "./viewport-tools.js";
 import {
   generateTerrain,
   loadTerrain,
@@ -102,6 +105,9 @@ export function TerrainEditorPanel(): React.JSX.Element {
     if (!canvas) return;
     const view = new TerrainView(canvas, {
       onDab(x, z, dt, first) {
+        // Belt and braces with the view's own gate: dabs only sculpt
+        // with the move tool (select orbits instead).
+        if (!canSculptTerrain(getTool())) return;
         const grid = gridRef.current;
         if (!grid) return;
         const { tool: t, radius: r, strength: s } = brush.current;
@@ -189,6 +195,23 @@ export function TerrainEditorPanel(): React.JSX.Element {
   React.useEffect(() => {
     viewRef.current?.setWireframe(wireframe);
   }, [wireframe]);
+
+  // Toolbar Save target for the loaded area (no undo stack — sculpt
+  // dabs apply directly, so Undo/Redo stay disabled).
+  React.useEffect(() => {
+    if (!world) return;
+    const target = {
+      label: "terrain area",
+      canSave: dirtyCount > 0,
+      canUndo: false,
+      canRedo: false,
+      save: () => void save(),
+      undo: () => undefined,
+      redo: () => undefined,
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   async function save(): Promise<void> {
     const grid = gridRef.current;
@@ -312,7 +335,7 @@ export function TerrainEditorPanel(): React.JSX.Element {
         <CardContent>
           <canvas ref={canvasRef} className="block h-[560px] w-full rounded-md" />
           <p className="mt-2 text-xs text-muted-foreground">
-            Left-drag sculpt · right-drag orbit · middle-drag pan · wheel zoom
+            Move tool: left-drag sculpts · select: left-drag orbits · right-drag orbits · middle-drag pans · wheel zooms
           </p>
         </CardContent>
       </Card>
