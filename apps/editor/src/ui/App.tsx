@@ -17,6 +17,7 @@ import { TerrainEditorPanel } from "./terrain-editor.js";
 import { CharacterRecordPanel } from "./character-view.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
+import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
@@ -153,6 +154,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "story", label: "Story", icon: "auto_stories",
     views: [
+      { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
       { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestPreview /> },
       { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPreview /> },
     ],
