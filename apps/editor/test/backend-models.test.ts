@@ -21,6 +21,7 @@ import type { AdminResult } from "@mmo-engine/protocol";
 const ALL_VIEWS: ViewKey[] = [
   "world/terrain",
   "scene/ecs",
+  "scenes/scene",
   "flow/flow",
   "flow/hud",
   "characters/records",

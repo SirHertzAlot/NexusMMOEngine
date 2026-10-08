@@ -24,6 +24,7 @@ export type DataStatus = "live" | "parsed" | "staged" | "local";
 export type ViewKey =
   | "world/terrain"
   | "scene/ecs"
+  | "scenes/scene"
   | "flow/flow"
   | "flow/hud"
   | "characters/records"
@@ -412,6 +413,13 @@ export const VIEW_DATA_CONTRACT: Record<ViewKey, ViewDataBinding> = {
     label: "Scene viewport + ECS inspector",
     expects: "EntityMirror (all CollectedState rows)",
     via: "mirror: MirrorState.entities",
+    status: "live",
+  },
+  "scenes/scene": {
+    view: "scenes/scene",
+    label: "Scene documents",
+    expects: "SceneDoc (@mmo-engine/scene)",
+    via: "http:/api/editor/scenes",
     status: "live",
   },
   "flow/flow": {

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "test-arena",
+  "kind": "arena",
+  "modules": ["core"],
+  "nodes": [
+    {
+      "id": "spawn",
+      "name": "Player spawn",
+      "kind": "spawn-point",
+      "transform": { "position": [0, 0, 0] }
+    },
+    {
+      "id": "camp",
+      "name": "Goblin camp",
+      "prefab": "camps/goblin",
+      "transform": { "position": [20, 0, -10] },
+      "components": { "Spawner": { "creature": "goblin", "respawnSeconds": 60 } }
+    }
+  ]
+}
