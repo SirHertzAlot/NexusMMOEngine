@@ -582,7 +582,7 @@ async function main(): Promise<void> {
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
-  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e) });
+  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e), wallet });
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -619,6 +619,9 @@ async function main(): Promise<void> {
     grant: (character, base) => {
       const def = itemDefs.defs.starter(base, rankOrder);
       return def >= 0 && items.give(character, def).ok;
+    },
+    grantGold: (character, amount) => {
+      wallet.grant(character, amount, sim.currentTick);
     },
   });
   console.log(

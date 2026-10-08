@@ -471,6 +471,8 @@ export const CreatureSchema = z.strictObject({
     .strictObject({
       rolls: z.tuple([z.number().int().min(0), z.number().int().min(0)]).default([1, 2]),
       chance: share.default(0.8),
+      /** Gold the killer pockets: rolled uniformly in [min, max]. Absent: none. */
+      gold: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
     })
     .default({ rolls: [1, 2], chance: 0.8 }),
 });

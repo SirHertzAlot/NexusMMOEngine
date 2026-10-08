@@ -13,6 +13,7 @@ import type { SimWorld } from "../world.js";
 import type { LifeEvent } from "../death.js";
 import type { ItemDefs } from "./item-defs.js";
 import type { ItemService } from "./item-service.js";
+import type { WalletSystem } from "../economy/wallet.js";
 
 export interface LootDropperOptions {
   items: ItemService;
@@ -21,6 +22,8 @@ export interface LootDropperOptions {
   /** Creature kind id of an entity, undefined if it is not a creature. */
   kindOf: (e: number) => string | undefined;
   seed?: number;
+  /** Gold drops go here; absent: gold is not granted. */
+  wallet?: WalletSystem;
 }
 
 /** Drops scatter this far from the body, metres. */
@@ -45,15 +48,22 @@ export class LootDropper {
 
   /** Roll the drops for a death event; returns how many items landed. */
   onDeath(sim: SimWorld, ev: LifeEvent): number {
-    if (ev.state !== "dead" || this.pool.length === 0) return 0;
+    if (ev.state !== "dead") return 0;
     const kind = this.opts.kindOf(ev.target);
     const rules = kind === undefined ? undefined : this.creatures[kind]?.drops;
     if (!rules) return 0;
-    const [lo, hi] = rules.rolls;
-    const rolls = lo + Math.floor(this.rand() * (Math.max(hi, lo) - lo + 1));
     const owner = ev.killer !== undefined && hasComponent(sim.ecs, C.CharacterRef, ev.killer)
       ? C.CharacterRef.idHi[ev.killer] * 4294967296 + C.CharacterRef.idLo[ev.killer]
       : 0;
+    // Gold first: the killer pockets it straight into their wallet.
+    if (owner !== 0 && this.opts.wallet && rules.gold) {
+      const [glo, ghi] = rules.gold;
+      const amount = glo + Math.floor(this.rand() * (Math.max(ghi, glo) - glo + 1));
+      if (amount > 0) this.opts.wallet.grant(owner, amount, sim.currentTick);
+    }
+    if (this.pool.length === 0) return 0;
+    const [lo, hi] = rules.rolls;
+    const rolls = lo + Math.floor(this.rand() * (Math.max(hi, lo) - lo + 1));
     let n = 0;
     for (let i = 0; i < rolls; i++) {
       if (this.rand() >= rules.chance) continue;

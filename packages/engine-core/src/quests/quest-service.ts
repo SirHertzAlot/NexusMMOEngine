@@ -46,6 +46,8 @@ export interface QuestServiceOptions {
   countInBag?: (characterId: number, base: string) => number;
   /** Give a character one item of `base`; false when it couldn't (no such item, bag full). */
   grant?: (characterId: number, base: string) => boolean;
+  /** Give a character gold (quest rewards); absent: gold rewards are skipped. */
+  grantGold?: (characterId: number, amount: number) => void;
   /** Check places and bags every this many ticks (default 15: twice a second). */
   checkEveryTicks?: number;
   now?: () => number;
@@ -221,11 +223,17 @@ export class QuestService implements SimSystem, GatewayExtension {
       return false;
     }
     let granted = 0;
+    let goldGranted = 0;
     for (const reward of rec.def.rewards) {
+      if (reward.gold !== undefined && reward.gold > 0) {
+        this.opts.grantGold?.(o.log.characterId, reward.gold);
+        goldGranted += reward.gold;
+        granted++;
+      }
       for (let i = 0; i < reward.count; i++) if (this.opts.grant?.(o.log.characterId, reward.base)) granted++;
     }
     if (granted > 0) o.player.refreshInventory();
-    this.notice(o, `quest done: ${rec.def.name}${granted > 0 ? ` (${granted} reward${granted === 1 ? "" : "s"})` : ""}`);
+    this.notice(o, `quest done: ${rec.def.name}${granted > 0 ? ` (${granted} reward${granted === 1 ? "" : "s"})` : ""}${goldGranted > 0 ? ` (+${goldGranted} gold)` : ""}`);
     this.changed(o);
     return true;
   }
