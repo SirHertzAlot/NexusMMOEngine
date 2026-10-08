@@ -102,6 +102,7 @@ import { applySet, SetArgsSchema } from "../admin/set.js";
 import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
+import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
@@ -2457,21 +2458,9 @@ export class Gateway {
     if (!parsed.success) {
       return { kind: "admin", command, ok: false, message: "usage: spawn {asset, x?, z?, yaw?}" };
     }
-    let x = parsed.data.x;
-    let z = parsed.data.z;
-    let y: number;
-    if (x === undefined || z === undefined) {
-      if (s.playerEntity === null) {
-        return { kind: "admin", command, ok: false, message: "no player entity (not in the world)" };
-      }
-      const eid = this.world.resolveWireId(s.playerEntity);
-      if (eid < 0) return { kind: "admin", command, ok: false, message: "avatar is gone" };
-      x = C.Transform.px[eid];
-      z = C.Transform.pz[eid];
-      y = C.Transform.py[eid];
-    } else {
-      y = this.groundHeightAt?.(x, z) ?? 0;
-    }
+    const point = resolveSpawnPoint(this.world, s, this.groundHeightAt, parsed.data.x, parsed.data.z);
+    if ("error" in point) return { kind: "admin", command, ok: false, message: point.error };
+    const { x, y, z } = point;
     if (this.creatures?.has(parsed.data.asset)) {
       const ids = this.creatures.spawnPack(this.world, parsed.data.asset, x, z);
       return { kind: "admin", command, ok: true, message: `spawned a pack of ${ids.length} ${parsed.data.asset}` };
@@ -4420,13 +4409,6 @@ export class Gateway {
     const a = VendorArgsSchema.safeParse(args ?? {});
     if (!a.success) return fail('usage: vendor {sub: "define"|"stock"|"attach"|"detach"|"spawn"|"disable"|"enable"|"remove"|"list", ...}');
     const d = a.data;
-    const resolveTarget = (target: string): number => {
-      try {
-        return this.world.resolveWireId(BigInt(target));
-      } catch {
-        return -1;
-      }
-    };
     switch (d.sub) {
       case "define": {
         if (!d.id) return fail('define needs {id, name?}');
@@ -4448,14 +4430,14 @@ export class Gateway {
       }
       case "attach": {
         if (!d.id || !d.target) return fail('attach needs {id, target}');
-        const entity = resolveTarget(d.target);
+        const entity = resolveEntityTarget(this.world, d.target);
         if (entity < 0) return fail("no such target");
         if (!vendor.attach(entity, d.id)) return fail("unknown vendor template");
         return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" attached to ${d.target}` };
       }
       case "detach": {
         if (!d.target) return fail('detach needs {target}');
-        const entity = resolveTarget(d.target);
+        const entity = resolveEntityTarget(this.world, d.target);
         if (entity < 0) return fail("no such target");
         if (!vendor.detach(entity)) return fail("that entity is not a vendor");
         return { kind: "admin", command: "vendor", ok: true, message: `vendor detached from ${d.target}` };
@@ -4525,8 +4507,8 @@ export class Gateway {
   }
 
   /**
-   * Spawn a vendor NPC: a minimal world entity (Transform) at (x, z) or at
-   * the admin's feet, ready for the vendor template to attach. Returns the
+   * Spawn a vendor NPC: a minimal world entity at (x, z) or at the
+   * admin's feet, ready for the vendor template to attach. Returns the
    * entity and wire id, or an error.
    */
   private spawnVendorNpc(
@@ -4534,25 +4516,10 @@ export class Gateway {
     x: number | undefined,
     z: number | undefined,
   ): { entity: number; wireId: string; x: number; z: number } | { error: string } {
-    let px = x;
-    let pz = z;
-    let py: number;
-    if (px === undefined || pz === undefined) {
-      if (s.playerEntity === null) return { error: "no player entity (not in the world)" };
-      const eid = this.world.resolveWireId(s.playerEntity);
-      if (eid < 0) return { error: "avatar is gone" };
-      px = C.Transform.px[eid];
-      pz = C.Transform.pz[eid];
-      py = C.Transform.py[eid];
-    } else {
-      py = this.groundHeightAt?.(px, pz) ?? 0;
-    }
-    const eid = this.world.spawn();
-    addComponent(this.world.ecs, C.Transform, eid);
-    C.Transform.px[eid] = px;
-    C.Transform.py[eid] = py;
-    C.Transform.pz[eid] = pz;
-    return { entity: eid, wireId: this.world.wireId(eid).toString(), x: px, z: pz };
+    const point = resolveSpawnPoint(this.world, s, this.groundHeightAt, x, z);
+    if ("error" in point) return { error: point.error };
+    const entity = spawnBasicEntity(this.world, point.x, point.y, point.z);
+    return { entity, wireId: this.world.wireId(entity).toString(), x: point.x, z: point.z };
   }
 
   /**
