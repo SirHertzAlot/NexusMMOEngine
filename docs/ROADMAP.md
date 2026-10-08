@@ -109,6 +109,7 @@ stay read-only here; this edits the running game.
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | ✅ | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; `god` toggles the God tag (no combat/hunger/drowning/trap Health loss) and peaks every skill, kept when switched off; `noclip` toggles the Noclip tag (free vertical flight, dungeon walls let go); `time` shows and sets the clock (newcomers via welcome, live clients by broadcast) and `weather` forces the sky (auto/clear/rain/snow/ash, same path); `injure {part, kind?, amount?}` (#99) and `skill {id, value}` (#112) live; `heal` also fills mana and makes the body whole |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
 | A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
+| A7 | **Bots in web workers**: an admin command spawns N simulated players (each its own socket, moving and fighting) in worker threads, to stress the server and feel play under load | 📋 | U14 (worker pool), A1; builds on `scripts/world-stress` |
 
 ## 1c. Modular editor
 
@@ -169,6 +170,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | U12 | Injury display and hit feedback | ✅ | Hit feedback and target frame (U12a); injuries on a body doll in the player frame (#124) |
 | U13 | Follow the party into dungeon runs and back | ✅ | Entrances in the world, party enter, run HUD, result and return (#126) |
 | U4b | Recorded sounds and positional audio | 📋 | U4 |
+| U14 | Client web workers: terrain blocks, PCG decode and BVH build off the main thread | 🚧 | Built and wired: `WorkerPool` (least-busy of up to 4 workers), `TerrainRenderer` block meshes, `PcgMeshes` decode and `ensureBoundsTreeAsync`, all falling back to inline without workers. Unit-tested; the running client has not been checked in a browser yet |
 
 ## 3. Characters, combat and social
 
@@ -285,6 +287,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: U14 client web workers (in progress): `WorkerRuntime` (retry, transfer, concurrency cap), terrain, terrain-block, PCG and BVH handlers, `WorkerPool`, wired into the terrain renderer, `PcgMeshes` and BVH building; 221 client tests pass, production build bundles. Browser check pending.
 - **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.
 - **2026-10-06**: D4 complete: veins deferred to crafting actions (no gathering, pouch, or crafting actions exist to yield into); runs, results, skill gains, chests and traps are all built.
 - **2026-10-06**: Edge run story: root `npm run edge`, booted beside the region by `npm start`, and a split-topology recipe (world, region, edge) in CLI.md with the honest note that players still connect to the region until E3b.
