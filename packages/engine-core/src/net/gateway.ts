@@ -76,6 +76,10 @@ import {
   type SpellMessage,
   type HitMessage,
   type LifeMessage,
+  type AbilityMessage,
+  type TelegraphMessage,
+  type StatusMessage,
+  type DuelMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -135,6 +139,10 @@ import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
+import { AbilitySystem } from "../abilities.js";
+import { StatusSystem } from "../status.js";
+import { TelegraphSystem } from "../telegraph.js";
+import { DuelSystem } from "../duel.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -388,6 +396,23 @@ const StanceSchema = z
   })
   .strict();
 
+/** 0x1d ability trigger (M5): the id is checked by AbilitySystem. */
+const AbilityTriggerSchema = z
+  .object({
+    kind: z.literal("trigger"),
+    id: z.string().min(1).max(64),
+  })
+  .strict();
+
+/** 0x20 duel actions (M5). */
+const DuelActionSchema = z
+  .object({
+    kind: z.literal("duel"),
+    action: z.enum(["challenge", "accept", "decline", "yield"]),
+    target: z.string().min(1).max(32).optional(),
+  })
+  .strict();
+
 /** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
 const TreatSchema = z
   .object({
@@ -444,8 +469,8 @@ export interface GatewayTick {
   tick: number;
   /** The FlatBuffers delta every client got this tick. */
   delta: Uint8Array;
-  /** This tick's gameplay events: hits (0x16) and deaths/respawns (0x17). */
-  events: Array<HitMessage | LifeMessage>;
+  /** This tick's gameplay events: hits (0x16), deaths/respawns (0x17), abilities (0x1d), telegraphs (0x1e), statuses (0x1f), duels (0x20). */
+  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage>;
   /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
   fullState(): Uint8Array;
 }
@@ -1016,9 +1041,13 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage> = [
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage> = [
       ...this.sendHits(sim, tick),
       ...this.sendLife(sim, tick),
+      ...this.sendAbilities(sim, tick),
+      ...this.sendTelegraphs(sim, tick),
+      ...this.sendStatuses(sim, tick),
+      ...this.sendDuels(sim, tick),
     ];
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
@@ -1110,6 +1139,105 @@ export class Gateway {
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out ability events this tick (catalog 0x1d, M5). */
+  private sendAbilities(sim: SimWorld, tick: number): AbilityMessage[] {
+    const all: AbilityMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof AbilitySystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs = events.map((e): AbilityMessage => ({
+        kind: "ability",
+        tick,
+        entity: String(sim.wireId(e.entity)),
+        id: e.id,
+        state: e.state,
+        ...(e.reason ? { reason: e.reason } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Ability, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out telegraph warnings, resolutions and cancellations (catalog 0x1e, M5). */
+  private sendTelegraphs(sim: SimWorld, tick: number): TelegraphMessage[] {
+    const all: TelegraphMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof TelegraphSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs = events.map((e): TelegraphMessage => ({
+        kind: "telegraph",
+        tick,
+        id: e.id,
+        source: String(sim.wireId(e.source)),
+        shape: e.shape,
+        state: e.state,
+        ...(e.ticksUntilHit !== undefined ? { ticksUntilHit: e.ticksUntilHit } : {}),
+        ...(e.hits ? { hits: e.hits.map((h) => ({ target: String(sim.wireId(h.target)), amount: h.amount })) } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out buff/debuff changes (catalog 0x1f, M5). */
+  private sendStatuses(sim: SimWorld, tick: number): StatusMessage[] {
+    const all: StatusMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof StatusSystem)) continue;
+      const changes = s.drainChanges();
+      if (changes.length === 0) continue;
+      const msgs = changes.map((c): StatusMessage => ({
+        kind: "status",
+        tick,
+        entity: String(sim.wireId(c.entity)),
+        id: c.id,
+        state: c.state,
+        ...(c.stacks !== undefined ? { stacks: c.stacks } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Status, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out duel events (catalog 0x20, M5). */
+  private sendDuels(sim: SimWorld, tick: number): DuelMessage[] {
+    const all: DuelMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof DuelSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs = events.map((e): DuelMessage => ({
+        kind: "duel",
+        tick,
+        state: e.state,
+        a: String(sim.wireId(e.a)),
+        b: String(sim.wireId(e.b)),
+        ...(e.reason ? { reason: e.reason } : {}),
+        ...(e.winner !== undefined ? { winner: String(sim.wireId(e.winner)) } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Duel, encodeControl(m));
       }
       all.push(...msgs);
     }
@@ -1840,6 +1968,12 @@ export class Gateway {
         break;
       case MessageType.Magic:
         this.onCast(s, payload);
+        break;
+      case MessageType.Ability:
+        this.onAbility(s, payload);
+        break;
+      case MessageType.Duel:
+        this.onDuel(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -3412,6 +3546,103 @@ export class Gateway {
     if (avatar < 0) return;
     const err = combat.setStance(avatar, parsed.data.technique, parsed.data.aim);
     if (err) this.sendError(s, 4005, err);
+  }
+
+  /**
+   * Trigger an ability (catalog 0x1d, M5). The AbilitySystem decides
+   * whether it fires now, queues, or rejects; the outcome drains as an
+   * `ability` event next tick.
+   */
+  private onAbility(s: ClientSession, payload: Uint8Array): void {
+    const abilities = this.systems.find((x): x is AbilitySystem => x instanceof AbilitySystem);
+    if (!abilities || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "ability outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed ability");
+      return;
+    }
+    const parsed = AbilityTriggerSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed ability");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return;
+    abilities.trigger(avatar, parsed.data.id, this.tick);
+  }
+
+  /**
+   * Duel actions (catalog 0x20, M5): challenge/accept/decline/yield. The
+   * DuelSystem owns the flow; its events drain next tick.
+   */
+  private onDuel(s: ClientSession, payload: Uint8Array): void {
+    const duels = this.systems.find((x): x is DuelSystem => x instanceof DuelSystem);
+    if (!duels || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "duel outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed duel");
+      return;
+    }
+    const parsed = DuelActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed duel");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return;
+    const tick = this.tick;
+    switch (parsed.data.action) {
+      case "challenge": {
+        if (parsed.data.target === undefined) {
+          this.sendError(s, 4003, "challenge needs a target");
+          return;
+        }
+        let target: number;
+        try {
+          target = this.world.resolveWireId(BigInt(parsed.data.target));
+        } catch {
+          this.sendError(s, 4003, "bad target");
+          return;
+        }
+        if (target < 0) {
+          this.sendError(s, 4005, "no such target");
+          return;
+        }
+        if (!duels.challenge(avatar, target, tick)) this.sendError(s, 4005, "cannot challenge now");
+        break;
+      }
+      case "accept":
+        if (!duels.accept(avatar, tick)) this.sendError(s, 4005, "nothing to accept");
+        break;
+      case "decline":
+        if (!duels.decline(avatar, tick)) this.sendError(s, 4005, "nothing to decline");
+        break;
+      case "yield":
+        if (!duels.yield(avatar, tick)) this.sendError(s, 4005, "not dueling");
+        break;
+    }
   }
 
   /**

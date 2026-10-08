@@ -125,6 +125,16 @@ export interface CombatDamage {
   body?: BodySystem;
   /** The rules' technique ids (a stance may name only these); absent: no stances. */
   techniques?: () => readonly string[];
+  /**
+   * PvP gate (duel.ts): whether `source` may hurt `target`. Absent means
+   * everyone may hit everyone (the historical behaviour).
+   */
+  canHit?: (source: number, target: number) => boolean;
+  /**
+   * Damage scaler (status.ts): multiplies the final amount, e.g. from
+   * buffs/debuffs. Absent means 1.
+   */
+  damageScale?: (source: number, target: number) => number;
 }
 
 /** How an entity strikes (M3, catalog 0x19): its own technique and aim, or the defaults. */
@@ -276,6 +286,7 @@ export class CombatSystem implements SimSystem {
     for (let i = 0; i < ids.length; i++) {
       const t = ids[i] as number;
       if (t === e || Health.current[t] <= 0) continue;
+      if (dmg.canHit && !dmg.canHit(e, t)) continue; // PvP gate: duels and hostile pairs only
       const dx = Transform.px[t] - Transform.px[e];
       const dz = Transform.pz[t] - Transform.pz[e];
       const d = Math.hypot(dx, dz);
@@ -325,6 +336,8 @@ export class CombatSystem implements SimSystem {
           }
         }
         if (weaponSkill) sk!.train(e, weaponSkill, FIGHT_DIFFICULTY, t);
+        // Status effects (status.ts): buffs/debuffs scale the landed blow.
+        amount *= dmg.damageScale?.(e, t) ?? 1;
         if (body && amount > 0) {
           const r = body.applyBlow(sim, t, part, blow.kind, amount);
           part = r.part;
