@@ -136,7 +136,7 @@ loadable modules, a database editor and production tools.
 | EA15 | Fill every workspace | 📋 | |
 | EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
-| EA18 | Version control | 📋 | |
+| EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
 | EA19 | Build and deploy | 📋 | |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
