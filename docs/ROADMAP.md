@@ -227,7 +227,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Valgrind: memcheck gate for every addon's tests; callgrind instruction-count baselines for headless workloads (`npm run valgrind:memcheck`, `valgrind:perf`) | ✅ | Found and fixed a tile-bake leak and a Recast tile-cache overflow |
 | — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
-| — | **Prop blocking without CharacterVirtual**: kinematic walkers resolve against static prop bodies on the JS side (`PropCollisionSystem`, after integrate/character, before the physics sync), so players no longer walk through scatter-spawned trees and rocks; scene nodes carry validated per-node `Collider` data (box/sphere/none, edited in the Scenes workspace) | 🚧 | On branch `feat/prop-collision`; full CharacterVirtual stays 📋; `npm run valgrind:perf` still owes the new system a Linux baseline check |
+| — | **Prop blocking without CharacterVirtual**: kinematic walkers resolve against static prop bodies on the JS side (`PropCollisionSystem`, after integrate/character, before the physics sync), so players no longer walk through scatter-spawned trees and rocks; scene nodes carry validated per-node `Collider` data (box/sphere/none, edited in the Scenes workspace) | 🚧 | Merged via `integration/editor`; full CharacterVirtual stays 📋; `npm run valgrind:perf` still owes the new system a Linux baseline check |
 
 ## 5b. Edge / core split
 
@@ -286,7 +286,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
-- **2026-10-08**: Prop collision (in progress, branch `feat/prop-collision`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
+- **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
 
 - **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
 - **2026-10-08**: EA7 and EA8 game flow: `content/flow/game.flow.json` drives the client's screens through a pure flow runner in `packages/scene`; the editor's Flow panel edits it as a graph (validated save, refused save writes nothing) and plays from login, character creation or world.
