@@ -133,7 +133,7 @@ loadable modules, a database editor and production tools.
 | EA12 | Edge modules | 📋 | |
 | EA13 | Existing tools as modules | 📋 | |
 | EA14 | The play menu | 📋 | |
-| EA15 | Fill every workspace | 📋 | |
+| EA15 | Fill every workspace | 🚧 | `feat/ea15-gameplay-authoring`: Gameplay data grids over creatures (with drops), item bases, skills, spells and species, and a Content browser with `GET /api/editor/content-catalog` (a scene-viewport drag source). Saves go through `/api/editor/gameplay`, validated by the server's own loaders, refused saves write nothing. Deferred: the other workspaces' fill-in, live values beside authored ones, crafting recipes and combat moves (code, not data), a prefab file format |
 | EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
 | EA18 | Version control | 📋 | |
@@ -285,6 +285,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: EA15 first slice (in progress, branch): Gameplay data grids (search, filter, sort, inline per-cell checks, expandable rows, batch set/multiply/duplicate/delete) over `content/rules` creatures, item bases, skills and spells and a `content/species/species.json` overlay; saves validate with `parseRules`/`loadSpecies` plus a rule that a creature or item base scenes, quests or dungeons use can't be removed; `GET /api/editor/content-catalog` and a Content browser panel for the scene viewport to drag from.
 - **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
 - **2026-10-08**: EA16 first slice: `PersistenceCore` in engine-core (`persist/persistence-core.ts`) with catalog, SELECT-only query (child process, row limit, timeout kill), typed mutations with backup and `admin_log` undo; editor host routes `/api/editor/database/*` (loopback, JSON-only) and the Database workspace (schema tree, grid with pending edits, query, audit log). Mutations refuse while the game server runs; live-state edits deferred.
 - **2026-10-08**: EA20 quest and dialog editor (in progress, branch): Story workspace edits `content/quests/*.json` as the server loads them; saves validate the whole set (server schemas and checks, item and species references, prerequisite cycles, dialog loops with no exit) and write nothing when invalid; dialog tester walks a dialog against an editable mock quest state.
