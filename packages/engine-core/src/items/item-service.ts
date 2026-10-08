@@ -97,6 +97,26 @@ export class ItemService implements SimSystem {
   }
 
   /**
+   * A scene-placed item (data-driven entities): lies at (x, z) for anyone and
+   * never despawns on the timer. Placed again each boot, so the scene spawner
+   * discards the old one first (`discardGround`).
+   */
+  placeFixture(sim: SimWorld, def: number, x: number, z: number): { item: number; eid: number } {
+    const r = this.spawnDrop(sim, def, x, z, 0);
+    WorldItem.despawnAt[r.eid] = 0xffffffff;
+    return r;
+  }
+
+  /** Remove `item` if it is still lying on the ground (not one picked up since); true when it was. */
+  discardGround(sim: SimWorld, item: number): boolean {
+    const eid = this.entityOf.get(item);
+    if (eid === undefined) return false;
+    this.removeGroundEntity(sim, item, eid);
+    this.store.destroy(item);
+    return true;
+  }
+
+  /**
    * Pick a ground item up into `character`'s bag. `avatar` is the
    * character's entity slot (for the range check); `entity` the ground
    * item's wire id.
