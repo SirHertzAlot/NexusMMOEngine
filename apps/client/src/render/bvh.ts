@@ -13,7 +13,8 @@
  */
 
 import * as THREE from "three";
-import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from "three-mesh-bvh";
+import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree, MeshBVH } from "three-mesh-bvh";
+import type { WorkerRequester } from "../workers/pool.js";
 
 let installed = false;
 
@@ -31,13 +32,34 @@ const MIN_TRIANGLES = 64;
 
 /** Give a (static) geometry its tree, once; small ones are left alone. Returns whether it has one. */
 export function ensureBoundsTree(geometry: THREE.BufferGeometry): boolean {
-  if (geometry.boundsTree) return true;
-  const index = geometry.getIndex();
-  const position = geometry.getAttribute("position");
-  if (!position) return false;
-  const triangles = (index ? index.count : position.count) / 3;
-  if (triangles < MIN_TRIANGLES) return false;
+  if (!wantsTree(geometry)) return !!geometry.boundsTree;
   installBvh();
   geometry.computeBoundsTree();
   return true;
+}
+
+function wantsTree(geometry: THREE.BufferGeometry): boolean {
+  if (geometry.boundsTree) return false;
+  const index = geometry.getIndex();
+  const position = geometry.getAttribute("position");
+  return !!position && (index ? index.count : position.count) / 3 >= MIN_TRIANGLES;
+}
+
+/**
+ * ensureBoundsTree with the build in a worker (it gets copies; the geometry
+ * keeps its arrays). A failed worker leaves the lazy ensureBoundsTree to build it.
+ */
+export async function ensureBoundsTreeAsync(geometry: THREE.BufferGeometry, workers: WorkerRequester): Promise<void> {
+  const index = geometry.getIndex();
+  if (!index || !wantsTree(geometry)) return; // the worker builds indexed geometry only
+  try {
+    const bvh = await workers.request("bvh", {
+      positions: (geometry.getAttribute("position").array as Float32Array).slice(),
+      indices: (index.array as Uint16Array | Uint32Array).slice(),
+    });
+    installBvh();
+    geometry.boundsTree = MeshBVH.deserialize(bvh, geometry) as unknown as typeof geometry.boundsTree; // (two copies of the package: drei nests its own)
+  } catch (err) {
+    console.warn("[bvh] worker build failed; building lazily:", (err as Error).message);
+  }
 }

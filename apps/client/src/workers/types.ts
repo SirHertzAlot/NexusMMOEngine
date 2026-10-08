@@ -19,6 +19,7 @@ export interface TaskPayloadMap {
   terrain: TerrainTaskPayload;
   pcg: PcgTaskPayload;
   bvh: BvhTaskPayload;
+  terrainBlock: TerrainBlockTaskPayload;
   // Extend this interface to add new task types
 }
 
@@ -33,7 +34,15 @@ export interface PcgTaskPayload {
 
 export interface BvhTaskPayload {
   positions: Float32Array;
-  indices: Uint16Array;
+  indices: Uint16Array | Uint32Array;
+}
+
+/** One LOD block of chunks (see terrain-lod.ts buildBlockBuffers). */
+export interface TerrainBlockTaskPayload {
+  chunks: Array<{ cx: number; cz: number; heights: Float32Array; normals: Float32Array; stride: number }>;
+  chunkWorldSize: number;
+  originX: number;
+  originZ: number;
 }
 
 export type TaskPayload = TaskPayloadMap[keyof TaskPayloadMap];
@@ -47,7 +56,7 @@ export interface TerrainResultPayload {
 
 export interface PcgResultPayload {
   position: Float32Array;
-  index: Uint16Array;
+  index: Uint32Array;
   normal?: Float32Array;
   uv?: Float32Array;
   color?: Float32Array;
@@ -56,9 +65,16 @@ export interface PcgResultPayload {
 
 /** Same shape as three-mesh-bvh's SerializedBVH, so it feeds MeshBVH.deserialize directly. */
 export interface BvhResultPayload {
+  version: number;
   roots: ArrayBuffer[];
   index: Int32Array | Uint32Array | Uint16Array | null;
   indirectBuffer: Uint32Array | Uint16Array | null;
+}
+
+export interface TerrainBlockResultPayload {
+  position: Float32Array;
+  normal: Float32Array;
+  index: Uint16Array | Uint32Array;
 }
 
 export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload;
@@ -75,6 +91,7 @@ export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPaylo
   payload: T extends 'terrain' ? TerrainResultPayload :
     T extends 'pcg' ? PcgResultPayload :
     T extends 'bvh' ? BvhResultPayload :
+    T extends 'terrainBlock' ? TerrainBlockResultPayload :
     never;
   error?: string;
 }

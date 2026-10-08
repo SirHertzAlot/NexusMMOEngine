@@ -52,7 +52,7 @@ export class WorkerRuntime {
     const id = ++this.taskIdCounter;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.scope.postMessage({ id, type, payload } as any);
+      this.scope.postMessage({ id, type, payload } as any, WorkerRuntime.getTransferables(payload));
     });
   }
 

@@ -5,6 +5,7 @@ import { WorkerRuntime } from './runtime.js';
 import { terrainHandler } from './handlers/terrain.js';
 import { pcgHandler } from './handlers/pcg.js';
 import { bvhHandler } from './handlers/bvh.js';
+import { terrainBlockHandler } from './handlers/terrain-block.js';
 
 const runtime = new WorkerRuntime({
   maxRetries: 3,
@@ -16,5 +17,6 @@ const runtime = new WorkerRuntime({
 runtime.registerHandler('terrain', terrainHandler);
 runtime.registerHandler('pcg', pcgHandler);
 runtime.registerHandler('bvh', bvhHandler);
+runtime.registerHandler('terrainBlock', terrainBlockHandler);
 
 console.log('[Worker] Terrain/PCG/BVH worker ready');
