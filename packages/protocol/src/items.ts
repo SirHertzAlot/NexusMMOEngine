@@ -410,3 +410,49 @@ export interface VendorMessage {
   item?: number;
   price?: number;
 }
+
+/**
+ * C->S (catalog 0x21, EC1): auction house actions. `list` puts a bag item
+ * up with a starting bid, an optional buyout, and a duration; `bid` and
+ * `buyout` name a listing; `cancel` reclaims an unbid listing; `browse`
+ * reads the order book.
+ */
+export interface AuctionAction {
+  kind: "auction";
+  action: "list" | "bid" | "buyout" | "cancel" | "browse";
+  listing?: number;
+  item?: number;
+  amount?: number;
+  startBid?: number;
+  buyout?: number;
+  durationMs?: number;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): auction results. `browse` carries the order
+ * book; the rest name one listing. `bid`/`sold`/`expired`/`cancelled`
+ * go to the parties involved; `listed` goes to the seller.
+ */
+export interface AuctionMessage {
+  kind: "auction";
+  tick: number;
+  state: "listed" | "bid" | "sold" | "expired" | "cancelled" | "browse";
+  listing?: {
+    id: number;
+    def: number;
+    startBid: number;
+    buyout: number;
+    topBid: number;
+    topBidder: number;
+    expiresAt: number;
+  };
+  listings?: Array<{
+    id: number;
+    def: number;
+    startBid: number;
+    buyout: number;
+    topBid: number;
+    topBidder: number;
+    expiresAt: number;
+  }>;
+}

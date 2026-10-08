@@ -84,6 +84,7 @@ import {
   type WalletMessage,
   type VendorAction,
   type VendorMessage,
+  type AuctionMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -150,6 +151,7 @@ import { DuelSystem } from "../duel.js";
 import { WalletSystem } from "../economy/wallet.js";
 import { TradeSystem } from "../economy/trade.js";
 import { VendorSystem } from "../economy/vendor.js";
+import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -444,6 +446,20 @@ const VendorActionSchema = z
   })
   .strict();
 
+/** 0x21 auction actions (EC1). */
+const AuctionActionSchema = z
+  .object({
+    kind: z.literal("auction"),
+    action: z.enum(["list", "bid", "buyout", "cancel", "browse"]),
+    listing: z.number().int().positive().optional(),
+    item: z.number().int().positive().optional(),
+    amount: z.number().int().positive().max(999999999).optional(),
+    startBid: z.number().int().positive().max(999999999).optional(),
+    buyout: z.number().int().min(0).max(999999999).optional(),
+    durationMs: z.number().int().positive().max(48 * 3600 * 1000).optional(),
+  })
+  .strict();
+
 /** Admin `gold` args (A5/EC1). */
 const GoldArgsSchema = z
   .object({
@@ -522,7 +538,7 @@ export interface GatewayTick {
   /** The FlatBuffers delta every client got this tick. */
   delta: Uint8Array;
   /** This tick's gameplay events: hits (0x16), deaths/respawns (0x17), abilities (0x1d), telegraphs (0x1e), statuses (0x1f), duels (0x20). */
-  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage>;
+  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage>;
   /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
   fullState(): Uint8Array;
 }
@@ -1093,7 +1109,7 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage> = [
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage> = [
       ...this.sendHits(sim, tick),
       ...this.sendLife(sim, tick),
       ...this.sendAbilities(sim, tick),
@@ -1102,6 +1118,7 @@ export class Gateway {
       ...this.sendDuels(sim, tick),
       ...this.sendTrades(sim, tick),
       ...this.sendWallets(sim, tick),
+      ...this.sendAuctions(sim, tick),
     ];
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
@@ -1222,6 +1239,33 @@ export class Gateway {
         if (!session) continue;
         const m: WalletMessage = { kind: "wallet", tick, balance: c.balance };
         this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        all.push(m);
+      }
+    }
+    return all;
+  }
+
+  /**
+   * Fan out auction events (catalog 0x21, EC1): expiry, sales, and bids go
+   * to the parties involved only.
+   */
+  private sendAuctions(_sim: SimWorld, tick: number): AuctionMessage[] {
+    const all: AuctionMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof AuctionSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      for (const e of events) {
+        const m: AuctionMessage = {
+          kind: "auction",
+          tick,
+          state: e.state,
+          ...(e.view ? { listing: e.view } : {}),
+        };
+        for (const charId of e.parties) {
+          const session = this.sessionOf(charId);
+          if (session) this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        }
         all.push(m);
       }
     }
@@ -3868,7 +3912,7 @@ export class Gateway {
     }
   }
 
-  /** 0x21 carries both trade and vendor actions; route by kind. */
+  /** 0x21 carries trade, vendor, and auction actions; route by kind. */
   private onTradeOrVendor(s: ClientSession, payload: Uint8Array): void {
     let kind: unknown;
     try {
@@ -3878,6 +3922,7 @@ export class Gateway {
       return;
     }
     if (kind === "vendor") this.onVendor(s, payload);
+    else if (kind === "auction") this.onAuction(s, payload);
     else this.onTrade(s, payload);
   }
 
@@ -3993,6 +4038,114 @@ export class Gateway {
           item: parsed.data.item,
         };
         this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        this.sendInventory(s);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Auction house (catalog 0x21, EC1): list, bid, buy out, cancel, browse.
+   * In-world sessions only; shares the pickup rate-limit bucket. A bad
+   * shape is 4003, a refusal 4005; results come back as `auction` events,
+   * gold as `wallet`. Expiry and outbid refunds are announced to the
+   * parties involved.
+   */
+  private onAuction(s: ClientSession, payload: Uint8Array): void {
+    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    if (!auction || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "auction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    const parsed = AuctionActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    const tell = (m: AuctionMessage): void => {
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    };
+    switch (parsed.data.action) {
+      case "browse": {
+        tell({ kind: "auction", tick, state: "browse", listings: auction.browse() });
+        break;
+      }
+      case "list": {
+        if (parsed.data.item === undefined || parsed.data.startBid === undefined) {
+          this.sendError(s, 4003, "list needs an item and a starting bid");
+          return;
+        }
+        const id = auction.list(
+          me,
+          parsed.data.item,
+          parsed.data.startBid,
+          parsed.data.buyout ?? 0,
+          parsed.data.durationMs ?? 24 * 3600 * 1000,
+          tick,
+        );
+        if (id === null) {
+          this.sendError(s, 4005, "can't list that item");
+          return;
+        }
+        const view = auction.browse().find((l) => l.id === id);
+        tell({ kind: "auction", tick, state: "listed", listing: view });
+        this.sendInventory(s);
+        break;
+      }
+      case "bid": {
+        if (parsed.data.listing === undefined || parsed.data.amount === undefined) {
+          this.sendError(s, 4003, "bid needs a listing and an amount");
+          return;
+        }
+        const err = auction.bid(me, parsed.data.listing, parsed.data.amount, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        const view = auction.browse().find((l) => l.id === parsed.data.listing);
+        tell({ kind: "auction", tick, state: "bid", listing: view });
+        break;
+      }
+      case "buyout": {
+        if (parsed.data.listing === undefined) {
+          this.sendError(s, 4003, "buyout needs a listing");
+          return;
+        }
+        const err = auction.buyout(me, parsed.data.listing, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        tell({ kind: "auction", tick, state: "sold", listing: undefined });
+        this.sendInventory(s);
+        break;
+      }
+      case "cancel": {
+        if (parsed.data.listing === undefined) {
+          this.sendError(s, 4003, "cancel needs a listing");
+          return;
+        }
+        const err = auction.cancel(me, parsed.data.listing, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        tell({ kind: "auction", tick, state: "cancelled", listing: undefined });
         this.sendInventory(s);
         break;
       }

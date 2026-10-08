@@ -138,6 +138,7 @@ import { WalletSystem } from "./economy/wallet.js";
 import { SqliteWalletStore } from "./economy/wallet-store.js";
 import { TradeSystem } from "./economy/trade.js";
 import { VendorSystem } from "./economy/vendor.js";
+import { AuctionSystem } from "./economy/auction.js";
 import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
@@ -562,6 +563,20 @@ async function main(): Promise<void> {
       return slot < 0 ? -1 : items.store.defs[slot];
     },
   });
+  // Auction house (EC1): listings keep the item in the seller's bag (no
+  // escrow limbo on restart); settlement moves it bag-to-bag.
+  const auction = new AuctionSystem(wallet, {
+    owns: (c, item) => items.store.inBagOf(c, item),
+    freeSlots: (c) => items.store.emptySlots(c),
+    defOf: (item) => {
+      const slot = items.store.slot(item);
+      return slot < 0 ? -1 : items.store.defs[slot];
+    },
+    move: (item, from, to) => {
+      if (!items.store.inBagOf(from, item)) return false;
+      return items.store.putInBag(to, item) >= 0;
+    },
+  });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
@@ -754,7 +769,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, wallet, trade, vendor, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, wallet, trade, vendor, auction, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
