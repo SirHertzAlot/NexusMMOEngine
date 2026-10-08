@@ -146,6 +146,22 @@ loadable modules, a database editor and production tools.
 | EA25 | Localization | 📋 | |
 | EA26 | Automated playtests | 📋 | |
 
+## 1d. Editor interaction repairs
+
+An audit of the modular editor shell found 23 interactions that are dead
+or contradict the design doc (toolbar tools not governing viewports,
+Save/Undo/Redo and Pause/Step/Stop without handlers, advertised shortcuts
+that reload the browser, play-menu choices that don't reach the server, no
+play tint or read-only gate, selections that never reach Details, panels
+with no retry). Fixing them as one wave, tracked here.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| R1 | Toolbar and play cluster do what they say (active tool governs every viewport; Save/Undo/Redo, Pause/Step/Stop, play-menu setup, play tint + read-only Details) | 🚧 | Branches `fix/ed-toolbar-play`, `fix/ed-keys-menus`, `fix/ed-panels`, `fix/ed-selection` |
+| R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | 🚧 | 〃 |
+| R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | 🚧 | 〃 |
+| R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | 🚧 | 〃 |
+
 ## 2. Game client: the player's interface
 
 Everything here is React DOM over the world canvas, fed by the server
@@ -286,6 +302,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
 - **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
 
 - **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
