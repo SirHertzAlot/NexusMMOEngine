@@ -123,8 +123,8 @@ loadable modules, a database editor and production tools.
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
 | EA3 | Editor modules | 📋 | |
 | EA4 | Scene documents | 📋 | |
-| EA5 | Scene viewport editing | 📋 | |
-| EA6 | Play the scene | 📋 | |
+| EA5 | Scene viewport editing | ✅ | Viewport in the Scenes workspace: place by drag, gizmos, terrain snap, picking, delete, all undoable. |
+| EA6 | Play the scene | 🚧 | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
 | EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
 | EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
 | EA9 | Server modules | 📋 | |
@@ -286,6 +286,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
+- **2026-10-08**: EA5 scene viewport: three.js view of the open scene over the terrain, content browser (species, props, PICG), move/rotate/scale gizmo, terrain and grid snap, picking into the shared selection, delete; every edit is a History command.
+- **2026-10-08**: EA6 play the scene: server reads `MMO_SCENE` (`MMO_SCENES` dir) and spawns nodes via the creature and prop paths (restart-safe); Play sends the open (even unsaved) scene without touching content/scenes; "Keep" copies a live entity transform into a node as a command.
 - **2026-10-08**: EA16 first slice: `PersistenceCore` in engine-core (`persist/persistence-core.ts`) with catalog, SELECT-only query (child process, row limit, timeout kill), typed mutations with backup and `admin_log` undo; editor host routes `/api/editor/database/*` (loopback, JSON-only) and the Database workspace (schema tree, grid with pending edits, query, audit log). Mutations refuse while the game server runs; live-state edits deferred.
 - **2026-10-08**: EA20 quest and dialog editor (in progress, branch): Story workspace edits `content/quests/*.json` as the server loads them; saves validate the whole set (server schemas and checks, item and species references, prerequisite cycles, dialog loops with no exit) and write nothing when invalid; dialog tester walks a dialog against an editable mock quest state.
 - **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.

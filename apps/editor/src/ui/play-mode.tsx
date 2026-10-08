@@ -18,6 +18,7 @@ import * as React from "react";
 import type { DebugResponse, DebugQuery } from "@mmo-engine/protocol";
 import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
+import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
@@ -84,7 +85,7 @@ export function PlayModePanel(): React.JSX.Element {
 
   const controllerRef = React.useRef<PlayModeController | null>(null);
   if (!controllerRef.current) {
-    const serverControl = createHostServerControl();
+    const serverControl = createHostServerControl("", playableScene);
     controllerRef.current = new PlayModeController(
       serverControl,
       async (server) => {

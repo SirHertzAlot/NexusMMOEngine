@@ -46,6 +46,8 @@
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
  *                  baked world with biomes; default off). Only kinds with
  *                  creature rules spawn.
+ *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
+ *                  creatures and props (roadmap EA6); MMO_SCENES overrides the scenes dir
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
@@ -154,6 +156,8 @@ import { InstanceManager } from "./dungeons/manager.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
+import { DEFAULT_SCENES_DIR, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
@@ -506,6 +510,19 @@ async function main(): Promise<void> {
           (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
       );
     }
+  }
+  // A scene's nodes spawn through the creature and prop spawn paths (EA6).
+  if (process.env.MMO_SCENE) {
+    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const r = spawnSceneOnBoot(
+      scene,
+      { sim, creatures, table: () => loadScatterContent().table, groundHeightAt: (x, z) => character.groundHeight(x, z) },
+      store,
+    );
+    console.log(
+      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
+        (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
+    );
   }
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.

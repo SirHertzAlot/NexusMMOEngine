@@ -85,6 +85,7 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
+import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -427,7 +428,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     return true;
   }
 
-  async function startOwned(): Promise<OwnedServer> {
+  async function startOwned(scene?: PlaySceneRequest): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -438,6 +439,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // below writes to the same file. Seeding happens BEFORE the server
     // starts because the gateway's CsvCredentialStore loads the CSV once
     // at startup — users added afterwards would not be visible.
+    // EA6: the open scene (validated before anything starts; may be unsaved).
+    const sceneEnv = playSceneEnv(repoRoot, dataDir, scene);
     const usersCsv = join(dataDir, "users.csv");
     const { username, password } = editorLogin(dataDir);
     // Dev-only local credential: the plaintext goes to the browser over
@@ -500,6 +503,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
         ...process.env,
         MMO_PORT: String(serverPort),
         MMO_DATA_DIR: dataDir,
+        ...sceneEnv,
         // The debugger's admin console (E5): the editor's own play user is
         // an admin of the server it owns, on top of any configured ones.
         MMO_ADMINS: [process.env.MMO_ADMINS, username].filter(Boolean).join(","),
@@ -686,8 +690,15 @@ export function editorHost(options: EditorHostOptions): Plugin {
         }
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
-            await readBody(req);
-            const s = await startOwned();
+            // Optional body {scene: {name, content?}}: play the open scene (EA6).
+            let scene: PlaySceneRequest | undefined;
+            try {
+              scene = (JSON.parse((await readBody(req)) || "{}") as { scene?: PlaySceneRequest }).scene;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const s = await startOwned(scene);
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,
@@ -926,6 +937,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url.startsWith("/assets/") && req.method === "GET") {
             serveAssetFile(req, res);
+            return;
+          }
+          const contentReply = handleContentRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);
+          if (contentReply) {
+            sendJson(res, contentReply.status, contentReply.body);
             return;
           }
           const scenesUrl = new URL(req.url ?? "/", "http://localhost");
