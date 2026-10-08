@@ -18,6 +18,7 @@ import {
 } from "../story-model.js";
 import type { StoryFile, StoryFiles, StoryIssue } from "../story-validate.js";
 import { Button, Input } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
 
 const STATES: QuestState[] = ["available", "active", "ready", "done", "unavailable"];
 type Sel = { kind: "dialog" | "quest"; id: string };
@@ -261,6 +262,30 @@ export function StoryEditorPanel(): React.JSX.Element {
     const t = setTimeout(() => checkStoryRemote(files).then(setIssues, (e: Error) => setMsg(e.message)), 350);
     return () => clearTimeout(t);
   }, [files]);
+
+  // Toolbar Save/Undo/Redo target once the documents load.
+  React.useEffect(() => {
+    if (!files || !sel || !history.current) return;
+    const h = history.current;
+    const snapshot = JSON.stringify(files);
+    const target = {
+      label: "story files",
+      canSave: saved !== null && snapshot !== JSON.stringify(saved),
+      canUndo: h.canUndo,
+      canRedo: h.canRedo,
+      save: () => void save(),
+      undo: () => {
+        h.undo();
+        bump();
+      },
+      redo: () => {
+        h.redo();
+        bump();
+      },
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   if (!files || !sel) {
     if (!msg) return <div className="p-3 text-xs text-muted-foreground">Loading quests and dialog...</div>;

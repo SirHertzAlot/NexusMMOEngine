@@ -40,10 +40,19 @@ export interface PlayServer {
  * the process they started (the dev host tracks the child handle).
  */
 export interface ServerControl {
-  start(): Promise<PlayServer>;
+  start(opts?: PlayStartOptions): Promise<PlayServer>;
   stop(): Promise<void>;
   /** True when this control currently owns a live server process. */
   isRunning(): boolean;
+}
+
+/** Options the play-start path honors (a subset of the Play menu). */
+export interface PlayStartOptions {
+  /**
+   * Computer-driven characters near the spawn point. Reaches the owned
+   * server as MMO_BOTS; undefined leaves the server default alone.
+   */
+  bots?: number;
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */
@@ -67,6 +76,12 @@ export class PlayModeController {
   private entered = false;
   private server: PlayServer | null = null;
   private client: PlayClient | null = null;
+  /**
+   * Invalidated by stop(): an in-flight start() checks it after every
+   * await and cleans up instead of entering running — so Stop works
+   * while starting and never leaves an orphaned server.
+   */
+  private startToken = 0;
 
   constructor(
     private readonly serverControl: ServerControl,
@@ -92,20 +107,47 @@ export class PlayModeController {
    * Enter play mode: snapshot editor state, start the owned server,
    * connect the mirror client. On any failure the owned server is
    * stopped and the editor state is restored before surfacing error.
+   *
+   * A stop() that lands mid-start wins: the start aborts quietly
+   * (server cleaned up, state restored, no error surfaced over the
+   * user's stop) instead of flipping back to running afterwards.
    */
-  async start(): Promise<void> {
+  async start(opts?: PlayStartOptions): Promise<void> {
     if (this.state === "starting" || this.state === "running") return;
     if (this.state === "stopping") {
       throw new Error("play-mode: stop in progress");
     }
+    const token = ++this.startToken;
     this.setState("starting");
     this.savedState = this.hooks.onEnterPlay();
     this.entered = true;
     try {
-      this.server = await this.serverControl.start();
+      this.server = await this.serverControl.start(opts);
+      if (token !== this.startToken) {
+        await this.cleanupOwnedServer();
+        this.restoreEditorState();
+        return;
+      }
       this.client = await this.connectClient(this.server);
+      if (token !== this.startToken) {
+        try {
+          this.client?.disconnect();
+        } catch {
+          /* a stop already owns the outcome; ignore */
+        } finally {
+          this.client = null;
+        }
+        await this.cleanupOwnedServer();
+        this.restoreEditorState();
+        return;
+      }
       this.setState("running");
     } catch (err) {
+      if (token !== this.startToken) {
+        await this.cleanupOwnedServer();
+        this.restoreEditorState();
+        return;
+      }
       await this.cleanupOwnedServer();
       this.restoreEditorState();
       this.setState(
@@ -120,10 +162,14 @@ export class PlayModeController {
    * Exit play mode: disconnect the client, stop the owned server,
    * restore the pre-play editor state. Every step is attempted even
    * when an earlier one throws; the first error is rethrown.
+   *
+   * Also valid while starting: it invalidates the in-flight start
+   * (which then cleans up after itself) instead of waiting for it.
    */
   async stop(): Promise<void> {
     if (this.state === "idle") return;
     if (this.state === "stopping") return;
+    this.startToken++;
     this.setState("stopping");
     let firstError: unknown = null;
     try {

@@ -30,6 +30,7 @@ import {
 } from "@mmo-engine/scene";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
 import { editorSelection } from "./editor-selection.js";
 
 const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
@@ -110,6 +111,30 @@ export function ScenesPanel(): React.JSX.Element {
   };
   const refresh = (): void => void listScenes().then(setNames, (e: Error) => setStatus(e.message));
   React.useEffect(refresh, []);
+
+  // Toolbar Save/Undo/Redo target while a scene is open.
+  React.useEffect(() => {
+    if (!open) return;
+    const target = {
+      label: `scene "${open}"`,
+      canSave: hist.dirty,
+      canUndo: hist.canUndo,
+      canRedo: hist.canRedo,
+      save,
+      undo: () => {
+        hist.undo();
+        setIssues(validateScene(hist.doc));
+        bump();
+      },
+      redo: () => {
+        hist.redo();
+        setIssues(validateScene(hist.doc));
+        bump();
+      },
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   const load = (name: string): void => {
     getScene(name).then(

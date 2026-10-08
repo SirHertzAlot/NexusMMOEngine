@@ -35,6 +35,7 @@ import {
   Label,
   SectionTitle,
 } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
 
 /** What each file sets (content/rules/README.md, one line each). */
 const FILE_BLURBS: Record<string, string> = {
@@ -330,6 +331,23 @@ export function RulesPanel(): React.JSX.Element {
   const mine = issues.filter((i) => i.file === fileName);
   const others = issues.filter((i) => i.file !== fileName);
   const errors = groupIssues(mine);
+
+  // Toolbar Save target for the open rules file (no undo stack —
+  // edits apply directly, so Undo/Redo stay disabled).
+  React.useEffect(() => {
+    if (selected === null || content === null) return;
+    const target = {
+      label: `rules "${selected}.json"`,
+      canSave: dirty,
+      canUndo: false,
+      canRedo: false,
+      save: () => void onSave(),
+      undo: () => undefined,
+      redo: () => undefined,
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">

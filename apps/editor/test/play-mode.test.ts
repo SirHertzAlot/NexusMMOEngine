@@ -23,11 +23,16 @@ class FakeServer implements ServerControl {
   stopped = 0;
   failStart = false;
   failStop = false;
+  lastOpts: { bots?: number } | undefined;
+  /** When set, start() waits for release() before resolving. */
+  gate: Promise<void> | null = null;
   private live = false;
 
-  async start(): Promise<PlayServer> {
+  async start(opts?: { bots?: number }): Promise<PlayServer> {
     this.started++;
+    this.lastOpts = opts;
     if (this.failStart) throw new Error("fake: spawn failed");
+    if (this.gate) await this.gate;
     this.live = true;
     return {
       url: "ws://127.0.0.1:7777",
@@ -179,5 +184,32 @@ describe("PlayModeController", () => {
     await h.controller.stop();
     await h.controller.stop();
     assert.equal(h.server.stopped, 1);
+  });
+
+  it("start forwards play options (bots) to the server control", async () => {
+    const h = makeHarness();
+    await h.controller.start({ bots: 50 });
+    assert.deepEqual(h.server.lastOpts, { bots: 50 });
+    assert.equal(h.controller.getState(), "running");
+    await h.controller.stop();
+  });
+
+  it("stop during starting aborts: idle, server cleaned up, no orphan run", async () => {
+    const h = makeHarness();
+    let release!: () => void;
+    h.server.gate = new Promise<void>((r) => (release = r));
+    const starting = h.controller.start();
+    // Let start() reach the gated server start.
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(h.controller.getState(), "starting");
+    await h.controller.stop();
+    assert.equal(h.controller.getState(), "idle");
+    release();
+    await starting;
+    assert.equal(h.controller.getState(), "idle", "no flip back to running");
+    assert.equal(h.server.stopped, 1, "late server is stopped");
+    assert.equal(h.server.isRunning(), false);
+    assert.deepEqual(h.exited, [{ selection: "entity-7" }]);
+    assert.deepEqual(h.states, ["starting", "stopping", "idle"]);
   });
 });

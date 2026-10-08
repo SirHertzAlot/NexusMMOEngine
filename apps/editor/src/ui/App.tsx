@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { CharacterRecordPanel } from "./character-view.js";
@@ -24,6 +24,18 @@ import { FlowEditor } from "./flow-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { getTool, setTool, subscribeTool } from "./tool-store.js";
+import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import {
+  deleteNamedSetup,
+  loadLastSetup,
+  loadNamedSetups,
+  saveLastSetup,
+  saveNamedSetup,
+  setupSummary,
+  PLAY_PREVIEW_NOTES,
+  type PlaySetup,
+} from "./play-setup.js";
 import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
 import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
@@ -208,6 +220,18 @@ export function App(): React.JSX.Element {
   const [layoutMenu, setLayoutMenu] = React.useState(false);
   const [mode, setMode] = React.useState<RunMode>("edit");
   const [palette, setPalette] = React.useState(false);
+  // Play setup: owned here so the toolbar chip and the Play menu stay in
+  // sync; every change persists (the Play button / F5 runs the last one,
+  // and the Play mode panel reads it back on start for bots → MMO_BOTS).
+  const [playSetup, setPlaySetup] = React.useState<PlaySetup>(() => loadLastSetup());
+  function updatePlaySetup(next: PlaySetup): void {
+    setPlaySetup(next);
+    saveLastSetup(next);
+  }
+  // Play tint + read-only Details (§3.4/§3.5): entering play swaps what
+  // panels show, never where they are.
+  const { pmState } = playUiStore.use();
+  const playing = pmState === "running" || pmState === "starting";
 
   // Dock layout: visibility + sizes persist locally; named layouts snapshot all of it.
   const [docks, setDocks] = useLocalStorage("mmo-editor.docks", { left: true, right: true, bottom: true });
@@ -352,6 +376,32 @@ export function App(): React.JSX.Element {
       } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         setLayoutMenu(true);
+      } else if (e.key === "F5" && !e.ctrlKey && !e.metaKey) {
+        // F5 plays with the last setup (opens Play mode); Shift F5 stops
+        // the owned server for real. Ctrl F5 stays the browser's
+        // hard-reload — no hint claims it.
+        e.preventDefault();
+        if (e.shiftKey) void requestPlayStop();
+        else goPlay();
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s") {
+        // Ctrl S saves the toolbar's open document; refused saves write nothing.
+        const target = getDocActions();
+        if (target?.canSave) {
+          e.preventDefault();
+          target.save();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        const target = getDocActions();
+        if (target?.canUndo) {
+          e.preventDefault();
+          target.undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+        const target = getDocActions();
+        if (target?.canRedo) {
+          e.preventDefault();
+          target.redo();
+        }
       } else if (e.key === "Escape") {
         setPalette(false);
         setPlayMenu(false);
@@ -363,7 +413,16 @@ export function App(): React.JSX.Element {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col" style={{ background: "var(--m3-surface)", color: "var(--m3-on-surface)" }}>
+    <div
+      className="flex h-screen flex-col"
+      style={{
+        background: "var(--m3-surface)",
+        color: "var(--m3-on-surface)",
+        // Play tint (§3.2, §3.5): the window edge goes tertiary while
+        // running so nobody edits a live world by mistake.
+        ...(playing ? { outline: "2px solid var(--m3-tertiary)", outlineOffset: -2 } : {}),
+      }}
+    >
       <MenuBar
         workspace={workspace}
         onPick={pickWorkspace}
@@ -378,6 +437,8 @@ export function App(): React.JSX.Element {
         onTogglePlayMenu={() => setPlayMenu((v) => !v)}
         onClosePlayMenu={() => setPlayMenu(false)}
         onPlay={goPlay}
+        playSetup={playSetup}
+        onPlaySetup={updatePlaySetup}
         mode={mode}
         onMode={setRunMode}
         layoutMenu={layoutMenu}
@@ -592,7 +653,21 @@ export function App(): React.JSX.Element {
               />
             }
           >
-            {rightTab === "compare" ? <ComparePane /> : <DetailsPane workspace={workspace} view={view} />}
+            {rightTab === "compare" ? <ComparePane /> : playing ? (
+              <div className="flex flex-col gap-2">
+                <p
+                  className="rounded-xl px-3 py-2 text-xs font-medium"
+                  style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
+                >
+                  Playing — Details is read-only until play stops.
+                </p>
+                <fieldset disabled aria-disabled="true" style={{ minWidth: 0 }}>
+                  <DetailsPane workspace={workspace} view={view} />
+                </fieldset>
+              </div>
+            ) : (
+              <DetailsPane workspace={workspace} view={view} />
+            )}
           </DockPanel>
         </div>
       </div>
@@ -988,6 +1063,8 @@ function Toolbar(props: {
   onTogglePlayMenu: () => void;
   onClosePlayMenu: () => void;
   onPlay: () => void;
+  playSetup: PlaySetup;
+  onPlaySetup: (s: PlaySetup) => void;
   mode: RunMode;
   onMode: (m: RunMode) => void;
   layoutMenu: boolean;
@@ -1030,17 +1107,69 @@ function Toolbar(props: {
     docks: { left: boolean; right: boolean; bottom: boolean };
   };
 }): React.JSX.Element {
-  // Active viewport tool (UI-only toggle: the scenes/viewport slices own it).
-  const [tool, setTool] = React.useState<"select" | "move" | "rotate" | "scale" | "snap">("select");
+  // The shared viewport tool: every viewport gates its edit gesture on
+  // it (select = camera/pick, move = edit). V/W/E/R switch it (§3.2).
+  const tool = React.useSyncExternalStore(subscribeTool, getTool);
+  // The toolbar's document target: panels register while they hold an
+  // open document; with none the buttons disable with a tooltip.
+  const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  const { pmState } = playUiStore.use();
+  const stopping = pmState === "stopping";
+  const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = (e.target as HTMLElement | null)?.tagName;
+      if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || (e.target as HTMLElement | null)?.isContentEditable) return;
+      const k = e.key.toLowerCase();
+      if (k === "v") setTool("select");
+      else if (k === "w") setTool("move");
+      else if (k === "e") setTool("rotate");
+      else if (k === "r") setTool("scale");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <div
       className="relative flex h-[52px] flex-none items-center gap-1 px-3"
-      style={{ background: "var(--m3-surface)", borderBottom: "1px solid var(--m3-outline-variant)" }}
+      style={{
+        background: "var(--m3-surface)",
+        borderBottom: pmState === "running" || pmState === "starting"
+          ? "2px solid var(--m3-tertiary)"
+          : "1px solid var(--m3-outline-variant)",
+      }}
     >
       <div className="flex items-center gap-0.5" role="toolbar" aria-label="Edit tools">
-        <IconButton label="Save (Ctrl S)" size={36}><MIcon name="save" size={20} /></IconButton>
-        <IconButton label="Undo (Ctrl Z)" size={36}><MIcon name="undo" size={20} /></IconButton>
-        <IconButton label="Redo (Ctrl Y)" size={36}><MIcon name="redo" size={20} /></IconButton>
+        <IconButton
+          label={doc ? (doc.canSave ? `Save ${doc.label} (Ctrl S)` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
+          title={doc ? (doc.canSave ? `Save ${doc.label}` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
+          size={36}
+          disabled={!doc?.canSave}
+          onClick={() => doc?.save()}
+        >
+          <MIcon name="save" size={20} />
+        </IconButton>
+        <IconButton
+          label={doc && doc.canUndo ? `Undo ${doc.label} (Ctrl Z)` : "Undo — nothing to undo"}
+          title={doc && doc.canUndo ? `Undo ${doc.label}` : "Undo — nothing to undo"}
+          size={36}
+          disabled={!doc?.canUndo}
+          onClick={() => doc?.undo()}
+        >
+          <MIcon name="undo" size={20} />
+        </IconButton>
+        <IconButton
+          label={doc && doc.canRedo ? `Redo ${doc.label} (Ctrl Y)` : "Redo — nothing to redo"}
+          title={doc && doc.canRedo ? `Redo ${doc.label}` : "Redo — nothing to redo"}
+          size={36}
+          disabled={!doc?.canRedo}
+          onClick={() => doc?.redo()}
+        >
+          <MIcon name="redo" size={20} />
+        </IconButton>
       </div>
       <div
         className="mx-1 hidden items-center gap-0.5 lg:flex"
@@ -1105,26 +1234,45 @@ function Toolbar(props: {
             <MIcon name="expand_more" size={20} />
           </button>
         </div>
-        <IconButton label="Pause (opens Play mode)" size={36} onClick={props.onPlay} title="Pause — managed by the Play mode panel">
+        <IconButton
+          label="Pause — not available: the owned server's tick loop has no pause control"
+          title="Pause — not available: the owned server's tick loop has no pause control"
+          size={36}
+          disabled
+        >
           <MIcon name="pause" size={20} />
         </IconButton>
-        <IconButton label="Step one tick (opens Play mode)" size={36} onClick={props.onPlay} title="Step — one 30 Hz tick, managed by the Play mode panel">
+        <IconButton
+          label="Step one tick — not available: the owned server has no single-tick control"
+          title="Step one tick — not available: the owned server has no single-tick control"
+          size={36}
+          disabled
+        >
           <MIcon name="skip_next" size={20} />
         </IconButton>
-        <IconButton label="Stop (Shift F5, opens Play mode)" size={36} onClick={props.onPlay} title="Stop — managed by the Play mode panel">
+        <IconButton
+          label={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop (Shift F5) — stops the owned server, even while starting"}
+          title={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop — stops the owned server, even while starting"}
+          size={36}
+          disabled={!canStop || stopping}
+          onClick={() => {
+            void requestPlayStop();
+            props.onPlay();
+          }}
+        >
           <MIcon name="stop" size={20} />
         </IconButton>
         <span
           className="hidden h-7 items-center whitespace-nowrap rounded-full px-2.5 text-xs xl:inline-flex"
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
-          title="Current play setup"
+          title="Current play setup — the Play menu changes it"
         >
-          In editor · 1 client · edge + core
+          {setupSummary(props.playSetup)}
         </span>
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <StatusChip live={false}>Server idle</StatusChip>
+        <StatusChip live={pmState === "running"}>{pmState === "running" ? "Playing" : pmState === "starting" ? "Starting…" : "Server idle"}</StatusChip>
         <span
           className="hidden h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs lg:inline-flex"
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
@@ -1170,7 +1318,7 @@ function Toolbar(props: {
         <>
           <span className="fixed inset-0 z-40" onClick={props.onClosePlayMenu} aria-hidden="true" />
           <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
-            <PlayMenu onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
+            <PlayMenu setup={props.playSetup} onChange={props.onPlaySetup} onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
           </div>
         </>
       )}
@@ -1280,20 +1428,34 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
     </>
   );
 }
-// Every way to run the game (§3.5, ux-06). Selections stage the coming
-// play-menu slice as local UI state; Play hands off to the Play mode
-// panel, which owns start/stop today.
+// Every way to run the game (§3.5, ux-06). The setup is owned by the
+// shell and persisted on every change; Play hands off to the Play mode
+// panel, which owns start/stop. Only the viewport, one client, bots and
+// tint are honored today — everything else is badged preview (see
+// ui/play-setup.ts) and never pretended.
 
-function PlayMenu({ onPlay, onClose }: { onPlay: () => void; onClose: () => void }): React.JSX.Element {
-  const [where, setWhere] = React.useState("viewport");
-  const [from, setFrom] = React.useState("World");
-  const [clients, setClients] = React.useState("1");
-  const [bots, setBots] = React.useState("10");
-  const [net, setNet] = React.useState("Edge + core");
-  const [latency, setLatency] = React.useState("0");
-  const [fresh, setFresh] = React.useState(true);
-  const [keep, setKeep] = React.useState(false);
-  const [tint, setTint] = React.useState(true);
+function PreviewBadge({ why }: { why: string }): React.JSX.Element {
+  return (
+    <span
+      className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]"
+      style={{ border: "1px solid var(--m3-outline)", color: "var(--m3-on-surface-variant)" }}
+      title={`Preview — ${why}`}
+    >
+      preview
+    </span>
+  );
+}
+
+function PlayMenu({ setup, onChange, onPlay, onClose }: {
+  setup: PlaySetup;
+  onChange: (s: PlaySetup) => void;
+  onPlay: () => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [named, setNamed] = React.useState<Record<string, PlaySetup>>(() => loadNamedSetups());
+  const [name, setName] = React.useState("");
+  const set = (patch: Partial<PlaySetup>): void => onChange({ ...setup, ...patch });
+  const whereLabel = setup.where === "viewport" ? "in viewport" : setup.where === "window" ? "in a new window" : "simulate";
 
   return (
     <menu
@@ -1305,54 +1467,114 @@ function PlayMenu({ onPlay, onClose }: { onPlay: () => void; onClose: () => void
         Where to play
       </p>
       <div className="mb-3 grid grid-cols-3 gap-2">
-        {[
-          ["viewport", "fullscreen", "In viewport", "Panels stay around it"],
-          ["window", "open_in_new", "New window", "The player's client"],
-          ["simulate", "visibility", "Simulate", "World only, no player"],
-        ].map(([id, icon, title, body]) => {
-          const on = where === id;
+        {(
+          [
+            ["viewport", "fullscreen", "In viewport", "Panels stay around it", false],
+            ["window", "open_in_new", "New window", "The player's client", true],
+            ["simulate", "visibility", "Simulate", "World only, no player", true],
+          ] as Array<[string, string, string, string, boolean]>
+        ).map(([id, icon, title, body, preview]) => {
+          const on = setup.where === id;
           return (
             <button
               key={id}
-              onClick={() => setWhere(id)}
+              onClick={() => set({ where: id })}
               aria-pressed={on}
+              title={preview ? `Preview — ${PLAY_PREVIEW_NOTES.where}` : undefined}
               className="m3-focus flex flex-col gap-1 rounded-xl p-3 text-left"
               style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
             >
               <MIcon name={icon} size={22} />
-              <span className="text-sm font-medium">{title}</span>
+              <span className="text-sm font-medium">{title}{preview && <PreviewBadge why={PLAY_PREVIEW_NOTES.where} />}</span>
               <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{body}</span>
             </button>
           );
         })}
       </div>
 
-      <PlayMenuLabel>Start from</PlayMenuLabel>
-      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={from} onPick={setFrom} />
+      <PlayMenuLabel>Start from<PreviewBadge why={PLAY_PREVIEW_NOTES.from} /></PlayMenuLabel>
+      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={setup.from} onPick={(v) => set({ from: v })} />
 
       <PlayMenuLabel>Test setup</PlayMenuLabel>
       <div className="mb-1 flex flex-col gap-2">
-        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={clients} onPick={setClients} />
-        <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={bots} onPick={setBots} />
-        <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={net} onPick={setNet} />
-        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={latency} onPick={setLatency} />
+        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={setup.clients} onPick={(v) => set({ clients: v })} markPreview={(o) => o !== "1"} previewWhy={PLAY_PREVIEW_NOTES.clients} />
+        <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={setup.bots} onPick={(v) => set({ bots: v })} />
+        <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={setup.net} onPick={(v) => set({ net: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.net} />
+        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.latency} />
       </div>
 
       <div className="mt-2 flex flex-col gap-2.5 text-sm">
-        <PlayCheck checked={fresh} onFlip={() => setFresh((v) => !v)} label="Fresh world from the scene (discard saved state)" />
-        <PlayCheck checked={keep} onFlip={() => setKeep((v) => !v)} label="Keep play changes on stop" />
-        <PlayCheck checked={tint} onFlip={() => setTint((v) => !v)} label="Tint the editor while playing" />
+        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)<PreviewBadge why={PLAY_PREVIEW_NOTES.fresh} /></>} />
+        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop<PreviewBadge why={PLAY_PREVIEW_NOTES.keep} /></>} />
+        <PlayCheck checked={setup.tint} onFlip={() => set({ tint: !setup.tint })} label="Tint the editor while playing" />
       </div>
 
       <div className="mt-3 flex flex-col gap-1.5 text-sm" style={{ borderTop: "1px solid var(--m3-outline-variant)", paddingTop: 10 }}>
-        <span className="flex items-center gap-2" style={{ color: "var(--m3-on-surface-variant)" }}>
-          <MIcon name="history" size={16} /> Last: In viewport · World · 1 client
+        <button
+          onClick={() => {
+            onClose();
+            onPlay();
+          }}
+          className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+          style={{ color: "var(--m3-on-surface-variant)" }}
+          title="Play with the last settings (F5) — opens Play mode"
+        >
+          <MIcon name="history" size={16} /> Last: {setupSummary(loadLastSetup())}
           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>F5</kbd>
-        </span>
-        <span className="flex items-center gap-2" style={{ color: "var(--m3-on-surface-variant)" }}>
-          <MIcon name="bookmark" size={16} /> Saved: “Raid test” · 8 clients · 200 bots
-          <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>Ctrl F5</kbd>
-        </span>
+        </button>
+        {Object.entries(named).map(([n, s]) => (
+          <div key={n} className="group flex items-center gap-1">
+            <button
+              onClick={() => {
+                onChange({ ...s });
+                notify(`Setup “${n}” applied — Play runs it`);
+              }}
+              className="m3-focus flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+              style={{ color: "var(--m3-on-surface-variant)" }}
+              title={`Apply “${n}”: ${setupSummary(s)}`}
+            >
+              <MIcon name="bookmark" size={16} /> {n} · {setupSummary(s)}
+            </button>
+            <button
+              onClick={() => setNamed(deleteNamedSetup(n))}
+              aria-label={`Delete setup ${n}`}
+              title={`Delete setup ${n}`}
+              className="m3-focus rounded-full p-1 opacity-0 group-hover:opacity-100"
+            >
+              <MIcon name="delete" size={16} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5 px-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim() !== "") {
+                setNamed(saveNamedSetup(name.trim(), setup));
+                notify(`Setup “${name.trim()}” saved in this browser`);
+                setName("");
+              }
+            }}
+            placeholder="Name this setup…"
+            aria-label="Setup name"
+            className="h-9 min-w-0 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none"
+            style={{ borderColor: "var(--m3-outline)" }}
+          />
+          <button
+            onClick={() => {
+              if (name.trim() !== "") {
+                setNamed(saveNamedSetup(name.trim(), setup));
+                notify(`Setup “${name.trim()}” saved in this browser`);
+                setName("");
+              }
+            }}
+            className="m3-focus h-9 rounded-full px-3 text-sm font-medium"
+            style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
+          >
+            Save
+          </button>
+        </div>
       </div>
 
       <button
@@ -1364,10 +1586,11 @@ function PlayMenu({ onPlay, onClose }: { onPlay: () => void; onClose: () => void
         style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
       >
         <MIcon name="play_arrow" size={20} />
-        Play — {where === "viewport" ? "in viewport" : where === "window" ? "in a new window" : "simulate"} · {from} · {clients} client{clients === "1" ? "" : "s"}
+        Play — {whereLabel} · {setup.from} · {setup.clients} client{setup.clients === "1" ? "" : "s"}
       </button>
       <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        The Play mode panel owns start/stop today and runs this setup once chosen there.
+        Only the viewport, one client, bots and tint are honored today — the Play mode panel passes bots
+        (MMO_BOTS) on start. Everything badged preview saves with the setup but needs its slice.
       </p>
     </menu>
   );
@@ -1394,7 +1617,7 @@ function PlayMenuRow({ options, value, onPick }: { options: string[]; value: str
   );
 }
 
-function PlayMenuSplit({ label, options, value, onPick }: { label: string; options: string[]; value: string; onPick: (v: string) => void }): React.JSX.Element {
+function PlayMenuSplit({ label, options, value, onPick, markPreview, previewWhy }: { label: string; options: string[]; value: string; onPick: (v: string) => void; markPreview?: (o: string) => boolean; previewWhy?: string }): React.JSX.Element {
   return (
     <div className="flex items-center gap-2">
       <span className="w-32 flex-none text-[13px]" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</span>
@@ -1411,10 +1634,14 @@ function PlayMenuSplit({ label, options, value, onPick }: { label: string; optio
               key={o}
               onClick={() => onPick(o)}
               aria-pressed={on}
+              title={markPreview?.(o) ? `Preview — ${previewWhy ?? ""}` : undefined}
               className="m3-focus flex h-full flex-1 items-center justify-center whitespace-nowrap px-2"
               style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
             >
               {o}
+              {markPreview?.(o) && (
+                <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>preview</span>
+              )}
             </button>
           );
         })}
@@ -1423,7 +1650,7 @@ function PlayMenuSplit({ label, options, value, onPick }: { label: string; optio
   );
 }
 
-function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () => void; label: string }): React.JSX.Element {
+function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () => void; label: React.ReactNode }): React.JSX.Element {
   return (
     <button onClick={onFlip} role="checkbox" aria-checked={checked} className="m3-focus flex items-center gap-2.5 text-left">
       <span

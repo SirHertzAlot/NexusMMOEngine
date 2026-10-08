@@ -33,6 +33,7 @@ import {
   type Table,
 } from "../rules-control.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
 
 const control = createRulesControl();
 
@@ -85,6 +86,25 @@ export function RulesPanel(): React.JSX.Element {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  // Toolbar Save target for the open table (edits apply directly, so
+  // Undo/Redo stay disabled — Revert lives in the panel).
+  React.useEffect(() => {
+    if (!saved || !drafts) return;
+    const target = {
+      label: `rules table "${table}.json"`,
+      canSave: (Object.keys(drafts) as Table[]).some(
+        (t) => JSON.stringify(drafts[t]) !== JSON.stringify(saved.tables[t]),
+      ),
+      canUndo: false,
+      canRedo: false,
+      save: () => void save(),
+      undo: () => undefined,
+      redo: () => undefined,
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   if (!saved || !drafts) {
     return (

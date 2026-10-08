@@ -16,9 +16,18 @@ export interface PlayServerLike {
   password: string;
 }
 
+/**
+ * What the play-start path passes the host. Only bots is honored
+ * (the host spawns the server with MMO_BOTS); everything else in the
+ * Play menu is preview until its slice lands (see ui/play-setup.ts).
+ */
+export interface PlayServerStartOptions {
+  bots?: number;
+}
+
 /** Server-control surface the editor UI drives (implements ServerControl). */
 export interface HostServerControl {
-  start(): Promise<PlayServerLike>;
+  start(opts?: PlayServerStartOptions): Promise<PlayServerLike>;
   stop(): Promise<void>;
   isRunning(): boolean;
   status(): Promise<{ running: boolean; pid?: number; port?: number }>;
@@ -28,9 +37,13 @@ export interface HostServerControl {
 export function createHostServerControl(base = ""): HostServerControl {
   let running = false;
   return {
-    async start() {
+    async start(opts) {
       const res = await fetch(`${base}/api/editor/server/start`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          opts?.bots !== undefined ? { bots: opts.bots } : {},
+        ),
       });
       const body = (await res.json()) as {
         ok: boolean;

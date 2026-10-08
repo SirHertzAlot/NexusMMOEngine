@@ -7,13 +7,16 @@
  * players stand on. Brush dabs edit the shared HeightGrid; the view only
  * redraws the chunks a dab touched.
  *
- * Controls: left-drag sculpts (reported through onDab), right-drag
- * orbits, middle-drag pans, wheel zooms.
+ * Controls: left-drag sculpts with the move tool (reported through
+ * onDab); with select (or rotate/scale) the left button orbits instead.
+ * Right-drag orbits, middle-drag pans, wheel zooms.
  */
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { chunkKey, HeightGrid, TILE_SAMPLES } from "@mmo-engine/protocol";
+import { getTool, subscribeTool } from "../ui/tool-store.js";
+import { canSculptTerrain } from "../ui/viewport-tools.js";
 
 /** Low ground green -> mid earth -> high rock, by normalized height. */
 const LOW = new THREE.Color(0x3d6b35);
@@ -111,12 +114,18 @@ export class TerrainView {
     this.scene.add(this.cursor);
 
     this.controls = new OrbitControls(this.camera, canvas);
-    // Left button is the brush; orbit/pan live on right/middle.
+    // The brush owns the left button only with the move tool; otherwise
+    // the left button orbits (select stays the camera/pick default).
     this.controls.mouseButtons = {
       LEFT: null,
       MIDDLE: THREE.MOUSE.PAN,
       RIGHT: THREE.MOUSE.ROTATE,
     };
+    const syncTool = (): void => {
+      this.controls.mouseButtons.LEFT = canSculptTerrain(getTool()) ? null : THREE.MOUSE.ROTATE;
+    };
+    syncTool();
+    this.cleanup.push(subscribeTool(syncTool));
     this.controls.enableDamping = true;
 
     const on = <K extends keyof HTMLElementEventMap>(
@@ -128,7 +137,7 @@ export class TerrainView {
     };
     on("contextmenu", (e) => e.preventDefault());
     on("pointerdown", (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !canSculptTerrain(getTool())) return;
       const hit = this.pick(e);
       if (!hit) return;
       canvas.setPointerCapture(e.pointerId);
@@ -138,7 +147,7 @@ export class TerrainView {
     });
     on("pointermove", (e) => {
       const hit = this.pick(e);
-      this.placeCursor(hit);
+      this.placeCursor(canSculptTerrain(getTool()) ? hit : null);
       if (this.sculpting && hit) this.pendingHit = hit;
     });
     on("pointerup", (e) => {
@@ -153,6 +162,12 @@ export class TerrainView {
     this.resize();
 
     this.renderer.setAnimationLoop(() => {
+      // A tool switch mid-stroke ends it (the new tool owns the button).
+      if (this.sculpting && !canSculptTerrain(getTool())) {
+        this.sculpting = false;
+        this.pendingHit = null;
+        this.placeCursor(null);
+      }
       // Continuous sculpting while held: at most one dab per frame, scaled
       // by elapsed time so the brush feels the same at any frame rate.
       if (this.sculpting && this.pendingHit) {

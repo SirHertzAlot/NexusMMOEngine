@@ -15,6 +15,9 @@ import { edgePath, GraphEditor, parseFieldValue, type GraphDocument, type GraphV
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
 import { pastDragThreshold } from "./drag-threshold.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { getTool } from "./tool-store.js";
+import { canDragGraphNode } from "./viewport-tools.js";
 import { editorSelection } from "./editor-selection.js";
 
 const NODE_W = 168;
@@ -96,6 +99,22 @@ export function GraphEditorPanel(): React.JSX.Element {
   };
 
   const vm = editor?.viewModel() ?? null;
+
+  // Toolbar Save/Undo/Redo target while a graph is open.
+  React.useEffect(() => {
+    if (!editor || !vm || vm.crumbs.length === 0) return;
+    const target = {
+      label: `PICG graph "${vm.file}"`,
+      canSave: vm.dirtyFiles.length > 0,
+      canUndo: vm.canUndo,
+      canRedo: vm.canRedo,
+      save: () => void save(),
+      undo: () => editor.undo(),
+      redo: () => editor.redo(),
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_320px]" data-testid="graph-editor">
@@ -404,6 +423,9 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
                 label: n.title || n.id,
                 components: [{ name: "Graph node", fields: [{ key: "id", value: n.id }, { key: "type", value: n.type }] }],
               });
+              // Nodes drag only with the move tool; with select a press
+              // picks the node and the background gesture pans.
+              if (!canDragGraphNode(getTool())) return;
               drag.current = { kind: "node", id: n.id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
               // Captured on the node (not the canvas), so its double-click still lands on it.
               (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
