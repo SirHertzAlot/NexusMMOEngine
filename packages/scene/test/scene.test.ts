@@ -121,3 +121,36 @@ describe("History", () => {
     assert.ok(!h.canUndo);
   });
 });
+
+describe("Collider component", () => {
+  it("defaults to a valid box and round-trips through edits", () => {
+    let d = addComponent(sample(), "spawn", "Collider");
+    assert.deepEqual(findNode(d, "spawn")?.components?.Collider, COMPONENTS.Collider.defaults());
+    assert.deepEqual(validateScene(d), []);
+    d = setComponentField(d, "spawn", "Collider", "hy", 2);
+    assert.deepEqual(validateScene(d), []);
+  });
+  it("a box needs positive half-extents", () => {
+    let d = addComponent(sample(), "spawn", "Collider");
+    d = setComponentField(d, "spawn", "Collider", "hx", 0);
+    const paths = validateScene(d).map((i) => i.path);
+    assert.ok(paths.includes("nodes[0].children[0].components.Collider.hx"), paths.join(", "));
+    // Unknown shapes and non-numbers are already reported by the field check.
+    d = setComponentField(d, "spawn", "Collider", "hx", 0.5);
+    d = setComponentField(d, "spawn", "Collider", "shape", "cube");
+    assert.ok(validateScene(d).some((i) => i.path === "nodes[0].children[0].components.Collider.shape"));
+  });
+  it("a sphere needs a positive radius; none needs nothing", () => {
+    let d = addComponent(sample(), "spawn", "Collider");
+    d = setComponentField(d, "spawn", "Collider", "shape", "sphere");
+    d = setComponentField(d, "spawn", "Collider", "radius", 0);
+    assert.ok(validateScene(d).some((i) => i.path.endsWith("components.Collider.radius")));
+    d = setComponentField(d, "spawn", "Collider", "radius", 1.5);
+    assert.deepEqual(validateScene(d), []);
+    // Walk-through decoration: zeroed dimensions are fine when shape is none.
+    d = setComponentField(d, "spawn", "Collider", "shape", "none");
+    d = setComponentField(d, "spawn", "Collider", "hx", 0);
+    d = setComponentField(d, "spawn", "Collider", "radius", 0);
+    assert.deepEqual(validateScene(d), []);
+  });
+});
