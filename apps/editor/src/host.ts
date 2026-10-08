@@ -500,14 +500,16 @@ export function editorHost(options: EditorHostOptions): Plugin {
       });
     });
 
-    const npm = npmInvocation([
-      "run",
-      "server",
-      "--workspace=@mmo-engine/engine-core",
-      "--silent",
-    ]);
+    // Play runs the built server directly: `npm run server` rebuilds every
+    // workspace first (minutes), and the --silent output hid that wait.
+    // MMO_EDITOR_REBUILD=1 (or no build yet) takes the npm path instead.
+    const serverJs = join(repoRoot, "packages", "engine-core", "dist", "src", "server.js");
+    const npm =
+      process.env.MMO_EDITOR_REBUILD !== "1" && existsSync(serverJs)
+        ? { command: process.execPath, args: [serverJs], shell: false }
+        : npmInvocation(["run", "server", "--workspace=@mmo-engine/engine-core", "--silent"]);
     const child = spawn(npm.command, npm.args, {
-      cwd: repoRoot,
+      cwd: npm.shell || npm.args[0] !== serverJs ? repoRoot : join(repoRoot, "packages", "engine-core"),
       env: {
         ...process.env,
         MMO_PORT: String(serverPort),

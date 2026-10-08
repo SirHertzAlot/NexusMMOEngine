@@ -122,15 +122,11 @@ loadable modules, a database editor and production tools.
 | EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
 | EA3 | Editor modules | 🚧 | `feat/ea3-ea9-modules`: `packages/modules` (manifest schema collecting every problem, discovery, `content/modules.json` set, dependency order); host routes `/api/editor/modules` (list, validated save, apply); the shell imports enabled modules' editor entries dynamically and a Modules workspace enables and disables them; the header count is real; the Characters Records panel is now the `characters` module. Deferred: other panels as modules (EA13), commands and document kinds as contributions, Controller/EditorContext contracts (EA2) |
-| EA4 | Scene documents | 📋 | |
-| EA5 | Scene viewport editing | 📋 | |
-| EA6 | Play the scene | 📋 | |
+| EA4 | Scene documents | ✅ | `feat/ea4-scene-documents`: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5. |
 | EA7 | Game flow | ✅ | `feat/ea7-ea8-game-flow`: `content/flow/game.flow.json` and the pure flow runner/validator in `packages/scene` (`flow.ts`); the client's `Screen` state is now a flow node (`apps/client/src/flow.ts`, `useFlow`) with login, loading, character select/creation and world as frontend scenes; no protocol change |
 | EA8 | Flow editor and play from a node | ✅ | `feat/ea7-ea8-game-flow`: Flow editor panel (`ui/flow-editor.tsx`) over the real document: add/delete/move nodes, add/rewire/retarget/delete transitions, set start, live validation (unreachable, missing start, dangling, unknown event/scene), validated `GET/PUT /api/editor/flow`; Play from login (plain client), character creation (serverless preview or `?start=` with a server) and world (`?start=` with a server). Not yet opened in a browser; open scene on double-click deferred |
 | EA5 | Scene viewport editing | ✅ | Viewport in the Scenes workspace: place by drag, gizmos, terrain snap, picking, delete, all undoable. |
 | EA6 | Play the scene | 🚧 | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
-| EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
-| EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
 | EA9 | Server modules | 🚧 | `feat/ea3-ea9-modules`: `server.ts`'s systems array is the `core` module's instances in the order `modules/core/module.json` fixes; `MMO_MODULES` (default `content/modules.json`) selects modules; order resolved from `after`/`before`, unknown ids and cycles stop the boot with every problem; `modules/sample-heartbeat` adds a system; "Apply modules" restarts the owned play server. Open: `valgrind:perf` not run (no host valgrind on the Windows dev machine; the tick-order test pins the order instead), play mode does not auto-reconnect after Apply, admin commands / rule hooks / persistence tables contributions |
 | EA10 | C++ modules | 📋 | |
 | EA11 | Sidecars | 📋 | |
@@ -161,10 +157,10 @@ with no retry). Fixing them as one wave, tracked here.
 
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
-| R1 | Toolbar and play cluster do what they say (active tool governs every viewport; Save/Undo/Redo, Pause/Step/Stop, play-menu setup, play tint + read-only Details) | 🚧 | Branches `fix/ed-toolbar-play`, `fix/ed-keys-menus`, `fix/ed-panels`, `fix/ed-selection` |
-| R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | 🚧 | 〃 |
-| R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | 🚧 | 〃 |
-| R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | 🚧 | 〃 |
+| R1 | Toolbar and play cluster do what they say (active tool governs every viewport; Save/Undo/Redo, Pause/Step/Stop, play-menu setup, play tint + read-only Details) | ✅ | `fix/ed-toolbar-play` + `fix/ed-panels` gating; Pause/Step render disabled with reasons (no server control exists); preview-only play dimensions badged |
+| R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | ✅ | `fix/ed-keys-menus`: F5/Shift+F5/V/W/E/R wired; staged rows disabled with no kbd hint; drag-to-place removed until the scene viewport slice lands |
+| R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | ✅ | `fix/ed-panels` |
+| R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | ✅ | `fix/ed-selection`; panel highlight restoration on reload deferred |
 
 ## 2. Game client: the player's interface
 
@@ -306,6 +302,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
 - **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
 - **2026-10-08**: EA18 version control built (branch): `/api/editor/vcs` runs git from fixed argument arrays on the repo only; semantic diffs keyed by node/step/guid ids (text diff otherwise); three-way JSON merge by stable ids resolves conflicted pulls, true conflicts list both values; pull and push need an explicit confirm; anything under `assets/` is refused at stage, diff and commit; advisory locks in `content/locks.json`; Changes workspace.
