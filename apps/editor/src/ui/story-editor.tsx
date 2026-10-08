@@ -262,7 +262,15 @@ export function StoryEditorPanel(): React.JSX.Element {
     return () => clearTimeout(t);
   }, [files]);
 
-  if (!files || !sel) return <div className="p-3 text-xs text-muted-foreground">{msg || "Loading quests and dialog..."}</div>;
+  if (!files || !sel) {
+    if (!msg) return <div className="p-3 text-xs text-muted-foreground">Loading quests and dialog...</div>;
+    return (
+      <div className="flex flex-col items-start gap-2 p-3 text-xs text-muted-foreground" data-testid="story-editor">
+        <p>Story: {msg}</p>
+        <Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>
+      </div>
+    );
+  }
   const h = history.current!;
   const edit = (next: StoryFiles): void => { h.push(next); bump(); };
   const dialogs = dialogsOf(files);

@@ -22,6 +22,7 @@ import {
   type SceneIssue,
 } from "@mmo-engine/scene";
 import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
+import { pastDragThreshold } from "./drag-threshold.js";
 import { MIcon } from "./components.js";
 
 const NODE_W = 140;
@@ -48,10 +49,12 @@ export function FlowEditor(): React.JSX.Element {
   const [newScene, setNewScene] = React.useState("login");
   const [client, setClient] = React.useState("http://localhost:5173");
   const [server, setServer] = React.useState({ url: "", user: "", pass: "" });
-  const drag = React.useRef<{ id: string; dx: number; dy: number } | null>(null);
+  const drag = React.useRef<{ kind: "pan" | "node"; id: string | null; dx: number; dy: number; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
+  const [view, setView] = React.useState({ x: 0, y: 0 });
 
-  React.useEffect(() => {
+  const load = React.useCallback((): void => {
+    setStatus("loading…");
     getFlow()
       .then((b) => {
         setDoc(b.content);
@@ -64,7 +67,23 @@ export function FlowEditor(): React.JSX.Element {
       .catch((e: unknown) => setStatus(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  if (!doc) return <div className="p-4 text-[13px]">Flow: {status}</div>;
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  if (!doc) {
+    const failed = status !== "" && status !== "loading…";
+    return (
+      <div className="flex flex-col items-start gap-2 p-4 text-[13px]">
+        <p>Flow: {status}</p>
+        {failed && (
+          <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} onClick={() => load()}>
+            Retry
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const issues = validateFlow(doc, { scenes });
   const dirty = JSON.stringify(doc) !== saved;
@@ -97,7 +116,7 @@ export function FlowEditor(): React.JSX.Element {
   };
   const toUnits = (ev: React.PointerEvent): { x: number; y: number } => {
     const r = svgRef.current?.getBoundingClientRect();
-    return { x: ev.clientX - (r?.left ?? 0), y: ev.clientY - (r?.top ?? 0) };
+    return { x: ev.clientX - (r?.left ?? 0) + view.x, y: ev.clientY - (r?.top ?? 0) + view.y };
   };
   const sel = selected && doc.nodes[selected] ? selected : null;
 
@@ -134,11 +153,24 @@ export function FlowEditor(): React.JSX.Element {
         style={{ background: "var(--m3-surface-0)", touchAction: "none" }}
         role="img"
         aria-label="Game flow graph"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          drag.current = { kind: "pan", id: null, dx: 0, dy: 0, sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+          (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+          setSelected(null);
+        }}
         onPointerMove={(ev) => {
           const d = drag.current;
           if (!d) return;
+          if (!pastDragThreshold(d.sx, d.sy, ev.clientX, ev.clientY)) return;
+          if (d.kind === "pan") {
+            setView({ x: d.ox - (ev.clientX - d.sx), y: d.oy - (ev.clientY - d.sy) });
+            return;
+          }
+          if (d.id === null) return;
           const p = toUnits(ev);
-          setDoc((cur) => (cur ? moveFlowNode(cur, d.id, Math.max(0, Math.round(p.x - d.dx)), Math.max(0, Math.round(p.y - d.dy))) : cur));
+          const id = d.id;
+          setDoc((cur) => (cur ? moveFlowNode(cur, id, Math.max(0, Math.round(p.x - d.dx)), Math.max(0, Math.round(p.y - d.dy))) : cur));
         }}
         onPointerUp={() => (drag.current = null)}
       >
@@ -147,6 +179,7 @@ export function FlowEditor(): React.JSX.Element {
             <path d="M0,0 L8,4 L0,8 Z" fill="#90909A" />
           </marker>
         </defs>
+        <g transform={`translate(${-view.x},${-view.y})`}>
         {doc.edges.map((e, i) => {
           if (!doc.nodes[e.from] || !doc.nodes[e.to]) return null;
           const a = pos(doc, e.from);
@@ -173,9 +206,11 @@ export function FlowEditor(): React.JSX.Element {
               transform={`translate(${p.x},${p.y})`}
               style={{ cursor: "grab" }}
               onPointerDown={(ev) => {
+                if (ev.button !== 0) return;
                 ev.stopPropagation();
                 const pt = toUnits(ev);
-                drag.current = { id, dx: pt.x - p.x, dy: pt.y - p.y };
+                drag.current = { kind: "node", id, dx: pt.x - p.x, dy: pt.y - p.y, sx: ev.clientX, sy: ev.clientY, ox: p.x, oy: p.y };
+                (ev.currentTarget as SVGGElement).setPointerCapture(ev.pointerId);
                 setSelected(id);
               }}
             >
@@ -185,6 +220,7 @@ export function FlowEditor(): React.JSX.Element {
             </g>
           );
         })}
+        </g>
       </svg>
 
       <div className="grid gap-3 md:grid-cols-2">
