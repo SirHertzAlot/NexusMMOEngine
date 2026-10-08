@@ -4,7 +4,7 @@
  * Wires the full authoritative stack in one Node process:
  *   SimWorld + ChunkStreamer (chunks, scatter, and navmesh tiles load
  *   around players and unload behind them) + IntentSystem +
- *   IntegrateSystem + Jolt PhysicsSystem + Recast NavigationSystem,
+ *   IntegrateSystem + PropCollisionSystem + Jolt PhysicsSystem + Recast NavigationSystem,
  *   SQLite persistence (save every 300 ticks + on SIGTERM/SIGINT), CSV
  *   auth, and the WebSocket gateway.
  *
@@ -95,6 +95,7 @@ import {
   IntentSystem,
   CharacterSystem,
   IntegrateSystem,
+  PropCollisionSystem,
   PhysicsSystem,
   ColliderSystem,
   createJoltBackend,
@@ -720,7 +721,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new PropCollisionSystem(), new ColliderSystem(), obstacles, physics, navigation, items, quests],
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is

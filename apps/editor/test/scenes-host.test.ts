@@ -67,6 +67,26 @@ describe("save and read", () => {
     assert.ok(!existsSync(`${file}.tmp`));
     rmSync(root, { recursive: true });
   });
+  it("collider data validates: a bad shape refuses and writes nothing, a good one saves", () => {
+    const root = fakeRepo();
+    const bad = {
+      ...emptyScene("arena", "arena"),
+      nodes: [{ id: "tree", components: { Collider: { shape: "cube", hx: 0.5, hy: 2, hz: 0.5 } } }],
+    };
+    assert.throws(
+      () => saveScene(root, "arena", bad),
+      (e: { status?: number; issues?: Array<{ path: string }> }) =>
+        e.status === 400 && e.issues!.some((i) => i.path === "nodes[0].components.Collider.shape"),
+    );
+    assert.deepEqual(readdirSync(join(root, "content", "scenes")), []);
+    const good = {
+      ...emptyScene("arena", "arena"),
+      nodes: [{ id: "tree", components: { Collider: { shape: "box", hx: 0.5, hy: 2, hz: 0.5 } } }],
+    };
+    saveScene(root, "arena", good);
+    assert.deepEqual(readScene(root, "arena"), good);
+    rmSync(root, { recursive: true });
+  });
 });
 
 describe("handleScenesRoute", () => {

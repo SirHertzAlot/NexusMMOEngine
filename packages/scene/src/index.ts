@@ -82,6 +82,22 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     intensity: { type: "number", default: 1, min: 0 },
     shadows: { type: "boolean", default: false },
   }),
+  /**
+   * Collider: per-node physics data (roadmap prop collision). At spawn a
+   * node with a Collider becomes a static BodyConfig unless its shape is
+   * "none" (walk-through decoration, like the scatter spawn table's
+   * `"shape": "none"`): a box uses hx/hy/hz half-extents, a sphere uses
+   * radius. Missing fields take their defaults; cross-field rules (a box
+   * needs positive halves, a sphere a positive radius) are checked in
+   * validateScene because one field's meaning depends on another's.
+   */
+  Collider: component("Collider", {
+    shape: { type: "enum", default: "box", options: ["box", "sphere", "none"] },
+    hx: { type: "number", default: 0.5, min: 0 },
+    hy: { type: "number", default: 0.5, min: 0 },
+    hz: { type: "number", default: 0.5, min: 0 },
+    radius: { type: "number", default: 0.5, min: 0 },
+  }),
 };
 
 // ---------------------------------------------------------------- validation
@@ -102,6 +118,23 @@ function checkField(spec: FieldSpec, v: unknown): string | null {
       if (spec.min !== undefined && v < spec.min) return `must be at least ${spec.min}`;
       if (spec.max !== undefined && v > spec.max) return `must be at most ${spec.max}`;
       return null;
+  }
+}
+
+/** Cross-field rules for the Collider component (one field's meaning depends on another's). */
+function checkCollider(props: Record<string, unknown>, cp: string, bad: (path: string, message: string) => void): void {
+  const shape = props.shape ?? "box";
+  // An unknown shape is already reported by the enum field check; only
+  // judge dimensions for shapes with a meaning.
+  const positive = (v: unknown): v is number => typeof v === "number" && v > 0;
+  if (shape === "box") {
+    for (const k of ["hx", "hy", "hz"]) {
+      const v = props[k] ?? 0.5;
+      if (typeof v === "number" && !positive(v)) bad(`${cp}.${k}`, "must be positive for a box collider");
+    }
+  } else if (shape === "sphere") {
+    const v = props.radius ?? 0.5;
+    if (typeof v === "number" && !positive(v)) bad(`${cp}.radius`, "must be positive for a sphere collider");
   }
 }
 
@@ -155,6 +188,7 @@ export function validateScene(doc: unknown): SceneIssue[] {
                 if (e) bad(`${cp}.${fn}`, e);
               }
             }
+            if (cn === "Collider") checkCollider(props, cp, bad);
           }
         }
       }
