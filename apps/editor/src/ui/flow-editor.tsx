@@ -23,6 +23,7 @@ import {
 } from "@mmo-engine/scene";
 import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
 import { MIcon } from "./components.js";
+import { editorSelection } from "./editor-selection.js";
 
 const NODE_W = 140;
 const NODE_H = 44;
@@ -42,6 +43,21 @@ export function FlowEditor(): React.JSX.Element {
   const [scenes, setScenes] = React.useState<string[]>([]);
   const [events, setEvents] = React.useState<string[]>([]);
   const [selected, setSelected] = React.useState<string | null>(null);
+  const pick = (id: string | null): void => {
+    setSelected(id);
+    if (id === null) {
+      const cur = editorSelection.get();
+      if (cur && cur.kind === "flow-node") editorSelection.clear();
+      return;
+    }
+    editorSelection.select({
+      source: "outliner",
+      kind: "flow-node",
+      id,
+      label: id,
+      components: [{ name: "Flow node", fields: [{ key: "id", value: id }] }],
+    });
+  };
   const [status, setStatus] = React.useState<string>("loading…");
   const [refused, setRefused] = React.useState<SceneIssue[]>([]);
   const [newId, setNewId] = React.useState("");
@@ -176,7 +192,7 @@ export function FlowEditor(): React.JSX.Element {
                 ev.stopPropagation();
                 const pt = toUnits(ev);
                 drag.current = { id, dx: pt.x - p.x, dy: pt.y - p.y };
-                setSelected(id);
+                pick(id);
               }}
             >
               <rect width={NODE_W} height={NODE_H} rx={10} fill="var(--m3-surface-2, #26272c)" stroke={bad ? "#E8A33D" : id === sel ? "var(--m3-primary)" : "#4a4b52"} strokeWidth={id === sel || bad ? 2 : 1} />
@@ -221,7 +237,7 @@ export function FlowEditor(): React.JSX.Element {
             <select aria-label="new node scene" className={field} style={fieldStyle} value={newScene} onChange={(e) => setNewScene(e.target.value)}>
               {scenes.map((s) => <option key={s}>{s}</option>)}
             </select>
-            <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} disabled={!newId || newId in doc.nodes} onClick={() => { edit(addFlowNode(doc, newId, { scene: newScene })); setSelected(newId); setNewId(""); }}>
+            <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} disabled={!newId || newId in doc.nodes} onClick={() => { edit(addFlowNode(doc, newId, { scene: newScene })); pick(newId); setNewId(""); }}>
               Add node
             </button>
           </div>
@@ -229,7 +245,7 @@ export function FlowEditor(): React.JSX.Element {
             <div className="flex flex-wrap items-center gap-1 text-[12px]">
               <strong>{sel}</strong>
               <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} disabled={sel === doc.start} onClick={() => edit(setFlowStart(doc, sel))}>Set as start</button>
-              <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} onClick={() => { edit(removeFlowNode(doc, sel)); setSelected(null); }}>Delete node</button>
+              <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} onClick={() => { edit(removeFlowNode(doc, sel)); pick(null); }}>Delete node</button>
             </div>
           )}
           <h3 className="mt-2 text-[13px] font-semibold">Play from</h3>

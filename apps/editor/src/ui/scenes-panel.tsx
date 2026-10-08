@@ -30,6 +30,7 @@ import {
 } from "@mmo-engine/scene";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
+import { editorSelection } from "./editor-selection.js";
 
 const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
@@ -71,6 +72,24 @@ export function ScenesPanel(): React.JSX.Element {
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
 
+  const pick = (id: string | null): void => {
+    setSelected(id);
+    if (id === null) {
+      const cur = editorSelection.get();
+      if (cur && (cur.kind === "scene" || cur.kind === "scene-node")) editorSelection.clear();
+      return;
+    }
+    const picked = findNode(hist.doc, id);
+    const sceneName = open ?? "";
+    editorSelection.select({
+      source: "outliner",
+      kind: "scene-node",
+      id: sceneName ? `${sceneName}/${id}` : id,
+      label: picked?.name || picked?.id || id,
+      components: [{ name: "Scene node", fields: [{ key: "scene", value: sceneName }, { key: "id", value: id }] }],
+    });
+  };
+
   const run = (label: string, fn: Parameters<History["apply"]>[1]): void => {
     try {
       hist.apply(label, fn);
@@ -90,6 +109,13 @@ export function ScenesPanel(): React.JSX.Element {
         hist.replace(d);
         setOpen(name);
         setSelected(null);
+        editorSelection.select({
+          source: "outliner",
+          kind: "scene",
+          id: name,
+          label: name,
+          components: [{ name: "Scene", fields: [{ key: "name", value: name }] }],
+        });
         setIssues(validateScene(d));
         setStatus(`opened ${name}`);
         bump();
@@ -156,12 +182,12 @@ export function ScenesPanel(): React.JSX.Element {
             <Button size="sm" variant="outline" disabled={!open} onClick={() => {
               const id = nextId(doc, "node");
               run("add node", (d) => addNode(d, selected, { id, kind: "group" }));
-              setSelected(id);
+              pick(id);
             }}>Add child</Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => {
               if (!node) return;
               run("delete node", (d) => removeNode(d, node.id));
-              setSelected(null);
+              pick(null);
             }}>Delete</Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => node && run("move to root", (d) => moveNode(d, node.id, null))}>To root</Button>
           </div>
@@ -171,8 +197,8 @@ export function ScenesPanel(): React.JSX.Element {
               role="treeitem"
               aria-selected={n.id === selected}
               tabIndex={0}
-              onClick={() => setSelected(n.id)}
-              onKeyDown={(e) => e.key === "Enter" && setSelected(n.id)}
+              onClick={() => pick(n.id)}
+              onKeyDown={(e) => e.key === "Enter" && pick(n.id)}
               className="cursor-pointer rounded px-2 py-1"
               style={{ paddingLeft: 8 + depth * 14, background: n.id === selected ? "var(--m3-secondary-container)" : undefined }}
             >
@@ -193,7 +219,7 @@ export function ScenesPanel(): React.JSX.Element {
                 <Button size="sm" variant="outline" onClick={() => {
                   const id = nextId(doc, "node");
                   run("add node", (d) => addNode(d, null, { id, kind: "group" }));
-                  setSelected(id);
+                  pick(id);
                 }}>Add root node</Button>
               </div>
             ) : <p className="text-xs opacity-70">Open or create a scene.</p>

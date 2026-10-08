@@ -29,6 +29,7 @@ import {
 import type { PoolEntry } from "../dungeon-host.js";
 import { DungeonScene, type Pick } from "./dungeon-scene.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
+import { editorSelection } from "./editor-selection.js";
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -47,8 +48,22 @@ export function DungeonPanel(): React.JSX.Element {
   const [undo, setUndo] = React.useState<DungeonPatch[]>([]);
   const [redo, setRedo] = React.useState<DungeonPatch[]>([]);
   const [selected, setSelected] = React.useState<Pick>(null);
-  const [placing, setPlacing] = React.useState(false);
-  const [issues, setIssues] = React.useState<PatchIssue[]>([]);
+  const pick = (p: Pick): void => {
+    setSelected(p);
+    if (!p) {
+      const cur = editorSelection.get();
+      if (cur && (cur.kind === "dungeon-room" || cur.kind === "dungeon-spawn" || cur.kind === "dungeon-prop")) editorSelection.clear();
+      return;
+    }
+    if (p.kind === "room") {
+      editorSelection.select({ source: "outliner", kind: "dungeon-room", id: String(p.id), label: `Room ${p.id}`, components: [{ name: "Dungeon room", fields: [{ key: "id", value: String(p.id) }] }] });
+    } else if (p.kind === "spawn") {
+      editorSelection.select({ source: "outliner", kind: "dungeon-spawn", id: String(p.index), label: `Spawn ${p.index}`, components: [{ name: "Dungeon spawn", fields: [{ key: "index", value: String(p.index) }] }] });
+    } else {
+      editorSelection.select({ source: "outliner", kind: "dungeon-prop", id: p.key, label: `Prop ${p.key}`, components: [{ name: "Dungeon prop", fields: [{ key: "key", value: p.key }] }] });
+    }
+  };
+  const [placing, setPlacing] = React.useState(false);  const [issues, setIssues] = React.useState<PatchIssue[]>([]);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [bake, setBake] = React.useState({ count: 3, seed: "random", rank: "" });
   const [baking, setBaking] = React.useState(false);
@@ -77,7 +92,7 @@ export function DungeonPanel(): React.JSX.Element {
       setSaved(JSON.stringify(p));
       setUndo([]);
       setRedo([]);
-      setSelected(null);
+      pick(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -240,12 +255,12 @@ export function DungeonPanel(): React.JSX.Element {
               view={view}
               selected={selected}
               placing={placing}
-              onPick={setSelected}
+              onPick={pick}
               onMove={(key, x, y, first) => edit({ kind: "moveProp", key, x, y }, !first)}
               onPlace={(x, y) => {
                 setPlacing(false);
                 edit({ kind: "addProp", prop: { kind: "crate", x, y, rot: 0 } });
-                setSelected({ kind: "prop", key: `a${patch!.added.length}` });
+                pick({ kind: "prop", key: `a${patch!.added.length}` });
               }}
             />
           ) : (
@@ -280,7 +295,7 @@ export function DungeonPanel(): React.JSX.Element {
           <CardTitle>Details</CardTitle>
         </CardHeader>
         <CardContent className="text-xs" data-testid="dungeon-details">
-          {view && <Details view={view} selected={selected} archetypes={archetypes} edit={edit} onSelect={setSelected} />}
+          {view && <Details view={view} selected={selected} archetypes={archetypes} edit={edit} onSelect={pick} />}
           {!view && <p className="text-muted-foreground">No dungeon open.</p>}
         </CardContent>
       </Card>
