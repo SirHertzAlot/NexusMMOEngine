@@ -109,6 +109,7 @@ stay read-only here; this edits the running game.
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | ✅ | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; `god` toggles the God tag (no combat/hunger/drowning/trap Health loss) and peaks every skill, kept when switched off; `noclip` toggles the Noclip tag (free vertical flight, dungeon walls let go); `time` shows and sets the clock (newcomers via welcome, live clients by broadcast) and `weather` forces the sky (auto/clear/rain/snow/ash, same path); `injure {part, kind?, amount?}` (#99) and `skill {id, value}` (#112) live; `heal` also fills mana and makes the body whole |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
 | A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
+| A7 | **Bots in web workers**: an admin command spawns N simulated players (each its own socket, moving and fighting) in worker threads, to stress the server and feel play under load | 📋 | U14 (worker pool), A1; builds on `scripts/world-stress` |
 
 ## 1c. Modular editor
 
