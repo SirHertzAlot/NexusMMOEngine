@@ -437,8 +437,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     return true;
   }
 
-  async function startOwned(opts?: { bots?: number }): Promise<OwnedServer> {
-  async function startOwned(scene?: PlaySceneRequest): Promise<OwnedServer> {
+  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest }): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -450,7 +449,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // starts because the gateway's CsvCredentialStore loads the CSV once
     // at startup — users added afterwards would not be visible.
     // EA6: the open scene (validated before anything starts; may be unsaved).
-    const sceneEnv = playSceneEnv(repoRoot, dataDir, scene);
+    const sceneEnv = playSceneEnv(repoRoot, dataDir, opts?.scene);
     const usersCsv = join(dataDir, "users.csv");
     const { username, password } = editorLogin(dataDir);
     // Dev-only local credential: the plaintext goes to the browser over
@@ -706,28 +705,22 @@ export function editorHost(options: EditorHostOptions): Plugin {
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
             const startBody = await readBody(req);
-            // The only start option honored today: bots → MMO_BOTS.
+            // Start options honored today: bots → MMO_BOTS, and the optional
+            // {scene: {name, content?}} for playing the open scene (EA6).
             // Anything else in the body is ignored (the Play menu badges
             // those dimensions "preview" instead of pretending).
             let bots: number | undefined;
+            let scene: PlaySceneRequest | undefined;
             try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown };
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest };
               if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
                 bots = Math.floor(parsed.bots);
               }
+              scene = parsed.scene;
             } catch {
               /* empty / non-JSON body: server defaults */
             }
-            const s = await startOwned(bots !== undefined ? { bots } : undefined);
-            // Optional body {scene: {name, content?}}: play the open scene (EA6).
-            let scene: PlaySceneRequest | undefined;
-            try {
-              scene = (JSON.parse((await readBody(req)) || "{}") as { scene?: PlaySceneRequest }).scene;
-            } catch {
-              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-              return;
-            }
-            const s = await startOwned(scene);
+            const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,
@@ -971,6 +964,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const contentReply = handleContentRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);
           if (contentReply) {
             sendJson(res, contentReply.status, contentReply.body);
+            return;
+          }
           const modulesUrl = new URL(req.url ?? "/", "http://localhost");
           const modulesReply = await handleModulesRoute(
             repoRoot,
@@ -1001,6 +996,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (flowReply) {
             sendJson(res, flowReply.status, flowReply.body);
+            return;
+          }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
           const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (gameplayReply) {

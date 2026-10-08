@@ -24,6 +24,7 @@
       { "name": "mastery" },
       { "name": "integrate" },
       { "name": "character" },
+      { "name": "prop-collision" },
       { "name": "collider" },
       { "name": "obstacles" },
       { "name": "physics" },

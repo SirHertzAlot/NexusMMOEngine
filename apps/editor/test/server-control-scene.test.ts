@@ -36,16 +36,16 @@ describe("createHostServerControl with a scene provider", () => {
     const f = stubFetch();
     openScene.set({ name: "login", doc: emptyScene("login", "frontend") });
     await createHostServerControl("", playableScene).start();
-    assert.equal(f.bodies[0], "");
+    assert.deepEqual(JSON.parse(f.bodies[0]), {});
   });
   it("sends no scene when none is open", async () => {
     const f = stubFetch();
     await createHostServerControl("", playableScene).start();
-    assert.equal(f.bodies[0], "");
+    assert.deepEqual(JSON.parse(f.bodies[0]), {});
   });
   it("without a provider behaves as before", async () => {
     const f = stubFetch();
     await createHostServerControl().start();
-    assert.equal(f.bodies[0], "");
+    assert.deepEqual(JSON.parse(f.bodies[0]), {});
   });
 });

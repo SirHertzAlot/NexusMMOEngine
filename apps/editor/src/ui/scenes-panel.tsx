@@ -34,7 +34,6 @@ import { openScene } from "../open-scene.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
-import { editorSelection } from "./editor-selection.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
 
@@ -86,23 +85,6 @@ export function ScenesPanel(): React.JSX.Element {
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
 
-  const pick = (id: string | null): void => {
-    setSelected(id);
-    if (id === null) {
-      const cur = editorSelection.get();
-      if (cur && (cur.kind === "scene" || cur.kind === "scene-node")) editorSelection.clear();
-      return;
-    }
-    const picked = findNode(hist.doc, id);
-    const sceneName = open ?? "";
-    editorSelection.select({
-      source: "outliner",
-      kind: "scene-node",
-      id: sceneName ? `${sceneName}/${id}` : id,
-      label: picked?.name || picked?.id || id,
-      components: [{ name: "Scene node", fields: [{ key: "scene", value: sceneName }, { key: "id", value: id }] }],
-    });
-  };
   // Selection is shared with the rest of the editor (editor-selection.ts):
   // picking in the viewport or the outliner publishes the node; a node
   // selected elsewhere selects it here. The last live entity selected in
@@ -254,13 +236,11 @@ export function ScenesPanel(): React.JSX.Element {
             <Button size="sm" variant="outline" disabled={!open} onClick={() => {
               const id = nextId(doc, "node");
               run("add node", (d) => addNode(d, selected, { id, kind: "group" }));
-              pick(id);
               select(id);
             }}>Add child</Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => {
               if (!node) return;
               run("delete node", (d) => removeNode(d, node.id));
-              pick(null);
               select(null);
             }}>Delete</Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => node && run("move to root", (d) => moveNode(d, node.id, null))}>To root</Button>
@@ -271,8 +251,6 @@ export function ScenesPanel(): React.JSX.Element {
               role="treeitem"
               aria-selected={n.id === selected}
               tabIndex={0}
-              onClick={() => pick(n.id)}
-              onKeyDown={(e) => e.key === "Enter" && pick(n.id)}
               onClick={() => select(n.id)}
               onKeyDown={(e) => e.key === "Enter" && select(n.id)}
               className="cursor-pointer rounded px-2 py-1"
@@ -312,7 +290,6 @@ export function ScenesPanel(): React.JSX.Element {
                 <Button size="sm" variant="outline" onClick={() => {
                   const id = nextId(doc, "node");
                   run("add node", (d) => addNode(d, null, { id, kind: "group" }));
-                  pick(id);
                   select(id);
                 }}>Add root node</Button>
               </div>

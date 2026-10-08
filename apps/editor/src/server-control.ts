@@ -45,22 +45,14 @@ export function createHostServerControl(
   let running = false;
   return {
     async start(opts) {
-      const res = await fetch(`${base}/api/editor/server/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          opts?.bots !== undefined ? { bots: opts.bots } : {},
-        ),
-    async start() {
       const open = scene?.() ?? null;
       const res = await fetch(`${base}/api/editor/server/start`, {
         method: "POST",
-        ...(open
-          ? {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ scene: { name: open.name, content: open.doc } }),
-            }
-          : {}),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(opts?.bots !== undefined ? { bots: opts.bots } : {}),
+          ...(open ? { scene: { name: open.name, content: open.doc } } : {}),
+        }),
       });
       const body = (await res.json()) as {
         ok: boolean;

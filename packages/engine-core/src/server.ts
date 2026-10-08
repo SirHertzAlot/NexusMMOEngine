@@ -748,6 +748,7 @@ async function main(): Promise<void> {
         mastery,
         integrate: new IntegrateSystem(),
         character,
+        "prop-collision": new PropCollisionSystem(),
         collider: new ColliderSystem(),
         obstacles,
         physics,
@@ -787,7 +788,6 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new PropCollisionSystem(), new ColliderSystem(), obstacles, physics, navigation, items, quests],
     systems: assembled.systems,
     extensions: [quests, dungeons],
     items,
