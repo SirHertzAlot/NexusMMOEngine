@@ -125,6 +125,32 @@ describe("admin: vendor commands", () => {
     await client.close();
   });
 
+  it("spawn plants the vendor at x/z and attaches", async () => {
+    const url = await startGateway();
+    const client = await join(url, "alice");
+
+    await admin(client, "vendor", { sub: "define", id: "smith" });
+    const res = await admin(client, "vendor", { sub: "spawn", id: "smith", x: 100, z: 200 });
+    assert.equal(res.ok, true);
+    assert.match(res.message, /spawned as/);
+    assert.match(res.message, /\(100, 200\)/);
+    const wireId = res.message.match(/spawned as (\d+)/)![1];
+    const entity = (gw as unknown as { world: { resolveWireId(id: bigint): number } }).world.resolveWireId(BigInt(wireId));
+    assert.ok(entity >= 0, "entity exists in the world");
+    assert.equal(vendor.vendorOf(entity)?.id, "smith", "template attached");
+    await client.close();
+  });
+
+  it("spawn without coords uses the admin's position", async () => {
+    const url = await startGateway();
+    const client = await join(url, "alice");
+    await admin(client, "vendor", { sub: "define", id: "smith" });
+    const res = await admin(client, "vendor", { sub: "spawn", id: "smith" });
+    assert.equal(res.ok, true);
+    assert.match(res.message, /spawned as/);
+    await client.close();
+  });
+
   it("detach, disable/enable, and remove work", async () => {
     const url = await startGateway();
     const client = await join(url, "alice");

@@ -478,7 +478,6 @@ const VendorArgsSchema = z
     price: z.number().int().positive().optional(),
     qty: z.number().int().optional(),
     target: z.string().min(1).max(32).optional(),
-    asset: z.string().min(1).max(64).optional(),
     x: z.number().optional(),
     z: z.number().optional(),
   })
@@ -4462,9 +4461,9 @@ export class Gateway {
         return { kind: "admin", command: "vendor", ok: true, message: `vendor detached from ${d.target}` };
       }
       case "spawn": {
-        if (!d.id) return fail('spawn needs {id, asset?, x?, z?}');
+        if (!d.id) return fail('spawn needs {id, x?, z?}');
         if (!vendor.templateIds().includes(d.id)) return fail("unknown vendor template (define it first)");
-        const spawned = this.spawnVendorNpc(s, d.asset, d.x, d.z);
+        const spawned = this.spawnVendorNpc(s, d.x, d.z);
         if ("error" in spawned) return fail(spawned.error);
         vendor.attach(spawned.entity, d.id);
         return {
@@ -4526,28 +4525,15 @@ export class Gateway {
   }
 
   /**
-   * Spawn a vendor NPC: an asset from the spawn table (default "villager"
-   * when the table has one, else the first asset), at (x, z) or at the
-   * admin's feet. Returns the entity and wire id, or an error.
+   * Spawn a vendor NPC: a minimal world entity (Transform) at (x, z) or at
+   * the admin's feet, ready for the vendor template to attach. Returns the
+   * entity and wire id, or an error.
    */
   private spawnVendorNpc(
     s: ClientSession,
-    asset: string | undefined,
     x: number | undefined,
     z: number | undefined,
   ): { entity: number; wireId: string; x: number; z: number } | { error: string } {
-    if (this.spawnTable === null) {
-      try {
-        this.spawnTable = loadScatterContent().table;
-      } catch {
-        return { error: "no spawn table on this server" };
-      }
-    }
-    const table = this.spawnTable;
-    const names = listAssets(table);
-    if (names.length === 0) return { error: "no spawn table on this server" };
-    const pick = asset ?? (names.includes("villager") ? "villager" : names[0]);
-    if (!names.includes(pick)) return { error: `unknown asset "${pick}" (try: admin spawnlist)` };
     let px = x;
     let pz = z;
     let py: number;
@@ -4561,10 +4547,12 @@ export class Gateway {
     } else {
       py = this.groundHeightAt?.(px, pz) ?? 0;
     }
-    const built = buildSpawn(table, pick, px, py, pz, 0);
-    if ("error" in built) return { error: built.error };
-    const entity = spawnScatterEntity(this.world, built);
-    return { entity, wireId: this.world.wireId(entity).toString(), x: px, z: pz };
+    const eid = this.world.spawn();
+    addComponent(this.world.ecs, C.Transform, eid);
+    C.Transform.px[eid] = px;
+    C.Transform.py[eid] = py;
+    C.Transform.pz[eid] = pz;
+    return { entity: eid, wireId: this.world.wireId(eid).toString(), x: px, z: pz };
   }
 
   /**
