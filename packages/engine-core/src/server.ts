@@ -137,6 +137,7 @@ import { DuelSystem } from "./duel.js";
 import { WalletSystem } from "./economy/wallet.js";
 import { SqliteWalletStore } from "./economy/wallet-store.js";
 import { TradeSystem } from "./economy/trade.js";
+import { VendorSystem } from "./economy/vendor.js";
 import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
@@ -547,6 +548,20 @@ async function main(): Promise<void> {
       return items.store.putInBag(to, item) >= 0;
     },
   });
+  // Vendors (EC1): NPC shops. Templates are defined here; attaching them
+  // to NPC entities is content work (the `vendor` admin command attaches).
+  const vendor = new VendorSystem(wallet, {
+    give: (c, def) => items.give(c, def).ok,
+    take: (c, item) => {
+      if (!items.store.inBagOf(c, item)) return false;
+      items.store.destroy(item);
+      return true;
+    },
+    defOf: (item) => {
+      const slot = items.store.slot(item);
+      return slot < 0 ? -1 : items.store.defs[slot];
+    },
+  });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
@@ -736,7 +751,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, wallet, trade, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, wallet, trade, vendor, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is

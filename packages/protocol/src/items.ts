@@ -379,3 +379,34 @@ export interface WalletMessage {
   tick: number;
   balance: number;
 }
+
+/**
+ * C->S (catalog 0x21, EC1): vendor actions. `vendor` is the vendor
+ * entity's wire id. `list` reads the price list; `buy` names an item def;
+ * `sell` names a bag item instance.
+ */
+export interface VendorAction {
+  kind: "vendor";
+  action: "list" | "buy" | "sell";
+  vendor?: string;
+  def?: number;
+  item?: number;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): vendor results, to the acting player only.
+ * `listed` carries the price list; `bought`/`sold` confirm the trade and
+ * its price.
+ */
+export interface VendorMessage {
+  kind: "vendor";
+  tick: number;
+  vendor: string;
+  state: "listed" | "bought" | "sold";
+  name?: string;
+  stock?: Array<{ def: number; price: number; quantity: number }>;
+  buybackRate?: number;
+  def?: number;
+  item?: number;
+  price?: number;
+}

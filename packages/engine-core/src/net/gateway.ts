@@ -82,6 +82,8 @@ import {
   type DuelMessage,
   type TradeMessage,
   type WalletMessage,
+  type VendorAction,
+  type VendorMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -147,6 +149,7 @@ import { TelegraphSystem } from "../telegraph.js";
 import { DuelSystem } from "../duel.js";
 import { WalletSystem } from "../economy/wallet.js";
 import { TradeSystem } from "../economy/trade.js";
+import { VendorSystem } from "../economy/vendor.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -430,10 +433,35 @@ const TradeActionSchema = z
   })
   .strict();
 
+/** 0x21 vendor actions (EC1). */
+const VendorActionSchema = z
+  .object({
+    kind: z.literal("vendor"),
+    action: z.enum(["list", "buy", "sell"]),
+    vendor: z.string().min(1).max(32).optional(),
+    def: z.number().int().min(0).optional(),
+    item: z.number().int().positive().optional(),
+  })
+  .strict();
+
 /** Admin `gold` args (A5/EC1). */
 const GoldArgsSchema = z
   .object({
     amount: z.number().int().positive().max(999999999),
+  })
+  .strict();
+
+/** Admin `vendor` args (EC1). */
+const VendorArgsSchema = z
+  .object({
+    sub: z.enum(["define", "stock", "attach", "list"]),
+    id: z.string().min(1).max(32).optional(),
+    name: z.string().min(1).max(64).optional(),
+    buyback: z.number().min(0).max(1).optional(),
+    def: z.number().int().min(0).optional(),
+    price: z.number().int().positive().optional(),
+    qty: z.number().int().optional(),
+    target: z.string().min(1).max(32).optional(),
   })
   .strict();
 
@@ -494,7 +522,7 @@ export interface GatewayTick {
   /** The FlatBuffers delta every client got this tick. */
   delta: Uint8Array;
   /** This tick's gameplay events: hits (0x16), deaths/respawns (0x17), abilities (0x1d), telegraphs (0x1e), statuses (0x1f), duels (0x20). */
-  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage>;
+  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage>;
   /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
   fullState(): Uint8Array;
 }
@@ -2070,7 +2098,7 @@ export class Gateway {
         this.onDuel(s, payload);
         break;
       case MessageType.Trade:
-        this.onTrade(s, payload);
+        this.onTradeOrVendor(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -2163,7 +2191,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, time, weather",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2198,6 +2226,13 @@ export class Gateway {
       }
     } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot" || cmd.command === "gold") {
       res = this.runItemCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "vendor") {
+      res = this.runVendorCommand(s, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -3833,6 +3868,137 @@ export class Gateway {
     }
   }
 
+  /** 0x21 carries both trade and vendor actions; route by kind. */
+  private onTradeOrVendor(s: ClientSession, payload: Uint8Array): void {
+    let kind: unknown;
+    try {
+      kind = (decodeControl<{ kind?: unknown }>(payload)).kind;
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    if (kind === "vendor") this.onVendor(s, payload);
+    else this.onTrade(s, payload);
+  }
+
+  /**
+   * Buy from and sell to an NPC vendor (catalog 0x21, EC1). In-world
+   * sessions only; shares the pickup rate-limit bucket. A bad shape is
+   * 4003, a refusal (not a vendor, too far, broke, full bag) 4005;
+   * results come back as `vendor` events, gold as `wallet`.
+   */
+  private onVendor(s: ClientSession, payload: Uint8Array): void {
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "vendor outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    const parsed = VendorActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const me = sim.resolveWireId(s.playerEntity);
+    if (me < 0) return;
+    const meChar = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.vendor === undefined) {
+      this.sendError(s, 4003, "vendor action needs a vendor");
+      return;
+    }
+    // The vendor is any world entity (usually an NPC), not a session.
+    let vEntity = -1;
+    try {
+      vEntity = sim.resolveWireId(BigInt(parsed.data.vendor));
+    } catch {
+      vEntity = -1;
+    }
+    if (vEntity < 0) {
+      this.sendError(s, 4005, "no such vendor");
+      return;
+    }
+    const wire = parsed.data.vendor;
+    switch (parsed.data.action) {
+      case "list": {
+        const view = vendor.list(vEntity);
+        if (!view) {
+          this.sendError(s, 4005, "not a vendor");
+          return;
+        }
+        const m: VendorMessage = {
+          kind: "vendor",
+          tick,
+          vendor: wire,
+          state: "listed",
+          name: view.name,
+          stock: view.stock,
+          buybackRate: view.buybackRate,
+        };
+        this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        break;
+      }
+      case "buy": {
+        if (parsed.data.def === undefined) {
+          this.sendError(s, 4003, "buy needs a def");
+          return;
+        }
+        const err = vendor.buy(sim, meChar, me, vEntity, parsed.data.def, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        const view = vendor.list(vEntity)!;
+        const line = view.stock.find((l) => l.def === parsed.data.def);
+        const m: VendorMessage = {
+          kind: "vendor",
+          tick,
+          vendor: wire,
+          state: "bought",
+          def: parsed.data.def,
+          price: line?.price ?? 0,
+        };
+        this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        this.sendInventory(s);
+        break;
+      }
+      case "sell": {
+        if (parsed.data.item === undefined) {
+          this.sendError(s, 4003, "sell needs an item");
+          return;
+        }
+        const err = vendor.sell(sim, meChar, me, vEntity, parsed.data.item, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        const m: VendorMessage = {
+          kind: "vendor",
+          tick,
+          vendor: wire,
+          state: "sold",
+          item: parsed.data.item,
+        };
+        this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        this.sendInventory(s);
+        break;
+      }
+    }
+  }
+
   /**
    * Treat a body part (catalog 0x1a, M4): yourself or a character in reach.
    * In-world sessions only; shares the pickup bucket. A bad shape is 4003,
@@ -4076,6 +4242,58 @@ export class Gateway {
     }
     const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
     return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
+  }
+
+  /**
+   * Vendor admin commands (roadmap EC1): define a vendor template, stock
+   * it, attach it to a world entity, or list templates. Failures read as
+   * errors, never throw.
+   *
+   *   vendor {sub: "define", id, name?, buyback?}
+   *   vendor {sub: "stock", id, def, price, qty?}   (qty -1: infinite)
+   *   vendor {sub: "attach", id, target}            (target: wire id)
+   *   vendor {sub: "list"}
+   */
+  private runVendorCommand(s: ClientSession, args: unknown): AdminResult {
+    const fail = (message: string): AdminResult => ({ kind: "admin", command: "vendor", ok: false, message });
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor) return fail("no vendors on this server");
+    const a = VendorArgsSchema.safeParse(args ?? {});
+    if (!a.success) return fail('usage: vendor {sub: "define"|"stock"|"attach"|"list", ...}');
+    const d = a.data;
+    switch (d.sub) {
+      case "define": {
+        if (!d.id) return fail('define needs {id, name?}');
+        if (!vendor.create(d.id, d.name ?? d.id, d.buyback ?? 0.3)) return fail("bad id or already defined");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" defined` };
+      }
+      case "stock": {
+        if (!d.id || d.def === undefined || !d.price) return fail('stock needs {id, def, price, qty?}');
+        if (!vendor.setStock(d.id, d.def, d.price, d.qty ?? -1)) return fail("unknown vendor or bad price");
+        return { kind: "admin", command: "vendor", ok: true, message: `stocked def ${d.def} at ${d.price}g` };
+      }
+      case "attach": {
+        if (!d.id || !d.target) return fail('attach needs {id, target}');
+        let entity = -1;
+        try {
+          entity = this.world.resolveWireId(BigInt(d.target));
+        } catch {
+          entity = -1;
+        }
+        if (entity < 0) return fail("no such target");
+        if (!vendor.attach(entity, d.id)) return fail("unknown vendor template");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" attached` };
+      }
+      case "list": {
+        const ids = vendor.templateIds();
+        return {
+          kind: "admin",
+          command: "vendor",
+          ok: true,
+          message: ids.length > 0 ? `vendors: ${ids.join(", ")}` : "no vendors defined",
+        };
+      }
+    }
   }
 
   /**
