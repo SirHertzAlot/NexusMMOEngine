@@ -40,6 +40,8 @@
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
+ *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
+ *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
  *   GET  /api/editor/story         → the quest and dialog documents (EA20)
  *   GET  /api/editor/story/:name   → one document and the rules references
  *   PUT  /api/editor/story[/:name] → {files} or {content}: validate the whole set, then write; 400
@@ -88,6 +90,7 @@ import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
+import { handleGameplayRoute } from "./gameplay-routes.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -972,6 +975,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (flowReply) {
             sendJson(res, flowReply.status, flowReply.body);
+          // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
+          const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
+          if (gameplayReply) {
+            sendJson(res, gameplayReply.status, gameplayReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(

@@ -23,6 +23,7 @@ import { ScenesPanel } from "./scenes-panel.js";
 import { FlowEditor } from "./flow-editor.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
+import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
@@ -136,6 +137,8 @@ const WORKSPACES: Workspace[] = [
   {
     id: "gameplay", label: "Gameplay", icon: "table_view",
     views: [
+      { id: "grids", label: "Data grids", icon: "grid_on", kind: "panel", panel: <GameplayGridsPanel /> },
+      { id: "content", label: "Content browser", icon: "folder_open", kind: "panel", panel: <ContentBrowserPanel /> },
       { id: "tables", label: "Tables", icon: "table_view", kind: "panel", panel: <TablesPanel /> },
       { id: "rules", label: "Rules", icon: "tune", kind: "panel", panel: <RulesPanel /> },
     ],
