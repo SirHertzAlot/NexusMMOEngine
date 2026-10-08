@@ -26,7 +26,7 @@ import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./dat
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
-import { editorSelection, useEditorSelection } from "./editor-selection.js";
+import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
@@ -1534,7 +1534,15 @@ function useTree(): {
 
 function crudMenu(label: string, slice: string, onInspect?: () => void): Array<MenuItem | "sep"> {
   return [
-    { label: `Inspect ${label}`, icon: "search", run: onInspect ?? (() => notify(`${label} selected in the outliner`)) },
+    { label: `Inspect ${label}`, icon: "search", run: onInspect ?? (() => {
+      editorSelection.select({
+        source: "outliner",
+        kind: "inspect",
+        id: label,
+        label,
+        components: [{ name: "Inspect", fields: [{ key: "item", value: label }, { key: "slice", value: slice }] }],
+      });
+    }) },
     "sep",
     { label: "Rename…", icon: "edit", stagedFor: slice },
     { label: "Duplicate", icon: "content_copy", stagedFor: slice },
@@ -2029,7 +2037,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
 
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
-  if (selection) return <SelectionDetails selection={selection} />;
+  if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
   if (workspace === "liveops") return <LiveOpsDetails />;
   if (workspace === "database") return <DatabaseRowDetails />;
   if (workspace === "release") return <ReleaseDeployDetails />;
@@ -2079,7 +2087,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
           Selected from {selection.source.replace("-", " ")}
         </span>
         {selection.components.length === 0 ? (
-          <p style={{ color: "var(--m3-on-surface-variant)" }}>No component data is available for this selection.</p>
+          <p style={{ color: "var(--m3-on-surface-variant)" }}>no details for {selection.kind} {selection.id} — pick something else.</p>
         ) : (
           selection.components.map((component) => (
             <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>

@@ -15,6 +15,7 @@ import { edgePath, GraphEditor, parseFieldValue, type GraphDocument, type GraphV
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
 import { pastDragThreshold } from "./drag-threshold.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
+import { editorSelection } from "./editor-selection.js";
 
 const NODE_W = 168;
 const NODE_H = 52;
@@ -339,6 +340,8 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
         drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
         (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
         editor.select(null);
+        const cur = editorSelection.get();
+        if (cur && cur.kind === "graph-node") editorSelection.clear();
       }}
       onPointerMove={(e) => {
         const d = drag.current;
@@ -394,6 +397,13 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
               if (e.button !== 0) return;
               e.stopPropagation();
               editor.select(n.id);
+              editorSelection.select({
+                source: "outliner",
+                kind: "graph-node",
+                id: n.id,
+                label: n.title || n.id,
+                components: [{ name: "Graph node", fields: [{ key: "id", value: n.id }, { key: "type", value: n.type }] }],
+              });
               drag.current = { kind: "node", id: n.id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
               // Captured on the node (not the canvas), so its double-click still lands on it.
               (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);

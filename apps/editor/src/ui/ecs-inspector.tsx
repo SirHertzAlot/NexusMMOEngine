@@ -97,7 +97,7 @@ export function EcsInspectorPanel(): React.JSX.Element {
     client?.disconnect();
     setClient(null);
     setSelected(null);
-    editorSelection.clear("entity-list");
+    editorSelection.clear();
   }
 
   // Poll while connected so the list stays fresh even between deltas.
