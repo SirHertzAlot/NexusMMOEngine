@@ -81,6 +81,7 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { pathToFileURL } from "node:url";
+import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
@@ -332,6 +333,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
+  let dbCore: DatabaseCore | null = null;
 
   /**
    * Run the engine's terrain tool (export | generate | import | map | regenerate) as its own
@@ -929,6 +931,25 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);
+            return;
+          }
+          if (url.startsWith("/api/editor/database/")) {
+            const u = new URL(url, "http://localhost");
+            let body: unknown = {};
+            if (req.method === "POST") {
+              try {
+                body = JSON.parse((await readBody(req)) || "{}") as unknown;
+              } catch {
+                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+                return;
+              }
+            }
+            dbCore ??= await openDatabaseCore(repoRoot, dataDir);
+            const reply = await handleDatabase(
+              { core: dbCore, serverRunning: async () => owned !== null || (await portOpen(serverPort)) },
+              { method: req.method ?? "GET", route: u.pathname.slice("/api/editor/database/".length), contentType: req.headers["content-type"], body },
+            );
+            sendJson(res, reply.status, reply.body);
             return;
           }
           const rulesParsed = new URL(req.url ?? "/", "http://localhost");
