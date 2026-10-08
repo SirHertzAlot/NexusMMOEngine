@@ -20,6 +20,7 @@ import { DungeonPanel } from "./dungeon-view.js";
 import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
+import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
@@ -76,6 +77,7 @@ type WorkspaceId =
   | "network"
   | "debug"
   | "database"
+  | "changes"
   | "story"
   | "artaudio"
   | "release";
@@ -148,6 +150,11 @@ const WORKSPACES: Workspace[] = [
     id: "debug", label: "Debug", icon: "monitoring",
     views: [{ id: "play", label: "Play mode", icon: "play_arrow", kind: "panel", panel: <PlayModePanel /> }],
     leftTitle: "Sessions",
+  },
+  {
+    id: "changes", label: "Changes", icon: "commit",
+    views: [{ id: "changes", label: "Changes", icon: "commit", kind: "panel", panel: <ChangesPanel /> }],
+    leftTitle: "Changes",
   },
   {
     id: "database", label: "Database", icon: "database",
