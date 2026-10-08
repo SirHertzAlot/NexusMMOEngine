@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "refining": {
+    "iron": { "inputs": { "iron-ore": 2, "coal": 1 } },
+    "steel": { "inputs": { "iron-ore": 2, "coal": 2 } },
+    "silver": { "inputs": { "silver-ore": 2, "coal": 1 } },
+    "mithril": { "inputs": { "enchanted-ore": 2, "silver-ore": 1 } },
+    "obsidian": { "inputs": { "exotic-ore": 1, "fire-crystal": 1 } },
+    "frostglass": { "inputs": { "frost-crystal": 2, "rough-quartz": 1 } },
+    "stormsteel": { "inputs": { "iron-ore": 2, "storm-crystal": 1 } },
+    "voidsteel": { "inputs": { "exotic-ore": 2, "void-essence": 1 } },
+    "dragonbone": { "inputs": { "dragon-bone": 2 } },
+    "ash": { "inputs": { "ash-log": 2 } },
+    "yew": { "inputs": { "yew-log": 2 } },
+    "ironwood": { "inputs": { "ironwood-log": 2 } },
+    "heartwood": { "inputs": { "heartwood": 2 } },
+    "bone-wood": { "inputs": { "old-bone": 2 } },
+    "quartz": { "inputs": { "rough-quartz": 1 } },
+    "ruby": { "inputs": { "rough-gem": 1, "fire-crystal": 1 } },
+    "sapphire": { "inputs": { "rough-gem": 1, "frost-crystal": 1 } },
+    "topaz": { "inputs": { "rough-gem": 1, "storm-crystal": 1 } },
+    "emerald": { "inputs": { "rough-gem": 1, "wild-essence": 1 } },
+    "onyx": { "inputs": { "rough-gem": 1, "grave-dust": 1 } },
+    "diamond": { "inputs": { "rough-diamond": 1 } },
+    "voidstone": { "inputs": { "rough-diamond": 1, "void-essence": 1 } }
+  },
+  "reagents": {
+    "fire": { "reagent": "fire-crystal", "extra": "demon-ichor" },
+    "frost": { "reagent": "frost-crystal" },
+    "storm": { "reagent": "storm-crystal" },
+    "nature": { "reagent": "wild-essence" },
+    "holy": { "reagent": "silver-ore" },
+    "shadow": { "reagent": "grave-dust" },
+    "void": { "reagent": "void-essence" }
+  },
+  "fallbackReagent": "arcane-dust",
+  "runeStone": "rune-stone",
+  "fittings": [
+    { "tags": ["armour", "offhand"], "add": { "beast-hide": 2 } },
+    { "tags": ["jewel"], "add": { "gold-ore": 1 } }
+  ],
+  "units": [
+    { "tags": ["jewel"], "units": 1 },
+    { "tags": ["two-handed"], "units": 6 },
+    { "tags": ["offhand", "armour"], "units": 4 }
+  ],
+  "defaultUnits": 3,
+  "skills": [
+    { "tags": ["jewel"], "skill": "Jewelcrafting" },
+    { "tags": ["wood"], "skill": "Woodworking" },
+    { "tags": ["armour"], "skill": "Armoursmithing" }
+  ],
+  "defaultSkill": "Smithing"
+}

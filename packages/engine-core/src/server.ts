@@ -591,7 +591,7 @@ async function main(): Promise<void> {
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
-  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e) });
+  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, tables: game.rules.loot.tables ?? {}, kindOf: (e) => creatures.kindOf(e) });
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -601,6 +601,7 @@ async function main(): Promise<void> {
     hooks.current = g.hooks;
     creatures.setRules(g.rules.creatures.creatures, g.rules.items.bases);
     dropper.setCreatures(g.rules.creatures.creatures);
+    dropper.setTables(g.rules.loot.tables ?? {});
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
