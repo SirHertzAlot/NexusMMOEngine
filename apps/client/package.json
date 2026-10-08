@@ -5,6 +5,7 @@
     "@mmo-engine/mirror": "0.1.0",
     "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
+    "@mmo-engine/scene": "0.1.0",
     "@mmo-engine/schema": "0.1.0",
     "@pmndrs/detect-gpu": "^6.0.24",
     "@react-three/drei": "^10.7.9",
@@ -38,7 +39,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && npm run build:lib && vite build",
-    "build:deps": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/compose",
+    "build:deps": "npm run build --workspace=@mmo-engine/scene && npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/compose",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",
