@@ -87,6 +87,7 @@ import {
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
+import { handleVcsRoute } from "./vcs-host.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -981,6 +982,16 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);
+            return;
+          }
+          const vcsReply = await handleVcsRoute(
+            repoRoot,
+            req.method ?? "GET",
+            url,
+            req.method === "POST" ? await readBody(req) : undefined,
+          );
+          if (vcsReply) {
+            sendJson(res, vcsReply.status, vcsReply.body);
             return;
           }
           if (url.startsWith("/api/editor/database/")) {
