@@ -37,6 +37,7 @@
  *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
  *   GET  /api/editor/rules/:name   → one rules file's parsed content
  *   GET/PUT /api/editor/scenes[/:name] → scene documents (scenes-host.ts)
+ *   GET/PUT /api/editor/modules, POST /modules/apply → the module set (modules-host.ts)
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
@@ -85,6 +86,7 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
+import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -191,6 +193,8 @@ interface OwnedServer {
   /** One-session dev credentials seeded for this server (see below). */
   username: string;
   password: string;
+  /** The tick order the server reported at boot (Modules window). */
+  tickOrder(): string[] | null;
 }
 
 const LISTEN_RE = /listening on ws:\/\/[^:]+:(\d+)/;
@@ -518,8 +522,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
     child.unref();
     const pid = child.pid ?? -1;
     let output = "";
+    let bootOrder: string[] | null = null;
     const onData = (d: Buffer): void => {
       output += d.toString("utf8");
+      bootOrder ??= parseTickOrder(output);
       if (output.length > 64_000) output = output.slice(-64_000);
     };
     child.stdout?.on("data", onData);
@@ -576,6 +582,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
       url: `ws://127.0.0.1:${serverPort}`,
       username,
       password,
+      tickOrder: () => bootOrder,
     };
     // Adopt the actual bound port from the server's listen line once
     // ready (normally identical to serverPort).
@@ -926,6 +933,27 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url.startsWith("/assets/") && req.method === "GET") {
             serveAssetFile(req, res);
+            return;
+          }
+          const modulesUrl = new URL(req.url ?? "/", "http://localhost");
+          const modulesReply = await handleModulesRoute(
+            repoRoot,
+            req.method ?? "GET",
+            modulesUrl.pathname,
+            req.method === "PUT" ? await readBody(req) : undefined,
+            {
+              running: () => owned?.tickOrder() ?? null,
+              // "Apply modules": the server reads the set at boot, so a running one restarts.
+              apply: async () => {
+                if (!owned) return { restarted: false };
+                await stopOwned();
+                const s = await startOwned();
+                return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password };
+              },
+            },
+          );
+          if (modulesReply) {
+            sendJson(res, modulesReply.status, modulesReply.body);
             return;
           }
           const scenesUrl = new URL(req.url ?? "/", "http://localhost");

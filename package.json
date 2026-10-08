@@ -51,6 +51,7 @@
     "packages/art",
     "packages/rules",
     "packages/scene",
+    "packages/modules",
     "packages/engine-core",
     "packages/bench",
     "packages/addons/template",

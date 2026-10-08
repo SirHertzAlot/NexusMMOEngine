@@ -4,6 +4,7 @@
     "@mmo-engine/dungeon": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/rules": "0.1.0",
+    "@mmo-engine/modules": "0.1.0",
     "@mmo-engine/scene": "0.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -28,7 +29,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && tsc -p tsconfig.json && vite build",
-    "build:deps": "npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/scene && npm run build --workspace=@mmo-engine/engine-core && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/dungeon && npm run build:deps --workspace=@mmo-engine/client && npm run build:lib --workspace=@mmo-engine/client",
+    "build:deps": "npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/modules && npm run build --workspace=@mmo-engine/scene && npm run build --workspace=@mmo-engine/engine-core && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/dungeon && npm run build:deps --workspace=@mmo-engine/client && npm run build:lib --workspace=@mmo-engine/client",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",

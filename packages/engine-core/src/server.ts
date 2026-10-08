@@ -41,6 +41,11 @@
  *                  <data>/instances.db
  *   MMO_INSTANCE_HOST host clients reach instances at (default localhost;
  *                  each instance listens on its own free port)
+ *   MMO_MODULES    the enabled module set document (default: content/modules.json;
+ *                  modules/<name>/module.json). `core` is always on. The tick's
+ *                  systems are core's plus those the enabled modules add, ordered
+ *                  by their after/before; a bad set stops the server with every
+ *                  problem named (EA9)
  *   MMO_BIOMES     the biome registry: per-biome scatter multipliers and
  *                  creature tables (default: content/biomes.json)
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
@@ -128,6 +133,8 @@ import { startPcgService } from "./pcg/boot.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
+import { assembleServerSystems } from "./modules.js";
+const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { CombatSystem, type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { AbilitySystem } from "./abilities.js";
@@ -695,6 +702,48 @@ async function main(): Promise<void> {
     dropper.onDeath(s, ev);
     quests.onDeath(s, ev, (e) => creatures.kindOf(e));
   }, body);
+  // The tick's systems (roadmap EA9): the core module's instances in the order
+  // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
+  // set (unknown id, cycle) stops the boot with every problem listed.
+  const assembled = await assembleServerSystems({
+    modulesDir: path.join(REPO_ROOT, "modules"),
+    setFile: process.env.MMO_MODULES || path.join(REPO_ROOT, "content", "modules.json"),
+    provided: {
+      core: {
+        reloader,
+        stats: new StatsSystem(),
+        streamer,
+        bots: bots[0],
+        creatures,
+        crowd: crowd[0],
+        intent: new IntentSystem(),
+        combat,
+        magic,
+        body,
+        death,
+        abilities,
+        status,
+        telegraphs,
+        duels,
+        stamina,
+        needs,
+        mastery,
+        integrate: new IntegrateSystem(),
+        character,
+        collider: new ColliderSystem(),
+        obstacles,
+        physics,
+        navigation,
+        items,
+        quests,
+      },
+    },
+    ctx: { sim, log: (m) => console.log(m) },
+  }).catch((err: Error) => {
+    console.error(`[server] ${err.message}`);
+    process.exit(1);
+  });
+  console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
   // Cross-region presence (S2): the gateway reports online names and asks
@@ -720,7 +769,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: assembled.systems,
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is

@@ -1,0 +1,103 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { assembleServerSystems } from "../src/modules.js";
+import type { SimSystem } from "../src/systems.js";
+
+const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
+const MODULES = join(REPO, "modules");
+
+/** server.ts's systems array before EA9, by manifest id. */
+const LEGACY_ORDER = [
+  "reloader", "stats", "streamer", "bots", "creatures", "crowd", "intent", "combat", "magic", "body", "death",
+  "abilities", "status", "telegraphs", "duels", "stamina", "needs", "mastery", "integrate", "character",
+  "collider", "obstacles", "physics", "navigation", "items", "quests",
+];
+
+const fake = (name: string): SimSystem => ({ name, step() {} });
+const coreProvided = (skip: string[] = []): Record<string, SimSystem | undefined> =>
+  Object.fromEntries(LEGACY_ORDER.map((n) => [n, skip.includes(n) ? undefined : fake(n)]));
+const ctx = { sim: {} as never, log: () => {} };
+const setFile = (modules: string[]): string => {
+  const dir = mkdtempSync(join(tmpdir(), "mmo-set-"));
+  const f = join(dir, "modules.json");
+  writeFileSync(f, JSON.stringify({ modules }));
+  return f;
+};
+
+describe("server modules: the core module", () => {
+  it("reproduces server.ts's systems order exactly", async () => {
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided() }, ctx });
+    assert.deepEqual(r.systems.map((s) => s.name), LEGACY_ORDER);
+    assert.deepEqual(r.order.map((s) => s.name), LEGACY_ORDER);
+  });
+  it("skips core systems the host did not build (no bots, no crowd), keeping the rest in order", async () => {
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided(["bots", "crowd"]) }, ctx });
+    assert.deepEqual(r.systems.map((s) => s.name), LEGACY_ORDER.filter((n) => n !== "bots" && n !== "crowd"));
+  });
+  it("refuses an instance the manifest does not list", async () => {
+    await assert.rejects(
+      assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: { ...coreProvided(), rogue: fake("rogue") } }, ctx }),
+      /rogue/,
+    );
+  });
+});
+
+describe("server modules: the sample module", () => {
+  it("adds its system between crowd and intent, leaving the core order intact", async () => {
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core", "sample-heartbeat"]), provided: { core: coreProvided() }, ctx });
+    const names = r.systems.map((s) => s.name);
+    assert.deepEqual(names.filter((n) => n !== "sample-heartbeat"), LEGACY_ORDER);
+    assert.equal(names.indexOf("sample-heartbeat"), LEGACY_ORDER.indexOf("intent"));
+    assert.deepEqual(r.modules, ["core", "sample-heartbeat"]);
+  });
+  it("is gone when disabled", async () => {
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core", "characters"]), provided: { core: coreProvided() }, ctx });
+    assert.ok(!r.systems.some((s) => s.name === "sample-heartbeat"));
+  });
+  it("its system actually runs", async () => {
+    const logs: string[] = [];
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["sample-heartbeat"]), provided: { core: coreProvided() }, ctx: { sim: {} as never, log: (m) => logs.push(m) } });
+    const hb = r.systems.find((s) => s.name === "sample-heartbeat")!;
+    for (let i = 0; i < 1200; i++) hb.step({} as never, 1 / 30);
+    assert.equal(logs.length, 2);
+  });
+});
+
+describe("server modules: refusals", () => {
+  const temp = (mods: Record<string, unknown>, entries: Record<string, string> = {}): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-mods-"));
+    for (const [n, m] of Object.entries({ core: JSON.parse(JSON.stringify({ name: "core", version: "0.1.0", server: { systems: LEGACY_ORDER.map((name) => ({ name })) } })), ...mods })) {
+      mkdirSync(join(root, n, "server"), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+      if (entries[n]) writeFileSync(join(root, n, "server", "index.js"), entries[n]);
+    }
+    return root;
+  };
+  const sys = `export function createSystems(){ return { x: { name: "x", step(){} } }; }`;
+  const mod = (extra: object) => ({ name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x", ...extra }] } });
+
+  it("a cycle stops the boot and names it", async () => {
+    const root = temp({ m: mod({ after: "quests", before: "reloader" }) }, { m: sys });
+    await assert.rejects(assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }), /cycle/);
+  });
+  it("an unknown id stops the boot and names it", async () => {
+    const root = temp({ m: mod({ after: "ghost" }) }, { m: sys });
+    await assert.rejects(assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }), /ghost/);
+  });
+  it("an entry that does not provide its declared system is refused", async () => {
+    const root = temp({ m: mod({}) }, { m: `export function createSystems(){ return {}; }` });
+    await assert.rejects(assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }), /does not provide "x"/);
+  });
+  it("an enabled module that is not installed is refused", async () => {
+    await assert.rejects(assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["nope"]), provided: { core: coreProvided() }, ctx }), /nope/);
+  });
+  it("a bad set file is refused", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mmo-set-"));
+    writeFileSync(join(dir, "modules.json"), "{");
+    await assert.rejects(assembleServerSystems({ modulesDir: MODULES, setFile: join(dir, "modules.json"), provided: { core: coreProvided() }, ctx }), /not valid JSON/);
+  });
+});

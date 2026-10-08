@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/channel && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/wfc && npm run build --workspace=@mmo-engine/compose && npm run build --workspace=@mmo-engine/placement && tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/modules && npm run build --workspace=@mmo-engine/channel && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/wfc && npm run build --workspace=@mmo-engine/compose && npm run build --workspace=@mmo-engine/placement && tsc -p tsconfig.json",
     "test": "npm run build && node --expose-gc --test --test-skip-pattern=\"latency budget\" \"dist/test/**/*.test.js\" && npm run test:perf",
     "test:perf": "node --expose-gc --test --test-name-pattern=\"latency budget\" dist/test/persist/store.test.js",
     "sim": "npm run build && node dist/src/sim.js",
@@ -23,6 +23,7 @@
   "dependencies": {
     "@mmo-engine/addon-navigation": "0.1.0",
     "@mmo-engine/channel": "^0.1.0",
+    "@mmo-engine/modules": "0.1.0",
     "@mmo-engine/nethealth": "^0.1.0",
     "@mmo-engine/addon-physics": "0.1.0",
     "@mmo-engine/addon-picg": "0.1.0",
