@@ -334,3 +334,48 @@ export interface DuelMessage {
   reason?: "blood" | "yield" | "timeout" | "declined" | "expired" | "cancelled";
   winner?: string;
 }
+
+/**
+ * C->S (catalog 0x21, EC1): trade actions. `open` names the target's wire
+ * id; the rest carry the trade id. `offer` sets offered gold and/or adds
+ * or removes one bag item (any offer change resets both accepts).
+ */
+export interface TradeAction {
+  kind: "trade";
+  action: "open" | "offer" | "accept" | "cancel";
+  target?: string;
+  id?: number;
+  gold?: number;
+  addItem?: number;
+  removeItem?: number;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): the full trade state, on every change. Sent
+ * to the two parties only. The client renders its trade window from the
+ * latest event. Character ids are wire ids; item ids are item ids.
+ */
+export interface TradeMessage {
+  kind: "trade";
+  tick: number;
+  id: number;
+  state: "open" | "offer" | "accepted" | "settled" | "cancelled" | "expired";
+  a: string;
+  b: string;
+  aGold: number;
+  bGold: number;
+  aItems: number[];
+  bItems: number[];
+  aAccepted: boolean;
+  bAccepted: boolean;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): the owner's gold balance, whenever it
+ * changes. To the owner only — gold is private.
+ */
+export interface WalletMessage {
+  kind: "wallet";
+  tick: number;
+  balance: number;
+}

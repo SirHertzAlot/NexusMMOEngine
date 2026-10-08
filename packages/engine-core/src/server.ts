@@ -134,6 +134,9 @@ import { AbilitySystem } from "./abilities.js";
 import { StatusSystem } from "./status.js";
 import { TelegraphSystem } from "./telegraph.js";
 import { DuelSystem } from "./duel.js";
+import { WalletSystem } from "./economy/wallet.js";
+import { SqliteWalletStore } from "./economy/wallet-store.js";
+import { TradeSystem } from "./economy/trade.js";
 import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
@@ -531,6 +534,19 @@ async function main(): Promise<void> {
   const restored = items.restore(sim, itemLedger.load());
   items.attachLedger(itemLedger);
   if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
+  // Economy (EC1): gold wallets (SQLite-backed) and player-to-player
+  // trades. Items move bag-to-bag through the ItemStore; held/worn gear
+  // stays out of trades in v1.
+  const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
+  const wallet = new WalletSystem(walletStore);
+  const trade = new TradeSystem(wallet, {
+    owns: (c, item) => items.store.inBagOf(c, item),
+    freeSlots: (c) => items.store.emptySlots(c),
+    move: (item, from, to) => {
+      if (!items.store.inBagOf(from, item)) return false;
+      return items.store.putInBag(to, item) >= 0;
+    },
+  });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
@@ -720,7 +736,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, wallet, trade, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is

@@ -99,6 +99,15 @@ export enum MessageType {
    * state, a, b, reason?, winner?}`.
    */
   Duel = 0x20,
+  /**
+   * C->S trade actions; S->C trade state and wallet balances (catalog
+   * 0x21, roadmap EC1). JSON. C->S `{kind:"trade", action: "open" |
+   * "offer" | "accept" | "cancel", target?, id?, gold?, addItem?,
+   * removeItem?}`; S->C `{kind:"trade", tick, id, state, a, b, aGold,
+   * bGold, aItems, bItems, aAccepted, bAccepted}` and `{kind:"wallet",
+   * tick, balance}` (to the owner only).
+   */
+  Trade = 0x21,
 }
 
 /**
@@ -460,7 +469,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 22; // v22 (2026-10-08): M5 combat abilities — 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel. v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
+export const PROTOCOL_VERSION = 23; // v23 (2026-10-08): EC1 economy — 0x21 trade and wallet. v22 (2026-10-08): M5 combat abilities — 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).

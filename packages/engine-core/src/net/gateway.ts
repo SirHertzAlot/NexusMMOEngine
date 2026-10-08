@@ -80,6 +80,8 @@ import {
   type TelegraphMessage,
   type StatusMessage,
   type DuelMessage,
+  type TradeMessage,
+  type WalletMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -143,6 +145,8 @@ import { AbilitySystem } from "../abilities.js";
 import { StatusSystem } from "../status.js";
 import { TelegraphSystem } from "../telegraph.js";
 import { DuelSystem } from "../duel.js";
+import { WalletSystem } from "../economy/wallet.js";
+import { TradeSystem } from "../economy/trade.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -413,6 +417,26 @@ const DuelActionSchema = z
   })
   .strict();
 
+/** 0x21 trade actions (EC1). */
+const TradeActionSchema = z
+  .object({
+    kind: z.literal("trade"),
+    action: z.enum(["open", "offer", "accept", "cancel"]),
+    target: z.string().min(1).max(32).optional(),
+    id: z.number().int().positive().optional(),
+    gold: z.number().int().min(0).max(999999999).optional(),
+    addItem: z.number().int().positive().optional(),
+    removeItem: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/** Admin `gold` args (A5/EC1). */
+const GoldArgsSchema = z
+  .object({
+    amount: z.number().int().positive().max(999999999),
+  })
+  .strict();
+
 /** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
 const TreatSchema = z
   .object({
@@ -470,7 +494,7 @@ export interface GatewayTick {
   /** The FlatBuffers delta every client got this tick. */
   delta: Uint8Array;
   /** This tick's gameplay events: hits (0x16), deaths/respawns (0x17), abilities (0x1d), telegraphs (0x1e), statuses (0x1f), duels (0x20). */
-  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage>;
+  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage>;
   /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
   fullState(): Uint8Array;
 }
@@ -1041,13 +1065,15 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     for (const s of this.systems) s.step(sim, dt);
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage> = [
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage> = [
       ...this.sendHits(sim, tick),
       ...this.sendLife(sim, tick),
       ...this.sendAbilities(sim, tick),
       ...this.sendTelegraphs(sim, tick),
       ...this.sendStatuses(sim, tick),
       ...this.sendDuels(sim, tick),
+      ...this.sendTrades(sim, tick),
+      ...this.sendWallets(sim, tick),
     ];
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
@@ -1102,6 +1128,74 @@ export class Gateway {
         for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
       }
       all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** The session belonging to `charId`, if they're online. */
+  private sessionOf(charId: number): ClientSession | undefined {
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || s.playerEntity === null) continue;
+      if (this.holderOf(s) === charId) return s;
+    }
+    return undefined;
+  }
+
+  /** Wire id string for a character, "0" when they're not in the world. */
+  private wireIdOf(charId: number): string {
+    const session = this.sessionOf(charId);
+    return session?.playerEntity != null ? session.playerEntity.toString() : "0";
+  }
+
+  /**
+   * Fan out trade state changes (catalog 0x21, EC1). Trades are private:
+   * only the two parties hear them.
+   */
+  private sendTrades(_sim: SimWorld, tick: number): TradeMessage[] {
+    const all: TradeMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof TradeSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      for (const e of events) {
+        const m: TradeMessage = {
+          kind: "trade",
+          tick,
+          id: e.id,
+          state: e.state,
+          a: this.wireIdOf(e.a),
+          b: this.wireIdOf(e.b),
+          aGold: e.aGold,
+          bGold: e.bGold,
+          aItems: e.aItems,
+          bItems: e.bItems,
+          aAccepted: e.aAccepted,
+          bAccepted: e.bAccepted,
+        };
+        for (const charId of [e.a, e.b]) {
+          const session = this.sessionOf(charId);
+          if (session) this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        }
+        all.push(m);
+      }
+    }
+    return all;
+  }
+
+  /** Tell a character their gold balance changed (catalog 0x21, EC1). */
+  private sendWallets(_sim: SimWorld, tick: number): WalletMessage[] {
+    const all: WalletMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof WalletSystem)) continue;
+      const changes = s.drainChanges();
+      if (changes.length === 0) continue;
+      for (const c of changes) {
+        const session = this.sessionOf(c.charId);
+        if (!session) continue;
+        const m: WalletMessage = { kind: "wallet", tick, balance: c.balance };
+        this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        all.push(m);
+      }
     }
     return all;
   }
@@ -1975,6 +2069,9 @@ export class Gateway {
       case MessageType.Duel:
         this.onDuel(s, payload);
         break;
+      case MessageType.Trade:
+        this.onTrade(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -2066,7 +2163,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, time, weather",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2099,7 +2196,7 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
-    } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot") {
+    } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot" || cmd.command === "gold") {
       res = this.runItemCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
@@ -3645,6 +3742,97 @@ export class Gateway {
     }
   }
 
+  /** The session whose avatar has this wire id, if they're online. */
+  private sessionByEntity(wireId: string): ClientSession | undefined {
+    let entity: bigint;
+    try {
+      entity = BigInt(wireId);
+    } catch {
+      return undefined;
+    }
+    for (const r of this.sessions.values()) {
+      if (r.welcomed && r.playerEntity === entity) return r;
+    }
+    return undefined;
+  }
+
+  /**
+   * Trade with another player (catalog 0x21, EC1): open, offer gold or
+   * bag items, accept, cancel. In-world sessions only; shares the pickup
+   * rate-limit bucket. A bad shape is 4003, a refusal 4005; trade state
+   * comes back as `trade` events, gold as `wallet`.
+   */
+  private onTrade(s: ClientSession, payload: Uint8Array): void {
+    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    if (!trade || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "trade outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    const parsed = TradeActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    switch (parsed.data.action) {
+      case "open": {
+        if (parsed.data.target === undefined) {
+          this.sendError(s, 4003, "trade needs a target");
+          return;
+        }
+        const targetSession = this.sessionByEntity(parsed.data.target);
+        if (!targetSession) {
+          this.sendError(s, 4005, "no such target");
+          return;
+        }
+        const other = this.holderOf(targetSession);
+        if (other === me) {
+          this.sendError(s, 4005, "cannot trade with that");
+          return;
+        }
+        if (trade.open(me, other, tick) === null) this.sendError(s, 4005, "cannot trade now");
+        break;
+      }
+      case "offer": {
+        if (parsed.data.id === undefined) {
+          this.sendError(s, 4003, "offer needs a trade id");
+          return;
+        }
+        const id = parsed.data.id;
+        let ok = true;
+        if (parsed.data.gold !== undefined) ok = trade.offerGold(id, me, parsed.data.gold, tick) && ok;
+        if (parsed.data.addItem !== undefined) ok = trade.offerItem(id, me, parsed.data.addItem, tick) && ok;
+        if (parsed.data.removeItem !== undefined) ok = trade.removeItem(id, me, parsed.data.removeItem, tick) && ok;
+        if (!ok) this.sendError(s, 4005, "offer refused");
+        break;
+      }
+      case "accept":
+        if (parsed.data.id === undefined || !trade.accept(parsed.data.id, me, tick)) {
+          this.sendError(s, 4005, "nothing to accept");
+        }
+        break;
+      case "cancel":
+        if (parsed.data.id === undefined || !trade.cancel(parsed.data.id, me, tick)) {
+          this.sendError(s, 4005, "nothing to cancel");
+        }
+        break;
+    }
+  }
+
   /**
    * Treat a body part (catalog 0x1a, M4): yourself or a character in reach.
    * In-world sessions only; shares the pickup bucket. A bad shape is 4003,
@@ -3850,6 +4038,14 @@ export class Gateway {
     const x = C.Transform.px[avatar];
     const z = C.Transform.pz[avatar];
     const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
+    if (command === "gold") {
+      const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+      if (!wallet) return fail("no economy on this server");
+      const a = GoldArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail("usage: gold {amount}");
+      if (!wallet.grant(this.holderOf(s), a.data.amount, this.tick)) return fail("bad amount");
+      return { kind: "admin", command, ok: true, message: `granted ${a.data.amount} gold (balance ${wallet.balanceOf(this.holderOf(s))})` };
+    }
     if (command === "loot") {
       const a = LootArgsSchema.safeParse(args ?? {});
       if (!a.success) return fail("usage: loot {count?}");
