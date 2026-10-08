@@ -19,6 +19,7 @@ import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { RulesPanel } from "./rules-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
+import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
@@ -29,7 +30,6 @@ import {
   AnimPreview,
   ArtAudioTree,
   AudioPreview,
-  DataGridPreview,
   HudPreview,
   LiveOpsDetails,
   DatabaseRowDetails,
@@ -40,7 +40,6 @@ import {
   PipelinePreview,
   PlaytestPreview,
   QuestPreview,
-  QueryPreview,
   ReleaseDeployDetails,
   SchemaTree,
   StoryDetails,
@@ -145,8 +144,9 @@ const WORKSPACES: Workspace[] = [
   {
     id: "database", label: "Database", icon: "database",
     views: [
-      { id: "grid", label: "Data grid", icon: "table_view", kind: "panel", panel: <DataGridPreview /> },
-      { id: "query", label: "Query", icon: "code", kind: "panel", panel: <QueryPreview /> },
+      { id: "grid", label: "Data grid", icon: "table_view", kind: "panel", panel: <DatabaseGridPanel /> },
+      { id: "query", label: "Query", icon: "code", kind: "panel", panel: <DatabaseQueryPanel /> },
+      { id: "audit", label: "Audit log", icon: "history", kind: "panel", panel: <DatabaseAuditPanel /> },
     ],
     leftTitle: "Schema",
   },
@@ -180,7 +180,7 @@ const WORKSPACES: Workspace[] = [
 
 const SOON_WS: ReadonlySet<WorkspaceId> = new Set(["network"]);
 /** Workspaces showing mockup-faithful previews over sample data. */
-const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "database", "story", "artaudio", "release"]);
+const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "story", "artaudio", "release"]);
 
 // ---------------------------------------------------------------- shell
 
