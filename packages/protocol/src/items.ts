@@ -248,3 +248,89 @@ export interface SpellMessage {
   seconds?: number;
   amount?: number;
 }
+
+/**
+ * C->S (catalog 0x1d, M5): ask to trigger an ability now.
+ */
+export interface AbilityTrigger {
+  kind: "trigger";
+  /** The ability id (server-defined; unknown ids are rejected). */
+  id: string;
+}
+
+/**
+ * S->C (catalog 0x1d, M5): how an ability trigger went. Broadcast like
+ * hits — the client's ability bar and cast bar read it.
+ */
+export interface AbilityMessage {
+  kind: "ability";
+  tick: number;
+  /** Who triggered, as a wire id. */
+  entity: string;
+  id: string;
+  state: "casting" | "queued" | "fired" | "interrupted" | "rejected";
+  /** Rejected: why ("unknown", "cooldown"). */
+  reason?: string;
+}
+
+/** A telegraph's shape on the ground plane (catalog 0x1e, M5). */
+export type TelegraphShapeView =
+  | { kind: "circle"; x: number; z: number; r: number }
+  | { kind: "cone"; x: number; z: number; yaw: number; range: number; halfAngle: number }
+  | { kind: "rect"; x: number; z: number; yaw: number; length: number; width: number };
+
+/**
+ * S->C (catalog 0x1e, M5): a telegraph warned, resolved, or cancelled.
+ * Broadcast — every client draws the warning; the server decides who the
+ * resolution hits. Entities are wire ids.
+ */
+export interface TelegraphMessage {
+  kind: "telegraph";
+  tick: number;
+  id: number;
+  source: string;
+  shape: TelegraphShapeView;
+  state: "warned" | "resolved" | "cancelled";
+  /** Warned: ticks until it lands. */
+  ticksUntilHit?: number;
+  /** Resolved: who was hit and how hard. */
+  hits?: { target: string; amount: number }[];
+}
+
+/**
+ * S->C (catalog 0x1f, M5): a buff or debuff was applied or removed.
+ * Broadcast; the client's status frame filters to the entities it shows.
+ */
+export interface StatusMessage {
+  kind: "status";
+  tick: number;
+  /** Who carries it, as a wire id. */
+  entity: string;
+  id: string;
+  state: "applied" | "removed";
+  stacks?: number;
+}
+
+/**
+ * C->S (catalog 0x20, M5): duel actions. `challenge` names the target's
+ * wire id; the rest act on the sender's own challenge or duel.
+ */
+export interface DuelAction {
+  kind: "duel";
+  action: "challenge" | "accept" | "decline" | "yield";
+  target?: string;
+}
+
+/**
+ * S->C (catalog 0x20, M5): duel events. Challenged/accepted/declined go
+ * to the pair; started/ended broadcast like hits. Entities are wire ids.
+ */
+export interface DuelMessage {
+  kind: "duel";
+  tick: number;
+  state: "challenged" | "accepted" | "declined" | "expired" | "started" | "ended";
+  a: string;
+  b: string;
+  reason?: "blood" | "yield" | "timeout" | "declined" | "expired" | "cancelled";
+  winner?: string;
+}

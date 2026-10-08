@@ -129,11 +129,15 @@ import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { CombatSystem, type CombatSkills, type Weapon } from "./combat.js";
+import { CombatSystem, type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
+import { AbilitySystem } from "./abilities.js";
+import { StatusSystem } from "./status.js";
+import { TelegraphSystem } from "./telegraph.js";
+import { DuelSystem } from "./duel.js";
 import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
-import { CharacterRef } from "./components.js";
+import { CharacterRef, God, Health } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
@@ -654,7 +658,37 @@ async function main(): Promise<void> {
     if (!hasComponent(sim.ecs, CharacterRef, e)) return 1;
     return wornFactor(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
   };
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, armourOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
+  const combatDamage: CombatDamage = {
+    hooks,
+    weaponOf,
+    armourOf,
+    skills: combatSkills,
+    body,
+    techniques: () => Object.keys(game.rules.combat.techniques),
+  };
+  // Combat abilities (M5): the ability trigger layer, buffs/debuffs,
+  // server-authoritative telegraphs, and consensual PvP.
+  const abilities = new AbilitySystem(30);
+  const status = new StatusSystem(
+    30,
+    (t, amount) => {
+      if (hasComponent(sim.ecs, Health, t) && !hasComponent(sim.ecs, God, t))
+        Health.current[t] = Math.max(0, Health.current[t] - amount);
+    },
+    (t, amount) => {
+      if (hasComponent(sim.ecs, Health, t)) Health.current[t] = Math.min(Health.max[t], Health.current[t] + amount);
+    },
+  );
+  const telegraphs = new TelegraphSystem(30);
+  const duels = new DuelSystem(30);
+  // Consensual PvP: players may only hurt players they are dueling (or
+  // marked hostile); player-vs-creature blows are unchanged. Status
+  // effects: the attacker's power buffs and the defender's armour buffs
+  // scale the landed blow.
+  combatDamage.canHit = (a, b) =>
+    hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true;
+  combatDamage.damageScale = (a, b) => status.modifier(a, "power").mul * status.modifier(b, "armour").mul;
+  const combat = new CombatSystem(30, stamina, combatDamage);
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
@@ -686,7 +720,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
