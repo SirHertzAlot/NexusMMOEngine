@@ -20,6 +20,7 @@ import { DungeonPanel } from "./dungeon-view.js";
 import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
+import { FlowEditor } from "./flow-editor.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
@@ -36,7 +37,6 @@ import {
   LiveOpsDetails,
   DatabaseRowDetails,
   FlowDetails,
-  FlowGraphPreview,
   HudDetails,
   LiveOpsPreview,
   PipelinePreview,
@@ -108,7 +108,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "flow", label: "Flow & UI", icon: "account_tree",
     views: [
-      { id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowGraphPreview /> },
+      { id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowEditor /> },
       { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudPreview /> },
     ],
     leftTitle: "Widgets",

@@ -125,8 +125,8 @@ loadable modules, a database editor and production tools.
 | EA4 | Scene documents | 📋 | |
 | EA5 | Scene viewport editing | 📋 | |
 | EA6 | Play the scene | 📋 | |
-| EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
-| EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
+| EA7 | Game flow | ✅ | `feat/ea7-ea8-game-flow`: `content/flow/game.flow.json` and the pure flow runner/validator in `packages/scene` (`flow.ts`); the client's `Screen` state is now a flow node (`apps/client/src/flow.ts`, `useFlow`) with login, loading, character select/creation and world as frontend scenes; no protocol change |
+| EA8 | Flow editor and play from a node | ✅ | `feat/ea7-ea8-game-flow`: Flow editor panel (`ui/flow-editor.tsx`) over the real document: add/delete/move nodes, add/rewire/retarget/delete transitions, set start, live validation (unreachable, missing start, dangling, unknown event/scene), validated `GET/PUT /api/editor/flow`; Play from login (plain client), character creation (serverless preview or `?start=` with a server) and world (`?start=` with a server). Not yet opened in a browser; open scene on double-click deferred |
 | EA9 | Server modules | 📋 | |
 | EA10 | C++ modules | 📋 | |
 | EA11 | Sidecars | 📋 | |
@@ -286,6 +286,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
+- **2026-10-08**: EA7 and EA8 game flow: `content/flow/game.flow.json` drives the client's screens through a pure flow runner in `packages/scene`; the editor's Flow panel edits it as a graph (validated save, refused save writes nothing) and plays from login, character creation or world.
 - **2026-10-08**: EA16 first slice: `PersistenceCore` in engine-core (`persist/persistence-core.ts`) with catalog, SELECT-only query (child process, row limit, timeout kill), typed mutations with backup and `admin_log` undo; editor host routes `/api/editor/database/*` (loopback, JSON-only) and the Database workspace (schema tree, grid with pending edits, query, audit log). Mutations refuse while the game server runs; live-state edits deferred.
 - **2026-10-08**: EA20 quest and dialog editor (in progress, branch): Story workspace edits `content/quests/*.json` as the server loads them; saves validate the whole set (server schemas and checks, item and species references, prerequisite cycles, dialog loops with no exit) and write nothing when invalid; dialog tester walks a dialog against an editable mock quest state.
 - **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.

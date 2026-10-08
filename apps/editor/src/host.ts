@@ -85,6 +85,7 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
+import { handleFlowRoute } from "./flow-host.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -929,6 +930,16 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           const scenesUrl = new URL(req.url ?? "/", "http://localhost");
+          const flowReply = handleFlowRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/flow" ? await readBody(req) : undefined,
+          );
+          if (flowReply) {
+            sendJson(res, flowReply.status, flowReply.body);
+            return;
+          }
           const scenesReply = handleScenesRoute(
             repoRoot,
             req.method ?? "GET",
