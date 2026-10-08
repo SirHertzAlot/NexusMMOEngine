@@ -45,6 +45,7 @@ function setup() {
       return true;
     },
     defOf: (item) => defOf.get(item) ?? -1,
+    nameOf: (def) => `Test Item ${def}`,
   };
   const vendor = new VendorSystem(wallet, items);
   vendor.define({
@@ -147,5 +148,36 @@ describe("VendorSystem", () => {
     const view = vendor.list(VENDOR_E)!;
     view.stock[0].quantity = 0;
     assert.notEqual(vendor.list(VENDOR_E)?.stock[0].quantity, 0, "internal stock untouched");
+  });
+
+  it("detach unbinds; disable closes the shop; remove deletes it", () => {
+    const { vendor } = setup();
+    vendor.attach(VENDOR_E, "general");
+    assert.ok(vendor.list(VENDOR_E), "listed while attached");
+
+    assert.equal(vendor.detach(VENDOR_E), true);
+    assert.equal(vendor.list(VENDOR_E), null, "no longer a vendor");
+    assert.equal(vendor.detach(VENDOR_E), false, "detaching twice fails");
+
+    vendor.attach(VENDOR_E, "general");
+    assert.equal(vendor.setEnabled("general", false), true);
+    assert.equal(vendor.list(VENDOR_E), null, "closed shops don't list");
+    assert.equal(vendor.setEnabled("nope", false), false);
+    assert.equal(vendor.setEnabled("general", true), true);
+    assert.ok(vendor.list(VENDOR_E), "reopened");
+
+    assert.deepEqual(vendor.attachedTo("general"), [VENDOR_E]);
+    assert.equal(vendor.remove("general"), true);
+    assert.equal(vendor.list(VENDOR_E), null, "detached everywhere on remove");
+    assert.deepEqual(vendor.templateIds(), [], "template gone");
+    assert.equal(vendor.remove("general"), false);
+  });
+
+  it("list resolves item names", () => {
+    const { vendor } = setup();
+    vendor.attach(VENDOR_E, "general");
+    const view = vendor.list(VENDOR_E)!;
+    assert.equal(view.stock[0].name, "Test Item 1");
+    assert.equal(view.stock[1].name, "Test Item 2");
   });
 });

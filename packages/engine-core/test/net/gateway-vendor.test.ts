@@ -54,6 +54,7 @@ async function startGateway(opts: GatewayOptions = {}): Promise<string> {
       return true;
     },
     defOf: (item) => defOf.get(item) ?? -1,
+    nameOf: (def) => `Test Item ${def}`,
   });
   vendor.define({
     id: "general",
@@ -136,7 +137,7 @@ describe("gateway: EC1 vendors", () => {
     assert.equal(msg.kind, "vendor");
     assert.equal(msg.state, "listed");
     assert.equal(msg.name, "General Goods");
-    assert.deepEqual(msg.stock, [{ def: 7, price: 100, quantity: -1 }]);
+    assert.deepEqual(msg.stock, [{ def: 7, name: "Test Item 7", price: 100, quantity: -1 }]);
     assert.equal(msg.buybackRate, 0.5);
   });
 

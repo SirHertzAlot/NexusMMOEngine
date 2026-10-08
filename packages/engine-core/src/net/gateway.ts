@@ -470,7 +470,7 @@ const GoldArgsSchema = z
 /** Admin `vendor` args (EC1). */
 const VendorArgsSchema = z
   .object({
-    sub: z.enum(["define", "stock", "attach", "list"]),
+    sub: z.enum(["define", "stock", "attach", "detach", "spawn", "disable", "enable", "remove", "list"]),
     id: z.string().min(1).max(32).optional(),
     name: z.string().min(1).max(64).optional(),
     buyback: z.number().min(0).max(1).optional(),
@@ -478,6 +478,9 @@ const VendorArgsSchema = z
     price: z.number().int().positive().optional(),
     qty: z.number().int().optional(),
     target: z.string().min(1).max(32).optional(),
+    asset: z.string().min(1).max(64).optional(),
+    x: z.number().optional(),
+    z: z.number().optional(),
   })
   .strict();
 
@@ -4403,8 +4406,12 @@ export class Gateway {
    * errors, never throw.
    *
    *   vendor {sub: "define", id, name?, buyback?}
-   *   vendor {sub: "stock", id, def, price, qty?}   (qty -1: infinite)
+   *   vendor {sub: "stock", id, def|name, price, qty?}   (qty -1: infinite; name looks the def up)
    *   vendor {sub: "attach", id, target}            (target: wire id)
+   *   vendor {sub: "detach", target}                (target: wire id)
+   *   vendor {sub: "spawn", id, asset?, x?, z?}     (spawns the NPC and attaches in one step)
+   *   vendor {sub: "disable", id} / {sub: "enable", id}
+   *   vendor {sub: "remove", id}                    (deletes the template, detaches everywhere)
    *   vendor {sub: "list"}
    */
   private runVendorCommand(s: ClientSession, args: unknown): AdminResult {
@@ -4412,8 +4419,15 @@ export class Gateway {
     const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
     if (!vendor) return fail("no vendors on this server");
     const a = VendorArgsSchema.safeParse(args ?? {});
-    if (!a.success) return fail('usage: vendor {sub: "define"|"stock"|"attach"|"list", ...}');
+    if (!a.success) return fail('usage: vendor {sub: "define"|"stock"|"attach"|"detach"|"spawn"|"disable"|"enable"|"remove"|"list", ...}');
     const d = a.data;
+    const resolveTarget = (target: string): number => {
+      try {
+        return this.world.resolveWireId(BigInt(target));
+      } catch {
+        return -1;
+      }
+    };
     switch (d.sub) {
       case "define": {
         if (!d.id) return fail('define needs {id, name?}');
@@ -4421,21 +4435,65 @@ export class Gateway {
         return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" defined` };
       }
       case "stock": {
-        if (!d.id || d.def === undefined || !d.price) return fail('stock needs {id, def, price, qty?}');
-        if (!vendor.setStock(d.id, d.def, d.price, d.qty ?? -1)) return fail("unknown vendor or bad price");
-        return { kind: "admin", command: "vendor", ok: true, message: `stocked def ${d.def} at ${d.price}g` };
+        if (!d.id || !d.price) return fail('stock needs {id, def|name, price, qty?}');
+        let def: number | undefined = d.def;
+        if (def === undefined && d.name) {
+          const found = this.lookupItemDef(d.name);
+          if (found === null) return fail(`no item named "${d.name}" (try: admin items {base?})`);
+          def = found;
+        }
+        if (def === undefined) return fail('stock needs {id, def|name, price, qty?}');
+        if (!vendor.setStock(d.id, def, d.price, d.qty ?? -1)) return fail("unknown vendor or bad price");
+        const label = this.items?.defs.names[def] ?? `def ${def}`;
+        return { kind: "admin", command: "vendor", ok: true, message: `stocked ${label} at ${d.price}g` };
       }
       case "attach": {
         if (!d.id || !d.target) return fail('attach needs {id, target}');
-        let entity = -1;
-        try {
-          entity = this.world.resolveWireId(BigInt(d.target));
-        } catch {
-          entity = -1;
-        }
+        const entity = resolveTarget(d.target);
         if (entity < 0) return fail("no such target");
         if (!vendor.attach(entity, d.id)) return fail("unknown vendor template");
-        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" attached` };
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" attached to ${d.target}` };
+      }
+      case "detach": {
+        if (!d.target) return fail('detach needs {target}');
+        const entity = resolveTarget(d.target);
+        if (entity < 0) return fail("no such target");
+        if (!vendor.detach(entity)) return fail("that entity is not a vendor");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor detached from ${d.target}` };
+      }
+      case "spawn": {
+        if (!d.id) return fail('spawn needs {id, asset?, x?, z?}');
+        if (!vendor.templateIds().includes(d.id)) return fail("unknown vendor template (define it first)");
+        const spawned = this.spawnVendorNpc(s, d.asset, d.x, d.z);
+        if ("error" in spawned) return fail(spawned.error);
+        vendor.attach(spawned.entity, d.id);
+        return {
+          kind: "admin",
+          command: "vendor",
+          ok: true,
+          message: `vendor "${d.id}" spawned as ${spawned.wireId} at (${Math.round(spawned.x)}, ${Math.round(spawned.z)})`,
+        };
+      }
+      case "disable": {
+        if (!d.id) return fail('disable needs {id}');
+        if (!vendor.setEnabled(d.id, false)) return fail("unknown vendor template");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" closed` };
+      }
+      case "enable": {
+        if (!d.id) return fail('enable needs {id}');
+        if (!vendor.setEnabled(d.id, true)) return fail("unknown vendor template");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" open` };
+      }
+      case "remove": {
+        if (!d.id) return fail('remove needs {id}');
+        const n = vendor.attachedTo(d.id).length;
+        if (!vendor.remove(d.id)) return fail("unknown vendor template");
+        return {
+          kind: "admin",
+          command: "vendor",
+          ok: true,
+          message: `vendor "${d.id}" removed${n > 0 ? ` (detached from ${n} entit${n === 1 ? "y" : "ies"})` : ""}`,
+        };
       }
       case "list": {
         const ids = vendor.templateIds();
@@ -4447,6 +4505,66 @@ export class Gateway {
         };
       }
     }
+  }
+
+  /**
+   * Find an item def by (case-insensitive) name; null when there's no
+   * single match. Used by `vendor stock {name}`.
+   */
+  private lookupItemDef(name: string): number | null {
+    const defs = this.items?.defs;
+    if (!defs) return null;
+    const want = name.toLowerCase();
+    let found = -1;
+    for (let i = 0; i < defs.count; i++) {
+      if (defs.names[i]?.toLowerCase() === want) {
+        if (found >= 0) return null; // ambiguous
+        found = i;
+      }
+    }
+    return found >= 0 ? found : null;
+  }
+
+  /**
+   * Spawn a vendor NPC: an asset from the spawn table (default "villager"
+   * when the table has one, else the first asset), at (x, z) or at the
+   * admin's feet. Returns the entity and wire id, or an error.
+   */
+  private spawnVendorNpc(
+    s: ClientSession,
+    asset: string | undefined,
+    x: number | undefined,
+    z: number | undefined,
+  ): { entity: number; wireId: string; x: number; z: number } | { error: string } {
+    if (this.spawnTable === null) {
+      try {
+        this.spawnTable = loadScatterContent().table;
+      } catch {
+        return { error: "no spawn table on this server" };
+      }
+    }
+    const table = this.spawnTable;
+    const names = listAssets(table);
+    if (names.length === 0) return { error: "no spawn table on this server" };
+    const pick = asset ?? (names.includes("villager") ? "villager" : names[0]);
+    if (!names.includes(pick)) return { error: `unknown asset "${pick}" (try: admin spawnlist)` };
+    let px = x;
+    let pz = z;
+    let py: number;
+    if (px === undefined || pz === undefined) {
+      if (s.playerEntity === null) return { error: "no player entity (not in the world)" };
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0) return { error: "avatar is gone" };
+      px = C.Transform.px[eid];
+      pz = C.Transform.pz[eid];
+      py = C.Transform.py[eid];
+    } else {
+      py = this.groundHeightAt?.(px, pz) ?? 0;
+    }
+    const built = buildSpawn(table, pick, px, py, pz, 0);
+    if ("error" in built) return { error: built.error };
+    const entity = spawnScatterEntity(this.world, built);
+    return { entity, wireId: this.world.wireId(entity).toString(), x: px, z: pz };
   }
 
   /**

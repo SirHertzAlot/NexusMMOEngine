@@ -404,7 +404,7 @@ export interface VendorMessage {
   vendor: string;
   state: "listed" | "bought" | "sold";
   name?: string;
-  stock?: Array<{ def: number; price: number; quantity: number }>;
+  stock?: Array<{ def: number; name: string; price: number; quantity: number }>;
   buybackRate?: number;
   def?: number;
   item?: number;
@@ -440,6 +440,7 @@ export interface AuctionMessage {
   listing?: {
     id: number;
     def: number;
+    name: string;
     startBid: number;
     buyout: number;
     topBid: number;
@@ -449,6 +450,7 @@ export interface AuctionMessage {
   listings?: Array<{
     id: number;
     def: number;
+    name: string;
     startBid: number;
     buyout: number;
     topBid: number;

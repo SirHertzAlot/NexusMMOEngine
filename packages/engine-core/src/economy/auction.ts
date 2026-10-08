@@ -38,6 +38,8 @@ export interface AuctionItems {
   defOf(itemId: number): number;
   /** Move `itemId` from one bag to another; false when it didn't move. */
   move(itemId: number, from: number, to: number): boolean;
+  /** Human-readable name for a def, for the order book. */
+  nameOf(def: number): string;
 }
 
 export interface Listing {
@@ -55,6 +57,8 @@ export interface Listing {
 export interface ListingView {
   id: number;
   def: number;
+  /** Human-readable name, resolved at browse time. */
+  name: string;
   startBid: number;
   buyout: number;
   topBid: number;
@@ -212,6 +216,7 @@ export class AuctionSystem implements SimSystem {
     return {
       id: l.id,
       def: l.def,
+      name: this.items.nameOf(l.def),
       startBid: l.startBid,
       buyout: l.buyout,
       topBid: l.topBid,

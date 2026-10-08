@@ -29,6 +29,7 @@ function setup() {
       bags.set(to, [...(bags.get(to) ?? []), item]);
       return true;
     },
+    nameOf: (def) => `Test Item ${def}`,
   };
   const auction = new AuctionSystem(wallet, items);
   return { wallet, auction, bags, defOf };

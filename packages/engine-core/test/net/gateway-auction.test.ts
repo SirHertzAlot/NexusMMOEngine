@@ -44,6 +44,7 @@ async function startGateway(opts: GatewayOptions = {}): Promise<string> {
       bags.set(to, [...(bags.get(to) ?? []), item]);
       return true;
     },
+    nameOf: (def) => `Test Item ${def}`,
   });
   gw = new Gateway({
     clock: () => now,

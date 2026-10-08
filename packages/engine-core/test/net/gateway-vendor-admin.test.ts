@@ -17,7 +17,7 @@ let vendor: VendorSystem;
 
 async function startGateway(): Promise<string> {
   const wallet = new WalletSystem();
-  vendor = new VendorSystem(wallet, { give: () => false, take: () => false, defOf: () => -1 });
+  vendor = new VendorSystem(wallet, { give: () => false, take: () => false, defOf: () => -1, nameOf: (def) => `Test Item ${def}` });
   gw = new Gateway({
     clock: () => Date.now(),
     admins: ["alice"],
@@ -122,6 +122,44 @@ describe("admin: vendor commands", () => {
     );
     const [errPayload] = await errP;
     assert.match(decodeControl<{ message: string }>(errPayload).message, /admin/i);
+    await client.close();
+  });
+
+  it("detach, disable/enable, and remove work", async () => {
+    const url = await startGateway();
+    const client = await join(url, "alice");
+
+    await admin(client, "vendor", { sub: "define", id: "smith" });
+    const sessions = [...(gw as unknown as { sessions: Map<string, { playerEntity: bigint }> }).sessions.values()];
+    const wireId = sessions[0].playerEntity.toString();
+    const entity = Number(sessions[0].playerEntity);
+    const attached = await admin(client, "vendor", { sub: "attach", id: "smith", target: wireId });
+    assert.equal(attached.ok, true);
+
+    const detached = await admin(client, "vendor", { sub: "detach", target: wireId });
+    assert.equal(detached.ok, true);
+    assert.match(detached.message, /detached/);
+    assert.equal(vendor.vendorOf(entity), undefined);
+
+    await admin(client, "vendor", { sub: "attach", id: "smith", target: wireId });
+    const closed = await admin(client, "vendor", { sub: "disable", id: "smith" });
+    assert.equal(closed.ok, true);
+    assert.match(closed.message, /closed/);
+    assert.equal(vendor.list(entity), null, "closed shop doesn't list");
+
+    const opened = await admin(client, "vendor", { sub: "enable", id: "smith" });
+    assert.equal(opened.ok, true);
+    assert.ok(vendor.list(entity), "reopened");
+
+    const removed = await admin(client, "vendor", { sub: "remove", id: "smith" });
+    assert.equal(removed.ok, true);
+    assert.match(removed.message, /removed/);
+    assert.match(removed.message, /detached from 1 entity/);
+    assert.equal(vendor.vendorOf(entity), undefined);
+    assert.deepEqual(vendor.templateIds(), []);
+
+    const l = await admin(client, "vendor", { sub: "list" });
+    assert.match(l.message, /no vendors defined/);
     await client.close();
   });
 });

@@ -32,11 +32,15 @@ export interface VendorItems {
   take(charId: number, itemId: number): boolean;
   /** The def id behind an item instance; -1 when unknown. */
   defOf(itemId: number): number;
+  /** Human-readable name for a def, for the shop list. */
+  nameOf(def: number): string;
 }
 
 export interface VendorStock {
   /** Item def id. */
   def: number;
+  /** Human-readable name; resolved at list time, absent on stored lines. */
+  name?: string;
   /** Gold the vendor charges. */
   price: number;
   /** Units for sale; -1 means infinite. */
@@ -49,6 +53,8 @@ export interface VendorDef {
   stock: VendorStock[];
   /** Fraction of the listed price paid on buyback (0–1). */
   buybackRate: number;
+  /** Closed vendors refuse list/buy/sell until re-enabled. */
+  enabled: boolean;
 }
 
 export interface VendorView {
@@ -73,16 +79,16 @@ export class VendorSystem implements SimSystem {
   ) {}
 
   /** Register (or replace) a vendor template. */
-  define(def: VendorDef): void {
+  define(def: Omit<VendorDef, "enabled"> & { enabled?: boolean }): void {
     if (!def.id || def.buybackRate < 0 || def.buybackRate > 1) return;
     const stock = def.stock.filter((s) => s.price > 0 && s.quantity !== 0 && Number.isInteger(s.price));
-    this.defs.set(def.id, { ...def, stock: stock.map((s) => ({ ...s })) });
+    this.defs.set(def.id, { enabled: true, ...def, stock: stock.map((s) => ({ ...s })) });
   }
 
   /** Create an empty template (stocked later via setStock). */
   create(id: string, name: string, buybackRate = 0.3): boolean {
     if (!id || this.defs.has(id) || buybackRate < 0 || buybackRate > 1) return false;
-    this.defs.set(id, { id, name, stock: [], buybackRate });
+    this.defs.set(id, { id, name, stock: [], buybackRate, enabled: true });
     return true;
   }
 
@@ -112,17 +118,53 @@ export class VendorSystem implements SimSystem {
     return true;
   }
 
+  /** Unbind a vendor from an entity; the template itself survives. */
+  detach(entity: number): boolean {
+    return this.vendors.delete(entity);
+  }
+
+  /** Close (`on=false`) or reopen a template; closed shops refuse trade. */
+  setEnabled(id: string, on: boolean): boolean {
+    const v = this.defs.get(id);
+    if (!v) return false;
+    v.enabled = on;
+    return true;
+  }
+
+  /** Delete a template and unbind it from every entity. */
+  remove(id: string): boolean {
+    if (!this.defs.delete(id)) return false;
+    for (const [entity, vid] of [...this.vendors]) {
+      if (vid === id) this.vendors.delete(entity);
+    }
+    return true;
+  }
+
+  /** Entity ids currently bound to a template. */
+  attachedTo(id: string): number[] {
+    const out: number[] = [];
+    for (const [entity, vid] of this.vendors) {
+      if (vid === id) out.push(entity);
+    }
+    return out;
+  }
+
   /** The vendor template behind an entity, if any. */
   vendorOf(entity: number): VendorDef | undefined {
     const id = this.vendors.get(entity);
     return id === undefined ? undefined : this.defs.get(id);
   }
 
-  /** The vendor's current price list (a copy). */
+  /** The vendor's current price list (a copy), with names resolved. Null when unknown or closed. */
   list(entity: number): VendorView | null {
     const def = this.vendorOf(entity);
-    if (!def) return null;
-    return { id: def.id, name: def.name, buybackRate: def.buybackRate, stock: def.stock.map((s) => ({ ...s })) };
+    if (!def || !def.enabled) return null;
+    return {
+      id: def.id,
+      name: def.name,
+      buybackRate: def.buybackRate,
+      stock: def.stock.map((s) => ({ ...s, name: this.items.nameOf(s.def) })),
+    };
   }
 
   /**
@@ -132,6 +174,7 @@ export class VendorSystem implements SimSystem {
   buy(sim: SimWorld, buyerChar: number, buyerEntity: number, vendorEntity: number, def: number, tick: number): string | null {
     const v = this.vendorOf(vendorEntity);
     if (!v) return "not a vendor";
+    if (!v.enabled) return "that shop is closed";
     if (!this.inReach(sim, buyerEntity, vendorEntity)) return "too far from the vendor";
     const line = v.stock.find((s) => s.def === def);
     if (!line) return "the vendor doesn't sell that";
@@ -153,6 +196,7 @@ export class VendorSystem implements SimSystem {
   sell(sim: SimWorld, sellerChar: number, sellerEntity: number, vendorEntity: number, itemId: number, tick: number): string | null {
     const v = this.vendorOf(vendorEntity);
     if (!v) return "not a vendor";
+    if (!v.enabled) return "that shop is closed";
     if (!this.inReach(sim, sellerEntity, vendorEntity)) return "too far from the vendor";
     const def = this.items.defOf(itemId);
     if (def < 0) return "no such item";

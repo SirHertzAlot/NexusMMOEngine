@@ -562,6 +562,7 @@ async function main(): Promise<void> {
       const slot = items.store.slot(item);
       return slot < 0 ? -1 : items.store.defs[slot];
     },
+    nameOf: (def) => items.defs.names[def] ?? `item ${def}`,
   });
   // Auction house (EC1): listings keep the item in the seller's bag (no
   // escrow limbo on restart); settlement moves it bag-to-bag.
@@ -576,6 +577,7 @@ async function main(): Promise<void> {
       if (!items.store.inBagOf(from, item)) return false;
       return items.store.putInBag(to, item) >= 0;
     },
+    nameOf: (def) => items.defs.names[def] ?? `item ${def}`,
   });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
