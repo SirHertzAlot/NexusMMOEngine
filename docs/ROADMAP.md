@@ -134,7 +134,7 @@ loadable modules, a database editor and production tools.
 | EA13 | Existing tools as modules | 📋 | |
 | EA14 | The play menu | 📋 | |
 | EA15 | Fill every workspace | 📋 | |
-| EA16 | Persistence core and the Database workspace | 📋 | |
+| EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
 | EA18 | Version control | 📋 | |
 | EA19 | Build and deploy | 📋 | |
