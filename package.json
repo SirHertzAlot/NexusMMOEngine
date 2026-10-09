@@ -43,7 +43,8 @@
     "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --",
     "stress:world": "node scripts/world-stress/run.mjs",
     "package": "node scripts/package.mjs",
-    "deploy:local": "node scripts/deploy-local.mjs"
+    "deploy:local": "node scripts/deploy-local.mjs",
+    "playtest": "node scripts/playtest.mjs --all"
   },
   "version": "0.1.0",
   "workspaces": [
@@ -78,7 +79,9 @@
     "packages/addons/scatter",
     "packages/addons/picg",
     "packages/addons/geometry",
-    "packages/addons/perf-probe"
+    "packages/addons/perf-probe",
+    "packages/build",
+    "packages/playtest"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.0.3"
