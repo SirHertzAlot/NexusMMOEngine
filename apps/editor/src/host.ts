@@ -89,6 +89,9 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handlePlaytestRoute } from "./playtest-host.js";
+import { createScratchRunner } from "./playtest-server.js";
+import { handleNetworkRoute } from "./network-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -215,7 +218,19 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
+// Several route handlers ask for the body of the same request (the modules
+// route reads every PUT's): the stream can be read once, so the answer is kept.
+const bodies = new WeakMap<IncomingMessage, Promise<string>>();
 function readBody(req: IncomingMessage): Promise<string> {
+  let p = bodies.get(req);
+  if (!p) {
+    p = readBodyOnce(req);
+    bodies.set(req, p);
+  }
+  return p;
+}
+
+function readBodyOnce(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -348,6 +363,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const assetsRoot = join(repoRoot, "assets");
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
+  const playtestRunner = createScratchRunner(repoRoot);
   let owned: OwnedServer | null = null;
   let dbCore: DatabaseCore | null = null;
 
@@ -746,6 +762,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
               running: owned !== null,
               pid: owned?.pid,
               port: owned?.port,
+              // Loopback only (checked above): the Live ops and Network
+              // panels connect an admin link with the same one-session login.
+              url: owned?.url,
+              username: owned?.username,
+              password: owned?.password,
             });
             return;
           }
@@ -998,6 +1019,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (flowReply) {
             sendJson(res, flowReply.status, flowReply.body);
+            return;
+          }
+          // Playtests (EA26) and the Network workspace's routes file.
+          const needsBody = req.method === "PUT" || req.method === "POST";
+          const playtestReply = scenesUrl.pathname.startsWith("/api/editor/playtest")
+            ? await handlePlaytestRoute(repoRoot, dataDir, req.method ?? "GET", scenesUrl.pathname, needsBody ? await readBody(req) : undefined, playtestRunner)
+            : null;
+          if (playtestReply) {
+            sendJson(res, playtestReply.status, playtestReply.body);
+            return;
+          }
+          const networkReply = await handleNetworkRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && scenesUrl.pathname === "/api/editor/network" ? await readBody(req) : undefined);
+          if (networkReply) {
+            sendJson(res, networkReply.status, networkReply.body);
             return;
           }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
