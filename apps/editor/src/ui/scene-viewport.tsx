@@ -12,6 +12,7 @@ import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
 import { Button } from "./components.js";
+import { clearViewportActions, registerViewportActions } from "./viewport-actions.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
@@ -55,6 +56,17 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
       return;
     }
     viewRef.current = view;
+    // The View menu's Zoom/Reset act on the mounted viewport.
+    const viewport = {
+      label: "scene viewport",
+      canZoomIn: true,
+      canZoomOut: true,
+      canReset: true,
+      zoomIn: () => view.zoomIn(),
+      zoomOut: () => view.zoomOut(),
+      reset: () => view.frame(),
+    };
+    registerViewportActions(viewport);
     let alive = true;
     loadTerrain().then(
       (t) => alive && view.setTerrain(t.tiles, t.chunkWorldSize),
@@ -67,6 +79,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     return () => {
       alive = false;
       viewRef.current = null;
+      clearViewportActions(viewport);
       view.dispose();
     };
   }, []);

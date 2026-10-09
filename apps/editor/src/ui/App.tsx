@@ -27,6 +27,7 @@ import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
+import { getViewportActions, subscribeViewportActions } from "./viewport-actions.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { requestNewScene } from "../open-scene.js";
@@ -482,6 +483,25 @@ export function App(): React.JSX.Element {
           e.preventDefault();
           target.deleteSelection?.();
         }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "+" || e.key === "=")) {
+        // View menu zoom acts on the mounted 3D viewport.
+        const vp = getViewportActions();
+        if (vp?.canZoomIn) {
+          e.preventDefault();
+          vp.zoomIn();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "-") {
+        const vp = getViewportActions();
+        if (vp?.canZoomOut) {
+          e.preventDefault();
+          vp.zoomOut();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "0") {
+        const vp = getViewportActions();
+        if (vp?.canReset) {
+          e.preventDefault();
+          vp.reset();
+        }
       } else if (e.key === "Escape") {
         setPalette(false);
         setPlayMenu(false);
@@ -864,6 +884,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
   // Re-render the menus when the clipboard changes (Paste enables after Copy).
   React.useSyncExternalStore(subscribeClipboard, () => clipboardVersion());
+  // The View menu's viewport items follow the mounted 3D viewport.
+  const viewport = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
   // A menu item is enabled when there's an open document that supports it.
   // Unsupported operations disable with a reason — no "soon" placeholders.
   const docItem = (
@@ -875,6 +897,17 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
     if (!doc) return { label, kbd, disabled: true, disabledReason: noDocReason };
     if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${doc.label} doesn't support ${label.toLowerCase()}` };
+    return { label, kbd, run };
+  };
+  // The View menu's viewport items act on the mounted 3D viewport.
+  const viewportItem = (
+    label: string,
+    kbd: string | undefined,
+    can: boolean | undefined,
+    run: (() => void) | undefined,
+  ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
+    if (!viewport) return { label, kbd, disabled: true, disabledReason: "no viewport open" };
+    if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${viewport.label} doesn't support ${label.toLowerCase()}` };
     return { label, kbd, run };
   };
   const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean; disabledReason?: string } | "sep">> = {
@@ -906,9 +939,9 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       { label: `${docks.right ? "✓ " : ""}Right dock`, run: () => onToggleDock("right") },
       { label: `${docks.bottom ? "✓ " : ""}Bottom dock`, run: () => onToggleDock("bottom") },
       "sep",
-      { label: "Zoom In", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Zoom Out", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Reset Viewport", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      viewportItem("Zoom In", "Ctrl +", viewport?.canZoomIn, viewport?.zoomIn),
+      viewportItem("Zoom Out", "Ctrl -", viewport?.canZoomOut, viewport?.zoomOut),
+      viewportItem("Reset Viewport", "Ctrl 0", viewport?.canReset, viewport?.reset),
       "sep",
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],

@@ -83,6 +83,9 @@ export function ScenesPanel(): React.JSX.Element {
   const [selected, setSelected] = React.useState<string | null>(null);
   const [issues, setIssues] = React.useState<SceneIssue[]>([]);
   const [status, setStatus] = React.useState("");
+  // Inline "new scene" dialog (window.prompt is blocked in some webviews).
+  const [naming, setNaming] = React.useState<string | null>(null);
+  const [nameError, setNameError] = React.useState("");
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
 
@@ -309,16 +312,21 @@ export function ScenesPanel(): React.JSX.Element {
     );
   };
   const create = (): void => {
-    const name = window.prompt("New scene name (lowercase, digits, dashes): ^[a-z0-9][a-z0-9-]*$");
-    if (!name) return;
+    setNaming("");
+    setNameError("");
+  };
+  const confirmCreate = (): void => {
+    const name = (naming ?? "").trim();
     if (!isValidSceneName(name)) {
-      setStatus(`invalid scene name "${name}": use ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and dashes, starting with a letter or digit) - nothing was created`);
+      setNameError(`invalid scene name "${name}": use ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and dashes, starting with a letter or digit)`);
       return;
     }
     hist.replace(emptyScene(name, "arena"));
     setOpen(name);
     setSelected(null);
     setIssues(validateScene(hist.doc));
+    setNaming(null);
+    setNameError("");
     bump();
   };
 
@@ -341,6 +349,31 @@ export function ScenesPanel(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2.5 text-[13px]" data-testid="scenes-panel">
+      {naming !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-label="New scene">
+          <div className="rounded-lg border p-4 shadow-lg" style={{ background: "var(--m3-surface)", borderColor: "var(--m3-outline-variant)" }}>
+            <h3 className="mb-2 text-sm font-medium">New scene</h3>
+            <input
+              autoFocus
+              className="mb-2 w-64 rounded border px-2 py-1 text-sm"
+              style={{ borderColor: "var(--m3-outline)" }}
+              value={naming}
+              onChange={(e) => setNaming(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmCreate();
+                else if (e.key === "Escape") setNaming(null);
+              }}
+              placeholder="lowercase, digits, dashes"
+              aria-label="Scene name"
+            />
+            {nameError && <p className="mb-2 text-xs" style={{ color: "var(--m3-error)" }}>{nameError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setNaming(null)}>Cancel</Button>
+              <Button size="sm" onClick={confirmCreate}>Create</Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <select className={sel} value={open ?? ""} onChange={(e) => e.target.value && load(e.target.value)} aria-label="Open scene">
           <option value="">{names.length ? "Open scene…" : "No scenes yet"}</option>

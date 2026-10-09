@@ -283,6 +283,26 @@ export class SceneView {
     return [round(this.orbit.target.x), 0, round(this.orbit.target.z)];
   }
 
+  /** Dolly the camera toward the orbit target (View menu Zoom In). */
+  zoomIn(): void {
+    const dir = this.camera.position.clone().sub(this.orbit.target);
+    const len = dir.length();
+    if (len > 1) {
+      dir.setLength(len * 0.8);
+      this.camera.position.copy(this.orbit.target).add(dir);
+    }
+  }
+
+  /** Dolly the camera away from the orbit target (View menu Zoom Out). */
+  zoomOut(): void {
+    const dir = this.camera.position.clone().sub(this.orbit.target);
+    const len = dir.length();
+    if (len < 1000) {
+      dir.setLength(len * 1.25);
+      this.camera.position.copy(this.orbit.target).add(dir);
+    }
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.frameId);
     this.cleanup.forEach((f) => f());
