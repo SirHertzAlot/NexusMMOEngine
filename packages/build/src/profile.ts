@@ -37,7 +37,7 @@ export function loadProfile(json: unknown): BuildProfile {
 export function defaultProfile(): BuildProfile {
   return {
     name: "default",
-    description: "codegen, build, bakes, tests, package",
+    description: "codegen, build, bakes, tests, playtests, package",
     stages: [
       { id: "codegen", command: "npm run codegen", inputs: ["scripts/codegen.mjs"] },
       { id: "build", command: "npm run build", inputs: ["package.json"] },
@@ -47,6 +47,11 @@ export function defaultProfile(): BuildProfile {
         inputs: ["content/rules", "content/species"],
       },
       { id: "test", command: "npm test", inputs: ["package.json"] },
+      {
+        id: "playtest",
+        command: "npm run playtest",
+        inputs: ["content/playtests", "packages/playtest/src", "scripts/playtest.mjs"],
+      },
       { id: "package", command: "npm run package", inputs: ["package.json"] },
     ],
   };
