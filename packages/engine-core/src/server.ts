@@ -59,6 +59,8 @@
  *   MMO_BOTS_RADIUS how far from home they roam, metres (default 18)
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
+ *   MMO_USERS_CSV  accounts file (default $MMO_DATA_DIR/users.csv); the editor
+ *                  points play sessions at a scratch file
  *   MMO_ADMINS     comma-separated admin usernames for the admin console
  *                  (protocol 0x10, roadmap A1; default empty = nobody)
  *   MMO_DEV_SERVER=1 makes every account an admin (development servers
@@ -429,8 +431,9 @@ async function main(): Promise<void> {
   );
 
   // ---- auth + gateway ----------------------------------------------------
+  // MMO_USERS_CSV: the editor's play sessions run on a scratch account file.
   const credentialStore = new CsvCredentialStore(
-    path.join(DATA_DIR, "users.csv"),
+    process.env.MMO_USERS_CSV ? path.resolve(process.env.MMO_USERS_CSV) : path.join(DATA_DIR, "users.csv"),
   );
   const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
   const guildStore = new SqliteGuildStore(path.join(DATA_DIR, "guilds.db"));

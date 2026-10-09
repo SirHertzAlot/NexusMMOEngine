@@ -132,12 +132,12 @@ loadable modules, a database editor and production tools.
 | EA11 | Sidecars | 📋 | |
 | EA12 | Edge modules | 📋 | |
 | EA13 | Existing tools as modules | 📋 | |
-| EA14 | The play menu | 📋 | |
+| EA14 | The play menu | ✅ | `feat/ea14-ea19-play-build`: every option works. Where: viewport, new window (the player's client, started on demand), simulate (nobody joins). Start from any flow node or the Scenes camera (admin teleport). 1 to 8 clients, each a seeded account in a scratch CSV (`MMO_USERS_CSV`; the real users.csv is never read or written). Bots (`MMO_BOTS`), core only or edge + core (edge started and health-checked), simulated latency (a delay proxy in front of the server), fresh or saved world on a working copy (`play-session.ts`), keep or discard on stop. Saved setups in `content/play/setups.json` with a key (F6 to F10, Alt+1 to 9); F5/Play now starts. Tint gated by its checkbox. |
 | EA15 | Fill every workspace | 🚧 | `feat/ea15-gameplay-authoring`: Gameplay data grids over creatures (with drops), item bases, skills, spells and species, and a Content browser with `GET /api/editor/content-catalog` (a scene-viewport drag source). Saves go through `/api/editor/gameplay`, validated by the server's own loaders, refused saves write nothing. Deferred: the other workspaces' fill-in, live values beside authored ones, crafting recipes and combat moves (code, not data), a prefab file format |
 | EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
 | EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
-| EA19 | Build and deploy | 📋 | |
+| EA19 | Build and deploy | 🚧 | `feat/ea14-ea19-play-build`: profiles `content/build/*.json` (validated, refused saves write nothing), a real Pipeline view (codegen, build, bakes, tests, valgrind, package; per-step log, time and result; cached by input hash, an unchanged bake is skipped), packages with a manifest under `.release/`, a local target with a `/health` and server-port check, automatic fallback on a failed check, and rollback. Open: staging target (blocked on the container-platform question), valgrind needs a host with valgrind (skipped here, said so), packages link third-party `node_modules` from this machine instead of a production install, playtests in the pipeline (EA26). |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
 | EA22 | VFX and materials | 📋 | |
@@ -301,6 +301,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-09**: EA14 play menu (every option real, saved setups on keys) and EA19 build and deploy (profiles, cached pipeline, packages, local target with health check and rollback) on `feat/ea14-ea19-play-build`. Also: `readBody` remembers a request body (a PUT through the modules route used to hang every later route that read it), `MMO_USERS_CSV`, `seed-user` takes several names.
 
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).

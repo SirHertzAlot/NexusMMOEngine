@@ -426,7 +426,8 @@ export function App(): React.ReactElement {
       if (reply?.kind !== "account") return;
       if (scene === "@assigned") {
         const id = reply.account.characters[0]?.id;
-        if (id === undefined) setError("play from world: the account has no character yet");
+        // A new account has no character: open the creation half; creating one enters the world.
+        if (id === undefined) fire("ui.create");
         else await enterWorld(id).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
       }
     })();

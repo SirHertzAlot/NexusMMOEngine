@@ -75,10 +75,8 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
   createReadStream,
   existsSync,
-  mkdirSync,
   readFileSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { join, normalize, posix, resolve, sep, win32 } from "node:path";
 import {
@@ -89,7 +87,11 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
-import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
+import { createClientServer, handlePlayRoute, parsePlayStart, seedAccounts, waitForHttp, type PlayStartRequest } from "./play-host.js";
+import { accountNames, finishSession, prepareSession, type SqliteLike } from "./play-session.js";
+import { createReleaseHost } from "./release-host.js";
+import { startLatencyProxy, type LatencyProxy } from "./latency-proxy.js";
+import { handleContentRoute, playSceneEnv } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
@@ -201,6 +203,18 @@ interface OwnedServer {
   password: string;
   /** The tick order the server reported at boot (Modules window). */
   tickOrder(): string[] | null;
+  /** The server's recent output (Play status). */
+  log(): string;
+  /** Every seeded account of this session (the first is username/password). */
+  accounts: Array<{ username: string; password: string }>;
+  /** The play session's working copy of the world, and whether stop writes it back. */
+  keep: boolean;
+  /** The delay proxy clients connect through (latency > 0), and the edge process (network "edge"). */
+  proxy: LatencyProxy | null;
+  edge: ChildProcess | null;
+  /** What the Play menu asked for, so a restart (Apply modules) runs the same session. */
+  request: PlayStartRequest;
+  startedAt: number;
 }
 
 const LISTEN_RE = /listening on ws:\/\/[^:]+:(\d+)/;
@@ -215,7 +229,18 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
+// A request's body can be read once; routes registered later ask again, so the first read is remembered.
+const bodies = new WeakMap<IncomingMessage, Promise<string>>();
 function readBody(req: IncomingMessage): Promise<string> {
+  let p = bodies.get(req);
+  if (!p) {
+    p = readBodyOnce(req);
+    bodies.set(req, p);
+  }
+  return p;
+}
+
+function readBodyOnce(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -231,30 +256,6 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
-}
-
-/**
- * The editor's dev login for play mode: created once per world and reused,
- * stored beside users.csv in the (git-ignored) data dir. Seeding a fresh
- * random account on every Play would add a users.csv row per run.
- */
-function editorLogin(dataDir: string): { username: string; password: string } {
-  const file = join(dataDir, "editor-login.json");
-  try {
-    const saved = JSON.parse(readFileSync(file, "utf8")) as { username?: unknown; password?: unknown };
-    if (typeof saved.username === "string" && typeof saved.password === "string") {
-      return { username: saved.username, password: saved.password };
-    }
-  } catch {
-    /* first run, or unreadable: create a new one */
-  }
-  const login = {
-    username: `editor-${randomBytes(4).toString("hex")}`,
-    password: randomBytes(16).toString("hex"),
-  };
-  mkdirSync(dataDir, { recursive: true });
-  writeFileSync(file, JSON.stringify(login), { mode: 0o600 });
-  return login;
 }
 
 /**
@@ -349,6 +350,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
+  const clientServer = createClientServer(repoRoot);
+  const releaseHost = createReleaseHost({ repoRoot, npmInvocation: (a) => npmInvocation(a), killProcessTree: (p, s) => killProcessTree(p, s) });
   let dbCore: DatabaseCore | null = null;
 
   /**
@@ -403,11 +406,23 @@ export function editorHost(options: EditorHostOptions): Plugin {
     });
   }
 
+  /** Everything a play session adds around the server process: the delay proxy, the edge, the world copy. */
+  async function teardownSession(o: OwnedServer): Promise<void> {
+    await o.proxy?.close().catch(() => undefined);
+    if (o.edge?.pid) killProcessTree(o.edge.pid, "SIGKILL");
+    // The server is gone by now, so the session's world files are closed and safe to copy back.
+    finishSession(dataDir, o.keep);
+  }
+
   async function stopOwned(): Promise<boolean> {
     if (!owned) return false;
+    const was = owned;
     const child = owned.child;
     owned = null;
-    if (child.exitCode !== null || child.signalCode !== null) return true;
+    if (child.exitCode !== null || child.signalCode !== null) {
+      await teardownSession(was);
+      return true;
+    }
     // The child leads its own process tree (see startOwned): `npm run
     // server` spawns shell → node grandchildren, so killing just the npm
     // wrapper would orphan the real server. killProcessTree ends the
@@ -434,71 +449,54 @@ export function editorHost(options: EditorHostOptions): Plugin {
         }
       }, 500).unref();
     });
+    await teardownSession(was);
     return true;
   }
 
-  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest }): Promise<OwnedServer> {
+  async function openWritableDb(file: string): Promise<SqliteLike> {
+    const sqlite = (await import("better-sqlite3")) as unknown as { default: new (file: string) => SqliteLike };
+    return new sqlite.default(file);
+  }
+
+  async function startOwned(opts?: PlayStartRequest): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
       });
     }
-    // One explicit data dir for the whole play-mode session: the server
-    // resolves users.csv (and world.db) from MMO_DATA_DIR, and the seed
-    // below writes to the same file. Seeding happens BEFORE the server
-    // starts because the gateway's CsvCredentialStore loads the CSV once
-    // at startup — users added afterwards would not be visible.
+    const request: PlayStartRequest = { ...opts };
+    const clients = Math.min(8, Math.max(1, Math.floor(request.clients ?? 1)));
+    // The server runs on a working copy of the world (play-session.ts): the saved
+    // world is only written when the session says keep, and the accounts live in
+    // a scratch CSV, so the real users.csv is never read or changed by Play.
+    const sessionDir = await prepareSession({ dataDir, fresh: request.fresh === true, openDb: openWritableDb });
+    const cleanupFailed = (pid: number, extras: { proxy?: LatencyProxy | null; edge?: ChildProcess | null } = {}): void => {
+      if (pid > 0) killProcessTree(pid, "SIGKILL");
+      if (extras.edge?.pid) killProcessTree(extras.edge.pid, "SIGKILL");
+      void extras.proxy?.close();
+      finishSession(dataDir, false);
+    };
     // EA6: the open scene (validated before anything starts; may be unsaved).
-    const sceneEnv = playSceneEnv(repoRoot, dataDir, opts?.scene);
-    const usersCsv = join(dataDir, "users.csv");
-    const { username, password } = editorLogin(dataDir);
-    // Dev-only local credential: the plaintext goes to the browser over
-    // localhost only and is never logged; users.csv stores only the
-    // argon2id hash. seed-user is idempotent: it creates the account on
-    // first use and does nothing once it exists.
-    await new Promise<void>((resolveSeed, rejectSeed) => {
-      // process.execPath, not "node" from PATH: seed-user loads argon2
-      // (native), which must match the Node the repo was built with.
-      const seed = spawn(
-        process.execPath,
-        [
-          "packages/engine-core/dist/src/auth/seed-user.js",
-          "--csv",
-          usersCsv,
-          username,
-        ],
-        {
-          cwd: repoRoot,
-          env: { ...process.env, MMO_DEV_PASSWORD: password },
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-      let errOut = "";
-      seed.stderr?.on("data", (d: Buffer) => {
-        errOut += d.toString("utf8");
-      });
-      const timer = setTimeout(() => {
-        try {
-          seed.kill("SIGKILL");
-        } catch {
-          /* ignore */
-        }
-        rejectSeed(new Error("seed-user timed out"));
-      }, 60_000);
-      timer.unref?.();
-      seed.on("exit", (code) => {
-        clearTimeout(timer);
-        if (code === 0) resolveSeed();
-        else
-          rejectSeed(
-            new Error(`seed-user exited ${code}: ${errOut.slice(-500)}`),
-          );
-      });
-      seed.on("error", (err) => {
-        clearTimeout(timer);
-        rejectSeed(err);
-      });
-    });
+    let sceneEnv: Record<string, string>;
+    try {
+      sceneEnv = playSceneEnv(repoRoot, sessionDir, request.scene);
+    } catch (e) {
+      finishSession(dataDir, false);
+      throw e;
+    }
+    const usersCsv = join(sessionDir, "users.csv");
+    const names = accountNames(clients);
+    // One password per session, shared by its accounts: localhost only, never
+    // logged, and the CSV stores only argon2id hashes. Seeding happens BEFORE
+    // the server starts because its credential store loads the CSV once.
+    const password = randomBytes(16).toString("hex");
+    const username = names[0];
+    try {
+      await seedAccounts(repoRoot, usersCsv, names, password);
+    } catch (e) {
+      finishSession(dataDir, false);
+      throw e;
+    }
 
     // Play runs the built server directly: `npm run server` rebuilds every
     // workspace first (minutes), and the --silent output hid that wait.
@@ -513,13 +511,14 @@ export function editorHost(options: EditorHostOptions): Plugin {
       env: {
         ...process.env,
         MMO_PORT: String(serverPort),
-        MMO_DATA_DIR: dataDir,
+        MMO_DATA_DIR: sessionDir,
+        MMO_USERS_CSV: usersCsv,
         // The Play menu's Bots choice, when the start request carries it.
-        ...(opts?.bots !== undefined ? { MMO_BOTS: String(opts.bots) } : {}),
+        ...(request.bots !== undefined ? { MMO_BOTS: String(request.bots) } : {}),
         ...sceneEnv,
-        // The debugger's admin console (E5): the editor's own play user is
-        // an admin of the server it owns, on top of any configured ones.
-        MMO_ADMINS: [process.env.MMO_ADMINS, username].filter(Boolean).join(","),
+        // The debugger's admin console (E5): the session's own play users are
+        // admins of the server they own, on top of any configured ones.
+        MMO_ADMINS: [process.env.MMO_ADMINS, ...names].filter(Boolean).join(","),
       },
       stdio: ["ignore", "pipe", "pipe"],
       shell: npm.shell,
@@ -544,63 +543,115 @@ export function editorHost(options: EditorHostOptions): Plugin {
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.on("exit", () => {
-      if (owned?.child === child) owned = null;
+      if (owned?.child === child) {
+        const was = owned;
+        owned = null;
+        void teardownSession(was);
+      }
     });
 
-    const url = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        void stopOwned();
-        reject(
-          new Error(
-            `play-mode server did not report listening within ${readyTimeoutMs}ms.\n` +
-              `Last output:\n${output.slice(-2000)}`,
-          ),
-        );
-      }, readyTimeoutMs);
-      timer.unref?.();
-      const cleanup = (): void => {
-        clearTimeout(timer);
-        child.stdout?.off("data", onData);
-        child.stderr?.off("data", onData);
-        child.off("exit", onExit);
-      };
-      const onExit = (code: number | null): void => {
-        cleanup();
-        reject(
-          new Error(
-            `play-mode server exited during startup (code ${code}).\n` +
-              `Output:\n${output.slice(-2000)}`,
-          ),
-        );
-      };
-      const check = (d: Buffer): void => {
-        const m = LISTEN_RE.exec(d.toString("utf8"));
-        if (m) {
+    let url: string;
+    try {
+      url = await new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(() => {
           cleanup();
-          resolve(`ws://127.0.0.1:${m[1]}`);
-        }
-      };
-      child.on("exit", onExit);
-      child.stdout?.on("data", check);
-      child.stderr?.on("data", check);
-    });
+          reject(
+            new Error(
+              `play-mode server did not report listening within ${readyTimeoutMs}ms.\n` +
+                `Last output:\n${output.slice(-2000)}`,
+            ),
+          );
+        }, readyTimeoutMs);
+        timer.unref?.();
+        const cleanup = (): void => {
+          clearTimeout(timer);
+          child.stdout?.off("data", onData);
+          child.stderr?.off("data", onData);
+          child.off("exit", onExit);
+        };
+        const onExit = (code: number | null): void => {
+          cleanup();
+          reject(
+            new Error(
+              `play-mode server exited during startup (code ${code}).\n` +
+                `Output:\n${output.slice(-2000)}`,
+            ),
+          );
+        };
+        const check = (d: Buffer): void => {
+          const m = LISTEN_RE.exec(d.toString("utf8"));
+          if (m) {
+            cleanup();
+            resolve(`ws://127.0.0.1:${m[1]}`);
+          }
+        };
+        child.on("exit", onExit);
+        child.stdout?.on("data", check);
+        child.stderr?.on("data", check);
+      });
+    } catch (e) {
+      cleanupFailed(pid);
+      throw e;
+    }
 
-    // Track the child IMMEDIATELY (before the ready wait can time out),
-    // so a startup timeout can still kill the group via stopOwned().
+    let proxy: LatencyProxy | null = null;
+    let edge: ChildProcess | null = null;
+    try {
+      const corePort = Number(new URL(url).port);
+      // Simulated latency: clients connect through a proxy that delays both directions.
+      if ((request.latencyMs ?? 0) > 0) {
+        proxy = await startLatencyProxy({ host: "127.0.0.1", port: corePort }, request.latencyMs ?? 0);
+      }
+      // Network "edge + core": the edge process runs beside the core and must see it before Play goes on.
+      if (request.network === "edge") edge = await startEdge(sessionDir);
+    } catch (e) {
+      cleanupFailed(pid, { proxy, edge });
+      throw e;
+    }
+
+    // Track the child; from here a stop kills the server, the proxy and the edge together.
     owned = {
       child,
       pid,
       port: serverPort,
-      url: `ws://127.0.0.1:${serverPort}`,
+      url: proxy ? `ws://127.0.0.1:${proxy.port}` : url,
       username,
       password,
       tickOrder: () => bootOrder,
+      log: () => output,
+      accounts: names.map((n) => ({ username: n, password })),
+      keep: request.keep === true,
+      proxy,
+      edge,
+      request,
+      startedAt: Date.now(),
     };
-    // Adopt the actual bound port from the server's listen line once
-    // ready (normally identical to serverPort).
-    owned.url = url;
     return owned;
+  }
+
+  /** Start the edge beside the core and wait until GET /health reports the core up. */
+  async function startEdge(sessionDir: string): Promise<ChildProcess> {
+    const edgeJs = join(repoRoot, "apps", "edge", "dist", "src", "index.js");
+    if (!existsSync(edgeJs)) {
+      const npm = npmInvocation(["run", "build", "--workspace=@mmo-engine/edge", "--silent"]);
+      const r = spawnSync(npm.command, npm.args, { cwd: repoRoot, shell: npm.shell, encoding: "utf8", windowsHide: true });
+      if (r.status !== 0) throw new Error(`building the edge failed:\n${(r.stdout + r.stderr).slice(-1500)}`);
+    }
+    const edge = spawn(process.execPath, [edgeJs], {
+      cwd: repoRoot,
+      env: { ...process.env, MMO_DATA_DIR: sessionDir },
+      stdio: "ignore",
+      detached: true,
+      windowsHide: true,
+    });
+    edge.unref();
+    try {
+      await waitForHttp("http://127.0.0.1:3000/health", (b) => (b as { ok?: boolean; core?: string })?.core === "up", 30_000);
+    } catch (e) {
+      if (edge.pid) killProcessTree(edge.pid, "SIGKILL");
+      throw new Error(`the edge did not come up beside the core: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return edge;
   }
 
   async function assetScan(): Promise<Record<string, unknown>> {
@@ -680,6 +731,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
           // Tree kill — matches the detached spawn in startOwned().
           // Synchronous on every platform, as an "exit" handler must be.
           killProcessTree(owned.child.pid ?? -1, "SIGKILL");
+          if (owned.edge?.pid) killProcessTree(owned.edge.pid, "SIGKILL");
           owned = null;
         }
       };
@@ -692,6 +744,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
       // listeners up.
       server.httpServer?.once("close", () => {
         process.off("exit", exitHandler);
+        clientServer.stop();
+        releaseHost.dispose();
         void stopOwned();
       });
 
@@ -707,22 +761,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
             const startBody = await readBody(req);
-            // Start options honored today: bots → MMO_BOTS, and the optional
-            // {scene: {name, content?}} for playing the open scene (EA6).
-            // Anything else in the body is ignored (the Play menu badges
-            // those dimensions "preview" instead of pretending).
-            let bots: number | undefined;
-            let scene: PlaySceneRequest | undefined;
-            try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest };
-              if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
-                bots = Math.floor(parsed.bots);
-              }
-              scene = parsed.scene;
-            } catch {
-              /* empty / non-JSON body: server defaults */
-            }
-            const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
+            // The Play menu's options (play-host.ts parsePlayStart): bots, clients, network,
+            // latency, fresh/keep, and the optional {scene: {name, content?}} (EA6).
+            const s = await startOwned(parsePlayStart(startBody));
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,
@@ -732,6 +773,35 @@ export function editorHost(options: EditorHostOptions): Plugin {
               // Dev-only, one-session credential over localhost (see
               // startOwned). Never logged; only the hash is persisted.
               password: s.password,
+              accounts: s.accounts,
+              edge: s.edge !== null,
+              latencyMs: s.proxy ? (s.request.latencyMs ?? 0) : 0,
+            });
+            return;
+          }
+          if (url === "/api/editor/play/client" && req.method === "POST") {
+            await readBody(req);
+            sendJson(res, 200, { ok: true, url: await clientServer.ensure() });
+            return;
+          }
+          if (url === "/api/editor/play/status" && req.method === "GET") {
+            const edgeHealth = owned?.edge
+              ? await fetch("http://127.0.0.1:3000/health", { signal: AbortSignal.timeout(1500) }).then((r) => r.json(), () => null)
+              : null;
+            sendJson(res, 200, {
+              ok: true,
+              running: owned !== null,
+              ...(owned
+                ? {
+                    pid: owned.pid,
+                    url: owned.url,
+                    startedAt: owned.startedAt,
+                    clients: owned.accounts.length,
+                    request: owned.request,
+                    edgeHealth,
+                    log: owned.log().split("\n").slice(-40),
+                  }
+                : {}),
             });
             return;
           }
@@ -979,8 +1049,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
               // "Apply modules": the server reads the set at boot, so a running one restarts.
               apply: async () => {
                 if (!owned) return { restarted: false };
+                const again = owned.request;
                 await stopOwned();
-                const s = await startOwned();
+                const s = await startOwned(again);
                 return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password };
               },
             },
@@ -990,6 +1061,23 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           const scenesUrl = new URL(req.url ?? "/", "http://localhost");
+          // Build profiles, the pipeline, packages and the local target (EA19, release-host.ts).
+          const releaseReply = await releaseHost.handle(req.method ?? "GET", scenesUrl.pathname, () => readBody(req));
+          if (releaseReply) {
+            sendJson(res, releaseReply.status, releaseReply.body);
+            return;
+          }
+          // The saved Play setups (EA14, play-host.ts).
+          const playReply = handlePlayRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/play/setups" ? await readBody(req) : undefined,
+          );
+          if (playReply) {
+            sendJson(res, playReply.status, playReply.body);
+            return;
+          }
           const flowReply = handleFlowRoute(
             repoRoot,
             req.method ?? "GET",

@@ -11,6 +11,7 @@ import type { LiveTransform, SceneDoc, Vec3 } from "@mmo-engine/scene";
 import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
+import { sceneCamera } from "./scene-camera.js";
 import { Button } from "./components.js";
 
 export interface SceneViewportProps {
@@ -55,6 +56,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
       return;
     }
     viewRef.current = view;
+    sceneCamera.set(() => view.centre());
     let alive = true;
     loadTerrain().then(
       (t) => alive && view.setTerrain(t.tiles, t.chunkWorldSize),
@@ -67,6 +69,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     return () => {
       alive = false;
       viewRef.current = null;
+      sceneCamera.set(null);
       view.dispose();
     };
   }, []);

@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, playUiStore, requestPlayStart, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
@@ -25,19 +25,21 @@ import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
-import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import {
-  deleteNamedSetup,
+  emptySetups,
+  fetchPlaySetups,
   loadLastSetup,
-  loadNamedSetups,
   saveLastSetup,
-  saveNamedSetup,
+  setupForKey,
   setupSummary,
-  PLAY_PREVIEW_NOTES,
   type PlaySetup,
+  type PlaySetupsDoc,
 } from "./play-setup.js";
+import { PlayMenu } from "./play-menu.js";
+import { PipelinePanel, ReleaseDetails, ReleaseTree } from "./release-workspace.js";
 import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
 import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
@@ -54,10 +56,8 @@ import {
   FlowDetails,
   HudDetails,
   LiveOpsPreview,
-  PipelinePreview,
   PlaytestPreview,
   QuestPreview,
-  ReleaseDeployDetails,
   SchemaTree,
   StoryDetails,
   StringsPreview,
@@ -204,7 +204,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "release", label: "Release", icon: "rocket_launch",
     views: [
-      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelinePreview /> },
+      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelinePanel /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestPreview /> },
     ],
     leftTitle: "Profiles",
@@ -260,6 +260,13 @@ export function App(): React.JSX.Element {
     setPlaySetup(next);
     saveLastSetup(next);
   }
+  // Saved, named setups (content/play/setups.json); a setup bound to a key plays on that key.
+  const [savedSetups, setSavedSetups] = React.useState<PlaySetupsDoc>(emptySetups());
+  const savedSetupsRef = React.useRef(savedSetups);
+  savedSetupsRef.current = savedSetups;
+  React.useEffect(() => {
+    fetchPlaySetups().then(setSavedSetups, () => undefined);
+  }, []);
   // Play tint + read-only Details (§3.4/§3.5): entering play swaps what
   // panels show, never where they are.
   const { pmState } = playUiStore.use();
@@ -308,6 +315,8 @@ export function App(): React.JSX.Element {
   function goPlay(): void {
     pickWorkspace("debug");
     setView("play");
+    // Play starts the owned server with the last setup; the panel does the work once it is mounted.
+    requestPlayStart();
   }
 
   function go(ws: WorkspaceId, view?: string): void {
@@ -417,6 +426,20 @@ export function App(): React.JSX.Element {
         e.preventDefault();
         if (e.shiftKey) void requestPlayStop();
         else goPlay();
+      } else if (setupForKey(savedSetupsRef.current, e)) {
+        // A saved play setup bound to this key: apply it, then play.
+        const bound = setupForKey(savedSetupsRef.current, e);
+        if (bound && !shouldSkipShortcut(e.target)) {
+          e.preventDefault();
+          if (playUiStore.get().pmState === "idle" || playUiStore.get().pmState === "error") {
+            setPlaySetup(bound.setup);
+            saveLastSetup(bound.setup);
+            notify(`Playing “${bound.name}”`);
+            goPlay();
+          } else {
+            notify("Stop play mode (Shift F5) before starting another setup");
+          }
+        }
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s") {
         // Ctrl S saves the toolbar's open document; refused saves write nothing.
         const target = getDocActions();
@@ -478,7 +501,7 @@ export function App(): React.JSX.Element {
         color: "var(--m3-on-surface)",
         // Play tint (§3.2, §3.5): the window edge goes tertiary while
         // running so nobody edits a live world by mistake.
-        ...(playing ? { outline: "2px solid var(--m3-tertiary)", outlineOffset: -2 } : {}),
+        ...(playing && playSetup.tint ? { outline: "2px solid var(--m3-tertiary)", outlineOffset: -2 } : {}),
       }}
     >
       <MenuBar
@@ -497,6 +520,8 @@ export function App(): React.JSX.Element {
         onPlay={goPlay}
         playSetup={playSetup}
         onPlaySetup={updatePlaySetup}
+        savedSetups={savedSetups}
+        onSavedSetups={setSavedSetups}
         mode={mode}
         onMode={setRunMode}
         layoutMenu={layoutMenu}
@@ -1117,6 +1142,8 @@ function Toolbar(props: {
   onPlay: () => void;
   playSetup: PlaySetup;
   onPlaySetup: (s: PlaySetup) => void;
+  savedSetups: PlaySetupsDoc;
+  onSavedSetups: (d: PlaySetupsDoc) => void;
   mode: RunMode;
   onMode: (m: RunMode) => void;
   layoutMenu: boolean;
@@ -1370,7 +1397,7 @@ function Toolbar(props: {
         <>
           <span className="fixed inset-0 z-40" onClick={props.onClosePlayMenu} aria-hidden="true" />
           <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
-            <PlayMenu setup={props.playSetup} onChange={props.onPlaySetup} onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
+            <PlayMenu setup={props.playSetup} onChange={props.onPlaySetup} onPlay={props.onPlay} onClose={props.onClosePlayMenu} saved={props.savedSetups} onSaved={props.onSavedSetups} />
           </div>
         </>
       )}
@@ -1480,242 +1507,6 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
     </>
   );
 }
-// Every way to run the game (§3.5, ux-06). The setup is owned by the
-// shell and persisted on every change; Play hands off to the Play mode
-// panel, which owns start/stop. Only the viewport, one client, bots and
-// tint are honored today — everything else is badged preview (see
-// ui/play-setup.ts) and never pretended.
-
-function PreviewBadge({ why }: { why: string }): React.JSX.Element {
-  return (
-    <span
-      className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]"
-      style={{ border: "1px solid var(--m3-outline)", color: "var(--m3-on-surface-variant)" }}
-      title={`Preview — ${why}`}
-    >
-      preview
-    </span>
-  );
-}
-
-function PlayMenu({ setup, onChange, onPlay, onClose }: {
-  setup: PlaySetup;
-  onChange: (s: PlaySetup) => void;
-  onPlay: () => void;
-  onClose: () => void;
-}): React.JSX.Element {
-  const [named, setNamed] = React.useState<Record<string, PlaySetup>>(() => loadNamedSetups());
-  const [name, setName] = React.useState("");
-  const set = (patch: Partial<PlaySetup>): void => onChange({ ...setup, ...patch });
-  const whereLabel = setup.where === "viewport" ? "in viewport" : setup.where === "window" ? "in a new window" : "simulate";
-
-  return (
-    <menu
-      className="m3-scroll max-h-[80vh] w-[30rem] overflow-y-auto rounded-2xl p-4"
-      style={{ background: "var(--m3-surface-3)", boxShadow: "0 6px 16px rgba(0,0,0,.5)" }}
-      aria-label="Play menu"
-    >
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Where to play
-      </p>
-      <div className="mb-3 grid grid-cols-3 gap-2">
-        {(
-          [
-            ["viewport", "fullscreen", "In viewport", "Panels stay around it", false],
-            ["window", "open_in_new", "New window", "The player's client", true],
-            ["simulate", "visibility", "Simulate", "World only, no player", true],
-          ] as Array<[string, string, string, string, boolean]>
-        ).map(([id, icon, title, body, preview]) => {
-          const on = setup.where === id;
-          return (
-            <button
-              key={id}
-              onClick={() => set({ where: id })}
-              aria-pressed={on}
-              title={preview ? `Preview — ${PLAY_PREVIEW_NOTES.where}` : undefined}
-              className="m3-focus flex flex-col gap-1 rounded-xl p-3 text-left"
-              style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
-            >
-              <MIcon name={icon} size={22} />
-              <span className="text-sm font-medium">{title}{preview && <PreviewBadge why={PLAY_PREVIEW_NOTES.where} />}</span>
-              <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{body}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <PlayMenuLabel>Start from<PreviewBadge why={PLAY_PREVIEW_NOTES.from} /></PlayMenuLabel>
-      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={setup.from} onPick={(v) => set({ from: v })} />
-
-      <PlayMenuLabel>Test setup</PlayMenuLabel>
-      <div className="mb-1 flex flex-col gap-2">
-        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={setup.clients} onPick={(v) => set({ clients: v })} markPreview={(o) => o !== "1"} previewWhy={PLAY_PREVIEW_NOTES.clients} />
-        <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={setup.bots} onPick={(v) => set({ bots: v })} />
-        <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={setup.net} onPick={(v) => set({ net: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.net} />
-        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.latency} />
-      </div>
-
-      <div className="mt-2 flex flex-col gap-2.5 text-sm">
-        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)<PreviewBadge why={PLAY_PREVIEW_NOTES.fresh} /></>} />
-        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop<PreviewBadge why={PLAY_PREVIEW_NOTES.keep} /></>} />
-        <PlayCheck checked={setup.tint} onFlip={() => set({ tint: !setup.tint })} label="Tint the editor while playing" />
-      </div>
-
-      <div className="mt-3 flex flex-col gap-1.5 text-sm" style={{ borderTop: "1px solid var(--m3-outline-variant)", paddingTop: 10 }}>
-        <button
-          onClick={() => {
-            onClose();
-            onPlay();
-          }}
-          className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left"
-          style={{ color: "var(--m3-on-surface-variant)" }}
-          title="Play with the last settings (F5) — opens Play mode"
-        >
-          <MIcon name="history" size={16} /> Last: {setupSummary(loadLastSetup())}
-          <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>F5</kbd>
-        </button>
-        {Object.entries(named).map(([n, s]) => (
-          <div key={n} className="group flex items-center gap-1">
-            <button
-              onClick={() => {
-                onChange({ ...s });
-                notify(`Setup “${n}” applied — Play runs it`);
-              }}
-              className="m3-focus flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
-              style={{ color: "var(--m3-on-surface-variant)" }}
-              title={`Apply “${n}”: ${setupSummary(s)}`}
-            >
-              <MIcon name="bookmark" size={16} /> {n} · {setupSummary(s)}
-            </button>
-            <button
-              onClick={() => setNamed(deleteNamedSetup(n))}
-              aria-label={`Delete setup ${n}`}
-              title={`Delete setup ${n}`}
-              className="m3-focus rounded-full p-1 opacity-0 group-hover:opacity-100"
-            >
-              <MIcon name="delete" size={16} />
-            </button>
-          </div>
-        ))}
-        <div className="flex items-center gap-1.5 px-2">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim() !== "") {
-                setNamed(saveNamedSetup(name.trim(), setup));
-                notify(`Setup “${name.trim()}” saved in this browser`);
-                setName("");
-              }
-            }}
-            placeholder="Name this setup…"
-            aria-label="Setup name"
-            className="h-9 min-w-0 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none"
-            style={{ borderColor: "var(--m3-outline)" }}
-          />
-          <button
-            onClick={() => {
-              if (name.trim() !== "") {
-                setNamed(saveNamedSetup(name.trim(), setup));
-                notify(`Setup “${name.trim()}” saved in this browser`);
-                setName("");
-              }
-            }}
-            className="m3-focus h-9 rounded-full px-3 text-sm font-medium"
-            style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-
-      <button
-        onClick={() => {
-          onClose();
-          onPlay();
-        }}
-        className="m3-focus mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold"
-        style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
-      >
-        <MIcon name="play_arrow" size={20} />
-        Play — {whereLabel} · {setup.from} · {setup.clients} client{setup.clients === "1" ? "" : "s"}
-      </button>
-      <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Only the viewport, one client, bots and tint are honored today — the Play mode panel passes bots
-        (MMO_BOTS) on start. Everything badged preview saves with the setup but needs its slice.
-      </p>
-    </menu>
-  );
-}
-
-function PlayMenuLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-      {children}
-    </p>
-  );
-}
-
-function PlayMenuRow({ options, value, onPick }: { options: string[]; value: string; onPick: (v: string) => void }): React.JSX.Element {
-  return (
-    <div className="mb-2.5 flex flex-wrap gap-1.5">
-      {options.map((o) => (
-        <Chip key={o} selected={value === o} onClick={() => onPick(o)}>
-          {value === o && o !== "1" && o !== "0" && <MIcon name="check" size={15} />}
-          {o}
-        </Chip>
-      ))}
-    </div>
-  );
-}
-
-function PlayMenuSplit({ label, options, value, onPick, markPreview, previewWhy }: { label: string; options: string[]; value: string; onPick: (v: string) => void; markPreview?: (o: string) => boolean; previewWhy?: string }): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-32 flex-none text-[13px]" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</span>
-      <div
-        className="flex h-9 flex-1 items-center overflow-hidden rounded-full text-sm"
-        role="group"
-        aria-label={label}
-        style={{ border: "1px solid var(--m3-outline-variant)" }}
-      >
-        {options.map((o) => {
-          const on = value === o;
-          return (
-            <button
-              key={o}
-              onClick={() => onPick(o)}
-              aria-pressed={on}
-              title={markPreview?.(o) ? `Preview — ${previewWhy ?? ""}` : undefined}
-              className="m3-focus flex h-full flex-1 items-center justify-center whitespace-nowrap px-2"
-              style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-            >
-              {o}
-              {markPreview?.(o) && (
-                <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>preview</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () => void; label: React.ReactNode }): React.JSX.Element {
-  return (
-    <button onClick={onFlip} role="checkbox" aria-checked={checked} className="m3-focus flex items-center gap-2.5 text-left">
-      <span
-        className="grid h-5 w-5 flex-none place-items-center rounded-[4px]"
-        style={checked ? { background: "var(--m3-primary)", color: "var(--m3-on-primary)" } : { border: "2px solid var(--m3-outline)" }}
-      >
-        {checked && <MIcon name="check" size={15} />}
-      </span>
-      <span style={{ color: "var(--m3-on-surface)" }}>{label}</span>
-    </button>
-  );
-}
-
 // ---------------------------------------------------------------- command palette
 
 function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
@@ -2117,50 +1908,6 @@ function StoryTree(): React.JSX.Element {
   );
 }
 
-/** Release profiles and the staging settings (ux-12). */
-function ReleaseTree(): React.JSX.Element {
-  const t = useTree();
-  const profiles: Array<[string, string, string[]]> = [
-    ["local-dev", "local", ["npm run editor", "MMO_PORT 7777"]],
-    ["staging", "ssh", ["0.14.2 · up 22 h", "MMO_BOTS 40"]],
-    ["public-alpha", "ssh", ["0.14.0 · 31 players"]],
-    ["perf-check", "local", ["valgrind:perf baseline"]],
-  ];
-  return (
-    <div className="flex flex-col gap-0.5">
-      {profiles.map(([p, target, kids]) => {
-        const open = t.open.includes(p);
-        return (
-          <div key={p}>
-            <TreeItem
-              icon={p === "staging" ? "dns" : p === "public-alpha" ? "public" : p === "perf-check" ? "speed" : "computer"}
-              label={p}
-              trailing={target}
-              mono
-              hasKids
-              expanded={open}
-              onToggle={() => t.toggle(p)}
-              selected={t.sel === p}
-              onPick={() => t.pick(p)}
-              menu={crudMenu(p, "EA · release")}
-            />
-            {open && kids.map((k) => (
-              <TreeItem key={k} icon="chevron_right" label={k} depth={1} mono menu={crudMenu(k, "EA · release")} />
-            ))}
-          </div>
-        );
-      })}
-      <p className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Staging · settings
-      </p>
-      <div className="px-3 font-mono text-[11px] leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
-        {[["MMO_PORT", "7777"], ["MMO_DATA_DIR", "/srv/nexus/data"], ["MMO_WORLD_SEED", "1337"], ["MMO_ALLOW_REGISTER", "0"], ["MMO_BOTS", "40"], ["MMO_MODULES", "core, goblin-ai"]].map(([k, v]) => (
-          <p key={k} className="flex"><span>{k}</span><span className="ml-auto" style={{ color: "var(--m3-on-surface)" }}>{v}</span></p>
-        ))}
-      </div>
-    </div>
-  );
-}
 /** Debug sessions dock: live server state plus the overlay controls the
  *  Play mode panel itself uses — same store, both directions. */
 function DebugTree(): React.JSX.Element {
@@ -2320,7 +2067,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
   if (workspace === "liveops") return <LiveOpsDetails />;
   if (workspace === "database") return <DatabaseRowDetails />;
-  if (workspace === "release") return <ReleaseDeployDetails />;
+  if (workspace === "release") return <ReleaseDetails />;
   if (workspace === "flow" && view === "hud") return <HudDetails />;
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <StoryDetails />;

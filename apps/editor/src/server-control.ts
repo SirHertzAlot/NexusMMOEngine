@@ -7,6 +7,8 @@
  * routes, so the Play Mode panel can import it safely.
  */
 
+import type { PlayStartOptions } from "./play-mode.js";
+
 /** One owned play-mode server, as returned by the dev host. */
 export interface PlayServerLike {
   url: string;
@@ -14,16 +16,16 @@ export interface PlayServerLike {
   /** One-session dev credentials seeded by the host for this server. */
   username: string;
   password: string;
+  /** Every seeded account of the session (the first is username/password). */
+  accounts?: Array<{ username: string; password: string }>;
+  /** The edge process runs beside the core. */
+  edge?: boolean;
+  /** Round-trip delay the client connections go through, ms. */
+  latencyMs?: number;
 }
 
-/**
- * What the play-start path passes the host. Only bots is honored
- * (the host spawns the server with MMO_BOTS); everything else in the
- * Play menu is preview until its slice lands (see ui/play-setup.ts).
- */
-export interface PlayServerStartOptions {
-  bots?: number;
-}
+/** What the play-start path passes the host: the Play menu's choices the server side honors. */
+export type PlayServerStartOptions = PlayStartOptions;
 
 /** Server-control surface the editor UI drives (implements ServerControl). */
 export interface HostServerControl {
@@ -51,18 +53,15 @@ export function createHostServerControl(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(opts?.bots !== undefined ? { bots: opts.bots } : {}),
+          ...(opts?.clients !== undefined ? { clients: opts.clients } : {}),
+          ...(opts?.network !== undefined ? { network: opts.network } : {}),
+          ...(opts?.latencyMs !== undefined ? { latencyMs: opts.latencyMs } : {}),
+          ...(opts?.fresh !== undefined ? { fresh: opts.fresh } : {}),
+          ...(opts?.keep !== undefined ? { keep: opts.keep } : {}),
           ...(open ? { scene: { name: open.name, content: open.doc } } : {}),
         }),
       });
-      const body = (await res.json()) as {
-        ok: boolean;
-        pid: number;
-        port: number;
-        url: string;
-        username: string;
-        password: string;
-        error?: string;
-      };
+      const body = (await res.json()) as PlayServerLike & { ok: boolean; port: number; error?: string };
       if (!res.ok || !body.ok) {
         throw new Error(body.error ?? `start failed: HTTP ${res.status}`);
       }
@@ -72,6 +71,9 @@ export function createHostServerControl(
         pid: body.pid,
         username: body.username,
         password: body.password,
+        accounts: body.accounts,
+        edge: body.edge,
+        latencyMs: body.latencyMs,
       };
     },
     async stop() {

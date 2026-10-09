@@ -1,73 +1,21 @@
 /**
- * Play setup persistence — what the Play menu chose, and what the
- * play-start path actually honors.
+ * Play setup persistence (EA14). The last-used setup (what F5 runs) lives
+ * in browser storage; saved, named setups with shortcut keys live in the
+ * repo document `content/play/setups.json` through `/api/editor/play/setups`.
  *
- * Pure logic (no React, no DOM): storage is injected so node:test can
- * pass a fake. The UI defaults to window.localStorage when present.
- *
- * Honored today (passed to serverControl.start / the shell):
- * - where = "viewport" (the embedded game view; "window"/"simulate"
- *   need a client windowing / headless path that does not exist yet);
- * - clients = "1" (one mirror client; 2/4/8 need extra clients);
- * - bots (sent as MMO_BOTS for the owned server);
- * - tint (the shell tints tertiary + Details goes read-only while
- *   running).
- *
- * Preview-only (badged "preview" in the menu, never pretended):
- * - where window/simulate, from (entry node), clients > 1, net,
- *   latency, fresh/keep (world snapshot/restore).
+ * Pure logic (no React): storage and fetch are injected so node:test can
+ * pass fakes. The setup type and its validation are in ../play-setups.ts.
  */
 
-export interface PlaySetup {
-  where: string;
-  from: string;
-  clients: string;
-  bots: string;
-  net: string;
-  latency: string;
-  fresh: boolean;
-  keep: boolean;
-  tint: boolean;
-}
+import {
+  defaultPlaySetup,
+  emptySetups,
+  normalizePlaySetup,
+  type PlaySetup,
+  type PlaySetupsDoc,
+} from "../play-setups.js";
 
-export const DEFAULT_PLAY_SETUP: PlaySetup = {
-  where: "viewport",
-  from: "World",
-  clients: "1",
-  bots: "10",
-  net: "Edge + core",
-  latency: "0",
-  fresh: true,
-  keep: false,
-  tint: true,
-};
-
-const CLEAN_DEFAULT: PlaySetup = { ...DEFAULT_PLAY_SETUP };
-
-export function defaultPlaySetup(): PlaySetup {
-  return { ...CLEAN_DEFAULT };
-}
-
-const STR_FIELDS = ["where", "from", "clients", "bots", "net", "latency"] as const;
-const BOOL_FIELDS = ["fresh", "keep", "tint"] as const;
-
-/** Validate an unknown value into a PlaySetup (unknown → defaults). */
-export function normalizePlaySetup(raw: unknown): PlaySetup {
-  const out = defaultPlaySetup();
-  if (typeof raw !== "object" || raw === null) return out;
-  const r = raw as Record<string, unknown>;
-  for (const f of STR_FIELDS) {
-    if (typeof r[f] === "string" && (r[f] as string).length > 0) {
-      (out as unknown as Record<string, string>)[f] = r[f] as string;
-    }
-  }
-  for (const f of BOOL_FIELDS) {
-    if (typeof r[f] === "boolean") {
-      (out as unknown as Record<string, boolean>)[f] = r[f] as boolean;
-    }
-  }
-  return out;
-}
+export * from "../play-setups.js";
 
 export interface PlayStorage {
   getItem(key: string): string | null;
@@ -99,7 +47,6 @@ export function defaultPlayStorage(): PlayStorage {
 }
 
 export const LAST_SETUP_KEY = "mmo-editor.play-last";
-export const NAMED_SETUPS_KEY = "mmo-editor.play-setups";
 
 /** The last-used setup (what F5 / Play runs). */
 export function loadLastSetup(storage: PlayStorage = defaultPlayStorage()): PlaySetup {
@@ -120,70 +67,41 @@ export function saveLastSetup(setup: PlaySetup, storage: PlayStorage = defaultPl
   }
 }
 
-/** Named setups ("Raid test: 8 clients…"), by name. */
-export function loadNamedSetups(storage: PlayStorage = defaultPlayStorage()): Record<string, PlaySetup> {
-  try {
-    const raw = storage.getItem(NAMED_SETUPS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const out: Record<string, PlaySetup> = {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (k.trim() !== "") out[k] = normalizePlaySetup(v);
-    }
-    return out;
-  } catch {
-    return {};
+type Fetch = typeof fetch;
+
+/** The saved setups document (an empty one when the file does not exist yet). */
+export async function fetchPlaySetups(base = "", f: Fetch = fetch): Promise<PlaySetupsDoc> {
+  const res = await f(`${base}/api/editor/play/setups`);
+  if (!res.ok) throw new Error(`play setups: HTTP ${res.status}`);
+  const body = (await res.json()) as { content?: PlaySetupsDoc };
+  return body.content ?? emptySetups();
+}
+
+/** Save the whole document; the host refuses an invalid one (every problem listed) and writes nothing. */
+export async function savePlaySetups(doc: PlaySetupsDoc, base = "", f: Fetch = fetch): Promise<void> {
+  const res = await f(`${base}/api/editor/play/setups`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: doc }),
+  });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => ({}))) as { error?: string; issues?: string[] };
+    throw new Error([b.error ?? `HTTP ${res.status}`, ...(b.issues ?? [])].join("; "));
   }
 }
 
-function writeNamedSetups(all: Record<string, PlaySetup>, storage: PlayStorage): void {
-  try {
-    storage.setItem(NAMED_SETUPS_KEY, JSON.stringify(all));
-  } catch {
-    /* prefs stay in memory */
-  }
+/** Add or replace a named setup (keeping its shortcut unless a new one is given). */
+export function withSetup(doc: PlaySetupsDoc, name: string, setup: PlaySetup, shortcut?: string | null): PlaySetupsDoc {
+  const old = doc.setups.find((s) => s.name === name);
+  const key = shortcut === undefined ? old?.shortcut : (shortcut ?? undefined);
+  // A key belongs to one setup: binding it here unbinds it elsewhere.
+  const others = doc.setups.filter((s) => s.name !== name).map((s) => (key && s.shortcut === key ? { name: s.name, setup: s.setup } : s));
+  const mine = { name, ...(key ? { shortcut: key } : {}), setup: { ...setup } };
+  const at = doc.setups.findIndex((s) => s.name === name);
+  return { version: 1, setups: at < 0 ? [...others, mine] : [...others.slice(0, at), mine, ...others.slice(at)] };
 }
 
-export function saveNamedSetup(name: string, setup: PlaySetup, storage: PlayStorage = defaultPlayStorage()): Record<string, PlaySetup> {
-  const trimmed = name.trim();
-  if (trimmed === "") return loadNamedSetups(storage);
-  const all = loadNamedSetups(storage);
-  all[trimmed] = { ...setup };
-  writeNamedSetups(all, storage);
-  return all;
-}
-
-export function deleteNamedSetup(name: string, storage: PlayStorage = defaultPlayStorage()): Record<string, PlaySetup> {
-  const all = loadNamedSetups(storage);
-  delete all[name];
-  writeNamedSetups(all, storage);
-  return all;
-}
-
-/** Bots count the owned server can honor (MMO_BOTS). NaN → 0. */
-export function botsCount(setup: PlaySetup): number {
-  const n = Number(setup.bots);
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-}
-
-/** One-line chip: what Play will do ("In viewport · World · 1 client"). */
-export function setupSummary(setup: PlaySetup): string {
-  const where = setup.where === "viewport" ? "In viewport" : setup.where === "window" ? "New window" : "Simulate";
-  const clients = `${setup.clients} client${setup.clients === "1" ? "" : "s"}`;
-  return `${where} · ${setup.from} · ${clients}`;
-}
-
-/**
- * Dimensions the start path cannot honor yet (menu badges + leftover
- * report). Keys are setup fields; values explain why.
- */
-export const PLAY_PREVIEW_NOTES: Record<string, string> = {
-  where: "Only the viewport is wired: a new window / simulate needs a client windowing path",
-  from: "The owned server boots the open world; starting at a flow node is not wired",
-  clients: "Only 1 client connects today; 2/4/8 need extra mirror clients",
-  net: "No edge/core switch on start; the owned server always runs core",
-  latency: "No simulated-latency control on the client connections",
-  fresh: "No world snapshot/restore: stop leaves world.db as-is",
-  keep: "No keep/discard of play changes: the world keeps what the tick wrote",
-};
+export const withoutSetup = (doc: PlaySetupsDoc, name: string): PlaySetupsDoc => ({
+  version: 1,
+  setups: doc.setups.filter((s) => s.name !== name),
+});
