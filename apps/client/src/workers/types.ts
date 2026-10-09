@@ -1,0 +1,104 @@
+/**
+ * Worker task types and payloads — shared between main thread and worker.
+ */
+export interface WorkerTask<T = unknown> {
+  id: number;
+  type: string;
+  payload: T;
+}
+
+export interface WorkerResult<R = unknown> {
+  id: number;
+  type: string;
+  payload: R;
+  error?: string;
+}
+
+/** Map of task type -> payload type for compile-time safety. */
+export interface TaskPayloadMap {
+  terrain: TerrainTaskPayload;
+  pcg: PcgTaskPayload;
+  bvh: BvhTaskPayload;
+  terrainBlock: TerrainBlockTaskPayload;
+  // Extend this interface to add new task types
+}
+
+export interface TerrainTaskPayload {
+  heights: Float32Array;
+  chunkWorldSize: number;
+}
+
+export interface PcgTaskPayload {
+  bytes: ArrayBuffer;
+}
+
+export interface BvhTaskPayload {
+  positions: Float32Array;
+  indices: Uint16Array | Uint32Array;
+}
+
+/** One LOD block of chunks (see terrain-lod.ts buildBlockBuffers). */
+export interface TerrainBlockTaskPayload {
+  chunks: Array<{ cx: number; cz: number; heights: Float32Array; normals: Float32Array; stride: number }>;
+  chunkWorldSize: number;
+  originX: number;
+  originZ: number;
+}
+
+export type TaskPayload = TaskPayloadMap[keyof TaskPayloadMap];
+
+export interface TerrainResultPayload {
+  position: Float32Array;
+  normal: Float32Array;
+  index: Uint16Array;
+  bbox: Float32Array; // [minX, minY, minZ, maxX, maxY, maxZ]
+}
+
+export interface PcgResultPayload {
+  position: Float32Array;
+  index: Uint32Array;
+  normal?: Float32Array;
+  uv?: Float32Array;
+  color?: Float32Array;
+  bbox: Float32Array;
+}
+
+/** Same shape as three-mesh-bvh's SerializedBVH, so it feeds MeshBVH.deserialize directly. */
+export interface BvhResultPayload {
+  version: number;
+  roots: ArrayBuffer[];
+  index: Int32Array | Uint32Array | Uint16Array | null;
+  indirectBuffer: Uint32Array | Uint16Array | null;
+}
+
+export interface TerrainBlockResultPayload {
+  position: Float32Array;
+  normal: Float32Array;
+  index: Uint16Array | Uint32Array;
+}
+
+export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload;
+
+export interface WorkerRequest<T extends keyof TaskPayloadMap = keyof TaskPayloadMap> {
+  id: number;
+  type: T;
+  payload: TaskPayloadMap[T];
+}
+
+export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPayloadMap> {
+  id: number;
+  type: T;
+  payload: T extends 'terrain' ? TerrainResultPayload :
+    T extends 'pcg' ? PcgResultPayload :
+    T extends 'bvh' ? BvhResultPayload :
+    T extends 'terrainBlock' ? TerrainBlockResultPayload :
+    never;
+  error?: string;
+}
+
+export type WorkerMessage = WorkerRequest | WorkerResponse;
+
+export interface WorkerTaskHandler<T extends keyof TaskPayloadMap> {
+  type: T;
+  handle(payload: TaskPayloadMap[T]): Promise<WorkerResponse<T>['payload']>;
+}

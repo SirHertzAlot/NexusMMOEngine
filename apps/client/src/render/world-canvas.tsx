@@ -58,6 +58,7 @@ import { Footsteps, footstepEvent } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 import { PerfSampler, type PerfSample } from "./perf-stats.js";
@@ -338,10 +339,18 @@ function MirrorWorld({
   useEffect(() => {
     const sky = new DaySky();
     const particles = new ParticleFx(camera);
-    const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16);
+    // Terrain blocks, PCG meshes and BVHs build in workers (src/workers); without Worker (tests, SSR) they build inline.
+    const workers =
+      typeof Worker === "undefined"
+        ? undefined
+        : new WorkerPool(
+            () => new Worker(new URL("../workers/index.ts", import.meta.url), { type: "module" }) as never,
+            Math.min(4, Math.max(1, (navigator.hardwareConcurrency ?? 2) - 1)),
+          );
+    const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16, workers);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
-    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg });
+    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers });
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -446,6 +455,7 @@ function MirrorWorld({
       npcs.dispose();
       entrances.dispose();
       terrain.dispose();
+      workers?.dispose();
       water.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);

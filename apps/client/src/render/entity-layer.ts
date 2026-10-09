@@ -41,6 +41,7 @@ import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
 import { QuarksFx } from "./vfx/quarks-fx.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
+import type { WorkerRequester } from "../workers/pool.js";
 import { PcgMeshes } from "./pcg-meshes.js";
 import { ChainedPropModels, SyntyProps, fnv1a32 } from "./synty-props.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
@@ -51,6 +52,8 @@ import type { QualitySettings } from "./quality.js";
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
+  /** Decode PCG meshes and build their BVHs off the main thread. */
+  workers?: WorkerRequester;
 }
 
 interface TrackedMesh {
@@ -146,7 +149,7 @@ export class EntityLayer {
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
   ) {
-    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged()) : null;
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
