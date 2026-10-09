@@ -26,6 +26,7 @@ import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { requestNewScene } from "../open-scene.js";
@@ -437,6 +438,50 @@ export function App(): React.JSX.Element {
           e.preventDefault();
           target.redo();
         }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "x") {
+        // Cut / copy / paste / duplicate act on the open document; skip
+        // when typing in a field so the OS clipboard keeps working there.
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canCut) {
+          e.preventDefault();
+          target.cut?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "c") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canCopy) {
+          e.preventDefault();
+          target.copy?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "v") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canPaste) {
+          e.preventDefault();
+          target.paste?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "d") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canDuplicate) {
+          e.preventDefault();
+          target.duplicate?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "a") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canSelectAll) {
+          e.preventDefault();
+          target.selectAll?.();
+        }
+      } else if (e.key === "Delete") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canDelete) {
+          e.preventDefault();
+          target.deleteSelection?.();
+        }
       } else if (e.key === "Escape") {
         setPalette(false);
         setPlayMenu(false);
@@ -817,6 +862,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   }
 
   const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  // Re-render the menus when the clipboard changes (Paste enables after Copy).
+  React.useSyncExternalStore(subscribeClipboard, () => clipboardVersion());
   // A menu item is enabled when there's an open document that supports it.
   // Unsupported operations disable with a reason — no "soon" placeholders.
   const docItem = (
