@@ -960,6 +960,14 @@ export class Gateway {
   }
 
   /**
+   * The current HTTP handler (null: none). Services that mount after
+   * construction (PCG, health) compose with it instead of replacing it.
+   */
+  getHttpHandler(): HttpHandler | null {
+    return this.httpHandler;
+  }
+
+  /**
    * The account behind a live session token (the welcome's
    * session_token), or null: how HTTP services authenticate callers.
    */
