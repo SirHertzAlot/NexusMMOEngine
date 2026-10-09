@@ -94,6 +94,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
+import { parseAppearanceArgs, applyAppearanceEdit } from "../admin/appearance.js";
 import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
@@ -2092,6 +2093,13 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "appearance") {
+      res = this.runAppearance(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else if (cmd.command === "spawnlist" || cmd.command === "spawn" || cmd.command === "despawn") {
       res = this.runSpawnCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
@@ -2236,6 +2244,36 @@ export class Gateway {
     const r = applySet(this.world, target.wireId, parsed.data.component, parsed.data.field, parsed.data.value);
     if (!r.ok) return { kind: "admin", command: "set", ok: false, message: r.message };
     return { kind: "admin", command: "set", ok: true, message: r.message };
+  }
+
+  /**
+   * `appearance` (roadmap A6): view and edit a character's look live.
+   * Args: {entity: "<u64>" | "me", args: string[]}. Parts and colours are
+   * validated against the character catalog; the change applies via
+   * sim.setLook and syncs like any appearance update.
+   */
+  private runAppearance(s: ClientSession, args: unknown): AdminResult {
+    const parsed = z.object({
+      entity: z.string().default("me"),
+      args: z.array(z.string()).default([]),
+    }).safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "appearance", ok: false, message: "usage: appearance {entity?: \"me\"|<id>, args?: string[]}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "appearance", ok: false, message: target.error };
+    }
+    const edit = parseAppearanceArgs(parsed.data.args);
+    if (!edit.ok) {
+      return { kind: "admin", command: "appearance", ok: false, message: edit.message };
+    }
+    const r = applyAppearanceEdit(this.world, target.wireId, edit.edit, this.characterCatalog ?? null);
+    if (!r.ok) return { kind: "admin", command: "appearance", ok: false, message: r.message ?? "appearance failed" };
+    // Equipment overlays (held models) still apply on top.
+    const eid = this.world.resolveWireId(target.wireId);
+    if (eid >= 0) this.refreshAvatarLook(eid, this.holderOf(s));
+    return { kind: "admin", command: "appearance", ok: true, message: r.message ?? "appearance updated" };
   }
 
   /**
