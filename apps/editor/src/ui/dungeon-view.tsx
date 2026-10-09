@@ -159,7 +159,16 @@ export function DungeonPanel(): React.JSX.Element {
       canSave: dirty,
       canUndo: undo.length > 0,
       canRedo: redo.length > 0,
-      save: () => void save(),
+      save: () => save(),
+      revert: () => open(dungeon.id),
+      exportDoc: () => ({ name: `${dungeon.id}.patch`, data: patch }),
+      importDoc: (incoming: unknown) => {
+        const p = incoming as DungeonPatch;
+        if (p.hash !== dungeon.hash) throw new Error(`this patch was made for another layout of ${dungeon.id}`);
+        setUndo((u) => [...u.slice(-199), patch]);
+        setRedo([]);
+        setPatch(p);
+      },
       undo: () => {
         setRedo((r) => [...r, patch]);
         setPatch(undo[undo.length - 1]);

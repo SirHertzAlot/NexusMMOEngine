@@ -534,11 +534,6 @@ export function SnackbarHost(): React.JSX.Element {
   );
 }
 
-/** Helper for staged commands: notify("<label> — staged for <slice>"). */
-export function staged(label: string, slice: string): () => void {
-  return () => notify(`${label} — staged for ${slice}`);
-}
-
 // ---------------------------------------------------------------- overflow menu
 
 export interface MenuItem {
@@ -546,8 +541,10 @@ export interface MenuItem {
   icon?: string;
   kbd?: string;
   danger?: boolean;
-  /** Owning slice: when set (and no run), the item stages honestly. */
-  stagedFor?: string;
+  /** Why the command is unavailable right now; the item shows disabled with this as its tooltip. */
+  disabled?: string;
+  /** Shows a check before the label (a toggle that is on). */
+  checked?: boolean;
   run?: () => void;
 }
 
@@ -574,26 +571,26 @@ export function OverflowMenu({ label, items, size = 36 }: {
               if (it === "sep") {
                 return <li key={`sep-${i}`} className="list-none" style={{ borderTop: "1px solid var(--m3-outline-variant)", margin: "4px 2px" }} />;
               }
-              const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => setOpen(false));
+              const run = it.run ?? (() => undefined);
               return (
                 <li key={it.label} className="list-none">
                   <button
+                    disabled={it.disabled !== undefined}
+                    title={it.disabled !== undefined ? `${it.label} — ${it.disabled}` : undefined}
                     onClick={() => {
                       setOpen(false);
                       run();
                     }}
                     className="m3-focus flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                    style={{ color: it.danger ? "var(--m3-error)" : "var(--m3-on-surface)" }}
+                    style={{ color: it.danger ? "var(--m3-error)" : "var(--m3-on-surface)", opacity: it.disabled !== undefined ? 0.5 : undefined }}
                   >
                     {it.icon && (
                       <span style={{ color: "var(--m3-on-surface-variant)" }}>
                         <MIcon name={it.icon} size={17} />
                       </span>
                     )}
+                    {it.checked !== undefined && <span aria-hidden="true" className="w-3">{it.checked ? "✓" : ""}</span>}
                     {it.label}
-                    {it.stagedFor && (
-                      <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
-                    )}
                     {it.kbd && (
                       <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
                         {it.kbd}

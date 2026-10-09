@@ -35,6 +35,7 @@ import {
 import { debuggerLayoutDefaults } from "../debugger-layout.js";
 import { DEFAULT_BINDINGS } from "@mmo-engine/client/render";
 import { GameView } from "./game-view.js";
+import { getViewportFlags, registerViewport, subscribeViewport, toggleViewportFlag } from "./viewport-bus.js";
 import { Button } from "./components.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
@@ -56,7 +57,8 @@ export interface PlayDebuggerProps {
 export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerProps): React.JSX.Element {
   const [hud, setHud] = React.useState<HudData | null>(null);
   const [gpu, setGpu] = React.useState<GpuInfo | null>(null);
-  const [wireframe, setWireframe] = React.useState(false);
+  // Wireframe is the shared viewport toggle (toolbar viewport options and the tools panel below).
+  const wireframe = React.useSyncExternalStore(subscribeViewport, () => getViewportFlags().wireframe);
   const [showcase, setShowcase] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
   const [quality, setQuality] = React.useState<"auto" | QualityTier>("auto");
@@ -64,6 +66,19 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
+  // The game view is the active viewport while play mode shows it: it owns its camera (follow cam),
+  // has no grid or gizmos, and can toggle wireframe and take a screenshot.
+  React.useEffect(() => {
+    if (!frame) return;
+    return registerViewport({
+      label: "game view",
+      supports: { wireframe: true },
+      screenshot: () => {
+        const canvas = frame.querySelector("canvas");
+        return new Promise<Blob | null>((resolve) => (canvas ? canvas.toBlob((b) => resolve(b), "image/png") : resolve(null)));
+      },
+    });
+  }, [frame]);
   // The picked entity (a left click in the view) and its card.
   const [combat] = React.useState(() => new CombatFeedback());
   const library = usePcgLibrary();
@@ -154,7 +169,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       content: (
         <>
           <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => setWireframe((w) => !w)}>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => toggleViewportFlag("wireframe")}>
               {wireframe ? "solid terrain" : "wireframe terrain"}
             </Button>
             <Button

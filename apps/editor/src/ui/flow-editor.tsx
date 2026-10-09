@@ -71,12 +71,17 @@ export function FlowEditor(): React.JSX.Element {
   const drag = React.useRef<{ kind: "pan" | "node"; id: string | null; dx: number; dy: number; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const [view, setView] = React.useState({ x: 0, y: 0 });
+  // Undo / redo: every edit pushes the document it replaces; a drag pushes once.
+  const history = React.useRef<{ past: FlowDoc[]; future: FlowDoc[] }>({ past: [], future: [] });
+  const dragPushed = React.useRef(false);
+  const [, bump] = React.useReducer((n: number) => n + 1, 0);
 
   const load = React.useCallback((): void => {
     setStatus("loading…");
     getFlow()
       .then((b) => {
         setDoc(b.content);
+        history.current = { past: [], future: [] };
         setSaved(JSON.stringify(b.content));
         setScenes(b.scenes);
         setEvents(b.events);
@@ -90,19 +95,44 @@ export function FlowEditor(): React.JSX.Element {
     load();
   }, [load]);
 
-  // Toolbar Save target while the flow is open (no undo stack here —
-  // edits apply directly, so Undo/Redo stay disabled).
+  // Menu / toolbar target while the flow is open.
   React.useEffect(() => {
     if (!doc) return;
     const snapshot = JSON.stringify(doc);
+    const h = history.current;
     const target = {
       label: "game flow",
       canSave: snapshot !== saved,
-      canUndo: false,
-      canRedo: false,
-      save: () => void save(),
-      undo: () => undefined,
-      redo: () => undefined,
+      canUndo: h.past.length > 0,
+      canRedo: h.future.length > 0,
+      save: () => save(),
+      undo: () => {
+        const prev = h.past.pop();
+        if (!prev) return;
+        h.future.push(doc);
+        setDoc(prev);
+        setRefused([]);
+        bump();
+      },
+      redo: () => {
+        const next = h.future.pop();
+        if (!next) return;
+        h.past.push(doc);
+        setDoc(next);
+        setRefused([]);
+        bump();
+      },
+      revert: () => load(),
+      exportDoc: () => ({ name: "game.flow", data: doc }),
+      importDoc: (incoming: unknown) => {
+        const problems = validateFlow(incoming, { scenes });
+        if (problems.length > 0) throw new Error(`invalid flow: ${problems.slice(0, 3).map((i) => `${i.path} ${i.message}`).join("; ")}`);
+        h.past.push(doc);
+        h.future.length = 0;
+        setDoc(incoming as FlowDoc);
+        setRefused([]);
+        bump();
+      },
     };
     registerDocActions(target);
     return () => clearDocActions(target);
@@ -125,6 +155,8 @@ export function FlowEditor(): React.JSX.Element {
   const dirty = JSON.stringify(doc) !== saved;
   const reach = flowReachable(doc);
   const edit = (next: FlowDoc): void => {
+    history.current.past.push(doc);
+    history.current.future.length = 0;
     setDoc(next);
     setRefused([]);
   };
@@ -206,9 +238,17 @@ export function FlowEditor(): React.JSX.Element {
           if (d.id === null) return;
           const p = toUnits(ev);
           const id = d.id;
+          if (!dragPushed.current) {
+            dragPushed.current = true;
+            history.current.past.push(doc);
+            history.current.future.length = 0;
+          }
           setDoc((cur) => (cur ? moveFlowNode(cur, id, Math.max(0, Math.round(p.x - d.dx)), Math.max(0, Math.round(p.y - d.dy))) : cur));
         }}
-        onPointerUp={() => (drag.current = null)}
+        onPointerUp={() => {
+          drag.current = null;
+          dragPushed.current = false;
+        }}
       >
         <defs>
           <marker id="ah-gameflow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">

@@ -19,6 +19,7 @@ import {
   HUD_THEME_TOKENS,
   hudProblems,
   hudReport,
+  validateHud,
   widgetRect,
   type HudDoc,
   type SceneIssue,
@@ -29,6 +30,7 @@ import {
   hudDragEnd,
   hudDragStart,
   hudDragWidget,
+  hudEdit,
   hudMarkSaved,
   hudModel,
   hudPatchWidget,
@@ -121,9 +123,16 @@ export function HudEditor(): React.JSX.Element {
       canSave: hudDirty(m),
       canUndo: m.past.length > 0,
       canRedo: m.future.length > 0,
-      save: () => void save(),
+      save: () => save(),
       undo: () => edit(hudUndo),
       redo: () => edit(hudRedo),
+      revert: () => edit(hudRevert),
+      exportDoc: () => ({ name: "hud", data: m.doc }),
+      importDoc: (incoming: unknown) => {
+        const problems = validateHud(incoming);
+        if (problems.length > 0) throw new Error(`invalid HUD: ${problems.slice(0, 3).map((i) => `${i.path || "(hud)"} ${i.message}`).join("; ")}`);
+        edit((cur) => hudEdit(cur, incoming as HudDoc));
+      },
     };
     registerDocActions(target);
     return () => clearDocActions(target);

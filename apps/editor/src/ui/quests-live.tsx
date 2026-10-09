@@ -4,9 +4,9 @@
  * host. Editing is the Story editor's job; this links there.
  */
 import * as React from "react";
-import { loadStory } from "../story-client.js";
+import { loadStory, renameQuestRemote, StorySaveError } from "../story-client.js";
 import { summarizeQuests, type QuestRow } from "../quest-summary.js";
-import { Badge, Button } from "./components.js";
+import { Badge, Button, OverflowMenu, notify } from "./components.js";
 
 let selected: string | null = null;
 let rowsCache: QuestRow[] | null = null;
@@ -104,24 +104,43 @@ export function QuestsPanel(): React.JSX.Element {
 
 /** Left tree of the Story workspace: the real quests; picking one shows it in the Quests view. */
 export function QuestsTree({ onView }: { onView: (v: string) => void }): React.JSX.Element {
-  const { rows } = useQuests();
+  const { rows, reload } = useQuests();
   const sel = React.useSyncExternalStore(subscribe, () => selected);
+  const rename = (from: string): void => {
+    const to = window.prompt(`Rename quest id "${from}" to (lowercase letters, digits, dashes):`, from);
+    if (!to || to === from) return;
+    renameQuestRemote(from, to).then(
+      () => {
+        if (selected === from) selectQuest(to);
+        reload();
+        notify(`Renamed quest ${from} to ${to} (quests and dialogs updated)`);
+      },
+      (e: Error) =>
+        notify(
+          e instanceof StorySaveError
+            ? `Rename refused, nothing written: ${e.issues.filter((i) => i.severity === "error").slice(0, 2).map((i) => i.message).join("; ")}`
+            : `Rename refused: ${e.message}`,
+        ),
+    );
+  };
   return (
     <div className="flex flex-col gap-0.5">
       {(rows ?? []).map((r) => (
-        <button
-          key={r.id}
-          onClick={() => {
-            selectQuest(r.id);
-            onView("quests");
-          }}
-          aria-current={sel === r.id ? "true" : undefined}
-          className="m3-focus flex items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[13px]"
-          style={sel === r.id ? { background: "var(--m3-secondary-container)" } : undefined}
-        >
-          <span className="font-mono">{r.id}</span>
-          <span className="ml-auto text-[11px]" style={dim}>{r.steps.length} steps</span>
-        </button>
+        <div key={r.id} className="flex items-center">
+          <button
+            onClick={() => {
+              selectQuest(r.id);
+              onView("quests");
+            }}
+            aria-current={sel === r.id ? "true" : undefined}
+            className="m3-focus flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[13px]"
+            style={sel === r.id ? { background: "var(--m3-secondary-container)" } : undefined}
+          >
+            <span className="font-mono">{r.id}</span>
+            <span className="ml-auto text-[11px]" style={dim}>{r.steps.length} steps</span>
+          </button>
+          <OverflowMenu label={`${r.id} actions`} size={36} items={[{ label: "Rename id…", icon: "edit", run: () => rename(r.id) }]} />
+        </div>
       ))}
       <p className="px-3 pt-1 font-mono text-[11px]" style={dim}>content/quests · validated as a set at boot</p>
     </div>

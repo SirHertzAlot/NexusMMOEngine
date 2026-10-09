@@ -15,6 +15,7 @@ import {
   parseMessage,
   stringsStatus,
   textHash,
+  validateStrings,
   type StringStatus,
   type StringsBundle,
 } from "@mmo-engine/scene";
@@ -160,7 +161,22 @@ export function StringsPanel(): React.JSX.Element {
 
   React.useEffect(() => {
     if (!data) return;
-    const target = { label: "string tables", canSave: dirtyLangs.length > 0, canUndo: false, canRedo: false, save: () => void save(), undo: () => undefined, redo: () => undefined };
+    const target = {
+      label: "string tables",
+      canSave: dirtyLangs.length > 0,
+      canUndo: false,
+      canRedo: false,
+      save: () => save(),
+      undo: () => undefined,
+      redo: () => undefined,
+      revert: () => load(),
+      exportDoc: () => ({ name: `strings-${lang}`, data: drafts[lang] }),
+      importDoc: (incoming: unknown) => {
+        const problems = validateStrings(incoming, lang);
+        if (problems.length > 0) throw new Error(`invalid ${lang} strings: ${problems.slice(0, 3).map((i) => `${i.path} ${i.message}`).join("; ")}`);
+        setDrafts((d) => ({ ...d, [lang]: incoming as StringsBundle }));
+      },
+    };
     registerDocActions(target);
     return () => clearDocActions(target);
   });

@@ -36,6 +36,8 @@ import { Button, Input, Label, SectionTitle } from "./components.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
+import { clipboardNode, copyNode, duplicateCandidate, pasteCandidate } from "./scene-clipboard.js";
+import { onSceneCommand } from "./scene-commands.js";
 
 const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
@@ -127,12 +129,47 @@ export function ScenesPanel(): React.JSX.Element {
   // Toolbar Save/Undo/Redo target while a scene is open.
   React.useEffect(() => {
     if (!open) return;
+    const pasteInto = (n: SceneNode | null, label: string): void => {
+      if (!n) return;
+      run(label, (d) => addNode(d, selected && findNode(d, selected) ? selected : null, n));
+      select(n.id);
+    };
     const target = {
       label: `scene "${open}"`,
       canSave: hist.dirty,
       canUndo: hist.canUndo,
       canRedo: hist.canRedo,
       save,
+      revert: () => load(open),
+      exportDoc: () => ({ name: `${open}.scene`, data: hist.doc }),
+      importDoc: (incoming: unknown) => {
+        const problems = validateScene(incoming);
+        if (problems.length > 0) throw new Error(`invalid scene: ${problems.slice(0, 3).map((i) => `${i.path || "(scene)"} ${i.message}`).join("; ")}`);
+        // The file keeps its own name, whatever the imported document was called.
+        run("import", () => ({ ...(incoming as typeof hist.doc), name: open }));
+        select(null);
+      },
+      edit: {
+        ...(selected && node
+          ? {
+              copy: () => {
+                copyNode(hist.doc, selected);
+                bump(); // Paste becomes available
+              },
+              cut: () => {
+                copyNode(hist.doc, selected);
+                run("cut node", (d) => removeNode(d, selected));
+                select(null);
+              },
+              duplicate: () => pasteInto(duplicateCandidate(hist.doc, selected), "duplicate node"),
+              remove: () => {
+                run("delete node", (d) => removeNode(d, selected));
+                select(null);
+              },
+            }
+          : {}),
+        ...(clipboardNode() ? { paste: () => pasteInto(pasteCandidate(hist.doc), "paste node") } : {}),
+      },
       undo: () => {
         hist.undo();
         setIssues(validateScene(hist.doc));
@@ -147,6 +184,17 @@ export function ScenesPanel(): React.JSX.Element {
     registerDocActions(target);
     return () => clearDocActions(target);
   });
+
+  // File > New Scene / Open Scene (also from other workspaces: the command waits for this panel).
+  React.useEffect(
+    () =>
+      onSceneCommand((c) => {
+        if (c.kind === "new") create();
+        else load(c.name);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const load = (name: string): void => {
     getScene(name).then(

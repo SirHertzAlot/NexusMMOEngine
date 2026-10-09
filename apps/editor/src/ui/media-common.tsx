@@ -8,7 +8,7 @@ import * as React from "react";
 import { MEDIA_DOCS, type GameContent, type MediaDocName, type MediaIssue } from "@mmo-engine/art/browser";
 import { MediaSaveError, getMedia, saveMedia } from "../media-client.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
-import { notify } from "./components.js";
+
 import { artStore } from "./previews.js";
 
 export const btn = "m3-focus rounded-full px-3 py-1 text-[13px] font-medium";
@@ -29,6 +29,7 @@ export function usePublish(patch: Partial<ReturnType<typeof mediaStore.get>>): v
 }
 
 export interface MediaDoc<N extends MediaDocName> {
+  name: N;
   doc: NonNullable<GameContent[N]> | null;
   /** Replace the document (an edit). */
   set: (next: NonNullable<GameContent[N]>) => void;
@@ -77,6 +78,7 @@ export function useMediaDoc<N extends MediaDocName>(name: N): MediaDoc<N> {
     }
   }, [doc, name]);
   return {
+    name,
     doc,
     set: (next) => {
       setDoc(next);
@@ -97,21 +99,36 @@ export function useMediaDoc<N extends MediaDocName>(name: N): MediaDoc<N> {
 }
 
 /** Register the toolbar's Save for the documents a panel edits (all of them, one after the other). */
-export function useSaveAction(label: string, docs: Array<{ dirty: boolean; save: () => Promise<boolean>; revert: () => void }>): void {
+export function useSaveAction(
+  label: string,
+  docs: Array<{ name: MediaDocName; doc: unknown; set: (next: never) => void; dirty: boolean; save: () => Promise<boolean>; revert: () => void }>,
+): void {
   React.useEffect(() => {
+    const loaded = docs.every((d) => d.doc !== null);
     const target = {
       label,
       canSave: docs.some((d) => d.dirty),
       canUndo: false,
       canRedo: false,
-      save: () => {
-        void (async () => {
-          for (const d of docs) if (d.dirty && !(await d.save())) return;
-          notify(`${label} saved`);
-        })();
+      save: async () => {
+        for (const d of docs) if (d.dirty && !(await d.save())) return;
       },
       undo: () => undefined,
       redo: () => undefined,
+      revert: () => docs.forEach((d) => d.revert()),
+      ...(loaded
+        ? {
+            // One document exports as itself; a panel with several exports them by name.
+            exportDoc: () => ({ name: label.replace(/\s+/g, "-"), data: docs.length === 1 ? docs[0].doc : Object.fromEntries(docs.map((d) => [d.name, d.doc])) }),
+            importDoc: (incoming: unknown) => {
+              const parts: Array<[(typeof docs)[number], unknown]> =
+                docs.length === 1 ? [[docs[0], incoming]] : docs.map((d) => [d, (incoming as Record<string, unknown>)[d.name]]);
+              const problems = parts.flatMap(([d, next]) => MEDIA_DOCS[d.name].validate(next as never).map((i) => `${d.name}: ${i.path} ${i.message}`));
+              if (problems.length > 0) throw new Error(`invalid ${label}: ${problems.slice(0, 3).join("; ")}`);
+              parts.forEach(([d, next]) => d.set(next as never));
+            },
+          }
+        : {}),
     };
     registerDocActions(target);
     return () => clearDocActions(target);

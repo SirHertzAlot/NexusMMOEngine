@@ -87,6 +87,7 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
+import { handleFilesRoute } from "./files-host.js";
 import { handleFlowRoute } from "./flow-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
@@ -1143,6 +1144,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (gameplayReply) {
             sendJson(res, gameplayReply.status, gameplayReply.body);
+            return;
+          }
+          // Rename / duplicate / delete of editor-owned content files (files-host.ts).
+          const filesReply = handleFilesRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "POST" && scenesUrl.pathname.startsWith("/api/editor/files/") ? await readBody(req) : undefined,
+          );
+          if (filesReply) {
+            sendJson(res, filesReply.status, filesReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(

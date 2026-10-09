@@ -5,6 +5,7 @@
  * StorySaveError with every issue and nothing written.
  */
 
+import { renameQuestId } from "./story-rename.js";
 import { STORY_FILES, type StoryFiles, type StoryIssue, type StoryRefs } from "./story-validate.js";
 
 export class StorySaveError extends Error {
@@ -54,4 +55,10 @@ export async function saveStory(changes: Partial<StoryFiles>, base = ""): Promis
   const res = await post(`${base}/api/editor/story`, "PUT", { files: changes });
   if (!res.ok) throw await failure(res, "story save failed");
   return ((await res.json()) as { issues: StoryIssue[] }).issues;
+}
+
+/** Rename a quest id everywhere it is named (quests, prerequisites, dialog replies); the host validates the renamed set and writes both files or neither. */
+export async function renameQuestRemote(from: string, to: string, base = ""): Promise<void> {
+  const { files } = await loadStory(base);
+  await saveStory(renameQuestId(files, from, to), base);
 }
