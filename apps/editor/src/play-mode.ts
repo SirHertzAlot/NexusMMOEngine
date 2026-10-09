@@ -33,6 +33,12 @@ export interface PlayServer {
   /** One-session dev credentials seeded by the host for this server. */
   username: string;
   password: string;
+  /** Every seeded account of the session (the first is username/password). */
+  accounts?: Array<{ username: string; password: string }>;
+  /** The edge process runs beside the core. */
+  edge?: boolean;
+  /** Round-trip delay the client connections go through, ms. */
+  latencyMs?: number;
 }
 
 /**
@@ -46,13 +52,20 @@ export interface ServerControl {
   isRunning(): boolean;
 }
 
-/** Options the play-start path honors (a subset of the Play menu). */
+/** The Play menu's choices the owned server honors (EA14); undefined leaves the server default. */
 export interface PlayStartOptions {
-  /**
-   * Computer-driven characters near the spawn point. Reaches the owned
-   * server as MMO_BOTS; undefined leaves the server default alone.
-   */
+  /** Computer-driven characters near the spawn point (MMO_BOTS). */
   bots?: number;
+  /** 1 to 8 clients, each with its own seeded account in a scratch CSV. */
+  clients?: number;
+  /** "edge" starts the edge process beside the core and waits for its health. */
+  network?: "core" | "edge";
+  /** Round-trip delay on the client connections, ms. */
+  latencyMs?: number;
+  /** A fresh world (terrain only) instead of the saved one. */
+  fresh?: boolean;
+  /** Keep the play session's changes: its world is written back on stop. */
+  keep?: boolean;
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */

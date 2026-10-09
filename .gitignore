@@ -20,6 +20,9 @@ build/
 .DS_Store
 .env
 
+# Release pipeline output: packages, caches, the local target
+/.release/
+
 # SQLite world databases (default ./data/world.db) — never commit
 data/
 # ...but vendored source trees may have a data/ directory of their own
