@@ -973,7 +973,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             modulesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            req.method === "PUT" && modulesUrl.pathname === "/api/editor/modules" ? await readBody(req) : undefined,
             {
               running: () => owned?.tickOrder() ?? null,
               // "Apply modules": the server reads the set at boot, so a running one restarts.
@@ -1010,7 +1010,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             scenesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/scenes") ? await readBody(req) : undefined,
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);

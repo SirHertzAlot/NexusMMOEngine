@@ -138,6 +138,7 @@ loadable modules, a database editor and production tools.
 | EA17 | Database functions and caches | 📋 | |
 | EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
 | EA19 | Build and deploy | 📋 | |
+| EA27 | Authorable down to the entity | 🚧 | `feat/data-driven-entities`: loot tables in `loot.json` (a creature's `drops.table` names item bases, rolled by the server's LootDropper); the server loads the species overlay (`content/species/species.json`, `MMO_SPECIES`) for scene `Spawner.species`, edited-species pack sizes in the wilds and biome-kind checks; crafting costs moved to `content/crafting/recipes.json` (validated at boot, drives `craft:report`); prefab files `content/prefabs/*.prefab.json` (bundle + per-field overrides + children) instantiated by the scene spawner; scenes place items (`ItemSpawn`), species, quests (`QuestGiver` moves the giver's post) and PICG assets from the catalog. Gameplay grids: Loot tables, Refining, Reagents, Prefabs, with inline checks and refused saves writing nothing. Open: no crafting actions use recipes yet; the viewport shows a prefab file as one node; wild/dungeon species use creature rules unless the overlay edits the species |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
 | EA22 | VFX and materials | 📋 | |
@@ -301,6 +302,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-08**: EA27 (`feat/data-driven-entities`): loot tables, species overlay and crafting rules read by the server, prefab files, and scene placement of items, species, quests and PICG assets; four new Gameplay grids.
 
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
