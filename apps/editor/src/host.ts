@@ -251,8 +251,13 @@ export class ServerLog {
   }
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
+/** One read per request: a second call gets the same body instead of waiting on a stream that already ended. */
+const bodies = new WeakMap<IncomingMessage, Promise<string>>();
+
+export function readBody(req: IncomingMessage): Promise<string> {
+  const known = bodies.get(req);
+  if (known) return known;
+  const read = new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (c: Buffer) => {
@@ -267,6 +272,8 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+  bodies.set(req, read);
+  return read;
 }
 
 /**
