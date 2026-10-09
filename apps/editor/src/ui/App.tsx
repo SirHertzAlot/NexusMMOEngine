@@ -1659,7 +1659,7 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
           [
             ["viewport", "fullscreen", "In viewport", "Panels stay around it", false],
             ["window", "open_in_new", "New window", "The player's client", true],
-            ["simulate", "visibility", "Simulate", "World only, no player", true],
+            ["simulate", "visibility", "Simulate", "World only, no player", false],
           ] as Array<[string, string, string, string, boolean]>
         ).map(([id, icon, title, body, preview]) => {
           const on = setup.where === id;
