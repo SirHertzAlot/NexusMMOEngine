@@ -90,6 +90,21 @@ export async function requestPlayStop(): Promise<void> {
   await c.stop();
 }
 
+// Toolbar Play / F5 / Play menu: start with the last setup. The panel owns the
+// controller and may not be mounted yet, so a request waits for it.
+let startHandler: (() => void) | null = null;
+let startPending = false;
+
+export function requestPlayStart(): void {
+  if (startHandler) startHandler();
+  else startPending = true;
+}
+
+/** For tests: whether a start request is waiting for the panel to mount. */
+export function isPlayStartPending(): boolean {
+  return startPending;
+}
+
 export function PlayModePanel(): React.JSX.Element {
   const [detail, setDetail] = React.useState<string | undefined>();
   const [busy, setBusy] = React.useState(false);
@@ -170,6 +185,24 @@ export function PlayModePanel(): React.JSX.Element {
       setBusy(false);
     }
   }
+
+  // Starts only from a stopped state: a click while running or starting does nothing.
+  const startRef = React.useRef<() => void>(() => undefined);
+  startRef.current = () => {
+    const st = controller.getState();
+    if (st === "idle" || st === "error") void onStart();
+  };
+  React.useEffect(() => {
+    const handler = (): void => startRef.current();
+    startHandler = handler;
+    if (startPending) {
+      startPending = false;
+      handler();
+    }
+    return () => {
+      if (startHandler === handler) startHandler = null;
+    };
+  }, []);
 
   async function onStop(): Promise<void> {
     setBusy(true);

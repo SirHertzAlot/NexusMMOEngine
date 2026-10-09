@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, playUiStore, requestPlayStart, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
@@ -308,9 +308,16 @@ export function App(): React.JSX.Element {
     setPlayMenu(false);
   }
 
-  function goPlay(): void {
+  /** Open the Play mode panel without starting anything. */
+  function showPlay(): void {
     pickWorkspace("debug");
     setView("play");
+  }
+
+  /** Play with the last setup: open the panel and start the server unless one is already running. */
+  function goPlay(): void {
+    showPlay();
+    requestPlayStart();
   }
 
   function go(ws: WorkspaceId, view?: string): void {
@@ -361,7 +368,7 @@ export function App(): React.JSX.Element {
   function setRunMode(m: RunMode): void {
     setMode(m);
     if (m === "edit") pickWorkspace("scene");
-    else goPlay();
+    else showPlay();
   }
 
   // Deep links (#/workspace/view/selection): read once on load and on
@@ -523,7 +530,7 @@ export function App(): React.JSX.Element {
           // Unreachable today (Shift F5 is handled above with the F5
           // branch), but must stay the real stop, not a navigation.
           void requestPlayStop();
-          goPlay();
+          showPlay();
         } else {
           const label = TOOL_SHORTCUT_BUTTON_LABELS[action];
           const btn = document.querySelector(`button[aria-label="${label}"]`);
@@ -561,6 +568,7 @@ export function App(): React.JSX.Element {
         onTogglePlayMenu={() => setPlayMenu((v) => !v)}
         onClosePlayMenu={() => setPlayMenu(false)}
         onPlay={goPlay}
+        onShowPlay={showPlay}
         playSetup={playSetup}
         onPlaySetup={updatePlaySetup}
         mode={mode}
@@ -592,7 +600,7 @@ export function App(): React.JSX.Element {
           }}
           onStop={() => {
             void requestPlayStop();
-            goPlay();
+            showPlay();
             setPalette(false);
           }}
         />
@@ -1216,6 +1224,7 @@ function Toolbar(props: {
   onTogglePlayMenu: () => void;
   onClosePlayMenu: () => void;
   onPlay: () => void;
+  onShowPlay: () => void;
   playSetup: PlaySetup;
   onPlaySetup: (s: PlaySetup) => void;
   mode: RunMode;
@@ -1370,7 +1379,7 @@ function Toolbar(props: {
         >
           <button
             onClick={props.onPlay}
-            title="Play with the last settings (F5) — opens Play mode"
+            title="Play with the last settings (F5)"
             className="m3-focus flex h-full items-center gap-1.5 pl-4 pr-3"
           >
             <MIcon name="play_arrow" size={20} />
@@ -1410,7 +1419,7 @@ function Toolbar(props: {
           disabled={!canStop || stopping}
           onClick={() => {
             void requestPlayStop();
-            props.onPlay();
+            props.onShowPlay();
           }}
         >
           <MIcon name="stop" size={20} />
@@ -1670,7 +1679,7 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
           }}
           className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left"
           style={{ color: "var(--m3-on-surface-variant)" }}
-          title="Play with the last settings (F5) — opens Play mode"
+          title="Play with the last settings (F5)"
         >
           <MIcon name="history" size={16} /> Last: {setupSummary(loadLastSetup())}
           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>F5</kbd>
