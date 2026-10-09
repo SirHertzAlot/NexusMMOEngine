@@ -144,7 +144,7 @@ loadable modules, a database editor and production tools.
 | EA23 | HUD layout editor | 📋 | |
 | EA24 | Audio | 📋 | |
 | EA25 | Localization | 📋 | |
-| EA26 | Automated playtests | 📋 | |
+| EA26 | Automated playtests | 🚧 | On branch `feat/ea26-playtests-liveops`: scenario documents `content/playtests/*.playtest.json` (bot script, seed, bots, assertions) run headless on a scratch server (own port and data dir); input-and-seed replays that re-send the recorded inputs and report the first tick the position trace diverges; results with history (50 runs) under the data dir; Release > Playtests panel with a replay scrubber. Also makes Live ops (admin commands, time, weather, telemetry), Network (edge routes file, edge scrape, connection and tick stats) and the Quests view real, with a shared server gate ("server not running" + Start). Deferred: headless client screenshots and GIFs, the pipeline-wide results view (EA19), tick-for-tick determinism of server bots. |
 
 ## 1d. Editor interaction repairs
 
@@ -302,6 +302,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: EA26 automated playtests, plus Live ops, Network and Quests made real: scenarios in `content/playtests`, scratch-server runs, replays, history; admin-command Live ops and connection stats behind a shared server gate. (this PR)
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
 - **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
