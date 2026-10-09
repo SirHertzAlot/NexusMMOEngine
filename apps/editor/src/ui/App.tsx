@@ -26,8 +26,11 @@ import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
+import { getViewportActions, subscribeViewportActions } from "./viewport-actions.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import { requestNewScene } from "../open-scene.js";
 import {
   deleteNamedSetup,
   loadLastSetup,
@@ -436,6 +439,69 @@ export function App(): React.JSX.Element {
           e.preventDefault();
           target.redo();
         }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "x") {
+        // Cut / copy / paste / duplicate act on the open document; skip
+        // when typing in a field so the OS clipboard keeps working there.
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canCut) {
+          e.preventDefault();
+          target.cut?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "c") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canCopy) {
+          e.preventDefault();
+          target.copy?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "v") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canPaste) {
+          e.preventDefault();
+          target.paste?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "d") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canDuplicate) {
+          e.preventDefault();
+          target.duplicate?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "a") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canSelectAll) {
+          e.preventDefault();
+          target.selectAll?.();
+        }
+      } else if (e.key === "Delete") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canDelete) {
+          e.preventDefault();
+          target.deleteSelection?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "+" || e.key === "=")) {
+        // View menu zoom acts on the mounted 3D viewport.
+        const vp = getViewportActions();
+        if (vp?.canZoomIn) {
+          e.preventDefault();
+          vp.zoomIn();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "-") {
+        const vp = getViewportActions();
+        if (vp?.canZoomOut) {
+          e.preventDefault();
+          vp.zoomOut();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "0") {
+        const vp = getViewportActions();
+        if (vp?.canReset) {
+          e.preventDefault();
+          vp.reset();
+        }
       } else if (e.key === "Escape") {
         setPalette(false);
         setPlayMenu(false);
@@ -815,38 +881,67 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
     else void document.documentElement.requestFullscreen().catch(() => notify("Fullscreen was blocked by the browser"));
   }
 
-  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string } | "sep">> = {
+  const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  // Re-render the menus when the clipboard changes (Paste enables after Copy).
+  React.useSyncExternalStore(subscribeClipboard, () => clipboardVersion());
+  // The View menu's viewport items follow the mounted 3D viewport.
+  const viewport = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
+  // A menu item is enabled when there's an open document that supports it.
+  // Unsupported operations disable with a reason — no "soon" placeholders.
+  const docItem = (
+    label: string,
+    kbd: string | undefined,
+    can: boolean | undefined,
+    run: (() => void) | undefined,
+    noDocReason = "no open document to act on",
+  ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
+    if (!doc) return { label, kbd, disabled: true, disabledReason: noDocReason };
+    if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${doc.label} doesn't support ${label.toLowerCase()}` };
+    return { label, kbd, run };
+  };
+  // The View menu's viewport items act on the mounted 3D viewport.
+  const viewportItem = (
+    label: string,
+    kbd: string | undefined,
+    can: boolean | undefined,
+    run: (() => void) | undefined,
+  ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
+    if (!viewport) return { label, kbd, disabled: true, disabledReason: "no viewport open" };
+    if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${viewport.label} doesn't support ${label.toLowerCase()}` };
+    return { label, kbd, run };
+  };
+  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean; disabledReason?: string } | "sep">> = {
     File: [
-      { label: "New Scene", run: staged("New Scene", "EA · scenes"), stagedFor: "EA · scenes" },
-      { label: "Open Scene…", run: staged("Open Scene", "EA · scenes"), stagedFor: "EA · scenes" },
+      { label: "New Scene…", run: () => { requestNewScene(); onGo("scenes"); } },
+      { label: "Open Scene…", run: () => onGo("scenes") },
       "sep",
-      { label: "Save", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Save All", run: staged("Save All", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
+      { label: doc ? `Save ${doc.label}` : "Save", kbd: "Ctrl S", disabled: !doc?.canSave, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.save() },
+      docItem("Save All", undefined, doc?.canSaveAll, doc?.saveAll),
+      docItem("Revert", undefined, doc?.canRevert, doc?.revert),
       "sep",
-      { label: "Import…", run: staged("Import", "EA · content browser"), stagedFor: "EA · content browser" },
-      { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
+      docItem("Import…", undefined, doc?.canImport, doc?.importFile),
+      docItem("Export…", undefined, doc?.canExport, doc?.exportFile),
     ],
     Edit: [
-      { label: "Undo", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Redo", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Undo", kbd: "Ctrl Z", disabled: !doc?.canUndo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.undo() },
+      { label: "Redo", kbd: "Ctrl Y", disabled: !doc?.canRedo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.redo() },
       "sep",
-      { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Paste", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Duplicate", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Delete", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      docItem("Cut", "Ctrl X", doc?.canCut, doc?.cut),
+      docItem("Copy", "Ctrl C", doc?.canCopy, doc?.copy),
+      docItem("Paste", "Ctrl V", doc?.canPaste, doc?.paste),
+      docItem("Duplicate", "Ctrl D", doc?.canDuplicate, doc?.duplicate),
+      docItem("Delete", "Del", doc?.canDelete, doc?.deleteSelection),
       "sep",
-      { label: "Select All", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
+      docItem("Select All", "Ctrl A", doc?.canSelectAll, doc?.selectAll),
     ],
     View: [
       { label: `${docks.left ? "✓ " : ""}Left dock`, run: () => onToggleDock("left") },
       { label: `${docks.right ? "✓ " : ""}Right dock`, run: () => onToggleDock("right") },
       { label: `${docks.bottom ? "✓ " : ""}Bottom dock`, run: () => onToggleDock("bottom") },
       "sep",
-      { label: "Zoom In", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Zoom Out", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Reset Viewport", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      viewportItem("Zoom In", "Ctrl +", viewport?.canZoomIn, viewport?.zoomIn),
+      viewportItem("Zoom Out", "Ctrl -", viewport?.canZoomOut, viewport?.zoomOut),
+      viewportItem("Reset Viewport", "Ctrl 0", viewport?.canReset, viewport?.reset),
       "sep",
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],
@@ -915,17 +1010,23 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                   }
                   const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
                   const stagedRow = it.stagedFor !== undefined;
+                  const off = stagedRow || it.disabled === true;
+                  const tip = stagedRow
+                    ? `${it.label} — soon (${it.stagedFor})`
+                    : it.disabled
+                      ? `${it.label} — ${it.disabledReason ?? "not available"}`
+                      : undefined;
                   return (
                     <li key={it.label} className="list-none">
                       <button
-                        disabled={stagedRow}
-                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : undefined}
+                        disabled={off}
+                        title={tip}
                         onClick={() => {
                           setOpen(null);
                           run();
                         }}
                         className="m3-focus flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                        style={{ color: "var(--m3-on-surface)", opacity: stagedRow ? 0.55 : undefined }}
+                        style={{ color: "var(--m3-on-surface)", opacity: off ? 0.55 : undefined }}
                       >
                         {it.label}
                         {stagedRow && (
