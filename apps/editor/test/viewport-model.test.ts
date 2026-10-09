@@ -40,6 +40,15 @@ describe("markerFor", () => {
     assert.notEqual(sp.color, prop.color);
     assert.equal(markerFor({ id: "a", prefab: "camps/goblin" }, new Set(["goblin"])).color, sp.color, "last path segment counts");
   });
+
+  it("draws placed species, items and quest posts as what they are", () => {
+    const wolf = markerFor({ id: "a", components: { Spawner: { species: "wolf" } } }, new Set(["wolf"]));
+    assert.equal(wolf.shape, "box");
+    assert.equal(wolf.color, markerFor({ id: "b", prefab: "wolf" }, new Set(["wolf"])).color, "a species is a species");
+    const item = markerFor({ id: "c", components: { ItemSpawn: { base: "sword" } } }, new Set());
+    const quest = markerFor({ id: "d", components: { QuestGiver: { quest: "q" } } }, new Set());
+    assert.equal(new Set([wolf.color, item.color, quest.color]).size, 3);
+  });
 });
 
 describe("nodeSelection", () => {

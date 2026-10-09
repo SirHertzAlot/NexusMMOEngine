@@ -5,6 +5,7 @@
  * leader mark and presence only.
  */
 
+import { t } from "../i18n.js";
 import { useEffect, useRef } from "react";
 import type { PartyState } from "@mmo-engine/protocol";
 import { Button } from "./components.js";
@@ -31,39 +32,39 @@ export function PartyFrame({ party, self, onAccept, onLeave, onKick, onPromote, 
   expired.current = onInviteExpired;
   useEffect(() => {
     if (!invite) return;
-    const t = setTimeout(() => expired.current(), INVITE_SHOWN_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => expired.current(), INVITE_SHOWN_MS);
+    return () => clearTimeout(timer);
   }, [invite?.from]);
   const members = party?.members ?? [];
   if (!invite && members.length === 0) return null;
   const iAmLeader = members.some((m) => m.leader && m.name === self);
   return (
-    <div className="absolute left-4 top-24 z-10 w-52 space-y-2 text-sm">
+    <div className="space-y-2 text-sm">
       {invite && (
         <div role="alert" className="rounded-lg border bg-card/90 p-2 text-card-foreground shadow-sm">
           <div className="truncate">
-            <b>{invite.from}</b> invites you to a party
+            {t("party.invite", { from: invite.from })}
           </div>
           <Button size="sm" className="mt-1" onClick={onAccept}>
-            accept
+            {t("party.accept")}
           </Button>
         </div>
       )}
       {members.length > 0 && (
-        <div className="rounded-lg border bg-card/90 p-2 text-card-foreground shadow-sm" aria-label="party">
+        <div className="rounded-lg border bg-card/90 p-2 text-card-foreground shadow-sm" aria-label={t("party.label")}>
           <ul className="space-y-1">
             {members.map((m) => (
               <li key={m.name} className="flex items-center gap-1.5">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${m.online ? "bg-emerald-400" : "bg-muted-foreground/50"}`} title={m.online ? "online" : "offline"} />
+                <span className={`h-2 w-2 shrink-0 rounded-full ${m.online ? "bg-emerald-400" : "bg-muted-foreground/50"}`} title={m.online ? t("social.online") : t("social.offline")} />
                 <span className={`truncate ${m.online ? "" : "text-muted-foreground"}`}>{m.name}</span>
-                {m.leader && <span title="party leader">★</span>}
+                {m.leader && <span title={t("party.leader")}>★</span>}
                 {iAmLeader && m.name !== self && (
                   <span className="ml-auto flex gap-1">
-                    <button type="button" className="text-xs underline" onClick={() => onPromote(m.name)} title="make leader">
-                      lead
+                    <button type="button" className="text-xs underline" onClick={() => onPromote(m.name)} title={t("party.make-leader")}>
+                      {t("party.lead")}
                     </button>
-                    <button type="button" className="text-xs underline" onClick={() => onKick(m.name)} title="remove from party">
-                      kick
+                    <button type="button" className="text-xs underline" onClick={() => onKick(m.name)} title={t("party.remove")}>
+                      {t("party.kick")}
                     </button>
                   </span>
                 )}
@@ -71,7 +72,7 @@ export function PartyFrame({ party, self, onAccept, onLeave, onKick, onPromote, 
             ))}
           </ul>
           <button type="button" className="mt-1.5 text-xs underline" onClick={onLeave}>
-            leave party
+            {t("party.leave")}
           </button>
         </div>
       )}

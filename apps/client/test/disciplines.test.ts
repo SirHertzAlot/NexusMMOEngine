@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /**
  * Disciplines on the sheet: requirement lines, progress, lapse text and goal order.
  */

@@ -114,15 +114,6 @@ export function DraftField({ label, value, onCommit, mono = true, wide = false }
 
 // ---------------------------------------------------------------- helpers
 
-/** Deterministic pseudo-random for decorative bars/dots (stable render). */
-function rnd(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
 /** Slice badge: honest "sample data" label on every preview. */
 export function PreviewBadge({ slice, children }: { slice: string; children?: React.ReactNode }): React.JSX.Element {
   return (
@@ -1656,104 +1647,29 @@ export function StringsPreview(): React.JSX.Element {
   );
 }
 
-// ---------------------------------------------------------------- art & audio (ux-14, ux-15, ux-17)
+// ---------------------------------------------------------------- art & audio (EA21, EA22, EA24)
 
-export const CLIPS: Array<[string, string]> = [
-  ["Idle_Loop", "UAL"], ["Walk_Fwd", "UAL"], ["Jog_Fwd", "UAL"], ["Jog_Strafe_L", "UAL"],
-  ["Sprint_Fwd", "UAL"], ["Swim_Fwd", "UAL"], ["Sword_Slash_R", "KI"], ["Axe_Chop", "KI"],
-  ["Block_Hold", "KI"], ["Hit_React_F", "CMU"], ["Death_Back", "CMU"],
-];
-
-const artStore = createStore<{ clip: string; effect: string; event: string }>({
-  clip: "Jog_Fwd",
-  effect: "campfire.embers",
-  event: "hit.sword",
+/**
+ * What is selected in Art & audio's Animation, VFX and Audio views (deep links
+ * `clip:`, `move:`, `effect:`, `event:`), and the lists their left dock shows
+ * (the open panel publishes them). The panels are ui/media-*.tsx.
+ */
+export const artStore = createStore({
+  clip: "",
+  move: 1,
+  effect: "embers",
+  event: "hit",
+  animTab: "locomotion" as "clips" | "locomotion" | "combat",
+  vfxTab: "effects" as "effects" | "tiers" | "materials",
+  clips: [] as string[],
+  moves: [] as Array<[number, string]>,
+  effects: [] as string[],
+  events: [] as Array<[string, string]>,
 });
 
-export { artStore };
-
-export function ClipList(): React.JSX.Element {
-  const { clip } = artStore.use();
-  return (
-    <div>
-      <ul className="flex flex-col gap-0.5">
-        {CLIPS.map(([c, tag]) => {
-          const on = c === clip;
-          return (
-            <li key={c}>
-              <button
-                onClick={() => artStore.set((p) => ({ ...p, clip: c }))}
-                className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="directions_run" size={16} />{c}
-                <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <SectionLabel>Retarget</SectionLabel>
-      <p className="px-1 font-mono text-[11px] leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
-        source: Kevin Iglesias rig<br />target: Synty humanoid<br />✓ 41 bones mapped
-      </p>
-    </div>
-  );
-}
-
-/** Left library for Art & audio: clips, effects, or events per active view. */
-export function ArtAudioTree({ view, onView }: { view: string; onView?: (view: string) => void }): React.JSX.Element {
-  if (view === "animation") return <ClipList />;
-  const { effect, event } = artStore.use();
-  if (view === "vfx") {
-    return (
-      <ul className="flex flex-col gap-0.5">
-        {EFFECTS.map(([e, tag]) => {
-          const on = e === effect;
-          return (
-            <li key={e}>
-              <button
-                onClick={() => artStore.set((p) => ({ ...p, effect: e }))}
-                className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="auto_awesome" size={15} />{e}
-                <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    );
-  }
-  if (view === "audio") {
-    return (
-      <div>
-        {AUDIO_EVENTS.map(([group, evts]) => (
-          <div key={group} className="mb-1">
-            <p className="px-2 py-1 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>⌄ {group}</p>
-            {evts.map(([e, n]) => {
-              const on = e === event;
-              return (
-                <button
-                  key={e}
-                  onClick={() => artStore.set((p) => ({ ...p, event: e }))}
-                  className="m3-focus flex h-8 w-full items-center gap-2 rounded-full px-2 pl-5 font-mono text-xs"
-                  style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-                >
-                  <MIcon name="audio_file" size={15} />{e}
-                  <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{n}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <AssetLibraryTree onView={onView} />
-  );
+/** Left library for the assets view: the pack's models and textures (the other views use media-tree.tsx). */
+export function ArtAudioTree({ onView }: { onView?: (view: string) => void }): React.JSX.Element {
+  return <AssetLibraryTree onView={onView} />;
 }
 
 /** Library dock for the assets view: manifest groups with counts, a dock
@@ -1848,557 +1764,8 @@ function AssetLibraryTree({ onView }: { onView?: (view: string) => void }): Reac
         style={{ color: "var(--m3-on-surface)" }}
       >
         <MIcon name="audio_file" size={19} />Audio
-        <span className="ml-auto text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>24 clips →</span>
+        <span className="ml-auto text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>events →</span>
       </button>
-    </div>
-  );
-}
-
-export function AnimDetails(): React.JSX.Element {
-  const { clip } = artStore.use();
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-        CLIP · {clip.toUpperCase().replace(/_/g, " ")}
-      </p>
-      <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Transition · Walk → Jog
-      </p>
-      <DraftField label="Condition" value="speed > 1.8" />
-      <DraftField label="Crossfade" value="0.20 s" />
-      <SectionLabel>Blend space · jog</SectionLabel>
-      <svg viewBox="0 0 160 130" className="w-full rounded-xl" style={{ background: "var(--m3-surface-2)" }} aria-hidden="true">
-        <line x1="80" y1="8" x2="80" y2="122" stroke="#46464F" />
-        <line x1="8" y1="65" x2="152" y2="65" stroke="#46464F" />
-        <circle cx="80" cy="18" r="5" fill="#B9C3FF" />
-        <circle cx="30" cy="65" r="5" fill="#B9C3FF" />
-        <circle cx="130" cy="65" r="5" fill="#B9C3FF" />
-        <circle cx="80" cy="112" r="5" fill="#B9C3FF" />
-        <circle cx="108" cy="44" r="8" fill="none" stroke="#FFB59A" strokeWidth="2" />
-        <text x="90" y="20" fill="#C6C5D0" fontSize="9">fwd</text>
-        <text x="4" y="60" fill="#C6C5D0" fontSize="9">strafe L</text>
-        <text x="112" y="60" fill="#C6C5D0" fontSize="9">strafe R</text>
-        <text x="70" y="124" fill="#C6C5D0" fontSize="9">back</text>
-      </svg>
-      <SectionLabel>Played on</SectionLabel>
-      <div className="flex h-9 items-center overflow-hidden rounded-full text-sm" style={{ border: "1px solid var(--m3-outline-variant)" }}>
-        {["Human F", "Human M", "Goblin"].map((m, i) => (
-          <span key={m} className="flex h-full flex-1 items-center justify-center" style={i === 0 ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}>
-            {m}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** Per-clip animation data (sample): locomotion state, combat move and
- *  timeline tracks. Loop clips build a loop timeline; combat clips build
- *  a hit/cancel timeline. */
-export interface AnimClipData {
-  loco: string;
-  move: string;
-  frames: number;
-  fps: number;
-  kind: "loop" | "combat";
-  hitAt?: number;
-  cancelEnd?: number;
-  sound?: string;
-  vfx?: string;
-  travel?: string;
-  source: string;
-}
-
-export const ANIM_CLIPS: Record<string, AnimClipData> = {
-  Idle_Loop: { loco: "Idle", move: "idle.breathe", frames: 120, fps: 30, kind: "loop", sound: "idle.breath", source: "UAL · retargeted Synty" },
-  Walk_Fwd: { loco: "Walk", move: "walk.fwd", frames: 32, fps: 30, kind: "loop", sound: "step.grass", travel: "1.1 m / loop", source: "UAL · retargeted Synty" },
-  Jog_Fwd: { loco: "Jog", move: "jog.fwd", frames: 24, fps: 30, kind: "loop", sound: "step.grass", travel: "1.8 m / loop", source: "UAL · retargeted Synty" },
-  Jog_Strafe_L: { loco: "Jog", move: "jog.strafe", frames: 24, fps: 30, kind: "loop", sound: "step.grass", source: "UAL · retargeted Synty" },
-  Sprint_Fwd: { loco: "Sprint", move: "sprint.fwd", frames: 20, fps: 30, kind: "loop", sound: "step.rock", travel: "3.4 m / loop", source: "UAL · retargeted Synty" },
-  Swim_Fwd: { loco: "Swim", move: "swim.fwd", frames: 40, fps: 30, kind: "loop", source: "UAL · retargeted Synty" },
-  Sword_Slash_R: { loco: "Idle", move: "sword.slash", frames: 24, fps: 30, kind: "combat", hitAt: 12.5, cancelEnd: 22, sound: "hit.sword", vfx: "trail.sword · hit.spark", travel: "1.2 m", source: "KI · retargeted Synty" },
-  Axe_Chop: { loco: "Idle", move: "axe.chop", frames: 30, fps: 30, kind: "combat", hitAt: 16, cancelEnd: 27, sound: "hit.axe", vfx: "hit.spark", travel: "0.8 m", source: "KI · retargeted Synty" },
-  Block_Hold: { loco: "Idle", move: "block.hold", frames: 18, fps: 30, kind: "combat", hitAt: 2, cancelEnd: 18, sound: "block.shield", source: "KI · retargeted Synty" },
-  Hit_React_F: { loco: "Idle", move: "hit.react", frames: 16, fps: 30, kind: "combat", hitAt: 4, cancelEnd: 14, source: "CMU · retargeted Synty" },
-  Death_Back: { loco: "Idle", move: "death.back", frames: 48, fps: 30, kind: "combat", hitAt: 10, cancelEnd: 48, source: "CMU · retargeted Synty" },
-};
-
-type AnimTrack = [string, number, number, string, string];
-
-function animTracks(id: string, d: AnimClipData): AnimTrack[] {
-  if (d.kind === "loop") {
-    const rows: AnimTrack[] = [
-      ["clip", 0, d.frames, "#434659", `${id} · ${d.source}`],
-      ["loop", 0, d.frames, "#1F5110", `loop 0–${d.frames}`],
-    ];
-    if (d.travel) rows.push(["root motion", 0, d.frames, "#3a3355", `travel ${d.travel}`]);
-    if (d.sound) rows.push(["sound", 0, Math.min(4, d.frames), "#36449A", d.sound]);
-    return rows;
-  }
-  const hit = d.hitAt ?? Math.round(d.frames / 2);
-  const cancel = d.cancelEnd ?? d.frames;
-  const rows: AnimTrack[] = [
-    ["clip", 0, d.frames, "#434659", `${id} · ${d.source}`],
-    ["wind-up", 0, hit, "#5a3a1a", `wind-up 0–${hit}`],
-    ["hit", hit, hit + 1.5, "#93000A", ""],
-    ["cancel window", hit + 3.5, cancel, "#1F5110", `cancel ${hit + 3.5}–${cancel}`],
-  ];
-  if (d.travel) rows.push(["root motion", Math.max(0, hit - 6.5), hit + 2.5, "#3a3355", `travel ${d.travel}`]);
-  if (d.sound) rows.push(["sound", hit, hit + 2, "#36449A", d.sound]);
-  if (d.vfx) rows.push(["vfx", hit - 1.5, hit + 2.5, "#7A2E12", d.vfx]);
-  rows.push(["target reaction", hit + 0.5, hit + 5.5, "#434659", "Hit_React_F · CMU"]);
-  rows.push(["camera", hit + 0.5, hit + 2, "#1F5110", "shake 0.2"]);
-  return rows;
-}
-
-export function AnimPreview(): React.JSX.Element {
-  const { clip } = artStore.use();
-  const data = ANIM_CLIPS[clip] ?? ANIM_CLIPS["Jog_Fwd"];
-  const tracks = animTracks(clip, data);
-  return (
-    <div className="flex flex-col gap-3">
-      <PreviewBadge slice="EA · Art & audio (§7c.4)">Clips, the locomotion state machine and the combat timeline.</PreviewBadge>
-      <div className="flex flex-col gap-3">
-          <svg viewBox="0 0 560 220" className="w-full rounded-xl" style={{ background: "var(--m3-surface-0)", backgroundImage: "radial-gradient(#2a2b31 1px, transparent 1px)", backgroundSize: "22px 22px" }} role="img" aria-label="Locomotion state machine preview">
-            {[
-              [30, 100, "Idle", "loop · 1.0×"], [200, 40, "Walk", "speed 0.2–1.8"], [200, 140, "Jog", "blend: strafe"],
-              [380, 40, "Air", "mode = air"], [380, 140, "Sprint", "speed > 5.5"], [30, 180, "Swim", "mode = swim"],
-            ].map(([x, y, t, s]) => (
-              <g key={t as string}>
-                <rect x={x as number} y={y as number} width="130" height="52" rx="10" fill={t === data.loco ? "#36449A" : "#292A2F"} stroke={t === data.loco ? "#B9C3FF" : "#46464F"} strokeWidth={t === data.loco ? 2 : 1} />
-                <text x={(x as number) + 12} y={(y as number) + 22} fill="#E3E1E9" fontSize="12" fontWeight="600">{t}</text>
-                <text x={(x as number) + 12} y={(y as number) + 40} fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">{s}</text>
-              </g>
-            ))}
-            <path d="M160,110 C180,100 180,70 200,62" stroke="#90909A" fill="none" markerEnd="url(#ah2)" />
-            <path d="M330,66 L380,66" stroke="#90909A" fill="none" markerEnd="url(#ah2)" />
-            <path d="M265,92 L265,140" stroke="#90909A" fill="none" markerEnd="url(#ah2)" />
-            <path d="M330,166 L380,166" stroke="#90909A" fill="none" markerEnd="url(#ah2)" />
-            <defs>
-              <marker id="ah2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 Z" fill="#90909A" />
-              </marker>
-            </defs>
-            <text x="168" y="92" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">0.15 s</text>
-            <text x="272" y="120" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">0.2 s</text>
-          </svg>
-          <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-            <p className="mb-2 text-sm"><span className="font-mono font-semibold">{data.move}</span> <span className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>COMBAT_MOVES · {data.frames} frames · {data.fps} fps · server ticks shown</span></p>
-            {tracks.map(([label, a, b, bg, text]) => (
-              <div key={label as string} className="flex items-center gap-2" style={{ height: 30 }}>
-                <span className="w-28 flex-none text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</span>
-                <div className="relative h-5 flex-1 rounded-md" style={{ background: "var(--m3-surface-1)" }}>
-                  <span
-                    className="absolute top-0 h-full overflow-hidden whitespace-nowrap rounded-md px-2 font-mono text-[11px] leading-5"
-                    style={{ left: `${(a as number) / data.frames * 100}%`, width: `${((b as number) - (a as number)) / data.frames * 100}%`, background: bg as string, color: "#E3E1E9" }}
-                  >
-                    {text}
-                  </span>
-                </div>
-              </div>
-            ))}
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <OutlinedField label="Condition" value={data.kind === "loop" ? "always · loops" : "combat input"} />
-              <OutlinedField label="Crossfade" value="0.20 s" />
-            </div>
-            <p className="mt-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Played on: Human F · Human M · Goblin · {clip} · {data.source}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-export const EFFECTS: Array<[string, string]> = [
-  ["campfire.embers", "quarks"], ["weather.snow", "nebula"], ["weather.rain", "nebula"],
-  ["element.storm", "orb"], ["aura.heal", "quarks"], ["trail.sword", "trail"], ["hit.spark", "quarks"],
-];
-
-/** Per-effect particle data (sample): emitter tuning, palette, quality
- *  budgets and the signal that drives it. */
-export interface VfxEffectData {
-  rate: string;
-  life: string;
-  speed: string;
-  shape: string;
-  colors: [string, string, string];
-  seed: number;
-  duration: string;
-  budgets: Array<[string, number, string]>;
-  overBudgetNote: string | null;
-  signals: Array<[string, string]>;
-}
-
-export const VFX_EFFECTS: Record<string, VfxEffectData> = {
-  "campfire.embers": {
-    rate: "80 /s", life: "1.6 s", speed: "0.8–2.4", shape: "cone 18°",
-    colors: ["#FFE9D6", "#E8A37A", "#8a4a2a"], seed: 11, duration: "0.67 / 1.60 s",
-    budgets: [["low", 140, "210 / 150"], ["medium", 52, "210 / 400"], ["high", 26, "210 / 800"], ["ultra", 13, "210 / 1600"]],
-    overBudgetNote: "Low is over budget: lower the rate or drop to 60 % on low.",
-    signals: [["prefab: campfire", "attach"], ["night only", "time of day"], ["wind drift", "weather"]],
-  },
-  "weather.snow": {
-    rate: "400 /s", life: "6.0 s", speed: "1.0–2.0", shape: "box 40×1×40",
-    colors: ["#FFFFFF", "#C9D6E8", "#8fa3bd"], seed: 23, duration: "looping",
-    budgets: [["low", 80, "800 / 1000"], ["medium", 40, "800 / 2000"], ["high", 20, "800 / 4000"], ["ultra", 10, "800 / 8000"]],
-    overBudgetNote: null,
-    signals: [["biome has snow", "climate"], ["wind drift", "weather"]],
-  },
-  "weather.rain": {
-    rate: "900 /s", life: "1.1 s", speed: "18–22", shape: "box 30×1×30",
-    colors: ["#DCE9F5", "#9FB8D0", "#5f748c"], seed: 37, duration: "looping",
-    budgets: [["low", 90, "900 / 1000"], ["medium", 45, "900 / 2000"], ["high", 22, "900 / 4000"], ["ultra", 11, "900 / 8000"]],
-    overBudgetNote: null,
-    signals: [["biome has rain", "climate"], ["splash on hit", "collision"]],
-  },
-  "element.storm": {
-    rate: "60 /s", life: "0.9 s", speed: "6–14", shape: "sphere 2.5",
-    colors: ["#E8F4FF", "#9CC8FF", "#3d5a80"], seed: 51, duration: "0.80 / 1.20 s",
-    budgets: [["low", 120, "180 / 150"], ["medium", 45, "180 / 400"], ["high", 22, "180 / 800"], ["ultra", 11, "180 / 1600"]],
-    overBudgetNote: "Low is over budget: shorten life to 0.7 s on low.",
-    signals: [["spell: storm", "cast"], ["lightning flash", "light"]],
-  },
-  "aura.heal": {
-    rate: "36 /s", life: "2.2 s", speed: "0.4–1.0", shape: "torus 1.2",
-    colors: ["#E4FFE4", "#9CD67D", "#2d6a2d"], seed: 67, duration: "loop while buffed",
-    budgets: [["low", 36, "72 / 200"], ["medium", 18, "72 / 400"], ["high", 9, "72 / 800"], ["ultra", 4, "72 / 1600"]],
-    overBudgetNote: null,
-    signals: [["buff: regen", "status"], ["pulse on tick", "server tick"]],
-  },
-  "trail.sword": {
-    rate: "120 /s", life: "0.35 s", speed: "0–1", shape: "ribbon",
-    colors: ["#FFFFFF", "#B9C3FF", "#5a6a9a"], seed: 83, duration: "swing only",
-    budgets: [["low", 60, "120 / 200"], ["medium", 30, "120 / 400"], ["high", 15, "120 / 800"], ["ultra", 7, "120 / 1600"]],
-    overBudgetNote: null,
-    signals: [["sword.slash · swing", "combat move"], ["blade socket", "attach"]],
-  },
-  "hit.spark": {
-    rate: "200 /s", life: "0.4 s", speed: "4–12", shape: "burst",
-    colors: ["#FFF6E0", "#E8A33D", "#7A2E12"], seed: 97, duration: "one-shot",
-    budgets: [["low", 66, "100 / 150"], ["medium", 25, "100 / 400"], ["high", 12, "100 / 800"], ["ultra", 6, "100 / 1600"]],
-    overBudgetNote: null,
-    signals: [["hit confirmed", "combat"], ["surface decal", "collision"]],
-  },
-};
-
-export function VfxPreview(): React.JSX.Element {
-  const { effect } = artStore.use();
-  const data = VFX_EFFECTS[effect] ?? VFX_EFFECTS["campfire.embers"];
-  const dots = React.useMemo(() => {
-    const r = rnd(data.seed);
-    return Array.from({ length: 130 }, () => ({ x: 30 + r() * 240, y: 20 + Math.pow(r(), 1.6) * 250, s: 1 + r() * 3, o: 0.25 + r() * 0.75 }));
-  }, [data.seed]);
-  return (
-    <div className="flex flex-col gap-3">
-      <PreviewBadge slice="EA · Art & audio (§7c.5)">Particles, materials, post and quality tiers with per-tier budgets.</PreviewBadge>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[200px_1fr_280px]">
-        <div className="rounded-xl p-2" style={{ background: "var(--m3-surface-2)" }}>
-          {EFFECTS.map(([e, tag]) => {
-            const on = e === effect;
-            return (
-              <button
-                key={e}
-                onClick={() => artStore.set((p) => ({ ...p, effect: e }))}
-                className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="auto_awesome" size={15} />{e}
-                <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-            );
-          })}
-          <SectionLabel>Materials</SectionLabel>
-          {["toon.skin", "toon.cloth", "toon.metal", "surface.grass", "surface.rock"].map((m) => (
-            <p key={m} className="flex h-8 items-center gap-2 px-3 font-mono text-xs" style={{ color: "var(--m3-on-surface)" }}>
-              <MIcon name="palette" size={15} />{m}
-            </p>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3">
-          <div className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-xl" style={{ background: "#0a0a0e", aspectRatio: "4/5" }}>
-            <svg viewBox="0 0 300 330" className="absolute inset-0 h-full w-full" aria-hidden="true">
-              {dots.map((d, i) => (
-                <circle key={i} cx={d.x} cy={d.y} r={d.s} fill={d.y > 220 ? data.colors[0] : d.y > 140 ? data.colors[1] : data.colors[2]} opacity={d.o} />
-              ))}
-              <ellipse cx="150" cy="300" rx="70" ry="12" fill="#3d2417" opacity="0.8" />
-            </svg>
-            <div className="absolute bottom-2 left-3 right-3 flex items-center gap-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-              <MIcon name="play_arrow" size={16} />
-              <div className="h-1 flex-1 rounded-full" style={{ background: "var(--m3-surface-4)" }}>
-                <div className="h-full w-[42%] rounded-full" style={{ background: "var(--m3-primary)" }} />
-              </div>
-              <span className="font-mono">{data.duration}</span>
-            </div>
-          </div>
-          <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-            <p className="mb-2 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>TOON.SKIN · RAMP</p>
-            <div className="h-5 overflow-hidden rounded-md" style={{ background: `linear-gradient(90deg,${data.colors[2]},${data.colors[1]} 45%,${data.colors[0]} 70%,#FFFFFF)` }} />
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <OutlinedField label="Outline" value="1.6 px" />
-              <OutlinedField label="Rim" value="0.35" />
-              <OutlinedField label="Shadow step" value="0.52" />
-              <OutlinedField label="Specular" value="off" />
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-            EMITTER · {effect.split(".")[1]?.toUpperCase() ?? effect.toUpperCase()}
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <OutlinedField label="Rate" value={data.rate} />
-            <OutlinedField label="Life" value={data.life} />
-            <OutlinedField label="Speed" value={data.speed} />
-            <OutlinedField label="Shape" value={data.shape} />
-          </div>
-          <SectionLabel>Size over life</SectionLabel>
-          <svg viewBox="0 0 200 60" className="w-full rounded-lg" style={{ background: "var(--m3-surface-1)" }} aria-hidden="true">
-            <path d="M8,52 C60,50 70,10 110,14 C150,18 170,40 192,48" fill="none" stroke="#B9C3FF" strokeWidth="1.5" />
-            <circle cx="110" cy="14" r="4" fill="#B9C3FF" />
-          </svg>
-          <SectionLabel>Colour over life</SectionLabel>
-          <div className="h-4 rounded-full" style={{ background: `linear-gradient(90deg,${data.colors[0]},${data.colors[1]},${data.colors[2]})` }} />
-          <SectionLabel>Budget per quality tier</SectionLabel>
-          {data.budgets.map(([tier, pct, text]) => (
-            <BarRow key={tier as string} label={tier as string} pct={pct as number} text={text as string} bar={(pct as number) > 100 ? "#FFB4AB" : "#9CD67D"} />
-          ))}
-          {data.overBudgetNote && <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{data.overBudgetNote}</p>}
-          <SectionLabel>Signals</SectionLabel>
-          {data.signals.map(([a, b]) => (
-            <p key={a} className="flex text-xs"><span style={{ color: "var(--m3-on-surface)" }}>{a}</span><span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{b}</span></p>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export const AUDIO_EVENTS: Array<[string, Array<[string, string]>]> = [
-  ["combat", [["hit.sword", "4 clips"], ["hit.axe", "3 clips"], ["block.shield", "2 clips"], ["death.goblin", "2 clips"]]],
-  ["movement", [["step.grass", "6 clips"], ["step.rock", "6 clips"], ["step.wood", "5 clips"]]],
-  ["ambience", [["amb.coast.day", "loop"], ["amb.rain", "loop"]]],
-  ["music", [["music.login", "stream"], ["music.coast", "stream"]]],
-  ["ui", [["ui.click", "1 clip"]]],
-];
-
-/** Per-event audio data (sample): clip files, mixer fields, firing moves
- *  and 3D attenuation. Clip rows derive names from the event id. */
-export interface AudioEventData {
-  bus: string;
-  spatial: boolean;
-  clips: Array<[string, string, number, string]>;
-  pitch: string;
-  vol: string;
-  dist: string;
-  voices: string;
-  firedBy: string[];
-  atten: string;
-}
-
-function audioClips(id: string, count: number, seedBase: number): Array<[string, string, number, string]> {
-  const base = id.split(".").reverse()[0] ?? id;
-  const r = rnd(seedBase);
-  return Array.from({ length: count }, (_, i) => {
-    const n = `${base}_${String(i + 1).padStart(2, "0")}.ogg`;
-    const dur = `${(0.3 + r() * 0.4).toFixed(2)} s · /assets/audio`;
-    return [n, dur, Math.round(r() * 60), i === count - 1 ? "w 0.3" : "w 1"];
-  });
-}
-
-export const AUDIO_EVENT_DATA: Record<string, AudioEventData> = {
-  "hit.sword": {
-    bus: "effects", spatial: true,
-    clips: [["sword_hit_01.ogg", "0.42 s · /assets/audio", 11, "w 1"], ["sword_hit_02.ogg", "0.38 s · /assets/audio", 23, "w 1"], ["sword_hit_03.ogg", "0.51 s · /assets/audio", 37, "w 1"], ["sword_hit_heavy.ogg", "0.66 s · /assets/audio", 51, "w 0.3"]],
-    pitch: "0.92–1.08", vol: "-3 to 0 dB", dist: "28 m", voices: "6, steal oldest",
-    firedBy: ["sword.slash · hit frame 13", "sword.heavy · hit frame 19", "combat: weapon class sword"],
-    atten: "28 m · -9.4 dB · pan R 0.38",
-  },
-  "hit.axe": {
-    bus: "effects", spatial: true, clips: audioClips("hit.axe", 3, 71),
-    pitch: "0.88–1.04", vol: "-2 to 0 dB", dist: "26 m", voices: "6, steal oldest",
-    firedBy: ["axe.chop · hit frame 16", "combat: weapon class axe"],
-    atten: "26 m · -8.8 dB · pan R 0.31",
-  },
-  "block.shield": {
-    bus: "effects", spatial: true, clips: audioClips("block.shield", 2, 73),
-    pitch: "0.95–1.05", vol: "-4 to -1 dB", dist: "20 m", voices: "4, steal oldest",
-    firedBy: ["block.hold · raised", "combat: blocked outcome"],
-    atten: "20 m · -7.2 dB · pan R 0.22",
-  },
-  "death.goblin": {
-    bus: "effects", spatial: true, clips: audioClips("death.goblin", 2, 79),
-    pitch: "0.9–1.1", vol: "-3 to 0 dB", dist: "30 m", voices: "6, steal oldest",
-    firedBy: ["death.back · frame 10", "loot: corpse spawn"],
-    atten: "30 m · -10.1 dB · pan L 0.12",
-  },
-  "step.grass": {
-    bus: "effects", spatial: true, clips: audioClips("step.grass", 6, 83),
-    pitch: "0.94–1.06", vol: "-9 to -6 dB", dist: "12 m", voices: "8, steal oldest",
-    firedBy: ["walk.fwd · footfall", "jog.fwd · footfall", "surface: grass"],
-    atten: "12 m · -5.4 dB · pan C",
-  },
-  "step.rock": {
-    bus: "effects", spatial: true, clips: audioClips("step.rock", 6, 89),
-    pitch: "0.9–1.1", vol: "-8 to -5 dB", dist: "14 m", voices: "8, steal oldest",
-    firedBy: ["sprint.fwd · footfall", "surface: rock"],
-    atten: "14 m · -6.0 dB · pan C",
-  },
-  "step.wood": {
-    bus: "effects", spatial: true, clips: audioClips("step.wood", 5, 97),
-    pitch: "0.92–1.08", vol: "-8 to -5 dB", dist: "14 m", voices: "8, steal oldest",
-    firedBy: ["walk.fwd · footfall", "surface: wood"],
-    atten: "14 m · -6.0 dB · pan C",
-  },
-  "amb.coast.day": {
-    bus: "ambience", spatial: false, clips: audioClips("amb.coast.day", 2, 101),
-    pitch: "1.0", vol: "-12 dB", dist: "—", voices: "1, loop",
-    firedBy: ["scene: Starter Coast", "time: day"],
-    atten: "2D bed · no panning",
-  },
-  "amb.rain": {
-    bus: "ambience", spatial: false, clips: audioClips("amb.rain", 2, 103),
-    pitch: "1.0", vol: "-10 dB", dist: "—", voices: "1, loop",
-    firedBy: ["weather: rain", "biome has rain"],
-    atten: "2D bed · no panning",
-  },
-  "music.login": {
-    bus: "music", spatial: false, clips: audioClips("music.login", 1, 107),
-    pitch: "1.0", vol: "-6 dB", dist: "—", voices: "1, stream",
-    firedBy: ["scene: login", "flow: boot → login"],
-    atten: "2D · ducks -6 dB under voice",
-  },
-  "music.coast": {
-    bus: "music", spatial: false, clips: audioClips("music.coast", 1, 109),
-    pitch: "1.0", vol: "-6 dB", dist: "—", voices: "1, stream",
-    firedBy: ["scene: Starter Coast", "flow: world"],
-    atten: "2D · ducks -6 dB under voice",
-  },
-  "ui.click": {
-    bus: "ui", spatial: false, clips: audioClips("ui.click", 1, 113),
-    pitch: "0.98–1.02", vol: "-4 dB", dist: "—", voices: "4, steal newest",
-    firedBy: ["button press", "palette open"],
-    atten: "2D · no panning",
-  },
-};
-
-function Waveform({ seed, bars = 72 }: { seed: number; bars?: number }): React.JSX.Element {
-  const r = rnd(seed);
-  const hs = Array.from({ length: bars }, (_, i) => {
-    const env = Math.sin((i / bars) * Math.PI);
-    return 2 + env * (2 + r() * 18);
-  });
-  return (
-    <div className="flex h-9 flex-1 items-center gap-[2px]" aria-hidden="true">
-      {hs.map((h, i) => (
-        <span key={i} className="w-[2px] rounded-full" style={{ height: h, background: "#B9C3FF", opacity: 0.85 }} />
-      ))}
-    </div>
-  );
-}
-
-export function AudioPreview(): React.JSX.Element {
-  const { event } = artStore.use();
-  const data = AUDIO_EVENT_DATA[event] ?? AUDIO_EVENT_DATA["hit.sword"];
-  return (
-    <div className="flex flex-col gap-3">
-      <PreviewBadge slice="EA · Art & audio (§7c.7)">Sound events, the mixer and 3D preview with per-event budgets.</PreviewBadge>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[200px_1fr_260px]">
-        <div className="rounded-xl p-2" style={{ background: "var(--m3-surface-2)" }}>
-          {AUDIO_EVENTS.map(([group, evts]) => (
-            <div key={group} className="mb-1">
-              <p className="px-2 py-1 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>⌄ {group}</p>
-              {evts.map(([e, n]) => {
-                const on = e === event;
-                return (
-                  <button
-                    key={e}
-                    onClick={() => artStore.set((p) => ({ ...p, event: e }))}
-                    className="m3-focus flex h-8 w-full items-center gap-2 rounded-full px-2 pl-5 font-mono text-xs"
-                    style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-                  >
-                    <MIcon name="audio_file" size={15} />{e}
-                    <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{n}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3">
-          <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-            <p className="mb-2 text-sm"><strong>{event}</strong> <Pill tone="info">bus: {data.bus}</Pill> {data.spatial ? <Pill tone="ok">3D</Pill> : <Pill tone="plain">2D</Pill>}
-              <span className="float-right font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>content/audio/events.json</span>
-            </p>
-            {data.clips.map(([f, meta, seed, w]) => (
-              <div key={f as string} className="mb-2 flex items-center gap-3 rounded-xl p-2" style={{ background: "var(--m3-surface-1)" }}>
-                <MIcon name="play_circle" size={22} />
-                <div className="w-44 flex-none">
-                  <p className="font-mono text-xs">{f}</p>
-                  <p className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{meta}</p>
-                </div>
-                <Waveform seed={seed as number} />
-                <span className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{w}</span>
-              </div>
-            ))}
-            <div className="mt-2 grid grid-cols-2 gap-2 xl:grid-cols-4">
-              <OutlinedField label="Pitch" value={data.pitch} />
-              <OutlinedField label="Volume" value={data.vol} />
-              <OutlinedField label="Max distance" value={data.dist} />
-              <OutlinedField label="Voices" value={data.voices} />
-            </div>
-            <SectionLabel>Fired by</SectionLabel>
-            <div className="flex flex-wrap gap-1.5 text-xs">
-              {data.firedBy.map((c) => (
-                <span key={c} className="rounded-full border px-3 py-1.5" style={{ borderColor: "var(--m3-outline-variant)" }}>{c}</span>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-            <p className="mb-2 text-sm font-medium">Mixer</p>
-            <div className="flex items-end justify-around" style={{ height: 150 }}>
-              {[["Master", "0 dB", 62, false], ["Music", "-6 dB", 40, true], ["Effects", "-2 dB", 58, false], ["Voice", "0 dB", 52, false], ["Ambience", "-9 dB", 30, false], ["UI", "-4 dB", 12, false]].map(([name, db, h, ducked]) => (
-                <div key={name as string} className="flex flex-col items-center gap-1">
-                  <div className="relative w-2.5 rounded-full" style={{ height: 110, background: "var(--m3-surface-4)" }}>
-                    <div className="absolute bottom-0 w-full rounded-full" style={{ height: `${h}%`, background: "linear-gradient(0deg,#9CD67D 70%,#E8A33D 85%,#FFB4AB)" }} />
-                    <div className="absolute h-3 w-5 rounded-full" style={{ bottom: `${h}%`, left: -5, background: "#B9C3FF" }} />
-                  </div>
-                  <p className="text-xs">{name}</p>
-                  <p className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{db}</p>
-                  {ducked ? <Pill tone="warn">ducked -6</Pill> : null}
-                </div>
-              ))}
-            </div>
-            <p className="mt-2 text-center text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Music ducks under dialog voice by 6 dB · 0.3 s attack</p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="text-sm font-medium">3D preview</p>
-          <svg viewBox="0 0 200 200" className="w-full rounded-xl" style={{ background: "var(--m3-surface-1)" }} role="img" aria-label="3D attenuation preview">
-            {[85, 60, 35].map((r) => (
-              <circle key={r} cx="100" cy="100" r={r} fill="none" stroke="#46464F" strokeWidth="1" strokeDasharray={r === 85 ? "4 4" : "none"} />
-            ))}
-            <circle cx="100" cy="100" r="8" fill="#FFB59A" />
-            <text x="112" y="104" fill="#FFB59A" fontSize="10" fontFamily="Roboto Mono, monospace">{event}</text>
-            <text x="150" y="52" fill="#C6C5D0" fontSize="10" fontFamily="Roboto Mono, monospace">listener ▶</text>
-          </svg>
-          <p className="text-center font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{data.atten}</p>
-          <SectionLabel>Hooks</SectionLabel>
-          {["footsteps by surface (6 surfaces)", "ambience by weather and time of day", "music by game-flow scene"].map((h) => (
-            <p key={h} className="text-[12.5px]" style={{ color: "var(--m3-on-surface)" }}>{h}</p>
-          ))}
-          <SectionLabel>Last plays in play mode</SectionLabel>
-          <MiniTable
-            mono
-            crud="EA · art & audio"
-            head={["Tick", "Clip", "Source", "Distance", "Gain"]}
-            rows={[
-              ["18,402", "sword_hit_02", "Aria → goblin 41", "3.1 m", "-1.2 dB"],
-              ["18,391", "sword_hit_01", "Bram → wolf 7", "12.4 m", "-6.8 dB"],
-              ["18,377", "sword_hit_heavy", "Aria → goblin 41", "3.0 m", "-0.9 dB"],
-              ["18,360", "sword_hit_03", "Cass → goblin 12", "26.0 m", "-17 dB · culled"],
-            ]}
-          />
-        </div>
-      </div>
     </div>
   );
 }
@@ -3532,8 +2899,10 @@ export function readDeepSelection(workspace: string, view: string): string | nul
     }
     case "liveops/overview":
       return `player:${liveOpsStore.get().player}`;
-    case "artaudio/animation":
-      return `clip:${artStore.get().clip}`;
+    case "artaudio/animation": {
+      const a = artStore.get();
+      return a.animTab === "combat" ? `move:${a.move}` : a.clip ? `clip:${a.clip}` : null;
+    }
     case "artaudio/vfx":
       return `effect:${artStore.get().effect}`;
     case "artaudio/audio":
@@ -3576,15 +2945,19 @@ export function applyDeepSelection(sel: string): { workspace: string; view: stri
       selectLiveOpsPlayer(rest);
       return { workspace: "liveops", view: "overview" };
     case "clip":
-      if (!CLIPS.some(([c]) => c === rest)) return null;
-      artStore.set((p) => ({ ...p, clip: rest }));
+      if (!rest) return null;
+      artStore.set((p) => ({ ...p, clip: rest, animTab: "clips" }));
+      return { workspace: "artaudio", view: "animation" };
+    case "move":
+      if (!Number.isInteger(Number(rest))) return null;
+      artStore.set((p) => ({ ...p, move: Number(rest), animTab: "combat" }));
       return { workspace: "artaudio", view: "animation" };
     case "effect":
-      if (!EFFECTS.some(([e]) => e === rest)) return null;
-      artStore.set((p) => ({ ...p, effect: rest }));
+      if (!rest) return null;
+      artStore.set((p) => ({ ...p, effect: rest, vfxTab: "effects" }));
       return { workspace: "artaudio", view: "vfx" };
     case "event":
-      if (!AUDIO_EVENTS.some((group) => group[1].some((evt) => evt[0] === rest))) return null;
+      if (!rest) return null;
       artStore.set((p) => ({ ...p, event: rest }));
       return { workspace: "artaudio", view: "audio" };
     case "widget":

@@ -14,35 +14,41 @@
  */
 
 import * as THREE from "three";
-import { decodePcgMesh, type PcgAssetInfo, type PcgRpcClient } from "@mmo-engine/picg";
+import type { PcgAssetInfo, PcgRpcClient } from "@mmo-engine/picg";
+import { decodePcg } from "../workers/handlers/pcg.js";
+import type { WorkerRequester } from "../workers/pool.js";
+import type { PcgResultPayload } from "../workers/types.js";
+import { ensureBoundsTreeAsync } from "./bvh.js";
 import type { PropModels } from "./instanced-props.js";
 import { lodDistance, modelScale, type LodLevel } from "./lod.js";
 
 const RETRY_MS = 30_000;
 
-/** PCGM mesh -> indexed BufferGeometry (colours to linear RGB). */
-export function pcgGeometry(bytes: ArrayBuffer): THREE.BufferGeometry {
-  const mesh = decodePcgMesh(bytes);
+/** Decoded PCGM arrays (decodePcg, here or in a worker) -> indexed BufferGeometry (colours to linear RGB). */
+export function buildPcgGeometry(mesh: PcgResultPayload): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(mesh.positions, 3));
-  geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-  if (mesh.normals) geometry.setAttribute("normal", new THREE.BufferAttribute(mesh.normals, 3));
+  geometry.setAttribute("position", new THREE.BufferAttribute(mesh.position, 3));
+  geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+  if (mesh.normal) geometry.setAttribute("normal", new THREE.BufferAttribute(mesh.normal, 3));
   else geometry.computeVertexNormals();
-  const n = mesh.positions.length / 3;
+  const n = mesh.position.length / 3;
   const rgb = new Float32Array(n * 3);
   const c = new THREE.Color();
   for (let i = 0; i < n; i++) {
-    if (mesh.colors) c.setRGB(mesh.colors[i * 4], mesh.colors[i * 4 + 1], mesh.colors[i * 4 + 2], THREE.SRGBColorSpace);
+    if (mesh.color) c.setRGB(mesh.color[i * 3], mesh.color[i * 3 + 1], mesh.color[i * 3 + 2], THREE.SRGBColorSpace);
     else c.setRGB(0.8, 0.8, 0.8, THREE.SRGBColorSpace);
     rgb[i * 3] = c.r;
     rgb[i * 3 + 1] = c.g;
     rgb[i * 3 + 2] = c.b;
   }
   geometry.setAttribute("color", new THREE.BufferAttribute(rgb, 3));
-  if (mesh.uvs) geometry.setAttribute("uv", new THREE.BufferAttribute(mesh.uvs, 2));
+  if (mesh.uv) geometry.setAttribute("uv", new THREE.BufferAttribute(mesh.uv, 2));
   geometry.computeBoundingSphere();
   return geometry;
 }
+
+/** PCGM bytes -> geometry, decoded on this thread. */
+export const pcgGeometry = (bytes: ArrayBuffer): THREE.BufferGeometry => buildPcgGeometry(decodePcg(bytes));
 
 export class PcgMeshes implements PropModels {
   private assets: Map<number, PcgAssetInfo> | null = null;
@@ -56,7 +62,18 @@ export class PcgMeshes implements PropModels {
     private readonly rpc: PcgRpcClient,
     private readonly onChange: () => void,
     private readonly now: () => number = () => performance.now(),
+    /** Decode meshes and build their BVHs off the main thread. */
+    private readonly workers?: WorkerRequester,
   ) {}
+
+  /** Download, decode (worker or inline) and, with workers, give it a BVH. */
+  private async load(ref: Parameters<PcgRpcClient["download"]>[0]): Promise<THREE.BufferGeometry> {
+    const bytes = await this.rpc.download(ref);
+    if (!this.workers) return pcgGeometry(bytes);
+    const geometry = buildPcgGeometry(await this.workers.request("pcg", { bytes }));
+    await ensureBoundsTreeAsync(geometry, this.workers);
+    return geometry;
+  }
 
   /** Geometries ready. */
   get size(): number {
@@ -111,12 +128,12 @@ export class PcgMeshes implements PropModels {
       try {
         const ref = await this.rpc.getAssetMesh(assetHash, vi);
         if (!ref.url) throw new Error("the server has no mesh for it (no cooker?)");
-        const geometry = pcgGeometry(await this.rpc.download(ref));
+        const geometry = await this.load(ref);
         // The LOD chain, most detailed first; its errors are relative to the model's size.
         const scale = modelScale(geometry);
         const lods = await Promise.all(
           (ref.lods ?? []).map(async (l, i): Promise<LodLevel> => ({
-            geometry: pcgGeometry(await this.rpc.download(l)),
+            geometry: await this.load(l),
             distance: lodDistance(l.error * scale, i + 1),
             error: l.error * scale,
           })),

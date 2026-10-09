@@ -1,0 +1,349 @@
+{
+  "version": 1,
+  "buses": {
+    "effects": {
+      "gain": 1
+    },
+    "interface": {
+      "gain": 1
+    },
+    "ambience": {
+      "gain": 1
+    },
+    "music": {
+      "gain": 1
+    }
+  },
+  "maxVoices": 24,
+  "events": {
+    "whisper": {
+      "bus": "interface",
+      "voices": 2,
+      "layers": [
+        {
+          "kind": "tone",
+          "wave": "sine",
+          "freq": 880,
+          "peak": 0.25,
+          "decay": 0.35
+        },
+        {
+          "kind": "tone",
+          "wave": "sine",
+          "freq": 1318.5,
+          "peak": 0.22,
+          "decay": 0.5,
+          "at": 0.12
+        }
+      ]
+    },
+    "notice": {
+      "bus": "interface",
+      "voices": 2,
+      "layers": [
+        {
+          "kind": "tone",
+          "wave": "triangle",
+          "freq": 660,
+          "peak": 0.2,
+          "decay": 0.25
+        }
+      ]
+    },
+    "click": {
+      "bus": "interface",
+      "voices": 3,
+      "cooldown": 0.02,
+      "layers": [
+        {
+          "kind": "tone",
+          "wave": "square",
+          "freq": 1800,
+          "peak": 0.08,
+          "decay": 0.03
+        }
+      ]
+    },
+    "hit": {
+      "bus": "effects",
+      "voices": 3,
+      "spatial": true,
+      "layers": [
+        {
+          "kind": "tone",
+          "wave": "sine",
+          "freq": 140,
+          "peak": 0.7,
+          "decay": 0.22,
+          "glideTo": 55
+        },
+        {
+          "kind": "noise",
+          "filter": "lowpass",
+          "freq": 900,
+          "peak": 0.45,
+          "decay": 0.14
+        }
+      ]
+    },
+    "block": {
+      "bus": "effects",
+      "voices": 3,
+      "spatial": true,
+      "layers": [
+        {
+          "kind": "tone",
+          "wave": "triangle",
+          "freq": 1240,
+          "peak": 0.22,
+          "decay": 0.4
+        },
+        {
+          "kind": "tone",
+          "wave": "triangle",
+          "freq": 1710,
+          "peak": 0.15,
+          "decay": 0.3
+        },
+        {
+          "kind": "noise",
+          "filter": "highpass",
+          "freq": 3000,
+          "peak": 0.2,
+          "decay": 0.06
+        }
+      ]
+    },
+    "dodge": {
+      "bus": "effects",
+      "voices": 2,
+      "spatial": true,
+      "layers": [
+        {
+          "kind": "noise",
+          "filter": "bandpass",
+          "freq": 500,
+          "peak": 1.2,
+          "decay": 0.25,
+          "sweepTo": 2400
+        }
+      ]
+    },
+    "swing": {
+      "bus": "effects",
+      "voices": 4,
+      "spatial": true,
+      "gain": 0.7,
+      "layers": [
+        {
+          "kind": "noise",
+          "filter": "bandpass",
+          "freq": 700,
+          "peak": 0.8,
+          "decay": 0.22,
+          "sweepTo": 2800
+        }
+      ]
+    },
+    "step.grass": {
+      "bus": "effects",
+      "voices": 4,
+      "cooldown": 0.12,
+      "spatial": true,
+      "gain": 0.5,
+      "layers": [
+        {
+          "kind": "noise",
+          "filter": "lowpass",
+          "freq": 1400,
+          "peak": 0.5,
+          "decay": 0.09
+        },
+        {
+          "kind": "tone",
+          "wave": "sine",
+          "freq": 90,
+          "peak": 0.25,
+          "decay": 0.07
+        }
+      ]
+    },
+    "step.sand": {
+      "bus": "effects",
+      "voices": 4,
+      "cooldown": 0.12,
+      "spatial": true,
+      "gain": 0.5,
+      "layers": [
+        {
+          "kind": "noise",
+          "filter": "highpass",
+          "freq": 1800,
+          "peak": 0.45,
+          "decay": 0.12
+        }
+      ]
+    },
+    "step.mud": {
+      "bus": "effects",
+      "voices": 4,
+      "cooldown": 0.12,
+      "spatial": true,
+      "gain": 0.55,
+      "layers": [
+        {
+          "kind": "noise",
+          "filter": "lowpass",
+          "freq": 500,
+          "peak": 0.7,
+          "decay": 0.13
+        },
+        {
+          "kind": "tone",
+          "wave": "sine",
+          "freq": 70,
+          "peak": 0.3,
+          "decay": 0.1
+        }
+      ]
+    },
+    "step.rock": {
+      "bus": "effects",
+      "voices": 4,
+      "cooldown": 0.12,
+      "spatial": true,
+      "gain": 0.5,
+      "layers": [
+        {
+          "kind": "tone",
+          "wave": "triangle",
+          "freq": 320,
+          "peak": 0.35,
+          "decay": 0.05,
+          "glideTo": 200
+        },
+        {
+          "kind": "noise",
+          "filter": "bandpass",
+          "freq": 2200,
+          "peak": 0.35,
+          "decay": 0.05
+        }
+      ]
+    },
+    "step.snow": {
+      "bus": "effects",
+      "voices": 4,
+      "cooldown": 0.12,
+      "spatial": true,
+      "gain": 0.45,
+      "layers": [
+        {
+          "kind": "noise",
+          "filter": "bandpass",
+          "freq": 3000,
+          "peak": 0.4,
+          "decay": 0.14,
+          "sweepTo": 1800
+        }
+      ]
+    },
+    "amb.wind": {
+      "bus": "ambience",
+      "voices": 1,
+      "loop": true,
+      "layers": [
+        {
+          "kind": "bed",
+          "filter": "bandpass",
+          "freq": 420,
+          "q": 0.6,
+          "level": 0.18,
+          "lfoHz": 0.08,
+          "lfoDepth": 0.1
+        }
+      ]
+    },
+    "amb.rain": {
+      "bus": "ambience",
+      "voices": 1,
+      "loop": true,
+      "layers": [
+        {
+          "kind": "bed",
+          "filter": "highpass",
+          "freq": 2400,
+          "q": 0.4,
+          "level": 0.12,
+          "lfoHz": 0.2,
+          "lfoDepth": 0.03
+        }
+      ]
+    },
+    "music.menu": {
+      "bus": "music",
+      "voices": 1,
+      "loop": true,
+      "gain": 0.6,
+      "layers": [
+        {
+          "kind": "drone",
+          "wave": "sine",
+          "freqs": [
+            110,
+            164.8,
+            220,
+            277.2
+          ],
+          "level": 0.35,
+          "lfoHz": 0.1,
+          "lfoDepth": 0.4
+        }
+      ]
+    },
+    "music.world": {
+      "bus": "music",
+      "voices": 1,
+      "loop": true,
+      "gain": 0.6,
+      "layers": [
+        {
+          "kind": "drone",
+          "wave": "triangle",
+          "freqs": [
+            98,
+            146.8,
+            196,
+            246.9
+          ],
+          "level": 0.3,
+          "lfoHz": 0.06,
+          "lfoDepth": 0.5
+        }
+      ]
+    }
+  },
+  "hooks": {
+    "scene": {
+      "login": "music.menu",
+      "character-select": "music.menu",
+      "character-creation": "music.menu",
+      "@assigned": "music.world"
+    },
+    "weather": {
+      "snow": "amb.wind",
+      "rain": "amb.rain",
+      "ash": "amb.wind",
+      "clear": "amb.wind"
+    },
+    "footstep": {
+      "stride": 1.7,
+      "fallback": "step.grass"
+    },
+    "combat": {
+      "hit": "hit",
+      "block": "block",
+      "dodge": "dodge"
+    }
+  }
+}

@@ -41,6 +41,7 @@ import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
 import { QuarksFx } from "./vfx/quarks-fx.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
+import type { WorkerRequester } from "../workers/pool.js";
 import { PcgMeshes } from "./pcg-meshes.js";
 import { ChainedPropModels, SyntyProps, fnv1a32 } from "./synty-props.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
@@ -51,6 +52,8 @@ import type { QualitySettings } from "./quality.js";
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
+  /** Decode PCG meshes and build their BVHs off the main thread. */
+  workers?: WorkerRequester;
 }
 
 interface TrackedMesh {
@@ -146,7 +149,7 @@ export class EntityLayer {
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
   ) {
-    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged()) : null;
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
@@ -210,7 +213,7 @@ export class EntityLayer {
   /** Apply a quality preset: character outlines, and the effects' particle budget. */
   setQuality(q: QualitySettings): void {
     this.quality = q;
-    this.vfx.setBudget(q.particles);
+    this.vfx.setBudget(q.particles, q.effectBudget);
     if (this.kit?.outlineMaterial) this.kit.outlineMaterial.visible = q.outlines;
   }
 
@@ -554,6 +557,12 @@ function highlight(obj: THREE.Object3D, mode: keyof typeof HIGHLIGHT): void {
   });
 }
 
+let moveSound: ((event: string, x: number, y: number, z: number) => void) | null = null;
+/** Where a move's sounds go (the game's audio engine); null: silent. */
+export function setMoveSound(fn: typeof moveSound): void {
+  moveSound = fn;
+}
+
 /**
  * Play the combat move the server says the character is in, from the
  * moment it started; back to locomotion when it's over. A guard is on the
@@ -569,6 +578,17 @@ function playAction(t: TrackedMesh, row: ActionRow | undefined, clock: ServerClo
     return;
   }
   const offset = Math.max(0, (clock.tick - row.started) / clock.tickHz);
+  // The move's sounds (content/combat): one as it starts, one on the hit frame.
+  if (moveSound && move.sound) {
+    const at = t.object.position;
+    if (move.sound.start && offset < 0.15) moveSound(move.sound.start, at.x, at.y, at.z);
+    if (move.sound.hit && move.hitAt !== undefined && offset < move.hitAt) {
+      const hit = move.sound.hit;
+      setTimeout(() => {
+        if (t.actionKey === key && moveSound) moveSound(hit, t.object.position.x, t.object.position.y, t.object.position.z);
+      }, (move.hitAt - offset) * 1000);
+    }
+  }
   t.animator!.play(move.clip, {
     offset: move.held ? offset % move.duration : offset,
     loop: move.held === true,

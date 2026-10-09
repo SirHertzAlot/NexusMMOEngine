@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /** Spell notices (0x1c): what the caster and the target read. */
 
 import { describe, it } from "node:test";

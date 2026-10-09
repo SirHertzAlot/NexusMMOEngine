@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /**
  * Body doll: which parts count as injured, their order and their lines.
  */

@@ -73,7 +73,19 @@ export const NODE_KINDS: readonly string[] = ["group", "spawn-point", "prefab"];
 export const COMPONENTS: Record<string, ComponentDef> = {
   Spawner: component("Spawner", {
     creature: { type: "string", default: "" },
+    /** A species id (content/species): used when no creature is named. */
+    species: { type: "string", default: "" },
     respawnSeconds: { type: "number", default: 60, min: 0 },
+  }),
+  /** An item lying on the ground at the node: an item base id from items.json. */
+  ItemSpawn: component("Item", {
+    base: { type: "string", default: "" },
+    /** A rank id of the loot pool; empty: the base's lowest rank. */
+    rank: { type: "string", default: "" },
+  }),
+  /** Where a quest is offered: the node moves the quest giver's post to it. */
+  QuestGiver: component("Quest giver", {
+    quest: { type: "string", default: "" },
   }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },
@@ -366,3 +378,6 @@ export class History {
 export * from "./flow.js";
 
 export * from "./place.js";
+export * from "./hud.js";
+export * from "./strings.js";
+export * from "./prefab.js";

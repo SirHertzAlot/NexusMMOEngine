@@ -53,8 +53,12 @@ import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
 import { ParticleFx, WEATHER_RULES } from "./fx/particle-fx.js";
 import { biomeAt, weatherAt } from "./fx/weather.js";
+import type { AudioEngine } from "../audio/engine.js";
+import { Footsteps, footstepEvent } from "../audio/footsteps.js";
+import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 import { PerfSampler, type PerfSample } from "./perf-stats.js";
@@ -71,6 +75,7 @@ const CAMERA_NEAR = 0.5;
 const CAMERA_FAR = FOG_FAR + 800;
 
 const splashAt = new THREE.Vector3();
+const listenerForward = new THREE.Vector3();
 
 /** Once-a-second numbers for the HUD. */
 export interface HudData {
@@ -133,6 +138,8 @@ export interface WorldCanvasProps {
   instance?: boolean;
   /** The dungeon entrance the player stands in changed (an entrance id; null: none). */
   onNearEntrance?: (entrance: string | null) => void;
+  /** The game's audio: the listener follows the camera and footsteps play on the surface underfoot. Optional (the editor's game view has none). */
+  audio?: AudioEngine;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
   combat?: CombatFeedback;
   /** The player's health or the target changed (called on change, not every frame). */
@@ -293,6 +300,7 @@ function MirrorWorld({
   instance,
   combat,
   onCombat,
+  audio,
   settings,
   screen,
   physicalSky,
@@ -302,8 +310,9 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings, audio });
+  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings, audio };
+  const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Last values sent: nearDrop, and the combat view's numbers (onCombat fires only when one moves).
   const loop = useRef({
@@ -330,10 +339,18 @@ function MirrorWorld({
   useEffect(() => {
     const sky = new DaySky();
     const particles = new ParticleFx(camera);
-    const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16);
+    // Terrain blocks, PCG meshes and BVHs build in workers (src/workers); without Worker (tests, SSR) they build inline.
+    const workers =
+      typeof Worker === "undefined"
+        ? undefined
+        : new WorkerPool(
+            () => new Worker(new URL("../workers/index.ts", import.meta.url), { type: "module" }) as never,
+            Math.min(4, Math.max(1, (navigator.hardwareConcurrency ?? 2) - 1)),
+          );
+    const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16, workers);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
-    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg });
+    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers });
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -404,7 +421,7 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances };
-    particles.setBudget(latest.current.settings.particles);
+    particles.setBudget(latest.current.settings.particles, latest.current.settings.weatherBudget);
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
@@ -438,12 +455,13 @@ function MirrorWorld({
       npcs.dispose();
       entrances.dispose();
       terrain.dispose();
+      workers?.dispose();
       water.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
   useEffect(() => {
-    rt.current?.particles.setBudget(settings.particles);
+    rt.current?.particles.setBudget(settings.particles, settings.weatherBudget);
     rt.current?.layer.setQuality(settings);
   }, [settings]);
 
@@ -564,6 +582,18 @@ function MirrorWorld({
       if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
     }
     r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+
+    // Audio: the listener rides the camera; a step sounds each stride on the ground, on the surface of the biome underfoot.
+    const audio = latest.current.audio;
+    if (audio?.ready && audio.content && me?.transform) {
+      camera.getWorldDirection(listenerForward);
+      audio.setListener([camera.position.x, camera.position.y, camera.position.z], [listenerForward.x, listenerForward.y, listenerForward.z]);
+      const grounded = me.locomotion?.mode === LocomotionMode.Ground && Math.abs(v?.ly ?? 0) < 1.5;
+      if (footsteps.current.step(delta, v ? Math.hypot(v.lx, v.lz) : 0, grounded, audio.content.hooks.footstep.stride)) {
+        const under = r.map ? biomeAt(r.map, me.transform.px, me.transform.pz) : null;
+        audio.play(footstepEvent(under, gameContent().materials, audio.content), { position: [me.transform.px, me.transform.py, me.transform.pz], gain: 1 });
+      }
+    }
 
     const seconds = now / 1000;
     r.terrain.update(camera.position);

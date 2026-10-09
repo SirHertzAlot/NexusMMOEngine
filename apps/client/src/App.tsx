@@ -16,6 +16,7 @@
  * by one tick interval (see mirror/interpolate.ts).
  */
 
+import { t } from "./i18n.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
@@ -34,9 +35,14 @@ import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./ren
 import { CombatFeedback } from "./render/combat-feedback.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
+import { setMoveSound } from "./render/entity-layer.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import gameFlow from "virtual:game-flow";
+import gameContentDocs from "virtual:game-content";
+import { applyGameContent, gameContent } from "./render/game-content.js";
 import { startNode, useFlow } from "./flow.js";
+import { HudSlot, useHudTheme } from "./ui/hud-slot.js";
+import { tNode } from "./ui/t-node.js";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { TargetFrame } from "./ui/target-frame.js";
@@ -87,9 +93,13 @@ const DEFAULT_URL =
 const PREVIEW_CUE: Partial<Record<AudioBus, Cue>> = { effects: "hit", interface: "whisper" };
 const HIT_CUE: Record<"hit" | "blocked" | "dodged", Cue> = { hit: "hit", blocked: "block", dodged: "dodge" };
 
+// The media content (combat moves, animation graph, particles, tiers, materials, audio events): content/*.
+applyGameContent(gameContentDocs);
+
 export function App(): React.ReactElement {
   // The screen is a node of content/flow/game.flow.json; events move it (flow.ts).
   const { node, screen, fire } = useFlow(gameFlow, gameFlow.start);
+  useHudTheme();
   const [mode, setMode] = useState<AuthMode>("login");
   const [url, setUrl] = useState(DEFAULT_URL);
   const [username, setUsername] = useState("");
@@ -116,7 +126,7 @@ export function App(): React.ReactElement {
   const setUiScale = useCallback((s: UiScale) => setUiScaleState(s), []);
   // Audio (U4): volumes persisted per browser; the engine starts on the first click or key.
   const [volumes, setVolumesState] = useState<Volumes>(loadVolumes);
-  const [audio] = useState(() => new AudioEngine(volumes));
+  const [audio] = useState(() => new AudioEngine(volumes, gameContent().audio ?? null));
   const setVolumes = useCallback(
     (v: Volumes) => {
       saveVolumes(v);
@@ -128,6 +138,10 @@ export function App(): React.ReactElement {
   const previewBus = useCallback((b: AudioBus) => {
     const cue = PREVIEW_CUE[b];
     if (cue) audio.play(cue);
+  }, [audio]);
+  useEffect(() => {
+    setMoveSound((event, x, y, z) => audio.play(event, { position: [x, y, z] }));
+    return () => setMoveSound(null);
   }, [audio]);
   useEffect(() => {
     const unlock = (): void => audio.unlock();
@@ -219,7 +233,7 @@ export function App(): React.ReactElement {
         // A refusal in the world (too far, someone else's, bag full) is a
         // notice, not a failed connection.
         if (e.code === 4005 && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
-        else setError(`server error ${e.code}: ${e.message}`);
+        else setError(t("app.server-error", { code: e.code, message: e.message }));
       },
       onClose: () => {
         // A client we moved away from (into or out of a dungeon) closing is expected.
@@ -232,7 +246,7 @@ export function App(): React.ReactElement {
         }
         // The server sends an error frame before closing on every
         // rejection; keep that reason instead of masking it.
-        setError((prev) => prev ?? "connection closed");
+        setError((prev) => prev ?? t("app.connection-closed"));
         fire("net.closed");
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
@@ -266,7 +280,7 @@ export function App(): React.ReactElement {
         const player = clientRef.current?.playerEntity ?? null;
         combat.hit(h, player);
         // Only blows the player gives or takes make a sound, for now.
-        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(HIT_CUE[h.outcome]);
+        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(audio.content?.hooks.combat[HIT_CUE[h.outcome]] ?? HIT_CUE[h.outcome]);
         const text = disarmNotice(h, player?.toString() ?? null);
         if (text) setNotice({ text, at: performance.now() });
       },
@@ -401,7 +415,7 @@ export function App(): React.ReactElement {
   /** Enter the world as a character (the character screen). */
   const enterWorld = async (id: number): Promise<void> => {
     const client = clientRef.current;
-    if (!client) throw new Error("not connected");
+    if (!client) throw new Error(t("app.not-connected"));
     await client.enterWorld(id);
     fire("net.joinReply.ok");
   };
@@ -482,6 +496,10 @@ export function App(): React.ReactElement {
   const client = screen === "world" ? clientRef.current : null;
   // Audio cues from what the player sees (U4): wind in the world, a chime for whispers to us, a blip for notices.
   useEffect(() => audio.setAmbience(screen === "world"), [audio, screen]);
+  // Music follows the flow's scene, the ambient bed the weather where the player stands (content/audio hooks).
+  const scene = gameFlow.nodes[node]?.scene ?? null;
+  useEffect(() => audio.setScene(scene), [audio, scene]);
+  useEffect(() => audio.setWeather(hud.weather), [audio, hud.weather]);
   useEffect(() => {
     const l = chatLines.at(-1);
     if (l?.channel === "whisper" && l.from.toLowerCase() !== characterName?.toLowerCase()) audio.play("whisper");
@@ -512,8 +530,8 @@ export function App(): React.ReactElement {
     const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
     const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
     c.stance(technique, aim);
-    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
-    setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
+    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : t("stance.weapon"));
+    setNotice({ text: t("stance.notice", { technique: label(technique), aim: label(aim) }), at: performance.now() });
   }, []);
   // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
   const onTreat = useCallback(() => clientRef.current?.treat(), []);
@@ -531,7 +549,7 @@ export function App(): React.ReactElement {
         maxCharacters={account.max_characters}
         onCreate={async (name, look) => {
           const client = clientRef.current;
-          if (!client) throw new Error("not connected");
+          if (!client) throw new Error(t("app.not-connected"));
           const updated = await client.createCharacter(name, look);
           setAccount(updated);
           if (updated.created !== undefined) await enterWorld(updated.created);
@@ -564,6 +582,7 @@ export function App(): React.ReactElement {
           showcase={false}
           bindings={bindings}
           quality={quality}
+          audio={audio}
           onQuality={onQuality}
           onHud={setHud}
           onBag={toggleBag}
@@ -581,26 +600,26 @@ export function App(): React.ReactElement {
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            pick up <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
+            {tNode("prompt.pick-up", {}, "name", <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>)}
           </div>
         )}
         {!nearDrop && !dialog && nearNpc && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            talk to <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
+            {tNode("prompt.talk", {}, "name", <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>)}
           </div>
         )}
         {!nearDrop && !dialog && !nearNpc && entrance && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            enter <span className="text-violet-300">{entrance.name}</span>
-            {party && party.members.length > 1 ? <span className="text-muted-foreground"> with your party</span> : null}
+            {tNode("prompt.enter", {}, "name", <span className="text-violet-300">{entrance.name}</span>)}
+            {party && party.members.length > 1 ? <span className="text-muted-foreground">{t("prompt.with-party")}</span> : null}
           </div>
         )}
         {run?.phase === "in" && (
-          <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
+          <HudSlot id="dungeon-hud">
             <DungeonHud run={run} onOpen={() => clientRef.current?.dungeon({ kind: "dungeon", op: "open" })} />
-          </div>
+          </HudSlot>
         )}
         {run?.phase === "ended" && (
           <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
@@ -613,13 +632,14 @@ export function App(): React.ReactElement {
           </div>
         )}
         {quests && (
-          <div className="absolute right-4 top-16 z-10">
+          <HudSlot id="quest-tracker">
             <QuestTracker quests={quests} />
-          </div>
+          </HudSlot>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
         {/* Bottom-left stack: friends above the player frame, so neither covers the other. */}
-        <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+        <>
+          <HudSlot id="friends-frame">
           <FriendsFrame
             friends={friends}
             blocked={blocked}
@@ -628,6 +648,8 @@ export function App(): React.ReactElement {
             onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
             onRemove={(n) => client?.friend(n, false)}
           />
+          </HudSlot>
+          <HudSlot id="player-frame">
           <PlayerFrame
             name={characterName}
             hp={combatView?.hp ?? hud.hp}
@@ -638,11 +660,17 @@ export function App(): React.ReactElement {
             needs={sheet?.needs}
             body={body}
           />
-          <CastBar cast={cast} />
-        </div>
-        <TargetFrame target={combatView?.target ?? null} />
+          </HudSlot>
+          <HudSlot id="cast-bar">
+            <CastBar cast={cast} />
+          </HudSlot>
+        </>
+        <HudSlot id="target-frame">
+          <TargetFrame target={combatView?.target ?? null} />
+        </HudSlot>
+        <HudSlot id="settings">
         <SettingsMenu
-          quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+          quality={quality === "auto" ? t("quality.auto", { tier: activeQuality?.active ? t(`quality.${activeQuality.active}`) : "…" }) : t(`quality.${quality}`)}
           onQuality={cycleQuality}
           onDisconnect={disconnect}
           bindings={bindings}
@@ -654,6 +682,8 @@ export function App(): React.ReactElement {
           onVolumes={setVolumes}
           onPreview={previewBus}
         />
+        </HudSlot>
+        <HudSlot id="party-frame">
         <PartyFrame
           party={party}
           self={characterName}
@@ -663,6 +693,8 @@ export function App(): React.ReactElement {
           onPromote={(n) => client?.party("promote", n)}
           onInviteExpired={() => setParty((p) => (p ? { ...p, invite: undefined } : p))}
         />
+        </HudSlot>
+        <HudSlot id="guild-frame">
         <GuildFrame
           guild={guild}
           self={characterName}
@@ -672,6 +704,8 @@ export function App(): React.ReactElement {
           onRank={(name, rank) => client?.guild("setRank", { name, rank })}
           onInviteExpired={() => setGuild((g) => (g ? { ...g, invite: undefined } : g))}
         />
+        </HudSlot>
+        <HudSlot id="chat">
         <ChatPanel
           lines={chatLines}
           self={characterName}
@@ -687,7 +721,9 @@ export function App(): React.ReactElement {
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
         />
-        <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+        </HudSlot>
+        <HudSlot id="menu-stack">
+        <div className="flex flex-col items-end gap-2">
           {bagOpen && bag && (
             <BagPanel
               bag={bag}
@@ -702,16 +738,17 @@ export function App(): React.ReactElement {
           {sheetOpen && sheet && (
             <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
           )}
-          <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
-            quests
+          <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={t("menu.quests-title", { key: prettyCode(bindings.quests[0] ?? "KeyJ") })}>
+            {t("menu.quests")}
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
-            sheet
+          <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title={t("menu.sheet-title")}>
+            {t("menu.sheet")}
           </Button>
-          <Button size="sm" variant="secondary" onClick={toggleBag} aria-expanded={bagOpen} title={`Bag (${prettyCode(bindings.bag[0] ?? "KeyB")})`}>
-            bag
+          <Button size="sm" variant="secondary" onClick={toggleBag} aria-expanded={bagOpen} title={t("menu.bag-title", { key: prettyCode(bindings.bag[0] ?? "KeyB") })}>
+            {t("menu.bag")}
           </Button>
         </div>
+        </HudSlot>
       </div>
     );
   }
@@ -720,13 +757,13 @@ export function App(): React.ReactElement {
     <div className="flex h-full items-center justify-center bg-background">
       <Card className="w-[380px]">
         <CardHeader>
-          <CardTitle>MMO Engine — mirror</CardTitle>
+          <CardTitle>{t("app.title")}</CardTitle>
           <p className="text-sm text-muted-foreground">
             {screen === "connecting"
-              ? "connecting…"
+              ? t("login.connecting")
               : mode === "register"
-                ? "Create an account on the server, then mirror the world."
-                : "Log in to mirror the authoritative world."}
+                ? t("login.register-hint")
+                : t("login.login-hint")}
           </p>
         </CardHeader>
         <CardContent>
@@ -740,7 +777,7 @@ export function App(): React.ReactElement {
                   setError(null);
                 }}
               >
-                Log in
+                {t("login.log-in")}
               </Button>
               <Button
                 variant={mode === "register" ? "default" : "outline"}
@@ -750,11 +787,11 @@ export function App(): React.ReactElement {
                   setError(null);
                 }}
               >
-                Create account
+                {t("login.create-account")}
               </Button>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="url">server URL</Label>
+              <Label htmlFor="url">{t("login.server-url")}</Label>
               <Input
                 id="url"
                 value={url}
@@ -763,7 +800,7 @@ export function App(): React.ReactElement {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="username">username</Label>
+              <Label htmlFor="username">{t("login.username")}</Label>
               <Input
                 id="username"
                 value={username}
@@ -772,7 +809,7 @@ export function App(): React.ReactElement {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">password</Label>
+              <Label htmlFor="password">{t("login.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -790,7 +827,7 @@ export function App(): React.ReactElement {
             </div>
             {mode === "register" && (
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">confirm password</Label>
+                <Label htmlFor="confirm-password">{t("login.confirm-password")}</Label>
                 <Input
                   id="confirm-password"
                   type="password"
@@ -805,7 +842,7 @@ export function App(): React.ReactElement {
                 />
                 {confirmPassword && password !== confirmPassword && (
                   <p className="text-xs text-destructive">
-                    passwords don&apos;t match
+                    {t("login.mismatch")}
                   </p>
                 )}
               </div>
@@ -821,15 +858,15 @@ export function App(): React.ReactElement {
               onClick={() => void launch()}
             >
               {screen === "connecting"
-                ? "connecting…"
+                ? t("login.connecting")
                 : mode === "register"
-                  ? "create account & connect"
-                  : "connect"}
+                  ? t("login.create-connect")
+                  : t("login.connect")}
             </Button>
             <p className="text-xs text-muted-foreground">
               {mode === "register"
-                ? "username: 3\u201332 chars (letters, digits, _, -) · password: 8+ chars"
-                : "Prefer the CLI? On the server host run MMO_DEV_PASSWORD=\u2026 npm run seed:user --workspace=@mmo-engine/engine-core -- <name>"}
+                ? t("login.register-rules")
+                : t("login.cli-hint")}
             </p>
           </div>
         </CardContent>

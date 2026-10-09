@@ -10,6 +10,7 @@
  * runs the same screen with no server.
  */
 
+import { t } from "../i18n.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CHARACTER_NAME_RE, type CharacterEntry } from "@mmo-engine/protocol";
 import {
@@ -58,11 +59,11 @@ interface Category {
 
 // Eyes, nose and mouth come with the face (the pack's heads).
 const CATEGORIES: Category[] = [
-  { slot: "head", label: "Face", optional: false },
-  { slot: "hair", label: "Hair", optional: true },
-  { slot: "eyebrows", label: "Eyebrows", optional: true },
-  { slot: "facialHair", label: "Facial hair", optional: true, gender: "male" },
-  { slot: "ears", label: "Ears", optional: true },
+  { slot: "head", label: "character.part.head", optional: false },
+  { slot: "hair", label: "character.part.hair", optional: true },
+  { slot: "eyebrows", label: "character.part.eyebrows", optional: true },
+  { slot: "facialHair", label: "character.part.facialHair", optional: true, gender: "male" },
+  { slot: "ears", label: "character.part.ears", optional: true },
 ];
 
 interface ColourRow {
@@ -78,11 +79,11 @@ const BODY_ART = ["#2b4c8c", "#4566a9", "#6b2f8f", "#8c2b2b", "#2f6b3a", "#1c1c1
 const SCARS = ["#e6b8a2", "#c98f7a", "#a86d5c", "#7a4a3c"] as const;
 
 const COLOUR_ROWS: ColourRow[] = [
-  { slot: "skin", label: "Skin", swatches: SKIN_TONES, optional: false },
-  { slot: "hair", label: "Hair", swatches: HAIR_COLOURS, optional: false },
-  { slot: "stubble", label: "Stubble", swatches: HAIR_COLOURS, optional: true, gender: "male" },
-  { slot: "scar", label: "Scars", swatches: SCARS, optional: true },
-  { slot: "bodyArt", label: "Body art", swatches: BODY_ART, optional: true },
+  { slot: "skin", label: "character.colour.skin", swatches: SKIN_TONES, optional: false },
+  { slot: "hair", label: "character.colour.hair", swatches: HAIR_COLOURS, optional: false },
+  { slot: "stubble", label: "character.colour.stubble", swatches: HAIR_COLOURS, optional: true, gender: "male" },
+  { slot: "scar", label: "character.colour.scar", swatches: SCARS, optional: true },
+  { slot: "bodyArt", label: "character.colour.bodyArt", swatches: BODY_ART, optional: true },
 ];
 
 /** The options a category offers (mask heads are for helmets, not faces). */
@@ -129,14 +130,14 @@ function Picker({
   const step = onStep;
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="w-24 text-sm text-muted-foreground">{label}</span>
-      <Button size="sm" variant="secondary" aria-label={`previous ${label}`} onClick={() => step(-1)}>
+      <span className="w-24 text-sm text-muted-foreground">{t(label)}</span>
+      <Button size="sm" variant="secondary" aria-label={t("character.previous", { label: t(label) })} onClick={() => step(-1)}>
         ‹
       </Button>
       <span className="w-16 text-center text-sm tabular-nums">
-        {at < 0 ? "none" : `${at + 1} / ${options.length}`}
+        {at < 0 ? t("character.none") : `${at + 1} / ${options.length}`}
       </span>
-      <Button size="sm" variant="secondary" aria-label={`next ${label}`} onClick={() => step(1)}>
+      <Button size="sm" variant="secondary" aria-label={t("character.next", { label: t(label) })} onClick={() => step(1)}>
         ›
       </Button>
     </div>
@@ -155,10 +156,10 @@ function Swatches({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{row.label}</span>
+        <span className="text-sm text-muted-foreground">{t(row.label)}</span>
         <input
           type="color"
-          aria-label={`${row.label} colour`}
+          aria-label={t("character.colour-of", { label: t(row.label) })}
           className="h-5 w-8 cursor-pointer rounded border border-input bg-transparent"
           value={value ?? "#000000"}
           onChange={(e) => onChange(e.target.value)}
@@ -167,8 +168,8 @@ function Swatches({
       <div className="flex flex-wrap gap-1">
         {row.optional && (
           <button
-            title="none"
-            aria-label={`no ${row.label}`}
+            title={t("character.none")}
+            aria-label={t("character.no-colour", { label: t(row.label) })}
             className={`h-5 w-5 rounded-sm border text-[10px] leading-none text-muted-foreground ${value === undefined ? "border-foreground" : "border-input"}`}
             onClick={() => onChange(undefined)}
           >
@@ -179,7 +180,7 @@ function Swatches({
           <button
             key={c}
             title={c}
-            aria-label={`${row.label} ${c}`}
+            aria-label={`${t(row.label)} ${c}`}
             className={`h-5 w-5 rounded-sm border ${value?.toLowerCase() === c ? "border-foreground ring-1 ring-foreground" : "border-black/40"}`}
             style={{ background: c }}
             onClick={() => onChange(c)}
@@ -286,7 +287,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
       <div className="flex h-full w-80 shrink-0 flex-col gap-3 overflow-y-auto border-r border-input bg-slate-950 p-4">
         {mode === "list" ? (
           <>
-            <div className="font-semibold">Your characters</div>
+            <div className="font-semibold">{t("character.your-characters")}</div>
             <div className="space-y-1">
               {characters.map((c) => (
                 <button
@@ -296,31 +297,31 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                   onDoubleClick={() => void run(() => props.onEnter(c.id))}
                 >
                   {c.name}
-                  <span className="ml-2 text-xs text-muted-foreground">{c.look.gender}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{t("character.gender", { gender: c.look.gender })}</span>
                 </button>
               ))}
             </div>
             <Button disabled={busy || selected === null} onClick={() => selected !== null && void run(() => props.onEnter(selected))}>
-              {busy ? "entering…" : "Enter world"}
+              {busy ? t("character.entering") : t("character.enter")}
             </Button>
             <Button variant="secondary" disabled={busy || full} onClick={() => setMode("create")}>
-              {full ? `all ${maxCharacters} character slots used` : "Create a new character"}
+              {full ? t("character.slots-used", { max: maxCharacters }) : t("character.create-new")}
             </Button>
           </>
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Create a character</div>
+              <div className="font-semibold">{t("character.create-title")}</div>
               {characters.length > 0 && (
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => setMode("list")}>
-                  back
+                  {t("character.back")}
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
               {(["male", "female"] as const).map((g) => (
                 <Button key={g} className="flex-1" variant={look.gender === g ? "default" : "outline"} onClick={() => setGender(g)}>
-                  {g === "male" ? "Male" : "Female"}
+                  {g === "male" ? t("character.male") : t("character.female")}
                 </Button>
               ))}
             </div>
@@ -337,7 +338,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">{artError ? "Character art unavailable: appearance can't be chosen." : "loading character art…"}</div>
+              <div className="text-sm text-muted-foreground">{artError ? t("character.art-unavailable") : t("character.art-loading")}</div>
             )}
             <div className="space-y-2">
               {COLOUR_ROWS.filter((r) => !r.gender || r.gender === look.gender).map((r) => (
@@ -346,14 +347,14 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
             </div>
             <div className="flex gap-2">
               <Button variant="secondary" className="flex-1" disabled={!catalog} onClick={() => catalog && setLook(randomLook(catalog, look.gender))}>
-                Randomise
+                {t("character.randomise")}
               </Button>
               <Button variant="secondary" className="flex-1" onClick={() => setFraming(framing === "body" ? "head" : "body")}>
-                {framing === "body" ? "Face" : "Full body"}
+                {framing === "body" ? t("character.face") : t("character.full-body")}
               </Button>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="character-name">Name</Label>
+              <Label htmlFor="character-name">{t("character.name")}</Label>
               <Input
                 id="character-name"
                 value={name}
@@ -363,17 +364,17 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                   if (e.key === "Enter" && nameOk && !busy) void run(() => props.onCreate(name, look));
                 }}
               />
-              <p className="text-xs text-muted-foreground">3–16 letters; ' and - allowed</p>
+              <p className="text-xs text-muted-foreground">{t("character.name-rule")}</p>
             </div>
             <Button disabled={busy || !nameOk} onClick={() => void run(() => props.onCreate(name, look))}>
-              {busy ? "creating…" : "Create & enter world"}
+              {busy ? t("character.creating") : t("character.create-enter")}
             </Button>
           </>
         )}
         {error && <div className="rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm">{error}</div>}
         {artError && <div className="text-xs text-muted-foreground">{artError}</div>}
         <Button size="sm" variant="outline" disabled={busy} onClick={props.onLeave}>
-          log out
+          {t("character.log-out")}
         </Button>
       </div>
       <canvas ref={canvasRef} className="block h-full min-w-0 flex-1" />

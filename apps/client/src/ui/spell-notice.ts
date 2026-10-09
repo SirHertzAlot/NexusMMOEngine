@@ -3,6 +3,7 @@
  * caster or the one it is cast on.
  */
 
+import { t } from "../i18n.js";
 import type { SpellMessage } from "@mmo-engine/protocol";
 
 /** "mend" -> "Mend". */
@@ -14,19 +15,19 @@ export function spellNotice(s: SpellMessage, me: string | null, name = spellTitl
   if (s.caster === me) {
     switch (s.state) {
       case "started":
-        return `Casting ${name}${s.seconds ? ` (${Math.round(s.seconds)} s)` : ""}`;
+        return t("spell.casting", { name, time: s.seconds ? t("notice.seconds", { n: Math.round(s.seconds) }) : "" });
       case "done":
-        return s.amount !== undefined ? `${name} healed ${self ? "you" : "them"} for ${Math.round(s.amount)}` : `${name} cast`;
+        return s.amount !== undefined ? t("spell.healed", { name, who: self ? "self" : "other", n: Math.round(s.amount) }) : t("spell.cast", { name });
       case "stopped":
-        return "Cast stopped";
+        return t("spell.stopped");
     }
   }
   if (s.target !== me) return null;
   switch (s.state) {
     case "started":
-      return `Someone is casting ${name} on you`;
+      return t("spell.incoming", { name });
     case "done":
-      return s.amount !== undefined ? `${name} healed you for ${Math.round(s.amount)}` : null;
+      return s.amount !== undefined ? t("spell.healed-you", { name, n: Math.round(s.amount) }) : null;
     case "stopped":
       return null;
   }

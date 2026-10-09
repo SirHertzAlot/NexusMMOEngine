@@ -87,6 +87,11 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handlePlaytestRoute } from "./playtest-host.js";
+import { createScratchRunner } from "./playtest-server.js";
+import { handleNetworkRoute } from "./network-host.js";
+import { handleUiRoute } from "./ui-host.js";
+import { handleMediaRoute } from "./media-host.js";
 import { createClientServer, handlePlayRoute, parsePlayStart, seedAccounts, waitForHttp, type PlayStartRequest } from "./play-host.js";
 import { accountNames, finishSession, prepareSession, type SqliteLike } from "./play-session.js";
 import { createReleaseHost } from "./release-host.js";
@@ -229,7 +234,8 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
-// A request's body can be read once; routes registered later ask again, so the first read is remembered.
+// Several route handlers ask for the body of the same request (the modules
+// route reads every PUT's): the stream can be read once, so the answer is kept.
 const bodies = new WeakMap<IncomingMessage, Promise<string>>();
 function readBody(req: IncomingMessage): Promise<string> {
   let p = bodies.get(req);
@@ -349,6 +355,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const assetsRoot = join(repoRoot, "assets");
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
+  const playtestRunner = createScratchRunner(repoRoot);
   let owned: OwnedServer | null = null;
   const clientServer = createClientServer(repoRoot);
   const releaseHost = createReleaseHost({ repoRoot, npmInvocation: (a) => npmInvocation(a), killProcessTree: (p, s) => killProcessTree(p, s) });
@@ -816,6 +823,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
               running: owned !== null,
               pid: owned?.pid,
               port: owned?.port,
+              // Loopback only (checked above): the Live ops and Network
+              // panels connect an admin link with the same one-session login.
+              url: owned?.url,
+              username: owned?.username,
+              password: owned?.password,
             });
             return;
           }
@@ -1043,7 +1055,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             modulesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            // Only the modules route's own PUT: reading every PUT's body here left none for the routes after it.
+            req.method === "PUT" && modulesUrl.pathname === "/api/editor/modules" ? await readBody(req) : undefined,
             {
               running: () => owned?.tickOrder() ?? null,
               // "Apply modules": the server reads the set at boot, so a running one restarts.
@@ -1088,6 +1101,37 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, flowReply.status, flowReply.body);
             return;
           }
+          // Playtests (EA26) and the Network workspace's routes file.
+          const needsBody = req.method === "PUT" || req.method === "POST";
+          const playtestReply = scenesUrl.pathname.startsWith("/api/editor/playtest")
+            ? await handlePlaytestRoute(repoRoot, dataDir, req.method ?? "GET", scenesUrl.pathname, needsBody ? await readBody(req) : undefined, playtestRunner)
+            : null;
+          if (playtestReply) {
+            sendJson(res, playtestReply.status, playtestReply.body);
+            return;
+          }
+          const networkReply = await handleNetworkRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && scenesUrl.pathname === "/api/editor/network" ? await readBody(req) : undefined);
+          if (networkReply) {
+            sendJson(res, networkReply.status, networkReply.body);
+            return;
+          }
+          // HUD layout and string tables (EA23, EA25: ui-host.ts).
+          const uiReply = handleUiRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && (scenesUrl.pathname === "/api/editor/hud" || scenesUrl.pathname.startsWith("/api/editor/strings/")) ? await readBody(req) : undefined);
+          if (uiReply) {
+            sendJson(res, uiReply.status, uiReply.body);
+            return;
+          }
+          // Animation, VFX, materials and audio content (EA21/EA22/EA24, media-host.ts).
+          const mediaReply = handleMediaRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/media/") ? await readBody(req) : undefined,
+          );
+          if (mediaReply) {
+            sendJson(res, mediaReply.status, mediaReply.body);
+            return;
+          }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
           const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (gameplayReply) {
@@ -1098,7 +1142,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             scenesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/scenes") ? await readBody(req) : undefined,
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);

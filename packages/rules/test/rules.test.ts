@@ -174,6 +174,21 @@ describe("our game's rules (content/rules)", () => {
     assert.match(issues, /beyond aggroRadius/);
   });
 
+  it("let a creature name a loot table of item bases (loot.json tables)", () => {
+    const g = rules.creatures.creatures.goblin;
+    assert.equal(g.drops.table, "goblin-spoils");
+    for (const e of rules.loot.tables!["goblin-spoils"].entries) assert.ok(e.base in rules.items.bases, e.base);
+  });
+
+  it("reject a loot table naming a missing base, and a creature naming a missing table", () => {
+    const loot = structuredClone(rules.loot);
+    loot.tables!["goblin-spoils"].entries[0].base = "noSuchBase";
+    assert.match(issuesOf(() => parseRules({ ...rules, loot })).join("; "), /tables\.goblin-spoils\.entries\[0\]\.base: no item base "noSuchBase"/);
+    const creatures = structuredClone(rules.creatures);
+    creatures.creatures.goblin.drops.table = "nope";
+    assert.match(issuesOf(() => parseRules({ ...rules, creatures })).join("; "), /no loot table "nope"/);
+  });
+
   it("respawn with skills kept and injuries cleared", () => {
     const h = createHooks(rules);
     const outcome = h.onDeath({ cause: "part", part: "head" });
