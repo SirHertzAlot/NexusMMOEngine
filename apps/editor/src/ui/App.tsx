@@ -17,6 +17,7 @@ import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
+import { HudEditor } from "./hud-editor.js";
 import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
@@ -206,6 +207,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelinePreview /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestPreview /> },
+      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudEditor /> },
     ],
     leftTitle: "Profiles",
   },
