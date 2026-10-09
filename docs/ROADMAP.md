@@ -145,7 +145,7 @@ loadable modules, a database editor and production tools.
 | EA23 | HUD layout editor | 📋 | |
 | EA24 | Audio | 📋 | |
 | EA25 | Localization | 📋 | |
-| EA26 | Automated playtests | 📋 | |
+| EA26 | Automated playtests | 🚧 | `arlo/ea26-playtests` (PR #189): `@mmo-engine/playtest` (zod scenarios, headless SimWorld runner, assertions, sealed failure replays), `BotSystem` exported, `npm run playtest`, sample scenario. Open: viewport replay scrubbing, headless screenshots/GIFs, pipeline integration |
 
 ## 1d. Editor interaction repairs
 
