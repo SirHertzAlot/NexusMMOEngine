@@ -21,7 +21,7 @@ import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
-import { botsCount, loadLastSetup, shouldConnectPlayer } from "./play-setup.js";
+import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer } from "./play-setup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -160,12 +160,13 @@ export function PlayModePanel(): React.JSX.Element {
     setBusy(true);
     setDetail(undefined);
     try {
-      // The Play menu's honored start options: bots → MMO_BOTS, and
-      // simulate mode (world only, no player client).
+      // The Play menu's honored start options: bots → MMO_BOTS, simulate
+      // mode (world only, no player), and client count (1/2/4/8).
       const setup = loadLastSetup();
       await controller.start({
         bots: botsCount(setup),
         noClient: !shouldConnectPlayer(setup),
+        clients: clientCount(setup),
       });
     } catch (err) {
       // detail already carries the message via onStateChange(error)

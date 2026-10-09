@@ -58,6 +58,11 @@ export interface PlayStartOptions {
    * The world ticks; the editor shows status, not a game view.
    */
   noClient?: boolean;
+  /**
+   * How many mirror clients to connect (1/2/4/8). Client 0 drives the
+   * game view; the rest are headless load. Defaults to 1.
+   */
+  clients?: number;
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */
@@ -81,6 +86,8 @@ export class PlayModeController {
   private entered = false;
   private server: PlayServer | null = null;
   private client: PlayClient | null = null;
+  /** Headless load clients (client 0 is `client`, drives the game view). */
+  private extraClients: PlayClient[] = [];
   /**
    * Invalidated by stop(): an in-flight start() checks it after every
    * await and cleans up instead of entering running — so Stop works
@@ -135,7 +142,17 @@ export class PlayModeController {
       }
       // Simulate mode: the world ticks with no player client.
       if (!opts?.noClient) {
+        const n = opts?.clients ?? 1;
         this.client = await this.connectClient(this.server);
+        // Extra headless clients for load testing.
+        for (let i = 1; i < n; i++) {
+          try {
+            this.extraClients.push(await this.connectClient(this.server));
+          } catch {
+            // A failed extra client doesn't fail the start; the primary is up.
+            break;
+          }
+        }
         if (token !== this.startToken) {
           try {
             this.client?.disconnect();
@@ -144,6 +161,10 @@ export class PlayModeController {
           } finally {
             this.client = null;
           }
+          for (const c of this.extraClients) {
+            try { c.disconnect(); } catch { /* ignore */ }
+          }
+          this.extraClients = [];
           await this.cleanupOwnedServer();
           this.restoreEditorState();
           return;
@@ -187,6 +208,14 @@ export class PlayModeController {
     } finally {
       this.client = null;
     }
+    for (const c of this.extraClients) {
+      try {
+        c.disconnect();
+      } catch (err) {
+        firstError = firstError ?? err;
+      }
+    }
+    this.extraClients = [];
     try {
       await this.cleanupOwnedServer();
     } catch (err) {
