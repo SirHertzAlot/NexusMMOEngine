@@ -52,3 +52,6 @@ apps/client/public/surfaces/
 
 # Codebase snapshot dumps (copies of the repo itself; regenerate, never commit)
 /docs/kb/
+
+# build profiles are content, not build output
+!content/build/

@@ -18,7 +18,6 @@
     "action.technique": "next technique (cut, thrust, bludgeon)",
     "action.treat": "treat your worst wound",
     "app.connection-closed": "connection closed",
-    "app.no-character": "play from world: the account has no character yet",
     "app.not-connected": "not connected",
     "app.server-error": "server error {code}: {message}",
     "app.title": "MMO Engine â€” mirror",

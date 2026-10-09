@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "perf-check",
+  "description": "Server only, with the native checks: memcheck on the physics addon and the tick perf baseline (needs valgrind).",
+  "target": "local",
+  "build": [
+    "@mmo-engine/engine-core"
+  ],
+  "bakes": [
+    "world"
+  ],
+  "tests": [],
+  "valgrind": {
+    "memcheck": [
+      "physics"
+    ],
+    "perf": true,
+    "required": false
+  },
+  "modules": [
+    "core",
+    "characters"
+  ],
+  "edge": false,
+  "env": {
+    "MMO_PORT": "7791",
+    "MMO_ALLOW_REGISTER": "0",
+    "MMO_BOTS": "4"
+  }
+}
