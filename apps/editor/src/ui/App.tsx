@@ -28,6 +28,7 @@ import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./dat
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import { TOOLBAR_GROUPS, isShown, loadToolbar, saveToolbar, toggleGroup, DEFAULT_TOOLBAR, type ToolbarConfig } from "../toolbar-config.js";
 import {
   deleteNamedSetup,
   loadLastSetup,
@@ -1168,6 +1169,13 @@ function Toolbar(props: {
   const { pmState } = playUiStore.use();
   const stopping = pmState === "stopping";
   const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
+  const [cfg, setCfg] = React.useState<ToolbarConfig>(() => loadToolbar());
+  const [customize, setCustomize] = React.useState<{ x: number; y: number } | null>(null);
+  const change = (next: ToolbarConfig): void => {
+    setCfg(next);
+    saveToolbar(next);
+  };
+  const show = (id: string): boolean => isShown(cfg, id);
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent): void {
@@ -1194,7 +1202,16 @@ function Toolbar(props: {
           : "1px solid var(--m3-outline-variant)",
       }}
     >
-      <div className="flex items-center gap-0.5" role="toolbar" aria-label="Edit tools">
+      <div
+        className="absolute inset-0"
+        onContextMenu={(e) => {
+          if ((e.target as HTMLElement).closest("button, input")) return;
+          e.preventDefault();
+          setCustomize({ x: e.clientX, y: e.clientY });
+        }}
+        aria-hidden="true"
+      />
+      {show("document") && <div className="relative flex items-center gap-0.5" role="toolbar" aria-label="Edit tools">
         <IconButton
           label={doc ? (doc.canSave ? `Save ${doc.label} (Ctrl S)` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
           title={doc ? (doc.canSave ? `Save ${doc.label}` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
@@ -1222,9 +1239,9 @@ function Toolbar(props: {
         >
           <MIcon name="redo" size={20} />
         </IconButton>
-      </div>
-      <div
-        className="mx-1 hidden items-center gap-0.5 lg:flex"
+      </div>}
+      {show("transform") && <div
+        className="relative mx-1 hidden items-center gap-0.5 lg:flex"
         role="toolbar"
         aria-label="Transform tools"
         style={{ borderLeft: "1px solid var(--m3-outline-variant)", paddingLeft: 8 }}
@@ -1234,7 +1251,7 @@ function Toolbar(props: {
         <IconButton label="Rotate (E)" active={tool === "rotate"} onClick={() => setTool("rotate")} size={36}><MIcon name="rotate_right" size={20} /></IconButton>
         <IconButton label="Scale (R)" active={tool === "scale"} onClick={() => setTool("scale")} size={36}><MIcon name="expand" size={20} /></IconButton>
         <IconButton label="Snap" active={tool === "snap"} onClick={() => setTool(tool === "snap" ? "select" : "snap")} size={36}><MIcon name="grid_on" size={20} /></IconButton>
-      </div>
+      </div>}
 
       {/* play cluster — segmented mode + split Play, always centered.
           Tertiary so play state reads at a glance (§3.2, §3.5). */}
@@ -1273,7 +1290,7 @@ function Toolbar(props: {
             className="m3-focus flex h-full items-center gap-1.5 pl-4 pr-3"
           >
             <MIcon name="play_arrow" size={20} />
-            Play
+            {!cfg.iconsOnly && "Play"}
           </button>
           <button
             onClick={props.onTogglePlayMenu}
@@ -1286,22 +1303,22 @@ function Toolbar(props: {
             <MIcon name="expand_more" size={20} />
           </button>
         </div>
-        <IconButton
+        {show("tick") && <IconButton
           label="Pause — not available: the owned server's tick loop has no pause control"
           title="Pause — not available: the owned server's tick loop has no pause control"
           size={36}
           disabled
         >
           <MIcon name="pause" size={20} />
-        </IconButton>
-        <IconButton
+        </IconButton>}
+        {show("tick") && <IconButton
           label="Step one tick — not available: the owned server has no single-tick control"
           title="Step one tick — not available: the owned server has no single-tick control"
           size={36}
           disabled
         >
           <MIcon name="skip_next" size={20} />
-        </IconButton>
+        </IconButton>}
         <IconButton
           label={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop (Shift F5) — stops the owned server, even while starting"}
           title={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop — stops the owned server, even while starting"}
@@ -1314,25 +1331,25 @@ function Toolbar(props: {
         >
           <MIcon name="stop" size={20} />
         </IconButton>
-        <span
+        {show("setup") && !cfg.iconsOnly && <span
           className="hidden h-7 items-center whitespace-nowrap rounded-full px-2.5 text-xs xl:inline-flex"
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
           title="Current play setup — the Play menu changes it"
         >
           {setupSummary(props.playSetup)}
-        </span>
+        </span>}
       </div>
 
       <div className="ml-auto flex items-center gap-2">
         <StatusChip live={pmState === "running"}>{pmState === "running" ? "Playing" : pmState === "starting" ? "Starting…" : "Server idle"}</StatusChip>
-        <span
+        {show("modules") && <span
           className="hidden h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs lg:inline-flex"
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
           title="Enabled modules (content/modules.json)"
         >
           <MIcon name="extension" size={15} /><ModulesChip />
-        </span>
-        <span className="relative">
+        </span>}
+        {show("layout") && <span className="relative">
           <IconButton
             label="Layout menu (Ctrl Shift S saves)"
             size={36}
@@ -1363,8 +1380,40 @@ function Toolbar(props: {
               onClose={props.onCloseLayoutMenu}
             />
           )}
-        </span>
+        </span>}
       </div>
+
+      {customize && (
+        <>
+          <span className="fixed inset-0 z-40" onClick={() => setCustomize(null)} onContextMenu={(e) => (e.preventDefault(), setCustomize(null))} aria-hidden="true" />
+          <menu
+            className="fixed z-50 w-72 rounded-xl p-2"
+            style={{ left: Math.min(customize.x, window.innerWidth - 300), top: customize.y, background: "var(--m3-surface-3)", boxShadow: "0 6px 16px rgba(0,0,0,.5)" }}
+            aria-label="Customize toolbar"
+          >
+            <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>Customize toolbar</p>
+            {TOOLBAR_GROUPS.map((g) => (
+              <li key={g.id} className="list-none">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm" style={{ color: "var(--m3-on-surface)" }}>
+                  <input type="checkbox" checked={show(g.id)} onChange={() => change(toggleGroup(cfg, g.id))} />
+                  {g.label}
+                </label>
+              </li>
+            ))}
+            <li className="list-none">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm" style={{ color: "var(--m3-on-surface)" }}>
+                <input type="checkbox" checked={cfg.iconsOnly} onChange={() => change({ ...cfg, iconsOnly: !cfg.iconsOnly })} />
+                Icons only (no Play label or setup summary)
+              </label>
+            </li>
+            <li className="list-none">
+              <button className="m3-focus w-full rounded-lg px-2 py-1.5 text-left text-sm" style={{ color: "var(--m3-primary)" }} onClick={() => change(DEFAULT_TOOLBAR)}>
+                Reset to default
+              </button>
+            </li>
+          </menu>
+        </>
+      )}
 
       {props.playMenu && (
         <>
