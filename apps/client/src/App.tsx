@@ -39,6 +39,7 @@ import gameFlow from "virtual:game-flow";
 import { startNode, useFlow } from "./flow.js";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
+import { HudLayoutProvider, HudSlot, useHudJson } from "./ui/hud-slot.js";
 import { TargetFrame } from "./ui/target-frame.js";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
@@ -96,6 +97,8 @@ export function App(): React.ReactElement {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // EA23: widget positions come from content/ui/hud.json (data, not code).
+  const hudLayout = useHudJson();
   const [hud, setHud] = useState<HudData>({
     tick: 0, entities: 0, fps: 0, px: 0, py: 0, pz: 0, mode: null, breath: 1, time: null, weather: null, perf: [],
     hp: null, maxHp: null, sp: null, maxSp: null,
@@ -553,6 +556,7 @@ export function App(): React.ReactElement {
   if (client) {
     const entrance = nearEntrance ? client.entrances.find((e) => e.id === nearEntrance) : undefined;
     return (
+      <HudLayoutProvider layout={hudLayout}>
       <div className="relative h-full w-full">
         <WorldCanvas
           client={client}
@@ -612,13 +616,13 @@ export function App(): React.ReactElement {
           </div>
         )}
         {quests && (
-          <div className="absolute right-4 top-16 z-10">
+          <HudSlot id="quest-tracker" className="z-10">
             <QuestTracker quests={quests} />
-          </div>
+          </HudSlot>
         )}
         {notice && <Notice key={notice.at} text={notice.text} onDone={() => setNotice(null)} />}
-        {/* Bottom-left stack: friends above the player frame, so neither covers the other. */}
-        <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+        {/* Bottom-left widgets: positions from hud.json (EA23). */}
+        <HudSlot id="friends-frame" className="pointer-events-none z-10">
           <FriendsFrame
             friends={friends}
             blocked={blocked}
@@ -627,6 +631,8 @@ export function App(): React.ReactElement {
             onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
             onRemove={(n) => client?.friend(n, false)}
           />
+        </HudSlot>
+        <HudSlot id="player-frame" className="pointer-events-none z-10">
           <PlayerFrame
             name={characterName}
             hp={combatView?.hp ?? hud.hp}
@@ -637,8 +643,10 @@ export function App(): React.ReactElement {
             needs={sheet?.needs}
             body={body}
           />
+        </HudSlot>
+        <HudSlot id="cast-bar" className="pointer-events-none z-10">
           <CastBar cast={cast} />
-        </div>
+        </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
         <SettingsMenu
           quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
@@ -686,8 +694,8 @@ export function App(): React.ReactElement {
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
         />
-        <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
-          {bagOpen && bag && (
+        {bagOpen && bag && (
+          <HudSlot id="bag-panel" className="z-10">
             <BagPanel
               bag={bag}
               hands={hands}
@@ -696,11 +704,19 @@ export function App(): React.ReactElement {
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
             />
-          )}
-          {questsOpen && quests && <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />}
-          {sheetOpen && sheet && (
+          </HudSlot>
+        )}
+        {questsOpen && quests && (
+          <HudSlot id="quest-log" className="z-10">
+            <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />
+          </HudSlot>
+        )}
+        {sheetOpen && sheet && (
+          <HudSlot id="character-sheet" className="z-10">
             <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
-          )}
+          </HudSlot>
+        )}
+        <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
             quests
           </Button>
@@ -712,6 +728,7 @@ export function App(): React.ReactElement {
           </Button>
         </div>
       </div>
+      </HudLayoutProvider>
     );
   }
 
