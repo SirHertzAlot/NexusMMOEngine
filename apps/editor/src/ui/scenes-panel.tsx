@@ -86,6 +86,10 @@ export function ScenesPanel(): React.JSX.Element {
   // Inline "new scene" dialog (window.prompt is blocked in some webviews).
   const [naming, setNaming] = React.useState<string | null>(null);
   const [nameError, setNameError] = React.useState("");
+  // Outliner context menu: {id, x, y} when open.
+  const [ctx, setCtx] = React.useState<{ id: string; x: number; y: number } | null>(null);
+  // Inline rename: node id being renamed.
+  const [renaming, setRenaming] = React.useState<string | null>(null);
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
 
@@ -124,6 +128,21 @@ export function ScenesPanel(): React.JSX.Element {
       setStatus((e as Error).message);
     }
     bump();
+  };
+  // Context menu actions (also wired to the Edit menu via DocActions).
+  const duplicateNode = (id: string): void => {
+    const n = findNode(hist.doc, id);
+    if (!n) return;
+    const copy: SceneNode = { ...structuredClone(n), id: nextId(hist.doc, "node") };
+    // Remap child ids too.
+    const remap = (c: SceneNode): SceneNode => ({ ...c, id: nextId(hist.doc, "node"), children: c.children?.map(remap) });
+    copy.children = n.children?.map(remap);
+    run("duplicate node", (d) => addNode(d, null, copy));
+    select(copy.id);
+  };
+  const deleteNode = (id: string): void => {
+    run("delete node", (d) => removeNode(d, id));
+    if (selected === id) select(null);
   };
   const refresh = (): void => void listScenes().then(setNames, (e: Error) => setStatus(e.message));
   React.useEffect(refresh, []);
@@ -420,12 +439,63 @@ export function ScenesPanel(): React.JSX.Element {
               tabIndex={0}
               onClick={() => select(n.id)}
               onKeyDown={(e) => e.key === "Enter" && select(n.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                select(n.id);
+                setCtx({ id: n.id, x: e.clientX, y: e.clientY });
+              }}
               className="cursor-pointer rounded px-2 py-1"
               style={{ paddingLeft: 8 + depth * 14, background: n.id === selected ? "var(--m3-secondary-container)" : undefined }}
             >
-              {n.name || n.id} <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
+              {renaming === n.id ? (
+                <input
+                  autoFocus
+                  className="w-full rounded border px-1 text-sm"
+                  defaultValue={n.name || n.id}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== (n.name || n.id)) run("rename node", (d) => setNodeProp(d, n.id, "name", v));
+                    setRenaming(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    else if (e.key === "Escape") setRenaming(null);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <>{n.name || n.id} <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span></>
+              )}
             </div>
           ))}
+          {ctx && (
+            <div
+              className="fixed z-50 min-w-40 rounded-lg border py-1 shadow-lg"
+              style={{
+                left: ctx.x,
+                top: ctx.y,
+                background: "var(--m3-surface)",
+                borderColor: "var(--m3-outline-variant)",
+              }}
+              role="menu"
+              onMouseLeave={() => setCtx(null)}
+            >
+              {[
+                { label: "Rename", run: () => { setRenaming(ctx.id); setCtx(null); } },
+                { label: "Duplicate", run: () => { setCtx(null); duplicateNode(ctx.id); } },
+                { label: "Delete", run: () => { setCtx(null); deleteNode(ctx.id); } },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--m3-secondary-container)]"
+                  onClick={item.run}
+                  role="menuitem"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
           {open && doc.nodes.length === 0 && <p className="text-xs opacity-70">Empty scene. Add a node.</p>}
         </section>
         <section className="min-h-0" aria-label="Viewport">
