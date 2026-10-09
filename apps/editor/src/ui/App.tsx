@@ -28,6 +28,7 @@ import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./dat
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import { requestNewScene } from "../open-scene.js";
 import {
   deleteNamedSetup,
   loadLastSetup,
@@ -815,21 +816,21 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
     else void document.documentElement.requestFullscreen().catch(() => notify("Fullscreen was blocked by the browser"));
   }
 
-  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string } | "sep">> = {
+  const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean } | "sep">> = {
     File: [
-      { label: "New Scene", run: staged("New Scene", "EA · scenes"), stagedFor: "EA · scenes" },
-      { label: "Open Scene…", run: staged("Open Scene", "EA · scenes"), stagedFor: "EA · scenes" },
+      { label: "New Scene…", run: () => { requestNewScene(); onGo("scenes"); } },
+      { label: "Open Scene…", run: () => onGo("scenes") },
       "sep",
-      { label: "Save", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Save All", run: staged("Save All", "the open document's slice"), stagedFor: "the open document's slice" },
+      { label: doc ? `Save ${doc.label}` : "Save", kbd: "Ctrl S", disabled: !doc?.canSave, run: () => doc?.save() },
       { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
       "sep",
       { label: "Import…", run: staged("Import", "EA · content browser"), stagedFor: "EA · content browser" },
       { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
     ],
     Edit: [
-      { label: "Undo", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Redo", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Undo", kbd: "Ctrl Z", disabled: !doc?.canUndo, run: () => doc?.undo() },
+      { label: "Redo", kbd: "Ctrl Y", disabled: !doc?.canRedo, run: () => doc?.redo() },
       "sep",
       { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
       { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
@@ -915,17 +916,18 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                   }
                   const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
                   const stagedRow = it.stagedFor !== undefined;
+                  const off = stagedRow || it.disabled === true;
                   return (
                     <li key={it.label} className="list-none">
                       <button
-                        disabled={stagedRow}
-                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : undefined}
+                        disabled={off}
+                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : it.disabled ? `${it.label} — no open document to act on` : undefined}
                         onClick={() => {
                           setOpen(null);
                           run();
                         }}
                         className="m3-focus flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                        style={{ color: "var(--m3-on-surface)", opacity: stagedRow ? 0.55 : undefined }}
+                        style={{ color: "var(--m3-on-surface)", opacity: off ? 0.55 : undefined }}
                       >
                         {it.label}
                         {stagedRow && (

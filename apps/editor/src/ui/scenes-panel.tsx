@@ -30,7 +30,7 @@ import {
 } from "@mmo-engine/scene";
 import { keepLiveTransform, liveTransform, placePrefab, type LiveTransform } from "@mmo-engine/scene";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
-import { openScene } from "../open-scene.js";
+import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
@@ -197,6 +197,16 @@ export function ScenesPanel(): React.JSX.Element {
     setIssues(validateScene(hist.doc));
     bump();
   };
+
+  // File → New Scene… lands here: now if the panel is mounted, on mount if not.
+  const createRef = React.useRef(create);
+  createRef.current = create;
+  React.useEffect(() => {
+    if (takeNewSceneRequest()) createRef.current();
+    return onNewSceneRequest(() => {
+      if (takeNewSceneRequest()) createRef.current();
+    });
+  }, []);
 
   const setVec = (key: "position" | "rotation" | "scale", i: number, v: number): void => {
     if (!node) return;
