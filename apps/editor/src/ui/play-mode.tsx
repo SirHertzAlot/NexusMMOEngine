@@ -109,7 +109,16 @@ export function PlayModePanel(): React.JSX.Element {
     const serverControl = createHostServerControl("", playableScene);
     controllerRef.current = new PlayModeController(
       serverControl,
-      async (server) => {
+      async (server, index) => {
+        if (index > 0) {
+          // Extra load client: its own seeded login (one account per client;
+          // a second session of the play login would evict the game view's),
+          // headless, so it never drives the game view.
+          const username = server.loadUsers?.[index - 1];
+          if (!username) throw new Error(`no login for extra client ${index}`);
+          const c = await connectMirror(server.url, `mmo-editor-load-${index}`, { username, password: server.password }, () => undefined);
+          return { debug: (q) => c.debug(q as DebugQuery), disconnect: () => c.disconnect() };
+        }
         // Credentials come from the host: it seeds a one-session dev user
         // for the server it just started (see src/host.ts).
         const c = await connectMirror(
@@ -241,6 +250,10 @@ export function PlayModePanel(): React.JSX.Element {
               </p>
             )}
           </div>
+
+          {running && detail && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">{detail}</p>
+          )}
 
           {running && !mirror && server && (
             <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">

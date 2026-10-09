@@ -236,3 +236,41 @@ describe("PlayModeController: simulate (no client)", () => {
     assert.equal(server.stopped, 1);
   });
 });
+
+describe("PlayModeController: extra clients", () => {
+  const make = (failAt = -1) => {
+    const server = new FakeServer();
+    const asked: number[] = [];
+    const clients: FakeClient[] = [];
+    const details: Array<string | undefined> = [];
+    const c = new PlayModeController(
+      server,
+      async (_s, index) => {
+        asked.push(index);
+        if (index === failAt) throw new Error("login refused");
+        const fc = new FakeClient();
+        clients.push(fc);
+        return fc;
+      },
+      { onEnterPlay: () => null, onExitPlay: () => undefined, onStateChange: (_st, d) => details.push(d) },
+    );
+    return { c, server, asked, clients, details };
+  };
+
+  it("connects each client with its own index, and stop disconnects them all", async () => {
+    const h = make();
+    await h.c.start({ clients: 4 });
+    assert.deepEqual(h.asked, [0, 1, 2, 3]);
+    await h.c.stop();
+    assert.deepEqual(h.clients.map((x) => x.disconnected), [1, 1, 1, 1]);
+  });
+
+  it("a failed extra client still runs, and says how many connected", async () => {
+    const h = make(2);
+    await h.c.start({ clients: 4 });
+    assert.equal(h.c.getState(), "running");
+    assert.deepEqual(h.asked, [0, 1, 2]);
+    assert.match(h.details.at(-1) ?? "", /2 of 4 clients connected \(login refused\)/);
+    await h.c.stop();
+  });
+});
