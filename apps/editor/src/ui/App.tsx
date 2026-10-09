@@ -29,6 +29,7 @@ import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.js";
+import { requestOpenAsset } from "./open-asset.js";
 import { loadCatalog } from "../gameplay-client.js";
 import {
   deleteNamedSetup,
@@ -1794,7 +1795,7 @@ function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
   React.useEffect(() => {
     let live = true;
     loadCatalog().then(
-      (c) => live && setAssets(catalogCommands(c.entries, onGo)),
+      (c) => live && setAssets(catalogCommands(c.entries, onGo, requestOpenAsset)),
       () => undefined,
     );
     return () => {

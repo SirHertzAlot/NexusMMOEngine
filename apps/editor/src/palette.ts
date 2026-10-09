@@ -92,7 +92,11 @@ const KIND_ICON: Record<CatalogKind, string> = {
 };
 
 /** One palette command per catalog entry. */
-export function catalogCommands(entries: CatalogEntry[], go: (workspace: string, view: string) => void): PaletteCommand[] {
+export function catalogCommands(
+  entries: CatalogEntry[],
+  go: (workspace: string, view: string) => void,
+  open?: (kind: string, id: string) => void,
+): PaletteCommand[] {
   return entries.map((e) => {
     const [ws, view] = catalogTarget(e.kind);
     return {
@@ -101,7 +105,10 @@ export function catalogCommands(entries: CatalogEntry[], go: (workspace: string,
       group: "Asset" as const,
       hint: e.detail,
       icon: KIND_ICON[e.kind],
-      run: () => go(ws, view),
+      run: () => {
+        go(ws, view);
+        open?.(e.kind, e.id);
+      },
     };
   });
 }

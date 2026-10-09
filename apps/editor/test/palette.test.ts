@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { catalogCommands, catalogTarget, rankCommands, type PaletteCommand } from "../src/palette.js";
 import { CATALOG_KINDS, type CatalogEntry } from "../src/content-catalog-types.js";
+import { requestOpenAsset, subscribeOpenAsset } from "../src/ui/open-asset.js";
 
 const cmd = (label: string, group: PaletteCommand["group"] = "Command", hint?: string): PaletteCommand => ({
   id: label,
@@ -67,5 +68,32 @@ describe("catalog commands", () => {
     assert.ok(cmds.every((c) => c.group === "Asset"));
     cmds.forEach((c) => c.run());
     assert.deepEqual(went, ["gameplay/grids", "story/story-editor"]);
+  });
+  it("asks the panel to open the specific asset, not just its workspace", () => {
+    const entries: CatalogEntry[] = [
+      { kind: "scene", id: "arena", label: "Arena", detail: "scene", drag: { kind: "scene", id: "arena" }, node: null },
+    ];
+    const opened: Array<{ kind: string; id: string }> = [];
+    const stop = subscribeOpenAsset((req) => opened.push(req));
+    try {
+      const cmds = catalogCommands(
+        entries,
+        () => undefined,
+        (kind, id) => requestOpenAsset(kind, id),
+      );
+      cmds[0].run();
+      assert.deepEqual(opened, [{ kind: "scene", id: "arena" }]);
+    } finally {
+      stop();
+    }
+  });
+  it("works without an open callback (workspace navigation only)", () => {
+    const entries: CatalogEntry[] = [
+      { kind: "scene", id: "arena", label: "Arena", detail: "scene", drag: { kind: "scene", id: "arena" }, node: null },
+    ];
+    const went: string[] = [];
+    const cmds = catalogCommands(entries, (w, v) => went.push(`${w}/${v}`));
+    cmds[0].run();
+    assert.deepEqual(went, ["scenes/scene"]);
   });
 });
