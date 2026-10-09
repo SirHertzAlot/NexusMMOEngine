@@ -6,6 +6,7 @@
  * the player is with each item family.
  */
 
+import { t } from "../i18n.js";
 import { useState } from "react";
 import type { DisciplineRequirement, SkillsMessage } from "@mmo-engine/protocol";
 
@@ -51,7 +52,7 @@ export function disciplineProgress(lines: readonly RequirementLine[]): number {
 export function lapsedText(lines: readonly RequirementLine[]): string {
   return lines
     .filter((l) => !l.met)
-    .map((l) => `${l.name} below ${l.level}`)
+    .map((l) => t("disciplines.below", { name: l.name, level: l.level }))
     .join(", ");
 }
 
@@ -88,12 +89,12 @@ export function DisciplinesSection({ mastery }: { mastery: SkillsMessage | null 
   const goals = goalsByProgress(mastery);
   const shownGoals = showAll ? goals : goals.slice(0, 2);
   return (
-    <div aria-label="disciplines">
+    <div aria-label={t("disciplines.title")}>
       <div className="mb-0.5 flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
-        <span>disciplines</span>
+        <span>{t("disciplines.title")}</span>
         {goals.length > 2 && (
           <button className="normal-case tracking-normal hover:text-foreground" aria-expanded={showAll} onClick={() => setShowAll((s) => !s)}>
-            {showAll ? "fewer" : `+${goals.length - 2} more to earn`}
+            {showAll ? t("disciplines.fewer") : t("disciplines.more", { n: goals.length - 2 })}
           </button>
         )}
       </div>
@@ -104,12 +105,12 @@ export function DisciplinesSection({ mastery }: { mastery: SkillsMessage | null 
             <li key={d.id} className="rounded-md border border-amber-400/30 bg-amber-400/5 p-1.5 text-xs">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold text-amber-200">{d.name}</span>
-                <span className={`text-[10px] ${d.active ? "text-emerald-300" : "text-orange-300"}`}>{d.active ? "active" : "lapsed"}</span>
+                <span className={`text-[10px] ${d.active ? "text-emerald-300" : "text-orange-300"}`}>{d.active ? t("disciplines.active") : t("disciplines.lapsed")}</span>
               </div>
               <div className="mt-1">
                 <Unlocks unlocks={d.unlocks} dim={!d.active} />
               </div>
-              {!d.active && <div className="mt-0.5 text-[11px] text-muted-foreground">{lapsed ? `Train back up: ${lapsed}.` : "Train back up to use its techniques."}</div>}
+              {!d.active && <div className="mt-0.5 text-[11px] text-muted-foreground">{lapsed ? t("disciplines.train-back", { lapsed }) : t("disciplines.train-back-generic")}</div>}
             </li>
           );
         })}
@@ -136,7 +137,7 @@ export function DisciplinesSection({ mastery }: { mastery: SkillsMessage | null 
               ))}
             </ul>
             <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-              unlocks <Unlocks unlocks={g.unlocks} dim />
+              {t("disciplines.unlocks")} <Unlocks unlocks={g.unlocks} dim />
             </div>
           </li>
         ))}
@@ -150,8 +151,8 @@ export function FamiliaritySection({ mastery }: { mastery: SkillsMessage | null 
   const fam = (mastery?.familiarity ?? []).filter((f) => f.value > 0).sort((a, b) => b.value - a.value);
   if (fam.length === 0) return null;
   return (
-    <div aria-label="familiarity">
-      <div className="mb-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">familiarity</div>
+    <div aria-label={t("disciplines.familiarity")}>
+      <div className="mb-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">{t("disciplines.familiarity")}</div>
       <div className="flex flex-col gap-1">
         {fam.map((f) => (
           <div key={f.family} className="flex items-center gap-2 text-sm tabular-nums">

@@ -6,6 +6,7 @@
  * shared ui/meter.tsx; stamina and mana (0x1c, from onMana) reuse it.
  */
 
+import { t } from "../i18n.js";
 import type { BodyMessage, NeedsLine } from "@mmo-engine/protocol";
 import { BodyDoll, isHurt } from "./body-doll.js";
 import { Bar } from "./meter.js";
@@ -30,24 +31,24 @@ export function PlayerFrame({ name, hp, maxHp, sp, maxSp, mana, needs, body }: P
   if (hp === null || maxHp === null) return null;
   const hurt = isHurt(body ?? null);
   return (
-    <div className={`pointer-events-none flex ${hurt ? "w-72" : "w-64"} gap-2 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm`}>
+    <div className={`pointer-events-none flex gap-2 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm`}>
       <div className="min-w-0 flex-1">
         {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
-        <Bar label="health" value={hp} max={maxHp} tone="health" />
+        <Bar label={t("vitals.health")} value={hp} max={maxHp} tone="health" />
         {sp !== null && maxSp !== null && (
           <div className="mt-1.5">
-            <Bar label="stamina" value={sp} max={maxSp} tone="stamina" />
+            <Bar label={t("vitals.stamina")} value={sp} max={maxSp} tone="stamina" />
           </div>
         )}
         {mana && (
           <div className="mt-1.5">
-            <Bar label="mana" value={mana.current} max={mana.max} tone="mana" />
+            <Bar label={t("vitals.mana")} value={mana.current} max={mana.max} tone="mana" />
           </div>
         )}
         {needs && (
           <div className="mt-1.5 grid grid-cols-2 gap-2">
-            <Bar label="hunger" value={needs.hunger} max={needs.hungerMax} tone="hunger" />
-            <Bar label="thirst" value={needs.thirst} max={needs.thirstMax} tone="thirst" />
+            <Bar label={t("vitals.hunger")} value={needs.hunger} max={needs.hungerMax} tone="hunger" />
+            <Bar label={t("vitals.thirst")} value={needs.thirst} max={needs.thirstMax} tone="thirst" />
           </div>
         )}
       </div>

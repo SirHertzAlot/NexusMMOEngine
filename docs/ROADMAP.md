@@ -141,9 +141,9 @@ loadable modules, a database editor and production tools.
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
 | EA22 | VFX and materials | 📋 | |
-| EA23 | HUD layout editor | 📋 | |
+| EA23 | HUD layout editor | 🚧 | On branch `feat/ea23-ea25-hud-strings`: `content/ui/hud.json` (nine anchors + offset + size per widget, six theme colour tokens) read by the client through `virtual:hud-layout` (`HudSlot` pins each HUD widget in rem, so the UI scale applies); Flow & UI > HUD layout drags, nudges, re-anchors, resizes, hides, undoes; overlaps and off-screen flagged live and in a resolution x UI-scale matrix; loopback `/api/editor/hud` validates and refuses without writing. Deferred: per-scene layouts, widgets from modules. |
 | EA24 | Audio | 📋 | |
-| EA25 | Localization | 📋 | |
+| EA25 | Localization | 🚧 | On branch `feat/ea23-ea25-hud-strings`: `content/strings/<lang>.json` with ICU messages (`{arg}`, `plural`, `select`, `number`; `@mmo-engine/scene` strings.ts); the client's player-facing text is behind `t()` (en.json has the source, fr.json a partial translation); `?lang=pseudo` accents and stretches English; Story > Strings shows status per language (missing, stale, mismatch, long), edits and saves tables, previews messages, and extracts `t()` ids from the client source. Deferred: rules and dialog by string id, an in-game language picker, dev tools stay English.|
 | EA26 | Automated playtests | 📋 | |
 
 ## 1d. Editor interaction repairs
@@ -302,6 +302,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: HUD layout editor and localization (EA23, EA25) built on eat/ea23-ea25-hud-strings: content/ui/hud.json and content/strings/<lang>.json are read by the client; the editor edits both. Also fixed /api/editor PUT bodies being consumed by the modules route before the flow and later routes could read them.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
 - **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.

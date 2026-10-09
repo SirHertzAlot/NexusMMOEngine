@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseChatCommand, replyTarget } from "../src/ui/chat-command.js";

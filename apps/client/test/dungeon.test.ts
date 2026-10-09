@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /**
  * Dungeon runs (D4): the run clock, the result card's text, and which
  * entrance the player stands in.

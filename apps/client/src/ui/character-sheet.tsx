@@ -6,6 +6,7 @@
  * disciplines and item familiarity from the skills message (0x1b, M4).
  */
 
+import { t } from "../i18n.js";
 import { useState } from "react";
 import type { BodyMessage, SkillLineMessage, SkillsMessage, StatLineMessage } from "@mmo-engine/protocol";
 import { InjuriesSection } from "./body-doll.js";
@@ -63,7 +64,7 @@ function SkillRow({ skill, max }: { skill: SkillLineMessage; max: number }): Rea
   const pct = (v: number): string => `${Math.max(0, Math.min(1, v / max)) * 100}%`;
   const relearn = skill.peak > skill.value;
   return (
-    <div className="flex items-center gap-2 text-sm tabular-nums" title={relearn ? `peak ${skill.peak}: relearns faster up to it` : undefined}>
+    <div className="flex items-center gap-2 text-sm tabular-nums" title={relearn ? t("sheet.relearn", { peak: skill.peak }) : undefined}>
       <span className="w-24 shrink-0 truncate text-muted-foreground">{skill.name}</span>
       <div className="relative h-1.5 flex-1 rounded bg-secondary" role="progressbar" aria-label={skill.name} aria-valuenow={skill.value} aria-valuemax={max}>
         <div className="h-full rounded bg-violet-400" style={{ width: pct(skill.value) }} />
@@ -82,10 +83,10 @@ export function SkillsSection({ skills, max }: { skills: SkillLineMessage[]; max
   return (
     <div>
       <div className="mb-0.5 flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
-        <span>skills</span>
+        <span>{t("sheet.skills")}</span>
         {untrained > 0 && (
           <button className="normal-case tracking-normal hover:text-foreground" aria-expanded={showAll} onClick={() => setShowAll((s) => !s)}>
-            {showAll ? "hide untrained" : `+${untrained} untrained`}
+            {showAll ? t("sheet.hide-untrained") : t("sheet.show-untrained", { n: untrained })}
           </button>
         )}
       </div>
@@ -102,7 +103,7 @@ export function SkillsSection({ skills, max }: { skills: SkillLineMessage[]; max
             </div>
           );
         })}
-        {!showAll && untrained === skills.length && <div className="text-xs text-muted-foreground">nothing trained yet: skills grow with use</div>}
+        {!showAll && untrained === skills.length && <div className="text-xs text-muted-foreground">{t("sheet.none-trained")}</div>}
       </div>
     </div>
   );
@@ -134,8 +135,8 @@ export function CharacterSheet({
       {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
       <div className="flex flex-col gap-2">
         <InjuriesSection body={body} onTreat={onTreat} />
-        <SheetSection title="attributes" lines={attributes} />
-        <SheetSection title="stats" lines={stats} />
+        <SheetSection title={t("sheet.attributes")} lines={attributes} />
+        <SheetSection title={t("sheet.stats")} lines={stats} />
         <SkillsSection skills={skills} max={skillMax} />
         <DisciplinesSection mastery={mastery} />
         <FamiliaritySection mastery={mastery} />

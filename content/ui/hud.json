@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "theme": {
+    "card": "#10162b",
+    "card-foreground": "#f8fafc",
+    "primary": "#3b82f6",
+    "border": "#2a3a5c",
+    "muted-foreground": "#94a3b8",
+    "accent": "#1f2e4d"
+  },
+  "widgets": {
+    "player-frame": { "anchor": "bottom-left", "x": 16, "y": 48, "w": 288, "h": 112 },
+    "cast-bar": { "anchor": "bottom-left", "x": 16, "y": 16, "w": 256, "h": 24 },
+    "friends-frame": { "anchor": "bottom-left", "x": 16, "y": 168, "w": 192, "h": 192 },
+    "target-frame": { "anchor": "top", "x": 0, "y": 16, "w": 256, "h": 64 },
+    "party-frame": { "anchor": "top-left", "x": 16, "y": 96, "w": 208, "h": 160 },
+    "guild-frame": { "anchor": "top-right", "x": 16, "y": 240, "w": 224, "h": 160 },
+    "quest-tracker": { "anchor": "top-right", "x": 16, "y": 64, "w": 256, "h": 150 },
+    "dungeon-hud": { "anchor": "top", "x": 0, "y": 96, "w": 288, "h": 48 },
+    "chat": { "anchor": "bottom", "x": 0, "y": 16, "w": 416, "h": 224 },
+    "settings": { "anchor": "top-right", "x": 16, "y": 16, "w": 256, "h": 36 },
+    "menu-stack": { "anchor": "bottom-right", "x": 16, "y": 16, "w": 96, "h": 112 }
+  }
+}

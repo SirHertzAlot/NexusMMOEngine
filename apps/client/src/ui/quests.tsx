@@ -7,6 +7,7 @@
  * sends ops back through callbacks; nothing about quests is decided here.
  */
 
+import { t } from "../i18n.js";
 import { useEffect, useState } from "react";
 import type { DialogMessage, QuestStepView, QuestView } from "@mmo-engine/protocol";
 import { Button } from "./components.js";
@@ -59,11 +60,11 @@ export function questNotices(prev: readonly QuestView[] | null, next: readonly Q
     const p = before.get(q.id);
     before.delete(q.id);
     if (!p || (p.state === "done" && q.state !== "done")) {
-      if (q.state !== "done") out.push(`Quest accepted: ${q.name}`);
+      if (q.state !== "done") out.push(t("quest.accepted", { name: q.name }));
       continue;
     }
-    if (q.state === "done" && p.state !== "done") out.push(`Quest complete: ${q.name}`);
-    else if (q.state === "ready" && p.state !== "ready") out.push(`${q.name}: return to ${q.giver}`);
+    if (q.state === "done" && p.state !== "done") out.push(t("quest.complete", { name: q.name }));
+    else if (q.state === "ready" && p.state !== "ready") out.push(t("quest.return-to", { name: q.name, giver: q.giver }));
     else if (q.state === "active") {
       const step = currentStep(q);
       const was = currentStep(p);
@@ -71,7 +72,7 @@ export function questNotices(prev: readonly QuestView[] | null, next: readonly Q
       else if (step && was && step.text === was.text && step.progress > was.progress && step.target > 1) out.push(`${stepText(step).replace(/\.$/, "")} ${stepProgress(step)}`);
     }
   }
-  for (const p of before.values()) if (p.state !== "done") out.push(`Quest abandoned: ${p.name}`);
+  for (const p of before.values()) if (p.state !== "done") out.push(t("quest.abandoned", { name: p.name }));
   return out;
 }
 
@@ -88,9 +89,9 @@ function StepLine({ step }: { step: QuestStepView }): React.ReactElement {
 }
 
 const STATE_BADGE: Record<QuestView["state"], { text: string; tone: string }> = {
-  ready: { text: "hand in", tone: "border-yellow-400/60 text-yellow-300" },
-  active: { text: "in progress", tone: "border-sky-400/50 text-sky-300" },
-  done: { text: "done", tone: "border-border text-muted-foreground" },
+  ready: { text: "quest.badge.ready", tone: "border-yellow-400/60 text-yellow-300" },
+  active: { text: "quest.badge.active", tone: "border-sky-400/50 text-sky-300" },
+  done: { text: "quest.badge.done", tone: "border-border text-muted-foreground" },
 };
 
 /** The quest log panel: every quest, its steps so far, rewards, and abandon. */
@@ -103,14 +104,14 @@ export function QuestLog({ quests, onAbandon }: { quests: readonly QuestView[]; 
   return (
     <div className="pointer-events-auto max-h-[calc(100vh-8rem)] w-80 overflow-y-auto rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
       <div className="mb-2 flex items-baseline justify-between">
-        <div className="text-sm font-semibold">Quests</div>
+        <div className="text-sm font-semibold">{t("quest.title")}</div>
         {done.length > 0 && (
           <button type="button" className="text-[11px] text-muted-foreground hover:underline" onClick={() => setShowDone((v) => !v)}>
-            {showDone ? "hide done" : `+${done.length} done`}
+            {showDone ? t("quest.hide-done") : t("quest.show-done", { n: done.length })}
           </button>
         )}
       </div>
-      {shown.length === 0 && <div className="text-xs text-muted-foreground">No quests yet. Look for a ! over someone's head.</div>}
+      {shown.length === 0 && <div className="text-xs text-muted-foreground">{t("quest.none")}</div>}
       <ul className="flex flex-col gap-2">
         {shown.map((q) => {
           const open = openId === q.id || (openId === null && q === shown[0]);
@@ -119,7 +120,7 @@ export function QuestLog({ quests, onAbandon }: { quests: readonly QuestView[]; 
             <li key={q.id} className="rounded-md border bg-background/40 p-2">
               <button type="button" className="flex w-full items-baseline justify-between gap-2 text-left" onClick={() => setOpenId(open ? "" : q.id)} aria-expanded={open}>
                 <span className={`text-sm font-medium ${q.state === "ready" ? "text-yellow-300" : ""}`}>{q.name}</span>
-                <span className={`shrink-0 rounded border px-1 text-[10px] ${badge.tone}`}>{badge.text}</span>
+                <span className={`shrink-0 rounded border px-1 text-[10px] ${badge.tone}`}>{t(badge.text)}</span>
               </button>
               {open && (
                 <div className="mt-1.5 flex flex-col gap-1.5 text-xs">
@@ -130,17 +131,17 @@ export function QuestLog({ quests, onAbandon }: { quests: readonly QuestView[]; 
                     {q.steps.map((s, i) => (
                       <StepLine key={i} step={s} />
                     ))}
-                    {q.state === "ready" && <li className="text-yellow-300">Return to {q.giver}.</li>}
+                    {q.state === "ready" && <li className="text-yellow-300">{t("quest.return", { giver: q.giver })}</li>}
                   </ul>
                   {q.rewards.length > 0 && (
                     <div className="text-muted-foreground">
-                      reward: {q.rewards.map((r) => `${itemTitle(r.base)}${r.count > 1 ? ` ×${r.count}` : ""}`).join(", ")}
+                      {t("quest.reward", { items: q.rewards.map((r) => (r.count > 1 ? t("quest.reward-count", { item: itemTitle(r.base), n: r.count }) : itemTitle(r.base))).join(", ") })}
                     </div>
                   )}
                   {q.state === "active" && (
                     <div className="flex justify-end">
                       <button type="button" className="rounded border px-1.5 text-[10px] text-muted-foreground hover:bg-secondary" onClick={() => onAbandon(q.id)}>
-                        abandon
+                        {t("quest.abandon")}
                       </button>
                     </div>
                   )}
@@ -161,7 +162,7 @@ export function QuestTracker({ quests }: { quests: readonly QuestView[] }): Reac
     .slice(0, 3);
   if (live.length === 0) return null;
   return (
-    <div className="pointer-events-none w-64 rounded-lg bg-card/60 p-2 text-card-foreground shadow-sm" aria-label="quest tracker">
+    <div className="pointer-events-none rounded-lg bg-card/60 p-2 text-card-foreground shadow-sm" aria-label={t("quest.tracker")}>
       <ul className="flex flex-col gap-1.5">
         {live.map((q) => {
           const s = currentStep(q);
@@ -169,7 +170,7 @@ export function QuestTracker({ quests }: { quests: readonly QuestView[] }): Reac
             <li key={q.id} className="text-xs">
               <div className={`font-semibold ${q.state === "ready" ? "text-yellow-300" : ""}`}>{q.name}</div>
               <div className="flex justify-between gap-2 text-muted-foreground">
-                <span>{q.state === "ready" ? `Return to ${q.giver}.` : s ? stepText(s) : ""}</span>
+                <span>{q.state === "ready" ? t("quest.return", { giver: q.giver }) : s ? stepText(s) : ""}</span>
                 {s && q.state !== "ready" && stepProgress(s) && <span className="tabular-nums">{stepProgress(s)}</span>}
               </div>
             </li>
@@ -210,7 +211,7 @@ export function DialogPanel({ dialog, onReply, onClose }: { dialog: OpenDialog; 
     <div className="pointer-events-auto w-[26rem] max-w-[calc(100vw-2rem)] rounded-lg border bg-card/95 p-4 text-card-foreground shadow-lg" role="dialog" aria-label={dialog.name}>
       <div className="mb-1 flex items-baseline justify-between">
         <div className="text-sm font-semibold text-amber-200">{dialog.name}</div>
-        <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="close dialog">
+        <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={onClose} aria-label={t("quest.close-dialog")}>
           ✕
         </button>
       </div>

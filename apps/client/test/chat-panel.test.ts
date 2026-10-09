@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /** ChatPanel speaker labels (U6): whispers say which way they went. */
 
 import { describe, it } from "node:test";

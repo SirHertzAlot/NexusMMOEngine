@@ -6,6 +6,7 @@
  * Health rows every frame, so a hit shows the moment it lands.
  */
 
+import { t } from "../i18n.js";
 import { Bar } from "./meter.js";
 
 export interface TargetFrameProps {
@@ -15,9 +16,9 @@ export interface TargetFrameProps {
 export function TargetFrame({ target }: TargetFrameProps): React.ReactElement | null {
   if (!target) return null;
   return (
-    <div className="pointer-events-none absolute left-1/2 top-4 w-64 -translate-x-1/2 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
-      <div className="mb-1 truncate text-sm font-semibold">{target.name || "unknown"}</div>
-      <Bar label="health" value={target.hp} max={target.maxHp} tone="health" />
+    <div className="pointer-events-none rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
+      <div className="mb-1 truncate text-sm font-semibold">{target.name || t("target.unknown")}</div>
+      <Bar label={t("vitals.health")} value={target.hp} max={target.maxHp} tone="health" />
     </div>
   );
 }

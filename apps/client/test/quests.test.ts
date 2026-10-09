@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /**
  * Quests (U11): log order, the current step, progress text, change notices,
  * and which npc the interact key talks to.
