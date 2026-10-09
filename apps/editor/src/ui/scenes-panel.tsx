@@ -33,7 +33,8 @@ import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-clien
 import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { clearDocActions, registerDocActions, type DocActions } from "./doc-actions.js";
+import { readClipboard, writeClipboard } from "./clipboard.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
 
@@ -127,7 +128,38 @@ export function ScenesPanel(): React.JSX.Element {
   // Toolbar Save/Undo/Redo target while a scene is open.
   React.useEffect(() => {
     if (!open) return;
-    const target = {
+    // Remap every id in a pasted subtree so nothing collides.
+    const freshIds = (n: SceneNode): SceneNode => {
+      const id = nextId(hist.doc, "node");
+      return {
+        ...structuredClone(n),
+        id,
+        children: n.children?.map(freshIds),
+      };
+    };
+    // Parent id of a node, or null when it's top-level.
+    const findParentId = (doc: SceneDoc, id: string): string | null => {
+      const walk = (nodes: SceneNode[]): string | null => {
+        for (const n of nodes) {
+          if (n.children?.some((c) => c.id === id)) return n.id;
+          const deeper = n.children ? walk(n.children) : null;
+          if (deeper !== null) return deeper;
+        }
+        return null;
+      };
+      return walk(doc.nodes);
+    };
+    const pasteNode = (parentId: string | null): void => {
+      const data = readClipboard("scene-node") as SceneNode | null;
+      if (!data) {
+        setStatus("nothing to paste");
+        return;
+      }
+      const node = freshIds(data);
+      run("paste node", (d) => addNode(d, parentId, node));
+      select(node.id);
+    };
+    const target: DocActions = {
       label: `scene "${open}"`,
       canSave: hist.dirty,
       canUndo: hist.canUndo,
@@ -142,6 +174,98 @@ export function ScenesPanel(): React.JSX.Element {
         hist.redo();
         setIssues(validateScene(hist.doc));
         bump();
+      },
+      // Edit menu: the outliner selection is the clipboard unit.
+      canCut: !!node,
+      canCopy: !!node,
+      canPaste: readClipboard("scene-node") !== null,
+      canDuplicate: !!node,
+      canDelete: !!node,
+      canSelectAll: doc.nodes.length > 0,
+      cut: () => {
+        if (!node) return;
+        writeClipboard("scene-node", node);
+        run("cut node", (d) => removeNode(d, node.id));
+        select(null);
+      },
+      copy: () => {
+        if (!node) return;
+        writeClipboard("scene-node", node);
+        setStatus(`copied ${node.id}`);
+      },
+      paste: () => pasteNode(selected),
+      duplicate: () => {
+        if (!node) return;
+        const copy = freshIds(node);
+        // Duplicate beside the original: same parent.
+        const parent = findParentId(hist.doc, node.id);
+        run("duplicate node", (d) => addNode(d, parent, copy));
+        select(copy.id);
+      },
+      deleteSelection: () => {
+        if (!node) return;
+        run("delete node", (d) => removeNode(d, node.id));
+        select(null);
+      },
+      selectAll: () => {
+        const first = doc.nodes[0];
+        if (first) select(first.id);
+      },
+      // File menu.
+      canSaveAll: hist.dirty,
+      canRevert: hist.dirty,
+      canImport: true,
+      canExport: true,
+      saveAll: save,
+      revert: () => {
+        getScene(open).then(
+          (d) => {
+            hist.replace(d);
+            setIssues(validateScene(d));
+            setStatus(`reverted ${open}`);
+            bump();
+          },
+          (e: Error) => setStatus(e.message),
+        );
+      },
+      importFile: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/json";
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          file.text().then(
+            (text) => {
+              try {
+                const data = JSON.parse(text) as SceneDoc;
+                const issues = validateScene(data);
+                if (issues.length > 0) {
+                  setIssues(issues);
+                  setStatus("import refused: invalid scene");
+                  return;
+                }
+                hist.replace(data);
+                setIssues([]);
+                setStatus(`imported ${file.name}`);
+                bump();
+              } catch {
+                setStatus("import refused: not JSON");
+              }
+            },
+            () => setStatus("import failed"),
+          );
+        };
+        input.click();
+      },
+      exportFile: () => {
+        const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${open}.scene.json`;
+        a.click();
+        URL.revokeObjectURL(url);
       },
     };
     registerDocActions(target);

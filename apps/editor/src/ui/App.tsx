@@ -817,28 +817,42 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   }
 
   const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
-  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean } | "sep">> = {
+  // A menu item is enabled when there's an open document that supports it.
+  // Unsupported operations disable with a reason — no "soon" placeholders.
+  const docItem = (
+    label: string,
+    kbd: string | undefined,
+    can: boolean | undefined,
+    run: (() => void) | undefined,
+    noDocReason = "no open document to act on",
+  ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
+    if (!doc) return { label, kbd, disabled: true, disabledReason: noDocReason };
+    if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${doc.label} doesn't support ${label.toLowerCase()}` };
+    return { label, kbd, run };
+  };
+  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean; disabledReason?: string } | "sep">> = {
     File: [
       { label: "New Scene…", run: () => { requestNewScene(); onGo("scenes"); } },
       { label: "Open Scene…", run: () => onGo("scenes") },
       "sep",
-      { label: doc ? `Save ${doc.label}` : "Save", kbd: "Ctrl S", disabled: !doc?.canSave, run: () => doc?.save() },
-      { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
+      { label: doc ? `Save ${doc.label}` : "Save", kbd: "Ctrl S", disabled: !doc?.canSave, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.save() },
+      docItem("Save All", undefined, doc?.canSaveAll, doc?.saveAll),
+      docItem("Revert", undefined, doc?.canRevert, doc?.revert),
       "sep",
-      { label: "Import…", run: staged("Import", "EA · content browser"), stagedFor: "EA · content browser" },
-      { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
+      docItem("Import…", undefined, doc?.canImport, doc?.importFile),
+      docItem("Export…", undefined, doc?.canExport, doc?.exportFile),
     ],
     Edit: [
-      { label: "Undo", kbd: "Ctrl Z", disabled: !doc?.canUndo, run: () => doc?.undo() },
-      { label: "Redo", kbd: "Ctrl Y", disabled: !doc?.canRedo, run: () => doc?.redo() },
+      { label: "Undo", kbd: "Ctrl Z", disabled: !doc?.canUndo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.undo() },
+      { label: "Redo", kbd: "Ctrl Y", disabled: !doc?.canRedo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.redo() },
       "sep",
-      { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Paste", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Duplicate", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Delete", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      docItem("Cut", "Ctrl X", doc?.canCut, doc?.cut),
+      docItem("Copy", "Ctrl C", doc?.canCopy, doc?.copy),
+      docItem("Paste", "Ctrl V", doc?.canPaste, doc?.paste),
+      docItem("Duplicate", "Ctrl D", doc?.canDuplicate, doc?.duplicate),
+      docItem("Delete", "Del", doc?.canDelete, doc?.deleteSelection),
       "sep",
-      { label: "Select All", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
+      docItem("Select All", "Ctrl A", doc?.canSelectAll, doc?.selectAll),
     ],
     View: [
       { label: `${docks.left ? "✓ " : ""}Left dock`, run: () => onToggleDock("left") },
@@ -917,11 +931,16 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                   const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
                   const stagedRow = it.stagedFor !== undefined;
                   const off = stagedRow || it.disabled === true;
+                  const tip = stagedRow
+                    ? `${it.label} — soon (${it.stagedFor})`
+                    : it.disabled
+                      ? `${it.label} — ${it.disabledReason ?? "not available"}`
+                      : undefined;
                   return (
                     <li key={it.label} className="list-none">
                       <button
                         disabled={off}
-                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : it.disabled ? `${it.label} — no open document to act on` : undefined}
+                        title={tip}
                         onClick={() => {
                           setOpen(null);
                           run();
