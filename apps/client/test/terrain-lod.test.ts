@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { ChunkRow } from "@mmo-engine/protocol";
 import { buildChunkGeometry } from "../src/render/terrain/terrain-mesh.js";
-import { buildBlockGeometry, chunkCost, ringOf, strideForRing } from "../src/render/terrain/terrain-lod.js";
+import { buildBlockBuffers, buildBlockGeometry, chunkCost, ringOf, strideForRing } from "../src/render/terrain/terrain-lod.js";
 import { TerrainRenderer } from "../src/render/terrain/terrain-renderer.js";
 
 const SIZE = 16;
@@ -95,5 +95,43 @@ describe("terrain LOD", () => {
     assert.equal(t.stats.drawCalls, 0);
     assert.equal(t.group.children.length, 0);
     t.dispose();
+  });
+});
+
+describe("TerrainRenderer with workers", () => {
+  const viaBuffers = (delay = 0): any => ({
+    request: async (_t: string, p: any) => {
+      await new Promise((r) => setTimeout(r, delay));
+      return buildBlockBuffers(p.chunks, p.chunkWorldSize, p.originX, p.originZ);
+    },
+  });
+
+  it("shows a block once the worker answers, and sends copies", async () => {
+    const sent: any[] = [];
+    const w = { request: async (t: string, p: any) => (sent.push(p), viaBuffers().request(t, p)) };
+    const t = new TerrainRenderer(SIZE, w as any);
+    ring(t, 1);
+    t.update();
+    assert.equal(t.stats.drawCalls, 0, "nothing until the worker answers");
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(t.stats.drawCalls, 4, "chunks -1..1 straddle 2 x 2 blocks");
+    const first = sent[0].chunks[0];
+    const own = [...(t as any).chunks.values()].find((c: any) => c.cx === first.cx && c.cz === first.cz).heights;
+    assert.notEqual(first.heights, own);
+    t.dispose();
+  });
+
+  it("drops a stale answer when the block changed meanwhile, and one that lands after dispose", async () => {
+    const t = new TerrainRenderer(SIZE, viaBuffers(10));
+    ring(t, 1);
+    t.update();
+    (t as any).markBlock(0, 0);
+    t.update(); // second request; the first is stale
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(t.group.children.length, 4);
+    t.update();
+    t.dispose();
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(t.group.children.length, 0);
   });
 });
