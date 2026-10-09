@@ -21,6 +21,8 @@ import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
 import { FlowEditor } from "./flow-editor.js";
+import { HudCatalog, HudEditor, HudInspector } from "./hud-editor.js";
+import { StringsOutline, StringsPanel } from "./strings-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -52,16 +54,12 @@ import {
   AnimPreview,
   ArtAudioTree,
   AudioPreview,
-  HudPreview,
   DatabaseRowDetails,
   FlowDetails,
-  HudDetails,
   PipelinePreview,
   ReleaseDeployDetails,
   SchemaTree,
-  StringsPreview,
   VfxPreview,
-  WidgetList,
   applyDeepSelection,
   readDeepSelection,
   subscribeDeepSelection,
@@ -116,7 +114,7 @@ const WORKSPACES: Workspace[] = [
     id: "flow", label: "Flow & UI", icon: "account_tree",
     views: [
       { id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowEditor /> },
-      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudPreview /> },
+      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudEditor /> },
     ],
     leftTitle: "Widgets",
   },
@@ -180,7 +178,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
       { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
-      { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPreview /> },
+      { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
     ],
     leftTitle: "Stories",
   },
@@ -1826,7 +1824,8 @@ function crudMenu(label: string, slice: string, onInspect?: () => void): Array<M
 function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: string) => void; views: Workspace["views"]; onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
   if (props.workspace === "world") return <WorldTree />;
   if (props.workspace === "database") return <SchemaTree />;
-  if (props.workspace === "flow") return <WidgetList />;
+  if (props.workspace === "flow") return <HudCatalog />;
+  if (props.workspace === "story" && props.view === "strings") return <StringsOutline />;
   if (props.workspace === "story") return <QuestsTree onView={props.onView} />;
   if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} onView={props.onView} />;
   if (props.workspace === "release") return <ReleaseTree />;
@@ -2143,7 +2142,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "network") return <NetworkDetailsLive />;
   if (workspace === "database") return <DatabaseRowDetails />;
   if (workspace === "release") return <ReleaseDeployDetails />;
-  if (workspace === "flow" && view === "hud") return <HudDetails />;
+  if (workspace === "flow" && view === "hud") return <HudInspector />;
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;

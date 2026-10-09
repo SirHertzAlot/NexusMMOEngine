@@ -37,5 +37,14 @@ body {
   overflow: hidden;
 }
 
+/* HUD widgets sit in anchored boxes (ui/hud-slot.tsx): the empty box lets
+   clicks through, a widget's own root takes them again. */
+.hud-slot {
+  pointer-events: none;
+}
+:where(.hud-slot > *) {
+  pointer-events: auto;
+}
+
 /* Colour utilities (bg-card, text-muted-foreground, bg-card/90, …) come
    from the theme in tailwind.config.js. */

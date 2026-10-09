@@ -92,6 +92,7 @@ import { handleFlowRoute } from "./flow-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
+import { handleUiRoute } from "./ui-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -994,7 +995,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             modulesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            // Only the modules route's own PUT: reading every PUT's body here left none for the routes after it.
+            req.method === "PUT" && modulesUrl.pathname === "/api/editor/modules" ? await readBody(req) : undefined,
             {
               running: () => owned?.tickOrder() ?? null,
               // "Apply modules": the server reads the set at boot, so a running one restarts.
@@ -1033,6 +1035,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const networkReply = await handleNetworkRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && scenesUrl.pathname === "/api/editor/network" ? await readBody(req) : undefined);
           if (networkReply) {
             sendJson(res, networkReply.status, networkReply.body);
+            return;
+          }
+          // HUD layout and string tables (EA23, EA25: ui-host.ts).
+          const uiReply = handleUiRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && (scenesUrl.pathname === "/api/editor/hud" || scenesUrl.pathname.startsWith("/api/editor/strings/")) ? await readBody(req) : undefined);
+          if (uiReply) {
+            sendJson(res, uiReply.status, uiReply.body);
             return;
           }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).

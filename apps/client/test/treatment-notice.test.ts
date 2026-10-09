@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /**
  * Treatment notices (M4, 0x1a): what the healer and the patient read.
  */

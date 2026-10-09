@@ -1,3 +1,4 @@
+import "./strings-setup.js";
 /** Mastery notices (M4): disciplines earned and disarms. */
 
 import { describe, it } from "node:test";

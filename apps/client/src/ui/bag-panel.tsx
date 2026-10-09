@@ -13,6 +13,7 @@
  * the buttons, so the server still decides.
  */
 
+import { t } from "../i18n.js";
 import { useRef, useState } from "react";
 import { ARMOUR_SLOT_NAMES, type ArmourSlotName, type ItemView } from "@mmo-engine/protocol";
 /** Stats in a fixed, readable order; anything else follows alphabetically. */
@@ -30,9 +31,9 @@ export function statLines(stats: Record<string, number>): Array<[string, number]
 }
 
 const HAND_LABEL: Record<ItemView["hand"], string> = {
-  main: "one-handed",
-  off: "off hand",
-  both: "two-handed",
+  main: "bag.hand.main",
+  off: "bag.hand.off",
+  both: "bag.hand.both",
   none: "",
 };
 
@@ -44,7 +45,7 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
       </div>
       <div className="text-xs text-muted-foreground">
         {item.rank} {item.base}
-        {HAND_LABEL[item.hand] && <> · {HAND_LABEL[item.hand]}</>}
+        {HAND_LABEL[item.hand] && <> · {t(HAND_LABEL[item.hand])}</>}
         {item.hand === "none" && item.slot && item.slot !== "none" && <> · {item.slot}</>}
       </div>
       <div className="mt-1 grid grid-cols-2 gap-x-3 tabular-nums">
@@ -55,7 +56,7 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
           </div>
         ))}
       </div>
-      <div className="mt-1 text-xs text-muted-foreground tabular-nums">durability {item.durability}</div>
+      <div className="mt-1 text-xs text-muted-foreground tabular-nums">{t("bag.durability", { n: item.durability })}</div>
     </div>
   );
 }
@@ -141,7 +142,7 @@ function ItemTooltip({ item, hands, worn, top }: { item: ItemView; hands: Hands;
       <ItemDetails item={item} />
       {target !== null && (
         <div className="mt-2 border-t pt-1 text-xs">
-          <div className="text-muted-foreground">{out.length ? `vs ${out.map((o) => o.name).join(" + ")}` : "slot is empty"}</div>
+          <div className="text-muted-foreground">{out.length ? t("bag.compare", { names: out.map((o) => o.name).join(" + ") }) : t("bag.slot-empty")}</div>
           {out.length > 0 && (
             <div className="grid grid-cols-2 gap-x-3 tabular-nums">
               {delta.map(([k, v]) => (
@@ -150,10 +151,10 @@ function ItemTooltip({ item, hands, worn, top }: { item: ItemView; hands: Hands;
                   <span className={v > 0 ? "text-green-500" : "text-red-500"}>{signed(v)}</span>
                 </div>
               ))}
-              {delta.length === 0 && <div className="text-muted-foreground">no change</div>}
+              {delta.length === 0 && <div className="text-muted-foreground">{t("bag.no-change")}</div>}
             </div>
           )}
-          <div className="mt-1 text-muted-foreground">drag to its slot or double-click to equip</div>
+          <div className="mt-1 text-muted-foreground">{t("bag.equip-hint")}</div>
         </div>
       )}
     </div>
@@ -196,14 +197,14 @@ export function BagPanel({
     setOver(null);
   };
   return (
-    <div className="pointer-events-auto relative w-80 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm" aria-label="bag">
+    <div className="pointer-events-auto relative w-80 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm" aria-label={t("bag.title")}>
       <div className="mb-2 flex items-baseline justify-between">
-        <div className="text-sm font-semibold">bag</div>
+        <div className="text-sm font-semibold">{t("bag.title")}</div>
         <div className="text-xs text-muted-foreground tabular-nums">
           {used}/{bag.length}
         </div>
       </div>
-      <div className="mb-1 grid grid-cols-2 gap-1" aria-label="hands">
+      <div className="mb-1 grid grid-cols-2 gap-1" aria-label={t("bag.hands")}>
         {(["main", "off"] as const).map((hand) => {
           const held = hands[hand];
           return (
@@ -215,8 +216,8 @@ export function BagPanel({
                 ...(held ? { borderColor: held.color, color: held.color } : { opacity: 0.6 }),
                 ...(over === `hand:${hand}` ? { outline: "2px solid currentColor", opacity: 1 } : {}),
               }}
-              title={held ? `${held.name} (${hand} hand): activate or drag to the bag to put away` : `${hand} hand: empty`}
-              aria-label={`${hand} hand`}
+              title={held ? t("bag.held", { item: held.name, where: t("bag.hand-name", { hand }) }) : t("bag.empty-where", { where: t("bag.hand-name", { hand }) })}
+              aria-label={t("bag.hand-name", { hand })}
               draggable={!!held}
               onClick={() => held && onUnequip(hand)}
               onDragStart={(e) => {
@@ -246,7 +247,7 @@ export function BagPanel({
           );
         })}
       </div>
-      <div className="mb-1 grid grid-cols-3 gap-1" aria-label="armour">
+      <div className="mb-1 grid grid-cols-3 gap-1" aria-label={t("bag.armour")}>
         {ARMOUR_SLOT_NAMES.map((slot) => {
           const piece = worn[slot];
           return (
@@ -258,8 +259,8 @@ export function BagPanel({
                 ...(piece ? { borderColor: piece.color, color: piece.color } : { opacity: 0.6 }),
                 ...(over === `worn:${slot}` ? { outline: "2px solid currentColor", opacity: 1 } : {}),
               }}
-              title={piece ? `${piece.name} (${slot}): activate or drag to the bag to take off` : `${slot}: empty`}
-              aria-label={`${slot} slot`}
+              title={piece ? t("bag.worn", { item: piece.name, slot: t(`slot.${slot}`) }) : t("bag.empty-where", { where: t(`slot.${slot}`) })}
+              aria-label={t("bag.slot-label", { slot: t(`slot.${slot}`) })}
               draggable={!!piece}
               onClick={() => piece && onUnequip(slot)}
               onDragStart={(e) => {
@@ -290,7 +291,7 @@ export function BagPanel({
         })}
       </div>
       {totals.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground tabular-nums" aria-label="equipped stats">
+        <div className="mb-2 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground tabular-nums" aria-label={t("bag.equipped-stats")}>
           {totals.map(([k, v]) => (
             <span key={k}>
               {k} {v}
@@ -301,7 +302,7 @@ export function BagPanel({
       <div
         className="grid grid-cols-6 gap-1 rounded"
         style={over === "bag" ? { outline: "2px solid currentColor" } : undefined}
-        aria-label="bag slots"
+        aria-label={t("bag.slots")}
         onDragOver={(e) => {
           if (!dragging.current?.startsWith("hand:") && !dragging.current?.startsWith("worn:")) return;
           e.preventDefault();
@@ -365,7 +366,7 @@ export function BagPanel({
                   setFocus(null);
                 }}
               >
-                equip
+                {t("bag.equip")}
               </button>
             )}
             <button
@@ -376,12 +377,12 @@ export function BagPanel({
                 setFocus(null);
               }}
             >
-              drop
+              {t("bag.drop")}
             </button>
           </div>
         </div>
       ) : (
-        used === 0 && <div className="mt-2 text-xs text-muted-foreground">empty: walk up to a drop and press E</div>
+        used === 0 && <div className="mt-2 text-xs text-muted-foreground">{t("bag.empty")}</div>
       )}
     </div>
   );
