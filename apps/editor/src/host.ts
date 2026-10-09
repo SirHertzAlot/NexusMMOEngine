@@ -99,7 +99,7 @@ import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from ".
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
-import { backupWorld, discardBackup, restoreWorld } from "../../../packages/engine-core/src/world-snapshot.js";
+import { backupWorld, discardBackup, restoreWorld } from "@mmo-engine/engine-core";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
