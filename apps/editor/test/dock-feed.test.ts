@@ -31,6 +31,34 @@ describe("ServerLog", () => {
     log.append("c\n");
     assert.deepEqual(log.since(0), { lines: ["c"], from: 2, next: 3 });
   });
+  it("keeps stdout and stderr partial lines apart", () => {
+    const log = new ServerLog();
+    log.append("tick 4", "stdout");
+    log.append("Error: boom\n", "stderr");
+    log.append("2 ms\n", "stdout");
+    assert.deepEqual(log.since(0).lines, ["Error: boom", "tick 42 ms"]);
+  });
+  it("flush keeps an unfinished last line instead of gluing the next one to it", () => {
+    const log = new ServerLog();
+    log.append("fatal: no newline", "stderr");
+    log.flush();
+    log.append("[editor] the play server exited (code 1)\n", "editor");
+    assert.deepEqual(log.since(0).lines, ["fatal: no newline", "[editor] the play server exited (code 1)"]);
+  });
+  it("a reset makes the previous run's epoch stale", () => {
+    const log = new ServerLog();
+    const first = log.reset();
+    assert.equal(log.current(first), true);
+    const second = log.reset();
+    assert.equal(log.current(first), false);
+    assert.equal(log.current(second), true);
+  });
+  it("caps a line that never ends", () => {
+    const log = new ServerLog();
+    log.append("x".repeat(5000));
+    log.flush();
+    assert.equal(log.since(0).lines[0].length, 2000);
+  });
 });
 
 describe("dock feed helpers", () => {

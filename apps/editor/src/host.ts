@@ -218,25 +218,46 @@ function sendJson(
 /**
  * Rolling log of the play server's output lines. Lines are numbered from the
  * first one ever kept, so a poller asks for "everything after n" and learns
- * when older lines were dropped.
+ * when older lines were dropped. stdout and stderr keep their own partial
+ * line, so chunks from the two streams never splice into one line.
  */
 export class ServerLog {
   private lines: string[] = [];
   private first = 0;
-  private partial = "";
+  private partial = new Map<string, string>();
+  private epoch = 0;
 
   constructor(private readonly max = 1000) {}
 
-  reset(): void {
+  /** Start a new run; returns its epoch, so a previous run's late output can be ignored. */
+  reset(): number {
     this.first += this.lines.length;
     this.lines = [];
-    this.partial = "";
+    this.partial.clear();
+    return ++this.epoch;
   }
 
-  append(text: string): void {
-    const parts = (this.partial + text).split(/\r?\n/);
-    this.partial = parts.pop() ?? "";
-    for (const line of parts) if (line !== "") this.lines.push(line.slice(0, 2000));
+  /** Whether `epoch` is the current run. */
+  current(epoch: number): boolean {
+    return epoch === this.epoch;
+  }
+
+  append(text: string, stream = "out"): void {
+    const parts = ((this.partial.get(stream) ?? "") + text).split(/\r?\n/);
+    // A line with no newline yet stays pending, capped like a kept line.
+    this.partial.set(stream, (parts.pop() ?? "").slice(-2000));
+    for (const line of parts) this.push(line);
+  }
+
+  /** Keep every stream's unfinished last line (the process exited without a newline). */
+  flush(): void {
+    for (const rest of this.partial.values()) this.push(rest);
+    this.partial.clear();
+  }
+
+  private push(line: string): void {
+    if (line === "") return;
+    this.lines.push(line.slice(0, 2000));
     if (this.lines.length > this.max) {
       const drop = this.lines.length - this.max;
       this.lines.splice(0, drop);
@@ -589,12 +610,21 @@ export function editorHost(options: EditorHostOptions): Plugin {
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
-    serverLog.reset();
-    serverLog.append(`[editor] starting the play server on port ${serverPort}\n`);
-    child.stdout?.on("data", (d: Buffer) => serverLog.append(d.toString("utf8")));
-    child.stderr?.on("data", (d: Buffer) => serverLog.append(d.toString("utf8")));
-    child.on("exit", (code) => {
-      serverLog.append(`[editor] the play server exited (code ${code})\n`);
+    // A server stopped just before this start may still print and exit;
+    // its epoch is stale by then, so none of that lands in the new run's log.
+    const logEpoch = serverLog.reset();
+    serverLog.append(`[editor] starting the play server on port ${serverPort}\n`, "editor");
+    child.stdout?.on("data", (d: Buffer) => {
+      if (serverLog.current(logEpoch)) serverLog.append(d.toString("utf8"), "stdout");
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      if (serverLog.current(logEpoch)) serverLog.append(d.toString("utf8"), "stderr");
+    });
+    child.on("exit", (code, signal) => {
+      if (serverLog.current(logEpoch)) {
+        serverLog.flush();
+        serverLog.append(`[editor] the play server exited (${code !== null ? `code ${code}` : `signal ${signal}`})\n`, "editor");
+      }
       if (owned?.child === child) owned = null;
     });
 
