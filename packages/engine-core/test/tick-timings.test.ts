@@ -47,4 +47,29 @@ describe("TickTimings", () => {
     assert.ok(s.p50 >= 45 && s.p50 <= 55, `p50=${s.p50}`);
     assert.ok(s.p99 >= 95, `p99=${s.p99}`);
   });
+
+  it("keeps the newest ticks once the ring wraps", () => {
+    const t = new TickTimings(4);
+    for (const ms of [100, 100, 100, 100, 1, 2, 3, 4]) t.recordTick(ms, {});
+    const s = t.snapshot();
+    assert.equal(s.ticks, 4);
+    assert.ok(s.p99 <= 4, `old ticks still counted: p99=${s.p99}`);
+  });
+
+  it("recordSystem + endTick match recordTick", () => {
+    const a = new TickTimings();
+    const b = new TickTimings();
+    a.recordTick(10, { physics: 6, ai: 3 });
+    b.recordSystem("physics", 6);
+    b.recordSystem("ai", 3);
+    b.endTick(10);
+    assert.deepEqual(a.snapshot(), b.snapshot());
+  });
+
+  it("reset clears ticks and systems", () => {
+    const t = new TickTimings();
+    t.recordTick(5, { physics: 1 });
+    t.reset();
+    assert.deepEqual(t.snapshot(), { ticks: 0, p50: 0, p99: 0, systems: [] });
+  });
 });

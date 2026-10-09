@@ -53,8 +53,8 @@ describe("flow context: duplicate", () => {
     const ids = Object.keys(d.nodes);
     assert.equal(ids.length, 3);
     const copyId = ids.find((id) => id !== "login" && id !== "world")!;
-    assert.equal(d.nodes[copyId].scene, "world");
-    assert.ok(d.nodes[copyId].x > d.nodes.world.x);
+    assert.equal(d.nodes[copyId]?.scene, "world");
+    assert.ok((d.nodes[copyId]?.x ?? 0) > (d.nodes.world?.x ?? 0));
   });
 
   it("does not copy edges", () => {
@@ -64,5 +64,13 @@ describe("flow context: duplicate", () => {
 
   it("throws for a missing node", () => {
     assert.throws(() => duplicateFlowNode(doc(), "nope"), /not found/);
+  });
+});
+
+describe("flow context: rename keeps the selection on the node", () => {
+  it("the renamed id is the only new key, in the same place", () => {
+    const d = renameFlowNode(doc(), "world", "overworld");
+    assert.deepEqual(Object.keys(d.nodes), ["login", "overworld"]);
+    assert.equal(d.edges[0].to, "overworld");
   });
 });

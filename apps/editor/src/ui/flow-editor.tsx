@@ -273,6 +273,7 @@ export function FlowEditor(): React.JSX.Element {
         })}
         </g>
       </svg>
+      {ctx && <span className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />}
       {ctx && (
         <div
           className="fixed z-50 min-w-40 rounded-lg border py-1 shadow-lg"
@@ -292,7 +293,11 @@ export function FlowEditor(): React.JSX.Element {
               run: () => {
                 setCtx(null);
                 try {
-                  edit(duplicateFlowNode(doc, ctx.id));
+                  const next = duplicateFlowNode(doc, ctx.id);
+                  edit(next);
+                  // Select the copy (the one key the duplicate added).
+                  const added = Object.keys(next.nodes).find((k) => !(k in doc.nodes));
+                  if (added) pick(added);
                 } catch (e) {
                   setStatus((e as Error).message);
                 }
@@ -332,6 +337,8 @@ export function FlowEditor(): React.JSX.Element {
                   const v = (e.target as HTMLInputElement).value;
                   try {
                     edit(renameFlowNode(doc, renaming, v));
+                    // The selection follows the node to its new id.
+                    if (selected === renaming) pick(v.trim());
                     setRenaming(null);
                   } catch (err) {
                     setStatus((err as Error).message);
@@ -350,6 +357,8 @@ export function FlowEditor(): React.JSX.Element {
                   const v = el?.value ?? "";
                   try {
                     edit(renameFlowNode(doc, renaming, v));
+                    // The selection follows the node to its new id.
+                    if (selected === renaming) pick(v.trim());
                     setRenaming(null);
                   } catch (err) {
                     setStatus((err as Error).message);

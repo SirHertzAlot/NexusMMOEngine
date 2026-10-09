@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, getPlayController, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
@@ -2302,23 +2302,6 @@ function ReleaseTree(): React.JSX.Element {
 function DebugTree(): React.JSX.Element {
   const t = useTree();
   const { entityId, autoRefresh, pmState } = playUiStore.use();
-  const stagedGroup = (id: string, icon: string, label: string, leaves: string[]): React.JSX.Element => (
-    <div key={id}>
-      <TreeItem
-        icon={icon} label={label}
-        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={false} onPick={() => t.toggle(id)}
-        menu={crudMenu(label, "EA · debug")}
-      />
-      {t.open.includes(id) && leaves.map((l) => (
-        <TreeItem
-          key={l} icon="chevron_right" label={l} depth={1}
-          menu={crudMenu(l, "EA · debug")}
-          onPick={() => notify(`${l} — staged for EA · debug (E5 overlays)`)}
-        />
-      ))}
-    </div>
-  );
   return (
     <div className="flex flex-col gap-0.5">
       <TreeItem
