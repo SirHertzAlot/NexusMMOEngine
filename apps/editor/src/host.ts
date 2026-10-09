@@ -36,6 +36,7 @@
  *                                    affects; 422 + issues when refused
  *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
  *   GET  /api/editor/rules/:name   → one rules file's parsed content
+ *   GET/PUT /api/editor/scenes[/:name] → scene documents (scenes-host.ts)
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
@@ -78,6 +79,7 @@ import {
   ruleFileNames,
   saveRuleFile,
 } from "./rules-host.js";
+import { handleScenesRoute } from "./scenes-host.js";
 import { pathToFileURL } from "node:url";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
@@ -916,6 +918,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url.startsWith("/assets/") && req.method === "GET") {
             serveAssetFile(req, res);
+            return;
+          }
+          const scenesUrl = new URL(req.url ?? "/", "http://localhost");
+          const scenesReply = handleScenesRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" ? await readBody(req) : undefined,
+          );
+          if (scenesReply) {
+            sendJson(res, scenesReply.status, scenesReply.body);
             return;
           }
           const rulesParsed = new URL(req.url ?? "/", "http://localhost");

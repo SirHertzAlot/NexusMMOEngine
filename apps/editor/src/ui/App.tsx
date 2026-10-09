@@ -18,6 +18,7 @@ import { CharacterRecordPanel } from "./character-view.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { RulesPanel } from "./rules-editor.js";
+import { ScenesPanel } from "./scenes-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import type { MenuItem } from "./components.js";
@@ -66,6 +67,7 @@ import {
 type WorkspaceId =
   | "world"
   | "scene"
+  | "scenes"
   | "flow"
   | "characters"
   | "gameplay"
@@ -97,6 +99,11 @@ const WORKSPACES: Workspace[] = [
     id: "scene", label: "Scene", icon: "landscape",
     views: [{ id: "ecs", label: "Viewport", icon: "view_in_ar", kind: "panel", panel: <EcsInspectorPanel /> }],
     leftTitle: "Outliner",
+  },
+  {
+    id: "scenes", label: "Scenes", icon: "account_tree",
+    views: [{ id: "scene", label: "Scene document", icon: "account_tree", kind: "panel", panel: <ScenesPanel /> }],
+    leftTitle: "Scenes",
   },
   {
     id: "flow", label: "Flow & UI", icon: "account_tree",

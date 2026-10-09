@@ -50,6 +50,7 @@
     "packages/mirror",
     "packages/art",
     "packages/rules",
+    "packages/scene",
     "packages/engine-core",
     "packages/bench",
     "packages/addons/template",
