@@ -8,7 +8,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   clearDocActions,
+  getAllDocActions,
   getDocActions,
+  saveAllDocs,
   registerDocActions,
   subscribeDocActions,
   type DocActions,
@@ -64,5 +66,47 @@ describe("doc-actions", () => {
     assert.equal(getDocActions(), b);
     clearDocActions(b);
     assert.equal(getDocActions(), null);
+  });
+});
+
+describe("doc-actions registry (several documents)", () => {
+  it("keeps every registered document; the latest is active", () => {
+    clearDocActions();
+    const a = actions("a");
+    const b = actions("b");
+    registerDocActions(a);
+    registerDocActions(b);
+    assert.deepEqual(getAllDocActions(), [a, b]);
+    assert.equal(getDocActions(), b);
+    clearDocActions(b);
+    assert.equal(getDocActions(), a);
+    clearDocActions();
+  });
+
+  it("re-registering the same object moves it to active without duplicating", () => {
+    clearDocActions();
+    const a = actions("a");
+    const b = actions("b");
+    registerDocActions(a);
+    registerDocActions(b);
+    registerDocActions(a);
+    assert.deepEqual(getAllDocActions(), [b, a]);
+    clearDocActions();
+  });
+
+  it("saveAllDocs saves only dirty documents and reports refusals without stopping", async () => {
+    clearDocActions();
+    const saved: string[] = [];
+    const clean = { ...actions("clean"), canSave: false, save: () => void saved.push("clean") };
+    const bad = { ...actions("bad"), save: () => { throw new Error("refused: 2 problems"); } };
+    const good = { ...actions("good"), save: async () => void saved.push("good") };
+    registerDocActions(clean);
+    registerDocActions(bad);
+    registerDocActions(good);
+    const r = await saveAllDocs();
+    assert.deepEqual(saved, ["good"]);
+    assert.deepEqual(r.saved, ["good"]);
+    assert.deepEqual(r.failed, [{ label: "bad", error: "refused: 2 problems" }]);
+    clearDocActions();
   });
 });

@@ -13,6 +13,7 @@ import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
 import { sceneCamera } from "./scene-camera.js";
 import { Button } from "./components.js";
+import { getViewportFlags, registerViewport, subscribeViewport } from "./viewport-bus.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
@@ -57,6 +58,14 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     }
     viewRef.current = view;
     sceneCamera.set(() => view.centre());
+    // The toolbar's viewport options and the View menu act on this view while it is open.
+    const unregister = registerViewport({
+      label: "scene viewport",
+      supports: { grid: true, gizmos: true, wireframe: true },
+      zoom: (f) => view.zoom(f),
+      reset: () => view.resetView(),
+      screenshot: () => view.screenshot(),
+    });
     let alive = true;
     loadTerrain().then(
       (t) => alive && view.setTerrain(t.tiles, t.chunkWorldSize),
@@ -69,10 +78,16 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     return () => {
       alive = false;
       viewRef.current = null;
+      unregister();
       sceneCamera.set(null);
       view.dispose();
     };
   }, []);
+
+  const flags = React.useSyncExternalStore(subscribeViewport, getViewportFlags);
+  React.useEffect(() => viewRef.current?.setGrid(flags.grid), [flags.grid, webgl]);
+  React.useEffect(() => viewRef.current?.setGizmos(flags.gizmos), [flags.gizmos, webgl]);
+  React.useEffect(() => viewRef.current?.setWireframe(flags.wireframe), [flags.wireframe, webgl, content]);
 
   const species = React.useMemo(() => new Set(content?.species.map((s) => s.id) ?? []), [content]);
   React.useEffect(() => {

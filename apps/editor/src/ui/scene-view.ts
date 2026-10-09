@@ -47,6 +47,10 @@ export class SceneView {
   private readonly orbit: OrbitControls;
   private readonly gizmo: TransformControls;
   private readonly raycaster = new THREE.Raycaster();
+  private readonly grid = new THREE.GridHelper(200, 100, 0x445066, 0x2a3040);
+  private gizmosOn = true;
+  private wireframe = false;
+  private readonly home = { position: new THREE.Vector3(28, 22, 28), target: new THREE.Vector3(0, 0, 0) };
   private readonly nodes = new THREE.Group();
   private readonly terrain = new THREE.Group();
   private readonly ground = new THREE.Mesh(
@@ -78,14 +82,13 @@ export class SceneView {
     const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
     sun.position.set(30, 60, 20);
     this.scene.add(sun);
-    const grid = new THREE.GridHelper(200, 100, 0x445066, 0x2a3040);
-    grid.position.y = -0.02;
-    this.scene.add(grid, this.terrain, this.nodes, this.ground);
+    this.grid.position.y = -0.02;
+    this.scene.add(this.grid, this.terrain, this.nodes, this.ground);
 
-    this.camera.position.set(28, 22, 28);
+    this.camera.position.copy(this.home.position);
     this.orbit = new OrbitControls(this.camera, canvas);
     this.orbit.enableDamping = false;
-    this.orbit.target.set(0, 0, 0);
+    this.orbit.target.copy(this.home.target);
 
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.setSize(0.8);
@@ -198,6 +201,47 @@ export class SceneView {
     this.gizmo.showY = mode !== "translate" || !this.snapTerrain;
   }
 
+  /** View toggles (toolbar viewport options). */
+  setGrid(on: boolean): void {
+    this.grid.visible = on;
+  }
+
+  setGizmos(on: boolean): void {
+    this.gizmosOn = on;
+    this.gizmo.getHelper().visible = on;
+    this.gizmo.enabled = on;
+  }
+
+  setWireframe(on: boolean): void {
+    this.wireframe = on;
+    const apply = (o: THREE.Object3D): void => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (m && "wireframe" in m) (m as THREE.MeshStandardMaterial).wireframe = on;
+    };
+    this.terrain.children.forEach(apply);
+    this.nodes.traverse(apply);
+  }
+
+  /** Dolly toward (factor > 1) or away from the orbit target. */
+  zoom(factor: number): void {
+    const offset = this.camera.position.clone().sub(this.orbit.target);
+    const len = Math.min(1500, Math.max(1, offset.length() / factor));
+    this.camera.position.copy(this.orbit.target).add(offset.setLength(len));
+  }
+
+  /** The camera back where the view opened. */
+  resetView(): void {
+    this.camera.position.copy(this.home.position);
+    this.orbit.target.copy(this.home.target);
+    this.camera.lookAt(this.orbit.target);
+  }
+
+  /** A PNG of the viewport as drawn now (renders first, so the buffer is current). */
+  screenshot(): Promise<Blob | null> {
+    this.renderer.render(this.scene, this.camera);
+    return new Promise((resolve) => this.canvas.toBlob((b) => resolve(b), "image/png"));
+  }
+
   setSnap(opts: { terrain: boolean; grid: boolean }): void {
     this.snapTerrain = opts.terrain;
     this.setMode(this.mode);
@@ -220,7 +264,7 @@ export class SceneView {
         max = Math.max(max, t.heights[i]);
       }
     }
-    const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+    const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, wireframe: this.wireframe });
     for (const t of tiles) {
       const mesh = new THREE.Mesh(buildChunkGeometry(chunkSize), material);
       mesh.position.set(t.cx * chunkSize + chunkSize / 2, 0, t.cz * chunkSize + chunkSize / 2);
@@ -248,7 +292,7 @@ export class SceneView {
       const marker = markerFor(w.node, species);
       const group = new THREE.Group();
       group.userData.nodeId = w.node.id;
-      const mesh = new THREE.Mesh(markerGeometry(marker.shape), new THREE.MeshStandardMaterial({ color: marker.color, roughness: 0.6 }));
+      const mesh = new THREE.Mesh(markerGeometry(marker.shape), new THREE.MeshStandardMaterial({ color: marker.color, roughness: 0.6, wireframe: this.wireframe }));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x000000 })));
       group.add(mesh);
       group.position.set(w.position[0], (this.heightAt(w.position[0], w.position[2]) ?? 0) + w.position[1], w.position[2]);
@@ -263,6 +307,7 @@ export class SceneView {
       (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(id === this.selected ? 0x666666 : 0x000000);
     }
     if (this.selected) this.gizmo.attach(this.objects.get(this.selected)!);
+    this.gizmo.getHelper().visible = this.gizmosOn;
   }
 
   /** Move the camera to look at the selection (or the scene's centre). */

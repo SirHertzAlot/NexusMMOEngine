@@ -341,9 +341,15 @@ export function RulesPanel(): React.JSX.Element {
       canSave: dirty,
       canUndo: false,
       canRedo: false,
-      save: () => void onSave(),
+      save: () => onSave(),
       undo: () => undefined,
       redo: () => undefined,
+      revert: () => setContent(structuredClone(pristine)),
+      exportDoc: () => ({ name: `rules-${selected}`, data: content }),
+      importDoc: (incoming: unknown) => {
+        setContent(incoming);
+        setSavedNote(null);
+      },
     };
     registerDocActions(target);
     return () => clearDocActions(target);

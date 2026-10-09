@@ -120,8 +120,6 @@ function AssetLibraryTree({ onView }: { onView?: (view: string) => void }): Reac
         selected={false} onPick={() => toggle(id)}
         menu={[
           { label: "Rescan pack", icon: "refresh", run: () => void refresh() },
-          "sep",
-          { label: "Reveal in file browser", icon: "folder_open", stagedFor: "EA · art & audio" },
         ]}
       />
       {open.includes(id) && kids}
@@ -163,8 +161,6 @@ function AssetLibraryTree({ onView }: { onView?: (view: string) => void }): Reac
               onPick={() => setAssetPreview(m.id)}
               menu={[
                 { label: `Preview ${m.id}`, icon: "visibility", run: () => setAssetPreview(m.id) },
-                "sep",
-                { label: "Reveal in file browser", icon: "folder_open", stagedFor: "EA · art & audio" },
               ]}
             />
           ))}
@@ -180,8 +176,7 @@ function AssetLibraryTree({ onView }: { onView?: (view: string) => void }): Reac
           {textures.slice(0, 12).map((t) => (
             <TreeItem
               key={t.id} icon="image" label={t.id} depth={1} mono
-              menu={[{ label: "Reveal in file browser", icon: "folder_open", stagedFor: "EA · art & audio" }]}
-              onPick={() => notify(`${t.id} — texture preview arrives with the art pipeline slice`)}
+              onPick={() => undefined}
             />
           ))}
         </>

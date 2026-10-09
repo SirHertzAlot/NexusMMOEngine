@@ -32,9 +32,17 @@ import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
-import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, useLocalStorage } from "./components.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import { editRows, fileRows, zoomRows, type MenuRows, type ShellCommands } from "./menu-model.js";
+import { anyUnsaved, editActive, exportActive, importActive, popOutPanel, redoActive, revertActive, saveActive, saveEverything, undoActive } from "./shell-actions.js";
+import { getViewport, runViewportCommand, subscribeViewport } from "./viewport-bus.js";
+import { OwnedFiles } from "./owned-files.js";
+import { ViewportOptions } from "./viewport-options.js";
+import { OpenSceneDialog, PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
+import { requestSceneCommand } from "./scene-commands.js";
+import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import {
   emptySetups,
   fetchPlaySetups,
@@ -48,7 +56,7 @@ import {
 import { PlayMenu } from "./play-menu.js";
 import { PipelinePanel, ReleaseDetails, ReleaseTree } from "./release-workspace.js";
 import type { ProblemList } from "../problems-client.js";
-import { DatabaseNote, FlowNote, GameplayNote, SceneFiles, WorldTree } from "./dock-details.js";
+import { DatabaseNote, FlowNote, GameplayNote, WorldTree } from "./dock-details.js";
 import { BottomPane, problemsLabel, useProblems } from "./bottom-dock.js";
 import { isSelectionVisible, useEditorSelection } from "./editor-selection.js";
 import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
@@ -377,7 +385,19 @@ export function App(): React.JSX.Element {
     const sel = readDeepSelection(workspace, view);
     const h = `#/${workspace}/${view}${sel ? `/${encodeURIComponent(sel)}` : ""}`;
     if (window.location.hash !== h) window.history.replaceState(null, "", h);
+    rememberView(browserStorage(), workspace, view);
   });
+  // Preference: the browser confirms closing the tab while a document has unsaved edits.
+  React.useEffect(() => {
+    if (!loadPrefs(browserStorage()).warnUnsaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      if (!anyUnsaved()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   function parseHash(): void {
     const loc = parseHashString(window.location.hash);
@@ -432,21 +452,19 @@ export function App(): React.JSX.Element {
           }
         }
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s") {
-        // Ctrl S saves the toolbar's open document; refused saves write nothing.
-        const target = getDocActions();
-        if (target?.canSave) {
-          e.preventDefault();
-          target.save();
-        }
+        // Ctrl S saves the open document; refused saves write nothing. Never the browser's page save.
+        e.preventDefault();
+        void saveActive();
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        // In a text field Ctrl Z is the field's own undo.
         const target = getDocActions();
-        if (target?.canUndo) {
+        if (target?.canUndo && !shouldSkipShortcut(e.target)) {
           e.preventDefault();
           target.undo();
         }
       } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
         const target = getDocActions();
-        if (target?.canRedo) {
+        if (target?.canRedo && !shouldSkipShortcut(e.target)) {
           e.preventDefault();
           target.redo();
         }
@@ -567,8 +585,8 @@ export function App(): React.JSX.Element {
                 label="Left dock options"
                 size={36}
                 items={[
-                  { label: "Save layout as…", kbd: "Ctrl Shift S", run: () => notify("Use the layout menu (top right) to save this arrangement by name") },
-                  { label: "Pop panel into a window", stagedFor: "EA · layout" },
+                  { label: "Save layout as…", kbd: "Ctrl Shift S", run: () => setLayoutMenu(true) },
+                  { label: "Pop panel into a window", run: popOutPanel },
                   { label: "Hide left dock", run: () => toggleDock("left") },
                 ]}
               />
@@ -619,17 +637,7 @@ export function App(): React.JSX.Element {
               {workspaceLabel(workspace)} · {activeView.label.toLowerCase()}
             </span>
             <span className="ml-auto flex items-center gap-0.5">
-              <OverflowMenu
-                label="Viewport options"
-                size={36}
-                items={[
-                  { label: "Grid", stagedFor: "EA · viewport tools" },
-                  { label: "Gizmos", stagedFor: "EA · viewport tools" },
-                  { label: "Wireframe", stagedFor: "EA · viewport tools" },
-                  "sep",
-                  { label: "Screenshot viewport", stagedFor: "core" },
-                ]}
-              />
+              <ViewportOptions />
             </span>
           </div>
 
@@ -705,7 +713,7 @@ export function App(): React.JSX.Element {
                 label="Right dock options"
                 size={36}
                 items={[
-                  { label: "Pop panel into a window", stagedFor: "EA · layout" },
+                  { label: "Pop panel into a window", run: popOutPanel },
                   { label: "Hide right dock", run: () => toggleDock("right") },
                 ]}
               />
@@ -800,7 +808,13 @@ let hashClaimed: string | null = null;
 
 function initialHashLocation(): { workspace: WorkspaceId; view: string } {
   if (typeof window === "undefined") return { workspace: "gameplay", view: "tables" };
-  const loc = parseHashString(window.location.hash) ?? { workspace: "gameplay", view: "tables", sel: null };
+  const fromHash = parseHashString(window.location.hash);
+  if (!fromHash && loadPrefs(browserStorage()).restoreLastView) {
+    const last = recallView(browserStorage());
+    const w = last ? WORKSPACES.find((x) => x.id === last.workspace) : undefined;
+    if (last && w?.views.some((v) => v.id === last.view)) return { workspace: w.id as WorkspaceId, view: last.view };
+  }
+  const loc = fromHash ?? { workspace: "gameplay", view: "tables", sel: null };
   // Claim the selection synchronously (not in an effect) so the first
   // hash write already reflects it — idempotent across StrictMode retries.
   if (loc.sel !== null && hashClaimed !== window.location.hash) {
@@ -822,59 +836,52 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   onGo: (ws: WorkspaceId, view?: string) => void;
 }): React.JSX.Element {
   const [open, setOpen] = React.useState<string | null>(null);
-  const [dialog, setDialog] = React.useState<"shortcuts" | "about" | null>(null);
+  const [dialog, setDialog] = React.useState<"shortcuts" | "about" | "open-scene" | "prefs" | "profile" | null>(null);
+  // Menus read the active document and viewport: re-render when either changes.
+  const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  React.useSyncExternalStore(subscribeViewport, getViewport);
+  const profile = currentProfile(browserStorage());
+  const cmds: ShellCommands = {
+    newScene: () => {
+      onGo("scenes", "scene");
+      requestSceneCommand({ kind: "new" });
+    },
+    openScene: () => setDialog("open-scene"),
+    save: () => void saveActive(),
+    saveAll: () => void saveEverything(),
+    revert: () => void revertActive(),
+    importDoc: () => void importActive(),
+    exportDoc: exportActive,
+    undo: undoActive,
+    redo: redoActive,
+    edit: editActive,
+  };
 
   function fullscreen(): void {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     else void document.documentElement.requestFullscreen().catch(() => notify("Fullscreen was blocked by the browser"));
   }
 
-  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string } | "sep">> = {
-    File: [
-      { label: "New Scene", run: staged("New Scene", "EA · scenes"), stagedFor: "EA · scenes" },
-      { label: "Open Scene…", run: staged("Open Scene", "EA · scenes"), stagedFor: "EA · scenes" },
-      "sep",
-      { label: "Save", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Save All", run: staged("Save All", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
-      "sep",
-      { label: "Import…", run: staged("Import", "EA · content browser"), stagedFor: "EA · content browser" },
-      { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
-    ],
-    Edit: [
-      { label: "Undo", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Redo", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      "sep",
-      { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Paste", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Duplicate", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Delete", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      "sep",
-      { label: "Select All", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
-    ],
+  const menus: Record<string, MenuRows> = {
+    File: fileRows(doc, anyUnsaved(), cmds),
+    Edit: editRows(doc, cmds),
     View: [
       { label: `${docks.left ? "✓ " : ""}Left dock`, run: () => onToggleDock("left") },
       { label: `${docks.right ? "✓ " : ""}Right dock`, run: () => onToggleDock("right") },
       { label: `${docks.bottom ? "✓ " : ""}Bottom dock`, run: () => onToggleDock("bottom") },
       "sep",
-      { label: "Zoom In", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Zoom Out", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Reset Viewport", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      ...zoomRows({ zoomIn: () => runViewportCommand("zoom-in"), zoomOut: () => runViewportCommand("zoom-out"), reset: () => runViewportCommand("reset") }),
       "sep",
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],
     Window: [
       ...WORKSPACES.map((w) => ({ label: `Workspace: ${w.label}`, run: () => onGo(w.id) })),
       "sep",
-      { label: "Pop panel into a window", run: staged("Pop panel into a window", "EA · layout"), stagedFor: "EA · layout" },
+      { label: "Pop panel into a window", run: popOutPanel },
       { label: "Reset layout", run: onResetLayout },
     ],
     Help: [
       { label: "Keyboard Shortcuts", kbd: "?", run: () => setDialog("shortcuts") },
-      { label: "Editor Guide (docs/EDITOR.md)", run: () => notify("docs/EDITOR.md — open it in your code editor") },
-      { label: "Architecture (EDITOR-ARCHITECTURE.md)", run: () => notify("docs/EDITOR-ARCHITECTURE.md — open it in your code editor") },
-      "sep",
       { label: "About MMO Engine Editor", run: () => setDialog("about") },
     ],
   };
@@ -927,25 +934,21 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                   if (it === "sep") {
                     return <li key={`sep-${i}`} className="list-none" style={{ borderTop: "1px solid var(--m3-outline-variant)", margin: "4px 2px" }} />;
                   }
-                  const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
-                  const stagedRow = it.stagedFor !== undefined;
+                  const off = it.disabled;
                   return (
                     <li key={it.label} className="list-none">
                       <button
-                        disabled={stagedRow}
-                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : undefined}
+                        disabled={off !== undefined}
+                        title={off !== undefined ? `${it.label} — ${off}` : undefined}
                         onClick={() => {
                           setOpen(null);
-                          run();
+                          it.run?.();
                         }}
                         className="m3-focus flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                        style={{ color: "var(--m3-on-surface)", opacity: stagedRow ? 0.55 : undefined }}
+                        style={{ color: "var(--m3-on-surface)", opacity: off !== undefined ? 0.5 : undefined }}
                       >
                         {it.label}
-                        {stagedRow && (
-                          <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>soon</span>
-                        )}
-                        {!stagedRow && it.kbd && (
+                        {it.kbd && (
                           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
                             {it.kbd}
                           </kbd>
@@ -979,12 +982,12 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
           onClick={() => setOpen((v) => (v === "profile" ? null : "profile"))}
           aria-expanded={open === "profile"}
           aria-haspopup="menu"
-          aria-label="Profile: signed in as editor (dev)"
-          title="Signed in as editor (dev) — seeded admin"
+          aria-label={`Profile: ${profile}`}
+          title={`Profile ${profile} — preferences are kept per profile`}
           className="m3-focus grid h-9 w-9 place-items-center rounded-full text-sm font-semibold"
           style={{ background: "var(--m3-primary-container)", color: "var(--m3-on-primary-container)" }}
         >
-          P
+          {profile.slice(0, 1).toUpperCase()}
         </button>
         {open === "profile" && (
           <>
@@ -995,27 +998,34 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
               aria-label="Profile menu"
             >
               <li className="list-none px-2.5 py-2">
-                <p className="text-sm font-medium" style={{ color: "var(--m3-on-surface)" }}>editor (dev)</p>
+                <p className="text-sm font-medium" style={{ color: "var(--m3-on-surface)" }}>{profile}</p>
                 <p className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-                  seeded admin · one-session login via the host
+                  local profile · play sessions log in through the host
                 </p>
               </li>
               {[
-                { label: "Switch profile", stagedFor: "EA · auth (A1)" },
-                { label: "Preferences", stagedFor: "EA · project settings" },
-                { label: "Sign out", stagedFor: "EA · auth (A1)" },
+                { label: "Switch profile", run: () => setDialog("profile") },
+                { label: "Preferences", run: () => setDialog("prefs") },
+                {
+                  label: "Sign out",
+                  run: () => {
+                    // Forget the stored session (profile, last view, last play setup) and start fresh.
+                    signOut(browserStorage());
+                    window.history.replaceState(null, "", window.location.pathname);
+                    window.location.reload();
+                  },
+                },
               ].map((it) => (
                 <li key={it.label} className="list-none">
                   <button
                     onClick={() => {
                       setOpen(null);
-                      staged(it.label, it.stagedFor)();
+                      it.run();
                     }}
                     className="m3-focus flex w-full items-center rounded-lg px-2.5 py-2 text-left text-[13px]"
                     style={{ color: "var(--m3-on-surface)" }}
                   >
                     {it.label}
-                    <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
                   </button>
                 </li>
               ))}
@@ -1028,6 +1038,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13px]">
             {[
               ["Ctrl K", "Command search"],
+              ["Ctrl S", "Save the open document"],
+              ["Ctrl Z / Ctrl Shift Z", "Undo / redo in the open document"],
               ["Ctrl Shift S", "Save layout as…"],
               ["F5", "Play with the last settings"],
               ["Shift F5", "Stop play mode"],
@@ -1042,6 +1054,17 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
           </div>
         </ShellDialog>
       )}
+      {dialog === "open-scene" && (
+        <OpenSceneDialog
+          onClose={() => setDialog(null)}
+          onOpen={(name) => {
+            onGo("scenes", "scene");
+            requestSceneCommand({ kind: "open", name });
+          }}
+        />
+      )}
+      {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}
+      {dialog === "profile" && <ProfileDialog onClose={() => setDialog(null)} />}
       {dialog === "about" && (
         <ShellDialog title="MMO Engine — Editor" onClose={() => setDialog(null)}>
           <p className="text-[13px] leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -1085,34 +1108,6 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
         })}
       </nav>
     </div>
-    </>
-  );
-}
-
-function ShellDialog({ title, onClose, children }: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <>
-      <span className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" style={{ background: "rgba(0,0,0,.4)" }} />
-      <div
-        className="fixed left-1/2 top-1/3 z-50 w-[26rem] max-w-[90vw] -translate-x-1/2 -translate-y-1/3 rounded-2xl p-5"
-        role="dialog"
-        aria-label={title}
-        style={{ background: "var(--m3-surface-3)", boxShadow: "0 6px 16px rgba(0,0,0,.5)" }}
-      >
-        <div className="mb-3 flex items-center">
-          <p className="text-base font-medium">{title}</p>
-          <span className="ml-auto">
-            <IconButton label={`Close ${title}`} size={36} onClick={onClose}>
-              <MIcon name="close" size={19} />
-            </IconButton>
-          </span>
-        </div>
-        {children}
-      </div>
     </>
   );
 }
@@ -1303,22 +1298,6 @@ function Toolbar(props: {
           </button>
         </div>
         <IconButton
-          label="Pause — not available: the owned server's tick loop has no pause control"
-          title="Pause — not available: the owned server's tick loop has no pause control"
-          size={36}
-          disabled
-        >
-          <MIcon name="pause" size={20} />
-        </IconButton>
-        <IconButton
-          label="Step one tick — not available: the owned server has no single-tick control"
-          title="Step one tick — not available: the owned server has no single-tick control"
-          size={36}
-          disabled
-        >
-          <MIcon name="skip_next" size={20} />
-        </IconButton>
-        <IconButton
           label={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop (Shift F5) — stops the owned server, even while starting"}
           title={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop — stops the owned server, even while starting"}
           size={36}
@@ -1483,9 +1462,8 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
               <MIcon name="save" size={16} /> Save layout as…
               <kbd className="ml-auto font-mono text-[11px]">Ctrl Shift S</kbd>
             </button>
-            <button onClick={() => staged("Pop panel into a window", "EA · layout")()} className="m3-focus flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
+            <button onClick={popOutPanel} className="m3-focus flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
               <MIcon name="open_in_new" size={16} /> Pop panel into a window
-              <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
             </button>
             <button onClick={onReset} className="m3-focus flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
               <MIcon name="restart_alt" size={16} /> Reset to default
@@ -1574,7 +1552,7 @@ function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
 
 // ---------------------------------------------------------------- trees
 // Drill-down outliner rows with per-item CRUD. Inspect/select runs against
-// real shell state; Rename/Duplicate/Delete stage honestly for their slice.
+// real shell state; Rename/Duplicate/Delete run against the host for files the editor owns.
 
 function useTree(): {
   open: string[];
@@ -1688,22 +1666,17 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
   useModuleRegistry();
   const t = useTree();
   const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
-  const folder = (id: string, label: string, icon: string, kids: React.ReactNode, slice = "EA · content browser"): React.JSX.Element => (
+  const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id}>
       <TreeItem
         icon={icon} label={label} mono
         hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={t.sel === id} onPick={() => t.pick(id)}
-        menu={[
-          { label: "New file…", icon: "note_add", stagedFor: slice },
-          { label: "New folder…", icon: "create_new_folder", stagedFor: slice },
-          "sep",
-          { label: "Reveal in file browser", icon: "folder_open", stagedFor: slice },
-        ]}
+        selected={t.sel === id} onPick={() => { t.pick(id); t.toggle(id); }}
       />
       {t.open.includes(id) && kids}
     </div>
   );
+  // Files the editor does not own open in their workspace; rename / duplicate / delete are for owned files only.
   const file = (path: string, name: string, go?: [WorkspaceId, string?], depth = 1): React.JSX.Element => (
     <TreeItem
       key={path}
@@ -1712,13 +1685,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         t.pick(path);
         if (go) onGo(go[0], go[1]);
       }}
-      menu={[
-        { label: `Open ${name}`, icon: "open_in_new", run: go ? () => onGo(go[0], go[1]) : staged(`Open ${name}`, "EA · content browser") },
-        "sep",
-        { label: "Rename…", icon: "edit", stagedFor: "EA · content browser" },
-        { label: "Duplicate", icon: "content_copy", stagedFor: "EA · content browser" },
-        { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · content browser" },
-      ]}
+      menu={go ? [{ label: `Open ${name}`, icon: "open_in_new", run: () => onGo(go[0], go[1]) }] : undefined}
     />
   );
   return (
@@ -1748,7 +1715,16 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         <>{file("content/edge/routes.json", "routes.json", ["network"])}</>
       ))}
       {folder("scenes", "content/scenes", "folder", (
-        <SceneFiles onOpen={() => onGo("scenes", "scene")} />
+        <OwnedFiles kind="scene" onOpen={() => onGo("scenes", "scene")} />
+      ))}
+      {folder("prefabs", "content/prefabs", "folder", (
+        <OwnedFiles kind="prefab" onOpen={() => onGo("gameplay", "tables")} />
+      ))}
+      {folder("playtests", "content/playtests", "folder", (
+        <OwnedFiles kind="playtest" onOpen={() => onGo("release", "playtests")} />
+      ))}
+      {folder("build", "content/build", "folder", (
+        <OwnedFiles kind="build" onOpen={() => onGo("release", "pipeline")} />
       ))}
       {folder("modules", `modules · ${moduleRegistry.state?.enabled.length ?? "?"} enabled`, "extension", (
         <>
@@ -1756,7 +1732,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         </>
       ))}
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Files open in the workspace that owns them — drag-to-place arrives with the scene viewport slice.
+        Files open in the workspace that owns them. Scenes, prefabs, playtests and build profiles can be renamed, duplicated and deleted here.
       </p>
     </div>
   );

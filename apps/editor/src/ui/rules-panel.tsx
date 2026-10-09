@@ -98,9 +98,15 @@ export function RulesPanel(): React.JSX.Element {
       ),
       canUndo: false,
       canRedo: false,
-      save: () => void save(),
+      save: () => save(),
       undo: () => undefined,
       redo: () => undefined,
+      revert: () => load(),
+      exportDoc: () => ({ name: `rules-${table}`, data: drafts[table] }),
+      importDoc: (incoming: unknown) => {
+        setDrafts((d) => (d ? { ...d, [table]: incoming } : d));
+        setStatus(null);
+      },
     };
     registerDocActions(target);
     return () => clearDocActions(target);
