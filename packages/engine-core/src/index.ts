@@ -300,6 +300,7 @@ export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
 export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
 export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
+export { loadAudioEvent, AudioBus, type AudioEvent } from "./audio.js";
 
 // Edge/core split E3: the core's end of the internal channel.
 export {
