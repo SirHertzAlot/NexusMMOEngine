@@ -32,7 +32,7 @@ import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
-import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import {
@@ -47,9 +47,10 @@ import {
 } from "./play-setup.js";
 import { PlayMenu } from "./play-menu.js";
 import { PipelinePanel, ReleaseDetails, ReleaseTree } from "./release-workspace.js";
-import type { MenuItem } from "./components.js";
-import type { ScopeNode } from "./scope-tree.js";
-import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
+import type { ProblemList } from "../problems-client.js";
+import { DatabaseNote, FlowNote, GameplayNote, SceneFiles, WorldTree } from "./dock-details.js";
+import { BottomPane, problemsLabel, useProblems } from "./bottom-dock.js";
+import { isSelectionVisible, useEditorSelection } from "./editor-selection.js";
 import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
 import { ViewList } from "./view-list.js";
 import { LiveOpsDetailsLive, LiveOpsViews } from "./liveops-live.js";
@@ -58,9 +59,6 @@ import { PlaytestsPanel } from "./playtests-live.js";
 import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
 import {
   ArtAudioTree,
-  DatabaseRowDetails,
-  FlowDetails,
-  SchemaTree,
   applyDeepSelection,
   readDeepSelection,
   subscribeDeepSelection,
@@ -240,6 +238,7 @@ export function App(): React.JSX.Element {
   const [leftTab, setLeftTab] = React.useState<string>("left");
   const [rightTab, setRightTab] = React.useState<string>("details");
   const [bottomTab, setBottomTab] = React.useState<string>("output");
+  const problems = useProblems();
   const [playMenu, setPlayMenu] = React.useState(false);
   const [layoutMenu, setLayoutMenu] = React.useState(false);
   const [mode, setMode] = React.useState<RunMode>("edit");
@@ -659,7 +658,7 @@ export function App(): React.JSX.Element {
             <DockPanel
               tabs={[
                 { id: "output", label: "Output", icon: "terminal" },
-                { id: "problems", label: "Problems · 2", icon: "error" },
+                { id: "problems", label: problemsLabel(problems.list), icon: "error" },
                 { id: "bakes", label: "Bakes", icon: "history" },
               ]}
               active={bottomTab}
@@ -669,14 +668,13 @@ export function App(): React.JSX.Element {
                   label="Bottom dock options"
                   size={36}
                   items={[
-                    { label: "Clear output", run: () => notify("Output is pinned to the owned server's log in this build") },
-                    { label: "Pop panel into a window", stagedFor: "EA · layout" },
+                    { label: "Re-check problems", run: problems.refresh },
                     { label: "Hide bottom dock", run: () => toggleDock("bottom") },
                   ]}
                 />
               }
             >
-              <BottomPane tab={bottomTab} />
+              <BottomPane tab={bottomTab} visible={docks.bottom} problems={problems} />
             </DockPanel>
           </div>
         </div>
@@ -698,7 +696,6 @@ export function App(): React.JSX.Element {
         >
           <DockPanel
             tabs={[
-              { id: "compare", label: "Compare", icon: "compare_arrows" },
               { id: "details", label: "Details", icon: "tune" },
             ]}
             active={rightTab}
@@ -714,7 +711,7 @@ export function App(): React.JSX.Element {
               />
             }
           >
-            {rightTab === "compare" ? <ComparePane /> : playing ? (
+            {playing ? (
               <div className="flex flex-col gap-2">
                 <p
                   className="rounded-xl px-3 py-2 text-xs font-medium"
@@ -733,7 +730,7 @@ export function App(): React.JSX.Element {
         </div>
       </div>
 
-      <StatusBar />
+      <StatusBar problems={problems.list} onOpenProblems={() => { setDocks((d) => ({ ...d, bottom: true })); setBottomTab("problems"); }} />
       <SnackbarHost />
     </div>
   );
@@ -1595,27 +1592,9 @@ function useTree(): {
   };
 }
 
-function crudMenu(label: string, slice: string, onInspect?: () => void): Array<MenuItem | "sep"> {
-  return [
-    { label: `Inspect ${label}`, icon: "search", run: onInspect ?? (() => {
-      editorSelection.select({
-        source: "outliner",
-        kind: "inspect",
-        id: label,
-        label,
-        components: [{ name: "Inspect", fields: [{ key: "item", value: label }, { key: "slice", value: slice }] }],
-      });
-    }) },
-    "sep",
-    { label: "Rename…", icon: "edit", stagedFor: slice },
-    { label: "Duplicate", icon: "content_copy", stagedFor: slice },
-    { label: "Delete", icon: "delete", danger: true, stagedFor: slice },
-  ];
-}
-
 function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: string) => void; views: Workspace["views"]; onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
   if (props.workspace === "world") return <WorldTree />;
-  if (props.workspace === "database") return <SchemaTree />;
+  if (props.workspace === "database") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Tables are listed in the grid; edits apply with the game server stopped." />;
   if (props.workspace === "flow") return <HudCatalog />;
   if (props.workspace === "story" && props.view === "strings") return <StringsOutline />;
   if (props.workspace === "story") return <QuestsTree onView={props.onView} />;
@@ -1662,97 +1641,11 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   );
 }
 
-/** World outliner rows as data; the shared ScopeTree renders them. */
-interface WorldNode extends ScopeNode {
-  kind: string;
-  children?: WorldNode[];
-}
-
-const WORLD_NODES: WorldNode[] = [
-  {
-    id: "world", label: "default.world", icon: "public", trailing: "4 × 4 km", kind: "world",
-    children: [
-      {
-        id: "regions", label: "Regions", icon: "grid_view", trailing: "4", kind: "collection",
-        children: ["Region 0,0", "Region 1,0"].map((r) => ({
-          id: r, label: r, icon: "terrain", trailing: r === "Region 0,0" ? "loaded" : undefined, kind: "region",
-          children: [
-            { id: `${r}-chunks`, label: "chunks 8 × 8", icon: "grid_on", trailing: "1,024", kind: "world item" },
-            { id: `${r}-cache`, label: "tile cache", icon: "cached", trailing: "212 tiles", kind: "world item" },
-          ],
-        })),
-      },
-      {
-        id: "eco", label: "Ecology: wilds", icon: "forest", kind: "ecology",
-        children: ["oak", "birch", "pine"].map((s) => (
-          { id: `eco-${s}`, label: s, icon: "park", trailing: "pcg", kind: "world item" }
-        )),
-      },
-      { id: "formations", label: "Formations", icon: "grid_on", trailing: "WFC", kind: "world item" },
-      { id: "coast", label: "Coast and sea", icon: "waves", kind: "world item" },
-      { id: "sky", label: "Sky, day and weather", icon: "wb_sunny", kind: "world item" },
-      { id: "nav", label: "Navmesh tiles", icon: "account_tree", trailing: "212", kind: "world item" },
-    ],
-  },
-];
-
-function WorldTree(): React.JSX.Element {
-  const t = useTree();
-  return (
-    <div className="flex flex-col gap-0.5">
-      <ScopeTree
-        nodes={WORLD_NODES}
-        open={t.open}
-        selected={t.sel}
-        onToggle={(id) => t.toggle(id)}
-        onPick={(n) => {
-          t.pick(n.id);
-          editorSelection.select({
-            source: "outliner",
-            kind: n.kind,
-            id: n.id,
-            label: n.label,
-            components: [{
-              name: "Outliner node",
-              fields: [
-                { key: "workspace", value: "World" },
-                { key: "kind", value: n.kind },
-                ...(n.trailing ? [{ key: "status", value: n.trailing }] : []),
-              ],
-            }],
-          });
-        }}
-        menuFor={(n) => crudMenu(n.label, "EA · world (E9)")}
-      />
-      <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Region editing, bakes and the tile cache arrive with world-scale editing (E9).
-      </p>
-    </div>
-  );
-}
-
 /** Debug sessions dock: live server state plus the overlay controls the
  *  Play mode panel itself uses — same store, both directions. */
 function DebugTree(): React.JSX.Element {
   const t = useTree();
   const { entityId, autoRefresh, pmState } = playUiStore.use();
-  const stagedGroup = (id: string, icon: string, label: string, leaves: string[]): React.JSX.Element => (
-    <div key={id}>
-      <TreeItem
-        icon={icon} label={label}
-        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={false} onPick={() => t.toggle(id)}
-        menu={crudMenu(label, "EA · debug")}
-      />
-      {t.open.includes(id) && leaves.map((l) => (
-        <TreeItem
-          key={l} icon="chevron_right" label={l} depth={1}
-          menu={crudMenu(l, "EA · debug")}
-          onPick={() => notify(`${l} — staged for EA · debug (E5 overlays)`)}
-        />
-      ))}
-    </div>
-  );
   return (
     <div className="flex flex-col gap-0.5">
       <TreeItem
@@ -1786,11 +1679,6 @@ function DebugTree(): React.JSX.Element {
         Auto-refresh overlays
         <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>2 s</span>
       </button>
-      {stagedGroup("timings", "timer", "Tick timings", ["Per-tick p50 / p99", "Slow systems list"])}
-      {stagedGroup("costs", "bar_chart", "Per-system costs", ["System cost table", "Budget alerts"])}
-      <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Timings arrive with E5; entity and refresh already drive the live overlays.
-      </p>
     </div>
   );
 }
@@ -1860,16 +1748,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         <>{file("content/edge/routes.json", "routes.json", ["network"])}</>
       ))}
       {folder("scenes", "content/scenes", "folder", (
-        <p className="px-3 py-1 pl-12 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-          No scenes yet — the scenes slice owns this folder (§5).
-        </p>
-      ))}
-      {folder("art", "art pack · scanned", "image", (
-        <>
-          {["models · 38", "textures · 112", "audio · 24 clips"].map((f) => (
-            <TreeItem key={f} icon="chevron_right" label={f} depth={1} mono menu={crudMenu(f, "EA · art & audio")} />
-          ))}
-        </>
+        <SceneFiles onOpen={() => onGo("scenes", "scene")} />
       ))}
       {folder("modules", `modules · ${moduleRegistry.state?.enabled.length ?? "?"} enabled`, "extension", (
         <>
@@ -1890,40 +1769,13 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
   if (workspace === "liveops") return <LiveOpsDetailsLive />;
   if (workspace === "network") return <NetworkDetailsLive />;
-  if (workspace === "database") return <DatabaseRowDetails />;
+  if (workspace === "database") return <DatabaseNote />;
   if (workspace === "release") return <ReleaseDetails />;
   if (workspace === "flow" && view === "hud") return <HudInspector />;
-  if (workspace === "flow" && view === "flow") return <FlowDetails />;
+  if (workspace === "flow" && view === "flow") return <FlowNote />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "artaudio" && (view === "animation" || view === "vfx" || view === "audio")) return <MediaDetails view={view} />;
-  if (workspace === "gameplay") {
-    return (
-      <div className="flex flex-col gap-3">
-        <div
-          className="rounded-xl p-2.5 text-[12.5px]"
-          style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
-        >
-          <MIcon name="bolt" size={16} /> Saved tables hot-reload into the running server
-        </div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Unsaved changes
-        </p>
-        <ul className="text-[12.5px]">
-          {[["edit", "goblin.health", "55 → 60"], ["error", "ogre.health", "480 → −40"], ["edit", "wolf.pack", "3–5 → 3–6"]].map(([icon, path, change]) => (
-            <li key={path} className="flex items-center gap-2 border-b py-1.5" style={{ borderColor: "#2a2b31" }}>
-              <MIcon name={icon} size={16} />
-              <span className="font-mono text-xs">{path}</span>
-              <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{change}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Live values from the open panel appear here once Details binds to the selection model (§3.1). Edits stay
-          validated — a refused save writes nothing.
-        </p>
-      </div>
-    );
-  }
+  if (workspace === "gameplay") return <GameplayNote />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
     return (
@@ -1966,75 +1818,9 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   );
 }
 
-function ComparePane(): React.JSX.Element {
-  const rows: Array<[string, number, number]> = [
-    ["Health", 0.62, 0.78],
-    ["Aggro", 0.55, 0.9],
-    ["Leash", 0.6, 0.95],
-    ["Pack max", 0.35, 0.5],
-    ["Respawn", 0.85, 0.6],
-  ];
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">Goblin vs Wolf</p>
-      <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Compare · 2 rows</p>
-      {rows.map(([label, a, b]) => (
-        <div key={label}>
-          <p className="mb-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</p>
-          <div className="h-2 rounded" style={{ width: `${a * 100}%`, background: "var(--m3-secondary)" }} />
-          <div className="mt-0.5 h-2 rounded" style={{ width: `${b * 100}%`, background: "var(--m3-tertiary)" }} />
-        </div>
-      ))}
-      <p className="mt-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-        <span style={{ color: "var(--m3-secondary)" }}>●</span> goblin&nbsp;&nbsp;
-        <span style={{ color: "var(--m3-tertiary)" }}>●</span> wolf
-      </p>
-      <div className="mt-1 flex gap-6">
-        {[["142", "kills"], ["31", "player deaths"], ["8.4 s", "avg fight"]].map(([n, l]) => (
-          <div key={l}>
-            <p className="text-lg font-medium">{n}</p>
-            <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{l}</p>
-          </div>
-        ))}
-      </div>
-      <p className="text-[11px] uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Live in play (last 10 min)
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- bottom dock
-
-function BottomPane({ tab }: { tab: string }): React.JSX.Element {
-  if (tab === "problems") {
-    return (
-      <ul className="font-mono text-xs leading-relaxed">
-        <li><span style={{ color: "var(--m3-error)" }}>error</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>creatures.json · ogre.health</span> must be ≥ 1</li>
-        <li><span style={{ color: "var(--m3-tertiary)" }}>warn</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>creatures.json · wolf.pack</span> widened 3–5 → 3–6, check spawn budget</li>
-      </ul>
-    );
-  }
-  if (tab === "bakes") {
-    return (
-      <ul className="font-mono text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        <li>region 0,0 · 1,024 chunks · 3.2 s</li>
-        <li>nav 212 tiles rebuilt from tile cache</li>
-      </ul>
-    );
-  }
-  return (
-    <ul className="font-mono text-xs leading-relaxed">
-      <li><span style={{ color: "var(--m3-success)" }}>[world]</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>region 0,0 baked · 1,024 chunks · 3.2 s</span></li>
-      <li><span style={{ color: "var(--m3-primary)" }}>[nav]</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>212 tiles rebuilt from tile cache</span></li>
-      <li><span style={{ color: "var(--m3-tertiary)" }}>[ecology]</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>wilds: 18,431 props placed</span></li>
-    </ul>
-  );
-}
-
 // ---------------------------------------------------------------- status bar
 
-function StatusBar(): React.JSX.Element {
+function StatusBar({ problems, onOpenProblems }: { problems: ProblemList | null; onOpenProblems: () => void }): React.JSX.Element {
   return (
     <footer
       className="flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
@@ -2043,7 +1829,9 @@ function StatusBar(): React.JSX.Element {
       <span className="hidden sm:inline">Server stays authoritative — the editor inspects live state, never a running simulation.</span>
       <span className="sm:hidden">Authoritative server · read-only inspect</span>
       <span className="ml-auto font-mono">docs/EDITOR.md</span>
-      <span className="font-mono">2 problems</span>
+      <button className="m3-focus font-mono hover:underline" onClick={onOpenProblems} title="Open the Problems tab">
+        {problems ? `${problems.errors} error${problems.errors === 1 ? "" : "s"} · ${problems.warnings} warning${problems.warnings === 1 ? "" : "s"}` : "checking…"}
+      </button>
     </footer>
   );
 }

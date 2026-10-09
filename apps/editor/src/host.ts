@@ -43,6 +43,7 @@
  *                                    400 with per-path issues when invalid
  *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
  *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
+ *   GET  /api/editor/problems      → every validator over what is on disk: [{source,file,severity,message}]
  *   GET  /api/editor/story         → the quest and dialog documents (EA20)
  *   GET  /api/editor/story/:name   → one document and the rules references
  *   PUT  /api/editor/story[/:name] → {files} or {content}: validate the whole set, then write; 400
@@ -89,6 +90,7 @@ import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
+import { handleProblemsRoute } from "./problems-host.js";
 import { handleNetworkRoute } from "./network-host.js";
 import { handleUiRoute } from "./ui-host.js";
 import { handleMediaRoute } from "./media-host.js";
@@ -1089,6 +1091,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (playReply) {
             sendJson(res, playReply.status, playReply.body);
+            return;
+          }
+          const problemsReply = await handleProblemsRoute(repoRoot, dataDir, req.method ?? "GET", scenesUrl.pathname);
+          if (problemsReply) {
+            sendJson(res, problemsReply.status, problemsReply.body);
             return;
           }
           const flowReply = handleFlowRoute(
