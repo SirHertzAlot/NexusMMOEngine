@@ -92,6 +92,7 @@ export function ScenesPanel(): React.JSX.Element {
   const [ctx, setCtx] = React.useState<{ id: string; x: number; y: number } | null>(null);
   // Inline rename: node id being renamed.
   const [renaming, setRenaming] = React.useState<string | null>(null);
+  const renameCancelled = React.useRef(false);
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
 
@@ -135,11 +136,10 @@ export function ScenesPanel(): React.JSX.Element {
   const duplicateNode = (id: string): void => {
     const n = findNode(hist.doc, id);
     if (!n) return;
-    const copy: SceneNode = { ...structuredClone(n), id: nextId(hist.doc, "node") };
-    // Remap child ids too.
-    const remap = (c: SceneNode): SceneNode => ({ ...c, id: nextId(hist.doc, "node"), children: c.children?.map(remap) });
-    copy.children = n.children?.map(remap);
-    run("duplicate node", (d) => addNode(d, null, copy));
+    // Fresh ids for the whole subtree, placed beside the original (same parent).
+    const copy = withFreshIds(hist.doc, n);
+    const parent = parentIdOf(hist.doc, id);
+    run("duplicate node", (d) => addNode(d, parent, copy));
     select(copy.id);
   };
   const deleteNode = (id: string): void => {
@@ -437,13 +437,22 @@ export function ScenesPanel(): React.JSX.Element {
                   className="w-full rounded border px-1 text-sm"
                   defaultValue={n.name || n.id}
                   onBlur={(e) => {
+                    // Escape cancels; the blur that follows unmounting must not commit.
+                    if (renameCancelled.current) {
+                      renameCancelled.current = false;
+                      return;
+                    }
                     const v = e.target.value.trim();
                     if (v && v !== (n.name || n.id)) run("rename node", (d) => setNodeProp(d, n.id, "name", v));
                     setRenaming(null);
                   }}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                    else if (e.key === "Escape") setRenaming(null);
+                    else if (e.key === "Escape") {
+                      renameCancelled.current = true;
+                      setRenaming(null);
+                    }
                   }}
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -452,6 +461,7 @@ export function ScenesPanel(): React.JSX.Element {
               )}
             </div>
           ))}
+          {ctx && <span className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />}
           {ctx && (
             <div
               className="fixed z-50 min-w-40 rounded-lg border py-1 shadow-lg"
