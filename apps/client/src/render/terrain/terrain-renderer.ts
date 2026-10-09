@@ -18,9 +18,10 @@
 import * as THREE from "three";
 import type { ChunkRange, ChunkRow, WorldMap } from "@mmo-engine/protocol";
 import { tileHeightAt } from "@mmo-engine/protocol";
+import type { WorkerRequester } from "../../workers/pool.js";
 import { groundColors, snowLine } from "./ground.js";
 import { chunkNormals, SIDE } from "./terrain-mesh.js";
-import { BLOCK, blockOf, buildBlockGeometry, chunkCost, ringOf, strideForRing, type LodChunk } from "./terrain-lod.js";
+import { BLOCK, blockGeometry, blockOf, buildBlockGeometry, chunkCost, ringOf, strideForRing, type LodChunk } from "./terrain-lod.js";
 import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
 import { surfaceLayerMap, type Surfaces } from "./surfaces.js";
 
@@ -49,6 +50,8 @@ interface NearChunk {
 interface Block {
   mesh: THREE.Mesh | null;
   dirty: boolean;
+  /** Bumped per rebuild: a worker's answer for an older one is dropped. */
+  gen: number;
 }
 
 /** What the near terrain costs to draw (perf HUD, tests). */
@@ -91,7 +94,8 @@ export class TerrainRenderer {
   private surfaces: Surfaces | null = null;
   private layerMap: THREE.DataTexture | null = null;
 
-  constructor(private readonly chunkWorldSize: number) {
+  /** `workers`: build block meshes off the main thread; without, update() builds them inline. */
+  constructor(private readonly chunkWorldSize: number, private readonly workers?: WorkerRequester) {
     this.spacing = chunkWorldSize / (SIDE - 1);
     this.group.name = "terrain";
   }
@@ -330,12 +334,12 @@ export class TerrainRenderer {
     const bk = blockKey(cx, cz);
     const b = this.blocks.get(bk);
     if (b) b.dirty = true;
-    else this.blocks.set(bk, { mesh: null, dirty: true });
+    else this.blocks.set(bk, { mesh: null, dirty: true, gen: 0 });
   }
 
   private rebuildBlock(bk: string, b: Block): void {
     b.dirty = false;
-    this.dropBlockMesh(b);
+    const gen = ++b.gen;
     const [bx, bz] = bk.split(",").map(Number);
     const members: LodChunk[] = [];
     for (let dz = 0; dz < BLOCK; dz++) {
@@ -345,12 +349,30 @@ export class TerrainRenderer {
       }
     }
     if (members.length === 0) {
+      this.dropBlockMesh(b);
       this.blocks.delete(bk);
       return;
     }
     const ox = bx * BLOCK * this.chunkWorldSize;
     const oz = bz * BLOCK * this.chunkWorldSize;
-    const mesh = new THREE.Mesh(buildBlockGeometry(members, this.chunkWorldSize, ox, oz), this.nearMaterial);
+    const inline = (): void => this.installBlock(bk, b, buildBlockGeometry(members, this.chunkWorldSize, ox, oz), ox, oz);
+    if (!this.workers) return inline();
+    // The worker takes copies (it owns what it is sent); the old mesh stays up until the new one lands.
+    const chunks = members.map((c) => ({ cx: c.cx, cz: c.cz, stride: c.stride, heights: c.heights.slice(), normals: c.normals.slice() }));
+    this.workers
+      .request("terrainBlock", { chunks, chunkWorldSize: this.chunkWorldSize, originX: ox, originZ: oz })
+      .then(
+        (r) => b.gen === gen && this.blocks.get(bk) === b && this.installBlock(bk, b, blockGeometry(r), ox, oz),
+        (err: unknown) => {
+          console.warn(`[terrain] block ${bk} worker failed; building inline:`, (err as Error).message);
+          if (b.gen === gen && this.blocks.get(bk) === b) inline();
+        },
+      );
+  }
+
+  private installBlock(bk: string, b: Block, geometry: THREE.BufferGeometry, ox: number, oz: number): void {
+    this.dropBlockMesh(b);
+    const mesh = new THREE.Mesh(geometry, this.nearMaterial);
     mesh.position.set(ox, 0, oz);
     mesh.name = `terrain block ${bk}`;
     this.group.add(mesh);

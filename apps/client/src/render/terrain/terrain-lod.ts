@@ -68,7 +68,12 @@ export function chunkCost(stride: number): { vertices: number; triangles: number
  * as the full-res mesh ((i+1, j)-(i, j+1)), so stride 1 is the exact
  * ground the server stands characters on.
  */
-export function buildBlockGeometry(chunks: readonly LodChunk[], chunkWorldSize: number, originX: number, originZ: number): THREE.BufferGeometry {
+export function buildBlockBuffers(
+  chunks: readonly LodChunk[],
+  chunkWorldSize: number,
+  originX: number,
+  originZ: number,
+): { position: Float32Array; normal: Float32Array; index: Uint16Array | Uint32Array } {
   let vCount = 0;
   let iCount = 0;
   for (const c of chunks) {
@@ -138,11 +143,20 @@ export function buildBlockGeometry(chunks: readonly LodChunk[], chunkWorldSize: 
       }
     }
   }
+  return { position: pos, normal: nrm, index: idx };
+}
+
+/** Typed arrays (from buildBlockBuffers, here or in a worker) -> the block's geometry. */
+export function blockGeometry(b: { position: Float32Array; normal: Float32Array; index: Uint16Array | Uint32Array }): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.setAttribute("position", new THREE.BufferAttribute(b.position, 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(b.normal, 3));
+  g.setIndex(new THREE.BufferAttribute(b.index, 1));
   g.computeBoundingBox();
   g.computeBoundingSphere();
   return g;
+}
+
+export function buildBlockGeometry(chunks: readonly LodChunk[], chunkWorldSize: number, originX: number, originZ: number): THREE.BufferGeometry {
+  return blockGeometry(buildBlockBuffers(chunks, chunkWorldSize, originX, originZ));
 }
