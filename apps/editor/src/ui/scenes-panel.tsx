@@ -154,7 +154,7 @@ export function ScenesPanel(): React.JSX.Element {
     () =>
       subscribeOpenAsset((req) => {
         if (req.kind === "scene") load(req.id);
-      }),
+      }, ["scene"]),
     [],
   );
 

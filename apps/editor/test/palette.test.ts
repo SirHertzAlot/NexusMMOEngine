@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { catalogCommands, catalogTarget, rankCommands, type PaletteCommand } from "../src/palette.js";
 import { CATALOG_KINDS, type CatalogEntry } from "../src/content-catalog-types.js";
-import { requestOpenAsset, subscribeOpenAsset } from "../src/ui/open-asset.js";
+import { pendingOpenAsset, requestOpenAsset, subscribeOpenAsset } from "../src/ui/open-asset.js";
 
 const cmd = (label: string, group: PaletteCommand["group"] = "Command", hint?: string): PaletteCommand => ({
   id: label,
@@ -95,5 +95,29 @@ describe("catalog commands", () => {
     const cmds = catalogCommands(entries, (w, v) => went.push(`${w}/${v}`));
     cmds[0].run();
     assert.deepEqual(went, ["scenes/scene"]);
+  });
+  it("a request made before its panel mounts waits for that panel", () => {
+    requestOpenAsset("scene", "arena");
+    assert.deepEqual(pendingOpenAsset("scene"), { kind: "scene", id: "arena" });
+    const other: string[] = [];
+    const stopOther = subscribeOpenAsset((req) => other.push(req.id), ["quest"]);
+    assert.deepEqual(other, []);
+    const opened: string[] = [];
+    const stop = subscribeOpenAsset((req) => opened.push(req.id), ["scene"]);
+    try {
+      assert.deepEqual(opened, ["arena"]);
+      assert.equal(pendingOpenAsset("scene"), undefined);
+    } finally {
+      stop();
+      stopOther();
+    }
+  });
+  it("only the latest waiting request per kind is kept", () => {
+    requestOpenAsset("quest", "q1");
+    requestOpenAsset("quest", "q2");
+    const opened: string[] = [];
+    const stop = subscribeOpenAsset((req) => opened.push(req.id), ["quest"]);
+    stop();
+    assert.deepEqual(opened, ["q2"]);
   });
 });
