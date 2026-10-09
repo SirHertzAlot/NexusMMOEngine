@@ -78,7 +78,8 @@
     "packages/addons/scatter",
     "packages/addons/picg",
     "packages/addons/geometry",
-    "packages/addons/perf-probe"
+    "packages/addons/perf-probe",
+    "packages/build"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.0.3"

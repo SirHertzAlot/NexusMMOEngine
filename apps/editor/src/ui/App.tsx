@@ -17,6 +17,7 @@ import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
+import { PipelineView } from "./pipeline-view.js";
 import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
@@ -57,7 +58,6 @@ import {
   FlowDetails,
   HudDetails,
   LiveOpsPreview,
-  PipelinePreview,
   PlaytestPreview,
   QuestPreview,
   ReleaseDeployDetails,
@@ -207,7 +207,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "release", label: "Release", icon: "rocket_launch",
     views: [
-      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelinePreview /> },
+      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestPreview /> },
     ],
     leftTitle: "Profiles",
