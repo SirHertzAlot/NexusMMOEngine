@@ -43,4 +43,14 @@ describe("diffRows", () => {
     const edit = diffRows(saved, now, def.columns, ctx).find((c) => c.path === "goblin.health");
     assert.equal(edit?.change, "55 → (default)");
   });
+
+  it("leaves a problem already in the saved file out (it is not an unsaved change)", () => {
+    const bad = [row("goblin", { name: "Goblin", health: 55 }), row("ogre", { name: "Ogre", health: -40 })];
+    assert.deepEqual(diffRows(bad, bad, def.columns, ctx), []);
+  });
+
+  it("checks every cell of an added row", () => {
+    const now = [...saved, row("imp", { name: "Imp", health: -1 })];
+    assert.ok(diffRows(saved, now, def.columns, ctx).some((c) => c.kind === "error" && c.path === "imp.health"));
+  });
 });
