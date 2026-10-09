@@ -89,6 +89,7 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handleMediaRoute } from "./media-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -973,7 +974,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             modulesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            // Only its own PUT: reading the body here would starve every later PUT route (flow, media).
+            req.method === "PUT" && modulesUrl.pathname.startsWith("/api/editor/modules") ? await readBody(req) : undefined,
             {
               running: () => owned?.tickOrder() ?? null,
               // "Apply modules": the server reads the set at boot, so a running one restarts.
@@ -998,6 +1000,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (flowReply) {
             sendJson(res, flowReply.status, flowReply.body);
+            return;
+          }
+          // Animation, VFX, materials and audio content (EA21/EA22/EA24, media-host.ts).
+          const mediaReply = handleMediaRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/media/") ? await readBody(req) : undefined,
+          );
+          if (mediaReply) {
+            sendJson(res, mediaReply.status, mediaReply.body);
             return;
           }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).

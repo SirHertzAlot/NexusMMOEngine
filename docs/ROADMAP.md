@@ -139,10 +139,10 @@ loadable modules, a database editor and production tools.
 | EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
 | EA19 | Build and deploy | 📋 | |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
-| EA21 | Animation | 📋 | |
-| EA22 | VFX and materials | 📋 | |
+| EA21 | Animation | ✅ | `feat/ea21-ea22-ea24-media`: Animation workspace over real data: clip browser with a library check against the rig, locomotion state machine editor writing a v3 `content/animation/animations.json` (v2 manifests still load, the client animator runs the same `pickLocomotion` the editor tests with), combat timeline over `content/combat/moves.json` (the data moved out of code: the server loads it at boot, the client for clips and sounds; drag the hit frame, chain, travel and i-frame windows). Open: retarget panel (needs the rig), a 3D clip preview |
+| EA22 | VFX and materials | ✅ | Same branch: particle editor over `content/vfx/effects.json` (composer effects, weather, splash) with a live preview, two tiers side by side and per-tier live-particle budgets the client enforces; `content/vfx/tiers.json` quality/post presets with compare; toon and surface materials in `content/materials/materials.json` (band, rim, ramp per row day/night; terrain tint, tile size, footstep). Open: textures/texture slots, in-game side-by-side compare |
 | EA23 | HUD layout editor | 📋 | |
-| EA24 | Audio | 📋 | |
+| EA24 | Audio | ✅ | Same branch: Web Audio engine (`@mmo-engine/art` AudioMixer: four buses, global and per-event voice limits, cooldowns, 3D panning) driving `content/audio/events.json` (generated-tone placeholder events, no audio files in the repo); hooks for music by scene, weather beds, footsteps by terrain surface, combat outcomes and per-move start/hit-frame sounds; Audio panel with preview, voice-limit test, mixer with meter, hooks. Open: sample playback, reverb zones, FMOD question |
 | EA25 | Localization | 📋 | |
 | EA26 | Automated playtests | 📋 | |
 
@@ -301,6 +301,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-08**: EA21/EA22/EA24 (animation, VFX and materials, audio) on `feat/ea21-ea22-ea24-media`: combat moves, locomotion graph, particle effects, tier presets, materials and audio events are content the game reads and the editor writes. Also fixed the editor host reading every PUT body in the modules route, which hung later PUT routes.
 
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).

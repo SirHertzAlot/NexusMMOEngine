@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "effects": {
+    "embers": {
+      "color": [
+        "#ffb347",
+        "#ff3b0a"
+      ],
+      "alpha": [
+        0,
+        1,
+        0
+      ],
+      "size": [
+        0.05,
+        0.12
+      ],
+      "life": [
+        1.2,
+        2.2
+      ],
+      "speed": [
+        0.2,
+        0.6
+      ],
+      "rate": 18,
+      "shape": "sphere",
+      "radius": 0.6,
+      "lift": 1.2,
+      "wander": 0.6,
+      "blending": "additive",
+      "texture": "spark"
+    },
+    "snow": {
+      "color": [
+        "#ffffff",
+        "#cfe9ff"
+      ],
+      "alpha": [
+        0,
+        0.9,
+        0
+      ],
+      "size": [
+        0.05,
+        0.1
+      ],
+      "life": [
+        1.5,
+        2.5
+      ],
+      "speed": [
+        0.05,
+        0.2
+      ],
+      "rate": 16,
+      "shape": "sphere",
+      "radius": 0.9,
+      "lift": -0.4,
+      "wander": 0.4,
+      "orbit": 0.8,
+      "blending": "normal",
+      "texture": "soft"
+    },
+    "sparks": {
+      "color": [
+        "#e6e0ff",
+        "#7f6bff"
+      ],
+      "alpha": [
+        1,
+        1,
+        0
+      ],
+      "size": [
+        0.03,
+        0.06
+      ],
+      "life": [
+        0.2,
+        0.45
+      ],
+      "speed": [
+        1.5,
+        3
+      ],
+      "rate": 22,
+      "shape": "sphere",
+      "radius": 0.5,
+      "lift": 0,
+      "wander": 2,
+      "blending": "additive",
+      "texture": "spark"
+    },
+    "spores": {
+      "color": [
+        "#c8ff8a",
+        "#5fbf4a"
+      ],
+      "alpha": [
+        0,
+        0.8,
+        0
+      ],
+      "size": [
+        0.04,
+        0.09
+      ],
+      "life": [
+        2,
+        3.5
+      ],
+      "speed": [
+        0.05,
+        0.2
+      ],
+      "rate": 10,
+      "shape": "sphere",
+      "radius": 0.9,
+      "lift": 0.15,
+      "wander": 0.5,
+      "blending": "additive",
+      "texture": "soft"
+    },
+    "motes": {
+      "color": [
+        "#fff6c8",
+        "#ffd66b"
+      ],
+      "alpha": [
+        0,
+        1,
+        0
+      ],
+      "size": [
+        0.05,
+        0.1
+      ],
+      "life": [
+        1.5,
+        2.5
+      ],
+      "speed": [
+        0.05,
+        0.15
+      ],
+      "rate": 12,
+      "shape": "sphere",
+      "radius": 0.8,
+      "lift": 0.35,
+      "wander": 0.2,
+      "orbit": 0.6,
+      "blending": "additive",
+      "texture": "soft"
+    },
+    "smoke": {
+      "color": [
+        "#4a3c5a",
+        "#15121a"
+      ],
+      "alpha": [
+        0,
+        0.55,
+        0
+      ],
+      "size": [
+        0.35,
+        0.7
+      ],
+      "life": [
+        1.8,
+        3
+      ],
+      "speed": [
+        0.1,
+        0.3
+      ],
+      "rate": 8,
+      "shape": "sphere",
+      "radius": 0.5,
+      "lift": 0.5,
+      "wander": 0.3,
+      "blending": "normal",
+      "texture": "soft"
+    },
+    "void-wisps": {
+      "color": [
+        "#9b6bff",
+        "#1b0b3a"
+      ],
+      "alpha": [
+        0,
+        0.9,
+        0
+      ],
+      "size": [
+        0.08,
+        0.16
+      ],
+      "life": [
+        1.2,
+        2
+      ],
+      "speed": [
+        0.1,
+        0.3
+      ],
+      "rate": 14,
+      "shape": "sphere",
+      "radius": 0.7,
+      "lift": -0.1,
+      "wander": 0.8,
+      "orbit": -1.2,
+      "blending": "additive",
+      "texture": "soft"
+    },
+    "glimmer": {
+      "color": [
+        "#ffffff",
+        "#bfe6ff"
+      ],
+      "alpha": [
+        0,
+        1,
+        0
+      ],
+      "size": [
+        0.03,
+        0.07
+      ],
+      "life": [
+        0.6,
+        1.2
+      ],
+      "speed": [
+        0,
+        0.05
+      ],
+      "rate": 10,
+      "shape": "sphere",
+      "radius": 0.7,
+      "lift": 0,
+      "wander": 0,
+      "blending": "additive",
+      "texture": "spark"
+    }
+  },
+  "weather": {
+    "snow": {
+      "rate": 380,
+      "life": 7,
+      "fall": 1.3,
+      "size": 0.35,
+      "color": "#ffffff",
+      "alpha": 0.9,
+      "drift": 0.9,
+      "area": [
+        70,
+        28,
+        70
+      ],
+      "texture": "soft"
+    },
+    "rain": {
+      "rate": 900,
+      "life": 1.7,
+      "fall": 16,
+      "size": 0.45,
+      "color": "#b8cde0",
+      "alpha": 0.5,
+      "drift": 0.15,
+      "area": [
+        60,
+        28,
+        60
+      ],
+      "texture": "streak"
+    },
+    "ash": {
+      "rate": 240,
+      "life": 9,
+      "fall": 0.45,
+      "size": 0.3,
+      "color": "#4f4a46",
+      "alpha": 0.85,
+      "drift": 1.5,
+      "area": [
+        80,
+        28,
+        80
+      ],
+      "texture": "soft"
+    }
+  },
+  "splash": {
+    "count": 22,
+    "life": 0.7,
+    "speed": 3.2,
+    "spreadDeg": 35,
+    "size": 0.22,
+    "color": "#e6f2ff",
+    "alpha": 0.9,
+    "gravity": 9.8,
+    "everySeconds": 0.45
+  }
+}

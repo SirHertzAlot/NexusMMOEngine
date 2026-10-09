@@ -1,3 +1,5 @@
+import type { LocomotionGraph } from "../media/locomotion.js";
+
 /**
  * The character animation library's manifest (animations.json, written by
  * `npm run convert:animations -w @mmo-engine/art` next to the rig): which
@@ -30,7 +32,10 @@ export interface AnimationSourceInfo {
 }
 
 export interface AnimationManifest {
-  version: 2;
+  /** 2: the converter's output. 3: also carries the locomotion state machine (content/animation). A v2 manifest loads unchanged. */
+  version: 2 | 3;
+  /** v3: the locomotion state machine; absent means the defaults. */
+  locomotion?: LocomotionGraph;
   sources: AnimationSourceInfo[];
   clips: AnimationClipInfo[];
 }

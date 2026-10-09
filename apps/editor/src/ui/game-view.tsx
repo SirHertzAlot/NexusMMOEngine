@@ -20,6 +20,7 @@
 
 import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
+import { getAllMedia } from "../media-client.js";
 import {
   CombatFeedback,
   DEFAULT_BINDINGS,
@@ -27,6 +28,7 @@ import {
   PcgRpcClient,
   PlaceholderAssets,
   WorldCanvas,
+  applyGameContent,
   type GpuInfo,
   type HudData,
   type QualityTier,
@@ -70,6 +72,14 @@ export function GameView({
 }: GameViewProps): React.JSX.Element {
   const [assets] = React.useState(() => new PlaceholderAssets());
   const [ownCombat] = React.useState(() => new CombatFeedback());
+  // The media content (combat moves, animation graph, particles, tiers, materials) is applied before the world is built.
+  const [contentReady, setContentReady] = React.useState(false);
+  React.useEffect(() => {
+    getAllMedia()
+      .then((c) => void applyGameContent(c))
+      .catch((e: unknown) => console.warn(`[editor] game content: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setContentReady(true));
+  }, []);
   const combat = givenCombat ?? ownCombat;
   const pcg = React.useMemo(
     () => new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken),
@@ -85,7 +95,7 @@ export function GameView({
       }
       data-testid="game-view"
     >
-      <WorldCanvas
+      {contentReady && <WorldCanvas
         client={client}
         assets={assets}
         pcg={pcg}
@@ -98,7 +108,7 @@ export function GameView({
         onHud={onHud}
         onGpu={onGpu}
         onQuality={onQuality}
-      />
+      />}
       {children}
     </div>
   );

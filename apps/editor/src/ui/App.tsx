@@ -21,6 +21,11 @@ import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
 import { FlowEditor } from "./flow-editor.js";
+import { AnimationPanel } from "./media-animation.js";
+import { AudioPanel } from "./media-audio.js";
+import { MediaDetails } from "./media-details.js";
+import { MediaTree } from "./media-tree.js";
+import { VfxPanel } from "./media-vfx.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -44,10 +49,7 @@ import { editorSelection, isSelectionVisible, useEditorSelection } from "./edito
 import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
-  AnimDetails,
-  AnimPreview,
   ArtAudioTree,
-  AudioPreview,
   HudPreview,
   LiveOpsDetails,
   DatabaseRowDetails,
@@ -61,7 +63,6 @@ import {
   SchemaTree,
   StoryDetails,
   StringsPreview,
-  VfxPreview,
   WidgetList,
   PLAYERS,
   applyDeepSelection,
@@ -195,9 +196,9 @@ const WORKSPACES: Workspace[] = [
     id: "artaudio", label: "Art & audio", icon: "movie",
     views: [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
-      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimPreview /> },
-      { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <VfxPreview /> },
-      { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPreview /> },
+      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
+      { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <VfxPanel /> },
+      { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPanel /> },
     ],
     leftTitle: "Library",
   },
@@ -1835,7 +1836,9 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   if (props.workspace === "database") return <SchemaTree />;
   if (props.workspace === "flow") return <WidgetList />;
   if (props.workspace === "story") return <StoryTree />;
-  if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} onView={props.onView} />;
+  if (props.workspace === "artaudio") {
+    return props.view === "animation" || props.view === "vfx" || props.view === "audio" ? <MediaTree view={props.view} /> : <ArtAudioTree onView={props.onView} />;
+  }
   if (props.workspace === "release") return <ReleaseTree />;
   if (props.workspace === "liveops") return <LiveOpsTree />;
   if (props.workspace === "gameplay" || props.workspace === "dungeons") {
@@ -2324,7 +2327,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow" && view === "hud") return <HudDetails />;
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <StoryDetails />;
-  if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
+  if (workspace === "artaudio" && (view === "animation" || view === "vfx" || view === "audio")) return <MediaDetails view={view} />;
   if (workspace === "gameplay") {
     return (
       <div className="flex flex-col gap-3">

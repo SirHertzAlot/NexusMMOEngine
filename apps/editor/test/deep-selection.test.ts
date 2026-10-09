@@ -9,8 +9,8 @@ describe("deep links stay backward compatible", () => {
     assert.deepEqual(applyDeepSelection("node:clear"), { workspace: "story", view: "quests" });
     assert.deepEqual(applyDeepSelection("player:Bram"), { workspace: "liveops", view: "overview" });
     assert.deepEqual(applyDeepSelection("clip:Jog_Fwd"), { workspace: "artaudio", view: "animation" });
-    assert.deepEqual(applyDeepSelection("effect:campfire.embers"), { workspace: "artaudio", view: "vfx" });
-    assert.deepEqual(applyDeepSelection("event:hit.sword"), { workspace: "artaudio", view: "audio" });
+    assert.deepEqual(applyDeepSelection("effect:embers"), { workspace: "artaudio", view: "vfx" });
+    assert.deepEqual(applyDeepSelection("event:hit"), { workspace: "artaudio", view: "audio" });
     assert.deepEqual(applyDeepSelection("widget:Quest tracker"), { workspace: "flow", view: "hud" });
     assert.deepEqual(applyDeepSelection("screen:world"), { workspace: "flow", view: "flow" });
     assert.deepEqual(applyDeepSelection("scenario:camp-loop"), { workspace: "release", view: "playtests" });
@@ -20,7 +20,8 @@ describe("deep links stay backward compatible", () => {
     assert.equal(applyDeepSelection("nope"), null);
     assert.equal(applyDeepSelection("row:missing/999"), null);
     assert.equal(applyDeepSelection("node:missing"), null);
-    assert.equal(applyDeepSelection("clip:missing"), null);
+    assert.equal(applyDeepSelection("move:abc"), null);
+    assert.deepEqual(applyDeepSelection("move:3"), { workspace: "artaudio", view: "animation" });
   });
 });
 

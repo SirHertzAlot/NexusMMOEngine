@@ -4,13 +4,14 @@
  * just starts at the defaults.
  */
 
-export const AUDIO_BUSES = ["effects", "interface", "ambience"] as const;
+export const AUDIO_BUSES = ["effects", "interface", "ambience", "music"] as const;
 export type AudioBus = (typeof AUDIO_BUSES)[number];
 
 export const BUS_LABELS: Record<AudioBus, string> = {
   effects: "combat",
   interface: "interface",
   ambience: "ambience",
+  music: "music",
 };
 
 export interface Volumes {
@@ -19,10 +20,11 @@ export interface Volumes {
   effects: number;
   interface: number;
   ambience: number;
+  music: number;
   muted: boolean;
 }
 
-export const DEFAULT_VOLUMES: Volumes = { master: 0.8, effects: 0.8, interface: 0.7, ambience: 0.5, muted: false };
+export const DEFAULT_VOLUMES: Volumes = { master: 0.8, effects: 0.8, interface: 0.7, ambience: 0.5, music: 0.5, muted: false };
 
 const STORAGE_KEY = "mmo.audio.v1";
 
@@ -37,6 +39,7 @@ export function parseVolumes(raw: unknown): Volumes {
     effects: level(o.effects, DEFAULT_VOLUMES.effects),
     interface: level(o.interface, DEFAULT_VOLUMES.interface),
     ambience: level(o.ambience, DEFAULT_VOLUMES.ambience),
+    music: level(o.music, DEFAULT_VOLUMES.music),
     muted: o.muted === true,
   };
 }

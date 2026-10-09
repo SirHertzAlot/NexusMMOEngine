@@ -34,8 +34,11 @@ import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./ren
 import { CombatFeedback } from "./render/combat-feedback.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
+import { setMoveSound } from "./render/entity-layer.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import gameFlow from "virtual:game-flow";
+import gameContentDocs from "virtual:game-content";
+import { applyGameContent, gameContent } from "./render/game-content.js";
 import { startNode, useFlow } from "./flow.js";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
@@ -87,6 +90,9 @@ const DEFAULT_URL =
 const PREVIEW_CUE: Partial<Record<AudioBus, Cue>> = { effects: "hit", interface: "whisper" };
 const HIT_CUE: Record<"hit" | "blocked" | "dodged", Cue> = { hit: "hit", blocked: "block", dodged: "dodge" };
 
+// The media content (combat moves, animation graph, particles, tiers, materials, audio events): content/*.
+applyGameContent(gameContentDocs);
+
 export function App(): React.ReactElement {
   // The screen is a node of content/flow/game.flow.json; events move it (flow.ts).
   const { node, screen, fire } = useFlow(gameFlow, gameFlow.start);
@@ -116,7 +122,7 @@ export function App(): React.ReactElement {
   const setUiScale = useCallback((s: UiScale) => setUiScaleState(s), []);
   // Audio (U4): volumes persisted per browser; the engine starts on the first click or key.
   const [volumes, setVolumesState] = useState<Volumes>(loadVolumes);
-  const [audio] = useState(() => new AudioEngine(volumes));
+  const [audio] = useState(() => new AudioEngine(volumes, gameContent().audio ?? null));
   const setVolumes = useCallback(
     (v: Volumes) => {
       saveVolumes(v);
@@ -128,6 +134,10 @@ export function App(): React.ReactElement {
   const previewBus = useCallback((b: AudioBus) => {
     const cue = PREVIEW_CUE[b];
     if (cue) audio.play(cue);
+  }, [audio]);
+  useEffect(() => {
+    setMoveSound((event, x, y, z) => audio.play(event, { position: [x, y, z] }));
+    return () => setMoveSound(null);
   }, [audio]);
   useEffect(() => {
     const unlock = (): void => audio.unlock();
@@ -266,7 +276,7 @@ export function App(): React.ReactElement {
         const player = clientRef.current?.playerEntity ?? null;
         combat.hit(h, player);
         // Only blows the player gives or takes make a sound, for now.
-        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(HIT_CUE[h.outcome]);
+        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(audio.content?.hooks.combat[HIT_CUE[h.outcome]] ?? HIT_CUE[h.outcome]);
         const text = disarmNotice(h, player?.toString() ?? null);
         if (text) setNotice({ text, at: performance.now() });
       },
@@ -481,6 +491,10 @@ export function App(): React.ReactElement {
   const client = screen === "world" ? clientRef.current : null;
   // Audio cues from what the player sees (U4): wind in the world, a chime for whispers to us, a blip for notices.
   useEffect(() => audio.setAmbience(screen === "world"), [audio, screen]);
+  // Music follows the flow's scene, the ambient bed the weather where the player stands (content/audio hooks).
+  const scene = gameFlow.nodes[node]?.scene ?? null;
+  useEffect(() => audio.setScene(scene), [audio, scene]);
+  useEffect(() => audio.setWeather(hud.weather), [audio, hud.weather]);
   useEffect(() => {
     const l = chatLines.at(-1);
     if (l?.channel === "whisper" && l.from.toLowerCase() !== characterName?.toLowerCase()) audio.play("whisper");
@@ -563,6 +577,7 @@ export function App(): React.ReactElement {
           showcase={false}
           bindings={bindings}
           quality={quality}
+          audio={audio}
           onQuality={onQuality}
           onHud={setHud}
           onBag={toggleBag}
