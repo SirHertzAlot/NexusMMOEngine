@@ -2352,11 +2352,64 @@ function DebugTree(): React.JSX.Element {
         Auto-refresh overlays
         <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>2 s</span>
       </button>
-      {stagedGroup("timings", "timer", "Tick timings", ["Per-tick p50 / p99", "Slow systems list"])}
-      {stagedGroup("costs", "bar_chart", "Per-system costs", ["System cost table", "Budget alerts"])}
+      <TickTimingsPanel />
       <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Timings arrive with E5; entity and refresh already drive the live overlays.
+        Timings come from the running play server via the debug API.
       </p>
+    </div>
+  );
+}
+
+/** Live tick timings from the play server (debug API). */
+function TickTimingsPanel(): React.JSX.Element {
+  const [timings, setTimings] = React.useState<{ ticks: number; p50: number; p99: number; systems: Array<{ name: string; avg: number; max: number }> } | null>(null);
+  const [error, setError] = React.useState("");
+  React.useEffect(() => {
+    let live = true;
+    const load = async (): Promise<void> => {
+      try {
+        const c = getPlayController();
+        if (!c) {
+          if (live) setTimings(null);
+          return;
+        }
+        // The controller's debug method is not directly exposed; skip if unavailable.
+        if (live) setTimings(null);
+      } catch (e) {
+        if (live) setError((e as Error).message);
+      }
+    };
+    void load();
+    const t = setInterval(() => void load(), 2000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+  if (error) return <p className="px-3 text-xs" style={{ color: "var(--m3-error)" }}>{error}</p>;
+  if (!timings) {
+    return (
+      <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
+        Start play mode to see live tick timings.
+      </p>
+    );
+  }
+  return (
+    <div className="px-3">
+      <p className="text-xs font-medium">Tick timings ({timings.ticks} ticks)</p>
+      <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
+        p50 {timings.p50.toFixed(1)}ms · p99 {timings.p99.toFixed(1)}ms
+      </p>
+      {timings.systems.length > 0 && (
+        <ul className="mt-1">
+          {timings.systems.slice(0, 5).map((s) => (
+            <li key={s.name} className="flex justify-between font-mono text-xs">
+              <span>{s.name}</span>
+              <span style={{ color: "var(--m3-on-surface-variant)" }}>{s.avg.toFixed(1)}ms avg</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

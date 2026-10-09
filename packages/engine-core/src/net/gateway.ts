@@ -49,6 +49,7 @@
 import * as crypto from "node:crypto";
 import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
+import { TickTimings } from "../tick-timings.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -983,6 +984,8 @@ export class Gateway {
   }
 
   private readonly tickTimeListeners: Array<(ms: number) => void> = [];
+  /** Per-tick durations and system costs, served to the editor's Debug workspace. */
+  private readonly tickTimings = new TickTimings();
 
   /** Called with each tick's wall time in ms, once the tick is done (E6). */
   addTickTimeListener(cb: (ms: number) => void): void {
@@ -1032,6 +1035,13 @@ export class Gateway {
     const ms = performance.now() - t0;
     this.telemetry.tickMs(ms);
     for (const l of this.tickTimeListeners) l(ms);
+    // Per-system breakdown is not yet instrumented; record the total.
+    this.tickTimings.recordTick(ms, {});
+  }
+
+  /** Snapshot for the editor's Debug workspace (via the debug API). */
+  getTickTimings(): ReturnType<TickTimings["snapshot"]> {
+    return this.tickTimings.snapshot();
   }
 
   private runTick(tick: number): void {
@@ -2025,6 +2035,16 @@ export class Gateway {
         kind: "debug",
         query: "tiles",
         tiles: this.debugSource?.tiles() ?? [],
+      };
+    } else if (q.query === "timings") {
+      const t = this.getTickTimings();
+      res = {
+        kind: "debug",
+        query: "timings",
+        ticks: t.ticks,
+        p50: t.p50,
+        p99: t.p99,
+        systems: t.systems,
       };
     } else {
       this.sendError(s, 4003, "unknown debug query");
