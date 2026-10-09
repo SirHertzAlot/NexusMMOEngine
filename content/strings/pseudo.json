@@ -1,0 +1,13 @@
+{
+  "app.title": "⟦Ńéx́úś⟧",
+  "bag.slots": "⟦{ćóúńt́, ṕĺúŕáĺ, óńé {# śĺót́} ót́h́éŕ {# śĺót́ś}}⟧",
+  "character.created": "⟦Ćh́áŕáćt́éŕ {name} ćŕéát́éd́.⟧",
+  "character.deleted": "⟦Ćh́áŕáćt́éŕ {name} d́éĺét́éd́.⟧",
+  "party.invite": "⟦{name} íńv́ít́éś ýóú t́ó á ṕáŕt́ý.⟧",
+  "party.joined": "⟦{name} j́óíńéd́ t́h́é ṕáŕt́ý.⟧",
+  "party.left": "⟦{name} ĺéf́t́ t́h́é ṕáŕt́ý.⟧",
+  "player.welcome": "⟦Ẃéĺćóḿé, {name}!⟧",
+  "quest.abandoned": "⟦Q́úéśt́ áb́áńd́óńéd́: {title}.⟧",
+  "quest.complete": "⟦Q́úéśt́ ćóḿṕĺét́é: {title}!⟧",
+  "quest.objective": "⟦{done}/{total} {label}⟧"
+}

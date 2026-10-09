@@ -302,6 +302,7 @@ export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, 
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
+export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";
 
 // Edge/core split E3: the core's end of the internal channel.
 export {
