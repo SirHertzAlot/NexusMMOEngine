@@ -63,6 +63,16 @@ export interface PlayStartOptions {
    * game view; the rest are headless load. Defaults to 1.
    */
   clients?: number;
+  /**
+   * Fresh state: back up world.db before starting; on stop, restore
+   * unless keep is set.
+   */
+  fresh?: boolean;
+  /**
+   * Keep play changes: discard the backup on stop (the world keeps what
+   * the tick wrote). Only meaningful with fresh.
+   */
+  keep?: boolean;
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */

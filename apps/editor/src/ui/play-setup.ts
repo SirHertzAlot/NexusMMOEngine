@@ -12,12 +12,13 @@
  * - clients = "1"/"2"/"4"/"8" (mirror clients; client 0 drives the view,
  *   the rest are headless load);
  * - bots (sent as MMO_BOTS for the owned server);
+ * - fresh/keep (world snapshot/restore: fresh backs up world.db on start;
+ *   on stop the backup is restored unless keep is set);
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - where window, from (entry node), net,
- *   latency, fresh/keep (world snapshot/restore).
+ * - where window, from (entry node), net (edge/core switch).
  */
 
 export interface PlaySetup {
@@ -207,6 +208,4 @@ export const PLAY_PREVIEW_NOTES: Record<string, string> = {
   where: "Only the viewport and simulate are wired: a new window needs a client windowing path",
   from: "The owned server boots the open world; starting at a flow node is not wired",
   net: "No edge/core switch on start; the owned server always runs core",
-  fresh: "No world snapshot/restore: stop leaves world.db as-is",
-  keep: "No keep/discard of play changes: the world keeps what the tick wrote",
 };

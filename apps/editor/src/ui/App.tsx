@@ -1692,8 +1692,8 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
       </div>
 
       <div className="mt-2 flex flex-col gap-2.5 text-sm">
-        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)<PreviewBadge why={PLAY_PREVIEW_NOTES.fresh} /></>} />
-        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop<PreviewBadge why={PLAY_PREVIEW_NOTES.keep} /></>} />
+        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)</>} />
+        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop</>} />
         <PlayCheck checked={setup.tint} onFlip={() => set({ tint: !setup.tint })} label="Tint the editor while playing" />
       </div>
 
