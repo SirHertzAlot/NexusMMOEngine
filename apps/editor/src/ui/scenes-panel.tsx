@@ -23,6 +23,7 @@ import {
   setTransform,
   validateScene,
   type FieldSpec,
+  type SceneDoc,
   type SceneIssue,
   type SceneKind,
   type SceneNode,
@@ -31,6 +32,7 @@ import {
 import { keepLiveTransform, liveTransform, placePrefab, type LiveTransform } from "@mmo-engine/scene";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
 import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
+import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
 import { clearDocActions, registerDocActions, type DocActions } from "./doc-actions.js";
@@ -131,34 +133,13 @@ export function ScenesPanel(): React.JSX.Element {
   // Toolbar Save/Undo/Redo target while a scene is open.
   React.useEffect(() => {
     if (!open) return;
-    // Remap every id in a pasted subtree so nothing collides.
-    const freshIds = (n: SceneNode): SceneNode => {
-      const id = nextId(hist.doc, "node");
-      return {
-        ...structuredClone(n),
-        id,
-        children: n.children?.map(freshIds),
-      };
-    };
-    // Parent id of a node, or null when it's top-level.
-    const findParentId = (doc: SceneDoc, id: string): string | null => {
-      const walk = (nodes: SceneNode[]): string | null => {
-        for (const n of nodes) {
-          if (n.children?.some((c) => c.id === id)) return n.id;
-          const deeper = n.children ? walk(n.children) : null;
-          if (deeper !== null) return deeper;
-        }
-        return null;
-      };
-      return walk(doc.nodes);
-    };
     const pasteNode = (parentId: string | null): void => {
       const data = readClipboard("scene-node") as SceneNode | null;
       if (!data) {
         setStatus("nothing to paste");
         return;
       }
-      const node = freshIds(data);
+      const node = withFreshIds(hist.doc, data);
       run("paste node", (d) => addNode(d, parentId, node));
       select(node.id);
     };
@@ -199,9 +180,9 @@ export function ScenesPanel(): React.JSX.Element {
       paste: () => pasteNode(selected),
       duplicate: () => {
         if (!node) return;
-        const copy = freshIds(node);
+        const copy = withFreshIds(hist.doc, node);
         // Duplicate beside the original: same parent.
-        const parent = findParentId(hist.doc, node.id);
+        const parent = parentIdOf(hist.doc, node.id);
         run("duplicate node", (d) => addNode(d, parent, copy));
         select(copy.id);
       },
@@ -241,7 +222,9 @@ export function ScenesPanel(): React.JSX.Element {
           file.text().then(
             (text) => {
               try {
-                const data = JSON.parse(text) as SceneDoc;
+                // The file may come from another scene's export; it takes the open
+                // scene's name, since the host only saves a doc under its own name.
+                const data = { ...(JSON.parse(text) as SceneDoc), name: open };
                 const issues = validateScene(data);
                 if (issues.length > 0) {
                   setIssues(issues);
@@ -268,7 +251,8 @@ export function ScenesPanel(): React.JSX.Element {
         a.href = url;
         a.download = `${open}.scene.json`;
         a.click();
-        URL.revokeObjectURL(url);
+        // Revoking in the same task can cancel the download in some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 0);
       },
     };
     registerDocActions(target);
