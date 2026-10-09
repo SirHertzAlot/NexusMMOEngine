@@ -978,6 +978,45 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, 200, { ok: true, deploy: buildHost.getDeploy() });
             return;
           }
+          // EA23 HUD layout (hud-editor-logic.ts).
+          if (url === "/api/editor/hud/layout" && req.method === "GET") {
+            const file = join(repoRoot, "content", "ui", "hud.json");
+            if (!existsSync(file)) {
+              sendJson(res, 404, { ok: false, error: "no hud.json (content/ui/hud.json)" });
+              return;
+            }
+            try {
+              sendJson(res, 200, { ok: true, layout: JSON.parse(readFileSync(file, "utf8")) });
+            } catch {
+              sendJson(res, 500, { ok: false, error: "hud.json is not valid JSON" });
+            }
+            return;
+          }
+          if (url === "/api/editor/hud/layout" && req.method === "PUT") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const layout = (body as { layout?: unknown }).layout;
+            if (!layout || typeof layout !== "object") {
+              sendJson(res, 400, { ok: false, error: "body.layout must be a HUD layout" });
+              return;
+            }
+            // Basic shape check; the client validates fully on load.
+            const widgets = (layout as { widgets?: unknown }).widgets;
+            if (!widgets || typeof widgets !== "object") {
+              sendJson(res, 400, { ok: false, error: "layout.widgets must be an object" });
+              return;
+            }
+            const file = join(repoRoot, "content", "ui", "hud.json");
+            mkdirSync(join(repoRoot, "content", "ui"), { recursive: true });
+            writeFileSync(file, JSON.stringify(layout, null, 2) + "\n");
+            sendJson(res, 200, { ok: true });
+            return;
+          }
           const dungeonRoute = /^\/api\/editor\/dungeons\/([^/?]+)(\/map\.png|\/patch)?$/.exec(url);
           if (dungeonRoute) {
             const id = dungeonRoute[1];
