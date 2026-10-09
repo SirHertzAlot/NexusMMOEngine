@@ -142,7 +142,7 @@ loadable modules, a database editor and production tools.
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
 | EA22 | VFX and materials | 📋 | |
-| EA23 | HUD layout editor | 📋 | |
+| EA23 | HUD layout editor | 🚧 | `arlo/ea23-hud-editor` (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Open: editor drag UI, overlap checks, widget catalog, self-positioning widget migration |
 | EA24 | Audio | 📋 | |
 | EA25 | Localization | 📋 | |
 | EA26 | Automated playtests | 📋 | |
