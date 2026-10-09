@@ -63,6 +63,12 @@ describe("world snapshot", () => {
     assert.throws(() => readFileSync(snap), /ENOENT/);
   });
 
+  it("discardBackup is a no-op when there is no backup", () => {
+    writeFileSync(dbPath, "x");
+    discardBackup(dbPath); // no throw
+    assert.equal(readFileSync(dbPath, "utf8"), "x");
+  });
+
   it("snapshotPath is the db path with .bak", () => {
     assert.equal(snapshotPath("/a/world.db"), "/a/world.db.bak");
   });
