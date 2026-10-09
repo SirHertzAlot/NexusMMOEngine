@@ -14,6 +14,7 @@ describe("audio volumes", () => {
       effects: 0,
       interface: DEFAULT_VOLUMES.interface,
       ambience: 0.25,
+      music: DEFAULT_VOLUMES.music,
       muted: false,
     });
     assert.equal(parseVolumes({ muted: true }).muted, true);

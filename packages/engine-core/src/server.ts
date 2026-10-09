@@ -28,6 +28,7 @@
  *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
  *   MMO_RULES      game rules dir (default: the repo's content/rules); a
  *                  bad rules file stops the server with every problem named
+ *   MMO_COMBAT     combat moves file (default: the repo's content/combat/moves.json)
  *   MMO_SCATTER    what grows on new chunks: "ecology" (natural placement of
  *                  the Synty nature set, content/ecology/wilds.ecology.json)
  *                  or "pcg" (the PCG forest graph with PICG trees). Default:
@@ -180,6 +181,7 @@ import { ecologySeed32 } from "./procgen/ecology.js";
 import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
+import { loadCombatContent } from "./combat-content.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -236,6 +238,9 @@ async function main(): Promise<void> {
     throw err;
   }
   console.log(`[server] ${game.summary}`);
+  // The combat moves (content/combat/moves.json, MMO_COMBAT): timing, chaining and travel the fight runs on.
+  const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
+  if (combatLine) console.log(`[server] ${combatLine}`);
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
 

@@ -1,42 +1,43 @@
 /**
- * AudioEngine (U4 audio): the client's Web Audio graph. Cues play into one
- * bus each (combat, interface, ambience), each bus into the master, so the
- * settings sliders map one-to-one onto gain nodes.
+ * AudioEngine (U4 audio): the client's Web Audio engine. It owns the
+ * AudioContext and an AudioMixer (@mmo-engine/art): a bus each for combat
+ * effects, interface, ambience and music, into a master, with voice limits
+ * and 3D panning. What plays is content/audio/events.json (generated tones
+ * until recorded samples replace them), and what triggers it is that
+ * file's hooks: music by scene, an ambient bed by weather, footsteps by
+ * surface, combat sounds by outcome and by move.
+ *
+ * The settings sliders (Volumes) set the player's level per bus; the
+ * document's bus gains are the mixer defaults under them.
  *
  * Browsers only let audio start after a user gesture, so the context is
- * created on the first `unlock()` (a click or key press); cues before that
- * are dropped. Audio pauses while the tab is hidden.
+ * created on the first `unlock()` (a click or key press); sounds before
+ * that are dropped, and the music and bed that should be playing start
+ * then. Audio pauses while the tab is hidden.
  */
 
-import { type Cue, CUE_BUS, playCue, startWind } from "./cues.js";
-import { AUDIO_BUSES, type AudioBus, masterGain, sliderGain, type Volumes } from "./volumes.js";
+import { AUDIO_BUS_NAMES, AudioMixer, type AudioDoc, type PlayOptions } from "@mmo-engine/art/browser";
+import { masterGain, sliderGain, type Volumes } from "./volumes.js";
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
-  private readonly buses = new Map<AudioBus, GainNode>();
-  private stopWind: (() => void) | null = null;
-  private ambience = false;
+  private mixer: AudioMixer | null = null;
+  private scene: string | null = null;
+  private weather: string | null = "clear";
+  private inWorld = false;
 
-  constructor(private volumes: Volumes) {}
+  constructor(private volumes: Volumes, private doc: AudioDoc | null = null) {}
 
   /** Create (or resume) the context; call from a user gesture. Safe to call repeatedly. */
   unlock(): void {
-    if (typeof AudioContext === "undefined") return;
+    if (typeof AudioContext === "undefined" || !this.doc) return;
     if (!this.ctx) {
-      const ctx = new AudioContext();
-      this.ctx = ctx;
-      this.master = ctx.createGain();
-      this.master.connect(ctx.destination);
-      for (const b of AUDIO_BUSES) {
-        const g = ctx.createGain();
-        g.connect(this.master);
-        this.buses.set(b, g);
-      }
+      this.ctx = new AudioContext();
+      this.mixer = new AudioMixer(this.ctx, this.doc);
       this.apply(true);
-      if (this.ambience) this.setAmbience(true);
     }
     if (this.ctx.state === "suspended" && !document.hidden) void this.ctx.resume();
+    this.refreshLoops();
   }
 
   /** Whether sound can play yet. */
@@ -44,26 +45,44 @@ export class AudioEngine {
     return this.ctx !== null && this.ctx.state === "running";
   }
 
+  /** The audio content changed (a reload in dev): limits, bus levels and recipes follow. */
+  setContent(doc: AudioDoc): void {
+    this.doc = doc;
+    this.mixer?.setDoc(doc);
+    this.refreshLoops();
+  }
+
   setVolumes(v: Volumes): void {
     this.volumes = v;
     this.apply(false);
   }
 
-  play(cue: Cue): void {
-    const bus = this.buses.get(CUE_BUS[cue]);
-    if (!this.ctx || !bus || this.ctx.state !== "running") return;
-    playCue(this.ctx, bus, cue);
+  /** Play an audio event (a cue name, a hook's event, a move's sound). Dropped before the first gesture. */
+  play(id: string, opts?: PlayOptions): void {
+    if (this.ready) this.mixer?.play(id, opts);
+  }
+
+  /** Where the listener is: the camera's position and facing, world space. */
+  setListener(position: [number, number, number], forward: [number, number, number]): void {
+    if (this.ready) this.mixer?.setListener(position, forward);
+  }
+
+  /** The flow's scene changed: the music its hook names (content/audio hooks.scene) plays. */
+  setScene(scene: string | null): void {
+    this.scene = scene;
+    this.refreshLoops();
+  }
+
+  /** The weather where the player is (a kind, or "clear"): its ambient bed plays while in the world. */
+  setWeather(kind: string | null): void {
+    this.weather = kind ?? "clear";
+    this.refreshLoops();
   }
 
   /** The world's ambient bed: on while in the world, off on the login screens. */
   setAmbience(on: boolean): void {
-    this.ambience = on;
-    const bus = this.buses.get("ambience");
-    if (on && !this.stopWind && this.ctx && bus) this.stopWind = startWind(this.ctx, bus);
-    if (!on && this.stopWind) {
-      this.stopWind();
-      this.stopWind = null;
-    }
+    this.inWorld = on;
+    this.refreshLoops();
   }
 
   /** Pause with the tab. */
@@ -72,14 +91,21 @@ export class AudioEngine {
     void (hidden ? this.ctx.suspend() : this.ctx.resume());
   }
 
+  /** The document in force (hooks for footsteps and combat). */
+  get content(): AudioDoc | null {
+    return this.doc;
+  }
+
+  private refreshLoops(): void {
+    if (!this.mixer || !this.doc || !this.ready) return;
+    const hooks = this.doc.hooks;
+    this.mixer.setLoop("music", this.scene ? (hooks.scene[this.scene] ?? null) : null);
+    this.mixer.setLoop("weather", this.inWorld ? (hooks.weather[this.weather ?? "clear"] ?? null) : null);
+  }
+
   private apply(now: boolean): void {
-    if (!this.ctx || !this.master) return;
-    // A short glide so dragging a slider doesn't click.
-    const set = (p: AudioParam, v: number): void => {
-      if (now) p.value = v;
-      else p.setTargetAtTime(v, this.ctx!.currentTime, 0.03);
-    };
-    set(this.master.gain, masterGain(this.volumes));
-    for (const b of AUDIO_BUSES) set(this.buses.get(b)!.gain, sliderGain(this.volumes[b]));
+    if (!this.mixer) return;
+    this.mixer.setPlayerGain("master", masterGain(this.volumes), now);
+    for (const b of AUDIO_BUS_NAMES) this.mixer.setPlayerGain(b, sliderGain(this.volumes[b]), now);
   }
 }

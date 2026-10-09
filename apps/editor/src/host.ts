@@ -93,6 +93,7 @@ import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
 import { handleUiRoute } from "./ui-host.js";
+import { handleMediaRoute } from "./media-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -1041,6 +1042,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const uiReply = handleUiRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && (scenesUrl.pathname === "/api/editor/hud" || scenesUrl.pathname.startsWith("/api/editor/strings/")) ? await readBody(req) : undefined);
           if (uiReply) {
             sendJson(res, uiReply.status, uiReply.body);
+            return;
+          }
+          // Animation, VFX, materials and audio content (EA21/EA22/EA24, media-host.ts).
+          const mediaReply = handleMediaRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/media/") ? await readBody(req) : undefined,
+          );
+          if (mediaReply) {
+            sendJson(res, mediaReply.status, mediaReply.body);
             return;
           }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).

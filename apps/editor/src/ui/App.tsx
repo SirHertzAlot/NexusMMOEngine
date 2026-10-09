@@ -23,6 +23,11 @@ import { ScenesPanel } from "./scenes-panel.js";
 import { FlowEditor } from "./flow-editor.js";
 import { HudCatalog, HudEditor, HudInspector } from "./hud-editor.js";
 import { StringsOutline, StringsPanel } from "./strings-panel.js";
+import { AnimationPanel } from "./media-animation.js";
+import { AudioPanel } from "./media-audio.js";
+import { MediaDetails } from "./media-details.js";
+import { MediaTree } from "./media-tree.js";
+import { VfxPanel } from "./media-vfx.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -50,16 +55,12 @@ import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network
 import { PlaytestsPanel } from "./playtests-live.js";
 import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
 import {
-  AnimDetails,
-  AnimPreview,
   ArtAudioTree,
-  AudioPreview,
   DatabaseRowDetails,
   FlowDetails,
   PipelinePreview,
   ReleaseDeployDetails,
   SchemaTree,
-  VfxPreview,
   applyDeepSelection,
   readDeepSelection,
   subscribeDeepSelection,
@@ -186,9 +187,9 @@ const WORKSPACES: Workspace[] = [
     id: "artaudio", label: "Art & audio", icon: "movie",
     views: [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
-      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimPreview /> },
-      { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <VfxPreview /> },
-      { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPreview /> },
+      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
+      { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <VfxPanel /> },
+      { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPanel /> },
     ],
     leftTitle: "Library",
   },
@@ -1827,7 +1828,9 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   if (props.workspace === "flow") return <HudCatalog />;
   if (props.workspace === "story" && props.view === "strings") return <StringsOutline />;
   if (props.workspace === "story") return <QuestsTree onView={props.onView} />;
-  if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} onView={props.onView} />;
+  if (props.workspace === "artaudio") {
+    return props.view === "animation" || props.view === "vfx" || props.view === "audio" ? <MediaTree view={props.view} /> : <ArtAudioTree onView={props.onView} />;
+  }
   if (props.workspace === "release") return <ReleaseTree />;
   if (props.workspace === "liveops") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Every control sends one of the running server's admin commands." />;
   if (props.workspace === "network") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Routes are content/edge/routes.json; connections are the running server's." />;
@@ -2145,7 +2148,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow" && view === "hud") return <HudInspector />;
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
-  if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
+  if (workspace === "artaudio" && (view === "animation" || view === "vfx" || view === "audio")) return <MediaDetails view={view} />;
   if (workspace === "gameplay") {
     return (
       <div className="flex flex-col gap-3">
