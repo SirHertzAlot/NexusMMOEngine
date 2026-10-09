@@ -100,6 +100,11 @@ export function requestPlayStart(): void {
   else startPending = true;
 }
 
+/** For tests: whether a start request is waiting for the panel to mount. */
+export function isPlayStartPending(): boolean {
+  return startPending;
+}
+
 export function PlayModePanel(): React.JSX.Element {
   const [detail, setDetail] = React.useState<string | undefined>();
   const [busy, setBusy] = React.useState(false);
