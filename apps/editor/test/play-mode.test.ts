@@ -213,3 +213,26 @@ describe("PlayModeController", () => {
     assert.deepEqual(h.states, ["starting", "stopping", "idle"]);
   });
 });
+
+describe("PlayModeController: simulate (no client)", () => {
+  it("runs the server without connecting a client, and stops it", async () => {
+    const server = new FakeServer();
+    let connects = 0;
+    const c = new PlayModeController(
+      server,
+      async () => {
+        connects++;
+        return new FakeClient();
+      },
+      { onEnterPlay: () => null, onExitPlay: () => undefined, onStateChange: () => undefined },
+    );
+    await c.start({ noClient: true });
+    assert.equal(c.getState(), "running");
+    assert.equal(connects, 0);
+    // Debug queries need a client: they refuse instead of hanging.
+    await assert.rejects(() => c.debugTiles(), /not running/);
+    await c.stop();
+    assert.equal(c.getState(), "idle");
+    assert.equal(server.stopped, 1);
+  });
+});
