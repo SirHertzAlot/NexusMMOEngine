@@ -7,10 +7,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
+  editorLoadUsers,
+  MAX_LOAD_CLIENTS,
   isLoopbackAddress,
   killProcessTree,
   npmInvocation,
+  readBody,
 } from "../src/host.js";
 
 describe("isLoopbackAddress", () => {
@@ -80,5 +85,37 @@ describe("killProcessTree", () => {
   it("is a no-op for invalid pids", () => {
     killProcessTree(-1, "SIGTERM");
     killProcessTree(0, "SIGTERM");
+  });
+});
+
+describe("readBody", () => {
+  it("gives every caller on a request the same body (a route chain reads it more than once)", async () => {
+    const server = createServer((req, res) => {
+      void (async () => {
+        const first = await readBody(req);
+        const second = await readBody(req);
+        res.end(JSON.stringify({ first, second }));
+      })();
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const { port } = server.address() as AddressInfo;
+      const res = await fetch(`http://127.0.0.1:${port}/`, { method: "PUT", body: '{"content":1}', signal: AbortSignal.timeout(5000) });
+      assert.deepEqual(await res.json(), { first: '{"content":1}', second: '{"content":1}' });
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("editorLoadUsers", () => {
+  it("one valid, distinct login per extra client, even from a long play login", () => {
+    for (const base of ["editor-1a2b3c4d", "x".repeat(32)]) {
+      const users = editorLoadUsers(base);
+      assert.equal(users.length, MAX_LOAD_CLIENTS);
+      assert.equal(new Set(users).size, users.length);
+      assert.ok(!users.includes(base));
+      for (const u of users) assert.match(u, /^[A-Za-z0-9_-]{3,32}$/);
+    }
   });
 });

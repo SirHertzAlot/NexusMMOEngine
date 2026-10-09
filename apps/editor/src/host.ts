@@ -199,6 +199,8 @@ interface OwnedServer {
   /** One-session dev credentials seeded for this server (see below). */
   username: string;
   password: string;
+  /** Logins for the Play menu's extra (headless) clients; same password. */
+  loadUsers: string[];
   /** The tick order the server reported at boot (Modules window). */
   tickOrder(): string[] | null;
 }
@@ -215,8 +217,13 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
+/** One read per request: a second call gets the same body instead of waiting on a stream that already ended. */
+const bodies = new WeakMap<IncomingMessage, Promise<string>>();
+
+export function readBody(req: IncomingMessage): Promise<string> {
+  const known = bodies.get(req);
+  if (known) return known;
+  const read = new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (c: Buffer) => {
@@ -231,6 +238,21 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+  bodies.set(req, read);
+  return read;
+}
+
+/** How many extra clients the Play menu can ask for (8 clients = the play login + 7). */
+export const MAX_LOAD_CLIENTS = 7;
+
+/**
+ * The logins the Play menu's extra clients use, derived from the play
+ * login. Each client needs its own account: two sessions of one account
+ * enter as the same character, and the newer one evicts the older (it
+ * would kick the game view's client). Usernames stay within 32 chars.
+ */
+export function editorLoadUsers(username: string, n = MAX_LOAD_CLIENTS): string[] {
+  return Array.from({ length: n }, (_, i) => `${username.slice(0, 26)}-load${i + 1}`);
 }
 
 /**
@@ -452,6 +474,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     const sceneEnv = playSceneEnv(repoRoot, dataDir, opts?.scene);
     const usersCsv = join(dataDir, "users.csv");
     const { username, password } = editorLogin(dataDir);
+    const loadUsers = editorLoadUsers(username);
     // Dev-only local credential: the plaintext goes to the browser over
     // localhost only and is never logged; users.csv stores only the
     // argon2id hash. seed-user is idempotent: it creates the account on
@@ -466,6 +489,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
           "--csv",
           usersCsv,
           username,
+          ...loadUsers,
         ],
         {
           cwd: repoRoot,
@@ -595,6 +619,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
       url: `ws://127.0.0.1:${serverPort}`,
       username,
       password,
+      loadUsers,
       tickOrder: () => bootOrder,
     };
     // Adopt the actual bound port from the server's listen line once
@@ -732,6 +757,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
               // Dev-only, one-session credential over localhost (see
               // startOwned). Never logged; only the hash is persisted.
               password: s.password,
+              loadUsers: s.loadUsers,
             });
             return;
           }

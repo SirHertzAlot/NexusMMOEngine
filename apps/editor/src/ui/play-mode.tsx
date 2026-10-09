@@ -21,7 +21,7 @@ import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
-import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer } from "./play-setup.js";
+import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -109,7 +109,16 @@ export function PlayModePanel(): React.JSX.Element {
     const serverControl = createHostServerControl("", playableScene);
     controllerRef.current = new PlayModeController(
       serverControl,
-      async (server) => {
+      async (server, index) => {
+        if (index > 0) {
+          // Extra load client: its own seeded login (one account per client;
+          // a second session of the play login would evict the game view's),
+          // headless, so it never drives the game view.
+          const username = server.loadUsers?.[index - 1];
+          if (!username) throw new Error(`no login for extra client ${index}`);
+          const c = await connectMirror(server.url, `mmo-editor-load-${index}`, { username, password: server.password }, () => undefined);
+          return { debug: (q) => c.debug(q as DebugQuery), disconnect: () => c.disconnect() };
+        }
         // Credentials come from the host: it seeds a one-session dev user
         // for the server it just started (see src/host.ts).
         const c = await connectMirror(
@@ -241,6 +250,18 @@ export function PlayModePanel(): React.JSX.Element {
               </p>
             )}
           </div>
+
+          {running && detail && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">{detail}</p>
+          )}
+
+          {running && !mirror && server && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">
+              {simulateLabel(loadLastSetup())}. The world ticks on the owned server with no player connected, so
+              there is no game view, and the overlays and tick timings (which ask through the player&apos;s
+              client) stay empty until you play with a client.
+            </p>
+          )}
 
           {running && mirror && server && (
             <div className="flex flex-col gap-2">

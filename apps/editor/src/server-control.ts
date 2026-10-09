@@ -14,6 +14,8 @@ export interface PlayServerLike {
   /** One-session dev credentials seeded by the host for this server. */
   username: string;
   password: string;
+  /** Logins for extra (headless) clients, sharing the password. */
+  loadUsers?: string[];
 }
 
 /**
@@ -61,6 +63,7 @@ export function createHostServerControl(
         url: string;
         username: string;
         password: string;
+        loadUsers?: string[];
         error?: string;
       };
       if (!res.ok || !body.ok) {
@@ -72,6 +75,7 @@ export function createHostServerControl(
         pid: body.pid,
         username: body.username,
         password: body.password,
+        ...(Array.isArray(body.loadUsers) ? { loadUsers: body.loadUsers } : {}),
       };
     },
     async stop() {

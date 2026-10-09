@@ -12,6 +12,7 @@ import * as React from "react";
 import { MIcon, TreeItem, OverflowMenu, IconButton, notify, staged } from "./components.js";
 import type { MenuItem } from "./components.js";
 import { fetchCatalog, type Db } from "../database-client.js";
+import { getDbSelection, setDbSelection, subscribeDbSelection } from "./db-selection.js";
 import { assetUiStore, setAssetFilter, setAssetPreview, useAssetManifest } from "./asset-inspector.js";
 import { Chart } from "./charts.js";
 import { LiveOpsTelemetry } from "./liveops-telemetry.js";
@@ -609,12 +610,6 @@ export function LiveOpsDetails(): React.JSX.Element {
 
 // ---------------------------------------------------------------- database (ux-09, ux-10)
 
-const SCHEMA: Array<[string, Array<[string, string?, string?]>]> = [
-  ["world.db", [["snapshots", "6"], ["events", "18.2k", "ledger"], ["chunk_entities", "41k"], ["formation_tiles_v2", "2.3k"], ["item_events", "128k", "ledger"], ["item_latest", "9.4k", "cache"], ["terrain_tiles", "1.0k"]]],
-  ["characters.db", [["characters", "312"], ["character_state", "312"], ["character_skills", "298"], ["deaths", "4.1k"], ["admin_log", "57"]]],
-  ["guilds.db", []], ["social.db", []], ["navmesh.db", []],
-];
-
 interface DbDraft {
   id: number;
   field: string;
@@ -665,7 +660,8 @@ const TABLE_INFO: Record<string, { rows: string; owner: string; columns: string[
 };
 
 export function SchemaTree(): React.JSX.Element {
-  const { table } = dbStore.use();
+  // The Data grid opens whatever is picked here (see db-selection.ts).
+  const picked = React.useSyncExternalStore(subscribeDbSelection, getDbSelection);
   const [open, setOpen] = React.useState<string[]>([]);
   const [dbs, setDbs] = React.useState<Db[] | null>(null);
   const [error, setError] = React.useState("");
@@ -685,8 +681,8 @@ export function SchemaTree(): React.JSX.Element {
     };
   }, []);
   const toggle = (id: string): void => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const crud = (label: string): Array<MenuItem | "sep"> => [
-    { label: `Inspect ${label}`, icon: "search", run: () => dbStore.set((p) => ({ ...p, table: label })) },
+  const crud = (db: string, label: string): Array<MenuItem | "sep"> => [
+    { label: `Inspect ${label}`, icon: "search", run: () => setDbSelection({ db, table: label }) },
     "sep",
     { label: "Rename…", icon: "edit", stagedFor: "EA · database" },
     { label: "Duplicate", icon: "content_copy", stagedFor: "EA · database" },
@@ -716,17 +712,19 @@ export function SchemaTree(): React.JSX.Element {
               ]}
             />
             {dbOpen && db.tables.map((t) => {
-              const on = t.name === table;
+              const on = picked?.db === db.name && picked.table === t.name;
               const cols = t.columns.map((c) => c.name);
+              // Table names repeat across databases; expansion is per db.
+              const key = `${db.name}/${t.name}`;
               return (
                 <div key={t.name} className="ml-4">
                   <TreeItem
-                    icon="table" label={`${t.name} (${t.rows})`} mono
-                    hasKids={cols.length > 0} expanded={open.includes(t.name)} onToggle={() => toggle(t.name)}
-                    selected={on} onPick={() => dbStore.set((p) => ({ ...p, table: t.name }))}
-                    menu={crud(t.name)}
+                    icon="table" label={`${t.name} (${t.rowCount})`} mono
+                    hasKids={cols.length > 0} expanded={open.includes(key)} onToggle={() => toggle(key)}
+                    selected={on} onPick={() => setDbSelection({ db: db.name, table: t.name })}
+                    menu={crud(db.name, t.name)}
                   />
-                  {open.includes(t.name) && cols.map((c) => (
+                  {open.includes(key) && cols.map((c) => (
                     <p key={c} className="ml-8 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{c}</p>
                   ))}
                 </div>

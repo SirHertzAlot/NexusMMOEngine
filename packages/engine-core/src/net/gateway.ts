@@ -1035,8 +1035,7 @@ export class Gateway {
     const ms = performance.now() - t0;
     this.telemetry.tickMs(ms);
     for (const l of this.tickTimeListeners) l(ms);
-    // Per-system breakdown is not yet instrumented; record the total.
-    this.tickTimings.recordTick(ms, {});
+    this.tickTimings.endTick(ms);
   }
 
   /** Snapshot for the editor's Debug workspace (via the debug API). */
@@ -1049,7 +1048,13 @@ export class Gateway {
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
     const dt = STEP_MS / 1000;
-    for (const s of this.systems) s.step(sim, dt);
+    // Each system's cost feeds the editor's Debug workspace (tick timings).
+    const timings = this.tickTimings;
+    for (const s of this.systems) {
+      const t0 = performance.now();
+      s.step(sim, dt);
+      timings.recordSystem(s.name, performance.now() - t0);
+    }
     sim.emitTick(tick);
     const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage> = [
       ...this.sendHits(sim, tick),

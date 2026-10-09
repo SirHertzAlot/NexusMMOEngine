@@ -33,6 +33,8 @@ export interface PlayServer {
   /** One-session dev credentials seeded by the host for this server. */
   username: string;
   password: string;
+  /** Logins for extra (headless) clients, sharing the password; one per extra client. */
+  loadUsers?: string[];
 }
 
 /**
@@ -97,7 +99,8 @@ export class PlayModeController {
 
   constructor(
     private readonly serverControl: ServerControl,
-    private readonly connectClient: (server: PlayServer) => Promise<PlayClient>,
+    /** index 0 is the game view's client; 1.. are headless load clients. */
+    private readonly connectClient: (server: PlayServer, index: number) => Promise<PlayClient>,
     private readonly hooks: PlayModeHooks,
   ) {}
 
@@ -141,15 +144,18 @@ export class PlayModeController {
         return;
       }
       // Simulate mode: the world ticks with no player client.
+      let extraError: string | null = null;
+      const n = opts?.noClient ? 0 : Math.max(1, opts?.clients ?? 1);
       if (!opts?.noClient) {
-        const n = opts?.clients ?? 1;
-        this.client = await this.connectClient(this.server);
+        this.client = await this.connectClient(this.server, 0);
         // Extra headless clients for load testing.
-        for (let i = 1; i < n; i++) {
+        for (let i = 1; i < n && token === this.startToken; i++) {
           try {
-            this.extraClients.push(await this.connectClient(this.server));
-          } catch {
+            this.extraClients.push(await this.connectClient(this.server, i));
+          } catch (err) {
             // A failed extra client doesn't fail the start; the primary is up.
+            // Running says how many connected (see setState below).
+            extraError = err instanceof Error ? err.message : String(err);
             break;
           }
         }
@@ -170,7 +176,10 @@ export class PlayModeController {
           return;
         }
       }
-      this.setState("running");
+      this.setState(
+        "running",
+        extraError === null ? undefined : `${1 + this.extraClients.length} of ${n} clients connected (${extraError})`,
+      );
     } catch (err) {
       if (token !== this.startToken) {
         await this.cleanupOwnedServer();

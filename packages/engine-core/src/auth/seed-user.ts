@@ -2,7 +2,7 @@
  * Seed a dev user into the CSV credential store (auth slice).
  *
  * Runnable (from packages/engine-core, after `npm run build`):
- *   MMO_DEV_PASSWORD='<password>' npm run seed:user -- <username> [--csv <path>]
+ *   MMO_DEV_PASSWORD='<password>' npm run seed:user -- <username> [<username>...] [--csv <path>]
  *
  * - The password comes ONLY from the MMO_DEV_PASSWORD environment
  *   variable: never from CLI args (which leak into shell history), and
@@ -11,6 +11,8 @@
  *   touches the store; plaintext never lands in the CSV, and the
  *   password/hash are never printed or logged anywhere.
  * - Safe to re-run: an existing username is reported, not duplicated.
+ * - Several usernames share the one password (the editor seeds its play
+ *   login plus the extra logins its load clients use).
  */
 
 import { CsvCredentialStore } from "./credentials.js";
@@ -18,7 +20,7 @@ import { hashPassword } from "./passwords.js";
 
 function usage(): never {
   console.error(
-    "usage: MMO_DEV_PASSWORD='<password>' seed-user.js <username> [--csv <path>]",
+    "usage: MMO_DEV_PASSWORD='<password>' seed-user.js <username> [<username>...] [--csv <path>]",
   );
   process.exit(2);
 }
@@ -32,8 +34,8 @@ async function main(): Promise<void> {
     if (!csvPath) usage();
     args.splice(csvFlag, 2);
   }
-  const [username] = args;
-  if (!username) usage();
+  const usernames = args;
+  if (usernames.length === 0) usage();
 
   const password = process.env["MMO_DEV_PASSWORD"];
   if (!password || password.length < 8 || password.length > 128) {
@@ -44,15 +46,17 @@ async function main(): Promise<void> {
   }
 
   const store = new CsvCredentialStore(csvPath ?? "./data/users.csv");
-  if (await store.findUser(username)) {
-    console.log(
-      `user ${JSON.stringify(username)} already exists — nothing to do`,
-    );
-    return;
+  for (const username of usernames) {
+    if (await store.findUser(username)) {
+      console.log(
+        `user ${JSON.stringify(username)} already exists — nothing to do`,
+      );
+      continue;
+    }
+    await store.createUser(username, await hashPassword(password));
+    // Only the username is reported. The password and hash are never printed.
+    console.log(`created user ${JSON.stringify(username)} in ${store.path}`);
   }
-  await store.createUser(username, await hashPassword(password));
-  // Only the username is reported. The password and hash are never printed.
-  console.log(`created user ${JSON.stringify(username)} in ${store.path}`);
 }
 
 main().catch((err) => {
