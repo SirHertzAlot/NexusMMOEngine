@@ -418,7 +418,7 @@ export function ScenesPanel(): React.JSX.Element {
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(150px,1fr)_minmax(320px,3fr)_minmax(220px,1.3fr)] gap-3">
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Outliner">
           <SectionTitle>Outliner</SectionTitle>
-          <div className="mb-2 flex gap-1">
+          <div className="mb-2 flex flex-wrap gap-1">
             <Button size="sm" variant="outline" disabled={!open} onClick={() => {
               const id = nextId(doc, "node");
               run("add node", (d) => addNode(d, selected, { id, kind: "group" }));
