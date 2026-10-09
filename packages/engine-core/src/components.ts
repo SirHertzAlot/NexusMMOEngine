@@ -168,6 +168,7 @@ export const COMPONENT_IDS = {
   Needs: 14,
   God: 15,
   Noclip: 16,
+  Animation: 17,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -347,4 +348,19 @@ export const WorldItem = defineComponent({
   owner: Types.f64,
   ownedUntil: Types.ui32,
   despawnAt: Types.ui32,
+});
+
+// ---------------------------------------------------------------------------
+// Animation (EA21): the server's clip decision for an entity — which clip,
+// when it started, at what rate, on which layers. The client renders bone
+// matrices from this; the server never computes bones. clipId 0 = no clip
+// (use locomotion fallback). layerMask bits: 1 = base (full body),
+// 2 = upper body only.
+// ---------------------------------------------------------------------------
+
+export const Animation = defineComponent({
+  clipId: Types.ui16,
+  startTick: Types.ui32,
+  rate: Types.f32,
+  layerMask: Types.ui8,
 });

@@ -156,6 +156,7 @@ import { SkillSheet } from "./stats/mastery.js";
 import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
+import { AnimationSystem } from "./animation.js";
 import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { QuestService } from "./quests/quest-service.js";
 import { SqliteQuestStore } from "./quests/quest-store.js";
@@ -749,6 +750,7 @@ async function main(): Promise<void> {
         mastery,
         integrate: new IntegrateSystem(),
         character,
+        animation: new AnimationSystem(),
         "prop-collision": new PropCollisionSystem(),
         collider: new ColliderSystem(),
         obstacles,

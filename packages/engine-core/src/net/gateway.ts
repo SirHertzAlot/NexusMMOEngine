@@ -95,6 +95,7 @@ import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
 import { parseAppearanceArgs, applyAppearanceEdit } from "../admin/appearance.js";
+import { ensureAnimation } from "../animation.js";
 import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
@@ -4008,6 +4009,7 @@ export class Gateway {
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;
+    ensureAnimation(sim, eid);
     if (characterId !== null) {
       addComponent(sim.ecs, C.CharacterRef, eid);
       C.CharacterRef.idHi[eid] = Math.floor(characterId / 4294967296);
