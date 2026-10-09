@@ -24,6 +24,8 @@ export interface StageResult {
 export interface RunOptions {
   cacheDir?: string;
   dryRun?: boolean;
+  /** Called after each stage completes (or is skipped). */
+  onStage?: (result: StageResult) => void;
 }
 
 /** Expand inputs (files and directories) to sorted, deduped repo-relative file paths. */
@@ -65,28 +67,32 @@ export async function runProfile(
 ): Promise<StageResult[]> {
   const cacheDir = opts.cacheDir ?? join(rootDir, ".build-cache");
   const results: StageResult[] = [];
+  const emit = (r: StageResult): void => {
+    results.push(r);
+    opts.onStage?.(r);
+  };
   for (const stage of profile.stages) {
     const files = collectInputFiles(rootDir, stage.inputs);
     const hash = hashFiles(rootDir, files);
     if (!stageNeedsRun(cacheDir, stage.id, hash)) {
-      results.push({ id: stage.id, skipped: true, exitCode: null, ms: 0 });
+      emit({ id: stage.id, skipped: true, exitCode: null, ms: 0 });
       continue;
     }
     if (opts.dryRun) {
-      results.push({ id: stage.id, skipped: false, exitCode: null, ms: 0 });
+      emit({ id: stage.id, skipped: false, exitCode: null, ms: 0 });
       continue;
     }
     const start = Date.now();
     try {
       await execAsync(stage.command, { cwd: rootDir, maxBuffer: 64 * 1024 * 1024 });
       writeStageCache(cacheDir, stage.id, hash);
-      results.push({ id: stage.id, skipped: false, exitCode: 0, ms: Date.now() - start });
+      emit({ id: stage.id, skipped: false, exitCode: 0, ms: Date.now() - start });
     } catch (err) {
       const exitCode =
         err instanceof Error && "code" in err && typeof (err as { code: unknown }).code === "number"
           ? (err as { code: number }).code
           : 1;
-      results.push({ id: stage.id, skipped: false, exitCode, ms: Date.now() - start });
+      emit({ id: stage.id, skipped: false, exitCode, ms: Date.now() - start });
       break; // fail-fast
     }
   }

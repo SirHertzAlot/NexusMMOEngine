@@ -53,6 +53,14 @@
  *   GET  /api/editor/characters/:id → one character's record: name, look,
  *                                    deaths, saved state and ledger items
  *                                    (characters.db + world.db, read-only)
+ *   GET  /api/editor/build/profiles → build profiles (EA19, build-host.ts)
+ *   POST /api/editor/build/run      → {profile}: start a pipeline run (409
+ *                                    while one runs)
+ *   GET  /api/editor/build/runs     → run history, newest first
+ *   GET  /api/editor/build/runs/:id → one run with stage-by-stage status
+ *   POST /api/editor/build/deploy   → {port?}: deploy the local target
+ *                                    (background; 409 while one runs)
+ *   GET  /api/editor/build/deploy/status → the deploy state
  *
  * Safety rules:
  * - At most one owned server at a time; start while running → 409.
@@ -99,6 +107,8 @@ import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from ".
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
+import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
+import { runProfile } from "@mmo-engine/build";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -357,6 +367,14 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
   let dbCore: DatabaseCore | null = null;
+
+  // EA19 build pipeline: profiles, background runs, local deploy.
+  const buildHost = createBuildHost({
+    rootDir: repoRoot,
+    profiles: loadProfiles(repoRoot, (msg) => console.warn(`[editor-host] ${msg}`)),
+    runner: (rootDir, profile, onStage) => runProfile(rootDir, profile, { onStage }).then(() => {}),
+    deployer: createLocalDeployer(repoRoot),
+  });
 
   /**
    * Run the engine's terrain tool (export | generate | import | map | regenerate) as its own
@@ -890,6 +908,74 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             sendJson(res, 200, { ok: true, ...(await runBake(repoRoot, dataDir, (body ?? {}) as object)) });
+            return;
+          }
+          // EA19 build pipeline (build-host.ts).
+          if (url === "/api/editor/build/profiles" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, profiles: buildHost.listProfiles() });
+            return;
+          }
+          if (url === "/api/editor/build/run" && req.method === "POST") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const profile = (body as { profile?: unknown }).profile;
+            if (typeof profile !== "string" || !profile) {
+              sendJson(res, 400, { ok: false, error: "body.profile must be a profile name" });
+              return;
+            }
+            try {
+              const rec = buildHost.startRun(profile);
+              sendJson(res, 200, { ok: true, run: rec });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              const code = /already running/.test(msg) ? 409 : 400;
+              sendJson(res, code, { ok: false, error: msg });
+            }
+            return;
+          }
+          if (url === "/api/editor/build/runs" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, runs: buildHost.listRuns() });
+            return;
+          }
+          {
+            const m = /^\/api\/editor\/build\/runs\/([^/?]+)$/.exec(url);
+            if (m && req.method === "GET") {
+              const rec = buildHost.getRun(m[1]!);
+              if (!rec) sendJson(res, 404, { ok: false, error: "unknown run" });
+              else sendJson(res, 200, { ok: true, run: rec });
+              return;
+            }
+          }
+          if (url === "/api/editor/build/deploy" && req.method === "POST") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const port = (body as { port?: unknown }).port;
+            if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
+              sendJson(res, 400, { ok: false, error: "body.port must be a TCP port" });
+              return;
+            }
+            try {
+              const state = buildHost.startDeploy(port ?? 7777);
+              sendJson(res, 200, { ok: true, deploy: state });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              const code = /already running/.test(msg) ? 409 : 400;
+              sendJson(res, code, { ok: false, error: msg });
+            }
+            return;
+          }
+          if (url === "/api/editor/build/deploy/status" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, deploy: buildHost.getDeploy() });
             return;
           }
           const dungeonRoute = /^\/api\/editor\/dungeons\/([^/?]+)(\/map\.png|\/patch)?$/.exec(url);

@@ -89,4 +89,25 @@ describe("runProfile", () => {
     const real = await runProfile(tmp, p, { cacheDir: path.join(tmp, "cache4") });
     assert.equal(real[0]?.skipped, false);
   });
+
+  it("onStage fires after each stage, in order", async () => {
+    write("r5/in.txt", "v1");
+    const seen: string[] = [];
+    const p = profile([
+      { id: "a", command: "node -e \"process.exit(0)\"", inputs: ["r5/in.txt"] },
+      { id: "b", command: "node -e \"process.exit(0)\"", inputs: ["r5/in.txt"] },
+    ]);
+    await runProfile(tmp, p, {
+      cacheDir: path.join(tmp, "cache5"),
+      onStage: (r) => seen.push(`${r.id}:${r.skipped ? "skipped" : r.exitCode}`),
+    });
+    assert.deepEqual(seen, ["a:0", "b:0"]);
+    // Second run: both skipped, still reported.
+    seen.length = 0;
+    await runProfile(tmp, p, {
+      cacheDir: path.join(tmp, "cache5"),
+      onStage: (r) => seen.push(`${r.id}:${r.skipped ? "skipped" : r.exitCode}`),
+    });
+    assert.deepEqual(seen, ["a:skipped", "b:skipped"]);
+  });
 });
