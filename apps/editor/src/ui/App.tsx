@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, getPlayController, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
@@ -2373,10 +2373,18 @@ function TickTimingsPanel(): React.JSX.Element {
           if (live) setTimings(null);
           return;
         }
-        // The controller's debug method is not directly exposed; skip if unavailable.
-        if (live) setTimings(null);
+        const res = await c.debugTimings();
+        if (!live) return;
+        if (res.query === "timings") {
+          setTimings({ ticks: res.ticks, p50: res.p50, p99: res.p99, systems: res.systems });
+          setError("");
+        }
       } catch (e) {
-        if (live) setError((e as Error).message);
+        // Not running (or simulate mode with no client): show the idle state.
+        if (live) {
+          setTimings(null);
+          setError("");
+        }
       }
     };
     void load();

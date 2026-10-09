@@ -240,6 +240,11 @@ export class PlayModeController {
     return this.debug({ kind: "debug", query: "tiles" });
   }
 
+  /** Read-only tick timing query (0x0a). Only while running. */
+  async debugTimings(): Promise<DebugResponse> {
+    return this.debug({ kind: "debug", query: "timings" });
+  }
+
   private async debug(
     query: { kind: "debug" } & Record<string, unknown>,
   ): Promise<DebugResponse> {
