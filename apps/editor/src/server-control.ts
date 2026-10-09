@@ -16,21 +16,43 @@ export interface PlayServerLike {
   password: string;
 }
 
+/**
+ * What the play-start path passes the host. Only bots is honored
+ * (the host spawns the server with MMO_BOTS); everything else in the
+ * Play menu is preview until its slice lands (see ui/play-setup.ts).
+ */
+export interface PlayServerStartOptions {
+  bots?: number;
+}
+
 /** Server-control surface the editor UI drives (implements ServerControl). */
 export interface HostServerControl {
-  start(): Promise<PlayServerLike>;
+  start(opts?: PlayServerStartOptions): Promise<PlayServerLike>;
   stop(): Promise<void>;
   isRunning(): boolean;
   status(): Promise<{ running: boolean; pid?: number; port?: number }>;
 }
 
-/** HTTP adapter over the dev-host routes. */
-export function createHostServerControl(base = ""): HostServerControl {
+/**
+ * HTTP adapter over the dev-host routes. `scene` (EA6) names the scene
+ * Play should run, read at each start: the host boots the server with it
+ * (MMO_SCENE), using the document as given, saved or not.
+ */
+export function createHostServerControl(
+  base = "",
+  scene?: () => { name: string; doc: unknown } | null,
+): HostServerControl {
   let running = false;
   return {
-    async start() {
+    async start(opts) {
+      const open = scene?.() ?? null;
       const res = await fetch(`${base}/api/editor/server/start`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(opts?.bots !== undefined ? { bots: opts.bots } : {}),
+          ...(open ? { scene: { name: open.name, content: open.doc } } : {}),
+        }),
       });
       const body = (await res.json()) as {
         ok: boolean;

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "start": "login",
+  "nodes": {
+    "login": { "scene": "login", "x": 40, "y": 120 },
+    "connecting": { "scene": "loading", "x": 240, "y": 120 },
+    "character-select": { "scene": "character-select", "x": 440, "y": 40 },
+    "character-creation": { "scene": "character-creation", "x": 440, "y": 200 },
+    "world": { "scene": "@assigned", "x": 660, "y": 120 }
+  },
+  "edges": [
+    { "from": "login", "on": "ui.submit", "to": "connecting" },
+    { "from": "connecting", "on": "net.account", "to": "character-select" },
+    { "from": "connecting", "on": "net.welcome", "to": "world" },
+    { "from": "connecting", "on": "net.error", "to": "login" },
+    { "from": "connecting", "on": "net.closed", "to": "login" },
+    { "from": "character-select", "on": "ui.create", "to": "character-creation" },
+    { "from": "character-creation", "on": "ui.select", "to": "character-select" },
+    { "from": "character-select", "on": "net.joinReply.ok", "to": "world" },
+    { "from": "character-creation", "on": "net.joinReply.ok", "to": "world" },
+    { "from": "character-select", "on": "net.closed", "to": "login" },
+    { "from": "character-creation", "on": "net.closed", "to": "login" },
+    { "from": "world", "on": "net.closed", "to": "login" }
+  ]
+}

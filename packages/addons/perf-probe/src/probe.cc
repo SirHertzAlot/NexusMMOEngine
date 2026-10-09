@@ -12,8 +12,20 @@
 
 #include <string>
 
+#ifdef _MSC_VER
+// No valgrind on Windows: the vendored headers only know GCC-style inline
+// assembly (valgrind.h errors out for MSVC), and there is no callgrind to
+// talk to, so the client requests compile to nothing. This matches the
+// headers' own behaviour with NVALGRIND defined: begin()/end() keep their
+// pairing checks and do nothing else.
+#define RUNNING_ON_VALGRIND 0
+#define CALLGRIND_ZERO_STATS ((void)0)
+#define CALLGRIND_TOGGLE_COLLECT ((void)0)
+#define CALLGRIND_DUMP_STATS_AT(pos_str) ((void)0)
+#else
 #include "valgrind/callgrind.h"
 #include "valgrind/valgrind.h"
+#endif
 
 namespace {
 

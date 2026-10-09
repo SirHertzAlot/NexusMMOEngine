@@ -264,6 +264,7 @@ export function IconButton({
   size = 40,
   onClick,
   title,
+  disabled,
 }: {
   label: string;
   children: React.ReactNode;
@@ -271,6 +272,7 @@ export function IconButton({
   size?: 36 | 40;
   onClick?: () => void;
   title?: string;
+  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <button
@@ -279,7 +281,8 @@ export function IconButton({
       aria-pressed={active}
       title={title ?? label}
       onClick={onClick}
-      className="m3-focus m3-iconbtn grid shrink-0 place-items-center rounded-full"
+      disabled={disabled}
+      className="m3-focus m3-iconbtn grid shrink-0 place-items-center rounded-full disabled:opacity-40"
       style={{
         width: size,
         height: size,
@@ -610,7 +613,7 @@ export function OverflowMenu({ label, items, size = 36 }: {
 // ---------------------------------------------------------------- tree row
 
 /** Drill-down outliner row: chevron, icon, label, hover ⋯ menu, indent. */
-export function TreeItem({ icon, label, trailing, depth = 0, expanded, onToggle, hasKids, menu, selected, onPick, mono = false, drag }: {
+export function TreeItem({ icon, label, trailing, depth = 0, expanded, onToggle, hasKids, menu, selected, onPick, mono = false }: {
   icon: string;
   label: string;
   trailing?: string;
@@ -622,8 +625,6 @@ export function TreeItem({ icon, label, trailing, depth = 0, expanded, onToggle,
   selected?: boolean;
   onPick?: () => void;
   mono?: boolean;
-  /** Drag payload: when set the row drags into the viewport (drop is staged). */
-  drag?: string;
 }): React.JSX.Element {
   return (
     <div
@@ -650,12 +651,7 @@ export function TreeItem({ icon, label, trailing, depth = 0, expanded, onToggle,
       )}
       <button
         onClick={onPick ?? onToggle}
-        title={drag ? `${label} — drag into the viewport to place` : label}
-        draggable={drag !== undefined}
-        onDragStart={drag ? (e) => {
-          e.dataTransfer.setData("text/mmo-editor-node", drag);
-          e.dataTransfer.effectAllowed = "copy";
-        } : undefined}
+        title={label}
         className="m3-focus flex min-w-0 flex-1 items-center gap-2.5 rounded-full py-1 text-left"
       >
         <span style={{ color: selected ? undefined : "var(--m3-on-surface-variant)" }}>

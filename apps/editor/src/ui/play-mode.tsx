@@ -18,8 +18,10 @@ import * as React from "react";
 import type { DebugResponse, DebugQuery } from "@mmo-engine/protocol";
 import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
+import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
+import { botsCount, loadLastSetup } from "./play-setup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -68,6 +70,26 @@ export function setPlayAutoRefresh(autoRefresh: boolean): void {
   playUiStore.set((p) => ({ ...p, autoRefresh }));
 }
 
+/**
+ * The live controller, shared with the toolbar: its Pause/Step/Stop
+ * buttons act on this instead of just navigating to the panel. Set by
+ * the PlayModePanel while mounted; null when the panel is unmounted.
+ */
+let sharedController: PlayModeController | null = null;
+
+export function getPlayController(): PlayModeController | null {
+  return sharedController;
+}
+
+/** Toolbar / shortcut stop: real controller.stop(), valid while running or starting. */
+export async function requestPlayStop(): Promise<void> {
+  const c = sharedController;
+  if (!c) return;
+  const s = c.getState();
+  if (s === "idle" || s === "stopping") return;
+  await c.stop();
+}
+
 export function PlayModePanel(): React.JSX.Element {
   const [detail, setDetail] = React.useState<string | undefined>();
   const [busy, setBusy] = React.useState(false);
@@ -84,7 +106,7 @@ export function PlayModePanel(): React.JSX.Element {
 
   const controllerRef = React.useRef<PlayModeController | null>(null);
   if (!controllerRef.current) {
-    const serverControl = createHostServerControl();
+    const serverControl = createHostServerControl("", playableScene);
     controllerRef.current = new PlayModeController(
       serverControl,
       async (server) => {
@@ -127,12 +149,20 @@ export function PlayModePanel(): React.JSX.Element {
     );
   }
   const controller = controllerRef.current;
+  React.useEffect(() => {
+    sharedController = controller;
+    return () => {
+      if (sharedController === controller) sharedController = null;
+    };
+  }, [controller]);
 
   async function onStart(): Promise<void> {
     setBusy(true);
     setDetail(undefined);
     try {
-      await controller.start();
+      // The Play menu's only honored start option: bots → MMO_BOTS.
+      // Everything else stays preview until its slice lands.
+      await controller.start({ bots: botsCount(loadLastSetup()) });
     } catch (err) {
       // detail already carries the message via onStateChange(error)
       void err;
@@ -193,12 +223,12 @@ export function PlayModePanel(): React.JSX.Element {
               </Button>
             )}
             {(running || pmState === "starting") && (
-              <Button variant="danger" onClick={onStop} disabled={busy || pmState !== "running"}>
+              <Button variant="danger" onClick={onStop} disabled={busy}>
                 {busy ? "Stopping…" : "⏹ Stop"}
               </Button>
             )}
             {pmState === "starting" && (
-              <p className="text-xs text-muted-foreground">Spawning local server…</p>
+              <p className="text-xs text-muted-foreground">Spawning local server… Stop stays available while it starts.</p>
             )}
             {pmState === "stopping" && (
               <p className="text-xs text-muted-foreground">

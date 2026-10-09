@@ -14,6 +14,7 @@ import type { MenuItem } from "./components.js";
 import { assetUiStore, setAssetFilter, setAssetPreview, useAssetManifest } from "./asset-inspector.js";
 import { Chart } from "./charts.js";
 import { LiveOpsTelemetry } from "./liveops-telemetry.js";
+import { editorSelection } from "./editor-selection.js";
 
 // ---------------------------------------------------------------- shared UI state
 // Doc §3.1: selection is a shared model, not panel state — picking in any
@@ -53,7 +54,11 @@ export function createStore<T>(initial: T): {
 /** Subscribe to every selection store (drives hash sync; one call). */
 export function subscribeDeepSelection(fn: () => void): () => void {
   const unsubs = [dbStore, storyStore, stringsStore, liveOpsStore, artStore, hudStore, releaseStore, flowStore].map((s) => s.subscribe(fn));
-  return () => unsubs.forEach((u) => u());
+  const unsubSel = editorSelection.subscribe(fn);
+  return () => {
+    unsubs.forEach((u) => u());
+    unsubSel();
+  };
 }
 
 /** M3 outlined field with local draft editing: type, Enter commits, Esc reverts. */
@@ -3584,6 +3589,25 @@ export function HudDetails(): React.JSX.Element {  const widget = useHudWidget()
 
 /** Read the current deep selection for a workspace view (null = none). */
 export function readDeepSelection(workspace: string, view: string): string | null {
+  if (workspace === "scenes" && view === "scene") {
+    const sel = editorSelection.get();
+    if (!sel || !sel.id) return null;
+    if (sel.kind === "scene" || sel.kind === "scene-node") return `scene:${sel.id}`;
+    return null;
+  }
+  if (workspace === "dungeons" && view === "dungeons") {
+    const sel = editorSelection.get();
+    if (!sel || !sel.id) return null;
+    if (sel.kind === "dungeon-room") return `dungeon-room:${sel.id}`;
+    if (sel.kind === "dungeon-spawn") return `dungeon-spawn:${sel.id}`;
+    if (sel.kind === "dungeon-prop") return `dungeon-prop:${sel.id}`;
+    return null;
+  }
+  if (workspace === "scene" && view === "ecs") {
+    const sel = editorSelection.get();
+    if (sel && sel.kind === "entity" && sel.id) return `entity:${sel.id}`;
+    return null;
+  }
   switch (`${workspace}/${view}`) {
     case "database/grid": {
       const s = dbStore.get();
@@ -3663,6 +3687,44 @@ export function applyDeepSelection(sel: string): { workspace: string; view: stri
     case "scenario":
       releaseStore.set({ scenario: rest });
       return { workspace: "release", view: "playtests" };
+    case "scene": {
+      if (!rest) return null;
+      const slash = rest.indexOf("/");
+      const kind = slash >= 0 ? "scene-node" : "scene";
+      editorSelection.select({
+        source: "outliner",
+        kind,
+        id: rest,
+        label: rest,
+        components: [{ name: "Scene", fields: [{ key: "name", value: rest }] }],
+      });
+      return { workspace: "scenes", view: "scene" };
+    }
+    case "dungeon-room":
+    case "dungeon-spawn":
+    case "dungeon-prop": {
+      if (!rest) return null;
+      const dungeonKind = kind as "dungeon-room" | "dungeon-spawn" | "dungeon-prop";
+      editorSelection.select({
+        source: "outliner",
+        kind: dungeonKind,
+        id: rest,
+        label: rest,
+        components: [{ name: "Dungeon", fields: [{ key: "id", value: rest }] }],
+      });
+      return { workspace: "dungeons", view: "dungeons" };
+    }
+    case "entity": {
+      if (!rest) return null;
+      editorSelection.select({
+        source: "entity-list",
+        kind: "entity",
+        id: rest,
+        label: rest,
+        components: [],
+      });
+      return { workspace: "scene", view: "ecs" };
+    }
     default:
       return null;
   }

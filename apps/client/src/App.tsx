@@ -35,6 +35,8 @@ import { CombatFeedback } from "./render/combat-feedback.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
+import gameFlow from "virtual:game-flow";
+import { startNode, useFlow } from "./flow.js";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { TargetFrame } from "./ui/target-frame.js";
@@ -72,7 +74,6 @@ import {
   Label,
 } from "./ui/components.js";
 
-type Screen = "login" | "connecting" | "characters" | "world";
 type AuthMode = "login" | "register";
 
 const QUALITY_CYCLE: ("auto" | QualityTier)[] = ["auto", ...QUALITY_TIERS];
@@ -87,7 +88,8 @@ const PREVIEW_CUE: Partial<Record<AudioBus, Cue>> = { effects: "hit", interface:
 const HIT_CUE: Record<"hit" | "blocked" | "dodged", Cue> = { hit: "hit", blocked: "block", dodged: "dodge" };
 
 export function App(): React.ReactElement {
-  const [screen, setScreen] = useState<Screen>("login");
+  // The screen is a node of content/flow/game.flow.json; events move it (flow.ts).
+  const { node, screen, fire } = useFlow(gameFlow, gameFlow.start);
   const [mode, setMode] = useState<AuthMode>("login");
   const [url, setUrl] = useState(DEFAULT_URL);
   const [username, setUsername] = useState("");
@@ -231,7 +233,7 @@ export function App(): React.ReactElement {
         // The server sends an error frame before closing on every
         // rejection; keep that reason instead of masking it.
         setError((prev) => prev ?? "connection closed");
-        setScreen("login");
+        fire("net.closed");
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
       // asset requests go to the server that has the player now.
@@ -326,13 +328,13 @@ export function App(): React.ReactElement {
         regionRef.current = null;
         setRun(null);
       }
-      setScreen("world");
+      fire("net.joinReply.ok");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       if (transit.phase === "entering") void leaveDungeon();
       else {
         setRun(null);
-        setScreen("login");
+        fire("net.closed");
       }
     }
   };
@@ -356,8 +358,10 @@ export function App(): React.ReactElement {
    */
   const runHandshake = async (
     handshake: (client: MirrorClient) => Promise<JoinReply>,
-  ): Promise<void> => {
-    setScreen("connecting");
+    /** Runs in the same tick as net.account, so its events land in the same render. */
+    onAccount?: (account: Extract<JoinReply, { kind: "account" }>["account"]) => void,
+  ): Promise<JoinReply | null> => {
+    fire("ui.submit");
     setError(null);
     const client = createClient();
     clientRef.current = client;
@@ -366,14 +370,17 @@ export function App(): React.ReactElement {
       if (reply.kind === "account") {
         sessionTokenRef.current = reply.account.session_token;
         setAccount(reply.account);
-        setScreen("characters");
+        fire("net.account");
+        onAccount?.(reply.account);
       } else {
-        setScreen("world");
+        fire("net.welcome");
       }
+      return reply;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setScreen("login");
+      fire("net.error");
       clientRef.current = null;
+      return null;
     }
   };
 
@@ -381,22 +388,50 @@ export function App(): React.ReactElement {
    * Launch the mirror: log in with an existing account, or create the
    * account first (protocol 0x0b `register`) and join with it.
    */
-  const launch = (): Promise<void> =>
-    runHandshake((client) =>
+  const launch = async (): Promise<void> => {
+    await runHandshake((client) =>
       client.join(
         url,
         username || "mirror",
         mode === "register" ? { register: { username, password } } : { username, password },
       ),
     );
+  };
 
   /** Enter the world as a character (the character screen). */
   const enterWorld = async (id: number): Promise<void> => {
     const client = clientRef.current;
     if (!client) throw new Error("not connected");
     await client.enterWorld(id);
-    setScreen("world");
+    fire("net.joinReply.ok");
   };
+
+  // The editor's Play from a node (dev): ?start=<node>&server=<ws url>&user=…&pass=… logs in, then
+  // takes the flow to the node (character-creation: the create half; world: the first character).
+  const autoplay = useRef(false);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const target = startNode(gameFlow, window.location.search);
+    const [server, user, pass] = [q.get("server"), q.get("user"), q.get("pass")];
+    if (autoplay.current || target === gameFlow.start || !server || !user || !pass) return;
+    autoplay.current = true;
+    setUrl(server);
+    setUsername(user);
+    void (async () => {
+      const scene = gameFlow.nodes[target]?.scene;
+      const reply = await runHandshake(
+        (c) => c.join(server, user, { username: user, password: pass }),
+        () => scene === "character-creation" && fire("ui.create"),
+      );
+      if (reply?.kind !== "account") return;
+      if (scene === "@assigned") {
+        const id = reply.account.characters[0]?.id;
+        if (id === undefined) setError("play from world: the account has no character yet");
+        else await enterWorld(id).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
 
   /** Reconnect with the stored session token (skips the password). */
   const usernameOk = /^[A-Za-z0-9_-]{3,32}$/.test(username);
@@ -439,7 +474,7 @@ export function App(): React.ReactElement {
     setNearEntrance(null);
     combat.select(null);
     setCombatView(null);
-    setScreen("login");
+    fire("net.closed");
   };
 
   // ---- world -------------------------------------------------------------
@@ -502,6 +537,8 @@ export function App(): React.ReactElement {
         }}
         onEnter={enterWorld}
         onLeave={disconnect}
+        initialMode={gameFlow.nodes[node]?.scene === "character-creation" ? "create" : undefined}
+        onModeChange={(m) => fire(m === "create" ? "ui.create" : "ui.select")}
       />
     );
   }

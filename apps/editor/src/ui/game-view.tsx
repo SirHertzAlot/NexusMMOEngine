@@ -12,6 +12,10 @@
  * samples) come back once a second through onHud; children draw over the
  * view (the debugger's panels, play-debugger.tsx), inside `containerRef`.
  * Maximized, the view covers the editor window.
+ *
+ * Toolbar tools: select is the camera/pick default here — the follow
+ * camera owns orbit in every tool and a left click picks the target, so
+ * the tool intentionally changes nothing in this view.
  */
 
 import * as React from "react";

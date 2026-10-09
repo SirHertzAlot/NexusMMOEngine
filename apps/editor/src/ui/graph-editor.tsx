@@ -13,7 +13,12 @@
 import * as React from "react";
 import { edgePath, GraphEditor, parseFieldValue, type GraphDocument, type GraphViewModel, type NodeView, type PropertyView } from "../inspectors/graph-editor.js";
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
+import { pastDragThreshold } from "./drag-threshold.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
+import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { getTool } from "./tool-store.js";
+import { canDragGraphNode } from "./viewport-tools.js";
+import { editorSelection } from "./editor-selection.js";
 
 const NODE_W = 168;
 const NODE_H = 52;
@@ -94,6 +99,22 @@ export function GraphEditorPanel(): React.JSX.Element {
   };
 
   const vm = editor?.viewModel() ?? null;
+
+  // Toolbar Save/Undo/Redo target while a graph is open.
+  React.useEffect(() => {
+    if (!editor || !vm || vm.crumbs.length === 0) return;
+    const target = {
+      label: `PICG graph "${vm.file}"`,
+      canSave: vm.dirtyFiles.length > 0,
+      canUndo: vm.canUndo,
+      canRedo: vm.canRedo,
+      save: () => void save(),
+      undo: () => editor.undo(),
+      redo: () => editor.redo(),
+    };
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_320px]" data-testid="graph-editor">
@@ -338,10 +359,13 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
         drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
         (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
         editor.select(null);
+        const cur = editorSelection.get();
+        if (cur && cur.kind === "graph-node") editorSelection.clear();
       }}
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
+        if (!pastDragThreshold(d.sx, d.sy, e.clientX, e.clientY)) return;
         const dx = (e.clientX - d.sx) / view.scale;
         const dy = (e.clientY - d.sy) / view.scale;
         if (d.kind === "pan") setView((v) => ({ ...v, x: d.ox - dx, y: d.oy - dy }));
@@ -392,6 +416,16 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
               if (e.button !== 0) return;
               e.stopPropagation();
               editor.select(n.id);
+              editorSelection.select({
+                source: "outliner",
+                kind: "graph-node",
+                id: n.id,
+                label: n.title || n.id,
+                components: [{ name: "Graph node", fields: [{ key: "id", value: n.id }, { key: "type", value: n.type }] }],
+              });
+              // Nodes drag only with the move tool; with select a press
+              // picks the node and the background gesture pans.
+              if (!canDragGraphNode(getTool())) return;
               drag.current = { kind: "node", id: n.id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
               // Captured on the node (not the canvas), so its double-click still lands on it.
               (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);

@@ -1,0 +1,17 @@
+{
+  "description": "Module manifests: schema validation, discovery, the enabled set, dependency order and the server system order resolved from after/before (shared by the editor host and engine-core)",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/modules",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "type": "module",
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0"
+}

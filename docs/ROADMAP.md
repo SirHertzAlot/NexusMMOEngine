@@ -122,30 +122,46 @@ loadable modules, a database editor and production tools.
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
 | EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
-| EA3 | Editor modules | 📋 | |
-| EA4 | Scene documents | 📋 | |
-| EA5 | Scene viewport editing | 📋 | |
-| EA6 | Play the scene | 📋 | |
-| EA7 | Game flow | 🚧 | `feat/editor-backend-connector`: a UI-only screen-flow graph replaces the former empty Flow workspace; it is not yet backed by scene documents |
-| EA8 | Flow editor and play from a node | 🚧 | `feat/editor-backend-connector`: nodes and transitions can be connected, deleted, moved, and rewired; executing a selected flow node remains open |
-| EA9 | Server modules | 📋 | |
+| EA3 | Editor modules | 🚧 | `feat/ea3-ea9-modules`: `packages/modules` (manifest schema collecting every problem, discovery, `content/modules.json` set, dependency order); host routes `/api/editor/modules` (list, validated save, apply); the shell imports enabled modules' editor entries dynamically and a Modules workspace enables and disables them; the header count is real; the Characters Records panel is now the `characters` module. Deferred: other panels as modules (EA13), commands and document kinds as contributions, Controller/EditorContext contracts (EA2) |
+| EA4 | Scene documents | ✅ | `feat/ea4-scene-documents`: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5. |
+| EA7 | Game flow | ✅ | `feat/ea7-ea8-game-flow`: `content/flow/game.flow.json` and the pure flow runner/validator in `packages/scene` (`flow.ts`); the client's `Screen` state is now a flow node (`apps/client/src/flow.ts`, `useFlow`) with login, loading, character select/creation and world as frontend scenes; no protocol change |
+| EA8 | Flow editor and play from a node | ✅ | `feat/ea7-ea8-game-flow`: Flow editor panel (`ui/flow-editor.tsx`) over the real document: add/delete/move nodes, add/rewire/retarget/delete transitions, set start, live validation (unreachable, missing start, dangling, unknown event/scene), validated `GET/PUT /api/editor/flow`; Play from login (plain client), character creation (serverless preview or `?start=` with a server) and world (`?start=` with a server). Not yet opened in a browser; open scene on double-click deferred |
+| EA5 | Scene viewport editing | ✅ | Viewport in the Scenes workspace: place by drag, gizmos, terrain snap, picking, delete, all undoable. |
+| EA6 | Play the scene | 🚧 | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
+| EA9 | Server modules | 🚧 | `feat/ea3-ea9-modules`: `server.ts`'s systems array is the `core` module's instances in the order `modules/core/module.json` fixes; `MMO_MODULES` (default `content/modules.json`) selects modules; order resolved from `after`/`before`, unknown ids and cycles stop the boot with every problem; `modules/sample-heartbeat` adds a system; "Apply modules" restarts the owned play server. Open: `valgrind:perf` not run (no host valgrind on the Windows dev machine; the tick-order test pins the order instead), play mode does not auto-reconnect after Apply, admin commands / rule hooks / persistence tables contributions |
 | EA10 | C++ modules | 📋 | |
 | EA11 | Sidecars | 📋 | |
 | EA12 | Edge modules | 📋 | |
 | EA13 | Existing tools as modules | 📋 | |
 | EA14 | The play menu | 📋 | |
-| EA15 | Fill every workspace | 📋 | |
-| EA16 | Persistence core and the Database workspace | 📋 | |
+| EA15 | Fill every workspace | 🚧 | `feat/ea15-gameplay-authoring`: Gameplay data grids over creatures (with drops), item bases, skills, spells and species, and a Content browser with `GET /api/editor/content-catalog` (a scene-viewport drag source). Saves go through `/api/editor/gameplay`, validated by the server's own loaders, refused saves write nothing. Deferred: the other workspaces' fill-in, live values beside authored ones, crafting recipes and combat moves (code, not data), a prefab file format |
+| EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
-| EA18 | Version control | 📋 | |
+| EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
 | EA19 | Build and deploy | 📋 | |
-| EA20 | Quest and dialog editor | 📋 | |
+| EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
 | EA22 | VFX and materials | 📋 | |
 | EA23 | HUD layout editor | 📋 | |
 | EA24 | Audio | 📋 | |
 | EA25 | Localization | 📋 | |
 | EA26 | Automated playtests | 📋 | |
+
+## 1d. Editor interaction repairs
+
+An audit of the modular editor shell found 23 interactions that are dead
+or contradict the design doc (toolbar tools not governing viewports,
+Save/Undo/Redo and Pause/Step/Stop without handlers, advertised shortcuts
+that reload the browser, play-menu choices that don't reach the server, no
+play tint or read-only gate, selections that never reach Details, panels
+with no retry). Fixing them as one wave, tracked here.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| R1 | Toolbar and play cluster do what they say (active tool governs every viewport; Save/Undo/Redo, Pause/Step/Stop, play-menu setup, play tint + read-only Details) | ✅ | `fix/ed-toolbar-play` + `fix/ed-panels` gating; Pause/Step render disabled with reasons (no server control exists); preview-only play dimensions badged |
+| R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | ✅ | `fix/ed-keys-menus`: F5/Shift+F5/V/W/E/R wired; staged rows disabled with no kbd hint; drag-to-place removed until the scene viewport slice lands |
+| R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | ✅ | `fix/ed-panels` |
+| R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | ✅ | `fix/ed-selection`; panel highlight restoration on reload deferred |
 
 ## 2. Game client: the player's interface
 
@@ -229,6 +245,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Valgrind: memcheck gate for every addon's tests; callgrind instruction-count baselines for headless workloads (`npm run valgrind:memcheck`, `valgrind:perf`) | ✅ | Found and fixed a tile-bake leak and a Recast tile-cache overflow |
 | — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
+| — | **Prop blocking without CharacterVirtual**: kinematic walkers resolve against static prop bodies on the JS side (`PropCollisionSystem`, after integrate/character, before the physics sync), so players no longer walk through scatter-spawned trees and rocks; scene nodes carry validated per-node `Collider` data (box/sphere/none, edited in the Scenes workspace) | 🚧 | Merged via `integration/editor`; full CharacterVirtual stays 📋; `npm run valgrind:perf` still owes the new system a Linux baseline check |
 
 ## 5b. Edge / core split
 
@@ -287,7 +304,19 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
+- **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
+- **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
+- **2026-10-08**: EA18 version control built (branch): `/api/editor/vcs` runs git from fixed argument arrays on the repo only; semantic diffs keyed by node/step/guid ids (text diff otherwise); three-way JSON merge by stable ids resolves conflicted pulls, true conflicts list both values; pull and push need an explicit confirm; anything under `assets/` is refused at stage, diff and commit; advisory locks in `content/locks.json`; Changes workspace.
+- **2026-10-08**: EA15 first slice (in progress, branch): Gameplay data grids (search, filter, sort, inline per-cell checks, expandable rows, batch set/multiply/duplicate/delete) over `content/rules` creatures, item bases, skills and spells and a `content/species/species.json` overlay; saves validate with `parseRules`/`loadSpecies` plus a rule that a creature or item base scenes, quests or dungeons use can't be removed; `GET /api/editor/content-catalog` and a Content browser panel for the scene viewport to drag from.
 - **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
+- **2026-10-08**: EA7 and EA8 game flow: `content/flow/game.flow.json` drives the client's screens through a pure flow runner in `packages/scene`; the editor's Flow panel edits it as a graph (validated save, refused save writes nothing) and plays from login, character creation or world.
+- **2026-10-08**: EA5 scene viewport: three.js view of the open scene over the terrain, content browser (species, props, PICG), move/rotate/scale gizmo, terrain and grid snap, picking into the shared selection, delete; every edit is a History command.
+- **2026-10-08**: EA6 play the scene: server reads `MMO_SCENE` (`MMO_SCENES` dir) and spawns nodes via the creature and prop paths (restart-safe); Play sends the open (even unsaved) scene without touching content/scenes; "Keep" copies a live entity transform into a node as a command.
+- **2026-10-08**: EA3 editor modules: `packages/modules` (manifest validation, discovery, enabled set, dependency order), `/api/editor/modules` host routes, dynamic import of editor entries, Modules workspace (enable, disable, Apply), real module count in the header; Character records contributed by the `characters` module.
+- **2026-10-08**: EA9 server modules: engine-core assembles the tick's systems from the enabled module set (`assembleServerSystems`); core order unchanged and pinned by a test; `MMO_MODULES`; cycles and unknown system ids refuse the boot; sample module `sample-heartbeat`; "Apply modules" restarts the play server.
+- **2026-10-08**: EA16 first slice: `PersistenceCore` in engine-core (`persist/persistence-core.ts`) with catalog, SELECT-only query (child process, row limit, timeout kill), typed mutations with backup and `admin_log` undo; editor host routes `/api/editor/database/*` (loopback, JSON-only) and the Database workspace (schema tree, grid with pending edits, query, audit log). Mutations refuse while the game server runs; live-state edits deferred.
+- **2026-10-08**: EA20 quest and dialog editor (in progress, branch): Story workspace edits `content/quests/*.json` as the server loads them; saves validate the whole set (server schemas and checks, item and species references, prerequisite cycles, dialog loops with no exit) and write nothing when invalid; dialog tester walks a dialog against an editable mock quest state.
 
 - **2026-10-08**: U14 client web workers (in progress): `WorkerRuntime` (retry, transfer, concurrency cap), terrain, terrain-block, PCG and BVH handlers, `WorkerPool`, wired into the terrain renderer, `PcgMeshes` and BVH building; 221 client tests pass, production build bundles. Browser check pending.
 - **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.

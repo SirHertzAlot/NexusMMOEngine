@@ -37,9 +37,17 @@
  *   GET  /api/editor/rules         → the rules files (content/rules/*.json)
  *   GET  /api/editor/rules/:name   → one rules file's parsed content
  *   GET/PUT /api/editor/scenes[/:name] → scene documents (scenes-host.ts)
+ *   GET/PUT /api/editor/modules, POST /modules/apply → the module set (modules-host.ts)
  *   PUT  /api/editor/rules/:name   → validate (Zod schemas + cross-file
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
+ *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
+ *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
+ *   GET  /api/editor/story         → the quest and dialog documents (EA20)
+ *   GET  /api/editor/story/:name   → one document and the rules references
+ *   PUT  /api/editor/story[/:name] → {files} or {content}: validate the whole set, then write; 400
+ *                                    with per-path issues writes nothing
+ *   POST /api/editor/story/check   → {files} → issues, nothing written
  *   GET  /api/editor/characters    → the account's characters (id, name)
  *                                    from <dataDir>/characters.db (read-only)
  *   GET  /api/editor/characters/:id → one character's record: name, look,
@@ -80,7 +88,14 @@ import {
   saveRuleFile,
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
+import { handleFlowRoute } from "./flow-host.js";
+import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
+import { handleVcsRoute } from "./vcs-host.js";
+import { handleGameplayRoute } from "./gameplay-routes.js";
+import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
+import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
+import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
@@ -184,6 +199,8 @@ interface OwnedServer {
   /** One-session dev credentials seeded for this server (see below). */
   username: string;
   password: string;
+  /** The tick order the server reported at boot (Modules window). */
+  tickOrder(): string[] | null;
 }
 
 const LISTEN_RE = /listening on ws:\/\/[^:]+:(\d+)/;
@@ -332,6 +349,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
+  let dbCore: DatabaseCore | null = null;
 
   /**
    * Run the engine's terrain tool (export | generate | import | map | regenerate) as its own
@@ -419,7 +437,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     return true;
   }
 
-  async function startOwned(): Promise<OwnedServer> {
+  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest }): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -430,6 +448,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // below writes to the same file. Seeding happens BEFORE the server
     // starts because the gateway's CsvCredentialStore loads the CSV once
     // at startup — users added afterwards would not be visible.
+    // EA6: the open scene (validated before anything starts; may be unsaved).
+    const sceneEnv = playSceneEnv(repoRoot, dataDir, opts?.scene);
     const usersCsv = join(dataDir, "users.csv");
     const { username, password } = editorLogin(dataDir);
     // Dev-only local credential: the plaintext goes to the browser over
@@ -480,18 +500,23 @@ export function editorHost(options: EditorHostOptions): Plugin {
       });
     });
 
-    const npm = npmInvocation([
-      "run",
-      "server",
-      "--workspace=@mmo-engine/engine-core",
-      "--silent",
-    ]);
+    // Play runs the built server directly: `npm run server` rebuilds every
+    // workspace first (minutes), and the --silent output hid that wait.
+    // MMO_EDITOR_REBUILD=1 (or no build yet) takes the npm path instead.
+    const serverJs = join(repoRoot, "packages", "engine-core", "dist", "src", "server.js");
+    const npm =
+      process.env.MMO_EDITOR_REBUILD !== "1" && existsSync(serverJs)
+        ? { command: process.execPath, args: [serverJs], shell: false }
+        : npmInvocation(["run", "server", "--workspace=@mmo-engine/engine-core", "--silent"]);
     const child = spawn(npm.command, npm.args, {
-      cwd: repoRoot,
+      cwd: npm.shell || npm.args[0] !== serverJs ? repoRoot : join(repoRoot, "packages", "engine-core"),
       env: {
         ...process.env,
         MMO_PORT: String(serverPort),
         MMO_DATA_DIR: dataDir,
+        // The Play menu's Bots choice, when the start request carries it.
+        ...(opts?.bots !== undefined ? { MMO_BOTS: String(opts.bots) } : {}),
+        ...sceneEnv,
         // The debugger's admin console (E5): the editor's own play user is
         // an admin of the server it owns, on top of any configured ones.
         MMO_ADMINS: [process.env.MMO_ADMINS, username].filter(Boolean).join(","),
@@ -510,8 +535,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
     child.unref();
     const pid = child.pid ?? -1;
     let output = "";
+    let bootOrder: string[] | null = null;
     const onData = (d: Buffer): void => {
       output += d.toString("utf8");
+      bootOrder ??= parseTickOrder(output);
       if (output.length > 64_000) output = output.slice(-64_000);
     };
     child.stdout?.on("data", onData);
@@ -568,6 +595,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
       url: `ws://127.0.0.1:${serverPort}`,
       username,
       password,
+      tickOrder: () => bootOrder,
     };
     // Adopt the actual bound port from the server's listen line once
     // ready (normally identical to serverPort).
@@ -678,8 +706,23 @@ export function editorHost(options: EditorHostOptions): Plugin {
         }
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
-            await readBody(req);
-            const s = await startOwned();
+            const startBody = await readBody(req);
+            // Start options honored today: bots → MMO_BOTS, and the optional
+            // {scene: {name, content?}} for playing the open scene (EA6).
+            // Anything else in the body is ignored (the Play menu badges
+            // those dimensions "preview" instead of pretending).
+            let bots: number | undefined;
+            let scene: PlaySceneRequest | undefined;
+            try {
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest };
+              if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
+                bots = Math.floor(parsed.bots);
+              }
+              scene = parsed.scene;
+            } catch {
+              /* empty / non-JSON body: server defaults */
+            }
+            const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,
@@ -920,7 +963,49 @@ export function editorHost(options: EditorHostOptions): Plugin {
             serveAssetFile(req, res);
             return;
           }
+          const contentReply = handleContentRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);
+          if (contentReply) {
+            sendJson(res, contentReply.status, contentReply.body);
+            return;
+          }
+          const modulesUrl = new URL(req.url ?? "/", "http://localhost");
+          const modulesReply = await handleModulesRoute(
+            repoRoot,
+            req.method ?? "GET",
+            modulesUrl.pathname,
+            req.method === "PUT" ? await readBody(req) : undefined,
+            {
+              running: () => owned?.tickOrder() ?? null,
+              // "Apply modules": the server reads the set at boot, so a running one restarts.
+              apply: async () => {
+                if (!owned) return { restarted: false };
+                await stopOwned();
+                const s = await startOwned();
+                return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password };
+              },
+            },
+          );
+          if (modulesReply) {
+            sendJson(res, modulesReply.status, modulesReply.body);
+            return;
+          }
           const scenesUrl = new URL(req.url ?? "/", "http://localhost");
+          const flowReply = handleFlowRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/flow" ? await readBody(req) : undefined,
+          );
+          if (flowReply) {
+            sendJson(res, flowReply.status, flowReply.body);
+            return;
+          }
+          // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
+          const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
+          if (gameplayReply) {
+            sendJson(res, gameplayReply.status, gameplayReply.body);
+            return;
+          }
           const scenesReply = handleScenesRoute(
             repoRoot,
             req.method ?? "GET",
@@ -929,6 +1014,35 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);
+            return;
+          }
+          const vcsReply = await handleVcsRoute(
+            repoRoot,
+            req.method ?? "GET",
+            url,
+            req.method === "POST" ? await readBody(req) : undefined,
+          );
+          if (vcsReply) {
+            sendJson(res, vcsReply.status, vcsReply.body);
+            return;
+          }
+          if (url.startsWith("/api/editor/database/")) {
+            const u = new URL(url, "http://localhost");
+            let body: unknown = {};
+            if (req.method === "POST") {
+              try {
+                body = JSON.parse((await readBody(req)) || "{}") as unknown;
+              } catch {
+                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+                return;
+              }
+            }
+            dbCore ??= await openDatabaseCore(repoRoot, dataDir);
+            const reply = await handleDatabase(
+              { core: dbCore, serverRunning: async () => owned !== null || (await portOpen(serverPort)) },
+              { method: req.method ?? "GET", route: u.pathname.slice("/api/editor/database/".length), contentType: req.headers["content-type"], body },
+            );
+            sendJson(res, reply.status, reply.body);
             return;
           }
           const rulesParsed = new URL(req.url ?? "/", "http://localhost");
@@ -983,6 +1097,48 @@ export function editorHost(options: EditorHostOptions): Plugin {
               }
               sendJson(res, 200, { ok: true, name });
               return;
+            }
+            sendJson(res, 404, { ok: false, error: "not found" });
+            return;
+          }
+          // Quest and dialog documents (EA20, story-host.ts).
+          const storyParsed = new URL(req.url ?? "/", "http://localhost");
+          if (storyParsed.pathname === "/api/editor/story" || storyParsed.pathname.startsWith("/api/editor/story/")) {
+            const sub = decodeURIComponent(storyParsed.pathname.slice("/api/editor/story".length + 1));
+            if (req.method === "GET" && sub === "") {
+              sendJson(res, 200, { ok: true, files: storyFileNames() });
+              return;
+            }
+            if (req.method === "GET" && isStoryFile(sub)) {
+              sendJson(res, 200, { ok: true, ...readStoryFile(repoRoot, sub) });
+              return;
+            }
+            if (req.method === "POST" || req.method === "PUT") {
+              let body: { content?: unknown; files?: unknown };
+              try {
+                body = JSON.parse(await readBody(req)) as typeof body;
+              } catch {
+                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+                return;
+              }
+              if (req.method === "POST" && sub === "check") {
+                sendJson(res, 200, { ok: true, issues: await checkStory(repoRoot, body.files as Parameters<typeof checkStory>[1]) });
+                return;
+              }
+              if (req.method === "PUT" && (sub === "" || isStoryFile(sub))) {
+                try {
+                  const changes = sub === "" ? (body.files as Parameters<typeof saveStoryFiles>[1]) : { [sub]: body.content };
+                  sendJson(res, 200, { ok: true, issues: await saveStoryFiles(repoRoot, changes) });
+                } catch (err) {
+                  const issues = (err as { issues?: unknown }).issues;
+                  sendJson(res, (err as { status?: number }).status ?? 500, {
+                    ok: false,
+                    error: err instanceof Error ? err.message : String(err),
+                    ...(Array.isArray(issues) ? { issues } : {}),
+                  });
+                }
+                return;
+              }
             }
             sendJson(res, 404, { ok: false, error: "not found" });
             return;

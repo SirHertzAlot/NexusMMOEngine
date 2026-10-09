@@ -4,7 +4,7 @@
  * Wires the full authoritative stack in one Node process:
  *   SimWorld + ChunkStreamer (chunks, scatter, and navmesh tiles load
  *   around players and unload behind them) + IntentSystem +
- *   IntegrateSystem + Jolt PhysicsSystem + Recast NavigationSystem,
+ *   IntegrateSystem + PropCollisionSystem + Jolt PhysicsSystem + Recast NavigationSystem,
  *   SQLite persistence (save every 300 ticks + on SIGTERM/SIGINT), CSV
  *   auth, and the WebSocket gateway.
  *
@@ -41,11 +41,18 @@
  *                  <data>/instances.db
  *   MMO_INSTANCE_HOST host clients reach instances at (default localhost;
  *                  each instance listens on its own free port)
+ *   MMO_MODULES    the enabled module set document (default: content/modules.json;
+ *                  modules/<name>/module.json). `core` is always on. The tick's
+ *                  systems are core's plus those the enabled modules add, ordered
+ *                  by their after/before; a bad set stops the server with every
+ *                  problem named (EA9)
  *   MMO_BIOMES     the biome registry: per-biome scatter multipliers and
  *                  creature tables (default: content/biomes.json)
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
  *                  baked world with biomes; default off). Only kinds with
  *                  creature rules spawn.
+ *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
+ *                  creatures and props (roadmap EA6); MMO_SCENES overrides the scenes dir
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
@@ -95,6 +102,7 @@ import {
   IntentSystem,
   CharacterSystem,
   IntegrateSystem,
+  PropCollisionSystem,
   PhysicsSystem,
   ColliderSystem,
   createJoltBackend,
@@ -128,6 +136,8 @@ import { startPcgService } from "./pcg/boot.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
+import { assembleServerSystems } from "./modules.js";
+const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { CombatSystem, type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { AbilitySystem } from "./abilities.js";
@@ -154,6 +164,8 @@ import { InstanceManager } from "./dungeons/manager.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
+import { DEFAULT_SCENES_DIR, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
@@ -507,6 +519,19 @@ async function main(): Promise<void> {
       );
     }
   }
+  // A scene's nodes spawn through the creature and prop spawn paths (EA6).
+  if (process.env.MMO_SCENE) {
+    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const r = spawnSceneOnBoot(
+      scene,
+      { sim, creatures, table: () => loadScatterContent().table, groundHeightAt: (x, z) => character.groundHeight(x, z) },
+      store,
+    );
+    console.log(
+      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
+        (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
+    );
+  }
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
   const stamina = new StaminaSystem();
@@ -695,6 +720,49 @@ async function main(): Promise<void> {
     dropper.onDeath(s, ev);
     quests.onDeath(s, ev, (e) => creatures.kindOf(e));
   }, body);
+  // The tick's systems (roadmap EA9): the core module's instances in the order
+  // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
+  // set (unknown id, cycle) stops the boot with every problem listed.
+  const assembled = await assembleServerSystems({
+    modulesDir: path.join(REPO_ROOT, "modules"),
+    setFile: process.env.MMO_MODULES || path.join(REPO_ROOT, "content", "modules.json"),
+    provided: {
+      core: {
+        reloader,
+        stats: new StatsSystem(),
+        streamer,
+        bots: bots[0],
+        creatures,
+        crowd: crowd[0],
+        intent: new IntentSystem(),
+        combat,
+        magic,
+        body,
+        death,
+        abilities,
+        status,
+        telegraphs,
+        duels,
+        stamina,
+        needs,
+        mastery,
+        integrate: new IntegrateSystem(),
+        character,
+        "prop-collision": new PropCollisionSystem(),
+        collider: new ColliderSystem(),
+        obstacles,
+        physics,
+        navigation,
+        items,
+        quests,
+      },
+    },
+    ctx: { sim, log: (m) => console.log(m) },
+  }).catch((err: Error) => {
+    console.error(`[server] ${err.message}`);
+    process.exit(1);
+  });
+  console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
   // Cross-region presence (S2): the gateway reports online names and asks
@@ -720,7 +788,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, abilities, status, telegraphs, duels, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: assembled.systems,
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is

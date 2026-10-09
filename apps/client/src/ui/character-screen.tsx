@@ -41,6 +41,10 @@ export interface CharacterScreenProps {
   previewClip?: string | null;
   /** Dev preview: also load the raw reference takes (long mocap). */
   referenceClips?: boolean;
+  /** Which half to open on (the flow's node); default: the list when there are characters. */
+  initialMode?: "list" | "create";
+  /** The flow hears about the switch: "create" is ui.create, "list" is ui.select. */
+  onModeChange?: (mode: "list" | "create") => void;
 }
 
 interface Category {
@@ -191,7 +195,11 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [stage, setStage] = useState<CharacterStage | null>(null);
   const [artError, setArtError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"list" | "create">(characters.length > 0 ? "list" : "create");
+  const [mode, setModeState] = useState<"list" | "create">(props.initialMode ?? (characters.length > 0 ? "list" : "create"));
+  const setMode = (m: "list" | "create"): void => {
+    setModeState(m);
+    props.onModeChange?.(m);
+  };
   const [selected, setSelected] = useState<number | null>(characters[0]?.id ?? null);
   const [look, setLook] = useState<CharacterLook>(() => startingLook(null, "male"));
   const [name, setName] = useState("");

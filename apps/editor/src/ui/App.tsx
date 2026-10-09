@@ -11,37 +11,52 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
-import { CharacterRecordPanel } from "./character-view.js";
+import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
+import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
+import { FlowEditor } from "./flow-editor.js";
+import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
+import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
+import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { getTool, setTool, subscribeTool } from "./tool-store.js";
+import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import {
+  deleteNamedSetup,
+  loadLastSetup,
+  loadNamedSetups,
+  saveLastSetup,
+  saveNamedSetup,
+  setupSummary,
+  PLAY_PREVIEW_NOTES,
+  type PlaySetup,
+} from "./play-setup.js";
 import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
-import { editorSelection, useEditorSelection } from "./editor-selection.js";
+import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
+import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
   AnimPreview,
   ArtAudioTree,
   AudioPreview,
-  DataGridPreview,
   HudPreview,
   LiveOpsDetails,
   DatabaseRowDetails,
   FlowDetails,
-  FlowGraphPreview,
   HudDetails,
   LiveOpsPreview,
   PipelinePreview,
   PlaytestPreview,
   QuestPreview,
-  QueryPreview,
   ReleaseDeployDetails,
   SchemaTree,
   StoryDetails,
@@ -76,9 +91,11 @@ type WorkspaceId =
   | "network"
   | "debug"
   | "database"
+  | "changes"
   | "story"
   | "artaudio"
-  | "release";
+  | "release"
+  | "modules";
 
 interface Workspace {
   id: WorkspaceId;
@@ -108,19 +125,21 @@ const WORKSPACES: Workspace[] = [
   {
     id: "flow", label: "Flow & UI", icon: "account_tree",
     views: [
-      { id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowGraphPreview /> },
+      { id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowEditor /> },
       { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudPreview /> },
     ],
     leftTitle: "Widgets",
   },
   {
     id: "characters", label: "Characters", icon: "person",
-    views: [{ id: "records", label: "Records", icon: "person", kind: "panel", panel: <CharacterRecordPanel /> }],
+    views: [], // contributed by the characters module (modules/characters/editor)
     leftTitle: "Catalog",
   },
   {
     id: "gameplay", label: "Gameplay", icon: "table_view",
     views: [
+      { id: "grids", label: "Data grids", icon: "grid_on", kind: "panel", panel: <GameplayGridsPanel /> },
+      { id: "content", label: "Content browser", icon: "folder_open", kind: "panel", panel: <ContentBrowserPanel /> },
       { id: "tables", label: "Tables", icon: "table_view", kind: "panel", panel: <TablesPanel /> },
       { id: "rules", label: "Rules", icon: "tune", kind: "panel", panel: <RulesPanel /> },
     ],
@@ -150,16 +169,23 @@ const WORKSPACES: Workspace[] = [
     leftTitle: "Sessions",
   },
   {
+    id: "changes", label: "Changes", icon: "commit",
+    views: [{ id: "changes", label: "Changes", icon: "commit", kind: "panel", panel: <ChangesPanel /> }],
+    leftTitle: "Changes",
+  },
+  {
     id: "database", label: "Database", icon: "database",
     views: [
-      { id: "grid", label: "Data grid", icon: "table_view", kind: "panel", panel: <DataGridPreview /> },
-      { id: "query", label: "Query", icon: "code", kind: "panel", panel: <QueryPreview /> },
+      { id: "grid", label: "Data grid", icon: "table_view", kind: "panel", panel: <DatabaseGridPanel /> },
+      { id: "query", label: "Query", icon: "code", kind: "panel", panel: <DatabaseQueryPanel /> },
+      { id: "audit", label: "Audit log", icon: "history", kind: "panel", panel: <DatabaseAuditPanel /> },
     ],
     leftTitle: "Schema",
   },
   {
     id: "story", label: "Story", icon: "auto_stories",
     views: [
+      { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
       { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestPreview /> },
       { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPreview /> },
     ],
@@ -183,11 +209,30 @@ const WORKSPACES: Workspace[] = [
     ],
     leftTitle: "Profiles",
   },
+  {
+    id: "modules", label: "Modules", icon: "extension",
+    views: [{ id: "modules", label: "Modules", icon: "extension", kind: "panel", panel: <ModulesPanel /> }],
+    leftTitle: "Modules",
+  },
 ];
+
+// Module contributions (EA3): each workspace shows its own views plus the panels enabled
+// modules add; a workspace left with none says which module would fill it. The registry
+// refreshes after every enable/disable, and App re-renders on its version (useModuleRegistry).
+const OWN_VIEWS = new Map(WORKSPACES.map((w) => [w.id, w.views]));
+function syncModuleViews(): void {
+  for (const w of WORKSPACES) {
+    const added = moduleRegistry.panels(w.id).map((p) => ({ id: p.id, label: p.title, icon: p.icon, kind: "panel" as const, panel: p.render() as React.JSX.Element }));
+    const all = [...(OWN_VIEWS.get(w.id) ?? []), ...added];
+    w.views = all.length > 0 ? all : [{ id: "none", label: "Disabled", icon: "extension_off", kind: "soon", soon: { icon: "extension_off", title: `No module contributes to ${w.label}`, body: "Enable one in the Modules workspace." } }];
+  }
+}
+syncModuleViews();
+moduleRegistry.subscribe(syncModuleViews);
 
 const SOON_WS: ReadonlySet<WorkspaceId> = new Set(["network"]);
 /** Workspaces showing mockup-faithful previews over sample data. */
-const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "database", "story", "artaudio", "release"]);
+const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "story", "artaudio", "release"]);
 
 // ---------------------------------------------------------------- shell
 
@@ -197,6 +242,7 @@ const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "databa
 type RunMode = "edit" | "simulate" | "play";
 
 export function App(): React.JSX.Element {
+  useModuleRegistry();
   const [workspace, setWorkspace] = React.useState<WorkspaceId>(() => initialHashLocation().workspace);
   const [view, setView] = React.useState<string>(() => initialHashLocation().view);
   const [leftTab, setLeftTab] = React.useState<string>("left");
@@ -206,6 +252,18 @@ export function App(): React.JSX.Element {
   const [layoutMenu, setLayoutMenu] = React.useState(false);
   const [mode, setMode] = React.useState<RunMode>("edit");
   const [palette, setPalette] = React.useState(false);
+  // Play setup: owned here so the toolbar chip and the Play menu stay in
+  // sync; every change persists (the Play button / F5 runs the last one,
+  // and the Play mode panel reads it back on start for bots → MMO_BOTS).
+  const [playSetup, setPlaySetup] = React.useState<PlaySetup>(() => loadLastSetup());
+  function updatePlaySetup(next: PlaySetup): void {
+    setPlaySetup(next);
+    saveLastSetup(next);
+  }
+  // Play tint + read-only Details (§3.4/§3.5): entering play swaps what
+  // panels show, never where they are.
+  const { pmState } = playUiStore.use();
+  const playing = pmState === "running" || pmState === "starting";
 
   // Dock layout: visibility + sizes persist locally; named layouts snapshot all of it.
   const [docks, setDocks] = useLocalStorage("mmo-editor.docks", { left: true, right: true, bottom: true });
@@ -213,7 +271,6 @@ export function App(): React.JSX.Element {
   const [rightW, setRightW] = useLocalStorage("mmo-editor.rightW", 320);
   const [bottomH, setBottomH] = useLocalStorage("mmo-editor.bottomH", 144);
   const [savedLayouts, setSavedLayouts] = useLocalStorage<Record<string, LayoutSnapshot>>("mmo-editor.layouts", {});
-  const [dropHL, setDropHL] = React.useState(false);
 
   // Dock element refs for transient (per-frame) resize without re-render.
   const leftRef = React.useRef<HTMLDivElement>(null);
@@ -342,6 +399,9 @@ export function App(): React.JSX.Element {
   }
 
   // Ctrl K opens the command palette (§3.5); Ctrl Shift S opens layout save; Esc closes menus.
+  // F5 plays, Shift+F5 stops (same goPlay the play cluster uses); V/W/E/R
+  // click the toolbar's transform buttons so one handler owns each tool.
+  // Play/tool keys carry a typing guard and preventDefault (F5 must not reload).
   React.useEffect(() => {
     function onKey(e: KeyboardEvent): void {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -350,18 +410,77 @@ export function App(): React.JSX.Element {
       } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         setLayoutMenu(true);
+      } else if (e.key === "F5" && !e.ctrlKey && !e.metaKey) {
+        // F5 plays with the last setup (opens Play mode); Shift F5 stops
+        // the owned server for real. Ctrl F5 stays the browser's
+        // hard-reload — no hint claims it.
+        e.preventDefault();
+        if (e.shiftKey) void requestPlayStop();
+        else goPlay();
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "s") {
+        // Ctrl S saves the toolbar's open document; refused saves write nothing.
+        const target = getDocActions();
+        if (target?.canSave) {
+          e.preventDefault();
+          target.save();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        const target = getDocActions();
+        if (target?.canUndo) {
+          e.preventDefault();
+          target.undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+        const target = getDocActions();
+        if (target?.canRedo) {
+          e.preventDefault();
+          target.redo();
+        }
       } else if (e.key === "Escape") {
         setPalette(false);
         setPlayMenu(false);
         setLayoutMenu(false);
+      } else {
+        const action = resolveEditorShortcut({
+          key: e.key,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+        });
+        if (action === null) return;
+        if (shouldSkipShortcut(e.target)) return;
+        e.preventDefault();
+        if (action === "play") {
+          goPlay();
+        } else if (action === "stop") {
+          // Unreachable today (Shift F5 is handled above with the F5
+          // branch), but must stay the real stop, not a navigation.
+          void requestPlayStop();
+          goPlay();
+        } else {
+          const label = TOOL_SHORTCUT_BUTTON_LABELS[action];
+          const btn = document.querySelector(`button[aria-label="${label}"]`);
+          if (btn instanceof HTMLButtonElement) btn.click();
+        }
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="flex h-screen flex-col" style={{ background: "var(--m3-surface)", color: "var(--m3-on-surface)" }}>
+    <div
+      className="flex h-screen flex-col"
+      style={{
+        background: "var(--m3-surface)",
+        color: "var(--m3-on-surface)",
+        // Play tint (§3.2, §3.5): the window edge goes tertiary while
+        // running so nobody edits a live world by mistake.
+        ...(playing ? { outline: "2px solid var(--m3-tertiary)", outlineOffset: -2 } : {}),
+      }}
+    >
       <MenuBar
         workspace={workspace}
         onPick={pickWorkspace}
@@ -376,6 +495,8 @@ export function App(): React.JSX.Element {
         onTogglePlayMenu={() => setPlayMenu((v) => !v)}
         onClosePlayMenu={() => setPlayMenu(false)}
         onPlay={goPlay}
+        playSetup={playSetup}
+        onPlaySetup={updatePlaySetup}
         mode={mode}
         onMode={setRunMode}
         layoutMenu={layoutMenu}
@@ -400,6 +521,11 @@ export function App(): React.JSX.Element {
             setPalette(false);
           }}
           onPlay={() => {
+            goPlay();
+            setPalette(false);
+          }}
+          onStop={() => {
+            void requestPlayStop();
             goPlay();
             setPalette(false);
           }}
@@ -495,31 +621,12 @@ export function App(): React.JSX.Element {
             className="m3-scroll relative min-h-0 flex-1 overflow-auto rounded-xl p-3"
             style={{
               background: "var(--m3-surface-1)",
-              outline: dropHL ? "2px dashed var(--m3-primary)" : undefined,
-              outlineOffset: -2,
-            }}
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes("text/mmo-editor-node")) {
-                e.preventDefault();
-                setDropHL(true);
-              }
-            }}
-            onDragLeave={() => setDropHL(false)}
-            onDrop={(e) => {
-              const name = e.dataTransfer.getData("text/mmo-editor-node");
-              setDropHL(false);
-              if (name) notify(`Drop ${name} to place — staged for the scene viewport slice`);
             }}
           >
             {activeView.kind === "panel" ? (
               activeView.panel
             ) : (
               <EmptyState icon={activeView.soon?.icon ?? "hourglass_empty"} title={activeView.soon?.title ?? "Coming soon"} body={activeView.soon?.body ?? ""} />
-            )}
-            {dropHL && (
-              <div className="pointer-events-none absolute inset-3 flex items-center justify-center rounded-xl text-sm font-medium" style={{ background: "rgba(54,68,154,.25)", color: "var(--m3-on-primary-container)" }}>
-                Drop to place in the open scene
-              </div>
             )}
           </div>
 
@@ -590,7 +697,21 @@ export function App(): React.JSX.Element {
               />
             }
           >
-            {rightTab === "compare" ? <ComparePane /> : <DetailsPane workspace={workspace} view={view} />}
+            {rightTab === "compare" ? <ComparePane /> : playing ? (
+              <div className="flex flex-col gap-2">
+                <p
+                  className="rounded-xl px-3 py-2 text-xs font-medium"
+                  style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
+                >
+                  Playing — Details is read-only until play stops.
+                </p>
+                <fieldset disabled aria-disabled="true" style={{ minWidth: 0 }}>
+                  <DetailsPane workspace={workspace} view={view} />
+                </fieldset>
+              </div>
+            ) : (
+              <DetailsPane workspace={workspace} view={view} />
+            )}
           </DockPanel>
         </div>
       </div>
@@ -699,7 +820,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       { label: "New Scene", run: staged("New Scene", "EA · scenes"), stagedFor: "EA · scenes" },
       { label: "Open Scene…", run: staged("Open Scene", "EA · scenes"), stagedFor: "EA · scenes" },
       "sep",
-      { label: "Save", kbd: "Ctrl S", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
+      { label: "Save", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
       { label: "Save All", run: staged("Save All", "the open document's slice"), stagedFor: "the open document's slice" },
       { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
       "sep",
@@ -707,32 +828,32 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
     ],
     Edit: [
-      { label: "Undo", kbd: "Ctrl Z", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Redo", kbd: "Ctrl Y", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Undo", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Redo", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
       "sep",
-      { label: "Cut", kbd: "Ctrl X", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Copy", kbd: "Ctrl C", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Paste", kbd: "Ctrl V", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Duplicate", kbd: "Ctrl D", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Delete", kbd: "Del", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Paste", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Duplicate", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Delete", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
       "sep",
-      { label: "Select All", kbd: "Ctrl A", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
+      { label: "Select All", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
     ],
     View: [
       { label: `${docks.left ? "✓ " : ""}Left dock`, run: () => onToggleDock("left") },
       { label: `${docks.right ? "✓ " : ""}Right dock`, run: () => onToggleDock("right") },
       { label: `${docks.bottom ? "✓ " : ""}Bottom dock`, run: () => onToggleDock("bottom") },
       "sep",
-      { label: "Zoom In", kbd: "Ctrl +", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Zoom Out", kbd: "Ctrl -", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Reset Viewport", kbd: "Ctrl 0", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      { label: "Zoom In", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      { label: "Zoom Out", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      { label: "Reset Viewport", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
       "sep",
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],
     Window: [
       ...WORKSPACES.map((w) => ({ label: `Workspace: ${w.label}`, run: () => onGo(w.id) })),
       "sep",
-      { label: "Pop panel into a window", run: staged("Pop panel into a window", "EA · layout") },
+      { label: "Pop panel into a window", run: staged("Pop panel into a window", "EA · layout"), stagedFor: "EA · layout" },
       { label: "Reset layout", run: onResetLayout },
     ],
     Help: [
@@ -793,21 +914,24 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                     return <li key={`sep-${i}`} className="list-none" style={{ borderTop: "1px solid var(--m3-outline-variant)", margin: "4px 2px" }} />;
                   }
                   const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
+                  const stagedRow = it.stagedFor !== undefined;
                   return (
                     <li key={it.label} className="list-none">
                       <button
+                        disabled={stagedRow}
+                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : undefined}
                         onClick={() => {
                           setOpen(null);
                           run();
                         }}
                         className="m3-focus flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                        style={{ color: "var(--m3-on-surface)" }}
+                        style={{ color: "var(--m3-on-surface)", opacity: stagedRow ? 0.55 : undefined }}
                       >
                         {it.label}
-                        {it.stagedFor && (
-                          <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
+                        {stagedRow && (
+                          <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>soon</span>
                         )}
-                        {it.kbd && (
+                        {!stagedRow && it.kbd && (
                           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
                             {it.kbd}
                           </kbd>
@@ -981,11 +1105,18 @@ function ShellDialog({ title, onClose, children }: {
 
 // ---------------------------------------------------------------- toolbar
 
+function ModulesChip(): React.JSX.Element {
+  const n = useModuleRegistry().state?.enabled.length;
+  return <>{n === undefined ? "modules" : `${n} module${n === 1 ? "" : "s"}`}</>;
+}
+
 function Toolbar(props: {
   playMenu: boolean;
   onTogglePlayMenu: () => void;
   onClosePlayMenu: () => void;
   onPlay: () => void;
+  playSetup: PlaySetup;
+  onPlaySetup: (s: PlaySetup) => void;
   mode: RunMode;
   onMode: (m: RunMode) => void;
   layoutMenu: boolean;
@@ -1028,17 +1159,69 @@ function Toolbar(props: {
     docks: { left: boolean; right: boolean; bottom: boolean };
   };
 }): React.JSX.Element {
-  // Active viewport tool (UI-only toggle: the scenes/viewport slices own it).
-  const [tool, setTool] = React.useState<"select" | "move" | "rotate" | "scale" | "snap">("select");
+  // The shared viewport tool: every viewport gates its edit gesture on
+  // it (select = camera/pick, move = edit). V/W/E/R switch it (§3.2).
+  const tool = React.useSyncExternalStore(subscribeTool, getTool);
+  // The toolbar's document target: panels register while they hold an
+  // open document; with none the buttons disable with a tooltip.
+  const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  const { pmState } = playUiStore.use();
+  const stopping = pmState === "stopping";
+  const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = (e.target as HTMLElement | null)?.tagName;
+      if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || (e.target as HTMLElement | null)?.isContentEditable) return;
+      const k = e.key.toLowerCase();
+      if (k === "v") setTool("select");
+      else if (k === "w") setTool("move");
+      else if (k === "e") setTool("rotate");
+      else if (k === "r") setTool("scale");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <div
       className="relative flex h-[52px] flex-none items-center gap-1 px-3"
-      style={{ background: "var(--m3-surface)", borderBottom: "1px solid var(--m3-outline-variant)" }}
+      style={{
+        background: "var(--m3-surface)",
+        borderBottom: pmState === "running" || pmState === "starting"
+          ? "2px solid var(--m3-tertiary)"
+          : "1px solid var(--m3-outline-variant)",
+      }}
     >
       <div className="flex items-center gap-0.5" role="toolbar" aria-label="Edit tools">
-        <IconButton label="Save (Ctrl S)" size={36}><MIcon name="save" size={20} /></IconButton>
-        <IconButton label="Undo (Ctrl Z)" size={36}><MIcon name="undo" size={20} /></IconButton>
-        <IconButton label="Redo (Ctrl Y)" size={36}><MIcon name="redo" size={20} /></IconButton>
+        <IconButton
+          label={doc ? (doc.canSave ? `Save ${doc.label} (Ctrl S)` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
+          title={doc ? (doc.canSave ? `Save ${doc.label}` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
+          size={36}
+          disabled={!doc?.canSave}
+          onClick={() => doc?.save()}
+        >
+          <MIcon name="save" size={20} />
+        </IconButton>
+        <IconButton
+          label={doc && doc.canUndo ? `Undo ${doc.label} (Ctrl Z)` : "Undo — nothing to undo"}
+          title={doc && doc.canUndo ? `Undo ${doc.label}` : "Undo — nothing to undo"}
+          size={36}
+          disabled={!doc?.canUndo}
+          onClick={() => doc?.undo()}
+        >
+          <MIcon name="undo" size={20} />
+        </IconButton>
+        <IconButton
+          label={doc && doc.canRedo ? `Redo ${doc.label} (Ctrl Y)` : "Redo — nothing to redo"}
+          title={doc && doc.canRedo ? `Redo ${doc.label}` : "Redo — nothing to redo"}
+          size={36}
+          disabled={!doc?.canRedo}
+          onClick={() => doc?.redo()}
+        >
+          <MIcon name="redo" size={20} />
+        </IconButton>
       </div>
       <div
         className="mx-1 hidden items-center gap-0.5 lg:flex"
@@ -1103,32 +1286,51 @@ function Toolbar(props: {
             <MIcon name="expand_more" size={20} />
           </button>
         </div>
-        <IconButton label="Pause (opens Play mode)" size={36} onClick={props.onPlay} title="Pause — managed by the Play mode panel">
+        <IconButton
+          label="Pause — not available: the owned server's tick loop has no pause control"
+          title="Pause — not available: the owned server's tick loop has no pause control"
+          size={36}
+          disabled
+        >
           <MIcon name="pause" size={20} />
         </IconButton>
-        <IconButton label="Step one tick (opens Play mode)" size={36} onClick={props.onPlay} title="Step — one 30 Hz tick, managed by the Play mode panel">
+        <IconButton
+          label="Step one tick — not available: the owned server has no single-tick control"
+          title="Step one tick — not available: the owned server has no single-tick control"
+          size={36}
+          disabled
+        >
           <MIcon name="skip_next" size={20} />
         </IconButton>
-        <IconButton label="Stop (Shift F5, opens Play mode)" size={36} onClick={props.onPlay} title="Stop — managed by the Play mode panel">
+        <IconButton
+          label={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop (Shift F5) — stops the owned server, even while starting"}
+          title={pmState === "idle" ? "Stop — play mode is not running" : stopping ? "Stopping…" : "Stop — stops the owned server, even while starting"}
+          size={36}
+          disabled={!canStop || stopping}
+          onClick={() => {
+            void requestPlayStop();
+            props.onPlay();
+          }}
+        >
           <MIcon name="stop" size={20} />
         </IconButton>
         <span
           className="hidden h-7 items-center whitespace-nowrap rounded-full px-2.5 text-xs xl:inline-flex"
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
-          title="Current play setup"
+          title="Current play setup — the Play menu changes it"
         >
-          In editor · 1 client · edge + core
+          {setupSummary(props.playSetup)}
         </span>
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <StatusChip live={false}>Server idle</StatusChip>
+        <StatusChip live={pmState === "running"}>{pmState === "running" ? "Playing" : pmState === "starting" ? "Starting…" : "Server idle"}</StatusChip>
         <span
           className="hidden h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs lg:inline-flex"
           style={{ background: "var(--m3-surface-1)", color: "var(--m3-on-surface-variant)" }}
           title="Enabled modules (content/modules.json)"
         >
-          <MIcon name="extension" size={15} />6 modules
+          <MIcon name="extension" size={15} /><ModulesChip />
         </span>
         <span className="relative">
           <IconButton
@@ -1168,7 +1370,7 @@ function Toolbar(props: {
         <>
           <span className="fixed inset-0 z-40" onClick={props.onClosePlayMenu} aria-hidden="true" />
           <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
-            <PlayMenu onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
+            <PlayMenu setup={props.playSetup} onChange={props.onPlaySetup} onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
           </div>
         </>
       )}
@@ -1278,20 +1480,34 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
     </>
   );
 }
-// Every way to run the game (§3.5, ux-06). Selections stage the coming
-// play-menu slice as local UI state; Play hands off to the Play mode
-// panel, which owns start/stop today.
+// Every way to run the game (§3.5, ux-06). The setup is owned by the
+// shell and persisted on every change; Play hands off to the Play mode
+// panel, which owns start/stop. Only the viewport, one client, bots and
+// tint are honored today — everything else is badged preview (see
+// ui/play-setup.ts) and never pretended.
 
-function PlayMenu({ onPlay, onClose }: { onPlay: () => void; onClose: () => void }): React.JSX.Element {
-  const [where, setWhere] = React.useState("viewport");
-  const [from, setFrom] = React.useState("World");
-  const [clients, setClients] = React.useState("1");
-  const [bots, setBots] = React.useState("10");
-  const [net, setNet] = React.useState("Edge + core");
-  const [latency, setLatency] = React.useState("0");
-  const [fresh, setFresh] = React.useState(true);
-  const [keep, setKeep] = React.useState(false);
-  const [tint, setTint] = React.useState(true);
+function PreviewBadge({ why }: { why: string }): React.JSX.Element {
+  return (
+    <span
+      className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]"
+      style={{ border: "1px solid var(--m3-outline)", color: "var(--m3-on-surface-variant)" }}
+      title={`Preview — ${why}`}
+    >
+      preview
+    </span>
+  );
+}
+
+function PlayMenu({ setup, onChange, onPlay, onClose }: {
+  setup: PlaySetup;
+  onChange: (s: PlaySetup) => void;
+  onPlay: () => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [named, setNamed] = React.useState<Record<string, PlaySetup>>(() => loadNamedSetups());
+  const [name, setName] = React.useState("");
+  const set = (patch: Partial<PlaySetup>): void => onChange({ ...setup, ...patch });
+  const whereLabel = setup.where === "viewport" ? "in viewport" : setup.where === "window" ? "in a new window" : "simulate";
 
   return (
     <menu
@@ -1303,54 +1519,114 @@ function PlayMenu({ onPlay, onClose }: { onPlay: () => void; onClose: () => void
         Where to play
       </p>
       <div className="mb-3 grid grid-cols-3 gap-2">
-        {[
-          ["viewport", "fullscreen", "In viewport", "Panels stay around it"],
-          ["window", "open_in_new", "New window", "The player's client"],
-          ["simulate", "visibility", "Simulate", "World only, no player"],
-        ].map(([id, icon, title, body]) => {
-          const on = where === id;
+        {(
+          [
+            ["viewport", "fullscreen", "In viewport", "Panels stay around it", false],
+            ["window", "open_in_new", "New window", "The player's client", true],
+            ["simulate", "visibility", "Simulate", "World only, no player", true],
+          ] as Array<[string, string, string, string, boolean]>
+        ).map(([id, icon, title, body, preview]) => {
+          const on = setup.where === id;
           return (
             <button
               key={id}
-              onClick={() => setWhere(id)}
+              onClick={() => set({ where: id })}
               aria-pressed={on}
+              title={preview ? `Preview — ${PLAY_PREVIEW_NOTES.where}` : undefined}
               className="m3-focus flex flex-col gap-1 rounded-xl p-3 text-left"
               style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
             >
               <MIcon name={icon} size={22} />
-              <span className="text-sm font-medium">{title}</span>
+              <span className="text-sm font-medium">{title}{preview && <PreviewBadge why={PLAY_PREVIEW_NOTES.where} />}</span>
               <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{body}</span>
             </button>
           );
         })}
       </div>
 
-      <PlayMenuLabel>Start from</PlayMenuLabel>
-      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={from} onPick={setFrom} />
+      <PlayMenuLabel>Start from<PreviewBadge why={PLAY_PREVIEW_NOTES.from} /></PlayMenuLabel>
+      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={setup.from} onPick={(v) => set({ from: v })} />
 
       <PlayMenuLabel>Test setup</PlayMenuLabel>
       <div className="mb-1 flex flex-col gap-2">
-        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={clients} onPick={setClients} />
-        <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={bots} onPick={setBots} />
-        <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={net} onPick={setNet} />
-        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={latency} onPick={setLatency} />
+        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={setup.clients} onPick={(v) => set({ clients: v })} markPreview={(o) => o !== "1"} previewWhy={PLAY_PREVIEW_NOTES.clients} />
+        <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={setup.bots} onPick={(v) => set({ bots: v })} />
+        <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={setup.net} onPick={(v) => set({ net: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.net} />
+        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.latency} />
       </div>
 
       <div className="mt-2 flex flex-col gap-2.5 text-sm">
-        <PlayCheck checked={fresh} onFlip={() => setFresh((v) => !v)} label="Fresh world from the scene (discard saved state)" />
-        <PlayCheck checked={keep} onFlip={() => setKeep((v) => !v)} label="Keep play changes on stop" />
-        <PlayCheck checked={tint} onFlip={() => setTint((v) => !v)} label="Tint the editor while playing" />
+        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)<PreviewBadge why={PLAY_PREVIEW_NOTES.fresh} /></>} />
+        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop<PreviewBadge why={PLAY_PREVIEW_NOTES.keep} /></>} />
+        <PlayCheck checked={setup.tint} onFlip={() => set({ tint: !setup.tint })} label="Tint the editor while playing" />
       </div>
 
       <div className="mt-3 flex flex-col gap-1.5 text-sm" style={{ borderTop: "1px solid var(--m3-outline-variant)", paddingTop: 10 }}>
-        <span className="flex items-center gap-2" style={{ color: "var(--m3-on-surface-variant)" }}>
-          <MIcon name="history" size={16} /> Last: In viewport · World · 1 client
+        <button
+          onClick={() => {
+            onClose();
+            onPlay();
+          }}
+          className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+          style={{ color: "var(--m3-on-surface-variant)" }}
+          title="Play with the last settings (F5) — opens Play mode"
+        >
+          <MIcon name="history" size={16} /> Last: {setupSummary(loadLastSetup())}
           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>F5</kbd>
-        </span>
-        <span className="flex items-center gap-2" style={{ color: "var(--m3-on-surface-variant)" }}>
-          <MIcon name="bookmark" size={16} /> Saved: “Raid test” · 8 clients · 200 bots
-          <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>Ctrl F5</kbd>
-        </span>
+        </button>
+        {Object.entries(named).map(([n, s]) => (
+          <div key={n} className="group flex items-center gap-1">
+            <button
+              onClick={() => {
+                onChange({ ...s });
+                notify(`Setup “${n}” applied — Play runs it`);
+              }}
+              className="m3-focus flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
+              style={{ color: "var(--m3-on-surface-variant)" }}
+              title={`Apply “${n}”: ${setupSummary(s)}`}
+            >
+              <MIcon name="bookmark" size={16} /> {n} · {setupSummary(s)}
+            </button>
+            <button
+              onClick={() => setNamed(deleteNamedSetup(n))}
+              aria-label={`Delete setup ${n}`}
+              title={`Delete setup ${n}`}
+              className="m3-focus rounded-full p-1 opacity-0 group-hover:opacity-100"
+            >
+              <MIcon name="delete" size={16} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5 px-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim() !== "") {
+                setNamed(saveNamedSetup(name.trim(), setup));
+                notify(`Setup “${name.trim()}” saved in this browser`);
+                setName("");
+              }
+            }}
+            placeholder="Name this setup…"
+            aria-label="Setup name"
+            className="h-9 min-w-0 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none"
+            style={{ borderColor: "var(--m3-outline)" }}
+          />
+          <button
+            onClick={() => {
+              if (name.trim() !== "") {
+                setNamed(saveNamedSetup(name.trim(), setup));
+                notify(`Setup “${name.trim()}” saved in this browser`);
+                setName("");
+              }
+            }}
+            className="m3-focus h-9 rounded-full px-3 text-sm font-medium"
+            style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
+          >
+            Save
+          </button>
+        </div>
       </div>
 
       <button
@@ -1362,10 +1638,11 @@ function PlayMenu({ onPlay, onClose }: { onPlay: () => void; onClose: () => void
         style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
       >
         <MIcon name="play_arrow" size={20} />
-        Play — {where === "viewport" ? "in viewport" : where === "window" ? "in a new window" : "simulate"} · {from} · {clients} client{clients === "1" ? "" : "s"}
+        Play — {whereLabel} · {setup.from} · {setup.clients} client{setup.clients === "1" ? "" : "s"}
       </button>
       <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        The Play mode panel owns start/stop today and runs this setup once chosen there.
+        Only the viewport, one client, bots and tint are honored today — the Play mode panel passes bots
+        (MMO_BOTS) on start. Everything badged preview saves with the setup but needs its slice.
       </p>
     </menu>
   );
@@ -1392,7 +1669,7 @@ function PlayMenuRow({ options, value, onPick }: { options: string[]; value: str
   );
 }
 
-function PlayMenuSplit({ label, options, value, onPick }: { label: string; options: string[]; value: string; onPick: (v: string) => void }): React.JSX.Element {
+function PlayMenuSplit({ label, options, value, onPick, markPreview, previewWhy }: { label: string; options: string[]; value: string; onPick: (v: string) => void; markPreview?: (o: string) => boolean; previewWhy?: string }): React.JSX.Element {
   return (
     <div className="flex items-center gap-2">
       <span className="w-32 flex-none text-[13px]" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</span>
@@ -1409,10 +1686,14 @@ function PlayMenuSplit({ label, options, value, onPick }: { label: string; optio
               key={o}
               onClick={() => onPick(o)}
               aria-pressed={on}
+              title={markPreview?.(o) ? `Preview — ${previewWhy ?? ""}` : undefined}
               className="m3-focus flex h-full flex-1 items-center justify-center whitespace-nowrap px-2"
               style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
             >
               {o}
+              {markPreview?.(o) && (
+                <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>preview</span>
+              )}
             </button>
           );
         })}
@@ -1421,7 +1702,7 @@ function PlayMenuSplit({ label, options, value, onPick }: { label: string; optio
   );
 }
 
-function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () => void; label: string }): React.JSX.Element {
+function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () => void; label: React.ReactNode }): React.JSX.Element {
   return (
     <button onClick={onFlip} role="checkbox" aria-checked={checked} className="m3-focus flex items-center gap-2.5 text-left">
       <span
@@ -1437,10 +1718,11 @@ function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () =>
 
 // ---------------------------------------------------------------- command palette
 
-function CommandPalette({ onClose, onWorkspace, onPlay }: {
+function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
   onClose: () => void;
   onWorkspace: (id: WorkspaceId) => void;
   onPlay: () => void;
+  onStop: () => void;
 }): React.JSX.Element {
   const [q, setQ] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -1456,7 +1738,7 @@ function CommandPalette({ onClose, onWorkspace, onPlay }: {
       })),
     ),
     { label: "Play with the last settings", hint: "F5", icon: "play_arrow", run: onPlay },
-    { label: "Stop play mode", hint: "Shift F5", icon: "stop", run: onPlay },
+    { label: "Stop play mode", hint: "Shift F5", icon: "stop", run: onStop },
   ];
   const hits = commands.filter((c) => c.label.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 12);
 
@@ -1532,7 +1814,15 @@ function useTree(): {
 
 function crudMenu(label: string, slice: string, onInspect?: () => void): Array<MenuItem | "sep"> {
   return [
-    { label: `Inspect ${label}`, icon: "search", run: onInspect ?? (() => notify(`${label} selected in the outliner`)) },
+    { label: `Inspect ${label}`, icon: "search", run: onInspect ?? (() => {
+      editorSelection.select({
+        source: "outliner",
+        kind: "inspect",
+        id: label,
+        label,
+        components: [{ name: "Inspect", fields: [{ key: "item", value: label }, { key: "slice", value: slice }] }],
+      });
+    }) },
     "sep",
     { label: "Rename…", icon: "edit", stagedFor: slice },
     { label: "Duplicate", icon: "content_copy", stagedFor: slice },
@@ -1934,9 +2224,10 @@ function DebugTree(): React.JSX.Element {
     </div>
   );
 }
-/** Content browser: real content paths, explorable, draggable into the viewport.
+/** Content browser: real content paths, explorable.
  *  Clicking a document navigates to the workspace that owns it today. */
 function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
+  useModuleRegistry();
   const t = useTree();
   const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode, slice = "EA · content browser"): React.JSX.Element => (
@@ -1959,7 +2250,6 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     <TreeItem
       key={path}
       icon="description" label={name} depth={depth} mono
-      drag={path}
       selected={t.sel === path} onPick={() => {
         t.pick(path);
         if (go) onGo(go[0], go[1]);
@@ -2011,13 +2301,13 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
           ))}
         </>
       ))}
-      {folder("modules", "modules · 6 enabled", "extension", (
+      {folder("modules", `modules · ${moduleRegistry.state?.enabled.length ?? "?"} enabled`, "extension", (
         <>
-          {["core", "characters", "creatures", "items", "goblin-ai", "weather-ai"].map((m) => file(`modules/${m}/module.json`, m, undefined))}
+          {(moduleRegistry.state?.modules ?? []).map((m) => file(`modules/${m.name}/module.json`, m.name, ["modules", "modules"]))}
         </>
       ))}
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Drag a file into the viewport to place it — drop targets stage the scene-viewport slice.
+        Files open in the workspace that owns them — drag-to-place arrives with the scene viewport slice.
       </p>
     </div>
   );
@@ -2027,7 +2317,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
 
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
-  if (selection) return <SelectionDetails selection={selection} />;
+  if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
   if (workspace === "liveops") return <LiveOpsDetails />;
   if (workspace === "database") return <DatabaseRowDetails />;
   if (workspace === "release") return <ReleaseDeployDetails />;
@@ -2077,7 +2367,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
           Selected from {selection.source.replace("-", " ")}
         </span>
         {selection.components.length === 0 ? (
-          <p style={{ color: "var(--m3-on-surface-variant)" }}>No component data is available for this selection.</p>
+          <p style={{ color: "var(--m3-on-surface-variant)" }}>no details for {selection.kind} {selection.id} — pick something else.</p>
         ) : (
           selection.components.map((component) => (
             <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>
