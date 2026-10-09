@@ -34,7 +34,7 @@ const REPLAY_ID = /^[a-z][a-z0-9-]{0,60}$/;
 const scenarioDir = (repo: string): string => resolve(repo, "content", "playtests");
 const scenarioFile = (repo: string, name: string): string => join(scenarioDir(repo), `${name}.playtest.json`);
 const outDir = (dataDir: string): string => resolve(dataDir, "playtests");
-const historyFile = (dataDir: string, name: string): string => join(outDir(dataDir), `${name}.history.json`);
+export const historyFile = (dataDir: string, name: string): string => join(outDir(dataDir), `${name}.history.json`);
 const replayFile = (dataDir: string, id: string): string => join(outDir(dataDir), "replays", `${id}.replay.json`);
 
 function writeJson(file: string, value: unknown): void {

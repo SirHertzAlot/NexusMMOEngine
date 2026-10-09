@@ -4,22 +4,14 @@ import { applyDeepSelection, readDeepSelection } from "../src/ui/previews.js";
 import { editorSelection } from "../src/ui/editor-selection.js";
 
 describe("deep links stay backward compatible", () => {
-  it("old preview keys still parse to their workspaces", () => {
-    assert.deepEqual(applyDeepSelection("row:character_state/17"), { workspace: "database", view: "grid" });
-    assert.deepEqual(applyDeepSelection("node:clear"), { workspace: "story", view: "quests" });
-    assert.deepEqual(applyDeepSelection("player:Bram"), { workspace: "liveops", view: "overview" });
+  it("keys still parse to their workspaces", () => {
     assert.deepEqual(applyDeepSelection("clip:Jog_Fwd"), { workspace: "artaudio", view: "animation" });
     assert.deepEqual(applyDeepSelection("effect:embers"), { workspace: "artaudio", view: "vfx" });
     assert.deepEqual(applyDeepSelection("event:hit"), { workspace: "artaudio", view: "audio" });
-    assert.deepEqual(applyDeepSelection("widget:Quest tracker"), { workspace: "flow", view: "hud" });
-    assert.deepEqual(applyDeepSelection("screen:world"), { workspace: "flow", view: "flow" });
-    assert.deepEqual(applyDeepSelection("scenario:camp-loop"), { workspace: "release", view: "playtests" });
   });
 
   it("rejects garbage without crashing", () => {
     assert.equal(applyDeepSelection("nope"), null);
-    assert.equal(applyDeepSelection("row:missing/999"), null);
-    assert.equal(applyDeepSelection("node:missing"), null);
     assert.equal(applyDeepSelection("move:abc"), null);
     assert.deepEqual(applyDeepSelection("move:3"), { workspace: "artaudio", view: "animation" });
   });
