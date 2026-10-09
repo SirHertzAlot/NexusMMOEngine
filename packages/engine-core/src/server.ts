@@ -133,6 +133,7 @@ import {
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { healthHttpHandler } from "./net/health.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
@@ -772,6 +773,8 @@ async function main(): Promise<void> {
   const gw: Gateway = new Gateway({
     port: PORT,
     sessionStore,
+    // GET /health for deploy health checks (EA19); PCG's handler composes with it.
+    http: healthHttpHandler,
     presence: {
       report: (names) => void worldClient?.reportPresence(names),
       query: (names) => {

@@ -41,7 +41,9 @@
     "world": "npm run server --workspace=@mmo-engine/world-server",
     "world:db": "npm run db --workspace=@mmo-engine/world-server",
     "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --",
-    "stress:world": "node scripts/world-stress/run.mjs"
+    "stress:world": "node scripts/world-stress/run.mjs",
+    "package": "node scripts/package.mjs",
+    "deploy:local": "node scripts/deploy-local.mjs"
   },
   "version": "0.1.0",
   "workspaces": [
