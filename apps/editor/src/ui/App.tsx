@@ -2444,21 +2444,8 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
         >
           <MIcon name="bolt" size={16} /> Saved tables hot-reload into the running server
         </div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Unsaved changes
-        </p>
-        <ul className="text-[12.5px]">
-          {[["edit", "goblin.health", "55 → 60"], ["error", "ogre.health", "480 → −40"], ["edit", "wolf.pack", "3–5 → 3–6"]].map(([icon, path, change]) => (
-            <li key={path} className="flex items-center gap-2 border-b py-1.5" style={{ borderColor: "#2a2b31" }}>
-              <MIcon name={icon} size={16} />
-              <span className="font-mono text-xs">{path}</span>
-              <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{change}</span>
-            </li>
-          ))}
-        </ul>
         <p className="text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Live values from the open panel appear here once Details binds to the selection model (§3.1). Edits stay
-          validated — a refused save writes nothing.
+          Select a row in the grid to see its details here. Edits stay validated — a refused save writes nothing.
         </p>
       </div>
     );
