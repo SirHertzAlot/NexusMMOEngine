@@ -58,6 +58,7 @@
     "bus.ambience": "ambience",
     "bus.effects": "combat",
     "bus.interface": "interface",
+    "bus.music": "music",
     "cast.casting": "casting {spell}",
     "cast.seconds": "{n} s",
     "character.art-loading": "loading character artâ€¦",
