@@ -12,5 +12,7 @@ export type { HelloAuth, JoinAuth, JoinReply, MirrorEvents } from "./client.js";
 export { Interpolator } from "./interpolate.js";
 export { MirrorState } from "./state.js";
 export type { EntityMirror } from "./state.js";
+export { LaggySocket, latencyMs } from "./laggy-socket.js";
+export type { SocketLike } from "./laggy-socket.js";
 export { BrowserSocket } from "./socket.js";
 export type { SocketLike } from "./socket.js";

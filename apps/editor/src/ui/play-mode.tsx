@@ -119,6 +119,8 @@ export function PlayModePanel(): React.JSX.Element {
           () => {
             lastStateAt.current = performance.now();
           },
+          // The Play menu's simulated-latency option, honored here.
+          { latency: loadLastSetup().latency },
         );
         setMirror(c);
         return {
