@@ -24,6 +24,8 @@ export type GridColumn = GridKind & {
   ref?: string;
   /** An enum whose options come from `options[optionsFrom]` in the context. */
   optionsFrom?: string;
+  /** A JSON column's own check: the problem with `value`, or null. */
+  check?: (value: unknown, ctx: GridContext) => string | null;
 };
 
 export interface GridRow {
@@ -67,6 +69,8 @@ export function checkCell(col: GridColumn, value: unknown, ctx: GridContext): st
     return null;
   };
   switch (col.kind) {
+    case "json":
+      return col.check ? col.check(value, ctx) : null;
     case "number":
       return range(value as number, col.int, col.min, col.max);
     case "bool":

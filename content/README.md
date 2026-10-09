@@ -32,6 +32,11 @@ Game content the engine generates from, committed with the code:
   particle budgets), `materials/materials.json` (toon look, terrain surface
   tints and footsteps) and `audio/events.json` (generated-tone events, buses,
   voice limits, hooks). The client inlines them as `virtual:game-content`.
+- `crafting/recipes.json` — crafting costs (refining, element reagents, fittings, units, skills); checked at server boot (`MMO_CRAFTING` overrides) and read by `npm run craft:report`.
+
+- `species/species.json` — optional overlay merged over the built-in species roster (`MMO_SPECIES` overrides); the editor's Species grid writes it.
+
+- `prefabs/*.prefab.json` — component bundles a scene node places by name (`prefab`), with the node's components overriding field by field (`MMO_PREFABS` overrides). Scenes also place items (`ItemSpawn`), species (`Spawner.species`) and quest posts (`QuestGiver`).
 
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.

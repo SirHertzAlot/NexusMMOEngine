@@ -65,6 +65,31 @@ describe("LootDropper", () => {
     assert.equal(items.pickup(sim, 99, killer, wire(drops[1])).ok, true, "free after 30 s");
   });
 
+  it("drops the named items of a loot table, even with the random rolls off", () => {
+    const pool: PoolItemLike[] = [
+      ...POOL,
+      { id: "d1", rank: "common", source: "chest", item: "dagger", seed: 3, bundle: { Identity: { id: "d1", name: "Plain dagger", base: "dagger" }, Rank: { id: "common", color: "#fff" }, Stats: {} } },
+      { id: "d2", rank: "rare", source: "chest", item: "dagger", seed: 4, bundle: { Identity: { id: "d2", name: "Fine dagger", base: "dagger" }, Rank: { id: "rare", color: "#fff" }, Stats: {} } },
+    ];
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    sim.beginTick(1);
+    const defs = new ItemDefs(pool, RULES);
+    const items = new ItemService({ defs, loot: { ownershipSeconds: 30, despawnSeconds: 300, pickupRange: 2.5, bagSlots: 24, maxGroundItems: 100 }, tickHz: 30 });
+    const mob = sim.spawn();
+    addComponent(sim.ecs, C.Transform, mob);
+    const dropper = new LootDropper({
+      items, defs,
+      kindOf: (e) => (e === mob ? "goblin" : undefined),
+      creatures: { goblin: { drops: { rolls: [0, 0], chance: 1, table: "spoils" } } } as never,
+      tables: { spoils: { entries: [{ base: "dagger", chance: 1, count: [2, 2] }, { base: "dagger", rank: "rare", chance: 1, count: [1, 1] }, { base: "axe", chance: 1, count: [1, 1] }, { base: "dagger", chance: 0, count: [1, 1] }] } },
+    });
+    assert.equal(dropper.onDeath(sim, { tick: 1, target: mob, state: "dead", x: 5, z: 5 }), 3, "axe is not in the pool: nothing; 2 plain + 1 rare dagger");
+    const names = [...ground(sim.ecs)].map((e) => defs.names[items.store.defs[items.store.slot(C.WorldItem.item[e])]]).sort();
+    assert.deepEqual(names, ["Fine dagger", "Plain dagger", "Plain dagger"]);
+    assert.equal(items.groundCount, 3);
+  });
+
   it("is deterministic by seed", () => {
     const run = (seed: number): number[] => {
       const { sim, dropper, mob, ev } = setup(1, [2, 2], seed);

@@ -1065,7 +1065,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             scenesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/scenes") ? await readBody(req) : undefined,
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);

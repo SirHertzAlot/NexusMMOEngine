@@ -53,7 +53,12 @@
  *                  baked world with biomes; default off). Only kinds with
  *                  creature rules spawn.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
- *                  creatures and props (roadmap EA6); MMO_SCENES overrides the scenes dir
+ *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
+ *                  overrides the scenes dir, MMO_PREFABS the prefab files (content/prefabs)
+ *   MMO_SPECIES    the species overlay file (default content/species/species.json),
+ *                  merged over the built-in roster; a bad file stops the boot
+ *   MMO_CRAFTING   the crafting rules (default content/crafting/recipes.json); a bad file
+ *                  stops the boot
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
@@ -165,7 +170,9 @@ import { InstanceManager } from "./dungeons/manager.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
-import { DEFAULT_SCENES_DIR, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
+import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
@@ -178,7 +185,7 @@ import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
-import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
+import { ItemService, LootDropper, lineDef, loadItemDefs } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { loadCombatContent } from "./combat-content.js";
@@ -241,6 +248,18 @@ async function main(): Promise<void> {
   // The combat moves (content/combat/moves.json, MMO_COMBAT): timing, chaining and travel the fight runs on.
   const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
   if (combatLine) console.log(`[server] ${combatLine}`);
+  // Authored data beyond the rules: the species roster and the crafting rules.
+  let speciesRoster: ServerRoster;
+  let crafting: CraftingRules;
+  try {
+    speciesRoster = loadServerRoster();
+    crafting = loadCraftingRules(process.env.MMO_CRAFTING || undefined);
+  } catch (err) {
+    console.error(`[server] ${(err as Error).message}`);
+    process.exit(1);
+  }
+  console.log(`[${speciesRoster.summary}]`);
+  console.log(`[crafting: ${Object.keys(crafting.refining).length} refining recipe(s), ${Object.keys(crafting.reagents).length} element reagent(s)]`);
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -397,7 +416,8 @@ async function main(): Promise<void> {
   const biomeAt = biomeLookup(store, tiles);
   const worldBiomes = store.getMeta("world_biomes");
   if (worldBiomes) {
-    for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[] })) console.warn(`[biomes] ${p} (${biomesFile})`);
+    const kinds = [...Object.keys(game.rules.creatures.creatures), ...Object.keys(speciesRoster.roster)];
+    for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[], kinds })) console.warn(`[biomes] ${p} (${biomesFile})`);
   }
   // What grows on new chunks (see world-populator: ecology or PCG).
   const populator = makeWorldPopulator({
@@ -508,7 +528,12 @@ async function main(): Promise<void> {
     } else {
       const wild = new WildCreatures({
         registry: biomes,
-        spawner: creatures,
+        // A species the overlay edits sets its pack size where the biome table doesn't.
+        spawner: {
+          has: (k) => creatures.has(k),
+          isCreature: (e) => creatures.isCreature(e),
+          spawnPack: (sim, k, x, z, size) => creatures.spawnPack(sim, k, x, z, size ?? editedPack(speciesRoster, k)),
+        },
         seed: ecologySeed32(worldSeed),
         chunkWorldSize: CHUNK_SIZE,
         biomeAt,
@@ -523,19 +548,6 @@ async function main(): Promise<void> {
           (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
       );
     }
-  }
-  // A scene's nodes spawn through the creature and prop spawn paths (EA6).
-  if (process.env.MMO_SCENE) {
-    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
-    const r = spawnSceneOnBoot(
-      scene,
-      { sim, creatures, table: () => loadScatterContent().table, groundHeightAt: (x, z) => character.groundHeight(x, z) },
-      store,
-    );
-    console.log(
-      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
-        (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
-    );
   }
   // Stamina gating: CombatSystem spends move costs through it; the pool
   // itself drains and regens the tick after combat ran.
@@ -581,7 +593,7 @@ async function main(): Promise<void> {
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
-  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e) });
+  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, tables: game.rules.loot.tables ?? {}, kindOf: (e) => creatures.kindOf(e) });
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -591,6 +603,7 @@ async function main(): Promise<void> {
     hooks.current = g.hooks;
     creatures.setRules(g.rules.creatures.creatures, g.rules.items.bases);
     dropper.setCreatures(g.rules.creatures.creatures);
+    dropper.setTables(g.rules.loot.tables ?? {});
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
@@ -624,6 +637,45 @@ async function main(): Promise<void> {
     `[quests] ${Object.keys(questContent.quests).length} quest(s), ${Object.keys(questContent.templates).length} template(s), ` +
       `${Object.keys(questContent.npcs).length} npc(s) (${questDir})`,
   );
+  // A scene's nodes spawn through the creature, prop, item and quest paths (EA6, data-driven entities).
+  // After items and quests exist, so item and quest nodes have somewhere to go.
+  if (process.env.MMO_SCENE) {
+    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+    const r = spawnSceneOnBoot(
+      scene,
+      {
+        sim,
+        creatures,
+        table: () => loadScatterContent().table,
+        groundHeightAt: (x, z) => character.groundHeight(x, z),
+        prefabs,
+        species: (id) => speciesRoster.roster[id],
+        items: {
+          place: (base, rank, x, z) => {
+            const def = lineDef(itemDefs.defs, { base, rank }, rankOrder);
+            return def < 0 ? null : items.placeFixture(sim, def, x, z);
+          },
+          discard: (ids) => ids.forEach((i) => items.discardGround(sim, i)),
+        },
+        quests: {
+          place: (quest, x, z) => {
+            const giver = questContent.quests[quest]?.giver;
+            const npc = giver === undefined ? undefined : questContent.npcs[giver];
+            if (!npc) return `no quest "${quest}" with a giver`;
+            npc.x = x;
+            npc.z = z;
+            return null;
+          },
+        },
+      },
+      store,
+    );
+    console.log(
+      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
+        (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
+    );
+  }
   // Dungeon instances (D4): the gateway's "dungeon" extension starts a
   // sandbox gateway per run from the prebaked pool and commits its result.
   const dungeonDir = process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT;
