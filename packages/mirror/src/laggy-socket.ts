@@ -8,8 +8,6 @@
  */
 import type { SocketLike } from "./socket.js";
 
-export type { SocketLike };
-
 export class LaggySocket implements SocketLike {
   onmessage: ((data: Uint8Array) => void) | null = null;
   onclose: (() => void) | null = null;
