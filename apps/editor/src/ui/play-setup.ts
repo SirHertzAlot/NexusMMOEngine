@@ -14,11 +14,14 @@
  * - bots (sent as MMO_BOTS for the owned server);
  * - fresh/keep (world snapshot/restore: fresh backs up world.db on start;
  *   on stop the backup is restored unless keep is set);
+ * - from = "World" (default spawn) or "Camera position" (the scene
+ *   viewport camera's ground target → MMO_SPAWN_OVERRIDE; "Login" and
+ *   "Character creation" need client-side flow execution);
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - where window, from (entry node), net (edge/core switch).
+ * - where window, from Login / Character creation, net (edge/core switch).
  */
 
 export interface PlaySetup {
@@ -206,6 +209,6 @@ export function simulateLabel(setup: PlaySetup): string {
  */
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
   where: "Only the viewport and simulate are wired: a new window needs a client windowing path",
-  from: "The owned server boots the open world; starting at a flow node is not wired",
+  from: "Login and character creation need the client to run the actual UI flow instead of auto-login",
   net: "No edge/core switch on start; the owned server always runs core",
 };

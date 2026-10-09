@@ -441,7 +441,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     return true;
   }
 
-  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest }): Promise<OwnedServer> {
+  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest; spawn?: { x: number; z: number } }): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -520,6 +520,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
         MMO_DATA_DIR: dataDir,
         // The Play menu's Bots choice, when the start request carries it.
         ...(opts?.bots !== undefined ? { MMO_BOTS: String(opts.bots) } : {}),
+        // The Play menu's "Start from" spawn target, when the request carries it.
+        ...(opts?.spawn !== undefined ? { MMO_SPAWN_OVERRIDE: `${opts.spawn.x},${opts.spawn.z}` } : {}),
         ...sceneEnv,
         // The debugger's admin console (E5): the editor's own play user is
         // an admin of the server it owns, on top of any configured ones.
@@ -713,21 +715,27 @@ export function editorHost(options: EditorHostOptions): Plugin {
             const startBody = await readBody(req);
             // Start options honored today: bots → MMO_BOTS, the optional
             // {scene: {name, content?}} for playing the open scene (EA6),
-            // and fresh/keep for world snapshot/restore.
+            // fresh/keep for world snapshot/restore, and spawn {x, z} for
+            // the Play menu's "Start from" (→ MMO_SPAWN_OVERRIDE).
             // Anything else in the body is ignored (the Play menu badges
             // those dimensions "preview" instead of pretending).
             let bots: number | undefined;
             let scene: PlaySceneRequest | undefined;
             let fresh = false;
             let keep = false;
+            let spawn: { x: number; z: number } | undefined;
             try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown };
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown; spawn?: unknown };
               if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
                 bots = Math.floor(parsed.bots);
               }
               scene = parsed.scene;
               fresh = parsed.fresh === true;
               keep = parsed.keep === true;
+              const sp = parsed.spawn as { x?: unknown; z?: unknown } | undefined;
+              if (sp && typeof sp.x === "number" && typeof sp.z === "number" && Number.isFinite(sp.x) && Number.isFinite(sp.z)) {
+                spawn = { x: sp.x, z: sp.z };
+              }
             } catch {
               /* empty / non-JSON body: server defaults */
             }
@@ -741,7 +749,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
             } else {
               discardBackup(join(dataDir, "world.db"));
             }
-            const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
+            const s = await startOwned(
+              bots !== undefined || scene !== undefined || spawn !== undefined ? { bots, scene, spawn } : undefined,
+            );
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,

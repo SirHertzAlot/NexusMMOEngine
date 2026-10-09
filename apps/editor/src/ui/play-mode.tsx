@@ -22,6 +22,8 @@ import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
 import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer } from "./play-setup.js";
+import { resolveSpawnTarget } from "../flow-spawn.js";
+import { getSceneCameraPos } from "./camera-position.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -163,16 +165,24 @@ export function PlayModePanel(): React.JSX.Element {
     setDetail(undefined);
     try {
       // The Play menu's honored start options: bots → MMO_BOTS, simulate
-      // mode (world only, no player), client count (1/2/4/8), and
-      // fresh/keep (world snapshot/restore).
+      // mode (world only, no player), client count (1/2/4/8),
+      // fresh/keep (world snapshot/restore), and "Start from" (spawn target).
       const setup = loadLastSetup();
+      const spawnTarget = resolveSpawnTarget(setup.from, getSceneCameraPos());
       await controller.start({
         bots: botsCount(setup),
         noClient: !shouldConnectPlayer(setup),
         clients: clientCount(setup),
         fresh: setup.fresh,
         keep: setup.keep,
+        ...(spawnTarget.kind === "at" ? { spawn: { x: spawnTarget.x, z: spawnTarget.z } } : {}),
       });
+      if (spawnTarget.kind === "preview") {
+        // Honest: the menu badges it, but surface the reason here too.
+        setDetail(`Start from "${setup.from}" is preview: ${spawnTarget.reason}`);
+      } else if (spawnTarget.kind === "default" && "note" in spawnTarget) {
+        setDetail(spawnTarget.note);
+      }
     } catch (err) {
       // detail already carries the message via onStateChange(error)
       void err;
