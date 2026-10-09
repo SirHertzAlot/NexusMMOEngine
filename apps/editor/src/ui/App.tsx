@@ -11,7 +11,7 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, playUiStore, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
@@ -1165,7 +1165,7 @@ function Toolbar(props: {
   // The toolbar's document target: panels register while they hold an
   // open document; with none the buttons disable with a tooltip.
   const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
-  const { pmState } = playUiStore.use();
+  const { pmState, paused } = playUiStore.use();
   const stopping = pmState === "stopping";
   const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
 
@@ -1287,18 +1287,20 @@ function Toolbar(props: {
           </button>
         </div>
         <IconButton
-          label="Pause — not available: the owned server's tick loop has no pause control"
-          title="Pause — not available: the owned server's tick loop has no pause control"
+          label={pmState !== "running" ? "Pause — play mode is not running" : paused ? "Resume the server's tick loop" : "Pause the server's tick loop"}
+          title={pmState !== "running" ? "Pause — play mode is not running" : paused ? "Resume the server's tick loop" : "Pause the server's tick loop"}
           size={36}
-          disabled
+          disabled={pmState !== "running"}
+          onClick={() => void requestPlayTick(paused ? "resume" : "pause")}
         >
-          <MIcon name="pause" size={20} />
+          <MIcon name={paused ? "play_arrow" : "pause"} size={20} />
         </IconButton>
         <IconButton
-          label="Step one tick — not available: the owned server has no single-tick control"
-          title="Step one tick — not available: the owned server has no single-tick control"
+          label={paused ? "Step one tick" : "Step — pause the server first"}
+          title={paused ? "Step one tick" : "Step — pause the server first"}
           size={36}
-          disabled
+          disabled={pmState !== "running" || !paused}
+          onClick={() => void requestPlayTick("step")}
         >
           <MIcon name="skip_next" size={20} />
         </IconButton>

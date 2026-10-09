@@ -890,6 +890,9 @@ export class Gateway {
     return this.transport?.kind ?? null;
   }
 
+  /** Admin pause: the wall-clock driver skips ticks (step still runs one). */
+  private paused = false;
+
   /**
    * Begin the wall-clock tick driver (production). Tests skip this and
    * drive frame() manually with a synthetic clock instead.
@@ -897,7 +900,8 @@ export class Gateway {
   startTicking(): void {
     if (this.tickTimer) return;
     this.tickTimer = setInterval(() => {
-      this.loop.frame(this.clock());
+      if (this.paused) this.loop.rearm(this.clock());
+      else this.loop.frame(this.clock());
     }, STEP_MS / 2);
     this.tickTimer.unref();
   }
@@ -2066,7 +2070,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2154,6 +2158,17 @@ export class Gateway {
           this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "time", day }));
         }
       }
+    } else if (cmd.command === "pause" || cmd.command === "resume") {
+      this.paused = cmd.command === "pause";
+      res = { kind: "admin", command: cmd.command, ok: true, message: this.paused ? "paused" : "running" };
+    } else if (cmd.command === "step") {
+      if (this.paused) this.loop.step();
+      res = {
+        kind: "admin",
+        command: cmd.command,
+        ok: this.paused,
+        message: this.paused ? `tick ${this.loop.stats().ticks}` : "step needs a paused server",
+      };
     } else if (cmd.command === "weather") {
       const r = parseWeatherCommand(this.weatherOverride, cmd.args);
       res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };

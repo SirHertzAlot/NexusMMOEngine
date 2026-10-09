@@ -58,6 +58,8 @@ export interface PlayStartOptions {
 /** Minimal mirror-client surface the play-mode inspector needs. */
 export interface PlayClient {
   debug(query: { kind: "debug" } & Record<string, unknown>): Promise<DebugResponse>;
+  /** Admin command (0x10); the dev server makes the editor's user an admin. */
+  admin?(command: string): Promise<{ ok: boolean; message: string }>;
   disconnect(): void;
 }
 
@@ -210,6 +212,12 @@ export class PlayModeController {
       throw new Error("play-mode: not running");
     }
     return this.client.debug(query);
+  }
+
+  /** Admin command through the play client (pause, resume, step). Only while running. */
+  async admin(command: string): Promise<{ ok: boolean; message: string }> {
+    if (this.state !== "running" || !this.client?.admin) throw new Error("play-mode: not running");
+    return this.client.admin(command);
   }
 
   /** Stop the server owned by this controller, if any. Never touches others. */
