@@ -10,6 +10,14 @@
  * or return issues and write nothing (hosts validate first).
  */
 
+/** One thing wrong with the open document, for the Problems tab and the status bar. */
+export interface DocProblem {
+  severity: "error" | "warn";
+  /** Where in the document, e.g. a field path. */
+  where: string;
+  message: string;
+}
+
 export interface DocActions {
   /** Human label for tooltips, e.g. 'scene "arena-01"'. */
   label: string;
@@ -19,6 +27,8 @@ export interface DocActions {
   save: () => void;
   undo: () => void;
   redo: () => void;
+  /** What validation says about the document right now; absent when the panel does not validate. */
+  problems?: DocProblem[];
 }
 
 let current: DocActions | null = null;

@@ -215,6 +215,42 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
+/**
+ * Rolling log of the play server's output lines. Lines are numbered from the
+ * first one ever kept, so a poller asks for "everything after n" and learns
+ * when older lines were dropped.
+ */
+export class ServerLog {
+  private lines: string[] = [];
+  private first = 0;
+  private partial = "";
+
+  constructor(private readonly max = 1000) {}
+
+  reset(): void {
+    this.first += this.lines.length;
+    this.lines = [];
+    this.partial = "";
+  }
+
+  append(text: string): void {
+    const parts = (this.partial + text).split(/\r?\n/);
+    this.partial = parts.pop() ?? "";
+    for (const line of parts) if (line !== "") this.lines.push(line.slice(0, 2000));
+    if (this.lines.length > this.max) {
+      const drop = this.lines.length - this.max;
+      this.lines.splice(0, drop);
+      this.first += drop;
+    }
+  }
+
+  /** Lines numbered `from` and up (clamped to what is kept) and the number to ask for next. */
+  since(from: number): { lines: string[]; from: number; next: number } {
+    const start = Math.max(from, this.first);
+    return { lines: this.lines.slice(start - this.first), from: start, next: this.first + this.lines.length };
+  }
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -350,6 +386,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
   let dbCore: DatabaseCore | null = null;
+  // The owned server's output, kept after boot for the Output dock; it survives the
+  // server's exit (to read why) and restarts empty on the next start.
+  const serverLog = new ServerLog();
 
   /**
    * Run the engine's terrain tool (export | generate | import | map | regenerate) as its own
@@ -543,7 +582,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
-    child.on("exit", () => {
+    serverLog.reset();
+    serverLog.append(`[editor] starting the play server on port ${serverPort}\n`);
+    child.stdout?.on("data", (d: Buffer) => serverLog.append(d.toString("utf8")));
+    child.stderr?.on("data", (d: Buffer) => serverLog.append(d.toString("utf8")));
+    child.on("exit", (code) => {
+      serverLog.append(`[editor] the play server exited (code ${code})\n`);
       if (owned?.child === child) owned = null;
     });
 
@@ -739,6 +783,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
             await readBody(req);
             const stopped = await stopOwned();
             sendJson(res, 200, { ok: true, stopped });
+            return;
+          }
+          if (url.startsWith("/api/editor/server/log") && req.method === "GET") {
+            const since = Number(new URL(url, "http://localhost").searchParams.get("since") ?? "0");
+            sendJson(res, 200, { ok: true, running: owned !== null, ...serverLog.since(Number.isFinite(since) ? since : 0) });
             return;
           }
           if (url === "/api/editor/server/status" && req.method === "GET") {

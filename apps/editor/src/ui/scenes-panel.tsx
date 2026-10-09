@@ -132,6 +132,7 @@ export function ScenesPanel(): React.JSX.Element {
       canSave: hist.dirty,
       canUndo: hist.canUndo,
       canRedo: hist.canRedo,
+      problems: issues.map((i) => ({ severity: "error" as const, where: i.path || "(scene)", message: i.message })),
       save,
       undo: () => {
         hist.undo();
