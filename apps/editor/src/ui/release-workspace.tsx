@@ -142,6 +142,7 @@ export function PipelinePanel(): React.JSX.Element {
   const start = (force: boolean): void => {
     releaseApi.run(selected.name, force).then(
       (id) => {
+        setActive(true);
         ui.set((p) => ({ ...p, runId: id }));
         refresh();
       },
