@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ServerLog } from "../src/host.js";
-import { appendLines, getBakes, lineTone, pushBake, subscribeBakes } from "../src/dock-feed.js";
+import { appendLines, getBakes, lineTone, pipelineBakeLines, pushBake, subscribeBakes } from "../src/dock-feed.js";
 
 describe("ServerLog", () => {
   it("numbers lines and returns only what is after the cursor", () => {
@@ -81,5 +81,18 @@ describe("dock feed helpers", () => {
     assert.equal(getBakes().length, before + 1);
     assert.equal(getBakes().at(-1)?.source, "terrain");
     assert.equal(getBakes().at(-1)?.ok, true);
+  });
+  it("lists the bake stages of pipeline runs that reached them", () => {
+    const run = { id: "r1", profile: "default", startedAt: "2026-01-01T00:00:00Z", stages: [
+      { id: "build", status: "passed", ms: 10 },
+      { id: "bake", status: "failed", ms: 2500 },
+      { id: "bake-extra", status: "pending", ms: 0 },
+      { id: "bake-cached", status: "skipped", ms: 0 },
+    ] };
+    const lines = pipelineBakeLines([run]);
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0].ok, false);
+    assert.match(lines[0].text, /bake · failed · 2\.5 s/);
+    assert.match(lines[1].text, /inputs unchanged/);
   });
 });
