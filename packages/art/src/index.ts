@@ -13,6 +13,7 @@ export * from "./manifest.js";
 export * from "./scan.js";
 export * from "./provider.js";
 export * from "./compress-gltfpack.js";
+export * from "./transform-gltf.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
 export * from "./character/look.js";
