@@ -47,6 +47,7 @@ import {
 // engine-core imports keep working (DRY: one definition).
 import type {
   ActionRow,
+  AnimationRow,
   AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
@@ -62,6 +63,7 @@ import type {
 } from "@mmo-engine/protocol";
 export type {
   ActionRow,
+  AnimationRow,
   AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
@@ -89,6 +91,7 @@ const qLocomotion: Query = defineQuery([C.Locomotion]);
 const qAppearance: Query = defineQuery([C.Appearance]);
 const qAction: Query = defineQuery([C.Action]);
 const qCharacterRef: Query = defineQuery([C.CharacterRef]);
+const qAnimation: Query = defineQuery([C.Animation]);
 
 function readTransform(sim: SimWorld, eid: number): TransformRow {
   const T = C.Transform;
@@ -199,6 +202,11 @@ function readAction(sim: SimWorld, eid: number): ActionRow {
   return { wireId: sim.wireId(eid), move: A.move[eid], started: A.started[eid], seq: A.seq[eid], yaw: A.yaw[eid] };
 }
 
+function readAnimation(sim: SimWorld, eid: number): AnimationRow {
+  const A = C.Animation;
+  return { wireId: sim.wireId(eid), clipId: A.clipId[eid], startTick: A.startTick[eid], rate: A.rate[eid], layerMask: A.layerMask[eid] };
+}
+
 function readCharacterRef(sim: SimWorld, eid: number): CharacterRefRow {
   const R = C.CharacterRef;
   return { wireId: sim.wireId(eid), characterId: R.idHi[eid] * 4294967296 + R.idLo[eid] };
@@ -221,6 +229,7 @@ export function collectFullState(sim: SimWorld, tick: number): CollectedState {
     actions: qAction(sim.ecs).map((e) => readAction(sim, e)),
     staminas: qStamina(sim.ecs).map((e) => readStamina(sim, e)),
     characterRefs: qCharacterRef(sim.ecs).map((e) => readCharacterRef(sim, e)),
+    animations: qAnimation(sim.ecs).map((e) => readAnimation(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -249,6 +258,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
     actions: having(C.Action).map((e) => readAction(sim, e)),
     staminas: having(C.Stamina).map((e) => readStamina(sim, e)),
     characterRefs: having(C.CharacterRef).map((e) => readCharacterRef(sim, e)),
+    animations: having(C.Animation).map((e) => readAnimation(sim, e)),
     spawned: [],
     despawned: [],
   };
@@ -256,7 +266,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
 
 // ---------------------------------------------------------- delta diff
 
-type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "staminas" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs";
+type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "staminas" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs" | "animations";
 
 interface TrackedComponent {
   key: DiffKey;
@@ -331,6 +341,11 @@ const TRACKED: TrackedComponent[] = [
     stores: C.CharacterRef as unknown as Record<string, ArrayLike<number>>,
     fields: ["idHi", "idLo"],
   },
+  {
+    key: "animations", query: qAnimation,
+    stores: C.Animation as unknown as Record<string, ArrayLike<number>>,
+    fields: ["clipId", "startTick", "rate", "layerMask"],
+  },
 ];
 
 export interface DiffResult {
@@ -346,6 +361,7 @@ export interface DiffResult {
   appearances: number[];
   actions: number[];
   characterRefs: number[];
+  animations: number[];
 }
 
 /**
@@ -387,7 +403,7 @@ export class DeltaTracker {
     const out: DiffResult = {
       transforms: [], velocities: [], intents: [], chunks: [], healths: [],
       staminas: [],
-      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [],
+      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [],
     };
     for (let ti = 0; ti < TRACKED.length; ti++) {
       const t = TRACKED[ti];
@@ -465,6 +481,7 @@ export function collectDeltaState(
     actions: d.actions.map((e) => readAction(sim, e)),
     staminas: d.staminas.map((e) => readStamina(sim, e)),
     characterRefs: d.characterRefs.map((e) => readCharacterRef(sim, e)),
+    animations: d.animations.map((e) => readAnimation(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };

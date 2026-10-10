@@ -256,7 +256,7 @@ export class ChunkNavmesh {
       }
       this.settleIfIdle();
     };
-    worker.on("error", (err) => fail(`crashed: ${err.message}`));
+    worker.on("error", (err) => fail(`crashed: ${(err as Error).message}`));
     worker.on("exit", (code) => fail(`exited (code ${code})`));
     // Never keep the process alive for bakes. unref() must come AFTER the
     // listeners: attaching a "message" listener re-refs the worker.

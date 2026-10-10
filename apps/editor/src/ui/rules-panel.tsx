@@ -98,6 +98,11 @@ export function RulesPanel(): React.JSX.Element {
       canSave: tables.anyDirty,
       ...tables.history,
       save: () => void save(),
+      canRevert: tables.dirtyOf(table),
+      revert: () => tables.revert(table),
+      exportDoc: () => ({ name: `rules-${table}`, data: drafts[table] }),
+      // The host validates the whole rules set on Save and refuses a bad one, so an import only fills the draft.
+      importDoc: (incoming: unknown) => tables.edit(table, incoming),
     };
   });
 

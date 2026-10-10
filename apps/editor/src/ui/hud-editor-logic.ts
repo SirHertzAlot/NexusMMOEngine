@@ -84,3 +84,24 @@ export function moveWidget(
   if (rect.y + size.h > screen.h) cy = oy - (rect.y + size.h - screen.h) * sy;
   return { ...placement, offset: { x: Math.round(cx), y: Math.round(cy) } };
 }
+
+const ANCHORS: readonly string[] = [
+  "top-left", "top-center", "top-right", "center-left", "center", "center-right", "bottom-left", "bottom-center", "bottom-right",
+];
+
+/** Every problem with `layout` as a HUD layout (the client's HudLayout shape); empty means valid. */
+export function validateHudLayout(layout: unknown): string[] {
+  if (typeof layout !== "object" || layout === null || Array.isArray(layout)) return ["layout must be an object"];
+  const widgets = (layout as { widgets?: unknown }).widgets;
+  if (typeof widgets !== "object" || widgets === null || Array.isArray(widgets)) return ["widgets must be an object"];
+  const out: string[] = [];
+  for (const [id, w] of Object.entries(widgets)) {
+    const p = w as Partial<WidgetPlacement> | null;
+    if (typeof p !== "object" || p === null) { out.push(`widgets.${id}: must be an object`); continue; }
+    if (typeof p.anchor !== "string" || !ANCHORS.includes(p.anchor)) out.push(`widgets.${id}.anchor: must be one of ${ANCHORS.join(", ")}`);
+    const o = p.offset;
+    if (o !== undefined && (typeof o !== "object" || o === null || !Number.isFinite(o.x) || !Number.isFinite(o.y))) out.push(`widgets.${id}.offset: must be {x, y} numbers`);
+    if (p.visible !== undefined && typeof p.visible !== "boolean") out.push(`widgets.${id}.visible: must be true or false`);
+  }
+  return out;
+}

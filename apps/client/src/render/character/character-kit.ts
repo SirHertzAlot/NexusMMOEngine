@@ -15,7 +15,7 @@
  */
 
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { createGltfLoader } from "../gltf-loader.js";
 import { effectiveColours, resolveLook, type CharacterLook, type RiggedCatalog, type Slot } from "@mmo-engine/art/browser";
 import { CharacterMaterial, type CharacterTextures } from "./character-material.js";
 import { applyToon, type ToonOptions } from "../toon/toon-material.js";
@@ -72,7 +72,7 @@ export const DEFAULT_CHARACTER_STYLE: CharacterStyle = {
 
 export class CharacterKit {
   private readonly parts = new Map<string, Promise<PartTemplate>>();
-  private readonly loader: GLTFLoader;
+  private readonly loader: ReturnType<typeof createGltfLoader>;
   /** Shared by every character's outlines (null: no outlines). */
   readonly outlineMaterial: OutlineMaterial | null;
 
@@ -85,7 +85,7 @@ export class CharacterKit {
   ) {
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((url) => (/\.(png|jpe?g|webp)$/i.test(url) ? BLANK_PNG : url));
-    this.loader = new GLTFLoader(manager);
+    this.loader = createGltfLoader(manager);
     this.outlineMaterial = style.outline ? new OutlineMaterial({ map: textures.base, ...style.outline }) : null;
   }
 
@@ -93,7 +93,7 @@ export class CharacterKit {
     const res = await fetch(`${baseUrl}catalog.json`);
     if (!res.ok) throw new Error(`character kit: ${baseUrl}catalog.json (${res.status}) — run npm run convert:modular -w @mmo-engine/art`);
     const catalog = (await res.json()) as RiggedCatalog;
-    const rig = asBones((await new GLTFLoader().loadAsync(`${baseUrl}${catalog.rig}`)).scene);
+    const rig = asBones((await createGltfLoader().loadAsync(`${baseUrl}${catalog.rig}`)).scene);
     const textureLoader = new THREE.TextureLoader();
     const load = async (rel: string, colour: boolean): Promise<THREE.Texture> => {
       const t = await textureLoader.loadAsync(new URL(rel, new URL(baseUrl, location.href)).href);

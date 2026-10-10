@@ -19,6 +19,7 @@
 
 import type {
   ActionRow,
+  AnimationRow,
   AppearanceRow,
   AssetRefRow,
   BodyConfigRow,
@@ -42,6 +43,7 @@ export interface EntityState {
   locomotion?: LocomotionRow;
   appearance?: AppearanceRow;
   action?: ActionRow;
+  animation?: AnimationRow;
 }
 
 export type WorldState = Map<bigint, EntityState>;
@@ -50,7 +52,7 @@ function upsert(
   state: WorldState,
   wid: bigint,
   key: keyof EntityState,
-  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow | AppearanceRow | ActionRow,
+  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow | AppearanceRow | ActionRow | AnimationRow,
 ): void {
   let e = state.get(wid);
   if (!e) {
@@ -83,6 +85,7 @@ export function applyDelta(state: WorldState, delta: CollectedState): WorldState
   for (const r of delta.locomotions) upsert(state, r.wireId, "locomotion", r);
   for (const r of delta.appearances) upsert(state, r.wireId, "appearance", r);
   for (const r of delta.actions) upsert(state, r.wireId, "action", r);
+  for (const r of delta.animations) upsert(state, r.wireId, "animation", r);
   return state;
 }
 
@@ -94,6 +97,7 @@ const FLOAT_FIELDS: Record<string, string[]> = {
   body: ["halfX", "halfY", "halfZ", "radius", "mass", "friction", "restitution"],
   locomotion: ["breath"],
   action: ["yaw"],
+  animation: ["rate"],
 };
 
 const EXACT_FIELDS: Record<string, string[]> = {
@@ -104,6 +108,7 @@ const EXACT_FIELDS: Record<string, string[]> = {
   locomotion: ["mode", "abilities"],
   appearance: ["look"],
   action: ["move", "started", "seq"],
+  animation: ["clipId", "startTick", "layerMask"],
 };
 
 function rowsEqual(

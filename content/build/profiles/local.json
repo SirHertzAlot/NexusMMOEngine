@@ -1,0 +1,26 @@
+{
+  "name": "local",
+  "description": "The server, edge, dungeon, compose and client built, baked and packaged for this machine",
+  "stages": [
+    {
+      "id": "build",
+      "command": "npm run build --workspace=@mmo-engine/engine-core && npm run build --workspace=@mmo-engine/edge && npm run build --workspace=@mmo-engine/dungeon && npm run build --workspace=@mmo-engine/compose && npm run build --workspace=@mmo-engine/client",
+      "inputs": ["packages/engine-core/src", "apps/edge/src", "apps/client/src", "package.json"]
+    },
+    {
+      "id": "bake",
+      "command": "npm run bake:world && npm run dungeon:bake && npm run loot:bake",
+      "inputs": ["content/rules", "content/species"]
+    },
+    {
+      "id": "test",
+      "command": "npm test --workspace=@mmo-engine/scene",
+      "inputs": ["packages/scene"]
+    },
+    {
+      "id": "package",
+      "command": "npm run package",
+      "inputs": ["package.json", "scripts/package.mjs"]
+    }
+  ]
+}

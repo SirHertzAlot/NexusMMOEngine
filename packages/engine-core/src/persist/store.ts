@@ -404,7 +404,7 @@ export class SnapshotStore {
       // checkpointing back to SQLite (its default threshold).
       if (this.db.open) this.db.pragma("wal_autocheckpoint = 1000");
     };
-    worker.on("error", (err) => fail(`crashed: ${err.message}`));
+    worker.on("error", (err) => fail(`crashed: ${(err as Error).message}`));
     worker.on("exit", (code) => fail(`exited (code ${code})`));
     // Never keep the process alive just for checkpoints. unref() must come
     // AFTER the listeners: attaching a "message" listener re-refs the

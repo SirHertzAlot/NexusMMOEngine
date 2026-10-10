@@ -1,18 +1,18 @@
 {
   "dependencies": {
     "@mmo-engine/art": "0.1.0",
+    "@mmo-engine/build": "0.1.0",
     "@mmo-engine/dungeon": "0.1.0",
+    "@mmo-engine/mirror": "0.1.0",
+    "@mmo-engine/modules": "0.1.0",
+    "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/rules": "0.1.0",
-    "@mmo-engine/modules": "0.1.0",
     "@mmo-engine/scene": "0.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.1",
-    "zod": "^4.6.5",
-    "@mmo-engine/mirror": "0.1.0",
-    "@mmo-engine/picg": "0.1.0",
-    "@mmo-engine/build": "0.1.0"
+    "zod": "^4.6.5"
   },
   "description": "Rogue Engine Editor customization: dockable ECS inspector, local-server play mode, and art asset pipeline — one shell, three inspectors",
   "devDependencies": {
@@ -21,11 +21,12 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.6.3",
-    "vite": "^6.0.3",
-    "tailwindcss": "^3.4.16",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49"
+    "lil-gui": "^0.21.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3"
   },
   "name": "@mmo-engine/editor",
   "private": true,

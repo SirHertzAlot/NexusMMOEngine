@@ -20,9 +20,10 @@
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
- * Preview-only (badged "preview" in the menu, never pretended):
- * - from Login / Character creation (need client-side flow execution);
- * - net = "Edge + core" (the edge process is not started; plays as core).
+ * - from = a flow node ("Login", "character-select", ...): the clients open in
+ *   the player's client at that node (planLaunch, ui/play-launch.ts);
+ * - net = "Edge + core": the host starts the edge beside the core and waits
+ *   for its health.
  */
 
 import { latencyMs } from "@mmo-engine/mirror";
@@ -30,7 +31,9 @@ import { z } from "zod";
 import { normalizeShortcut, validateShortcut } from "./play-shortcuts.js";
 
 export const PLAY_WHERE = ["viewport", "window", "simulate"] as const;
+/** The start choices before the flow document is read; the menu lists the flow's own nodes. */
 export const PLAY_FROM = ["Login", "Character creation", "World", "Camera position"] as const;
+export const CAMERA_FROM = "Camera position";
 export const PLAY_NET = ["Core only", "Edge + core"] as const;
 export const PLAY_LATENCY = ["0", "80 ms", "200 ms"] as const;
 export const MAX_PLAY_CLIENTS = 8;
@@ -45,7 +48,8 @@ const intIn = (min: number, max: number) =>
 /** The one definition of a play setup: every field's allowed values. */
 export const playSetupSchema = z.object({
   where: z.enum(PLAY_WHERE),
-  from: z.enum(PLAY_FROM),
+  /** "World", "Camera position" or a flow node id / title (see fromNodeId). */
+  from: z.string().min(1).max(40),
   clients: intIn(1, MAX_PLAY_CLIENTS),
   bots: intIn(0, MAX_PLAY_BOTS),
   net: z.enum(PLAY_NET),
@@ -243,19 +247,28 @@ export function simulateLabel(setup: PlaySetup): string {
   return setup.where === "simulate" ? "Simulate — world only, no player" : setupSummary(setup);
 }
 
-/**
- * Dimensions the start path cannot honor yet (menu badges + leftover
- * report). Keys are setup fields; values explain why.
- */
-export const PLAY_PREVIEW_NOTES: Record<string, string> = {
-  from: "Login and Character creation need client-side flow execution; the owned server boots the open world",
-  net: "The edge process is not started with the owned server: Edge + core plays as core only",
-};
+/** Whether the run starts the edge beside the core ("Edge + core"). */
+export const useEdge = (setup: PlaySetup): boolean => setup.net === "Edge + core";
 
-/**
- * What the network option does on start. The owned server is the core and
- * the edge process is not started with it, so "Edge + core" runs as core.
- */
-export function netPlan(setup: PlaySetup): { runs: "core"; honored: boolean; note?: string } {
-  return setup.net === "Edge + core" ? { runs: "core", honored: false, note: PLAY_PREVIEW_NOTES.net } : { runs: "core", honored: true };
+/** The flow node id a "Start node" choice names ("Character creation" is "character-creation"; the camera starts in the world). */
+export function fromNodeId(from: string): string {
+  return from === CAMERA_FROM ? "world" : from.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+/** The saved setups as the repo document `content/play/setups.json` (play-host.ts validates it). */
+export function setupsToDoc(all: SavedPlaySetup[]): { version: 1; setups: Array<{ name: string; shortcut?: string; setup: PlaySetup }> } {
+  return { version: 1, setups: all.map((s) => ({ name: s.name, ...(s.shortcut ? { shortcut: s.shortcut } : {}), setup: s.setup })) };
+}
+
+/** Read the repo document back; entries that fail today's rules are dropped, never run. */
+export function setupsFromDoc(doc: unknown): SavedPlaySetup[] {
+  const list = (doc as { setups?: unknown } | null)?.setups;
+  if (!Array.isArray(list)) return [];
+  const out: SavedPlaySetup[] = [];
+  for (const e of list as Array<{ name?: unknown; shortcut?: unknown; setup?: unknown }>) {
+    if (typeof e?.name !== "string" || e.name.trim() === "" || out.some((o) => o.name === e.name)) continue;
+    const norm = typeof e.shortcut === "string" ? normalizeShortcut(e.shortcut) : null;
+    out.push({ name: e.name, setup: normalizePlaySetup(e.setup), shortcut: norm !== null && validateShortcut(norm, out) === null ? norm : null });
+  }
+  return out;
 }

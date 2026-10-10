@@ -53,7 +53,7 @@ import { installBvh } from "./bvh.js";
 import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
 import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
-import { ParticleFx, WEATHER_RULES } from "./fx/particle-fx.js";
+import { ParticleFx, WEATHER_RULES, budgetMultiplierForTier } from "./fx/particle-fx.js";
 import { biomeAt, weatherAt } from "./fx/weather.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
@@ -111,6 +111,8 @@ export interface WorldCanvasProps {
   /** performance.now() of the last snapshot or delta (interpolation alpha). */
   lastStateAt: () => number;
   wireframe: boolean;
+  /** Keep the last frame readable so a screenshot of the canvas is not blank (set at creation; costs a little fill rate). */
+  captureFrames?: boolean;
   showcase: boolean;
   /** Remappable keyboard bindings (input.ts reads them live). */
   bindings: Bindings;
@@ -207,7 +209,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       // Plain three.js colour output (no tone mapping), as before R3F.
       flat
       dpr={dpr}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: props.captureFrames === true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
       onCreated={({ gl }) => {
         const gpu = detectGpu(gl);
@@ -434,7 +436,7 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances };
-    particles.setBudget(latest.current.settings.particles);
+    particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
@@ -474,7 +476,7 @@ function MirrorWorld({
   }, [client, assets, pcg, scene, camera, gl]);
 
   useEffect(() => {
-    rt.current?.particles.setBudget(settings.particles);
+    rt.current?.particles.setBudget(budgetMultiplierForTier(settings.tier));
     rt.current?.layer.setQuality(settings);
   }, [settings]);
 
