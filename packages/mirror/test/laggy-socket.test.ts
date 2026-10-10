@@ -5,7 +5,8 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { LaggySocket, type SocketLike } from "../src/laggy-socket.js";
+import { LaggySocket } from "../src/laggy-socket.js";
+import type { SocketLike } from "../src/socket.js";
 
 function fakeSocket(): SocketLike & { sent: Uint8Array[] } {
   const s = {

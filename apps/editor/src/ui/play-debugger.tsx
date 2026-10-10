@@ -60,6 +60,8 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [wireframe, setWireframe] = React.useState(false);
   const [showcase, setShowcase] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
+  // Camera view: third-person follow or first-person (V toggles in the view too).
+  const [view, setView] = React.useState<"third" | "first">("third");
   const [quality, setQuality] = React.useState<"auto" | QualityTier>("auto");
   const [activeQuality, setActiveQuality] = React.useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   // The panels mount once the view's frame exists, so their first layout fits it.
@@ -200,6 +202,15 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
               size="sm"
               className="h-7 px-2 text-xs"
               variant="outline"
+              title="Toggle first-person view (V)"
+              onClick={() => setView((v) => (v === "third" ? "first" : "third"))}
+            >
+              {view === "third" ? "first person" : "third person"}
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant="outline"
               disabled={!frame || poppedRef.current?.isOpen}
               title={poppedRef.current?.isOpen ? "The view is already in a new window" : "Pop the game view out into a new window"}
               onClick={() => {
@@ -267,6 +278,8 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       onQuality={onQuality}
       combat={combat}
       containerRef={setFrame}
+      view={view}
+      onViewChange={setView}
     >
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>
