@@ -228,6 +228,63 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
+/**
+ * Rolling log of the play server's output lines. Lines are numbered from the
+ * first one ever kept, so a poller asks for "everything after n" and learns
+ * when older lines were dropped. stdout and stderr keep their own partial
+ * line, so chunks from the two streams never splice into one line.
+ */
+export class ServerLog {
+  private lines: string[] = [];
+  private first = 0;
+  private partial = new Map<string, string>();
+  private epoch = 0;
+
+  constructor(private readonly max = 1000) {}
+
+  /** Start a new run; returns its epoch, so a previous run's late output can be ignored. */
+  reset(): number {
+    this.first += this.lines.length;
+    this.lines = [];
+    this.partial.clear();
+    return ++this.epoch;
+  }
+
+  /** Whether `epoch` is the current run. */
+  current(epoch: number): boolean {
+    return epoch === this.epoch;
+  }
+
+  append(text: string, stream = "out"): void {
+    const parts = ((this.partial.get(stream) ?? "") + text).split(/\r?\n/);
+    // A line with no newline yet stays pending, capped like a kept line.
+    this.partial.set(stream, (parts.pop() ?? "").slice(-2000));
+    for (const line of parts) this.push(line);
+  }
+
+  /** Keep every stream's unfinished last line (the process exited without a newline). */
+  flush(): void {
+    for (const rest of this.partial.values()) this.push(rest);
+    this.partial.clear();
+  }
+
+  private push(line: string): void {
+    if (line === "") return;
+    this.lines.push(line.slice(0, 2000));
+    if (this.lines.length > this.max) {
+      const drop = this.lines.length - this.max;
+      this.lines.splice(0, drop);
+      this.first += drop;
+    }
+  }
+
+  /** Lines numbered `from` and up (clamped to what is kept) and the number to ask for next. */
+  since(from: number): { lines: string[]; from: number; next: number } {
+    const start = Math.max(from, this.first);
+    return { lines: this.lines.slice(start - this.first), from: start, next: this.first + this.lines.length };
+  }
+}
+
 /** One read per request: a second call gets the same body instead of waiting on a stream that already ended. */
 const bodies = new WeakMap<IncomingMessage, Promise<string>>();
 
@@ -386,6 +443,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
   let snapshotActive = false;
   let snapshotKeep = false;
   let dbCore: DatabaseCore | null = null;
+  // The owned server's output, kept after boot for the Output dock; it survives the
+  // server's exit (to read why) and restarts empty on the next start.
+  const serverLog = new ServerLog();
 
   // EA19 build pipeline: profiles, background runs, local deploy.
   const buildHost = createBuildHost({
@@ -591,7 +651,21 @@ export function editorHost(options: EditorHostOptions): Plugin {
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
-    child.on("exit", () => {
+    // A server stopped just before this start may still print and exit;
+    // its epoch is stale by then, so none of that lands in the new run's log.
+    const logEpoch = serverLog.reset();
+    serverLog.append(`[editor] starting the play server on port ${serverPort}\n`, "editor");
+    child.stdout?.on("data", (d: Buffer) => {
+      if (serverLog.current(logEpoch)) serverLog.append(d.toString("utf8"), "stdout");
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      if (serverLog.current(logEpoch)) serverLog.append(d.toString("utf8"), "stderr");
+    });
+    child.on("exit", (code, signal) => {
+      if (serverLog.current(logEpoch)) {
+        serverLog.flush();
+        serverLog.append(`[editor] the play server exited (${code !== null ? `code ${code}` : `signal ${signal}`})\n`, "editor");
+      }
       if (owned?.child === child) owned = null;
     });
 
@@ -823,6 +897,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
               snapshotKeep = false;
             }
             sendJson(res, 200, { ok: true, stopped });
+            return;
+          }
+          if (url.startsWith("/api/editor/server/log") && req.method === "GET") {
+            const since = Number(new URL(url, "http://localhost").searchParams.get("since") ?? "0");
+            sendJson(res, 200, { ok: true, running: owned !== null, ...serverLog.since(Number.isFinite(since) ? since : 0) });
             return;
           }
           if (url === "/api/editor/server/status" && req.method === "GET") {

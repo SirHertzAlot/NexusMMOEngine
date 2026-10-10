@@ -33,6 +33,7 @@ import { getViewportActions, subscribeViewportActions } from "./viewport-actions
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { TOOLBAR_GROUPS, isShown, loadToolbar, saveToolbar, toggleGroup, DEFAULT_TOOLBAR, type ToolbarConfig } from "../toolbar-config.js";
+import { BakesPane, OutputPane, ProblemsPane, useDocProblems, useServerOutput, type ServerOutput } from "./dock-panes.js";
 import { requestNewScene } from "../open-scene.js";
 import {
   deleteNamedSetup,
@@ -269,6 +270,8 @@ export function App(): React.JSX.Element {
   // Play tint + read-only Details (§3.4/§3.5): entering play swaps what
   // panels show, never where they are.
   const { pmState } = playUiStore.use();
+  const output = useServerOutput();
+  const problems = useDocProblems();
   const playing = pmState === "running" || pmState === "starting";
 
   // Dock layout: visibility + sizes persist locally; named layouts snapshot all of it.
@@ -719,7 +722,7 @@ export function App(): React.JSX.Element {
             <DockPanel
               tabs={[
                 { id: "output", label: "Output", icon: "terminal" },
-                { id: "problems", label: "Problems · 2", icon: "error" },
+                { id: "problems", label: problems.problems.length > 0 ? `Problems · ${problems.problems.length}` : "Problems", icon: "error" },
                 { id: "bakes", label: "Bakes", icon: "history" },
               ]}
               active={bottomTab}
@@ -729,14 +732,14 @@ export function App(): React.JSX.Element {
                   label="Bottom dock options"
                   size={36}
                   items={[
-                    { label: "Clear output", run: () => notify("Output is pinned to the owned server's log in this build") },
+                    { label: "Clear output", run: output.clear },
                     { label: "Pop panel into a window", stagedFor: "EA · layout" },
                     { label: "Hide bottom dock", run: () => toggleDock("bottom") },
                   ]}
                 />
               }
             >
-              <BottomPane tab={bottomTab} />
+              <BottomPane tab={bottomTab} output={output} problems={problems} />
             </DockPanel>
           </div>
         </div>
@@ -793,7 +796,7 @@ export function App(): React.JSX.Element {
         </div>
       </div>
 
-      <StatusBar />
+      <StatusBar problems={problems.problems.length} />
       <SnackbarHost />
     </div>
   );
@@ -2639,35 +2642,15 @@ function ComparePane(): React.JSX.Element {
 
 // ---------------------------------------------------------------- bottom dock
 
-function BottomPane({ tab }: { tab: string }): React.JSX.Element {
-  if (tab === "problems") {
-    return (
-      <ul className="font-mono text-xs leading-relaxed">
-        <li><span style={{ color: "var(--m3-error)" }}>error</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>creatures.json · ogre.health</span> must be ≥ 1</li>
-        <li><span style={{ color: "var(--m3-tertiary)" }}>warn</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>creatures.json · wolf.pack</span> widened 3–5 → 3–6, check spawn budget</li>
-      </ul>
-    );
-  }
-  if (tab === "bakes") {
-    return (
-      <ul className="font-mono text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        <li>region 0,0 · 1,024 chunks · 3.2 s</li>
-        <li>nav 212 tiles rebuilt from tile cache</li>
-      </ul>
-    );
-  }
-  return (
-    <ul className="font-mono text-xs leading-relaxed">
-      <li><span style={{ color: "var(--m3-success)" }}>[world]</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>region 0,0 baked · 1,024 chunks · 3.2 s</span></li>
-      <li><span style={{ color: "var(--m3-primary)" }}>[nav]</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>212 tiles rebuilt from tile cache</span></li>
-      <li><span style={{ color: "var(--m3-tertiary)" }}>[ecology]</span> <span style={{ color: "var(--m3-on-surface-variant)" }}>wilds: 18,431 props placed</span></li>
-    </ul>
-  );
+function BottomPane({ tab, output, problems }: { tab: string; output: ServerOutput; problems: ReturnType<typeof useDocProblems> }): React.JSX.Element {
+  if (tab === "problems") return <ProblemsPane label={problems.label} problems={problems.problems} />;
+  if (tab === "bakes") return <BakesPane />;
+  return <OutputPane output={output} />;
 }
 
 // ---------------------------------------------------------------- status bar
 
-function StatusBar(): React.JSX.Element {
+function StatusBar({ problems }: { problems: number }): React.JSX.Element {
   return (
     <footer
       className="flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
@@ -2676,7 +2659,7 @@ function StatusBar(): React.JSX.Element {
       <span className="hidden sm:inline">Server stays authoritative — the editor inspects live state, never a running simulation.</span>
       <span className="sm:hidden">Authoritative server · read-only inspect</span>
       <span className="ml-auto font-mono">docs/EDITOR.md</span>
-      <span className="font-mono">2 problems</span>
+      <span className="font-mono">{problems === 0 ? "no problems" : `${problems} problem${problems === 1 ? "" : "s"}`}</span>
     </footer>
   );
 }
