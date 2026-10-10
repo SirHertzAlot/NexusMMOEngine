@@ -15,6 +15,7 @@
  * way the server cooks (pcg-host.ts validatePcgDocument).
  */
 
+import { verticalCurve } from "../graph-view.js";
 import { canonicalGuid, cloneGraph, StructuralNode, type PcgEdge, type PcgNode, type PcgParameter } from "@mmo-engine/picg";
 
 /** A graph level: a document's root, or an embedded subgraph definition. */
@@ -407,7 +408,4 @@ export function parseFieldValue(editor: PropertyView["editor"], text: string): u
 }
 
 /** For the canvas: a cubic edge from an output pin (a node's bottom) down to an input pin (a node's top); PICG graphs flow downwards. */
-export function edgePath(x1: number, y1: number, x2: number, y2: number): string {
-  const dy = Math.max(30, Math.abs(y2 - y1) / 2);
-  return `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
-}
+export const edgePath = verticalCurve;
