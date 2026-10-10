@@ -25,6 +25,7 @@ import { ScenesPanel } from "./scenes-panel.js";
 import { FlowEditor } from "./flow-editor.js";
 import { StringsPanel } from "./strings-panel.js";
 import { AudioPanel } from "./audio-panel.js";
+import { AnimationPanel } from "./animation-panel.js";
 import { ParticlePanel } from "./particle-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
@@ -55,7 +56,6 @@ import { SelectableList } from "./selectable-list.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
-  AnimPreview,
   ArtAudioTree,
   HudPreview,
   LiveOpsDetails,
@@ -201,7 +201,7 @@ const WORKSPACES: Workspace[] = [
     id: "artaudio", label: "Art & audio", icon: "movie",
     views: [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
-      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimPreview /> },
+      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
       { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <ParticlePanel /> },
       { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPanel /> },
     ],

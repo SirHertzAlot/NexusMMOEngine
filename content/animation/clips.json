@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "clips": [
+    {
+      "id": 1,
+      "name": "idle",
+      "clip": "Idle_Loop",
+      "loop": true,
+      "fade": 0.2
+    },
+    {
+      "id": 2,
+      "name": "walk",
+      "clip": "Walk_Loop",
+      "loop": true,
+      "fade": 0.2
+    },
+    {
+      "id": 3,
+      "name": "jog",
+      "clip": "Jog_Fwd_Loop",
+      "loop": true,
+      "fade": 0.2
+    },
+    {
+      "id": 4,
+      "name": "sprint",
+      "clip": "Sprint_Loop",
+      "loop": true,
+      "fade": 0.2
+    },
+    {
+      "id": 5,
+      "name": "swim",
+      "clip": "Swim_Fwd_Loop",
+      "loop": true,
+      "fade": 0.2
+    },
+    {
+      "id": 6,
+      "name": "airborne",
+      "clip": "Jump_Loop",
+      "loop": true,
+      "fade": 0.15
+    },
+    {
+      "id": 10,
+      "name": "attack sword A",
+      "clip": "Sword_Regular_A",
+      "loop": false,
+      "fade": 0.08
+    },
+    {
+      "id": 11,
+      "name": "attack sword B",
+      "clip": "Sword_Regular_B",
+      "loop": false,
+      "fade": 0.08
+    },
+    {
+      "id": 12,
+      "name": "attack sword C",
+      "clip": "Sword_Regular_C",
+      "loop": false,
+      "fade": 0.08
+    },
+    {
+      "id": 13,
+      "name": "block",
+      "clip": "Idle_Shield_Loop",
+      "loop": true,
+      "fade": 0.12
+    },
+    {
+      "id": 14,
+      "name": "hit",
+      "clip": "Hit_Reaction",
+      "loop": false,
+      "fade": 0.05
+    },
+    {
+      "id": 15,
+      "name": "cast",
+      "clip": "Cast_Spell",
+      "loop": false,
+      "fade": 0.1
+    }
+  ]
+}

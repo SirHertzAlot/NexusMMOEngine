@@ -46,6 +46,7 @@ import type { WorkerRequester } from "../workers/pool.js";
 import { PcgMeshes } from "./pcg-meshes.js";
 import { ChainedPropModels, SyntyProps, fnv1a32 } from "./synty-props.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
+import { DEFAULT_CLIP_MAP, indexClipMap, parseClipMap, planClip } from "@mmo-engine/art/browser";
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
@@ -92,6 +93,9 @@ const PLATE_TEXT_HEIGHT = 0.4;
 const EMPTY_NAMES: ReadonlyMap<bigint, string> = new Map();
 
 /** The server clock: combat moves play from their start tick. */
+/** The clip map the editor's Animation panel saves (EA21), served to the dev client. */
+const CLIP_MAP_URL = "/content/animation/clips.json";
+
 export interface ServerClock {
   tick: number;
   tickHz: number;
@@ -129,6 +133,8 @@ export class EntityLayer {
   private kit: CharacterKit | null = null;
   /** The characters' clips; null until loaded (or when none are served). */
   private animations: AnimationLibrary | null = null;
+  /** Which library clip each server clip id plays (EA21); content/animation/clips.json over the shipped default. */
+  private clipMap = indexClipMap(DEFAULT_CLIP_MAP);
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
   private readonly fx: EntityFxSystem;
@@ -179,6 +185,12 @@ export class EntityLayer {
         if (!this.disposed) this.animations = lib;
       })
       .catch((e: unknown) => console.info(`[world] characters stay unanimated: ${e instanceof Error ? e.message : e}`));
+    fetch(CLIP_MAP_URL)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (json && !this.disposed) this.clipMap = indexClipMap(parseClipMap(json));
+      })
+      .catch((e: unknown) => console.info(`[world] default clip map: ${e instanceof Error ? e.message : e}`));
   }
 
   /** Scenery counts (dev tools, probes, the HUD). */
@@ -387,12 +399,19 @@ export class EntityLayer {
         if (!tracked.animator && this.animations) {
           tracked.animator = new CharacterAnimator(tracked.character.root, this.animations, { female: tracked.female });
         }
-        if (tracked.animator) playAction(tracked, e.action, clock);
-        tracked.animator?.update(dt, {
-          speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
-          vy: e.velocity?.ly ?? 0,
-          mode: e.locomotion?.mode ?? 0,
-        });
+        // The server's clip (EA21) when it sends one; otherwise the move and the motion decide.
+        const plan = planClip(e.animation, this.clipMap, clock.tick, clock.tickHz);
+        const planActs = plan !== null && (plan.layers.upper || !plan.loop);
+        if (tracked.animator && !planActs) playAction(tracked, e.action, clock);
+        tracked.animator?.update(
+          dt,
+          {
+            speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
+            vy: e.velocity?.ly ?? 0,
+            mode: e.locomotion?.mode ?? 0,
+          },
+          plan,
+        );
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
         tracked.object.scale.set(t.sx, t.sy, t.sz);
