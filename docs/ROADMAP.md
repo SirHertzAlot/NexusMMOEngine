@@ -22,9 +22,8 @@ PR).
 
 ## At a glance (2026-10-10)
 
-**109 items built, 24 in progress, 31 planned, 1 next up** (counted
-from the tables below; the tooling and asset performance section, 1e,
-added 15 of the planned). The game is playable end to end: `npm start`
+**108 items built, 25 in progress, 28 planned, 1 next up** (counted
+from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
 contests, injuries, bleeding, dismemberment, Medicine, disciplines, mana
@@ -140,7 +139,7 @@ loadable modules, a database editor and production tools.
 | EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
 | EA19 | Build and deploy | 🚧 | Backend merged (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. Pipeline view merged (PR #188): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Open: staging target (blocked on the container-platform decision) |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
-| EA21 | Animation | 🚧 | Foundation merged (#194): `Animation` component (`clipId`, `startTick`, `rate`, `layerMask`), `AnimationSystem` (combat moves to attack/block clips, locomotion from velocity), `ClipId` registry in the protocol. Open: the client reading the component, retargeting, foot IK, the editor panel. The client-side blending layer is the animouse spike ([§1e](#1e-tooling-and-asset-performance), TS1) |
+| EA21 | Animation | 🚧 | Foundation merged (#194): `Animation` component, `AnimationSystem`, `ClipId` registry. Client and editor merged (#214): the component is replicated to the client, the clip map and playback logic live in `packages/art`, the client animator plays the server's clip with crossfades and an upper-body layer, and the editor Animation panel edits the clip map through host routes. Open: retargeting, foot IK, the client-side blending layer from the animouse spike ([§1e](#1e-tooling-and-asset-performance), TS1) |
 | EA22 | VFX and materials | 🚧 | Materials foundation merged (#196): zod-validated toon and surface definitions in `packages/art` with samples in `content/materials/`. Particle tier budgets: `content/vfx/budgets.json` (zod-validated, monotonic across tiers), client respects the active tier's budget via `budgetMultiplierForTier`. NixieFX spike TS2: FAIL — runtime is MIT but the editor is hosted-only proprietary ("free to use", no license); not vendored or adopted as toolchain. Agnostic VFX format (#218): `VfxEffect`/`VfxEmitter`/`VfxSpawnShape`/`VfxForce`/`VfxCurve` zod schemas in `packages/art`, `vfxToQuarks()` converter for the client. Particle editor port: three.quarks-editor (MIT) bezier curve editor + property panels ported to the editor's Art & audio → VFX workspace; effects author/save as agnostic `VfxEffect` JSON in `content/vfx/effects/` (validated by `parseVfxEffect()` on the host), preview via `vfxToQuarks()`, tier budget warnings per active tier. |
 | EA23 | HUD layout editor | 🚧 | Foundation merged (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Drag editor merged (PR #193): move widgets on a 16:9 canvas, anchors, visibility, overlap warnings, save. Open: widget catalog, self-positioning widget migration |
 | EA24 | Audio | 🚧 | #213: event engine, game hooks (combat, surfaces, weather, scenes), and editor Audio panel. Open: footstep time events from the animouse spike (TS1), full mixer tuning |
@@ -176,8 +175,8 @@ Permissive licenses only.
 
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
-| TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | ⏭️ | Gate: versions recorded, baselines checked in, KTX2 trial green on Windows |
-| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | 📋 | Zero behavior change; existing tests green |
+| TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | 🚧 | #216: versions pinned in `packages/art/README.md`, three generated baseline GLBs and a manifest checked in. Open: the KTX2 trial on Windows (verified on Linux only), load-time and screenshot-hash baselines |
+| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | ⏭️ | Zero behavior change; existing tests green |
 | TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | 📋 | Binary path is config; geometry only |
 | TL1c | gltf-transform: `prune` + `dedup`, per-slot textures (baseColor WebP; normal, occlusion, metallicRoughness UASTC KTX2), per-tier resize caps | 📋 | Manifest gains `textureCompression`, `textureBytes`, `cleanupRemoved`; full ETC1S KTX2 follows the KTX2 eval gate |
 | TL1d | Golden test: raw, then gltfpack, then gltf-transform, then client render | 📋 | Gate: at least 40% fewer bytes (or a written reason per asset), zero visual delta, both decoders live |
@@ -192,7 +191,7 @@ write the reason and park it):
 | # | Spike | Status | Pass bar |
 | --- | --- | --- | --- |
 | TS1 | animouse: state machine and blend trees over `AnimationMixer`; time events for footsteps and hit frames | 📋 | Pop-free blends, events within ±1 frame, under 0.1 ms per character per frame; client side only (the server still sends `(clipId, startTick, rate, layerMask)`) |
-| TS2 | NixieFX visual VFX editor and runtime | 📋 | Editor license permissive, runtime CPU within 10% of hand-coded, authoring at least 2× faster |
+| TS2 | NixieFX visual VFX editor and runtime | ✅ | Verdict FAIL, parked (#217): the runtime is MIT but the editor is hosted-only and proprietary, so it can't be vendored. Pass bar was: editor license permissive, runtime CPU within 10% of hand-coded, authoring at least 2× faster. We built the agnostic format and editor instead (EA22) |
 | TS3 | EZ-Tree procedural trees into the impostor baker | 📋 | Distinct species at impostor distance; same seed gives byte-identical output |
 | TS4 | InstancedMesh2 BVH-culled scattering (50k trees) | 📋 | Single-digit draw calls, 60 fps on target hardware |
 | TS5 | GLB Delivery Desk batch QA | 📋 | Adopt missing checks as validators unless it covers over 50% of ours |
@@ -366,6 +365,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-10 (night)**: Merged #209 to #219 (and #214 to #216): editor DRY audit finished (`useTableDrafts`, #210), EA25 localization (#211), EA14 play menu (#212), EA24 audio engine and panel (#213), EA21 client animation and panel (#214), TL0 versions pinned and baselines (#216), EA22 particle budgets (#217), agnostic VFX format (#218) and the particle editor port (#219; NixieFX spike TS2 failed its license gate). #218's schema test moved to `node:test` (vitest isn't in the repo and broke the art build). Remaining on EA21 and TL0 listed in their rows.
 - **2026-10-10**: Roadmap caught up and extended. Merged since the last update: customizable toolbar (#185), Details shows unsaved Gameplay edits (#177), review fixes on the play stack (#198), the EA19 build and deploy pipeline (#187, #188), EA21, EA22, EA24 and EA25 foundations (#194, #196, #197, #195), the EA23 HUD drag editor (#190, #193), EA26 playtests and their pipeline stage (#189, #192), A6 appearance command (#191), and the editor DRY audit M1 to M5 (#199 to #205); M6 and M7 (#206, #207) went into their stack branches and reach main with #209. Added §1e (tooling and asset performance: compression, gltfjsx, dev overlays, spikes) from [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) and §1f (editor maintainability).
 - **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
