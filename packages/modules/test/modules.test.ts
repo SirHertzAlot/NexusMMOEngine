@@ -138,3 +138,42 @@ describe("resolveModuleSet", () => {
     assert.ok(!r.ok && /cycle/.test(r.problems[0].message));
   });
 });
+
+describe("validateManifest sidecar (EA11)", () => {
+  const good = { command: "node ./brain-server.js", port: 8787, health: "/health" };
+  it("accepts a valid sidecar declaration", () => {
+    const r = validateManifest({ name: "npc-brain", version: "1.0.0", sidecar: good }, "npc-brain");
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.sidecar, good);
+  });
+  it("rejects a bad command", () => {
+    for (const command of ["", "   ", 42, null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, command } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.command"), `command ${JSON.stringify(command)}`);
+    }
+  });
+  it("rejects a bad port", () => {
+    for (const port of [0, -1, 65536, 87.5, "8787", null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, port } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.port"), `port ${JSON.stringify(port)}`);
+    }
+  });
+  it("rejects a bad health path", () => {
+    for (const health of ["health", "", 42, null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, health } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.health"), `health ${JSON.stringify(health)}`);
+    }
+  });
+  it("refuses a non-object sidecar and unknown sidecar keys", () => {
+    const r1 = validateManifest({ name: "m", version: "1.0.0", sidecar: "node x.js" }, "m");
+    assert.ok(r1.problems.some((p) => p.path === "sidecar"));
+    const r2 = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, wat: 1 } }, "m");
+    assert.ok(r2.problems.some((p) => p.path === "sidecar.wat"));
+  });
+  it("lists every sidecar problem at once", () => {
+    const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { command: "", port: 0, health: "x" } }, "m");
+    const paths = r.problems.map((p) => p.path);
+    assert.deepEqual(paths.sort(), ["sidecar.command", "sidecar.health", "sidecar.port"]);
+    assert.equal(r.manifest, undefined);
+  });
+});

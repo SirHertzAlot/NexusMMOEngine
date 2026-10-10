@@ -82,7 +82,10 @@
 import type { Plugin, ViteDevServer } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import { killProcessTree } from "./proc-tree.js";
+// Re-exported so existing importers (host.test.ts) keep working.
+export { killProcessTree };
 import {
   createReadStream,
   existsSync,
@@ -107,7 +110,9 @@ import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleAudioRoute } from "./audio-host.js";
 import { handleVfxRoute } from "./vfx-host.js";
 import { handleAnimationRoute } from "./animation-host.js";
-import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
+import { handleModulesRoute, parseTickOrder, setFilePath } from "./modules-host.js";
+import { discoverModules, readEnabledSet, resolveModuleSet } from "@mmo-engine/modules";
+import { SidecarManager, type SidecarReport } from "./sidecar-manager.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -155,32 +160,6 @@ export function npmInvocation(
 }
 
 /**
- * Terminate a process tree we spawned. POSIX: signal the detached
- * process group (negative pid). Windows has no process groups or
- * catchable signals, so `taskkill /T /F` ends the whole tree
- * (npm → cmd → node) — `process.kill(-pid)` would throw there and leave
- * the real server orphaned on the port.
- */
-export function killProcessTree(
-  pid: number,
-  signal: NodeJS.Signals,
-  platform: NodeJS.Platform = process.platform,
-): void {
-  if (pid <= 0) return;
-  try {
-    if (platform === "win32") {
-      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        windowsHide: true,
-      });
-    } else {
-      process.kill(-pid, signal);
-    }
-  } catch {
-    /* already gone */
-  }
-}
-
 /** Whether any process of the tree is still alive (best effort). */
 function treeAlive(pid: number): boolean {
   try {
@@ -221,6 +200,10 @@ interface OwnedServer {
   loadUsers: string[];
   /** The tick order the server reported at boot (Modules window). */
   tickOrder(): string[] | null;
+  /** EA11: sidecars started before this server; stopped with it. */
+  sidecars: SidecarManager;
+  /** Per-module outcome of the pre-boot sidecar health check. */
+  sidecarReports: SidecarReport[];
 }
 
 const LISTEN_RE = /listening on ws:\/\/[^:]+:(\d+)/;
@@ -513,37 +496,61 @@ export function editorHost(options: EditorHostOptions): Plugin {
     });
   }
 
+  /**
+   * EA11: start the sidecars of the resolved enabled modules. A module set
+   * that does not resolve, or no sidecar declarations, means no sidecars —
+   * never a failed server start.
+   */
+  async function startModuleSidecars(manager: SidecarManager): Promise<SidecarReport[]> {
+    const found = discoverModules(join(repoRoot, "modules"));
+    const set = readEnabledSet(setFilePath(repoRoot));
+    const resolved = resolveModuleSet(found.valid, set.modules);
+    if (!resolved.ok) {
+      serverLog.append(
+        `[editor] sidecars skipped: module set does not resolve (${resolved.problems.length} problems)\n`,
+        "editor",
+      );
+      return [];
+    }
+    return manager.start(resolved.modules);
+  }
+
   async function stopOwned(): Promise<boolean> {
     if (!owned) return false;
     const child = owned.child;
+    const sidecars = owned.sidecars;
     owned = null;
-    if (child.exitCode !== null || child.signalCode !== null) return true;
-    // The child leads its own process tree (see startOwned): `npm run
-    // server` spawns shell → node grandchildren, so killing just the npm
-    // wrapper would orphan the real server. killProcessTree ends the
-    // whole tree — still only ever OUR tree.
-    const pid = child.pid ?? -1;
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        killProcessTree(pid, "SIGKILL");
-      }, 5000);
-      timer.unref();
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      // POSIX: SIGTERM lets the server run its shutdown save. Windows
-      // has no catchable SIGTERM, so this is a hard stop there; the
-      // periodic save (every 300 ticks) bounds what play mode loses.
-      killProcessTree(pid, "SIGTERM");
-      // If the tree is already gone, the exit event may never fire.
-      setTimeout(() => {
-        if (!treeAlive(pid)) {
+    if (child.exitCode === null && child.signalCode === null) {
+      // The child leads its own process tree (see startOwned): `npm run
+      // server` spawns shell → node grandchildren, so killing just the npm
+      // wrapper would orphan the real server. killProcessTree ends the
+      // whole tree — still only ever OUR tree.
+      const pid = child.pid ?? -1;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          killProcessTree(pid, "SIGKILL");
+        }, 5000);
+        timer.unref();
+        child.once("exit", () => {
           clearTimeout(timer);
           resolve();
-        }
-      }, 500).unref();
-    });
+        });
+        // POSIX: SIGTERM lets the server run its shutdown save. Windows
+        // has no catchable SIGTERM, so this is a hard stop there; the
+        // periodic save (every 300 ticks) bounds what play mode loses.
+        killProcessTree(pid, "SIGTERM");
+        // If the tree is already gone, the exit event may never fire.
+        setTimeout(() => {
+          if (!treeAlive(pid)) {
+            clearTimeout(timer);
+            resolve();
+          }
+        }, 500).unref();
+      });
+    }
+    // EA11: sidecars stop after the server they run alongside — even when
+    // the server already exited on its own.
+    await sidecars.stop();
     return true;
   }
 
@@ -661,6 +668,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // its epoch is stale by then, so none of that lands in the new run's log.
     const logEpoch = serverLog.reset();
     serverLog.append(`[editor] starting the play server on port ${serverPort}\n`, "editor");
+    // EA11: sidecars start BEFORE the game server. An unhealthy sidecar
+    // disables only its module (logged + reported below); the server
+    // still boots.
+    const sidecarManager = new SidecarManager({
+      log: (line) => {
+        if (serverLog.current(logEpoch)) serverLog.append(`${line}\n`, "editor");
+      },
+    });
+    const sidecarReports = await startModuleSidecars(sidecarManager);
+    for (const r of sidecarReports) {
+      if (r.status === "unhealthy") {
+        serverLog.append(`[editor] module "${r.name}" disabled for this run: sidecar unhealthy (${r.reason})\n`, "editor");
+      }
+    }
     child.stdout?.on("data", (d: Buffer) => {
       if (serverLog.current(logEpoch)) serverLog.append(d.toString("utf8"), "stdout");
     });
@@ -672,10 +693,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
         serverLog.flush();
         serverLog.append(`[editor] the play server exited (${code !== null ? `code ${code}` : `signal ${signal}`})\n`, "editor");
       }
-      if (owned?.child === child) owned = null;
+      if (owned?.child === child) {
+        // The server died on its own: its sidecars die with it, or they
+        // would linger with nobody to serve.
+        const dead = owned;
+        owned = null;
+        void dead.sidecars.stop();
+      }
     });
 
-    const url = await new Promise<string>((resolve, reject) => {
+    // A failed boot must not orphan sidecars: stopOwned() only knows the
+    // owned server, which is not assigned until the ready wait resolves.
+    let url: string;
+    try {
+      url = await new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
         void stopOwned();
@@ -713,6 +744,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
       child.stdout?.on("data", check);
       child.stderr?.on("data", check);
     });
+    } catch (e) {
+      await sidecarManager.stop();
+      throw e;
+    }
 
     // Track the child IMMEDIATELY (before the ready wait can time out),
     // so a startup timeout can still kill the group via stopOwned().
@@ -725,6 +760,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
       password,
       loadUsers,
       tickOrder: () => bootOrder,
+      sidecars: sidecarManager,
+      sidecarReports,
     };
     // Adopt the actual bound port from the server's listen line once
     // ready (normally identical to serverPort).
@@ -809,6 +846,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
           // Tree kill — matches the detached spawn in startOwned().
           // Synchronous on every platform, as an "exit" handler must be.
           killProcessTree(owned.child.pid ?? -1, "SIGKILL");
+          owned.sidecars.killNow();
           owned = null;
         }
       };
@@ -889,6 +927,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
               // startOwned). Never logged; only the hash is persisted.
               password: s.password,
               loadUsers: s.loadUsers,
+              // EA11: per-module sidecar outcome of the pre-boot health check.
+              sidecars: s.sidecarReports,
             });
             return;
           }
@@ -1252,7 +1292,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
                 if (!owned) return { restarted: false };
                 await stopOwned();
                 const s = await startOwned();
-                return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password };
+                return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password, sidecars: s.sidecarReports };
               },
             },
           );
