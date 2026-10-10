@@ -70,7 +70,9 @@ export async function hasGltfpack(binPath?: string): Promise<boolean> {
   try {
     await execFileAsync(bin, ["-h"]);
     return true;
-  } catch {
-    return false;
+  } catch (e: any) {
+    // gltfpack -h prints help but exits non-zero; check stdout for the banner
+    const output = String(e.stdout ?? "") + String(e.stderr ?? "");
+    return output.includes("gltfpack");
   }
 }
