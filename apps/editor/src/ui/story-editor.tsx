@@ -10,7 +10,6 @@
  */
 
 import * as React from "react";
-import { edgePath } from "../inspectors/graph-editor.js";
 import { checkStoryRemote, loadStory, saveStory, StorySaveError } from "../story-client.js";
 import {
   addDialogNode, addReply, deleteDialogNode, dialogGraph, History, questGraph, renameDialogNode, startTest,
@@ -19,6 +18,7 @@ import {
 import type { StoryFile, StoryFiles, StoryIssue } from "../story-validate.js";
 import { Button, Input } from "./components.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { NodeGraph } from "./node-graph.js";
 
 const STATES: QuestState[] = ["available", "active", "ready", "done", "unavailable"];
 type Sel = { kind: "dialog" | "quest"; id: string };
@@ -56,38 +56,37 @@ function Select({ value, options, onChange, blank }: { value: string; options: s
 
 // ------------------------------------------------------------------ canvas
 
-function Canvas({ graph, selected, onSelect }: { graph: ReturnType<typeof dialogGraph>; selected: string | null; onSelect: (id: string) => void }): React.JSX.Element {
-  const W = 190;
-  const H = 52;
-  const at = new Map(graph.nodes.map((n) => [n.id, n]));
-  const width = Math.max(...graph.nodes.map((n) => n.x), 0) + W + 40;
-  const height = Math.max(...graph.nodes.map((n) => n.y), 0) + H + 40;
+type GraphData = ReturnType<typeof dialogGraph>;
+
+function Canvas({ graph, selected, onSelect }: { graph: GraphData; selected: string | null; onSelect: (id: string) => void }): React.JSX.Element {
   return (
-    <svg width={width} height={height} className="rounded border border-border/60" role="img" aria-label="graph">
-      <defs>
-        <marker id="story-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#888" /></marker>
-      </defs>
-      {graph.edges.map((e) => {
-        const a = at.get(e.from);
-        const b = at.get(e.to);
-        if (!a || !b) return null;
-        const self = a === b;
-        const d = self ? `M ${a.x + 20 + W / 2} ${a.y + H + 20} q 40 40 80 0` : edgePath(a.x + 20 + W / 2, a.y + 20 + H, b.x + 20 + W / 2, b.y + 20);
-        return (
-          <g key={e.id}>
-            <path d={d} fill="none" stroke={e.condition ? "#d9a441" : "#888"} strokeWidth={1.4} markerEnd="url(#story-arrow)" />
-            <title>{[e.label, e.condition && `if ${e.condition}`, e.effect].filter(Boolean).join(" | ")}</title>
-          </g>
-        );
-      })}
-      {graph.nodes.map((n) => (
-        <g key={n.id} transform={`translate(${n.x + 20},${n.y + 20})`} onClick={() => onSelect(n.id)} style={{ cursor: "pointer" }} data-node={n.id}>
-          <rect width={W} height={H} rx={8} fill={n.kind === "quest" ? "#3b3358" : "#2a3140"} stroke={selected === n.id ? "#6cf" : n.reachable === false ? "#c55" : "#556"} strokeWidth={selected === n.id ? 2.5 : 1.2} />
+    <NodeGraph
+      label="Story graph"
+      testId="story-graph"
+      nodes={graph.nodes}
+      edges={graph.edges}
+      nodeId={(n) => n.id}
+      nodePos={(n) => n}
+      nodeSize={{ w: 190, h: 52 }}
+      edgeEnds={(e) => ({ from: e.from, to: e.to })}
+      height={360}
+      fitKey={graph.nodes.map((n) => n.id).join("|")}
+      selectedId={selected}
+      onSelect={(id) => id !== null && onSelect(id)}
+      renderEdge={(e, geom, arrow) => (
+        <>
+          <path d={geom.d} fill="none" stroke={e.condition ? "#d9a441" : "#888"} strokeWidth={1.4} markerEnd={arrow} />
+          <title>{[e.label, e.condition && `if ${e.condition}`, e.effect].filter(Boolean).join(" | ")}</title>
+        </>
+      )}
+      renderNode={(n, { selected: on }) => (
+        <>
+          <rect width={190} height={52} rx={8} fill={n.kind === "quest" ? "#3b3358" : "#2a3140"} stroke={on ? "#6cf" : n.reachable === false ? "#c55" : "#556"} strokeWidth={on ? 2.5 : 1.2} />
           <text x={8} y={20} fontSize={12} fill="#eee" fontWeight={n.start ? 700 : 400}>{(n.start ? "> " : "") + n.id.slice(0, 26)}</text>
           <text x={8} y={38} fontSize={10} fill="#aab">{n.reachable === false ? "unreachable" : n.title.slice(0, 30)}</text>
-        </g>
-      ))}
-    </svg>
+        </>
+      )}
+    />
   );
 }
 
