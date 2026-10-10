@@ -56,6 +56,7 @@ export function createHostServerControl(
           ...(open ? { scene: { name: open.name, content: open.doc } } : {}),
           ...(opts?.fresh !== undefined ? { fresh: opts.fresh } : {}),
           ...(opts?.keep !== undefined ? { keep: opts.keep } : {}),
+          ...(opts?.spawn !== undefined ? { spawn: opts.spawn } : {}),
         }),
       });
       const body = (await res.json()) as {

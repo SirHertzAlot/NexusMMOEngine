@@ -75,6 +75,11 @@ export interface PlayStartOptions {
    * the tick wrote). Only meaningful with fresh.
    */
   keep?: boolean;
+  /**
+   * Player spawn override (Play menu "Start from"): { x, z } in world
+   * units. Reaches the server as MMO_SPAWN_OVERRIDE.
+   */
+  spawn?: { x: number; z: number };
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */

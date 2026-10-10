@@ -1691,8 +1691,14 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
         })}
       </div>
 
-      <PlayMenuLabel>Start from<PreviewBadge why={PLAY_PREVIEW_NOTES.from} /></PlayMenuLabel>
-      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={setup.from} onPick={(v) => set({ from: v })} />
+      <PlayMenuLabel>Start from</PlayMenuLabel>
+      <PlayMenuRow
+        options={["Login", "Character creation", "World", "Camera position"]}
+        value={setup.from}
+        onPick={(v) => set({ from: v })}
+        markPreview={(o) => o === "Login" || o === "Character creation"}
+        previewWhy={PLAY_PREVIEW_NOTES.from}
+      />
 
       <PlayMenuLabel>Test setup</PlayMenuLabel>
       <div className="mb-1 flex flex-col gap-2">
@@ -1803,13 +1809,21 @@ function PlayMenuLabel({ children }: { children: React.ReactNode }): React.JSX.E
   );
 }
 
-function PlayMenuRow({ options, value, onPick }: { options: string[]; value: string; onPick: (v: string) => void }): React.JSX.Element {
+function PlayMenuRow({ options, value, onPick, markPreview, previewWhy }: { options: string[]; value: string; onPick: (v: string) => void; markPreview?: (o: string) => boolean; previewWhy?: string }): React.JSX.Element {
   return (
     <div className="mb-2.5 flex flex-wrap gap-1.5">
       {options.map((o) => (
-        <Chip key={o} selected={value === o} onClick={() => onPick(o)}>
+        <Chip
+          key={o}
+          selected={value === o}
+          onClick={() => onPick(o)}
+          title={markPreview?.(o) ? `Preview — ${previewWhy ?? ""}` : undefined}
+        >
           {value === o && o !== "1" && o !== "0" && <MIcon name="check" size={15} />}
           {o}
+          {markPreview?.(o) && (
+            <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>preview</span>
+          )}
         </Chip>
       ))}
     </div>
