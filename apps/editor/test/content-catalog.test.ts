@@ -33,15 +33,18 @@ describe("buildCatalog", () => {
     assert.ok(c.entries.every((e) => e.drag.kind === e.kind && e.drag.id === e.id));
   });
 
-  it("gives creatures and prefabs a scene node that the scene validator accepts", async () => {
+  it("gives creatures, species, items, quests, PICG assets and prefabs a scene node that the scene validator accepts", async () => {
     const c = await buildCatalog(ROOT);
-    for (const kind of ["creature", "prefab"]) {
-      const e = c.entries.find((x) => x.kind === kind);
-      assert.ok(e?.node, kind);
-      const doc = { ...emptyScene("t", "arena"), nodes: [{ id: "n1", ...e.node }] };
-      assert.deepEqual(validateScene(doc), [], kind);
+    for (const kind of ["creature", "species", "item", "quest", "picg", "prefab"]) {
+      const list = c.entries.filter((x) => x.kind === kind);
+      assert.ok(list.length > 0, kind);
+      for (const e of list) {
+        assert.ok(e.node, `${kind} ${e.id}`);
+        const doc = { ...emptyScene("t", "arena"), nodes: [{ id: "n1", ...e.node }] };
+        assert.deepEqual(validateScene(doc), [], `${kind} ${e.id}`);
+      }
     }
-    assert.equal(c.entries.find((e) => e.kind === "quest")?.node, null);
+    assert.equal(c.entries.find((e) => e.kind === "scene")?.node, null, "a scene is opened, not placed");
   });
 
   it("answers GET and nothing else", async () => {

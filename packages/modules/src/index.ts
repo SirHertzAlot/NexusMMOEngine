@@ -64,6 +64,7 @@ export interface InvalidModule {
 const NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const ENTRY_RE = /^(?!\/)(?!.*\.\.)(?![A-Za-z]:)[\w./-]+\.(?:js|mjs|ts|tsx|jsx)$/;
+const NATIVE_ENTRY_RE = /^(?!\/)(?!.*\.\.)(?![A-Za-z]:)[\w./-]+\.node$/;
 
 const cmp = (a: string, b: string): number => {
   const x = a.split(".").map(Number);
@@ -89,7 +90,7 @@ export function validateManifest(
   const only = (o: Record<string, unknown>, keys: string[], at: string): void => {
     for (const k of Object.keys(o)) if (!keys.includes(k)) bad(at ? `${at}.${k}` : k, `unknown key "${k}"`);
   };
-  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "sidecar"], "");
+  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native", "sidecar"], "");
   if (typeof raw.name !== "string" || !NAME_RE.test(raw.name)) bad("name", "must be lowercase letters, digits and dashes, starting with a letter");
   else if (raw.name !== dirName) bad("name", `must match the folder name "${dirName}"`);
   if (typeof raw.version !== "string" || !SEMVER_RE.test(raw.version)) bad("version", 'must be "major.minor.patch"');
@@ -162,6 +163,34 @@ export function validateManifest(
       server = { ...(e ? { entry: e } : {}), systems };
     }
   }
+  let native: ModuleManifest["native"];
+  if (raw.native !== undefined) {
+    if (!isObj(raw.native)) bad("native", "must be an object");
+    else {
+      only(raw.native, ["entry", "systems"], "native");
+      let entryPath: string | undefined;
+      if (typeof raw.native.entry !== "string" || !NATIVE_ENTRY_RE.test(raw.native.entry)) {
+        bad("native.entry", "must be a relative path inside the module to a .node file");
+      } else {
+        entryPath = raw.native.entry;
+      }
+      const systems: string[] = [];
+      if (!Array.isArray(raw.native.systems) || raw.native.systems.length === 0) {
+        bad("native.systems", "must be a non-empty list of system names");
+      } else {
+        const seen = new Set<string>();
+        raw.native.systems.forEach((s: unknown, i: number) => {
+          if (typeof s !== "string" || !NAME_RE.test(s)) bad(`native.systems[${i}]`, "must be lowercase letters, digits and dashes");
+          else if (seen.has(s)) bad(`native.systems[${i}]`, `"${s}" is listed twice`);
+          else {
+            seen.add(s);
+            systems.push(s);
+          }
+        });
+      }
+      if (entryPath && systems.length > 0) native = { entry: entryPath, systems };
+    }
+  }
   let sidecar: ModuleManifest["sidecar"];
   if (raw.sidecar !== undefined) {
     if (!isObj(raw.sidecar)) bad("sidecar", "must be an object");
@@ -187,6 +216,7 @@ export function validateManifest(
       ...(dependsOn ? { dependsOn } : {}),
       ...(editor ? { editor } : {}),
       ...(server ? { server } : {}),
+      ...(native ? { native } : {}),
       ...(sidecar ? { sidecar } : {}),
     },
     problems,
@@ -289,8 +319,13 @@ export function resolveModuleSet(valid: DiscoveredModule[], enabled: string[]): 
 
   const nodes: ResolvedSystem[] = [];
   const index = new Map<string, number>();
+  /** Every system a module contributes to the tick: JS systems first, then native (EA10). */
+  const moduleSystems = (m: DiscoveredModule): SystemSpec[] => [
+    ...(m.manifest.server?.systems ?? []),
+    ...(m.manifest.native?.systems.map((name) => ({ name })) ?? []),
+  ];
   for (const m of modules) {
-    for (const s of m.manifest.server?.systems ?? []) {
+    for (const s of moduleSystems(m)) {
       if (index.has(s.name)) problems.push({ module: m.manifest.name, path: "server.systems", message: `system "${s.name}" already exists in module "${nodes[index.get(s.name)!].module}"` });
       else {
         index.set(s.name, nodes.length);
@@ -301,7 +336,7 @@ export function resolveModuleSet(valid: DiscoveredModule[], enabled: string[]): 
   const preds: Set<number>[] = nodes.map(() => new Set());
   const edge = (from: number, to: number): void => void preds[to].add(from);
   for (const m of modules) {
-    const list = m.manifest.server?.systems ?? [];
+    const list = moduleSystems(m);
     list.forEach((s, i) => {
       const me = index.get(s.name);
       if (me === undefined) return;

@@ -48,6 +48,26 @@ export interface Surfaces {
   dispose(): void;
 }
 
+/**
+ * Per-layer overrides from content/materials/materials.json (by layer id):
+ * the albedo tint and tile size replace the manifest's when it loads.
+ */
+let surfaceMaterials: Record<string, { tint: [number, number, number]; tileMetres?: number }> = {};
+export function setSurfaceMaterials(surfaces: Record<string, { tint: [number, number, number]; tileMetres?: number }>): void {
+  surfaceMaterials = surfaces;
+}
+
+/** The manifest with the content's tints and tile sizes laid over its layers. */
+export function withSurfaceMaterials(m: SurfaceManifest): SurfaceManifest {
+  return {
+    ...m,
+    layers: m.layers.map((l) => {
+      const o = surfaceMaterials[l.id];
+      return o ? { ...l, tint: o.tint, tileMetres: o.tileMetres ?? l.tileMetres } : l;
+    }),
+  };
+}
+
 /** Check a manifest's shape (it is data from disk; fail loudly on a bad one). */
 export function parseSurfaceManifest(json: unknown): SurfaceManifest {
   const m = json as SurfaceManifest;
@@ -107,7 +127,7 @@ export async function loadSurfaces(base = "/surfaces"): Promise<Surfaces | null>
   const res = await fetch(`${base}/manifest.json`).catch(() => null);
   // Not fetched: a 404, or a dev server's index page in its place.
   if (!res || !res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return null;
-  const manifest = parseSurfaceManifest(await res.json());
+  const manifest = withSurfaceMaterials(parseSurfaceManifest(await res.json()));
   const size = manifest.layers[0].resolution;
   const levels = await Promise.all(
     manifest.layers.map(async (l) => {

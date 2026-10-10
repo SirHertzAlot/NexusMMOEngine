@@ -28,6 +28,7 @@ export interface PlayServerStartOptions {
   fresh?: boolean;
   keep?: boolean;
   spawn?: unknown;
+  network?: "core" | "edge";
 }
 
 /** Server-control surface the editor UI drives (implements ServerControl). */
@@ -60,6 +61,7 @@ export function createHostServerControl(
           ...(opts?.fresh !== undefined ? { fresh: opts.fresh } : {}),
           ...(opts?.keep !== undefined ? { keep: opts.keep } : {}),
           ...(opts?.spawn !== undefined ? { spawn: opts.spawn } : {}),
+          ...(opts?.network !== undefined ? { network: opts.network } : {}),
         }),
       });
       const body = (await res.json()) as {

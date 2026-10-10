@@ -139,6 +139,68 @@ describe("resolveModuleSet", () => {
   });
 });
 
+describe("validateManifest: native (EA10)", () => {
+  const good = { name: "n", version: "1.0.0", native: { entry: "build/Release/physics.node", systems: ["physics"] } };
+  it("accepts a native contribution", () => {
+    const { manifest, problems } = validateManifest(good, "n");
+    assert.deepEqual(problems, []);
+    assert.deepEqual(manifest!.native, { entry: "build/Release/physics.node", systems: ["physics"] });
+  });
+  it("refuses a non-.node entry, bad systems and unknown keys", () => {
+    const { problems } = validateManifest(
+      { name: "n", version: "1.0.0", native: { entry: "server/index.js", systems: [], wat: 1 } },
+      "n",
+    );
+    const paths = problems.map((p) => p.path);
+    assert.ok(paths.includes("native.entry"), JSON.stringify(paths));
+    assert.ok(paths.includes("native.systems"), JSON.stringify(paths));
+    assert.ok(paths.includes("native.wat"), JSON.stringify(paths));
+  });
+  it("refuses duplicate and malformed system names", () => {
+    const { problems } = validateManifest(
+      { name: "n", version: "1.0.0", native: { entry: "a.node", systems: ["ok", "ok", "Bad Name"] } },
+      "n",
+    );
+    assert.equal(problems.length, 2);
+  });
+  it("requires entry and systems", () => {
+    const { problems } = validateManifest({ name: "n", version: "1.0.0", native: {} }, "n");
+    const paths = problems.map((p) => p.path);
+    assert.ok(paths.includes("native.entry"));
+    assert.ok(paths.includes("native.systems"));
+  });
+});
+
+describe("resolveModuleSet: native systems (EA10)", () => {
+  const core = mod("core", { server: { systems: [{ name: "a" }, { name: "b" }] } });
+  it("orders native systems after the module's JS systems", () => {
+    const n = mod("n", {
+      server: { entry: "s.js", systems: [{ name: "js1" }] },
+      native: { entry: "b.node", systems: ["nat1", "nat2"] },
+    });
+    const r = resolveModuleSet([core, n], ["n"]);
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.problems));
+    assert.deepEqual(r.systems.map((s) => s.name), ["a", "b", "js1", "nat1", "nat2"]);
+    assert.deepEqual(r.systems.filter((s) => s.module === "n").map((s) => s.name), ["js1", "nat1", "nat2"]);
+  });
+  it("a JS system can order itself after a native system", () => {
+    const n = mod("n", { native: { entry: "b.node", systems: ["nat1"] } });
+    const m = mod("m", { server: { systems: [{ name: "js1", after: "nat1" }] } });
+    const r = resolveModuleSet([core, n, m], ["n", "m"]);
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.problems));
+    const names = r.systems.map((s) => s.name);
+    assert.ok(names.indexOf("nat1") < names.indexOf("js1"));
+  });
+  it("refuses a native system id that collides with a JS one", () => {
+    const n = mod("n", {
+      server: { systems: [{ name: "x" }] },
+      native: { entry: "b.node", systems: ["x"] },
+    });
+    const r = resolveModuleSet([core, n], ["n"]);
+    assert.ok(!r.ok && /already exists/.test(r.problems[0].message));
+  });
+});
+
 describe("validateManifest sidecar (EA11)", () => {
   const good = { command: "node ./brain-server.js", port: 8787, health: "/health" };
   it("accepts a valid sidecar declaration", () => {

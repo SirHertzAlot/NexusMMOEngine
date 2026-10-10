@@ -21,10 +21,27 @@ Game content the engine generates from, committed with the code:
   pool layouts each draws from). `MMO_DUNGEONS` overrides the path; the
   layouts are the pool `npm run dungeon:bake` writes to `<data>/dungeons`.
 
+- `combat/` — `moves.json` (roadmap EA21): the combat moves' timing,
+  chaining, travel and sounds (format: `@mmo-engine/protocol`
+  `combat.ts` `validateCombatMoves`). The server loads it at boot
+  (`MMO_COMBAT` overrides the path); built-in defaults run when absent.
+
 - `animation/` — `clips.json` (roadmap EA21): the clip map, which clip in
   the animation library each server clip id plays, and whether it loops and
   how long it crossfades (format: `@mmo-engine/art` `clip-map.ts`). The
   client reads it on load; the editor's Animation panel edits it.
 
+- `crafting/recipes.json` — crafting costs (refining, element reagents, fittings, units, skills); checked at server boot (`MMO_CRAFTING` overrides) and read by `npm run craft:report`.
+
+- `species/species.json` — optional overlay merged over the built-in species roster (`MMO_SPECIES` overrides); the editor's Species grid writes it.
+
+- `prefabs/*.prefab.json` — component bundles a scene node places by name (`prefab`), with the node's components overriding field by field (`MMO_PREFABS` overrides). Scenes also place items (`ItemSpawn`), species (`Spawner.species`) and quest posts (`QuestGiver`).
+
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.
+
+- `playtests/` — automated playtest scenarios (roadmap EA26): one
+  `<name>.playtest.json` each, a bot script (admin commands, moves, chat at
+  ticks), a seed and bot count for a scratch world, and assertions. The
+  editor's Release > Playtests runs them headless on a scratch server;
+  results and replays are kept under the data dir, not here.

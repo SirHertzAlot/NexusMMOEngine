@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { listScenes, readScene } from "./scenes-host.js";
 import { loadSpeciesModule } from "./gameplay-host.js";
+import { readPrefabs } from "./data-host.js";
 import type { Catalog, CatalogEntry, CatalogKind, NodeTemplate } from "./content-catalog-types.js";
 
 export * from "./content-catalog-types.js";
@@ -40,7 +41,14 @@ export async function buildCatalog(repoRoot: string): Promise<Catalog> {
     const sp = await loadSpeciesModule(repoRoot);
     const file = join(repoRoot, "content", "species", "species.json");
     const roster = (existsSync(file) ? sp.loadSpecies(file) : sp.BUILTIN_SPECIES) as Record<string, { name: string; kind: string }>;
-    for (const [id, s] of Object.entries(roster)) add("species", id, s.name, s.kind);
+    const creatureIds = new Set(keysOf((json(join(repoRoot, "content", "rules", "creatures.json")) ?? {}).creatures));
+    for (const [id, s] of Object.entries(roster)) {
+      add("species", id, s.name, creatureIds.has(id) ? s.kind : `${s.kind} (no creature rules: placing it spawns nothing yet)`, {
+        name: s.name,
+        kind: "group",
+        components: { Spawner: { species: id } },
+      });
+    }
   } catch (e) {
     notes.push(`species not listed: ${(e as Error).message}`);
   }
@@ -54,9 +62,14 @@ export async function buildCatalog(repoRoot: string): Promise<Catalog> {
       components: { Spawner: { creature: id, respawnSeconds: 60 } },
     });
   }
-  for (const id of keysOf(rules("items").bases)) add("item", id, id, "item base");
+  for (const id of keysOf(rules("items").bases)) add("item", id, id, "item base", { name: id, kind: "group", components: { ItemSpawn: { base: id } } });
 
-  // Prefabs: there is no prefab file format yet, so the ones scenes already place are listed.
+  // Prefabs: the files in content/prefabs, then the references scenes place that no file backs.
+  const files = readPrefabs(repoRoot);
+  for (const [id, p] of Object.entries(files)) {
+    const n = Object.keys(p.components ?? {}).length;
+    add("prefab", id, id, `prefab file: ${n} component${n === 1 ? "" : "s"}, ${(p.children ?? []).length} child node${(p.children ?? []).length === 1 ? "" : "s"}`, { name: id, prefab: id });
+  }
   const prefabs = new Set<string>();
   const scenes = listScenes(repoRoot);
   const walk = (v: unknown): void => {
@@ -73,16 +86,15 @@ export async function buildCatalog(repoRoot: string): Promise<Catalog> {
       /* the Scenes workspace reports an unreadable scene */
     }
   }
-  for (const id of [...prefabs].sort()) add("prefab", id, id, "placed in a scene", { name: id.split("/").pop() ?? id, prefab: id });
-  notes.push("prefabs: no prefab file format exists yet; the list is the prefabs scenes already place");
+  for (const id of [...prefabs].sort()) if (!(id in files)) add("prefab", id, id, "placed in a scene (no prefab file)", { name: id.split("/").pop() ?? id, prefab: id });
 
   const pcg = json(join(repoRoot, "content", "pcg", "index.json"));
   for (const a of (pcg?.assets ?? []) as { id: string; displayName?: string; variants?: number }[]) {
-    add("picg", a.id, a.displayName ?? a.id, `${a.variants ?? 1} variants`);
+    add("picg", a.id, a.displayName ?? a.id, `${a.variants ?? 1} variants`, { name: a.displayName ?? a.id, kind: "prefab", prefab: a.id });
   }
   for (const s of scenes) add("scene", s, s, "scene document");
   for (const [id, q] of Object.entries((json(join(repoRoot, "content", "quests", "quests.json"))?.quests ?? {}) as Record<string, { name?: string }>)) {
-    add("quest", id, q.name ?? id, "quest");
+    add("quest", id, q.name ?? id, "quest (moves its giver's post)", { name: q.name ?? id, kind: "group", components: { QuestGiver: { quest: id } } });
   }
   return { entries, notes };
 }

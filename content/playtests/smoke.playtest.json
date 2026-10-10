@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "smoke",
+  "description": "A bot joins an empty world, asks who it is, and walks forward for two seconds.",
+  "seed": 1234,
+  "bots": 0,
+  "durationTicks": 150,
+  "script": [
+    { "at": 0, "do": "admin", "command": "whoami" },
+    { "at": 10, "do": "move", "mx": 0, "mz": 1, "ticks": 60 }
+  ],
+  "assertions": [
+    { "kind": "connected" },
+    { "kind": "no-errors" },
+    { "kind": "admin-ok" },
+    { "kind": "admin-reply-contains", "step": 0, "text": "admin" },
+    { "kind": "moved", "min": 1 },
+    { "kind": "tick-p99-ms", "max": 33 }
+  ]
+}
