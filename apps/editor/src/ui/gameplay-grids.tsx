@@ -11,6 +11,8 @@
 
 import * as React from "react";
 import { DocBar } from "./doc-bar.js";
+import { useSaveTask } from "./use-save-task.js";
+import { issueCount } from "../save-outcome.js";
 import {
   addRow,
   batchScale,
@@ -27,7 +29,7 @@ import {
   type GridRow,
 } from "../gameplay-grid.js";
 import { GAMEPLAY_TABLES, TABLE_DEFS, cellOfIssue, fromRows, toRows, type GameplayTable, type TableDef } from "../gameplay-tables.js";
-import { GameplaySaveError, checkGameplayRemote, loadCatalog, loadGameplay, saveGameplayRemote, type GameplayIssue, type GameplaySnapshot } from "../gameplay-client.js";
+import { checkGameplayRemote, loadCatalog, loadGameplay, saveGameplayRemote, type GameplayIssue, type GameplaySnapshot } from "../gameplay-client.js";
 import { CATALOG_KINDS, type CatalogEntry, type CatalogKind } from "../content-catalog-types.js";
 import { getAt } from "../rules-control.js";
 import { diffRows } from "../gameplay-diff.js";
@@ -37,7 +39,6 @@ import { Badge, Button, Card, CardContent, Input, Select, Field } from "./compon
 export const CONTENT_MIME = "application/x-mmo-content";
 
 type Rows = Record<GameplayTable, GridRow[]>;
-type Status = { tone: "ok" | "bad" | "info"; text: string } | null;
 
 const rowsOf = (snap: GameplaySnapshot): Rows =>
   Object.fromEntries(GAMEPLAY_TABLES.map((t) => [t, toRows(TABLE_DEFS[t], snap.tables[t])])) as Rows;
@@ -110,9 +111,8 @@ export function GameplayGridsPanel(): React.JSX.Element {
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = React.useState<ReadonlySet<string>>(new Set());
   const [dense, setDense] = React.useState(true);
-  const [issues, setIssues] = React.useState<GameplayIssue[]>([]);
-  const [status, setStatus] = React.useState<Status>(null);
-  const [busy, setBusy] = React.useState(false);
+  const task = useSaveTask<GameplayIssue>();
+  const { issues, status, busy, setIssues, setStatus } = task;
   const [newId, setNewId] = React.useState("");
   const [batchKey, setBatchKey] = React.useState("");
   const [batchText, setBatchText] = React.useState("");
@@ -178,26 +178,24 @@ export function GameplayGridsPanel(): React.JSX.Element {
 
   const content = (): unknown => fromRows(def, snap.tables[table], mine);
   const run = async (what: "check" | "save"): Promise<void> => {
-    setBusy(true);
-    try {
-      if (what === "check") {
+    if (what === "check") {
+      await task.run(async () => {
         const found = await checkGameplayRemote(table, content());
         setIssues(found);
-        setStatus(found.length === 0 ? { tone: "ok", text: "The server's loader accepts this." } : { tone: "bad", text: `${found.length} issue${found.length === 1 ? "" : "s"} marked.` });
-      } else {
-        await saveGameplayRemote(table, content());
-        setIssues([]);
-        await load();
-        setStatus({ tone: "ok", text: `Saved ${def.file}. A running server picks it up on its next tick (restart for the few boot-time fields).` });
-      }
-    } catch (e) {
-      if (e instanceof GameplaySaveError) {
-        setIssues(e.issues);
-        setStatus({ tone: "bad", text: `Not saved: ${e.issues.length} issue${e.issues.length === 1 ? "" : "s"}; nothing was written.` });
-      } else setStatus({ tone: "bad", text: (e as Error).message });
-    } finally {
-      setBusy(false);
+        return found;
+      }, {
+        keepIssues: true,
+        ok: (found) => (found.length === 0 ? "The server's loader accepts this." : { tone: "bad", text: `${issueCount(found.length)} marked.` }),
+      });
+      return;
     }
+    await task.run(async () => {
+      await saveGameplayRemote(table, content());
+      await load();
+    }, {
+      ok: `Saved ${def.file}. A running server picks it up on its next tick (restart for the few boot-time fields).`,
+      refused: (found) => `Not saved: ${issueCount(found.length)}; nothing was written.`,
+    });
   };
   const toggle = (set: ReadonlySet<string>, id: string): Set<string> => {
     const n = new Set(set);

@@ -17,24 +17,14 @@
  * treat any unknown tool like select.)
  */
 
+
+import { createStore } from "../store.js";
+
 export type EditorTool = string;
 
-let current: EditorTool = "select";
-const listeners = new Set<() => void>();
+const store = createStore<EditorTool>("select");
 
-export function getTool(): EditorTool {
-  return current;
-}
-
-export function setTool(t: EditorTool): void {
-  if (t === current) return;
-  current = t;
-  listeners.forEach((fn) => fn());
-}
-
-export function subscribeTool(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
+export const getTool = store.get;
+export const setTool = store.set;
+export const subscribeTool = store.subscribe;
+export const useTool = store.use;

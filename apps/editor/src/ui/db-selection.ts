@@ -3,27 +3,15 @@
  * and the Data grid so picking a table in either opens it in the grid.
  */
 
+import { createStore } from "../store.js";
+
 export interface DbSelection {
   db: string;
   table: string;
 }
 
-let current: DbSelection | null = null;
-const listeners = new Set<() => void>();
+const store = createStore<DbSelection | null>(null, (a, b) => a?.db === b?.db && a?.table === b?.table);
 
-export function getDbSelection(): DbSelection | null {
-  return current;
-}
-
-export function setDbSelection(sel: DbSelection | null): void {
-  if (sel?.db === current?.db && sel?.table === current?.table) return;
-  current = sel;
-  listeners.forEach((fn) => fn());
-}
-
-export function subscribeDbSelection(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
+export const getDbSelection = store.get;
+export const setDbSelection = store.set;
+export const subscribeDbSelection = store.subscribe;

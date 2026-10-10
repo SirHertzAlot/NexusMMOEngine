@@ -27,7 +27,7 @@ import {
   SectionTitle,
 } from "./components.js";
 import { ModelPreview } from "./model-preview.js";
-import { createStore } from "./previews.js";
+import { createStore } from "../store.js";
 
 /** Shared asset-browser UI: the dock search filters the panel's model
  *  table, and picking a model previews it in the panel. */

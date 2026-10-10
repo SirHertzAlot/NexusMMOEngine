@@ -11,10 +11,10 @@
 
 import * as React from "react";
 import { DocBar } from "./doc-bar.js";
+import { useSaveTask } from "./use-save-task.js";
 import {
   getRuleFile,
   listRuleFiles,
-  RulesSaveError,
   saveRuleFile,
 } from "../rules-client.js";
 import {
@@ -249,10 +249,12 @@ export function RulesPanel(): React.JSX.Element {
   const [pristine, setPristine] = React.useState<unknown>(null);
   const [missing, setMissing] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [issues, setIssues] = React.useState<RuleIssueView[]>([]);
-  const [savedNote, setSavedNote] = React.useState<string | null>(null);
+  const task = useSaveTask<RuleIssueView>();
+  const { issues, busy: saving } = task;
+  // Red status is the error line, green is the "saved" note.
+  const error = task.status?.tone === "bad" ? task.status.text : null;
+  const savedNote = task.status?.tone === "ok" ? task.status.text : null;
+  const setError = (text: string): void => task.setStatus({ tone: "bad", text });
 
   React.useEffect(() => {
     let live = true;
@@ -277,9 +279,7 @@ export function RulesPanel(): React.JSX.Element {
     if (dirty && !window.confirm("Discard unsaved changes to this file?")) return;
     setSelected(name);
     setLoading(true);
-    setError(null);
-    setIssues([]);
-    setSavedNote(null);
+    task.clear();
     try {
       const res = await getRuleFile("", name);
       setContent(res.content);
@@ -296,24 +296,10 @@ export function RulesPanel(): React.JSX.Element {
 
   async function onSave(): Promise<void> {
     if (selected === null || content === null) return;
-    setSaving(true);
-    setError(null);
-    setSavedNote(null);
-    try {
-      await saveRuleFile("", selected, content);
-      setPristine(content);
-      setIssues([]);
-      setMissing(false);
-      setSavedNote("Saved — validated, written back pretty-printed.");
-    } catch (err) {
-      if (err instanceof RulesSaveError) {
-        setIssues(err.issues);
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      setSaving(false);
-    }
+    // A refusal shows as the issue list, not as a status line.
+    if (!(await task.run(() => saveRuleFile("", selected, content), { ok: "Saved — validated, written back pretty-printed.", refused: () => null }))) return;
+    setPristine(content);
+    setMissing(false);
   }
 
   const fileName = selected === null ? "" : `${selected}.json`;
@@ -420,7 +406,7 @@ export function RulesPanel(): React.JSX.Element {
                     value={content}
                     onChange={(nv) => {
                       setContent(nv);
-                      setSavedNote(null);
+                      task.setStatus(null);
                     }}
                     onRemove={null}
                     errors={errors}
@@ -436,9 +422,7 @@ export function RulesPanel(): React.JSX.Element {
                   onSave={() => void onSave()}
                   onRevert={() => {
                     setContent(pristine);
-                    setIssues([]);
-                    setError(null);
-                    setSavedNote(null);
+                    task.clear();
                   }}
                 />
                 <span className="text-xs text-muted-foreground">

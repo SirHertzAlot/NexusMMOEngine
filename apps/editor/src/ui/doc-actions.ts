@@ -17,6 +17,7 @@
  */
 
 import * as React from "react";
+import { createSlot } from "../store.js";
 
 /** One thing wrong with the open document, for the Problems tab and the status bar. */
 export interface DocProblem {
@@ -64,27 +65,16 @@ export interface DocActions {
   exportFile?: () => void;
 }
 
-let current: DocActions | null = null;
-const listeners = new Set<() => void>();
+const slot = createSlot<DocActions>();
 
-function emit(): void {
-  listeners.forEach((fn) => fn());
-}
+export const getDocActions = slot.get;
+export const subscribeDocActions = slot.subscribe;
+export const registerDocActions = (actions: DocActions): void => slot.set(actions);
 
-export function getDocActions(): DocActions | null {
-  return current;
-}
-
-export function registerDocActions(actions: DocActions): void {
-  current = actions;
-  emit();
-}
-
+/** Release `actions` (or, with none given, whatever is registered). */
 export function clearDocActions(actions?: DocActions): void {
-  if (actions !== undefined && current !== actions) return;
-  if (current === null) return;
-  current = null;
-  emit();
+  if (actions !== undefined && slot.get() !== actions) return;
+  slot.set(null);
 }
 
 /**
@@ -104,9 +94,3 @@ export function useDocActions(build: () => DocActions | null): void {
 /** For panels whose edits apply directly: Undo and Redo stay disabled. */
 export const NO_HISTORY = { canUndo: false, canRedo: false, undo: () => undefined, redo: () => undefined } as const;
 
-export function subscribeDocActions(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}

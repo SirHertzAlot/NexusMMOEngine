@@ -3,8 +3,8 @@
  * its list while it has edits and clears it when it unmounts.
  */
 
-import * as React from "react";
 import type { PendingChange } from "../gameplay-diff.js";
+import { createStore } from "../store.js";
 
 export interface PendingReport {
   /** What the changes belong to, e.g. "creatures.json". */
@@ -12,25 +12,9 @@ export interface PendingReport {
   changes: readonly PendingChange[];
 }
 
-let current: PendingReport | null = null;
-const listeners = new Set<() => void>();
+const store = createStore<PendingReport | null>(null);
 
-export function setPendingChanges(report: PendingReport | null): void {
-  current = report;
-  listeners.forEach((fn) => fn());
-}
-
-export function getPendingChanges(): PendingReport | null {
-  return current;
-}
-
-export function subscribePendingChanges(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-
-export function usePendingChanges(): PendingReport | null {
-  return React.useSyncExternalStore(subscribePendingChanges, getPendingChanges);
-}
+export const setPendingChanges = store.set;
+export const getPendingChanges = store.get;
+export const subscribePendingChanges = store.subscribe;
+export const usePendingChanges = store.use;

@@ -23,8 +23,10 @@ import {
   type FlowDoc,
   type SceneIssue,
 } from "@mmo-engine/scene";
-import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
+import { getFlow, playFromUrl, saveFlow } from "../flow-client.js";
 import { leftRightRoute } from "../graph-view.js";
+import { issueCount } from "../save-outcome.js";
+import { useSaveTask } from "./use-save-task.js";
 import { NodeGraph } from "./node-graph.js";
 import { MIcon, Select } from "./components.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
@@ -70,8 +72,11 @@ export function FlowEditor(): React.JSX.Element {
       components: [{ name: "Flow node", fields: [{ key: "id", value: id }] }],
     });
   };
-  const [status, setStatus] = React.useState<string>("loading…");
-  const [refused, setRefused] = React.useState<SceneIssue[]>([]);
+  const task = useSaveTask<SceneIssue>();
+  const refused = task.issues;
+  // Plain notes (loading, opened a URL, a failed load) share the save's status line.
+  const status = task.status?.text ?? "";
+  const setStatus = (text: string): void => task.setStatus({ tone: "info", text });
   const [newId, setNewId] = React.useState("");
   const [newScene, setNewScene] = React.useState("login");
   const [client, setClient] = React.useState("http://localhost:5173");
@@ -113,7 +118,7 @@ export function FlowEditor(): React.JSX.Element {
     const failed = status !== "" && status !== "loading…";
     return (
       <div className="flex flex-col items-start gap-2 p-4 text-[13px]">
-        <p>Flow: {status}</p>
+        <p>Flow: {status || "loading…"}</p>
         {failed && (
           <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} onClick={() => load()}>
             Retry
@@ -127,21 +132,13 @@ export function FlowEditor(): React.JSX.Element {
   const reach = flowReachable(doc);
   const edit = (next: FlowDoc): void => {
     setDoc(next);
-    setRefused([]);
+    task.setIssues([]);
   };
   const ids = Object.keys(doc.nodes);
   const flagged = new Set(issues.filter((i) => i.path.startsWith("nodes.")).map((i) => i.path.split(".")[1]));
 
   const save = async (): Promise<void> => {
-    try {
-      await saveFlow(doc);
-      setSaved(JSON.stringify(doc));
-      setRefused([]);
-      setStatus("saved to content/flow/game.flow.json");
-    } catch (e) {
-      if (e instanceof FlowSaveError) setRefused(e.issues);
-      setStatus(e instanceof Error ? `refused: ${e.message}` : String(e));
-    }
+    if (await task.run(() => saveFlow(doc), { ok: "saved to content/flow/game.flow.json", refused: (i) => `refused: ${issueCount(i.length)}` })) setSaved(JSON.stringify(doc));
   };
   const play = (id: string): void => {
     const r = playFromUrl(doc, id, { client, server: server.url && server.user ? server : undefined });
