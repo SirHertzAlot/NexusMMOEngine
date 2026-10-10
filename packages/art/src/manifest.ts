@@ -68,6 +68,15 @@ const ModelEntrySchema = z.object({
   compression: z.enum(["meshopt"]).optional(),
   rawBytes: z.number().int().nonnegative().optional(),
   compressedBytes: z.number().int().nonnegative().optional(),
+  /**
+   * Texture compression info (TL1c). Set by the gltf-transform step.
+   * `textureCompression` maps slot → format ("webp", "ktx2-uastc").
+   * `textureBytes` maps slot → bytes after conversion.
+   * `cleanupRemoved` is bytes removed by prune+dedup.
+   */
+  textureCompression: z.record(z.string(), z.enum(["webp", "ktx2-uastc"])).optional(),
+  textureBytes: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  cleanupRemoved: z.number().int().nonnegative().optional(),
 });
 
 const TextureEntrySchema = z.object({
