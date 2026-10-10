@@ -966,6 +966,14 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, 200, { ok: true, ...(await assetScan()) });
             return;
           }
+          if (url.startsWith("/api/editor/assets/resolve") && req.method === "GET") {
+            const parsed = new URL(req.url ?? "/", "http://localhost");
+            const id = parsed.searchParams.get("id") ?? "";
+            const { resolveAssetUrl } = await import("./asset-resolve.js");
+            const result = resolveAssetUrl(repoRoot, id);
+            sendJson(res, result.ok ? 200 : 404, result);
+            return;
+          }
           const charactersRoute =
             url === "/api/editor/characters" ||
             url.startsWith("/api/editor/characters?") ||

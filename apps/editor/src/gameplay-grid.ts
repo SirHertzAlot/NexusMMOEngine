@@ -24,6 +24,8 @@ export type GridColumn = GridKind & {
   ref?: string;
   /** An enum whose options come from `options[optionsFrom]` in the context. */
   optionsFrom?: string;
+  /** The cell holds asset ID(s); the grid offers a 3D preview. */
+  assetKind?: "model" | "texture";
 };
 
 export interface GridRow {

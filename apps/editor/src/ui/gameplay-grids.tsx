@@ -47,10 +47,13 @@ const rowsOf = (snap: GameplaySnapshot): Rows =>
 
 // ------------------------------------------------------------------- cell
 
+import { AssetPreview } from "./asset-preview.js";
+
 function Cell(props: { col: GridColumn; value: unknown; error: string | null; ctx: GridContext; onCommit: (v: unknown) => void }): React.JSX.Element {
   const { col, value, error, ctx, onCommit } = props;
   const [text, setText] = React.useState(cellText(col, value));
   const [parseError, setParseError] = React.useState<string | null>(null);
+  const [showPreview, setShowPreview] = React.useState(false);
   React.useEffect(() => {
     setText(cellText(col, value));
     setParseError(null);
@@ -58,6 +61,24 @@ function Cell(props: { col: GridColumn; value: unknown; error: string | null; ct
   const shown = parseError ?? error;
   const cls = "h-7 w-full rounded border bg-background px-1.5 font-mono text-xs " + (shown ? "border-red-500" : "border-input");
   const label = `${col.label}${shown ? `: ${shown}` : ""}`;
+
+  // Asset columns get a preview toggle beside the editor.
+  const previewButton = col.assetKind && typeof value === "string" && value !== "" ? (
+    <button
+      type="button"
+      aria-label={`Preview ${value}`}
+      title={`Preview ${value}`}
+      className="ml-1 rounded border border-input px-1.5 text-xs"
+      onClick={() => setShowPreview((s) => !s)}
+    >
+      {showPreview ? "▾" : "👁"}
+    </button>
+  ) : null;
+  const preview = col.assetKind && showPreview && typeof value === "string" && value !== "" ? (
+    <div className="mt-1">
+      <AssetPreview assetId={value} label={value} />
+    </div>
+  ) : null;
 
   if (col.kind === "bool") {
     return <input type="checkbox" aria-label={label} title={label} checked={value === true || (value === undefined && col.def === true)} onChange={(e) => onCommit(e.target.checked)} />;
@@ -83,20 +104,26 @@ function Cell(props: { col: GridColumn; value: unknown; error: string | null; ct
     onCommit(r.value);
   };
   return (
-    <input
-      aria-label={label}
-      title={label}
-      aria-invalid={shown ? true : undefined}
-      className={cls}
-      placeholder={col.def !== undefined ? cellText(col, col.def) : ""}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") commit();
-        if (e.key === "Escape") setText(cellText(col, value));
-      }}
-    />
+    <div>
+      <div className="flex items-center">
+        <input
+          aria-label={label}
+          title={label}
+          aria-invalid={shown ? true : undefined}
+          className={cls}
+          placeholder={col.def !== undefined ? cellText(col, col.def) : ""}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setText(cellText(col, value));
+          }}
+        />
+        {previewButton}
+      </div>
+      {preview}
+    </div>
   );
 }
 
