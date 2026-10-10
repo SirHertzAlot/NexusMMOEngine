@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { DataTable } from "./data-table.js";
 import type { SelectionCard } from "../inspectors/selection.js";
 import type { PcgAssetView } from "../pcg-host.js";
 
@@ -57,20 +58,26 @@ export function SelectionCardView({ card, libraryError }: { card: SelectionCard 
           {card.asset.description && <p className="text-muted-foreground">{card.asset.description}</p>}
           {card.asset.error && <p className="text-red-400">{card.asset.error}</p>}
           {card.asset.parameters.length > 0 && (
-            <table className="mt-1 w-full font-mono">
-              <tbody>
-                {card.asset.parameters.map((p) => (
-                  <tr key={p.name} title={p.description ?? `${p.type}${p.range ? `, ${p.range}` : ""}`}>
-                    <td className="pr-2 align-top text-muted-foreground">{p.name}</td>
-                    <td className="align-top text-foreground">
+            <DataTable
+              headless
+              className="mt-1 w-full font-mono"
+              rows={card.asset.parameters}
+              rowKey={(p) => p.name}
+              rowTitle={(p) => p.description ?? `${p.type}${p.range ? `, ${p.range}` : ""}`}
+              columns={[
+                { id: "name", cell: (p) => <span className="text-muted-foreground">{p.name}</span> },
+                {
+                  id: "value",
+                  cell: (p) => (
+                    <>
                       {p.value}
                       {p.overridden && <span className="ml-1 text-amber-300" title={`graph default ${p.default}`}>●</span>}
-                    </td>
-                    <td className="pl-2 align-top text-muted-foreground">{p.range ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </>
+                  ),
+                },
+                { id: "range", cell: (p) => <span className="text-muted-foreground">{p.range ?? ""}</span> },
+              ]}
+            />
           )}
         </section>
       )}
@@ -83,16 +90,16 @@ export function SelectionCardView({ card, libraryError }: { card: SelectionCard 
       {card.components.map((c) => (
         <section key={c.name}>
           <h4 className="text-[10px] uppercase tracking-wide text-muted-foreground">{c.name}</h4>
-          <table className="w-full font-mono">
-            <tbody>
-              {c.fields.map((f) => (
-                <tr key={f.key}>
-                  <td className="pr-2 align-top text-muted-foreground">{f.key}</td>
-                  <td className="break-all text-foreground">{f.value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            headless
+            className="w-full font-mono"
+            rows={c.fields}
+            rowKey={(f) => f.key}
+            columns={[
+              { id: "key", cell: (f) => <span className="text-muted-foreground">{f.key}</span> },
+              { id: "value", cellClass: () => "break-all", cell: (f) => f.value },
+            ]}
+          />
         </section>
       ))}
     </div>

@@ -53,6 +53,8 @@ import type { MenuItem } from "./components.js";
 import type { ScopeNode } from "./scope-tree.js";
 import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
 import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
+import { useDrag } from "./use-drag.js";
+import { SelectableList } from "./selectable-list.js";
 import type { LiveOpsScope } from "./previews.js";
 import {
   AnimDetails,
@@ -877,30 +879,19 @@ function Divider({ vertical = false, title, onLive, onCommit, onReset }: {
   onCommit: () => void;
   onReset: () => void;
 }): React.JSX.Element {
-  const last = React.useRef<{ x: number; y: number } | null>(null);
+  const drag = useDrag<true>({
+    threshold: 0,
+    start: () => true,
+    move: (_e, _s, d) => onLive(d.stepX, d.stepY),
+    end: () => onCommit(),
+  });
   return (
     <span
       role="separator"
       aria-orientation={vertical ? "vertical" : "horizontal"}
       title={title}
       onDoubleClick={onReset}
-      onPointerDown={(e) => {
-        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-        last.current = { x: e.clientX, y: e.clientY };
-      }}
-      onPointerMove={(e) => {
-        if (!last.current) return;
-        onLive(e.clientX - last.current.x, e.clientY - last.current.y);
-        last.current = { x: e.clientX, y: e.clientY };
-      }}
-      onPointerUp={() => {
-        last.current = null;
-        onCommit();
-      }}
-      onPointerCancel={() => {
-        last.current = null;
-        onCommit();
-      }}
+      {...drag.handlers}
       className={`flex-none rounded-full hover:bg-white/10 ${vertical ? "w-1.5 cursor-col-resize self-stretch" : "h-1.5 cursor-row-resize"}`}
       style={{ touchAction: "none" }}
     />
@@ -2105,27 +2096,21 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   if (props.workspace === "liveops") return <LiveOpsTree />;
   if (props.workspace === "gameplay" || props.workspace === "dungeons") {
     return (
-      <ul className="flex flex-col gap-0.5">
-        {props.views.map((v) => {
-          const on = v.id === props.view;
-          return (
-            <li key={v.id}>
-              <button
-                onClick={() => props.onView(v.id)}
-                aria-current={on ? "page" : undefined}
-                className="m3-focus flex h-10 w-full items-center gap-3 rounded-full px-3 text-sm"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name={v.icon} size={20} />
-                {v.label}
-              </button>
-            </li>
-          );
-        })}
-        <li className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+      <div>
+        <SelectableList
+          navigation
+          size="lg"
+          items={props.views}
+          itemKey={(v) => v.id}
+          label={(v) => v.label}
+          icon={(v) => v.icon}
+          selected={props.view}
+          onPick={(v) => props.onView(v.id)}
+        />
+        <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
           Row-level tables (items, creatures, loot…) live inside the Tables panel.
-        </li>
-      </ul>
+        </p>
+      </div>
     );
   }
   if (props.workspace === "debug") {

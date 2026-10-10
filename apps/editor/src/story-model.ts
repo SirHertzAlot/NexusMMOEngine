@@ -143,33 +143,6 @@ export function deleteDialogNode(d: DialogDoc, id: string): DialogDoc {
   return out;
 }
 
-/** Snapshot undo: every edit pushes the new document. */
-export class History<T> {
-  private past: T[] = [];
-  private future: T[] = [];
-  constructor(public value: T) {}
-  get canUndo(): boolean { return this.past.length > 0; }
-  get canRedo(): boolean { return this.future.length > 0; }
-  push(next: T): void {
-    this.past.push(this.value);
-    if (this.past.length > 200) this.past.shift();
-    this.value = next;
-    this.future = [];
-  }
-  undo(): T | null {
-    const prev = this.past.pop();
-    if (prev === undefined) return null;
-    this.future.push(this.value);
-    return (this.value = prev);
-  }
-  redo(): T | null {
-    const next = this.future.pop();
-    if (next === undefined) return null;
-    this.past.push(this.value);
-    return (this.value = next);
-  }
-}
-
 // ----------------------------------------------------------------- tester
 
 /** The mock a tester run reads and changes: what the character's quests say, their name, today's board quest. */

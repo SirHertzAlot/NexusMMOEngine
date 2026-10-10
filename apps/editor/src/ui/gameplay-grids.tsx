@@ -34,6 +34,7 @@ import { CATALOG_KINDS, type CatalogEntry, type CatalogKind } from "../content-c
 import { getAt } from "../rules-control.js";
 import { diffRows } from "../gameplay-diff.js";
 import { setPendingChanges } from "./pending-changes.js";
+import { DataTable, nextSort, type Column, type SortState } from "./data-table.js";
 import { Badge, Button, Card, CardContent, Input, Select, Field } from "./components.js";
 
 export const CONTENT_MIME = "application/x-mmo-content";
@@ -107,7 +108,7 @@ export function GameplayGridsPanel(): React.JSX.Element {
   const [search, setSearch] = React.useState("");
   const [filterKey, setFilterKey] = React.useState("");
   const [filterText, setFilterText] = React.useState("");
-  const [sort, setSort] = React.useState<{ key: string; dir: "asc" | "desc" } | null>(null);
+  const [sort, setSort] = React.useState<SortState | null>(null);
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = React.useState<ReadonlySet<string>>(new Set());
   const [dense, setDense] = React.useState(true);
@@ -164,7 +165,7 @@ export function GameplayGridsPanel(): React.JSX.Element {
     setRows({ ...rows, [table]: next });
     setStatus(null);
   };
-  const shownRows = viewRows(mine, { search, filters: filterKey ? { [filterKey]: filterText } : {}, sort: sort ?? undefined });
+  const shownRows = viewRows(mine, { search, filters: filterKey ? { [filterKey]: filterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
   const mainCols = def.columns.filter((c) => !c.nested);
   const nestedCols = def.columns.filter((c) => c.nested);
   const serverCell = (rowId: string, key: string): string | null =>
@@ -220,7 +221,6 @@ export function GameplayGridsPanel(): React.JSX.Element {
     setOpen(new Set(open).add(newId));
     setNewId("");
   };
-  const rowPad = dense ? "py-0.5" : "py-2";
 
   return (
     <div className="flex flex-col gap-3">
@@ -272,62 +272,62 @@ export function GameplayGridsPanel(): React.JSX.Element {
       )}
 
       <div className="overflow-auto rounded-md border border-input">
-        <table className="w-full border-collapse text-left text-xs">
-          <thead className="sticky top-0 bg-muted">
-            <tr>
-              <th className="w-8 px-1">
+        <DataTable
+          className="w-full border-collapse text-left text-xs"
+          rows={shownRows}
+          rowKey={(r) => r.id}
+          selected={(r) => selected.has(r.id)}
+          sort={sort}
+          onSort={(id) => setSort(nextSort(sort, id, true))}
+          comfortable={!dense}
+          detail={(r) =>
+            open.has(r.id) && nestedCols.length > 0 && (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4 gap-y-2">
+                {nestedCols.map((c) => (
+                  <Field key={c.key} label={`${c.label}${c.ref ? ` (${c.ref})` : ""}`} error={errorOf(r, c)}>
+                    <Cell col={c} value={getAt(r.data, c.key)} error={errorOf(r, c)} ctx={ctx} onCommit={(v) => setMine(editCell(mine, r.id, c.key, v))} />
+                  </Field>
+                ))}
+              </div>
+            )
+          }
+          columns={[
+            {
+              id: "select",
+              width: "2rem",
+              interactive: true,
+              header: (
                 <input type="checkbox" aria-label="Select all shown rows" checked={shownRows.length > 0 && shownRows.every((r) => selected.has(r.id))} onChange={(e) => setSelected(e.target.checked ? new Set(shownRows.map((r) => r.id)) : new Set())} />
-              </th>
-              {[{ key: "id", label: "id" }, ...mainCols].map((c) => (
-                <th key={c.key} className="px-1 py-1 font-semibold" aria-sort={sort?.key === c.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                  <button className="font-semibold" onClick={() => setSort(sort?.key === c.key ? (sort.dir === "asc" ? { key: c.key, dir: "desc" } : null) : { key: c.key, dir: "asc" })}>
-                    {c.label}
-                    {sort?.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {shownRows.map((r) => (
-              <React.Fragment key={r.id}>
-                <tr className={"border-t border-input " + (selected.has(r.id) ? "bg-accent/40" : "")}>
-                  <td className={"px-1 " + rowPad}>
-                    <input type="checkbox" aria-label={`Select ${r.id}`} checked={selected.has(r.id)} onChange={() => setSelected(toggle(selected, r.id))} />
-                  </td>
-                  <td className={"px-1 font-mono " + rowPad}>
-                    {nestedCols.length > 0 && (
-                      <button aria-label={open.has(r.id) ? `Collapse ${r.id}` : `Expand ${r.id}`} aria-expanded={open.has(r.id)} className="mr-1" onClick={() => setOpen(toggle(open, r.id))}>
-                        {open.has(r.id) ? "▾" : "▸"}
-                      </button>
-                    )}
-                    {r.id}
-                    {def.columns.some((c) => errorOf(r, c)) && <span aria-label="has problems" className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />}
-                  </td>
-                  {mainCols.map((c) => (
-                    <td key={c.key} className={"px-1 " + rowPad}>
-                      <Cell col={c} value={getAt(r.data, c.key)} error={errorOf(r, c)} ctx={ctx} onCommit={(v) => setMine(editCell(mine, r.id, c.key, v))} />
-                    </td>
-                  ))}
-                </tr>
-                {open.has(r.id) && nestedCols.length > 0 && (
-                  <tr className="bg-muted/40">
-                    <td />
-                    <td colSpan={mainCols.length + 1} className="px-1 py-2">
-                      <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4 gap-y-2">
-                        {nestedCols.map((c) => (
-                          <Field key={c.key} label={`${c.label}${c.ref ? ` (${c.ref})` : ""}`} error={errorOf(r, c)}>
-                            <Cell col={c} value={getAt(r.data, c.key)} error={errorOf(r, c)} ctx={ctx} onCommit={(v) => setMine(editCell(mine, r.id, c.key, v))} />
-                          </Field>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+              ),
+              cell: (r) => <input type="checkbox" aria-label={`Select ${r.id}`} checked={selected.has(r.id)} onChange={() => setSelected(toggle(selected, r.id))} />,
+            },
+            {
+              id: "id",
+              header: "id",
+              sortable: true,
+              mono: true,
+              interactive: true,
+              cell: (r) => (
+                <>
+                  {nestedCols.length > 0 && (
+                    <button aria-label={open.has(r.id) ? `Collapse ${r.id}` : `Expand ${r.id}`} aria-expanded={open.has(r.id)} className="mr-1" onClick={() => setOpen(toggle(open, r.id))}>
+                      {open.has(r.id) ? "▾" : "▸"}
+                    </button>
+                  )}
+                  {r.id}
+                  {def.columns.some((c) => errorOf(r, c)) && <span aria-label="has problems" className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />}
+                </>
+              ),
+            },
+            ...mainCols.map((c): Column<(typeof shownRows)[number]> => ({
+              id: c.key,
+              header: c.label,
+              sortable: true,
+              interactive: true,
+              cell: (r) => <Cell col={c} value={getAt(r.data, c.key)} error={errorOf(r, c)} ctx={ctx} onCommit={(v) => setMine(editCell(mine, r.id, c.key, v))} />,
+            })),
+          ]}
+        />
       </div>
 
       <div className="flex items-center gap-2">

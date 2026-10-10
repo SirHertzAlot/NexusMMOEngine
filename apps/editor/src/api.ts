@@ -67,12 +67,13 @@ export async function requestJson<T = void>(url: string, opts: RequestOptions): 
  * The `{ ok, error }` envelope the database and version-control routes
  * answer with: a 200 can still say `ok: false`.
  */
-export async function callEnvelope<T>(url: string, method: "GET" | "POST", body?: unknown): Promise<T> {
+export async function callEnvelope<T>(url: string, method: "GET" | "POST" | "PUT", body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
     ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   });
   const json = (await res.json().catch(() => ({}))) as T & { ok?: boolean; error?: string };
-  if (!res.ok || json.ok === false) throw new Error(json.error ?? `HTTP ${res.status}`);
+  // The whole answer rides on the error, so a panel can read the host's issues.
+  if (!res.ok || json.ok === false) throw Object.assign(new Error(json.error ?? `HTTP ${res.status}`), { body: json });
   return json;
 }

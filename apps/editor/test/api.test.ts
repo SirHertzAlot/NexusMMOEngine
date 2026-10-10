@@ -69,4 +69,11 @@ describe("api", () => {
     fakeFetch(200, { ok: true, v: 3 });
     assert.equal(((await callEnvelope("/x", "POST", {})) as { v: number }).v, 3);
   });
+
+  it("the envelope error carries the host's whole answer and PUT sends a body", async () => {
+    const { calls } = fakeFetch(400, { ok: false, error: "bad patch", issues: [{ path: "a" }] });
+    await assert.rejects(callEnvelope("/x", "PUT", { n: 1 }), (e: Error & { body?: { issues?: unknown[] } }) => e.message === "bad patch" && e.body?.issues?.length === 1);
+    assert.equal(calls[0].init?.method, "PUT");
+    assert.equal(calls[0].init?.body, '{"n":1}');
+  });
 });

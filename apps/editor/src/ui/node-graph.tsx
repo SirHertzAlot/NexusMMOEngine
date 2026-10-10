@@ -27,7 +27,7 @@ import {
   type EdgeGeom,
   type GraphView,
 } from "../graph-view.js";
-import { pastDragThreshold } from "./drag-threshold.js";
+import { useDrag } from "./use-drag.js";
 import { IconButton, MIcon } from "./components.js";
 
 export interface NodeGraphProps<N, E> {
@@ -68,8 +68,8 @@ const ARROW_FILL = "#90909A";
 
 /** Which pointer gesture is in progress. */
 type Gesture =
-  | { kind: "pan"; sx: number; sy: number; origin: GraphView }
-  | { kind: "node"; id: string; sx: number; sy: number; ox: number; oy: number };
+  | { kind: "pan"; origin: GraphView }
+  | { kind: "node"; id: string; ox: number; oy: number };
 
 export function NodeGraph<N, E>(props: NodeGraphProps<N, E>): React.JSX.Element {
   const { nodes, edges, nodeId, nodePos, edgeEnds, renderNode } = props;
@@ -79,7 +79,23 @@ export function NodeGraph<N, E>(props: NodeGraphProps<N, E>): React.JSX.Element 
   const [view, setView] = React.useState<GraphView>({ x: -60, y: -60, scale: 1 });
   const viewRef = React.useRef(view);
   viewRef.current = view;
-  const gesture = React.useRef<Gesture | null>(null);
+  const drag = useDrag<Gesture>({
+    start: () => {
+      props.onSelect?.(null);
+      return { kind: "pan", origin: viewRef.current };
+    },
+    move: (_e, g, d) => {
+      if (g.kind === "pan") {
+        setView(panFrom(g.origin, d.dx, d.dy));
+      } else {
+        const k = viewRef.current.scale;
+        props.onMove?.(g.id, g.ox + d.dx / k, g.oy + d.dy / k);
+      }
+    },
+    end: (_e, g, moved) => {
+      if (g.kind === "node" && moved) props.onMoveEnd?.();
+    },
+  });
   const [size, setSize] = React.useState({ w: 800, h: 500 });
 
   const sizeOf = (n: N): { w: number; h: number } => {
@@ -144,29 +160,7 @@ export function NodeGraph<N, E>(props: NodeGraphProps<N, E>): React.JSX.Element 
         role="img"
         aria-label={props.label}
         data-testid={props.testId ?? "node-graph"}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          gesture.current = { kind: "pan", sx: e.clientX, sy: e.clientY, origin: viewRef.current };
-          (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
-          props.onSelect?.(null);
-        }}
-        onPointerMove={(e) => {
-          const g = gesture.current;
-          if (!g || !pastDragThreshold(g.sx, g.sy, e.clientX, e.clientY)) return;
-          if (g.kind === "pan") {
-            setView(panFrom(g.origin, e.clientX - g.sx, e.clientY - g.sy));
-          } else {
-            const k = viewRef.current.scale;
-            props.onMove?.(g.id, g.ox + (e.clientX - g.sx) / k, g.oy + (e.clientY - g.sy) / k);
-          }
-        }}
-        onPointerUp={() => {
-          if (gesture.current?.kind === "node") props.onMoveEnd?.();
-          gesture.current = null;
-        }}
-        onPointerCancel={() => {
-          gesture.current = null;
-        }}
+        {...drag.handlers}
       >
         <defs>
           <marker id={`ng-arrow-${uid}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -211,9 +205,8 @@ export function NodeGraph<N, E>(props: NodeGraphProps<N, E>): React.JSX.Element 
                   e.stopPropagation();
                   props.onSelect?.(id);
                   if (!props.canMove) return;
-                  gesture.current = { kind: "node", id, sx: e.clientX, sy: e.clientY, ox: box.x, oy: box.y };
                   // Captured on the node (not the canvas), so its double-click still lands on it.
-                  (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
+                  drag.begin(e, { kind: "node", id, ox: box.x, oy: box.y });
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();

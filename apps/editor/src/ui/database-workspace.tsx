@@ -8,11 +8,12 @@ import * as React from "react";
 import { applyMutations, fetchCatalog, fetchLog, runQuery, undoEntry, type Db, type LogEntry, type QueryResult } from "../database-client.js";
 import { parseCell, rowKey, stage, toMutations, viewRows, type Pending, type Table } from "../database-model.js";
 import { Badge, Button, Input, MIcon, notify, Select } from "./components.js";
+import { Column, DataTable } from "./data-table.js";
+import { SelectableList } from "./selectable-list.js";
 import { getDbSelection, setDbSelection, subscribeDbSelection } from "./db-selection.js";
 
 const cell = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
-const th = "sticky top-0 bg-muted px-2 py-1 text-left text-xs font-medium whitespace-nowrap";
-const td = "px-2 py-1 text-xs font-mono whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis";
+const CELL = "max-w-[24rem] overflow-hidden text-ellipsis";
 const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 function useCatalog(): { dbs: Db[]; error: string; reload: () => void } {
@@ -27,14 +28,12 @@ function useCatalog(): { dbs: Db[]; error: string; reload: () => void } {
 
 function ResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }): React.JSX.Element {
   return (
-    <table className="w-full border-collapse">
-      <thead><tr>{columns.map((c) => <th key={c} className={th}>{c}</th>)}</tr></thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={i} className="border-b border-border">{r.map((v, j) => <td key={j} className={td}>{cell(v)}</td>)}</tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTable
+      mono
+      rows={rows}
+      rowKey={(_, i) => String(i)}
+      columns={columns.map((c, j) => ({ id: `${j}:${c}`, header: c, nowrap: true, cellClass: () => CELL, cell: (r: unknown[]) => cell(r[j]) }))}
+    />
   );
 }
 
@@ -105,15 +104,16 @@ export function DatabaseGridPanel(): React.JSX.Element {
         {dbs.map((d) => (
           <details key={d.name} open>
             <summary className="cursor-pointer py-1 font-medium"><MIcon name="database" size={16} /> {d.file}</summary>
-            {d.tables.map((t) => (
-              <button
-                key={t.name}
-                onClick={() => pick(d.name, t.name)}
-                className={`flex w-full items-center justify-between rounded px-3 py-1 text-left text-xs hover:bg-muted ${sel?.table === t.name && sel.db === d.name ? "bg-muted" : ""}`}
-              >
-                <span>{t.name}</span><span className="text-muted-foreground">{t.rowCount}</span>
-              </button>
-            ))}
+            <SelectableList
+              mono
+              size="sm"
+              items={d.tables}
+              itemKey={(t) => t.name}
+              label={(t) => t.name}
+              tag={(t) => t.rowCount}
+              selected={sel?.db === d.name ? sel.table : null}
+              onPick={(t) => pick(d.name, t.name)}
+            />
           </details>
         ))}
       </nav>
@@ -139,45 +139,40 @@ export function DatabaseGridPanel(): React.JSX.Element {
             </div>
             {status && <p className="border-b border-border px-3 py-1 text-xs text-destructive" role="alert">{status}</p>}
             <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {data.columns.map((c) => (
-                      <th key={c} className={`${th} cursor-pointer`} onClick={() => setSort(sort?.column === c && sort.dir === "asc" ? { column: c, dir: "desc" } : { column: c, dir: "asc" })} aria-sort={sort?.column === c ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                        {c}{sort?.column === c ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i} className="border-b border-border">
-                      {r.map((v, j) => {
-                        const name = data.columns[j];
-                        const col = table.columns.find((c) => c.name === name);
-                        const p = pendingFor(r, name);
-                        const errKey = `${JSON.stringify(rowKey(table, data.columns, r))}:${name}`;
-                        const editable = table.editable && col?.editable;
-                        return (
-                          <td key={j} className={`${td} ${p ? "bg-primary/10" : ""}`} title={errors[errKey]}>
-                            {editable ? (
-                              <input
-                                className={`w-full bg-transparent outline-none focus:ring-1 focus:ring-ring ${errors[errKey] ? "ring-1 ring-destructive" : ""}`}
-                                aria-label={`${name} row ${i + 1}`}
-                                aria-invalid={Boolean(errors[errKey])}
-                                defaultValue={cell(p ? p.value : v)}
-                                onBlur={(e) => e.target.value !== cell(p ? p.value : v) && editCell(r, name, e.target.value)}
-                              />
-                            ) : (
-                              cell(v)
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable
+                mono
+                rows={rows}
+                rowKey={(_, i) => String(i)}
+                sort={sort ? { id: sort.column, dir: sort.dir } : null}
+                onSort={(id) => setSort(sort?.column === id && sort.dir === "asc" ? { column: id, dir: "desc" } : { column: id, dir: "asc" })}
+                columns={data.columns.map((name, j): Column<unknown[]> => {
+                  const col = table.columns.find((c) => c.name === name);
+                  const editable = Boolean(table.editable && col?.editable);
+                  const errKey = (r: unknown[]): string => `${JSON.stringify(rowKey(table, data.columns, r))}:${name}`;
+                  return {
+                    id: name,
+                    header: name,
+                    sortable: true,
+                    nowrap: true,
+                    interactive: editable,
+                    cellTitle: (r) => errors[errKey(r)],
+                    cellClass: (r) => `${CELL} ${pendingFor(r, name) ? "bg-primary/10" : ""}`,
+                    cell: (r, i) => {
+                      const p = pendingFor(r, name);
+                      if (!editable) return cell(r[j]);
+                      return (
+                        <input
+                          className={`w-full bg-transparent outline-none focus:ring-1 focus:ring-ring ${errors[errKey(r)] ? "ring-1 ring-destructive" : ""}`}
+                          aria-label={`${name} row ${i + 1}`}
+                          aria-invalid={Boolean(errors[errKey(r)])}
+                          defaultValue={cell(p ? p.value : r[j])}
+                          onBlur={(e) => e.target.value !== cell(p ? p.value : r[j]) && editCell(r, name, e.target.value)}
+                        />
+                      );
+                    },
+                  };
+                })}
+              />
             </div>
           </>
         )}
@@ -252,28 +247,32 @@ export function DatabaseAuditPanel(): React.JSX.Element {
         <Button size="sm" variant="outline" onClick={reload}>Refresh</Button>
         {status && <span className="text-xs text-destructive" role="alert">{status}</span>}
       </div>
-      <table className="w-full border-collapse">
-        <thead><tr>{["#", "When", "Admin", "Op", "Where", "Row", "Before", "After", ""].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
-        <tbody>
-          {log.map((e) => (
-            <tr key={e.id} className="border-b border-border">
-              <td className={td}>{e.id}</td>
-              <td className={td}>{new Date(e.ts).toLocaleString()}</td>
-              <td className={td}>{e.admin}</td>
-              <td className={td}>{e.op}</td>
-              <td className={td}>{e.db}.{e.table}</td>
-              <td className={td}>{JSON.stringify(e.key)}</td>
-              <td className={td}>{JSON.stringify(e.before)}</td>
-              <td className={td}>{JSON.stringify(e.after)}</td>
-              <td className={td}>
-                {e.op === "update" && (e.undoneBy === null
-                  ? <Button size="sm" variant="outline" onClick={() => void undo(e.id)}>Undo</Button>
-                  : <span className="text-muted-foreground">undone by #{e.undoneBy}</span>)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        mono
+        rows={log}
+        rowKey={(e) => String(e.id)}
+        columns={[
+          { id: "id", header: "#", nowrap: true, cell: (e) => e.id },
+          { id: "when", header: "When", nowrap: true, cell: (e) => new Date(e.ts).toLocaleString() },
+          { id: "admin", header: "Admin", nowrap: true, cell: (e) => e.admin },
+          { id: "op", header: "Op", nowrap: true, cell: (e) => e.op },
+          { id: "where", header: "Where", nowrap: true, cell: (e) => `${e.db}.${e.table}` },
+          { id: "row", header: "Row", nowrap: true, cell: (e) => JSON.stringify(e.key) },
+          { id: "before", header: "Before", nowrap: true, cell: (e) => JSON.stringify(e.before) },
+          { id: "after", header: "After", nowrap: true, cell: (e) => JSON.stringify(e.after) },
+          {
+            id: "undo",
+            interactive: true,
+            cell: (e) =>
+              e.op === "update" &&
+              (e.undoneBy === null ? (
+                <Button size="sm" variant="outline" onClick={() => void undo(e.id)}>Undo</Button>
+              ) : (
+                <span className="text-muted-foreground">undone by #{e.undoneBy}</span>
+              )),
+          },
+        ]}
+      />
       {log.length === 0 && <p className="p-3 text-sm text-muted-foreground">No edits yet.</p>}
     </div>
   );
