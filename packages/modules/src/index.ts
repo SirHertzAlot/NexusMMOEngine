@@ -36,6 +36,18 @@ export interface ModuleManifest {
    * `core` module, whose systems server.ts constructs).
    */
   server?: { entry?: string; systems: SystemSpec[] };
+  /**
+   * Native contribution (EA10). `entry` is a compiled N-API `.node` file.
+   */
+  native?: { entry: string; systems: string[] };
+  /**
+   * Sidecar contribution (EA11). Helper process alongside the server.
+   */
+  sidecar?: { command: string; port: number; health: string };
+  /**
+   * Edge contribution (EA12). Runs on edge nodes, discovered by clients.
+   */
+  edge?: { regions: string[]; endpoint: string; capabilities: string[] };
 }
 export interface Problem {
   module: string;
