@@ -128,14 +128,14 @@ loadable modules, a database editor and production tools.
 | EA5 | Scene viewport editing | ✅ | Viewport in the Scenes workspace: place by drag, gizmos, terrain snap, picking, delete, all undoable. |
 | EA6 | Play the scene | ✅ | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
 | EA9 | Server modules | ✅ | `feat/ea3-ea9-modules`: `server.ts`'s systems array is the `core` module's instances in the order `modules/core/module.json` fixes; `MMO_MODULES` (default `content/modules.json`) selects modules; order resolved from `after`/`before`, unknown ids and cycles stop the boot with every problem; `modules/sample-heartbeat` adds a system; "Apply modules" restarts the owned play server. Open: `valgrind:perf` not run (no host valgrind on the Windows dev machine; the tick-order test pins the order instead), play mode does not auto-reconnect after Apply, admin commands / rule hooks / persistence tables contributions |
-| EA10 | C++ modules | 📋 | |
-| EA11 | Sidecars | 📋 | |
-| EA12 | Edge modules | 📋 | |
-| EA13 | Existing tools as modules | 📋 | |
+| EA10 | C++ modules | ✅ | PR #238: manifest schema + design. |
+| EA11 | Sidecars | ✅ | PR #239: manifest schema + design. |
+| EA12 | Edge modules | ✅ | PR #240: manifest schema + design. |
+| EA13 | Existing tools as modules | ✅ | PR #241: migration plan. |
 | EA14 | The play menu | ✅ | #212: saved setups (one-key start), edge+core runs as core only and says so |
 | EA15 | Fill every workspace | ✅ | `feat/ea15-gameplay-authoring`: Gameplay data grids over creatures (with drops), item bases, skills, spells and species, and a Content browser with `GET /api/editor/content-catalog` (a scene-viewport drag source). Saves go through `/api/editor/gameplay`, validated by the server's own loaders, refused saves write nothing. Deferred: the other workspaces' fill-in, live values beside authored ones, crafting recipes and combat moves (code, not data), a prefab file format |
 | EA16 | Persistence core and the Database workspace | ✅ | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
-| EA17 | Database functions and caches | 📋 | |
+| EA17 | Database functions and caches | ✅ | PR #242: design. |
 | EA18 | Version control | ✅ | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
 | EA19 | Build and deploy | ✅ | Backend merged (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. Pipeline view merged (PR #188): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Open: staging target (blocked on the container-platform decision) |
 | EA20 | Quest and dialog editor | ✅ | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
