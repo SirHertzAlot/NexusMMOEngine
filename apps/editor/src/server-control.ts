@@ -25,6 +25,9 @@ export interface PlayServerLike {
  */
 export interface PlayServerStartOptions {
   bots?: number;
+  fresh?: boolean;
+  keep?: boolean;
+  spawn?: unknown;
 }
 
 /** Server-control surface the editor UI drives (implements ServerControl). */

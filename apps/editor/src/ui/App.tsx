@@ -1635,18 +1635,6 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
 // tint are honored today — everything else is badged preview (see
 // ui/play-setup.ts) and never pretended.
 
-function PreviewBadge({ why }: { why: string }): React.JSX.Element {
-  return (
-    <span
-      className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]"
-      style={{ border: "1px solid var(--m3-outline)", color: "var(--m3-on-surface-variant)" }}
-      title={`Preview — ${why}`}
-    >
-      preview
-    </span>
-  );
-}
-
 function PlayMenu({ setup, onChange, onPlay, onClose }: {
   setup: PlaySetup;
   onChange: (s: PlaySetup) => void;
