@@ -37,6 +37,7 @@ import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
 import { clearDocActions, registerDocActions, type DocActions } from "./doc-actions.js";
 import { readClipboard, writeClipboard } from "./clipboard.js";
+import { subscribeOpenAsset } from "./open-asset.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
 
@@ -278,6 +279,15 @@ export function ScenesPanel(): React.JSX.Element {
     registerDocActions(target);
     return () => clearDocActions(target);
   });
+
+  // The command palette asks us to open a specific scene by id.
+  React.useEffect(
+    () =>
+      subscribeOpenAsset((req) => {
+        if (req.kind === "scene") load(req.id);
+      }, ["scene"]),
+    [],
+  );
 
   const load = (name: string): void => {
     getScene(name).then(
