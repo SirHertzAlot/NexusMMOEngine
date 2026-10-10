@@ -263,6 +263,15 @@ export function StoryEditorPanel(): React.JSX.Element {
       canSave: dirty,
       ...doc.history,
       save: () => void save(),
+      canRevert: dirty,
+      revert: () => void load(),
+      exportDoc: () => ({ name: "story", data: files }),
+      importDoc: async (incoming: unknown) => {
+        const next = incoming as StoryFiles;
+        const errors = (await checkStoryRemote(next)).filter((i) => i.severity === "error");
+        if (errors.length > 0) throw new Error(`invalid story: ${errors.slice(0, 3).map((i) => `${i.path} ${i.message}`).join("; ")}`);
+        doc.edit(next);
+      },
     };
   });
 

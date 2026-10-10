@@ -105,6 +105,9 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handleProblemsRoute } from "./problems-host.js";
+import { handleFilesRoute } from "./files-host.js";
+import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
@@ -1203,10 +1206,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
               sendJson(res, 400, { ok: false, error: "body.layout must be a HUD layout" });
               return;
             }
-            // Basic shape check; the client validates fully on load.
-            const widgets = (layout as { widgets?: unknown }).widgets;
-            if (!widgets || typeof widgets !== "object") {
-              sendJson(res, 400, { ok: false, error: "layout.widgets must be an object" });
+            const hudIssues = validateHudLayout(layout);
+            if (hudIssues.length > 0) {
+              sendJson(res, 400, { ok: false, error: `invalid HUD layout: ${hudIssues.join("; ")}`, issues: hudIssues.map((message) => ({ message })) });
               return;
             }
             const file = join(repoRoot, "content", "ui", "hud.json");
@@ -1372,6 +1374,18 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const animationReply = await handleAnimationRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (animationReply) {
             sendJson(res, animationReply.status, animationReply.body);
+            return;
+          }
+          // Every validator over what is on disk, for the bottom dock's Problems tab (problems-host.ts).
+          const problemsReply = await handleProblemsRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname);
+          if (problemsReply) {
+            sendJson(res, problemsReply.status, problemsReply.body);
+            return;
+          }
+          // Rename / duplicate / delete for the documents the editor owns (files-host.ts).
+          const filesReply = await handleFilesRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "POST" ? await readBody(req) : undefined);
+          if (filesReply) {
+            sendJson(res, filesReply.status, filesReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(

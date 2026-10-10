@@ -286,6 +286,23 @@ export class GraphEditor {
     this.changed();
   }
 
+  /** The JSON of the document the breadcrumb is in. */
+  currentDocument(): GraphDocument {
+    return this.open_().doc;
+  }
+
+  /** Replace the current document with an imported one, as a single undoable edit. */
+  replaceCurrent(doc: GraphDocument): void {
+    const d = this.open_();
+    d.undo.push(d.doc);
+    if (d.undo.length > UNDO_LIMIT) d.undo.shift();
+    d.redo = [];
+    d.doc = JSON.parse(JSON.stringify(doc)) as GraphDocument;
+    this.path = [{ file: d.file, defs: [] }];
+    this.lastMove = null;
+    this.changed();
+  }
+
   /** Every document with unsaved edits, with its JSON to save. */
   pendingSaves(): Array<{ file: string; doc: GraphDocument }> {
     return [...this.docs.values()].filter((d) => JSON.stringify(d.doc) !== d.saved).map((d) => ({ file: d.file, doc: d.doc }));

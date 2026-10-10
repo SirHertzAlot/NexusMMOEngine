@@ -6,7 +6,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   clearViewportActions,
+  flagBlocked,
   getViewportActions,
+  screenshotBlocked,
+  toggleViewportFlag,
+  viewportFlags,
   registerViewportActions,
   subscribeViewportActions,
   type ViewportActions,
@@ -57,6 +61,27 @@ describe("viewport actions", () => {
       assert.equal(calls, 2);
     } finally {
       stop();
+    }
+  });
+
+  it("toggles flip the shared flag and say why they cannot apply without a viewport that has them", () => {
+    assert.match(flagBlocked("grid") ?? "", /no 3D viewport/);
+    assert.match(screenshotBlocked() ?? "", /no 3D viewport/);
+    const v = { ...viewport("game view"), supports: { wireframe: true } };
+    registerViewportActions(v);
+    try {
+      assert.equal(flagBlocked("wireframe"), null);
+      assert.match(flagBlocked("grid") ?? "", /game view has no grid/);
+      assert.match(screenshotBlocked() ?? "", /cannot take a screenshot/);
+      const before = viewportFlags.get().wireframe;
+      toggleViewportFlag("wireframe");
+      assert.equal(viewportFlags.get().wireframe, !before);
+      toggleViewportFlag("wireframe");
+      registerViewportActions({ ...v, screenshot: () => Promise.resolve(null) });
+      assert.equal(screenshotBlocked(), null);
+    } finally {
+      registerViewportActions(v);
+      clearViewportActions(v);
     }
   });
 });

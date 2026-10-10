@@ -314,6 +314,11 @@ export function RulesPanel(): React.JSX.Element {
       canSave: dirty,
       ...NO_HISTORY,
       save: () => void onSave(),
+      canRevert: dirty,
+      revert: () => setContent(structuredClone(pristine)),
+      exportDoc: () => ({ name: `rules-${selected}`, data: content }),
+      // The host validates the whole rules set on Save and refuses a bad one, so an import only fills the draft.
+      importDoc: (incoming: unknown) => setContent(incoming),
     };
   });
 
