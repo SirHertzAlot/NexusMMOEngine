@@ -158,6 +158,35 @@ afterEach(async () => {
 });
 
 describe("gateway: 0x0a debug queries", () => {
+  it("timings: tick count, p50/p99 and each system's cost", async () => {
+    const world = new SimWorld();
+    const busy = {
+      name: "busy-test-system",
+      step: () => {
+        const until = performance.now() + 0.2;
+        while (performance.now() < until) {
+          /* spend a measurable slice */
+        }
+      },
+    };
+    const url = await startGateway({ world, systems: [busy] });
+    const { client } = await join(url, "dbg-timings");
+    try {
+      frames(5);
+      const res = await debugQuery(client, { kind: "debug", query: "timings" });
+      assert.equal(res.query, "timings");
+      if (res.query === "timings") {
+        assert.ok(res.ticks >= 5, `ticks=${res.ticks}`);
+        assert.ok(res.p99 >= res.p50);
+        const sys = res.systems.find((x) => x.name === "busy-test-system");
+        assert.ok(sys, `systems: ${res.systems.map((x) => x.name).join(", ")}`);
+        assert.ok(sys.avg > 0 && sys.max >= sys.avg);
+      }
+    } finally {
+      await client.close();
+    }
+  });
+
   it("waypoints: unknown entity → unknown; idle entity → idle, no waypoints", async () => {
     const world = new SimWorld();
     const nav = new NavigationSystem({ backend: new MockBackend() });

@@ -10,6 +10,8 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  editorLoadUsers,
+  MAX_LOAD_CLIENTS,
   isLoopbackAddress,
   killProcessTree,
   npmInvocation,
@@ -102,6 +104,18 @@ describe("readBody", () => {
       assert.deepEqual(await res.json(), { first: '{"content":1}', second: '{"content":1}' });
     } finally {
       server.close();
+    }
+  });
+});
+
+describe("editorLoadUsers", () => {
+  it("one valid, distinct login per extra client, even from a long play login", () => {
+    for (const base of ["editor-1a2b3c4d", "x".repeat(32)]) {
+      const users = editorLoadUsers(base);
+      assert.equal(users.length, MAX_LOAD_CLIENTS);
+      assert.equal(new Set(users).size, users.length);
+      assert.ok(!users.includes(base));
+      for (const u of users) assert.match(u, /^[A-Za-z0-9_-]{3,32}$/);
     }
   });
 });

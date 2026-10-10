@@ -117,6 +117,9 @@ export class EntityLayer {
   readonly group = new THREE.Group();
   /** The player's interpolated position this frame (null until it appears). */
   player: THREE.Vector3 | null = null;
+  /** First-person mode hides the player's own avatar (set via setPlayerHidden). */
+  private playerHidden = false;
+  private lastPlayerWireId: bigint | null = null;
   private readonly meshes = new Map<bigint, TrackedMesh>();
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
@@ -210,6 +213,23 @@ export class EntityLayer {
     this.flashes = flashes;
   }
 
+  /**
+   * First-person mode: hide the player's own avatar so the camera doesn't
+   * sit inside its head. Applied on every sync (the mesh may not exist yet
+   * when toggled).
+   */
+  setPlayerHidden(hidden: boolean): void {
+    this.playerHidden = hidden;
+    this.applyPlayerHidden();
+  }
+
+  private applyPlayerHidden(): void {
+    const wid = this.lastPlayerWireId;
+    if (wid === null) return;
+    const tracked = this.meshes.get(wid);
+    if (tracked) tracked.object.visible = !this.playerHidden;
+  }
+
   /** Apply a quality preset: character outlines, and the effects' particle budget. */
   setQuality(q: QualitySettings): void {
     this.quality = q;
@@ -295,6 +315,8 @@ export class EntityLayer {
     for (const wid of gone) this.props.remove(wid);
 
     this.player = null;
+    this.lastPlayerWireId = playerWireId;
+    this.applyPlayerHidden();
 
     for (const [wid, e] of state.entities) {
       // Terrain chunks: TerrainRenderer (idempotent; rebuilds a flat

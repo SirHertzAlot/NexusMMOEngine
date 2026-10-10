@@ -33,6 +33,8 @@ export interface PlayServer {
   /** One-session dev credentials seeded by the host for this server. */
   username: string;
   password: string;
+  /** Logins for extra (headless) clients, sharing the password; one per extra client. */
+  loadUsers?: string[];
 }
 
 /**
@@ -53,11 +55,38 @@ export interface PlayStartOptions {
    * server as MMO_BOTS; undefined leaves the server default alone.
    */
   bots?: number;
+  /**
+   * Simulate mode: start the server but do not connect a mirror client.
+   * The world ticks; the editor shows status, not a game view.
+   */
+  noClient?: boolean;
+  /**
+   * How many mirror clients to connect (1/2/4/8). Client 0 drives the
+   * game view; the rest are headless load. Defaults to 1.
+   */
+  clients?: number;
+  /**
+   * Fresh state: back up world.db before starting; on stop, restore
+   * unless keep is set.
+   */
+  fresh?: boolean;
+  /**
+   * Keep play changes: discard the backup on stop (the world keeps what
+   * the tick wrote). Only meaningful with fresh.
+   */
+  keep?: boolean;
+  /**
+   * Player spawn override (Play menu "Start from"): { x, z } in world
+   * units. Reaches the server as MMO_SPAWN_OVERRIDE.
+   */
+  spawn?: { x: number; z: number };
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */
 export interface PlayClient {
   debug(query: { kind: "debug" } & Record<string, unknown>): Promise<DebugResponse>;
+  /** Admin command (0x10); the dev server makes the editor's user an admin. */
+  admin?(command: string): Promise<{ ok: boolean; message: string }>;
   disconnect(): void;
 }
 
@@ -76,6 +105,8 @@ export class PlayModeController {
   private entered = false;
   private server: PlayServer | null = null;
   private client: PlayClient | null = null;
+  /** Headless load clients (client 0 is `client`, drives the game view). */
+  private extraClients: PlayClient[] = [];
   /**
    * Invalidated by stop(): an in-flight start() checks it after every
    * await and cleans up instead of entering running — so Stop works
@@ -85,7 +116,8 @@ export class PlayModeController {
 
   constructor(
     private readonly serverControl: ServerControl,
-    private readonly connectClient: (server: PlayServer) => Promise<PlayClient>,
+    /** index 0 is the game view's client; 1.. are headless load clients. */
+    private readonly connectClient: (server: PlayServer, index: number) => Promise<PlayClient>,
     private readonly hooks: PlayModeHooks,
   ) {}
 
@@ -128,20 +160,43 @@ export class PlayModeController {
         this.restoreEditorState();
         return;
       }
-      this.client = await this.connectClient(this.server);
-      if (token !== this.startToken) {
-        try {
-          this.client?.disconnect();
-        } catch {
-          /* a stop already owns the outcome; ignore */
-        } finally {
-          this.client = null;
+      // Simulate mode: the world ticks with no player client.
+      let extraError: string | null = null;
+      const n = opts?.noClient ? 0 : Math.max(1, opts?.clients ?? 1);
+      if (!opts?.noClient) {
+        this.client = await this.connectClient(this.server, 0);
+        // Extra headless clients for load testing.
+        for (let i = 1; i < n && token === this.startToken; i++) {
+          try {
+            this.extraClients.push(await this.connectClient(this.server, i));
+          } catch (err) {
+            // A failed extra client doesn't fail the start; the primary is up.
+            // Running says how many connected (see setState below).
+            extraError = err instanceof Error ? err.message : String(err);
+            break;
+          }
         }
-        await this.cleanupOwnedServer();
-        this.restoreEditorState();
-        return;
+        if (token !== this.startToken) {
+          try {
+            this.client?.disconnect();
+          } catch {
+            /* a stop already owns the outcome; ignore */
+          } finally {
+            this.client = null;
+          }
+          for (const c of this.extraClients) {
+            try { c.disconnect(); } catch { /* ignore */ }
+          }
+          this.extraClients = [];
+          await this.cleanupOwnedServer();
+          this.restoreEditorState();
+          return;
+        }
       }
-      this.setState("running");
+      this.setState(
+        "running",
+        extraError === null ? undefined : `${1 + this.extraClients.length} of ${n} clients connected (${extraError})`,
+      );
     } catch (err) {
       if (token !== this.startToken) {
         await this.cleanupOwnedServer();
@@ -179,6 +234,14 @@ export class PlayModeController {
     } finally {
       this.client = null;
     }
+    for (const c of this.extraClients) {
+      try {
+        c.disconnect();
+      } catch (err) {
+        firstError = firstError ?? err;
+      }
+    }
+    this.extraClients = [];
     try {
       await this.cleanupOwnedServer();
     } catch (err) {
@@ -203,6 +266,11 @@ export class PlayModeController {
     return this.debug({ kind: "debug", query: "tiles" });
   }
 
+  /** Read-only tick timing query (0x0a). Only while running. */
+  async debugTimings(): Promise<DebugResponse> {
+    return this.debug({ kind: "debug", query: "timings" });
+  }
+
   private async debug(
     query: { kind: "debug" } & Record<string, unknown>,
   ): Promise<DebugResponse> {
@@ -210,6 +278,12 @@ export class PlayModeController {
       throw new Error("play-mode: not running");
     }
     return this.client.debug(query);
+  }
+
+  /** Admin command through the play client (pause, resume, step). Only while running. */
+  async admin(command: string): Promise<{ ok: boolean; message: string }> {
+    if (this.state !== "running" || !this.client?.admin) throw new Error("play-mode: not running");
+    return this.client.admin(command);
   }
 
   /** Stop the server owned by this controller, if any. Never touches others. */

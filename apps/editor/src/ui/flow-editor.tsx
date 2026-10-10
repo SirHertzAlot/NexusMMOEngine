@@ -8,6 +8,7 @@
  * client at a node.
  */
 import * as React from "react";
+import { duplicateFlowNode, renameFlowNode } from "../flow-context.js";
 import {
   addFlowEdge,
   addFlowNode,
@@ -47,6 +48,10 @@ export function FlowEditor(): React.JSX.Element {
   const [scenes, setScenes] = React.useState<string[]>([]);
   const [events, setEvents] = React.useState<string[]>([]);
   const [selected, setSelected] = React.useState<string | null>(null);
+  // Node context menu: {id, x, y} when open.
+  const [ctx, setCtx] = React.useState<{ id: string; x: number; y: number } | null>(null);
+  // Inline rename: node id being renamed.
+  const [renaming, setRenaming] = React.useState<string | null>(null);
   const pick = (id: string | null): void => {
     setSelected(id);
     if (id === null) {
@@ -242,6 +247,12 @@ export function FlowEditor(): React.JSX.Element {
               data-fnode={id}
               transform={`translate(${p.x},${p.y})`}
               style={{ cursor: "grab" }}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                pick(id);
+                setCtx({ id, x: ev.clientX, y: ev.clientY });
+              }}
               onPointerDown={(ev) => {
                 if (ev.button !== 0) return;
                 ev.stopPropagation();
@@ -263,6 +274,104 @@ export function FlowEditor(): React.JSX.Element {
         })}
         </g>
       </svg>
+      {ctx && <span className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />}
+      {ctx && (
+        <div
+          className="fixed z-50 min-w-40 rounded-lg border py-1 shadow-lg"
+          style={{
+            left: ctx.x,
+            top: ctx.y,
+            background: "var(--m3-surface)",
+            borderColor: "var(--m3-outline-variant)",
+          }}
+          role="menu"
+          onMouseLeave={() => setCtx(null)}
+        >
+          {[
+            { label: "Rename…", run: () => { setRenaming(ctx.id); setCtx(null); } },
+            {
+              label: "Duplicate",
+              run: () => {
+                setCtx(null);
+                try {
+                  const next = duplicateFlowNode(doc, ctx.id);
+                  edit(next);
+                  // Select the copy (the one key the duplicate added).
+                  const added = Object.keys(next.nodes).find((k) => !(k in doc.nodes));
+                  if (added) pick(added);
+                } catch (e) {
+                  setStatus((e as Error).message);
+                }
+              },
+            },
+            {
+              label: "Delete",
+              run: () => {
+                setCtx(null);
+                edit(removeFlowNode(doc, ctx.id));
+                if (selected === ctx.id) pick(null);
+              },
+            },
+          ].map((item) => (
+            <button
+              key={item.label}
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--m3-secondary-container)]"
+              onClick={item.run}
+              role="menuitem"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {renaming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-label="Rename node">
+          <div className="rounded-lg border p-4 shadow-lg" style={{ background: "var(--m3-surface)", borderColor: "var(--m3-outline-variant)" }}>
+            <h3 className="mb-2 text-sm font-medium">Rename node</h3>
+            <input
+              autoFocus
+              className="mb-2 w-64 rounded border px-2 py-1 text-sm"
+              defaultValue={renaming}
+              id="flow-rename-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const v = (e.target as HTMLInputElement).value;
+                  try {
+                    edit(renameFlowNode(doc, renaming, v));
+                    // The selection follows the node to its new id.
+                    if (selected === renaming) pick(v.trim());
+                    setRenaming(null);
+                  } catch (err) {
+                    setStatus((err as Error).message);
+                  }
+                } else if (e.key === "Escape") setRenaming(null);
+              }}
+              aria-label="New node id"
+            />
+            <div className="flex justify-end gap-2">
+              <button className="rounded border px-3 py-1 text-sm" onClick={() => setRenaming(null)}>Cancel</button>
+              <button
+                className="rounded px-3 py-1 text-sm"
+                style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)" }}
+                onClick={() => {
+                  const el = document.getElementById("flow-rename-input") as HTMLInputElement | null;
+                  const v = el?.value ?? "";
+                  try {
+                    edit(renameFlowNode(doc, renaming, v));
+                    // The selection follows the node to its new id.
+                    if (selected === renaming) pick(v.trim());
+                    setRenaming(null);
+                  } catch (err) {
+                    setStatus((err as Error).message);
+                  }
+                }}
+              >
+                Rename
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2">
         <section className="flex flex-col gap-2">

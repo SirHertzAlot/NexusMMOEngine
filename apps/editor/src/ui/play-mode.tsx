@@ -21,7 +21,10 @@ import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
-import { botsCount, loadLastSetup } from "./play-setup.js";
+import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
+import { resolveSpawnTarget } from "../flow-spawn.js";
+import { getSceneCameraPos } from "./camera-position.js";
+import { armPlayPopup, openPlayPopupShell, takePendingPopup } from "./play-popup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -58,9 +61,10 @@ export interface PlayUiState {
   entityId: string;
   autoRefresh: boolean;
   pmState: PlayModeState;
+  paused: boolean;
 }
 
-export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle" });
+export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle", paused: false });
 
 export function setPlayEntityId(entityId: string): void {
   playUiStore.set((p) => ({ ...p, entityId }));
@@ -81,6 +85,12 @@ export function getPlayController(): PlayModeController | null {
   return sharedController;
 }
 
+/** Toolbar Pause/Resume and Step: an admin command to the owned server; Pause toggles. */
+export async function requestPlayTick(command: "pause" | "resume" | "step"): Promise<void> {
+  const r = await sharedController?.admin(command);
+  if (r?.ok && command !== "step") playUiStore.set((p) => ({ ...p, paused: command === "pause" }));
+}
+
 /** Toolbar / shortcut stop: real controller.stop(), valid while running or starting. */
 export async function requestPlayStop(): Promise<void> {
   const c = sharedController;
@@ -88,6 +98,21 @@ export async function requestPlayStop(): Promise<void> {
   const s = c.getState();
   if (s === "idle" || s === "stopping") return;
   await c.stop();
+}
+
+// Toolbar Play / F5 / Play menu: start with the last setup. The panel owns the
+// controller and may not be mounted yet, so a request waits for it.
+let startHandler: (() => void) | null = null;
+let startPending = false;
+
+export function requestPlayStart(): void {
+  if (startHandler) startHandler();
+  else startPending = true;
+}
+
+/** For tests: whether a start request is waiting for the panel to mount. */
+export function isPlayStartPending(): boolean {
+  return startPending;
 }
 
 export function PlayModePanel(): React.JSX.Element {
@@ -109,7 +134,16 @@ export function PlayModePanel(): React.JSX.Element {
     const serverControl = createHostServerControl("", playableScene);
     controllerRef.current = new PlayModeController(
       serverControl,
-      async (server) => {
+      async (server, index) => {
+        if (index > 0) {
+          // Extra load client: its own seeded login (one account per client;
+          // a second session of the play login would evict the game view's),
+          // headless, so it never drives the game view.
+          const username = server.loadUsers?.[index - 1];
+          if (!username) throw new Error(`no login for extra client ${index}`);
+          const c = await connectMirror(server.url, `mmo-editor-load-${index}`, { username, password: server.password }, () => undefined);
+          return { debug: (q) => c.debug(q as DebugQuery), disconnect: () => c.disconnect() };
+        }
         // Credentials come from the host: it seeds a one-session dev user
         // for the server it just started (see src/host.ts).
         const c = await connectMirror(
@@ -119,10 +153,13 @@ export function PlayModePanel(): React.JSX.Element {
           () => {
             lastStateAt.current = performance.now();
           },
+          // The Play menu's simulated-latency option, honored here.
+          { latency: loadLastSetup().latency },
         );
         setMirror(c);
         return {
           debug: (q) => c.debug(q as DebugQuery),
+          admin: (command) => c.admin(command),
           disconnect: () => {
             setMirror(null);
             setHud(null);
@@ -142,7 +179,7 @@ export function PlayModePanel(): React.JSX.Element {
           setOverlays({ waypoints: null, tiles: null });
         },
         onStateChange: (s, d) => {
-          playUiStore.set((p) => ({ ...p, pmState: s }));
+          playUiStore.set((p) => ({ ...p, pmState: s, paused: s === "running" ? p.paused : false }));
           setDetail(d);
         },
       },
@@ -160,16 +197,68 @@ export function PlayModePanel(): React.JSX.Element {
     setBusy(true);
     setDetail(undefined);
     try {
-      // The Play menu's only honored start option: bots → MMO_BOTS.
-      // Everything else stays preview until its slice lands.
-      await controller.start({ bots: botsCount(loadLastSetup()) });
+      // The Play menu's honored start options: bots → MMO_BOTS, simulate
+      // mode (world only, no player), client count (1/2/4/8),
+      // fresh/keep (world snapshot/restore), and "Start from" (spawn target).
+      const setup = loadLastSetup();
+      const spawnTarget = resolveSpawnTarget(setup.from, getSceneCameraPos());
+      // "New window": open the popup in this click gesture (or the blocker
+      // eats it). The game view attaches when it mounts; a failed start
+      // closes the orphan popup.
+      const wantPopup = setup.where === "window" && shouldConnectPlayer(setup);
+      const popup = wantPopup ? openPlayPopupShell("Play") : null;
+      if (wantPopup && !popup) {
+        setDetail("Popup blocked — the game view stays in the viewport. Allow popups and try again.");
+      }
+      armPlayPopup(popup);
+      await controller.start({
+        bots: botsCount(setup),
+        noClient: !shouldConnectPlayer(setup),
+        clients: clientCount(setup),
+        fresh: setup.fresh,
+        keep: setup.keep,
+        ...(spawnTarget.kind === "at" ? { spawn: { x: spawnTarget.x, z: spawnTarget.z } } : {}),
+      });
+      if (spawnTarget.kind === "preview") {
+        // Honest: the menu badges it, but surface the reason here too.
+        setDetail(`Start from "${setup.from}" is preview: ${spawnTarget.reason}`);
+      } else if (spawnTarget.kind === "default" && "note" in spawnTarget) {
+        setDetail(spawnTarget.note);
+      }
     } catch (err) {
-      // detail already carries the message via onStateChange(error)
+      // detail already carries the message via onStateChange(error).
+      // A failed start must not leave an orphan popup behind.
+      const orphan = takePendingPopup();
+      if (orphan) {
+        try {
+          orphan.close();
+        } catch {
+          /* ignore */
+        }
+      }
       void err;
     } finally {
       setBusy(false);
     }
   }
+
+  // Starts only from a stopped state: a click while running or starting does nothing.
+  const startRef = React.useRef<() => void>(() => undefined);
+  startRef.current = () => {
+    const st = controller.getState();
+    if (st === "idle" || st === "error") void onStart();
+  };
+  React.useEffect(() => {
+    const handler = (): void => startRef.current();
+    startHandler = handler;
+    if (startPending) {
+      startPending = false;
+      handler();
+    }
+    return () => {
+      if (startHandler === handler) startHandler = null;
+    };
+  }, []);
 
   async function onStop(): Promise<void> {
     setBusy(true);
@@ -236,6 +325,18 @@ export function PlayModePanel(): React.JSX.Element {
               </p>
             )}
           </div>
+
+          {running && detail && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">{detail}</p>
+          )}
+
+          {running && !mirror && server && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">
+              {simulateLabel(loadLastSetup())}. The world ticks on the owned server with no player connected, so
+              there is no game view, and the overlays and tick timings (which ask through the player&apos;s
+              client) stay empty until you play with a client.
+            </p>
+          )}
 
           {running && mirror && server && (
             <div className="flex flex-col gap-2">

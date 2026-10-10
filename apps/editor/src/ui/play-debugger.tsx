@@ -39,6 +39,7 @@ import { Button } from "./components.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
 import { editorSelection } from "./editor-selection.js";
+import { attachMountToPopup, popOutGameView, takePendingPopup, type PoppedOutView } from "./play-popup.js";
 
 /** How often the selection card re-reads the picked entity (the mirror changes every tick). */
 const CARD_REFRESH_MS = 250;
@@ -59,11 +60,36 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [wireframe, setWireframe] = React.useState(false);
   const [showcase, setShowcase] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
+  // Camera view: third-person follow or first-person (V toggles in the view too).
+  const [view, setView] = React.useState<"third" | "first">("third");
   const [quality, setQuality] = React.useState<"auto" | QualityTier>("auto");
   const [activeQuality, setActiveQuality] = React.useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
+  // Popped-out view handle ("New window"): attach the frame when it mounts.
+  const poppedRef = React.useRef<PoppedOutView | null>(null);
+  React.useEffect(() => {
+    if (!frame) return;
+    const popup = takePendingPopup();
+    if (!popup) return;
+    const handle = attachMountToPopup(popup, frame);
+    if (handle) {
+      poppedRef.current = handle;
+    } else {
+      // Popup closed before the view mounted: close the orphan.
+      try {
+        popup.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    return () => {
+      // Unmount (stop): move the view back before React tears it down.
+      poppedRef.current?.close();
+      poppedRef.current = null;
+    };
+  }, [frame]);
   // The picked entity (a left click in the view) and its card.
   const [combat] = React.useState(() => new CombatFeedback());
   const library = usePcgLibrary();
@@ -172,6 +198,30 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
             <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setMaximized((m) => !m)}>
               {maximized ? "restore view" : "maximize view"}
             </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant="outline"
+              title="Toggle first-person view (V)"
+              onClick={() => setView((v) => (v === "third" ? "first" : "third"))}
+            >
+              {view === "third" ? "first person" : "third person"}
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant="outline"
+              disabled={!frame || poppedRef.current?.isOpen}
+              title={poppedRef.current?.isOpen ? "The view is already in a new window" : "Pop the game view out into a new window"}
+              onClick={() => {
+                if (!frame || poppedRef.current?.isOpen) return;
+                // In the click gesture: the popup blocker stays quiet.
+                const handle = popOutGameView(frame, { title: "Play" });
+                if (handle) poppedRef.current = handle;
+              }}
+            >
+              pop out
+            </Button>
           </div>
           <AdminConsole client={client} />
         </>
@@ -228,6 +278,8 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       onQuality={onQuality}
       combat={combat}
       containerRef={setFrame}
+      view={view}
+      onViewChange={setView}
     >
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>

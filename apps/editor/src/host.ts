@@ -53,6 +53,14 @@
  *   GET  /api/editor/characters/:id → one character's record: name, look,
  *                                    deaths, saved state and ledger items
  *                                    (characters.db + world.db, read-only)
+ *   GET  /api/editor/build/profiles → build profiles (EA19, build-host.ts)
+ *   POST /api/editor/build/run      → {profile}: start a pipeline run (409
+ *                                    while one runs)
+ *   GET  /api/editor/build/runs     → run history, newest first
+ *   GET  /api/editor/build/runs/:id → one run with stage-by-stage status
+ *   POST /api/editor/build/deploy   → {port?}: deploy the local target
+ *                                    (background; 409 while one runs)
+ *   GET  /api/editor/build/deploy/status → the deploy state
  *
  * Safety rules:
  * - At most one owned server at a time; start while running → 409.
@@ -99,6 +107,9 @@ import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from ".
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
+import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
+import { runProfile } from "@mmo-engine/build";
+import { backupWorld, discardBackup, restoreWorld } from "@mmo-engine/engine-core";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -199,6 +210,8 @@ interface OwnedServer {
   /** One-session dev credentials seeded for this server (see below). */
   username: string;
   password: string;
+  /** Logins for the Play menu's extra (headless) clients; same password. */
+  loadUsers: string[];
   /** The tick order the server reported at boot (Modules window). */
   tickOrder(): string[] | null;
 }
@@ -295,6 +308,19 @@ export function readBody(req: IncomingMessage): Promise<string> {
   });
   bodies.set(req, read);
   return read;
+}
+
+/** How many extra clients the Play menu can ask for (8 clients = the play login + 7). */
+export const MAX_LOAD_CLIENTS = 7;
+
+/**
+ * The logins the Play menu's extra clients use, derived from the play
+ * login. Each client needs its own account: two sessions of one account
+ * enter as the same character, and the newer one evicts the older (it
+ * would kick the game view's client). Usernames stay within 32 chars.
+ */
+export function editorLoadUsers(username: string, n = MAX_LOAD_CLIENTS): string[] {
+  return Array.from({ length: n }, (_, i) => `${username.slice(0, 26)}-load${i + 1}`);
 }
 
 /**
@@ -413,10 +439,21 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
+  /** Snapshot bookkeeping for the Play menu's fresh/keep options. */
+  let snapshotActive = false;
+  let snapshotKeep = false;
   let dbCore: DatabaseCore | null = null;
   // The owned server's output, kept after boot for the Output dock; it survives the
   // server's exit (to read why) and restarts empty on the next start.
   const serverLog = new ServerLog();
+
+  // EA19 build pipeline: profiles, background runs, local deploy.
+  const buildHost = createBuildHost({
+    rootDir: repoRoot,
+    profiles: loadProfiles(repoRoot, (msg) => console.warn(`[editor-host] ${msg}`)),
+    runner: (rootDir, profile, onStage) => runProfile(rootDir, profile, { onStage }).then(() => {}),
+    deployer: createLocalDeployer(repoRoot),
+  });
 
   /**
    * Run the engine's terrain tool (export | generate | import | map | regenerate) as its own
@@ -504,7 +541,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     return true;
   }
 
-  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest }): Promise<OwnedServer> {
+  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest; spawn?: { x: number; z: number } }): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -519,6 +556,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     const sceneEnv = playSceneEnv(repoRoot, dataDir, opts?.scene);
     const usersCsv = join(dataDir, "users.csv");
     const { username, password } = editorLogin(dataDir);
+    const loadUsers = editorLoadUsers(username);
     // Dev-only local credential: the plaintext goes to the browser over
     // localhost only and is never logged; users.csv stores only the
     // argon2id hash. seed-user is idempotent: it creates the account on
@@ -533,6 +571,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
           "--csv",
           usersCsv,
           username,
+          ...loadUsers,
         ],
         {
           cwd: repoRoot,
@@ -583,6 +622,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
         MMO_DATA_DIR: dataDir,
         // The Play menu's Bots choice, when the start request carries it.
         ...(opts?.bots !== undefined ? { MMO_BOTS: String(opts.bots) } : {}),
+        // The Play menu's "Start from" spawn target, when the request carries it.
+        ...(opts?.spawn !== undefined ? { MMO_SPAWN_OVERRIDE: `${opts.spawn.x},${opts.spawn.z}` } : {}),
         ...sceneEnv,
         // The debugger's admin console (E5): the editor's own play user is
         // an admin of the server it owns, on top of any configured ones.
@@ -676,6 +717,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
       url: `ws://127.0.0.1:${serverPort}`,
       username,
       password,
+      loadUsers,
       tickOrder: () => bootOrder,
     };
     // Adopt the actual bound port from the server's listen line once
@@ -788,22 +830,45 @@ export function editorHost(options: EditorHostOptions): Plugin {
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
             const startBody = await readBody(req);
-            // Start options honored today: bots → MMO_BOTS, and the optional
-            // {scene: {name, content?}} for playing the open scene (EA6).
+            // Start options honored today: bots → MMO_BOTS, the optional
+            // {scene: {name, content?}} for playing the open scene (EA6),
+            // fresh/keep for world snapshot/restore, and spawn {x, z} for
+            // the Play menu's "Start from" (→ MMO_SPAWN_OVERRIDE).
             // Anything else in the body is ignored (the Play menu badges
             // those dimensions "preview" instead of pretending).
             let bots: number | undefined;
             let scene: PlaySceneRequest | undefined;
+            let fresh = false;
+            let keep = false;
+            let spawn: { x: number; z: number } | undefined;
             try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest };
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown; spawn?: unknown };
               if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
                 bots = Math.floor(parsed.bots);
               }
               scene = parsed.scene;
+              fresh = parsed.fresh === true;
+              keep = parsed.keep === true;
+              const sp = parsed.spawn as { x?: unknown; z?: unknown } | undefined;
+              if (sp && typeof sp.x === "number" && typeof sp.z === "number" && Number.isFinite(sp.x) && Number.isFinite(sp.z)) {
+                spawn = { x: sp.x, z: sp.z };
+              }
             } catch {
               /* empty / non-JSON body: server defaults */
             }
-            const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
+            // Fresh state: back up world.db before the server starts.
+            // Not fresh: discard any stale backup (e.g. from a crashed
+            // play session) so it cannot be restored by accident later.
+            if (fresh) {
+              backupWorld(join(dataDir, "world.db"));
+              snapshotActive = true;
+              snapshotKeep = keep;
+            } else {
+              discardBackup(join(dataDir, "world.db"));
+            }
+            const s = await startOwned(
+              bots !== undefined || scene !== undefined || spawn !== undefined ? { bots, scene, spawn } : undefined,
+            );
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,
@@ -813,12 +878,24 @@ export function editorHost(options: EditorHostOptions): Plugin {
               // Dev-only, one-session credential over localhost (see
               // startOwned). Never logged; only the hash is persisted.
               password: s.password,
+              loadUsers: s.loadUsers,
             });
             return;
           }
           if (url === "/api/editor/server/stop" && req.method === "POST") {
             await readBody(req);
             const stopped = await stopOwned();
+            // Fresh/keep: restore the backup unless keeping play changes.
+            if (snapshotActive) {
+              const dbPath = join(dataDir, "world.db");
+              if (snapshotKeep) {
+                discardBackup(dbPath);
+              } else {
+                restoreWorld(dbPath);
+              }
+              snapshotActive = false;
+              snapshotKeep = false;
+            }
             sendJson(res, 200, { ok: true, stopped });
             return;
           }
@@ -969,6 +1046,113 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             sendJson(res, 200, { ok: true, ...(await runBake(repoRoot, dataDir, (body ?? {}) as object)) });
+            return;
+          }
+          // EA19 build pipeline (build-host.ts).
+          if (url === "/api/editor/build/profiles" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, profiles: buildHost.listProfiles() });
+            return;
+          }
+          if (url === "/api/editor/build/run" && req.method === "POST") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const profile = (body as { profile?: unknown }).profile;
+            if (typeof profile !== "string" || !profile) {
+              sendJson(res, 400, { ok: false, error: "body.profile must be a profile name" });
+              return;
+            }
+            try {
+              const rec = buildHost.startRun(profile);
+              sendJson(res, 200, { ok: true, run: rec });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              const code = /already running/.test(msg) ? 409 : 400;
+              sendJson(res, code, { ok: false, error: msg });
+            }
+            return;
+          }
+          if (url === "/api/editor/build/runs" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, runs: buildHost.listRuns() });
+            return;
+          }
+          {
+            const m = /^\/api\/editor\/build\/runs\/([^/?]+)$/.exec(url);
+            if (m && req.method === "GET") {
+              const rec = buildHost.getRun(m[1]!);
+              if (!rec) sendJson(res, 404, { ok: false, error: "unknown run" });
+              else sendJson(res, 200, { ok: true, run: rec });
+              return;
+            }
+          }
+          if (url === "/api/editor/build/deploy" && req.method === "POST") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const port = (body as { port?: unknown }).port;
+            if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
+              sendJson(res, 400, { ok: false, error: "body.port must be a TCP port" });
+              return;
+            }
+            try {
+              const state = buildHost.startDeploy(port ?? 7777);
+              sendJson(res, 200, { ok: true, deploy: state });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              const code = /already running/.test(msg) ? 409 : 400;
+              sendJson(res, code, { ok: false, error: msg });
+            }
+            return;
+          }
+          if (url === "/api/editor/build/deploy/status" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, deploy: buildHost.getDeploy() });
+            return;
+          }
+          // EA23 HUD layout (hud-editor-logic.ts).
+          if (url === "/api/editor/hud/layout" && req.method === "GET") {
+            const file = join(repoRoot, "content", "ui", "hud.json");
+            if (!existsSync(file)) {
+              sendJson(res, 404, { ok: false, error: "no hud.json (content/ui/hud.json)" });
+              return;
+            }
+            try {
+              sendJson(res, 200, { ok: true, layout: JSON.parse(readFileSync(file, "utf8")) });
+            } catch {
+              sendJson(res, 500, { ok: false, error: "hud.json is not valid JSON" });
+            }
+            return;
+          }
+          if (url === "/api/editor/hud/layout" && req.method === "PUT") {
+            let body: unknown;
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as unknown;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+              return;
+            }
+            const layout = (body as { layout?: unknown }).layout;
+            if (!layout || typeof layout !== "object") {
+              sendJson(res, 400, { ok: false, error: "body.layout must be a HUD layout" });
+              return;
+            }
+            // Basic shape check; the client validates fully on load.
+            const widgets = (layout as { widgets?: unknown }).widgets;
+            if (!widgets || typeof widgets !== "object") {
+              sendJson(res, 400, { ok: false, error: "layout.widgets must be an object" });
+              return;
+            }
+            const file = join(repoRoot, "content", "ui", "hud.json");
+            mkdirSync(join(repoRoot, "content", "ui"), { recursive: true });
+            writeFileSync(file, JSON.stringify(layout, null, 2) + "\n");
+            sendJson(res, 200, { ok: true });
             return;
           }
           const dungeonRoute = /^\/api\/editor\/dungeons\/([^/?]+)(\/map\.png|\/patch)?$/.exec(url);

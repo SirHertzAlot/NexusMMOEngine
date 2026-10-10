@@ -488,7 +488,8 @@ export const PROTOCOL_VERSION = 22; // v22 (2026-10-08): M5 combat abilities —
  */
 export type DebugQuery =
   | { kind: "debug"; query: "waypoints"; entity: string }
-  | { kind: "debug"; query: "tiles" };
+  | { kind: "debug"; query: "tiles" }
+  | { kind: "debug"; query: "timings" };
 
 /** S→C answer to a DebugQuery (0x0a, JSON). */
 export type DebugResponse =
@@ -499,4 +500,12 @@ export type DebugResponse =
       status: "active" | "idle" | "failed" | "unknown";
       waypoints: Array<[number, number, number]>;
     }
-  | { kind: "debug"; query: "tiles"; tiles: Array<[number, number, number, number]> };
+  | { kind: "debug"; query: "tiles"; tiles: Array<[number, number, number, number]> }
+  | {
+      kind: "debug";
+      query: "timings";
+      ticks: number;
+      p50: number;
+      p99: number;
+      systems: Array<{ name: string; avg: number; max: number }>;
+    };

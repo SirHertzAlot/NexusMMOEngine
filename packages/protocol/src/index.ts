@@ -82,3 +82,4 @@ export type { ArmourSlotName, BodyMessage, PartStateName, StanceMessage, TreatMe
 export type { DialogMessage, NpcView, NpcsMessage, QuestLogMessage, QuestOp, QuestStepView, QuestView } from "./quests.js";
 export type { DungeonEntranceView, DungeonMessage, DungeonOp } from "./dungeons.js";
 export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";
+export { ClipId, CLIP_NAMES } from "./animation.js";
