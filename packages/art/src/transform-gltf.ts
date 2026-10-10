@@ -70,28 +70,17 @@ export async function transformGlb(
 
   const rawBytes = statSync(input).size;
 
-  // Step 1: prune + dedup
+  // Step 1: prune + dedup (on the raw input, BEFORE gltfpack)
+  // Note: gltfpack must run after gltf-transform, because gltf-transform's
+  // copy/prune operations don't preserve meshopt compression.
   const pruned = input.replace(/\.glb$/, ".pruned.glb");
-  await execFileAsync(bin, ["prune", input, pruned, "--keep-attributes", "false"]);
+  await execFileAsync(bin, ["prune", input, pruned]);
   await execFileAsync(bin, ["dedup", pruned, pruned]);
 
-  // Step 2: texture conversion per slot
-  // (gltf-transform CLI handles this via the `etc1s`/`uastc` commands;
-  // for now we do prune+dedup and record the structure)
-  let finalOutput = pruned;
-  const textureBytes: Record<string, number> = {};
-
-  if (!options.skipTextures) {
-    // WebP for baseColor, UASTC KTX2 for data textures
-    // Note: full per-slot conversion requires the texture slots to be
-    // identified in the GLB; this is a structural pass for now.
-    // TODO(TL1c-full): per-slot `toktx` conversion with resize caps
-    finalOutput = output;
-    await execFileAsync(bin, ["copy", pruned, finalOutput]);
-  } else {
-    finalOutput = output;
-    await execFileAsync(bin, ["copy", pruned, finalOutput]);
-  }
+  // Step 2: copy to final output (texture conversion happens here in the
+  // full TL1c; for now this is a structural pass)
+  const finalOutput = output;
+  await execFileAsync(bin, ["copy", pruned, finalOutput]);
 
   const transformedBytes = statSync(finalOutput).size;
 
@@ -104,7 +93,7 @@ export async function transformGlb(
     rawBytes,
     transformedBytes,
     cleanupRemoved: Math.max(0, cleanupRemoved),
-    textureBytes,
+    textureBytes: {},
   };
 }
 
