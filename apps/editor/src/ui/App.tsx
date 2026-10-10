@@ -1668,23 +1668,22 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
       <div className="mb-3 grid grid-cols-3 gap-2">
         {(
           [
-            ["viewport", "fullscreen", "In viewport", "Panels stay around it", false],
-            ["window", "open_in_new", "New window", "The player's client", true],
-            ["simulate", "visibility", "Simulate", "World only, no player", false],
-          ] as Array<[string, string, string, string, boolean]>
-        ).map(([id, icon, title, body, preview]) => {
+            ["viewport", "fullscreen", "In viewport", "Panels stay around it"],
+            ["window", "open_in_new", "New window", "The player's client"],
+            ["simulate", "visibility", "Simulate", "World only, no player"],
+          ] as Array<[string, string, string, string]>
+        ).map(([id, icon, title, body]) => {
           const on = setup.where === id;
           return (
             <button
               key={id}
               onClick={() => set({ where: id })}
               aria-pressed={on}
-              title={preview ? `Preview — ${PLAY_PREVIEW_NOTES.where}` : undefined}
               className="m3-focus flex flex-col gap-1 rounded-xl p-3 text-left"
               style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
             >
               <MIcon name={icon} size={22} />
-              <span className="text-sm font-medium">{title}{preview && <PreviewBadge why={PLAY_PREVIEW_NOTES.where} />}</span>
+              <span className="text-sm font-medium">{title}</span>
               <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{body}</span>
             </button>
           );

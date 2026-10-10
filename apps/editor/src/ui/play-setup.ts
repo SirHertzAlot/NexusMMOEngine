@@ -6,9 +6,9 @@
  * pass a fake. The UI defaults to window.localStorage when present.
  *
  * Honored today (passed to serverControl.start / the shell):
- * - where = "viewport" (the embedded game view) or "simulate" (world only,
- *   no player client; "window" needs a client windowing path that does
- *   not exist yet);
+ * - where = "viewport" (the embedded game view), "window" (the game view
+ *   pops out into a separate window via adoptNode), or "simulate" (world
+ *   only, no player client);
  * - clients = "1"/"2"/"4"/"8" (mirror clients; client 0 drives the view,
  *   the rest are headless load);
  * - bots (sent as MMO_BOTS for the owned server);
@@ -21,7 +21,7 @@
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - where window, from Login / Character creation, net (edge/core switch).
+ * - from Login / Character creation, net (edge/core switch).
  */
 
 export interface PlaySetup {
@@ -208,7 +208,6 @@ export function simulateLabel(setup: PlaySetup): string {
  * report). Keys are setup fields; values explain why.
  */
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
-  where: "Only the viewport and simulate are wired: a new window needs a client windowing path",
   from: "Login and character creation need the client to run the actual UI flow instead of auto-login",
   net: "No edge/core switch on start; the owned server always runs core",
 };

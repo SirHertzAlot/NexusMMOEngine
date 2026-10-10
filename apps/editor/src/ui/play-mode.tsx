@@ -24,6 +24,7 @@ import { createStore } from "./previews.js";
 import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
 import { resolveSpawnTarget } from "../flow-spawn.js";
 import { getSceneCameraPos } from "./camera-position.js";
+import { armPlayPopup, openPlayPopupShell, takePendingPopup } from "./play-popup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -193,6 +194,15 @@ export function PlayModePanel(): React.JSX.Element {
       // fresh/keep (world snapshot/restore), and "Start from" (spawn target).
       const setup = loadLastSetup();
       const spawnTarget = resolveSpawnTarget(setup.from, getSceneCameraPos());
+      // "New window": open the popup in this click gesture (or the blocker
+      // eats it). The game view attaches when it mounts; a failed start
+      // closes the orphan popup.
+      const wantPopup = setup.where === "window" && shouldConnectPlayer(setup);
+      const popup = wantPopup ? openPlayPopupShell("Play") : null;
+      if (wantPopup && !popup) {
+        setDetail("Popup blocked — the game view stays in the viewport. Allow popups and try again.");
+      }
+      armPlayPopup(popup);
       await controller.start({
         bots: botsCount(setup),
         noClient: !shouldConnectPlayer(setup),
@@ -208,7 +218,16 @@ export function PlayModePanel(): React.JSX.Element {
         setDetail(spawnTarget.note);
       }
     } catch (err) {
-      // detail already carries the message via onStateChange(error)
+      // detail already carries the message via onStateChange(error).
+      // A failed start must not leave an orphan popup behind.
+      const orphan = takePendingPopup();
+      if (orphan) {
+        try {
+          orphan.close();
+        } catch {
+          /* ignore */
+        }
+      }
       void err;
     } finally {
       setBusy(false);
