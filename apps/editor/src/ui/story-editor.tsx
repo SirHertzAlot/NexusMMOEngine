@@ -11,8 +11,9 @@
 
 import * as React from "react";
 import { DocBar } from "./doc-bar.js";
+import { useSaveTask } from "./use-save-task.js";
 import { edgePath } from "../inspectors/graph-editor.js";
-import { checkStoryRemote, loadStory, saveStory, StorySaveError } from "../story-client.js";
+import { checkStoryRemote, loadStory, saveStory } from "../story-client.js";
 import {
   addDialogNode, addReply, deleteDialogNode, dialogGraph, History, questGraph, renameDialogNode, startTest,
   type DialogDoc, type DialogReply, type DialogTest, type MockState, type QuestDoc, type QuestState, type QuestsDoc,
@@ -228,8 +229,10 @@ export function StoryEditorPanel(): React.JSX.Element {
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
   const [sel, setSel] = React.useState<Sel | null>(null);
   const [node, setNode] = React.useState<string | null>(null);
-  const [issues, setIssues] = React.useState<StoryIssue[]>([]);
-  const [msg, setMsg] = React.useState("");
+  const task = useSaveTask<StoryIssue>();
+  const { issues, setIssues } = task;
+  const msg = task.status?.text ?? "";
+  const setMsg = (text: string): void => task.setStatus(text === "" ? null : { tone: "info", text });
   const [tab, setTab] = React.useState<"props" | "test">("props");
 
   const load = React.useCallback(async () => {
@@ -300,14 +303,14 @@ export function StoryEditorPanel(): React.JSX.Element {
   const save = async (): Promise<void> => {
     const changes: Partial<StoryFiles> = {};
     for (const f of Object.keys(files) as StoryFile[]) if (JSON.stringify(files[f]) !== JSON.stringify(saved![f])) changes[f] = files[f];
-    try {
-      const warnings = await saveStory(changes);
+    await task.run(async () => {
+      setIssues(await saveStory(changes));
       setSaved(files);
-      setIssues(warnings);
-      setMsg(`Saved ${Object.keys(changes).join(", ")}`);
-    } catch (e) {
-      if (e instanceof StorySaveError) { setIssues(e.issues); setMsg("Not saved: fix the errors listed"); } else setMsg((e as Error).message);
-    }
+    }, {
+      keepIssues: true,
+      ok: `Saved ${Object.keys(changes).join(", ")}`,
+      refused: () => "Not saved: fix the errors listed",
+    });
   };
 
   const addDialog = (): void => {
