@@ -9,6 +9,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.1",
+    "zod": "^4.6.5",
     "@mmo-engine/mirror": "0.1.0",
     "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/build": "0.1.0"

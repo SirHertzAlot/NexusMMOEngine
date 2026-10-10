@@ -21,7 +21,7 @@ import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "../store.js";
-import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
+import { botsCount, clientCount, loadLastSetup, netPlan, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
 import { resolveSpawnTarget } from "../flow-spawn.js";
 import { getSceneCameraPos } from "./camera-position.js";
 import { armPlayPopup, openPlayPopupShell, takePendingPopup } from "./play-popup.js";
@@ -226,7 +226,10 @@ export function PlayModePanel(): React.JSX.Element {
         keep: setup.keep,
         ...(spawnTarget.kind === "at" ? { spawn: { x: spawnTarget.x, z: spawnTarget.z } } : {}),
       });
-      if (spawnTarget.kind === "preview") {
+      const net = netPlan(setup);
+      if (!net.honored) {
+        setDetail(`Network "${setup.net}" is preview: ${net.note}`);
+      } else if (spawnTarget.kind === "preview") {
         // Honest: the menu badges it, but surface the reason here too.
         setDetail(`Start from "${setup.from}" is preview: ${spawnTarget.reason}`);
       } else if (spawnTarget.kind === "default" && "note" in spawnTarget) {
