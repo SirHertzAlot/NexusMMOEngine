@@ -7,50 +7,31 @@
  * permissions prompts, and node structures survive intact.
  */
 
+import { createStore } from "../store.js";
+
 export interface ClipboardValue {
   kind: string;
   data: unknown;
 }
 
-let slot: ClipboardValue | null = null;
-let version = 0;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  version++;
-  listeners.forEach((fn) => fn());
-}
+// A write always changes the clipboard, even to equal data: the version tells menus to refresh.
+const store = createStore<{ slot: ClipboardValue | null; version: number }>({ slot: null, version: 0 }, () => false);
 
 export function writeClipboard(kind: string, data: unknown): void {
-  // Structured clone so later edits to the document don't mutate the copy.
-  slot = { kind, data: structuredClone(data) };
-  emit();
+  // Structured clone so later edits to the document do not mutate the copy.
+  store.set((c) => ({ slot: { kind, data: structuredClone(data) }, version: c.version + 1 }));
 }
 
 export function readClipboard(kind: string): unknown | null {
+  const { slot } = store.get();
   if (!slot || slot.kind !== kind) return null;
   return structuredClone(slot.data);
 }
 
 export function clearClipboard(): void {
-  slot = null;
-  emit();
+  store.set((c) => ({ slot: null, version: c.version + 1 }));
 }
 
-/** Subscribe to clipboard changes (menus refresh Paste state). */
-export function subscribeClipboard(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-
-/** Snapshot for useSyncExternalStore. */
-export function clipboardVersion(): number {
-  return version;
-}
-
-/** For tests. */
-export function peekClipboard(): ClipboardValue | null {
-  return slot;
-}
+export const subscribeClipboard = store.subscribe;
+export const clipboardVersion = (): number => store.get().version;
+export const peekClipboard = (): ClipboardValue | null => store.get().slot;

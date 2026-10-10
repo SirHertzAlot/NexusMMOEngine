@@ -4,6 +4,8 @@
  * registered the items disable with a reason instead of "soon".
  */
 
+import { createSlot } from "../store.js";
+
 export interface ViewportActions {
   label: string;
   canZoomIn: boolean;
@@ -14,32 +16,11 @@ export interface ViewportActions {
   reset: () => void;
 }
 
-let current: ViewportActions | null = null;
-const listeners = new Set<() => void>();
+const slot = createSlot<ViewportActions>();
 
-function emit(): void {
-  listeners.forEach((fn) => fn());
-}
-
-export function registerViewportActions(actions: ViewportActions): void {
-  current = actions;
-  emit();
-}
-
-export function clearViewportActions(actions: ViewportActions): void {
-  if (current === actions) {
-    current = null;
-    emit();
-  }
-}
-
-export function getViewportActions(): ViewportActions | null {
-  return current;
-}
-
-export function subscribeViewportActions(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
+export const registerViewportActions = (actions: ViewportActions): void => slot.set(actions);
+export const clearViewportActions = (actions: ViewportActions): void => {
+  if (slot.get() === actions) slot.set(null);
+};
+export const getViewportActions = slot.get;
+export const subscribeViewportActions = slot.subscribe;

@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import { createStore } from "../store.js";
 
 export type SelectionSource = "viewport" | "outliner" | "entity-list";
 
@@ -28,30 +29,27 @@ export interface EditorSelection {
   components: readonly SelectionComponent[];
 }
 
-type Listener = () => void;
-
 export class EditorSelectionModel {
-  private value: EditorSelection | null = null;
-  private readonly listeners = new Set<Listener>();
+  // Every select counts as a change, even of an equal value: panels re-read on it.
+  private readonly store = createStore<EditorSelection | null>(null, () => false);
 
   get(): EditorSelection | null {
-    return this.value;
+    return this.store.get();
   }
 
   select(next: EditorSelection): void {
-    this.value = next;
-    this.listeners.forEach((listener) => listener());
+    this.store.set(next);
   }
 
+  /** Clear the selection, but only if `source` still owns it (a panel does not clear another's pick). */
   clear(source?: SelectionSource): void {
-    if (this.value === null || (source !== undefined && this.value.source !== source)) return;
-    this.value = null;
-    this.listeners.forEach((listener) => listener());
+    const cur = this.store.get();
+    if (cur === null || (source !== undefined && cur.source !== source)) return;
+    this.store.set(null);
   }
 
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  subscribe(listener: () => void): () => void {
+    return this.store.subscribe(listener);
   }
 }
 

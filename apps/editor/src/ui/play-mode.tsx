@@ -20,7 +20,7 @@ import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
-import { createStore } from "./previews.js";
+import { createStore } from "../store.js";
 import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
 import { resolveSpawnTarget } from "../flow-spawn.js";
 import { getSceneCameraPos } from "./camera-position.js";

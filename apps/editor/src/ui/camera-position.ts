@@ -6,25 +6,19 @@
  * Null when the viewport has never been mounted.
  */
 
+import { createStore } from "../store.js";
+
 export interface GroundPos {
   x: number;
   z: number;
 }
 
-let pos: GroundPos | null = null;
-const listeners = new Set<() => void>();
+// Every report counts as a change (the camera moved), so nothing is "equal".
+const store = createStore<GroundPos | null>(null, () => false);
 
-/** Called by the scene viewport (throttled by the caller). */
-export function setSceneCameraPos(p: GroundPos): void {
-  pos = { x: p.x, z: p.z };
-  for (const l of listeners) l();
-}
-
-export function getSceneCameraPos(): GroundPos | null {
-  return pos ? { ...pos } : null;
-}
-
-export function subscribeSceneCameraPos(l: () => void): () => void {
-  listeners.add(l);
-  return () => void listeners.delete(l);
-}
+export const setSceneCameraPos = (p: GroundPos): void => store.set({ x: p.x, z: p.z });
+export const getSceneCameraPos = (): GroundPos | null => {
+  const p = store.get();
+  return p ? { ...p } : null;
+};
+export const subscribeSceneCameraPos = store.subscribe;

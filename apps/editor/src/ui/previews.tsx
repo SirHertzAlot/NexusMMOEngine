@@ -9,6 +9,7 @@
  */
 
 import * as React from "react";
+import { createStore } from "../store.js";
 import { MIcon, TreeItem, OverflowMenu, IconButton, notify, staged } from "./components.js";
 import type { MenuItem } from "./components.js";
 import { fetchCatalog, type Db } from "../database-client.js";
@@ -23,35 +24,6 @@ import { editorSelection } from "./editor-selection.js";
 // view feeds every inspector. These tiny external stores are the shell's
 // UI-only version of that: selection + local drafts. Nothing here touches
 // the simulation; backend slices replace the sample data one-for-one.
-
-interface Listener {
-  (): void;
-}
-
-export function createStore<T>(initial: T): {
-  get: () => T;
-  set: (next: T | ((prev: T) => T)) => void;
-  subscribe: (fn: () => void) => () => void;
-  use: () => T;
-} {
-  let value = initial;
-  const listeners = new Set<Listener>();
-  const subscribe = (fn: () => void): (() => void) => {
-    listeners.add(fn);
-    return () => {
-      listeners.delete(fn);
-    };
-  };
-  return {
-    get: () => value,
-    set: (next) => {
-      value = typeof next === "function" ? (next as (prev: T) => T)(value) : next;
-      listeners.forEach((l) => l());
-    },
-    subscribe,
-    use: () => React.useSyncExternalStore(subscribe, () => value),
-  };
-}
 
 /** Subscribe to every selection store (drives hash sync; one call). */
 export function subscribeDeepSelection(fn: () => void): () => void {

@@ -4,6 +4,8 @@
  * problems the open document reports (see doc-actions.ts).
  */
 
+import { createStore } from "./store.js";
+
 export interface ServerLogPage {
   lines: string[];
   /** Line number of lines[0]. */
@@ -41,25 +43,12 @@ export interface BakeEntry {
   ok: boolean;
 }
 
-const bakes: BakeEntry[] = [];
-const bakeListeners = new Set<() => void>();
-let bakeSnapshot: readonly BakeEntry[] = [];
+const bakes = createStore<readonly BakeEntry[]>([]);
 
 /** Record a bake or regeneration the editor ran (shown in the Bakes tab). */
 export function pushBake(source: string, text: string, ok = true): void {
-  bakes.push({ at: Date.now(), source, text, ok });
-  if (bakes.length > 100) bakes.shift();
-  bakeSnapshot = bakes.slice();
-  bakeListeners.forEach((fn) => fn());
+  bakes.set((all) => [...all, { at: Date.now(), source, text, ok }].slice(-100));
 }
 
-export function getBakes(): readonly BakeEntry[] {
-  return bakeSnapshot;
-}
-
-export function subscribeBakes(fn: () => void): () => void {
-  bakeListeners.add(fn);
-  return () => {
-    bakeListeners.delete(fn);
-  };
-}
+export const getBakes = bakes.get;
+export const subscribeBakes = bakes.subscribe;
