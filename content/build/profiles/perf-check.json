@@ -1,0 +1,21 @@
+{
+  "name": "perf-check",
+  "description": "The server with the native checks: memcheck on the physics addon and the tick perf baseline (needs valgrind on the host)",
+  "stages": [
+    {
+      "id": "build",
+      "command": "npm run build --workspace=@mmo-engine/engine-core",
+      "inputs": ["packages/engine-core/src", "package.json"]
+    },
+    {
+      "id": "memcheck",
+      "command": "npm run valgrind:memcheck -- physics",
+      "inputs": ["packages/addons/physics", "scripts/valgrind"]
+    },
+    {
+      "id": "perf",
+      "command": "npm run valgrind:perf",
+      "inputs": ["packages/engine-core/src", "scripts/valgrind"]
+    }
+  ]
+}
