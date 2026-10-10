@@ -24,6 +24,7 @@ import { isDeepStrictEqual } from "node:util";
 import { checkRuleSave, readRuleFile, rulesDir, saveRuleFile } from "./rules-host.js";
 import { readRulesTables } from "./rules-store.js";
 import { isGameplayTable, type GameplayTable } from "./gameplay-tables.js";
+import { refuseInvalid } from "./api.js";
 
 export interface GameplayIssue {
   file: string;
@@ -192,7 +193,7 @@ async function speciesOverlay(repoRoot: string, content: unknown): Promise<{ ove
 /** Validate, then write. Throws { status: 400, issues } (and writes nothing) when the server would refuse it. */
 export async function saveGameplay(repoRoot: string, table: GameplayTable, content: unknown): Promise<void> {
   const fail = (issues: GameplayIssue[]): never => {
-    throw Object.assign(new Error(`invalid ${table}: ${issues.length} problem${issues.length === 1 ? "" : "s"}`), { status: 400, issues });
+    throw refuseInvalid(table, issues);
   };
   if (table === "species") {
     const { overlay, issues } = await speciesOverlay(repoRoot, content);

@@ -30,6 +30,7 @@ import {
   type RuleFile,
   type RulesIssue,
 } from "@mmo-engine/rules";
+import { refuseInvalid } from "./api.js";
 
 /** Every rules file, in RULE_FILES order (content/rules/<name>.json). */
 export function ruleFileNames(): RuleFile[] {
@@ -133,10 +134,7 @@ export function readRuleFile(
 export function saveRuleFile(repoRoot: string, name: RuleFile, content: unknown): void {
   const issues = checkRuleSave(repoRoot, name, content);
   if (issues.length > 0) {
-    throw Object.assign(new Error(`invalid rules: ${issues.length} problem${issues.length === 1 ? "" : "s"}`), {
-      status: 400,
-      issues,
-    });
+    throw refuseInvalid("rules", issues);
   }
   writeFileSync(resolveRulePath(repoRoot, name), prettyPrintRules(content), "utf8");
 }

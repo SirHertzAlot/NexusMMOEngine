@@ -3,25 +3,16 @@
  * `/api/editor/flow` (flow-host.ts) plus the Play-from URL builder. A
  * refused save throws FlowSaveError with every problem by path.
  */
+import { IssuesError, invalidMessage, requestJson } from "./api.js";
 import { flowEventsTo, type FlowDoc, type SceneIssue } from "@mmo-engine/scene";
 
-export class FlowSaveError extends Error {
-  constructor(readonly issues: SceneIssue[]) {
-    super(`invalid flow: ${issues.length} problem${issues.length === 1 ? "" : "s"}`);
-    this.name = "FlowSaveError";
+export class FlowSaveError extends IssuesError<SceneIssue> {
+  constructor(issues: SceneIssue[]) {
+    super(issues, invalidMessage("flow", issues.length));
   }
 }
 
-async function readError(res: Response, fallback: string): Promise<Error> {
-  try {
-    const body = (await res.json()) as { error?: unknown; issues?: unknown };
-    if (res.status === 400 && Array.isArray(body.issues)) return new FlowSaveError(body.issues as SceneIssue[]);
-    if (typeof body.error === "string" && body.error) return new Error(body.error);
-  } catch {
-    /* fall through */
-  }
-  return new Error(`${fallback}: HTTP ${res.status}`);
-}
+const refused = (issues: SceneIssue[]): Error => new FlowSaveError(issues);
 
 export interface FlowBundle {
   content: FlowDoc;
@@ -31,21 +22,11 @@ export interface FlowBundle {
   events: string[];
 }
 
-export async function getFlow(base = ""): Promise<FlowBundle> {
-  const res = await fetch(`${base}/api/editor/flow`);
-  if (!res.ok) throw await readError(res, "flow read failed");
-  return (await res.json()) as FlowBundle;
-}
+export const getFlow = (base = ""): Promise<FlowBundle> => requestJson(`${base}/api/editor/flow`, { fail: "flow read failed", refused });
 
 /** Validate on the host and write only when valid; throws FlowSaveError otherwise. */
-export async function saveFlow(content: FlowDoc, base = ""): Promise<void> {
-  const res = await fetch(`${base}/api/editor/flow`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) throw await readError(res, "flow save failed");
-}
+export const saveFlow = (content: FlowDoc, base = ""): Promise<void> =>
+  requestJson(`${base}/api/editor/flow`, { method: "PUT", body: { content }, fail: "flow save failed", refused });
 
 export interface PlayOptions {
   /** The client dev server, e.g. http://localhost:5173. */
