@@ -97,6 +97,7 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handleStringsRoute } from "./strings-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -1262,6 +1263,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (flowReply) {
             sendJson(res, flowReply.status, flowReply.body);
+            return;
+          }
+          // Localization string tables (EA25, strings-host.ts).
+          const stringsReply = handleStringsRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/strings" ? await readBody(req) : undefined,
+          );
+          if (stringsReply) {
+            sendJson(res, stringsReply.status, stringsReply.body);
             return;
           }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).

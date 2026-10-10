@@ -1,5 +1,6 @@
 /** ChatPanel speaker labels (U6): whispers say which way they went. */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { ChatBroadcast } from "@mmo-engine/protocol";

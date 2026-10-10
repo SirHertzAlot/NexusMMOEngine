@@ -1,5 +1,6 @@
 /** BagPanel helpers (M3a, U10a): stat order, hand slots, swap comparison, held totals. */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { ItemView } from "@mmo-engine/protocol";

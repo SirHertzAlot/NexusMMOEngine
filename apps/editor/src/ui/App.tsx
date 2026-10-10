@@ -23,6 +23,7 @@ import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
 import { FlowEditor } from "./flow-editor.js";
+import { StringsPanel } from "./strings-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -72,7 +73,6 @@ import {
   ReleaseDeployDetails,
   SchemaTree,
   StoryDetails,
-  StringsPreview,
   VfxPreview,
   WidgetList,
   PLAYERS,
@@ -199,7 +199,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
       { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestPreview /> },
-      { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPreview /> },
+      { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
     ],
     leftTitle: "Stories",
   },

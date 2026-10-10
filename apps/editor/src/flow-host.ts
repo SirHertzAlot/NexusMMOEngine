@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join, resolve } from "node:path";
 import { ASSIGNED_SCENE, BUILTIN_SCREENS, FLOW_EVENTS, validateFlow } from "@mmo-engine/scene";
 import { listScenes } from "./scenes-host.js";
-import { refuseInvalid } from "./api.js";
+import { failureReply, jsonBodyField, refuseInvalid, type RouteReply } from "./api.js";
 
 export const flowFile = (repoRoot: string): string => join(resolve(repoRoot, "content", "flow"), "game.flow.json");
 const sceneNames = (repoRoot: string): string[] => [...BUILTIN_SCREENS, ASSIGNED_SCENE, ...listScenes(repoRoot)];
@@ -31,12 +31,7 @@ export function saveFlow(repoRoot: string, content: unknown): void {
   renameSync(tmp, file);
 }
 
-export function handleFlowRoute(
-  repoRoot: string,
-  method: string,
-  pathname: string,
-  body: string | undefined,
-): { status: number; body: unknown } | null {
+export function handleFlowRoute(repoRoot: string, method: string, pathname: string, body: string | undefined): RouteReply | null {
   if (pathname !== "/api/editor/flow" && !pathname.startsWith("/api/editor/flow/")) return null;
   if (pathname !== "/api/editor/flow") return { status: 404, body: { ok: false, error: "not found" } };
   try {
@@ -49,24 +44,11 @@ export function handleFlowRoute(
       };
     }
     if (method === "PUT") {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body ?? "") as unknown;
-      } catch {
-        return { status: 400, body: { ok: false, error: "request body is not valid JSON" } };
-      }
-      if (typeof parsed !== "object" || parsed === null || !("content" in parsed)) {
-        return { status: 400, body: { ok: false, error: 'need a JSON body shaped like {"content": …}' } };
-      }
-      saveFlow(repoRoot, (parsed as { content: unknown }).content);
+      saveFlow(repoRoot, jsonBodyField(body, "content"));
       return { status: 200, body: { ok: true } };
     }
     return { status: 404, body: { ok: false, error: "not found" } };
   } catch (err) {
-    const e = err as { status?: number; issues?: unknown };
-    return {
-      status: e.status ?? 500,
-      body: { ok: false, error: err instanceof Error ? err.message : String(err), ...(Array.isArray(e.issues) ? { issues: e.issues } : {}) },
-    };
+    return failureReply(err);
   }
 }

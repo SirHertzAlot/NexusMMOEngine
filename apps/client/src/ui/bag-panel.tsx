@@ -15,6 +15,7 @@
 
 import { useRef, useState } from "react";
 import { ARMOUR_SLOT_NAMES, type ArmourSlotName, type ItemView } from "@mmo-engine/protocol";
+import { t, tName } from "../i18n.js";
 /** Stats in a fixed, readable order; anything else follows alphabetically. */
 const STAT_ORDER = ["power", "armour", "block", "spell", "speed", "crit", "reach", "health", "stagger"];
 
@@ -29,12 +30,8 @@ export function statLines(stats: Record<string, number>): Array<[string, number]
   return keys.map((k) => [k, stats[k]]);
 }
 
-const HAND_LABEL: Record<ItemView["hand"], string> = {
-  main: "one-handed",
-  off: "off hand",
-  both: "two-handed",
-  none: "",
-};
+/** How an item is held ("one-handed"); empty for an item that is not held. */
+const handLabel = (hand: ItemView["hand"]): string => (hand === "none" ? "" : t(`item.hand.${hand}`));
 
 export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
   return (
@@ -44,18 +41,18 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
       </div>
       <div className="text-xs text-muted-foreground">
         {item.rank} {item.base}
-        {HAND_LABEL[item.hand] && <> · {HAND_LABEL[item.hand]}</>}
-        {item.hand === "none" && item.slot && item.slot !== "none" && <> · {item.slot}</>}
+        {handLabel(item.hand) && <> · {handLabel(item.hand)}</>}
+        {item.hand === "none" && item.slot && item.slot !== "none" && <> · {tName("slot", item.slot)}</>}
       </div>
       <div className="mt-1 grid grid-cols-2 gap-x-3 tabular-nums">
         {statLines(item.stats).map(([k, v]) => (
           <div key={k} className="flex justify-between gap-2">
-            <span className="text-muted-foreground">{k}</span>
+            <span className="text-muted-foreground">{tName("stat", k)}</span>
             <span>{v}</span>
           </div>
         ))}
       </div>
-      <div className="mt-1 text-xs text-muted-foreground tabular-nums">durability {item.durability}</div>
+      <div className="mt-1 text-xs text-muted-foreground tabular-nums">{t("bag.durability", { value: item.durability })}</div>
     </div>
   );
 }
@@ -141,19 +138,19 @@ function ItemTooltip({ item, hands, worn, top }: { item: ItemView; hands: Hands;
       <ItemDetails item={item} />
       {target !== null && (
         <div className="mt-2 border-t pt-1 text-xs">
-          <div className="text-muted-foreground">{out.length ? `vs ${out.map((o) => o.name).join(" + ")}` : "slot is empty"}</div>
+          <div className="text-muted-foreground">{out.length ? t("bag.versus", { names: out.map((o) => o.name).join(" + ") }) : t("bag.slotIsEmpty")}</div>
           {out.length > 0 && (
             <div className="grid grid-cols-2 gap-x-3 tabular-nums">
               {delta.map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-2">
-                  <span className="text-muted-foreground">{k}</span>
+                  <span className="text-muted-foreground">{tName("stat", k)}</span>
                   <span className={v > 0 ? "text-green-500" : "text-red-500"}>{signed(v)}</span>
                 </div>
               ))}
-              {delta.length === 0 && <div className="text-muted-foreground">no change</div>}
+              {delta.length === 0 && <div className="text-muted-foreground">{t("bag.noChange")}</div>}
             </div>
           )}
-          <div className="mt-1 text-muted-foreground">drag to its slot or double-click to equip</div>
+          <div className="mt-1 text-muted-foreground">{t("bag.equipHint")}</div>
         </div>
       )}
     </div>
@@ -196,14 +193,14 @@ export function BagPanel({
     setOver(null);
   };
   return (
-    <div className="pointer-events-auto relative w-80 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm" aria-label="bag">
+    <div className="pointer-events-auto relative w-80 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm" aria-label={t("bag.title")}>
       <div className="mb-2 flex items-baseline justify-between">
-        <div className="text-sm font-semibold">bag</div>
+        <div className="text-sm font-semibold">{t("bag.title")}</div>
         <div className="text-xs text-muted-foreground tabular-nums">
           {used}/{bag.length}
         </div>
       </div>
-      <div className="mb-1 grid grid-cols-2 gap-1" aria-label="hands">
+      <div className="mb-1 grid grid-cols-2 gap-1" aria-label={t("bag.hands")}>
         {(["main", "off"] as const).map((hand) => {
           const held = hands[hand];
           return (
@@ -215,8 +212,8 @@ export function BagPanel({
                 ...(held ? { borderColor: held.color, color: held.color } : { opacity: 0.6 }),
                 ...(over === `hand:${hand}` ? { outline: "2px solid currentColor", opacity: 1 } : {}),
               }}
-              title={held ? `${held.name} (${hand} hand): activate or drag to the bag to put away` : `${hand} hand: empty`}
-              aria-label={`${hand} hand`}
+              title={held ? t("bag.heldTitle", { name: held.name, slot: tName("slot", hand) }) : t("bag.handEmpty", { slot: tName("slot", hand) })}
+              aria-label={t("bag.handSlot", { slot: tName("slot", hand) })}
               draggable={!!held}
               onClick={() => held && onUnequip(hand)}
               onDragStart={(e) => {
@@ -240,13 +237,13 @@ export function BagPanel({
                 endDrag();
               }}
             >
-              <span className="text-muted-foreground">{hand}</span>
+              <span className="text-muted-foreground">{tName("slot", hand)}</span>
               <span className="truncate">{held ? held.base : "—"}</span>
             </button>
           );
         })}
       </div>
-      <div className="mb-1 grid grid-cols-3 gap-1" aria-label="armour">
+      <div className="mb-1 grid grid-cols-3 gap-1" aria-label={t("bag.armour")}>
         {ARMOUR_SLOT_NAMES.map((slot) => {
           const piece = worn[slot];
           return (
@@ -258,8 +255,8 @@ export function BagPanel({
                 ...(piece ? { borderColor: piece.color, color: piece.color } : { opacity: 0.6 }),
                 ...(over === `worn:${slot}` ? { outline: "2px solid currentColor", opacity: 1 } : {}),
               }}
-              title={piece ? `${piece.name} (${slot}): activate or drag to the bag to take off` : `${slot}: empty`}
-              aria-label={`${slot} slot`}
+              title={piece ? t("bag.wornTitle", { name: piece.name, slot: tName("slot", slot) }) : t("bag.slotEmpty", { slot: tName("slot", slot) })}
+              aria-label={t("bag.slotLabel", { slot: tName("slot", slot) })}
               draggable={!!piece}
               onClick={() => piece && onUnequip(slot)}
               onDragStart={(e) => {
@@ -283,17 +280,17 @@ export function BagPanel({
                 endDrag();
               }}
             >
-              <span className="text-muted-foreground">{slot}</span>
+              <span className="text-muted-foreground">{tName("slot", slot)}</span>
               <span className="truncate">{piece ? piece.base : "—"}</span>
             </button>
           );
         })}
       </div>
       {totals.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground tabular-nums" aria-label="equipped stats">
+        <div className="mb-2 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground tabular-nums" aria-label={t("bag.equippedStats")}>
           {totals.map(([k, v]) => (
             <span key={k}>
-              {k} {v}
+              {tName("stat", k)} {v}
             </span>
           ))}
         </div>
@@ -301,7 +298,7 @@ export function BagPanel({
       <div
         className="grid grid-cols-6 gap-1 rounded"
         style={over === "bag" ? { outline: "2px solid currentColor" } : undefined}
-        aria-label="bag slots"
+        aria-label={t("bag.slots")}
         onDragOver={(e) => {
           if (!dragging.current?.startsWith("hand:") && !dragging.current?.startsWith("worn:")) return;
           e.preventDefault();
@@ -325,7 +322,7 @@ export function BagPanel({
             type="button"
             className="flex aspect-square items-center justify-center overflow-hidden rounded border bg-background/60 p-0.5 text-center text-[9px] leading-tight focus:outline-none focus:ring-1 focus:ring-ring"
             style={item ? { borderColor: item.color, color: item.color } : undefined}
-            aria-label={item ? item.name : "empty"}
+            aria-label={item ? item.name : t("bag.empty")}
             disabled={!item}
             draggable={!!item && slotFor(item) !== null}
             onMouseEnter={(e) => item && setHover({ id: item.id, top: e.currentTarget.offsetTop })}
@@ -365,7 +362,7 @@ export function BagPanel({
                   setFocus(null);
                 }}
               >
-                equip
+                {t("bag.equip")}
               </button>
             )}
             <button
@@ -376,12 +373,12 @@ export function BagPanel({
                 setFocus(null);
               }}
             >
-              drop
+              {t("bag.drop")}
             </button>
           </div>
         </div>
       ) : (
-        used === 0 && <div className="mt-2 text-xs text-muted-foreground">empty: walk up to a drop and press E</div>
+        used === 0 && <div className="mt-2 text-xs text-muted-foreground">{t("bag.emptyHint")}</div>
       )}
     </div>
   );

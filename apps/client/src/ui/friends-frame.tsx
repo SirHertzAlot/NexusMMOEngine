@@ -9,6 +9,7 @@
 import { useState } from "react";
 import type { FriendsState } from "@mmo-engine/protocol";
 import { Button } from "./components.js";
+import { t } from "../i18n.js";
 
 export interface FriendsFrameProps {
   friends: FriendsState | null;
@@ -26,21 +27,21 @@ export function FriendsFrame({ friends, blocked, onWhisper, onRemove, onBlock, o
   if (list.length === 0 && blocked.length === 0) return null;
   const sorted = [...list].sort((a, b) => Number(b.online) - Number(a.online));
   return (
-    <div className="pointer-events-auto max-h-48 w-48 overflow-y-auto rounded-lg border bg-card/90 p-2 text-sm text-card-foreground shadow-sm" aria-label="friends">
+    <div className="pointer-events-auto max-h-48 w-48 overflow-y-auto rounded-lg border bg-card/90 p-2 text-sm text-card-foreground shadow-sm" aria-label={t("friends.title")}>
       <ul className="space-y-1">
         {sorted.map((f) => (
           <li key={f.name} className="flex items-center gap-1.5">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${f.online ? "bg-emerald-400" : "bg-muted-foreground/50"}`} title={f.online ? "online" : "offline"} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${f.online ? "bg-emerald-400" : "bg-muted-foreground/50"}`} title={f.online ? t("presence.online") : t("presence.offline")} />
             <span className={`truncate ${f.online ? "" : "text-muted-foreground"}`}>{f.name}</span>
             {f.online && (
-              <Button size="sm" variant="ghost" className="ml-auto h-5 !px-1" title={`whisper ${f.name}`} onClick={() => onWhisper(f.name)}>
+              <Button size="sm" variant="ghost" className="ml-auto h-5 !px-1" title={t("friends.whisper", { name: f.name })} onClick={() => onWhisper(f.name)}>
                 ✉
               </Button>
             )}
-            <Button size="sm" variant="ghost" className={`h-5 !px-1 ${f.online ? "" : "ml-auto"}`} title={`block ${f.name}`} onClick={() => onBlock(f.name)}>
+            <Button size="sm" variant="ghost" className={`h-5 !px-1 ${f.online ? "" : "ml-auto"}`} title={t("friends.block", { name: f.name })} onClick={() => onBlock(f.name)}>
               ⊘
             </Button>
-            <Button size="sm" variant="ghost" className="h-5 !px-1" title={`remove ${f.name}`} onClick={() => onRemove(f.name)}>
+            <Button size="sm" variant="ghost" className="h-5 !px-1" title={t("friends.remove", { name: f.name })} onClick={() => onRemove(f.name)}>
               ✕
             </Button>
           </li>
@@ -53,15 +54,15 @@ export function FriendsFrame({ friends, blocked, onWhisper, onRemove, onBlock, o
             aria-expanded={showBlocked}
             onClick={() => setShowBlocked((s) => !s)}
           >
-            <span className="mr-1">{showBlocked ? "▾" : "▸"}</span>blocked ({blocked.length})
+            <span className="mr-1">{showBlocked ? "▾" : "▸"}</span>{t("friends.blockedCount", { count: blocked.length })}
           </button>
           {showBlocked && (
-            <ul className="mt-1 space-y-1" aria-label="blocked">
+            <ul className="mt-1 space-y-1" aria-label={t("friends.blocked")}>
               {blocked.map((n) => (
                 <li key={n} className="flex items-center gap-1.5">
                   <span className="truncate text-muted-foreground line-through decoration-muted-foreground/60">{n}</span>
-                  <Button size="sm" variant="ghost" className="ml-auto h-5 !px-1 text-xs" title={`unblock ${n}`} onClick={() => onUnblock(n)}>
-                    unblock
+                  <Button size="sm" variant="ghost" className="ml-auto h-5 !px-1 text-xs" title={t("friends.unblock", { name: n })} onClick={() => onUnblock(n)}>
+                    {t("friends.unblockShort")}
                   </Button>
                 </li>
               ))}

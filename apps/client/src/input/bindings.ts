@@ -9,6 +9,8 @@
  * app, a stub in tests).
  */
 
+import { t, tName } from "../i18n.js";
+
 export const ACTIONS = [
   "forward",
   "back",
@@ -29,29 +31,20 @@ export const ACTIONS = [
 
 export type ActionId = (typeof ACTIONS)[number];
 
-export const ACTION_LABELS: Record<ActionId, string> = {
-  forward: "move forward",
-  back: "move back",
-  left: "strafe left",
-  right: "strafe right",
-  jump: "jump / swim up",
-  down: "swim / fly down",
-  flight: "toggle flight",
-  dodge: "dodge",
-  interact: "pick up / talk",
-  bag: "bag",
-  technique: "next technique (cut, thrust, bludgeon)",
-  aim: "next aim (torso, head, legs, arms)",
-  treat: "treat your worst wound",
-  mend: "cast Mend on yourself",
-  quests: "quest log",
-};
+/** What an action is called in the settings menu (the string table's `action.<id>`). */
+export const actionLabel = (a: ActionId): string => t(`action.${a}`);
 
-/** Mouse buttons fixed outside rebinding (attack, guard). */
-export const FIXED_MOUSE: ReadonlyArray<{ label: string; code: string }> = [
-  { label: "attack", code: "Mouse0" },
-  { label: "guard (hold)", code: "Mouse2" },
+/** Mouse buttons fixed outside rebinding (attack, guard); `mouse.<id>` names them. */
+export const FIXED_MOUSE: ReadonlyArray<{ id: "attack" | "guard"; code: string }> = [
+  { id: "attack", code: "Mouse0" },
+  { id: "guard", code: "Mouse2" },
 ];
+
+/** A fixed mouse button's action ("attack", "guard (hold)"). */
+export const fixedMouseLabel = (m: { id: string }): string => t(`mouse.${m.id}`);
+
+/** "left click" / "right click". */
+export const mouseButtonLabel = (code: string): string => t(code === "Mouse0" ? "mouse.left" : "mouse.right");
 
 export type Bindings = Record<ActionId, string[]>;
 
@@ -171,7 +164,6 @@ export function resetBindings(): Bindings {
 /** Pretty code for the UI ("KeyW" -> "W", "ArrowUp" -> "↑", "Space" stays). */
 export function prettyCode(code: string): string {
   if (code.startsWith("Key")) return code.slice(3);
-  if (code === "Space") return "Space";
   const arrows: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" };
-  return arrows[code] ?? code;
+  return arrows[code] ?? tName("key", code);
 }

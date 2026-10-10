@@ -23,11 +23,13 @@ import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import { CombatFeedback, QUALITY_TIERS, type GpuInfo, type HudData, type QualityTier } from "@mmo-engine/client/render";
 import {
-  ACTION_LABELS,
+  actionLabel,
   ACTIONS,
   AdminConsole,
   DevHud,
   FIXED_MOUSE,
+  fixedMouseLabel,
+  mouseButtonLabel,
   PerfHud,
   prettyCode,
   type DevPanelSpec,
@@ -255,9 +257,9 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       title: "controls",
       content: (
         <div className="text-muted-foreground">
-          {ACTIONS.map((a) => `${ACTION_LABELS[a]}: ${DEFAULT_BINDINGS[a].map(prettyCode).join("/")}`).join(" · ")}
+          {ACTIONS.map((a) => `${actionLabel(a)}: ${DEFAULT_BINDINGS[a].map(prettyCode).join("/")}`).join(" · ")}
           <br />
-          {FIXED_MOUSE.map((m) => `${m.label}: ${m.code === "Mouse0" ? "left click" : "right click"}`).join(" · ")}
+          {FIXED_MOUSE.map((m) => `${fixedMouseLabel(m)}: ${mouseButtonLabel(m.code)}`).join(" · ")}
           {" "}· mouse look (click the view; Esc frees the pointer) · wheel zoom · ` hides the panels
         </div>
       ),

@@ -10,6 +10,7 @@
 
 import type { BodyMessage, PartStateName } from "@mmo-engine/protocol";
 import { Bar } from "./meter.js";
+import { t } from "../i18n.js";
 
 type Part = BodyMessage["parts"][number];
 
@@ -34,13 +35,6 @@ const FILL: Record<PartStateName, string> = {
   harmed: "#fbbf24",
   maimed: "#ea580c",
   dismembered: "none",
-};
-
-const STATE_TEXT: Record<PartStateName, string> = {
-  healthy: "bruised",
-  harmed: "harmed",
-  maimed: "maimed",
-  dismembered: "lost",
 };
 
 const STATE_RANK: Record<PartStateName, number> = { healthy: 0, harmed: 1, maimed: 2, dismembered: 3 };
@@ -71,8 +65,12 @@ export function treatable(p: Part): boolean {
 
 /** One line for an injured part: "Left leg maimed, bleeding (34%)". */
 export function injuryText(p: Part): string {
-  const pct = p.state === "dismembered" ? "" : ` (${Math.round(Math.max(0, Math.min(1, p.hp)) * 100)}%)`;
-  return `${p.name} ${STATE_TEXT[p.state]}${p.bleeding ? ", bleeding" : ""}${pct}`;
+  return t("body.injury", {
+    part: p.name,
+    state: t(`body.state.${p.state}`),
+    bleeding: p.bleeding ? "yes" : "no",
+    pct: p.state === "dismembered" ? "none" : Math.round(Math.max(0, Math.min(1, p.hp)) * 100),
+  });
 }
 
 export interface BodyDollProps {
@@ -90,7 +88,7 @@ export function BodyDoll({ body, size = 110, onPart }: BodyDollProps): React.Rea
       width={(size * 60) / 110}
       height={size}
       role="img"
-      aria-label={`body: ${injuries(body).map(injuryText).join("; ") || "unhurt"}`}
+      aria-label={t("body.ariaLabel", { injuries: injuries(body).map(injuryText).join("; ") || t("body.unhurt") })}
       className="shrink-0"
     >
       {body.parts.map((p) => {
@@ -128,13 +126,13 @@ export function InjuriesSection({ body, onTreat }: { body: BodyMessage | null; o
   const hurt = injuries(body);
   return (
     <div>
-      <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">body</div>
+      <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">{t("body.title")}</div>
       <div className="flex gap-3">
         <BodyDoll body={body} size={120} onPart={onTreat} />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <Bar label="blood" value={body.blood} max={body.bloodMax} tone="health" />
+          <Bar label={t("body.blood")} value={body.blood} max={body.bloodMax} tone="health" />
           {hurt.length === 0 ? (
-            <div className="text-xs text-muted-foreground">unhurt</div>
+            <div className="text-xs text-muted-foreground">{t("body.unhurt")}</div>
           ) : (
             <ul className="flex flex-col gap-0.5 text-xs">
               {hurt.map((p) => (
@@ -147,9 +145,9 @@ export function InjuriesSection({ body, onTreat }: { body: BodyMessage | null; o
                       type="button"
                       className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground hover:bg-secondary"
                       onClick={() => onTreat(p.id)}
-                      title={`Treat ${p.name} (Medicine)`}
+                      title={t("body.treatTitle", { part: p.name })}
                     >
-                      treat
+                      {t("body.treat")}
                     </button>
                   )}
                 </li>

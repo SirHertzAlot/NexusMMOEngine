@@ -2,6 +2,7 @@
  * Body doll: which parts count as injured, their order and their lines.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { BodyMessage } from "@mmo-engine/protocol";

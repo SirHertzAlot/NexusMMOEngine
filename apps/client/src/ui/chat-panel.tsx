@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatBroadcast, ChatChannel } from "@mmo-engine/protocol";
 import { Button, Input } from "./components.js";
+import { t, tName } from "../i18n.js";
 
 const TABS: ChatChannel[] = ["say", "yell", "emote", "party", "guild"];
 
@@ -28,7 +29,7 @@ const TEXT_TONE: Partial<Record<ChatBroadcast["channel"], string>> = { whisper: 
 export function speakerLabel(l: ChatBroadcast, self: string | null): string {
   if (l.channel !== "whisper") return l.from;
   const mine = self !== null && l.from.toLowerCase() === self.toLowerCase();
-  return mine ? `to ${l.to ?? "?"}` : `from ${l.from}`;
+  return mine ? t("chat.to", { name: l.to ?? "?" }) : t("chat.from", { name: l.from });
 }
 
 export function ChatPanel({ lines, self, channel, onChannel, onSend }: ChatPanelProps): React.ReactElement {
@@ -45,21 +46,21 @@ export function ChatPanel({ lines, self, channel, onChannel, onSend }: ChatPanel
   };
   return (
     <div className="pointer-events-auto absolute bottom-4 left-1/2 flex h-56 w-[26rem] max-w-[90vw] -translate-x-1/2 flex-col rounded-lg border bg-card/90 text-card-foreground shadow-sm">
-      <div className="flex gap-1 border-b border-input p-1.5" role="tablist" aria-label="chat channels">
-        {TABS.map((t) => (
+      <div className="flex gap-1 border-b border-input p-1.5" role="tablist" aria-label={t("chat.channels")}>
+        {TABS.map((tab) => (
           <Button
-            key={t}
+            key={tab}
             size="sm"
-            variant={t === channel ? "default" : "ghost"}
+            variant={tab === channel ? "default" : "ghost"}
             role="tab"
-            aria-selected={t === channel}
-            onClick={() => onChannel(t)}
+            aria-selected={tab === channel}
+            onClick={() => onChannel(tab)}
           >
-            {t}
+            {tName("chat.channel", tab)}
           </Button>
         ))}
-        <span className="ml-auto self-center whitespace-nowrap px-1 text-[11px] text-muted-foreground" title="/w name text, /r text (reply to the last whisper), /p text, /invite /accept /leave /kick /promote; guild: /g text, /gcreate name tag, /ginvite /gkick /grank name rank, /gmotd text, /gaccept /gleave; /friend /unfriend name; /block /unblock name">
-          /w /r /p /g
+        <span className="ml-auto self-center whitespace-nowrap px-1 text-[11px] text-muted-foreground" title={t("chat.commandsHelp")}>
+          {t("chat.commandsShort")}
         </span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1 text-sm" aria-live="polite">
@@ -83,12 +84,12 @@ export function ChatPanel({ lines, self, channel, onChannel, onSend }: ChatPanel
           onKeyDown={(e) => {
             if (e.key === "Enter") send();
           }}
-          placeholder={`say something (${channel})`}
-          aria-label="chat message"
+          placeholder={t("chat.placeholder", { channel: tName("chat.channel", channel) })}
+          aria-label={t("chat.message")}
           maxLength={500}
         />
         <Button size="sm" variant="secondary" disabled={draft.trim() === ""} onClick={send}>
-          send
+          {t("chat.send")}
         </Button>
       </div>
     </div>
