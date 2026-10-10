@@ -21,6 +21,11 @@ Game content the engine generates from, committed with the code:
   pool layouts each draws from). `MMO_DUNGEONS` overrides the path; the
   layouts are the pool `npm run dungeon:bake` writes to `<data>/dungeons`.
 
+- `combat/` — `moves.json` (roadmap EA21): the combat moves' timing,
+  chaining, travel and sounds (format: `@mmo-engine/protocol`
+  `combat.ts` `validateCombatMoves`). The server loads it at boot
+  (`MMO_COMBAT` overrides the path); built-in defaults run when absent.
+
 - `animation/` — `clips.json` (roadmap EA21): the clip map, which clip in
   the animation library each server clip id plays, and whether it loops and
   how long it crossfades (format: `@mmo-engine/art` `clip-map.ts`). The
