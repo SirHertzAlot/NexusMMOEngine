@@ -64,3 +64,32 @@ describe("loadAudioEvent", () => {
     assert.equal(e.variations?.length, 2);
   });
 });
+
+import { loadAudioBank } from "../src/audio.js";
+
+describe("loadAudioBank", () => {
+  it("fills bus and event defaults", () => {
+    const b = loadAudioBank({ events: [{ name: "x", bus: "combat", file: "x.ogg" }] });
+    assert.deepEqual(b.buses, {});
+    assert.deepEqual(b.events[0]?.pitchRange, [1, 1]);
+    assert.equal(b.events[0]?.priority, 0);
+  });
+
+  it("reads bus settings", () => {
+    const b = loadAudioBank({ buses: { combat: { gain: 0.5, maxVoices: 4 } }, events: [] });
+    assert.deepEqual(b.buses.combat, { gain: 0.5, maxVoices: 4 });
+  });
+
+  it("rejects duplicate names, all-zero variations and a reversed pitch range", () => {
+    const e = { name: "x", bus: "combat", file: "x.ogg" };
+    assert.throws(() => loadAudioBank({ events: [e, e] }), /duplicate/);
+    assert.throws(() => loadAudioBank({ events: [{ ...e, file: undefined, variations: [{ file: "a", weight: 0 }] }] }), /weight 0/);
+    assert.throws(() => loadAudioBank({ events: [{ ...e, pitchRange: [2, 1] }] }), /pitchRange/);
+  });
+
+  it("accepts the repository's content/audio/events.json", async () => {
+    const { readFileSync } = await import("node:fs");
+    const raw = JSON.parse(readFileSync(new URL("../../../../content/audio/events.json", import.meta.url), "utf8")) as unknown;
+    assert.ok(loadAudioBank(raw).events.length >= 3);
+  });
+});

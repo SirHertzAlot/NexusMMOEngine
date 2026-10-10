@@ -34,7 +34,7 @@ import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-clien
 import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
 import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
-import { Button, Input, Label, SectionTitle, Select } from "./components.js";
+import { Button, Input, Label, NumberInput, SectionTitle, Select } from "./components.js";
 import { useDocActions } from "./doc-actions.js";
 import { readClipboard, writeClipboard } from "./clipboard.js";
 import { subscribeOpenAsset } from "./open-asset.js";
@@ -71,7 +71,7 @@ function FieldInput({ spec, value, onChange }: { spec: FieldSpec; value: unknown
     );
   }
   if (spec.type === "number") {
-    return <Input type="number" className="h-9" value={Number.isFinite(value) ? String(value) : ""} onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))} />;
+    return <NumberInput value={value as number} onChange={onChange} />;
   }
   return <Input className="h-9" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
 }

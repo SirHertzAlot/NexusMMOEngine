@@ -53,7 +53,8 @@ import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
 import { loadVolumes, saveVolumes, type AudioBus, type Volumes } from "./audio/volumes.js";
-import type { Cue } from "./audio/cues.js";
+import audioBankJson from "virtual:audio-events";
+import { parseAudioBank, type Listener } from "./audio/sound-logic.js";
 import {
   loadBindings,
   prettyCode,
@@ -86,8 +87,8 @@ const DEFAULT_URL =
     : "ws://localhost:7777";
 
 /** What each settings slider plays when let go (U4 audio). */
-const PREVIEW_CUE: Partial<Record<AudioBus, Cue>> = { effects: "hit", interface: "whisper" };
-const HIT_CUE: Record<"hit" | "blocked" | "dodged", Cue> = { hit: "hit", blocked: "block", dodged: "dodge" };
+const PREVIEW_EVENT: Partial<Record<AudioBus, string>> = { effects: "hit", interface: "ui-whisper" };
+const HIT_EVENT: Record<"hit" | "blocked" | "dodged", string> = { hit: "hit", blocked: "block", dodged: "dodge" };
 
 export function App(): React.ReactElement {
   // The screen is a node of content/flow/game.flow.json; events move it (flow.ts).
@@ -130,11 +131,23 @@ export function App(): React.ReactElement {
     [audio],
   );
   const previewBus = useCallback((b: AudioBus) => {
-    const cue = PREVIEW_CUE[b];
-    if (cue) audio.play(cue);
+    const name = PREVIEW_EVENT[b];
+    if (name) audio.playEvent(name);
   }, [audio]);
+  // EA24: the events and mixer settings are content/audio/events.json; the camera writes the listener each frame.
+  const [listener] = useState<Listener>(() => ({ x: 0, y: 0, z: 0, fx: 0, fz: -1 }));
   useEffect(() => {
-    const unlock = (): void => audio.unlock();
+    const { bank, errors } = parseAudioBank(audioBankJson);
+    for (const e of errors) console.warn(`audio events: ${e}`);
+    audio.setBank(bank);
+    audio.setListener(listener);
+  }, [audio, listener]);
+  const bagCount = useRef<number | null>(null);
+  useEffect(() => {
+    const unlock = (e: Event): void => {
+      audio.unlock();
+      if (e.type === "pointerdown" && e.target instanceof Element && e.target.closest("button")) audio.playEvent("ui-click");
+    };
     const onVisibility = (): void => audio.setHidden(document.hidden);
     window.addEventListener("pointerdown", unlock, true);
     window.addEventListener("keydown", unlock, true);
@@ -263,14 +276,22 @@ export function App(): React.ReactElement {
       onBody: setBody,
       onInventory: (inv) => {
         setBag(inv.bag);
+        // A bigger bag than before is a pickup (the first inventory only sets the baseline).
+        const held = inv.bag.filter(Boolean).length;
+        if (bagCount.current !== null && held > bagCount.current) audio.playEvent("pickup");
+        bagCount.current = held;
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
         setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
       onHit: (h) => {
         const player = clientRef.current?.playerEntity ?? null;
         combat.hit(h, player);
-        // Only blows the player gives or takes make a sound, for now.
-        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) audio.play(HIT_CUE[h.outcome]);
+        // Only blows the player gives or takes make a sound, for now, from where the other party stands.
+        if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) {
+          const other = BigInt(h.source) === player ? BigInt(h.target) : BigInt(h.source);
+          const t = clientRef.current?.state.entities.get(other)?.transform;
+          audio.playEvent(HIT_EVENT[h.outcome], t ? { x: t.px, y: t.py, z: t.pz } : null);
+        }
         const text = disarmNotice(h, player?.toString() ?? null);
         if (text) setNotice({ text, at: performance.now() });
       },
@@ -487,10 +508,10 @@ export function App(): React.ReactElement {
   useEffect(() => audio.setAmbience(screen === "world"), [audio, screen]);
   useEffect(() => {
     const l = chatLines.at(-1);
-    if (l?.channel === "whisper" && l.from.toLowerCase() !== characterName?.toLowerCase()) audio.play("whisper");
+    if (l?.channel === "whisper" && l.from.toLowerCase() !== characterName?.toLowerCase()) audio.playEvent("ui-whisper");
   }, [audio, chatLines, characterName]);
   useEffect(() => {
-    if (notice) audio.play("notice");
+    if (notice) audio.playEvent("ui-notice");
   }, [audio, notice]);
   // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
   const pcg = useMemo(
@@ -570,6 +591,7 @@ export function App(): React.ReactElement {
           quality={quality}
           onQuality={onQuality}
           onHud={setHud}
+          listener={listener}
           onBag={toggleBag}
           onStance={onStance}
           onTreat={onTreat}
