@@ -41,6 +41,11 @@ export interface ModuleManifest {
    * exporting `createSystems`. The host loads it via require().
    */
   native?: { entry: string; systems: string[] };
+  /**
+   * Sidecar contribution (EA11). A helper process run alongside the server.
+   * `command` starts it; `health` is polled for readiness.
+   */
+  sidecar?: { command: string; port: number; health: string };
 }
 export interface Problem {
   module: string;
@@ -85,7 +90,7 @@ export function validateManifest(
   const only = (o: Record<string, unknown>, keys: string[], at: string): void => {
     for (const k of Object.keys(o)) if (!keys.includes(k)) bad(at ? `${at}.${k}` : k, `unknown key "${k}"`);
   };
-  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native"], "");
+  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native", "sidecar"], "");
   if (typeof raw.name !== "string" || !NAME_RE.test(raw.name)) bad("name", "must be lowercase letters, digits and dashes, starting with a letter");
   else if (raw.name !== dirName) bad("name", `must match the folder name "${dirName}"`);
   if (typeof raw.version !== "string" || !SEMVER_RE.test(raw.version)) bad("version", 'must be "major.minor.patch"');
@@ -186,6 +191,21 @@ export function validateManifest(
       if (entryPath && systems.length > 0) native = { entry: entryPath, systems };
     }
   }
+  let sidecar: ModuleManifest["sidecar"];
+  if (raw.sidecar !== undefined) {
+    if (!isObj(raw.sidecar)) bad("sidecar", "must be an object");
+    else {
+      only(raw.sidecar, ["command", "port", "health"], "sidecar");
+      const s = raw.sidecar;
+      const before = problems.length;
+      if (typeof s.command !== "string" || s.command.trim().length === 0) bad("sidecar.command", "must be a non-empty string");
+      if (typeof s.port !== "number" || !Number.isInteger(s.port) || s.port < 1 || s.port > 65535) bad("sidecar.port", "must be an integer between 1 and 65535");
+      if (typeof s.health !== "string" || !s.health.startsWith("/")) bad("sidecar.health", 'must be a path starting with "/"');
+      if (problems.length === before) {
+        sidecar = { command: s.command as string, port: s.port as number, health: s.health as string };
+      }
+    }
+  }
   if (problems.length > 0) return { problems };
   return {
     manifest: {
@@ -197,6 +217,7 @@ export function validateManifest(
       ...(editor ? { editor } : {}),
       ...(server ? { server } : {}),
       ...(native ? { native } : {}),
+      ...(sidecar ? { sidecar } : {}),
     },
     problems,
   };
