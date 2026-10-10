@@ -17,6 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { validateScene, type SceneIssue } from "@mmo-engine/scene";
+import { refuseInvalid } from "./api.js";
 
 const SUFFIX = ".scene.json";
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -64,10 +65,7 @@ export function saveScene(repoRoot: string, name: string, content: unknown): voi
     issues.push({ path: "name", message: `must match the file name "${name}"` });
   }
   if (issues.length > 0) {
-    throw Object.assign(new Error(`invalid scene: ${issues.length} problem${issues.length === 1 ? "" : "s"}`), {
-      status: 400,
-      issues,
-    });
+    throw refuseInvalid("scene", issues);
   }
   mkdirSync(scenesDir(repoRoot), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;

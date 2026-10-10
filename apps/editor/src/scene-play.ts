@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { validateScene } from "@mmo-engine/scene";
 import { isSceneName, resolveScenePath } from "./scenes-host.js";
+import { refuseInvalid } from "./api.js";
 
 export interface Placeable {
   id: string;
@@ -83,7 +84,7 @@ export function playSceneEnv(
   const doc = req.content as { name?: unknown; kind?: unknown };
   if (issues.length === 0 && doc.name !== req.name) issues.push({ path: "name", message: `must match the scene name "${req.name}"` });
   if (issues.length === 0 && doc.kind === "frontend") issues.push({ path: "kind", message: "a frontend scene is client-only; the server runs world, instance or arena scenes" });
-  if (issues.length > 0) throw refuse(400, `invalid scene: ${issues.length} problem${issues.length === 1 ? "" : "s"}`, { issues });
+  if (issues.length > 0) throw refuseInvalid("scene", issues);
   const dir = join(dataDir, "play-scenes");
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${req.name}.scene.json`);

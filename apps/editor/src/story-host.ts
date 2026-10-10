@@ -20,6 +20,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { STORY_FILES, validateStory, type QuestServer, type StoryFile, type StoryFiles, type StoryIssue, type StoryRefs } from "./story-validate.js";
+import { refuseInvalid } from "./api.js";
 
 export function storyFileNames(): StoryFile[] {
   return [...STORY_FILES];
@@ -117,7 +118,7 @@ export async function saveStoryFiles(repoRoot: string, changes: Partial<StoryFil
   const issues = await checkStory(repoRoot, withSiblings(repoRoot, changes));
   const errors = issues.filter((i) => i.severity === "error");
   if (errors.length > 0) {
-    throw Object.assign(new Error(`invalid story: ${errors.length} problem${errors.length === 1 ? "" : "s"}`), { status: 400, issues });
+    throw refuseInvalid("story", issues, errors.length);
   }
   names.forEach((n, i) => {
     const tmp = `${paths[i]}.${process.pid}.tmp`;

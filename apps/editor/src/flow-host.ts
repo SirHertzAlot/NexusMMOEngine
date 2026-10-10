@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join, resolve } from "node:path";
 import { ASSIGNED_SCENE, BUILTIN_SCREENS, FLOW_EVENTS, validateFlow } from "@mmo-engine/scene";
 import { listScenes } from "./scenes-host.js";
+import { refuseInvalid } from "./api.js";
 
 export const flowFile = (repoRoot: string): string => join(resolve(repoRoot, "content", "flow"), "game.flow.json");
 const sceneNames = (repoRoot: string): string[] => [...BUILTIN_SCREENS, ASSIGNED_SCENE, ...listScenes(repoRoot)];
@@ -21,7 +22,7 @@ const sceneNames = (repoRoot: string): string[] => [...BUILTIN_SCREENS, ASSIGNED
 export function saveFlow(repoRoot: string, content: unknown): void {
   const issues = validateFlow(content, { scenes: sceneNames(repoRoot) });
   if (issues.length > 0) {
-    throw Object.assign(new Error(`invalid flow: ${issues.length} problem${issues.length === 1 ? "" : "s"}`), { status: 400, issues });
+    throw refuseInvalid("flow", issues);
   }
   const file = flowFile(repoRoot);
   mkdirSync(resolve(repoRoot, "content", "flow"), { recursive: true });
