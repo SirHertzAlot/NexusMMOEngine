@@ -1059,8 +1059,17 @@ The editor gets an **Audio panel** in Art & audio:
 
 ### 7c.8 Localization
 
-**Today.** None. UI strings are hard-coded in the client's TSX; item
-and creature names are in the rules JSON.
+**Today.** The client's player-facing text (login, character screen, HUD
+frames, bag, quests, chat, settings, notices) goes through `t()`; the
+tables are `content/strings/<lang>.json` (English is the source) and the
+ICU subset, `t()`, the pseudo-locale and the table checks are shared code
+in `@mmo-engine/scene` (`strings.ts`; engine-core re-exports `t`). The
+client takes `?lang=` (try `?lang=pseudo`), the stored choice or the
+browser's language. The Strings panel (Story workspace) edits the tables
+through `/api/editor/strings`. Not yet: item, creature, quest and dialog
+names still come from the rules and quest JSON, not string ids; no
+"stale" status (a table is id to text, with no record of the English a
+translation was made from).
 
 **Plan.**
 
@@ -1070,9 +1079,13 @@ and creature names are in the rules JSON.
   and moves them behind `t("id")`; rules tables and dialog lines refer to
   string ids for names and text.
 - **Strings panel** in Story: a grid of id, source, each language and
-  status (missing, stale because the source changed, done), with
-  in-context preview in the HUD panel and dialog tester, and a
+  status (missing, invalid, extra; "stale because the source changed"
+  needs a record of the source each translation was made from and is not
+  built), with a preview of the picked string in each language and the
   pseudo-locale (longer, accented text) to catch layouts that break.
+  Saves are validated by the dev host with the same rules the panel
+  shows live. In-context preview in the HUD panel and dialog tester is
+  not built.
 - The client picks the language from settings and loads one table.
 
 ### 7c.9 Automated playtests

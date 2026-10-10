@@ -366,3 +366,5 @@ export class History {
 export * from "./flow.js";
 
 export * from "./place.js";
+
+export * from "./strings.js";

@@ -9,6 +9,7 @@
  * so its right hand points at world -X.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { IntentButton } from "@mmo-engine/protocol";

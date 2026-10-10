@@ -1,5 +1,6 @@
 /** Spell notices (0x1c): what the caster and the target read. */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SpellMessage } from "@mmo-engine/protocol";

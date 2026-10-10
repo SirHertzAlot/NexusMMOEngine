@@ -1,5 +1,6 @@
 /** Mastery notices (M4): disciplines earned and disarms. */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { HitMessage, SkillsMessage } from "@mmo-engine/protocol";

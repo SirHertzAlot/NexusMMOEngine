@@ -9,6 +9,7 @@
 import type { BodyMessage, NeedsLine } from "@mmo-engine/protocol";
 import { BodyDoll, isHurt } from "./body-doll.js";
 import { Bar } from "./meter.js";
+import { t } from "../i18n.js";
 
 export interface PlayerFrameProps {
   name: string | null;
@@ -33,21 +34,21 @@ export function PlayerFrame({ name, hp, maxHp, sp, maxSp, mana, needs, body }: P
     <div className={`pointer-events-none flex ${hurt ? "w-72" : "w-64"} gap-2 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm`}>
       <div className="min-w-0 flex-1">
         {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
-        <Bar label="health" value={hp} max={maxHp} tone="health" />
+        <Bar label={t("stat.health")} value={hp} max={maxHp} tone="health" />
         {sp !== null && maxSp !== null && (
           <div className="mt-1.5">
-            <Bar label="stamina" value={sp} max={maxSp} tone="stamina" />
+            <Bar label={t("stat.stamina")} value={sp} max={maxSp} tone="stamina" />
           </div>
         )}
         {mana && (
           <div className="mt-1.5">
-            <Bar label="mana" value={mana.current} max={mana.max} tone="mana" />
+            <Bar label={t("stat.mana")} value={mana.current} max={mana.max} tone="mana" />
           </div>
         )}
         {needs && (
           <div className="mt-1.5 grid grid-cols-2 gap-2">
-            <Bar label="hunger" value={needs.hunger} max={needs.hungerMax} tone="hunger" />
-            <Bar label="thirst" value={needs.thirst} max={needs.thirstMax} tone="thirst" />
+            <Bar label={t("stat.hunger")} value={needs.hunger} max={needs.hungerMax} tone="hunger" />
+            <Bar label={t("stat.thirst")} value={needs.thirst} max={needs.thirstMax} tone="thirst" />
           </div>
         )}
       </div>

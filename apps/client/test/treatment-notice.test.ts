@@ -2,6 +2,7 @@
  * Treatment notices (M4, 0x1a): what the healer and the patient read.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TreatmentMessage } from "@mmo-engine/protocol";

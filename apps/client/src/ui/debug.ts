@@ -10,4 +10,6 @@ export { DevHud, type DevPanelSpec, type Viewport } from "./dev-panels.js";
 export type { DevLayout, PanelLayout } from "./dev-layout.js";
 export { PerfHud } from "./perf-hud.js";
 export { AdminConsole } from "./admin-console.js";
-export { ACTIONS, ACTION_LABELS, FIXED_MOUSE, prettyCode } from "../input/bindings.js";
+export { ACTIONS, actionLabel, FIXED_MOUSE, fixedMouseLabel, mouseButtonLabel, prettyCode } from "../input/bindings.js";
+// The editor loads the string tables into the same `t()` so the legend above reads in words.
+export { initI18n } from "../i18n.js";

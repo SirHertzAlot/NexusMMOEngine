@@ -3,6 +3,7 @@
  * entrance the player stands in.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { formatClock, outcomeText, secondsLeft, unopenedChests, type DungeonState } from "../src/ui/dungeon.js";

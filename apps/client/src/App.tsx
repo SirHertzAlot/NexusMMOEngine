@@ -36,6 +36,7 @@ import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import gameFlow from "virtual:game-flow";
+import { t } from "./i18n.js";
 import { startNode, useFlow } from "./flow.js";
 import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
@@ -222,7 +223,7 @@ export function App(): React.ReactElement {
         // A refusal in the world (too far, someone else's, bag full) is a
         // notice, not a failed connection.
         if (e.code === 4005 && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
-        else setError(`server error ${e.code}: ${e.message}`);
+        else setError(t("net.serverError", { code: e.code, message: e.message }));
       },
       onClose: () => {
         // A client we moved away from (into or out of a dungeon) closing is expected.
@@ -235,7 +236,7 @@ export function App(): React.ReactElement {
         }
         // The server sends an error frame before closing on every
         // rejection; keep that reason instead of masking it.
-        setError((prev) => prev ?? "connection closed");
+        setError((prev) => prev ?? t("net.closed"));
         fire("net.closed");
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
@@ -404,7 +405,7 @@ export function App(): React.ReactElement {
   /** Enter the world as a character (the character screen). */
   const enterWorld = async (id: number): Promise<void> => {
     const client = clientRef.current;
-    if (!client) throw new Error("not connected");
+    if (!client) throw new Error(t("net.notConnected"));
     await client.enterWorld(id);
     fire("net.joinReply.ok");
   };
@@ -429,7 +430,7 @@ export function App(): React.ReactElement {
       if (reply?.kind !== "account") return;
       if (scene === "@assigned") {
         const id = reply.account.characters[0]?.id;
-        if (id === undefined) setError("play from world: the account has no character yet");
+        if (id === undefined) setError(t("net.noCharacter"));
         else await enterWorld(id).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
       }
     })();
@@ -514,8 +515,8 @@ export function App(): React.ReactElement {
     const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
     const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
     c.stance(technique, aim);
-    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : "your weapon's");
-    setNotice({ text: `${label(technique)} · aim: ${label(aim)}`, at: performance.now() });
+    const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : t("stance.weapon"));
+    setNotice({ text: t("stance.notice", { technique: label(technique), aim: label(aim) }), at: performance.now() });
   }, []);
   // Medicine (M4): H treats your own worst wound; how it goes comes back as a notice.
   const onTreat = useCallback(() => clientRef.current?.treat(), []);
@@ -533,7 +534,7 @@ export function App(): React.ReactElement {
         maxCharacters={account.max_characters}
         onCreate={async (name, look) => {
           const client = clientRef.current;
-          if (!client) throw new Error("not connected");
+          if (!client) throw new Error(t("net.notConnected"));
           const updated = await client.createCharacter(name, look);
           setAccount(updated);
           if (updated.created !== undefined) await enterWorld(updated.created);
@@ -584,20 +585,20 @@ export function App(): React.ReactElement {
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            pick up <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
+            {t("interact.pickUp")} <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
           </div>
         )}
         {!nearDrop && !dialog && nearNpc && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            talk to <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
+            {t("interact.talkTo")} <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
           </div>
         )}
         {!nearDrop && !dialog && !nearNpc && entrance && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            enter <span className="text-violet-300">{entrance.name}</span>
-            {party && party.members.length > 1 ? <span className="text-muted-foreground"> with your party</span> : null}
+            {t("interact.enter")} <span className="text-violet-300">{entrance.name}</span>
+            {party && party.members.length > 1 ? <span className="text-muted-foreground"> {t("interact.withParty")}</span> : null}
           </div>
         )}
         {run?.phase === "in" && (
@@ -628,7 +629,7 @@ export function App(): React.ReactElement {
             blocked={blocked}
             onBlock={(n) => client?.block(n, true)}
             onUnblock={(n) => client?.block(n, false)}
-            onWhisper={(n) => setNotice({ text: `/w ${n} <message>`, at: Date.now() })}
+            onWhisper={(n) => setNotice({ text: t("friends.whisperHint", { name: n }), at: Date.now() })}
             onRemove={(n) => client?.friend(n, false)}
           />
         </HudSlot>
@@ -649,7 +650,7 @@ export function App(): React.ReactElement {
         </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
         <SettingsMenu
-          quality={quality === "auto" ? `auto (${activeQuality?.active ?? "…"})` : quality}
+          quality={quality === "auto" ? t("settings.qualityAuto", { tier: activeQuality?.active ?? "…" }) : quality}
           onQuality={cycleQuality}
           onDisconnect={disconnect}
           bindings={bindings}
@@ -717,14 +718,14 @@ export function App(): React.ReactElement {
           </HudSlot>
         )}
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
-          <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={`Quest log (${prettyCode(bindings.quests[0] ?? "KeyJ")})`}>
-            quests
+          <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={t("hud.questLogTitle", { key: prettyCode(bindings.quests[0] ?? "KeyJ") })}>
+            {t("hud.quests")}
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title="Character sheet">
-            sheet
+          <Button size="sm" variant="secondary" onClick={() => setSheetOpen((o) => !o)} aria-expanded={sheetOpen} title={t("hud.sheetTitle")}>
+            {t("hud.sheet")}
           </Button>
-          <Button size="sm" variant="secondary" onClick={toggleBag} aria-expanded={bagOpen} title={`Bag (${prettyCode(bindings.bag[0] ?? "KeyB")})`}>
-            bag
+          <Button size="sm" variant="secondary" onClick={toggleBag} aria-expanded={bagOpen} title={t("hud.bagTitle", { key: prettyCode(bindings.bag[0] ?? "KeyB") })}>
+            {t("hud.bag")}
           </Button>
         </div>
       </div>
@@ -736,13 +737,13 @@ export function App(): React.ReactElement {
     <div className="flex h-full items-center justify-center bg-background">
       <Card className="w-[380px]">
         <CardHeader>
-          <CardTitle>MMO Engine — mirror</CardTitle>
+          <CardTitle>{t("auth.title")}</CardTitle>
           <p className="text-sm text-muted-foreground">
             {screen === "connecting"
-              ? "connecting…"
+              ? t("auth.connecting")
               : mode === "register"
-                ? "Create an account on the server, then mirror the world."
-                : "Log in to mirror the authoritative world."}
+                ? t("auth.registerIntro")
+                : t("auth.loginIntro")}
           </p>
         </CardHeader>
         <CardContent>
@@ -756,7 +757,7 @@ export function App(): React.ReactElement {
                   setError(null);
                 }}
               >
-                Log in
+                {t("auth.logIn")}
               </Button>
               <Button
                 variant={mode === "register" ? "default" : "outline"}
@@ -766,11 +767,11 @@ export function App(): React.ReactElement {
                   setError(null);
                 }}
               >
-                Create account
+                {t("auth.createAccount")}
               </Button>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="url">server URL</Label>
+              <Label htmlFor="url">{t("auth.serverUrl")}</Label>
               <Input
                 id="url"
                 value={url}
@@ -779,7 +780,7 @@ export function App(): React.ReactElement {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="username">username</Label>
+              <Label htmlFor="username">{t("auth.username")}</Label>
               <Input
                 id="username"
                 value={username}
@@ -788,7 +789,7 @@ export function App(): React.ReactElement {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">password</Label>
+              <Label htmlFor="password">{t("auth.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -806,7 +807,7 @@ export function App(): React.ReactElement {
             </div>
             {mode === "register" && (
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">confirm password</Label>
+                <Label htmlFor="confirm-password">{t("auth.confirmPassword")}</Label>
                 <Input
                   id="confirm-password"
                   type="password"
@@ -821,7 +822,7 @@ export function App(): React.ReactElement {
                 />
                 {confirmPassword && password !== confirmPassword && (
                   <p className="text-xs text-destructive">
-                    passwords don&apos;t match
+                    {t("auth.passwordMismatch")}
                   </p>
                 )}
               </div>
@@ -837,15 +838,15 @@ export function App(): React.ReactElement {
               onClick={() => void launch()}
             >
               {screen === "connecting"
-                ? "connecting…"
+                ? t("auth.connecting")
                 : mode === "register"
-                  ? "create account & connect"
-                  : "connect"}
+                  ? t("auth.createAndConnect")
+                  : t("auth.connect")}
             </Button>
             <p className="text-xs text-muted-foreground">
               {mode === "register"
-                ? "username: 3\u201332 chars (letters, digits, _, -) · password: 8+ chars"
-                : "Prefer the CLI? On the server host run MMO_DEV_PASSWORD=\u2026 npm run seed:user --workspace=@mmo-engine/engine-core -- <name>"}
+                ? t("auth.registerHint")
+                : t("auth.cliHint")}
             </p>
           </div>
         </CardContent>
@@ -857,8 +858,8 @@ export function App(): React.ReactElement {
 /** A short-lived message over the world (a refused pickup, …), gone after a few seconds. */
 function Notice({ text, onDone }: { text: string; onDone: () => void }): React.ReactElement {
   useEffect(() => {
-    const t = setTimeout(onDone, 2500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(onDone, 2500);
+    return () => clearTimeout(timer);
   }, [onDone]);
   return (
     <div role="status" className="pointer-events-none absolute left-1/2 top-24 z-10 -translate-x-1/2 rounded-md border bg-card/90 px-3 py-1 text-sm text-amber-200 shadow-sm">

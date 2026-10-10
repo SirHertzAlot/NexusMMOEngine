@@ -2,6 +2,7 @@
  * Disciplines on the sheet: requirement lines, progress, lapse text and goal order.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SkillsMessage } from "@mmo-engine/protocol";

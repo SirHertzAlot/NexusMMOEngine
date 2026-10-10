@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import type { SpellMessage } from "@mmo-engine/protocol";
 import { barFraction } from "./meter.js";
 import { spellTitle } from "./spell-notice.js";
+import { t } from "../i18n.js";
 
 /** A cast the player started: the spell, when it started (ms, performance.now) and how long it takes. */
 export interface CastState {
@@ -52,13 +53,13 @@ export function CastBar({ cast }: { cast: CastState | null }): React.ReactElemen
   return (
     <div className="pointer-events-none w-64 rounded-lg border bg-card/90 px-3 py-2 text-card-foreground shadow-sm">
       <div className="mb-0.5 flex justify-between text-[11px] text-muted-foreground">
-        <span>casting {spellTitle(cast.spell)}</span>
-        <span className="tabular-nums">{left.toFixed(1)} s</span>
+        <span>{t("cast.casting", { spell: spellTitle(cast.spell) })}</span>
+        <span className="tabular-nums">{t("cast.seconds", { value: left.toFixed(1) })}</span>
       </div>
       <div
         className="h-2 w-full overflow-hidden rounded bg-secondary"
         role="progressbar"
-        aria-label={`casting ${spellTitle(cast.spell)}`}
+        aria-label={t("cast.casting", { spell: spellTitle(cast.spell) })}
         aria-valuenow={Math.round(f * 100)}
         aria-valuemax={100}
       >
