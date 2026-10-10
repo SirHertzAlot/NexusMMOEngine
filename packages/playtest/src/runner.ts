@@ -14,11 +14,16 @@ import {
 } from "@mmo-engine/engine-core";
 import type { Scenario } from "./scenario.js";
 import { evaluate, type Observations } from "./assertions.js";
+import type { TracePoint } from "./replay.js";
 
 export interface ScenarioResult {
   passed: boolean;
   failures: string[];
   ticks: number;
+  /** Bot centroid after each tick run: what a replay is compared against. */
+  trace: TracePoint[];
+  /** The tick the run failed at: the error's tick, else the last tick run. */
+  failTick: number;
 }
 
 export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
@@ -38,6 +43,8 @@ export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
   const moved = new Map<number, boolean>();
   const startPos = new Map<number, { x: number; z: number }>();
 
+  const trace: TracePoint[] = [];
+  let failTick = scenario.ticks;
   for (let tick = 1; tick <= scenario.ticks; tick++) {
     try {
       sim.beginTick(tick);
@@ -45,8 +52,17 @@ export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
       sim.endTick();
     } catch (err) {
       errors.push(`tick ${tick}: ${err instanceof Error ? err.message : err}`);
+      failTick = tick;
       break;
     }
+    let sx = 0;
+    let sz = 0;
+    for (const e of bots.entities) {
+      sx += Transform.px[e] ?? 0;
+      sz += Transform.pz[e] ?? 0;
+    }
+    const n = Math.max(1, bots.entities.length);
+    trace.push({ tick, x: sx / n, z: sz / n });
     for (const e of bots.entities) {
       if (!startPos.has(e)) {
         startPos.set(e, { x: Transform.px[e] ?? 0, z: Transform.pz[e] ?? 0 });
@@ -73,5 +89,5 @@ export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
   if (errors.length > 0 && !scenario.assertions.some((a) => a.type === "noErrors")) {
     failures.push(`noErrors (implicit): ${errors[0]}`);
   }
-  return { passed: failures.length === 0, failures, ticks: scenario.ticks };
+  return { passed: failures.length === 0, failures, ticks: scenario.ticks, trace, failTick };
 }

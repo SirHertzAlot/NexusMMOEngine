@@ -26,6 +26,8 @@ export type Assertion = z.infer<typeof Assertion>;
 
 export const Scenario = z.object({
   name: z.string().min(1),
+  /** What the scenario guards (shown in the editor's Playtests panel). */
+  description: z.string().optional(),
   /** Deterministic seed; a fixed default keeps ad-hoc scenarios reproducible. */
   seed: z.number().int().default(1337),
   ticks: z.number().int().min(1).max(30 * 60 * 10),

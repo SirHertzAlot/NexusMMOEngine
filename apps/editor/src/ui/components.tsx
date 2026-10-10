@@ -785,3 +785,20 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (next: T | ((pr
   }, [key]);
   return [value, set];
 }
+
+// ---------------------------------------------------------------- KV table
+
+export function KvTable({ rows }: { rows: Array<{ key: string; value: string }> }): React.JSX.Element {
+  return (
+    <table className="w-full text-xs">
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.key} className="border-b border-border/50 last:border-0">
+            <td className="py-1 pr-3 font-mono text-muted-foreground">{r.key}</td>
+            <td className="py-1 text-right font-mono break-all">{r.value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}

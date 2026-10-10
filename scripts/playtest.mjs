@@ -52,9 +52,9 @@ async function main() {
       console.log(`FAIL`);
       for (const f of result.failures) console.log(`  - ${f}`);
       const replay = saveReplay(replayDir, scenario, {
-        tick: result.ticks,
+        tick: result.failTick,
         reason: result.failures[0] ?? "unknown",
-      });
+      }, result.trace);
       console.log(`  replay: ${replay}`);
     }
   }

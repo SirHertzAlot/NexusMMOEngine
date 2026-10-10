@@ -11,7 +11,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { loadScenario } from "../src/scenario.js";
 import { runScenario } from "../src/runner.js";
-import { saveReplay, loadReplay } from "../src/replay.js";
+import { saveReplay, loadReplay, firstDivergence } from "../src/replay.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -78,6 +78,42 @@ describe("runScenario", () => {
     const b = await runScenario(loadScenario(SCENARIO));
     assert.equal(a.passed, b.passed);
     assert.equal(a.ticks, b.ticks);
+  });
+});
+
+describe("trace and divergence (editor Playtests panel)", () => {
+  it("records one bot-centroid point per tick, identical for the same seed", async () => {
+    const a = await runScenario(loadScenario(SCENARIO));
+    const b = await runScenario(loadScenario(SCENARIO));
+    assert.equal(a.trace.length, 300);
+    assert.deepEqual(a.trace, b.trace);
+    assert.equal(a.trace[0]!.tick, 1);
+  });
+
+  it("firstDivergence finds the first tick two traces differ, null when equal", () => {
+    const t = [1, 2, 3].map((tick) => ({ tick, x: tick, z: 0 }));
+    assert.equal(firstDivergence(t, t), null);
+    assert.equal(firstDivergence(t, [t[0]!, { tick: 2, x: 9, z: 0 }, t[2]!]), 2);
+    assert.equal(firstDivergence(t, t.slice(0, 2)), 3, "a shorter trace diverges where it stops");
+  });
+
+  it("a replay carries its trace and the seal covers it", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "replay-"));
+    try {
+      const trace = [{ tick: 1, x: 0, z: 0 }];
+      const file = saveReplay(dir, loadScenario(SCENARIO), { tick: 1, reason: "x" }, trace);
+      assert.deepEqual(loadReplay(file).trace, trace);
+      const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+      doc.trace[0].x = 5;
+      fs.writeFileSync(file, JSON.stringify(doc));
+      assert.throws(() => loadReplay(file), /tamper|seal/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a description on the scenario", () => {
+    assert.equal(loadScenario({ ...SCENARIO, description: "hi" }).description, "hi");
   });
 });
 
