@@ -3,6 +3,7 @@
  * anchors, flag overlaps, save to content/ui/hud.json.
  */
 import * as React from "react";
+import { Select } from "./components.js";
 import { Pill } from "./previews.js";
 import {
   widgetRect,
@@ -229,16 +230,15 @@ export function HudEditor(): React.JSX.Element {
               <p className="mb-1 font-mono text-xs">{selected}</p>
               <label className="mb-2 block text-xs">
                 Anchor{" "}
-                <select
+                <Select size="xs"
                   value={sel.anchor}
                   onChange={(e) => setAnchor(selected, e.target.value as Anchor)}
-                  className="rounded-lg border px-2 py-1 text-xs"
-                  style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-0)" }}
+                 
                 >
                   {ANCHORS.map((a) => (
                     <option key={a} value={a}>{a}</option>
                   ))}
-                </select>
+                </Select>
               </label>
               <p className="mb-2 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
                 offset {sel.offset.x}, {sel.offset.y}

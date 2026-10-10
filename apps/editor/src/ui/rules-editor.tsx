@@ -25,17 +25,7 @@ import {
   type PathSegment,
   type RuleIssueView,
 } from "../rules-tree.js";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  SectionTitle,
-} from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 /** What each file sets (content/rules/README.md, one line each). */
@@ -184,16 +174,15 @@ function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: Node
           <p className="text-xs text-muted-foreground">Empty list.</p>
         )}
         <div className="flex items-center gap-2">
-          <select
+          <Select size="xs"
             value={addKind}
             onChange={(e) => setAddKind(e.target.value as LeafKind)}
             aria-label={`New item kind for ${path}`}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
           >
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>{k}</option>
             ))}
-          </select>
+          </Select>
           <Button size="sm" variant="outline" onClick={() => onChange([...value, blankOf(addKind)])}>
             Add item
           </Button>
@@ -234,17 +223,16 @@ function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: Node
         ) : (
           <span className="font-mono text-xs text-muted-foreground">null</span>
         )}
-        <select
+        <Select size="xs"
           value={kind}
           onChange={(e) => onChange(blankOf(e.target.value as LeafKind))}
           aria-label={`Kind of ${path || "root"}`}
           title="Change this value's kind (replaces it with a blank)"
-          className="h-8 rounded-md border border-input bg-background px-1 text-xs text-muted-foreground"
         >
           {KIND_OPTIONS.map((k) => (
             <option key={k} value={k}>{k}</option>
           ))}
-        </select>
+        </Select>
         {onRemove !== null && depth > 0 && (
           <span className="text-[11px] text-muted-foreground">remove with × above</span>
         )}

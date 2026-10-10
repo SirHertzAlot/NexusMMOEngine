@@ -4,6 +4,7 @@
  * the Release workspace.
  */
 import * as React from "react";
+import { Select } from "./components.js";
 import { Pill, MiniTable } from "./previews.js";
 import type { BuildProfile } from "@mmo-engine/build";
 import type { DeployState, RunRecord, StageState } from "../build-host.js";
@@ -133,17 +134,16 @@ export function PipelineView(): React.JSX.Element {
         </p>
       )}
       <div className="flex items-center gap-2">
-        <select
+        <Select size="md"
           value={profile}
           onChange={(e) => setProfile(e.target.value)}
           disabled={running}
-          className="rounded-lg border px-3 py-1.5 text-sm"
-          style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}
+         
         >
           {profiles.map((p) => (
             <option key={p.name} value={p.name}>{p.name}</option>
           ))}
-        </select>
+        </Select>
         <button
           onClick={() => void startRun()}
           disabled={running || !profile}
