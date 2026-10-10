@@ -47,7 +47,7 @@ export class AnimationSystem implements SimSystem {
             clip = mapped;
             layer = LAYER_UPPER;
             // Match the clip to the move's start tick so the client lines up.
-            this.setClip(world, eid, clip, C.Action.started[eid], rate, layer);
+            this.setClip(world, eid, clip, C.Action.started[eid], rate, layer, true);
             continue;
           }
         }
@@ -72,7 +72,10 @@ export class AnimationSystem implements SimSystem {
     }
   }
 
-  /** Set the clip, but don't restart it if it's already playing. */
+  /**
+   * Set the clip, but don't restart it if it's already playing. A combat
+   * move restarts when its start tick changed (the same attack twice).
+   */
   private setClip(
     world: SimWorld,
     eid: number,
@@ -80,8 +83,9 @@ export class AnimationSystem implements SimSystem {
     startTick: number,
     rate: number,
     layer: number,
+    restart = false,
   ): void {
-    if (C.Animation.clipId[eid] === clip) return;
+    if (C.Animation.clipId[eid] === clip && !(restart && C.Animation.startTick[eid] !== startTick)) return;
     C.Animation.clipId[eid] = clip;
     C.Animation.startTick[eid] = startTick;
     C.Animation.rate[eid] = rate;
