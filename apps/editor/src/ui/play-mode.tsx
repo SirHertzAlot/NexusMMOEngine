@@ -61,9 +61,10 @@ export interface PlayUiState {
   entityId: string;
   autoRefresh: boolean;
   pmState: PlayModeState;
+  paused: boolean;
 }
 
-export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle" });
+export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle", paused: false });
 
 export function setPlayEntityId(entityId: string): void {
   playUiStore.set((p) => ({ ...p, entityId }));
@@ -82,6 +83,12 @@ let sharedController: PlayModeController | null = null;
 
 export function getPlayController(): PlayModeController | null {
   return sharedController;
+}
+
+/** Toolbar Pause/Resume and Step: an admin command to the owned server; Pause toggles. */
+export async function requestPlayTick(command: "pause" | "resume" | "step"): Promise<void> {
+  const r = await sharedController?.admin(command);
+  if (r?.ok && command !== "step") playUiStore.set((p) => ({ ...p, paused: command === "pause" }));
 }
 
 /** Toolbar / shortcut stop: real controller.stop(), valid while running or starting. */
@@ -152,6 +159,7 @@ export function PlayModePanel(): React.JSX.Element {
         setMirror(c);
         return {
           debug: (q) => c.debug(q as DebugQuery),
+          admin: (command) => c.admin(command),
           disconnect: () => {
             setMirror(null);
             setHud(null);
@@ -171,7 +179,7 @@ export function PlayModePanel(): React.JSX.Element {
           setOverlays({ waypoints: null, tiles: null });
         },
         onStateChange: (s, d) => {
-          playUiStore.set((p) => ({ ...p, pmState: s }));
+          playUiStore.set((p) => ({ ...p, pmState: s, paused: s === "running" ? p.paused : false }));
           setDetail(d);
         },
       },

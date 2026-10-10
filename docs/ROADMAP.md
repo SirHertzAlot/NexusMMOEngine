@@ -162,6 +162,7 @@ with no retry). Fixing them as one wave, tracked here.
 | R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | ✅ | `fix/ed-keys-menus`: F5/Shift+F5/V/W/E/R wired; staged rows disabled with no kbd hint; drag-to-place removed until the scene viewport slice lands |
 | R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | ✅ | `fix/ed-panels` |
 | R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | ✅ | `fix/ed-selection`; panel highlight restoration on reload deferred |
+| R5 | Pause and Step drive the owned server's tick loop | ✅ | `feat/editor-pause-step`: admin `pause`/`resume`/`step` on the gateway (`TickLoop.step`/`rearm`); the play cluster's Pause toggles Resume, Step runs one tick while paused. Server-side pause only. |
 
 ## 2. Game client: the player's interface
 
@@ -304,6 +305,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
 - **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.

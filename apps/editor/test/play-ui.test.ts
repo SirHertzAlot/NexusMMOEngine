@@ -14,12 +14,12 @@ import {
 
 describe("playUiStore", () => {
   it("starts idle with auto-refresh on", () => {
-    playUiStore.set({ entityId: "", autoRefresh: true, pmState: "idle" });
-    assert.deepEqual(playUiStore.get(), { entityId: "", autoRefresh: true, pmState: "idle" });
+    playUiStore.set({ entityId: "", autoRefresh: true, pmState: "idle", paused: false });
+    assert.deepEqual(playUiStore.get(), { entityId: "", autoRefresh: true, pmState: "idle", paused: false });
   });
 
   it("entity and refresh setters preserve the other fields", () => {
-    playUiStore.set({ entityId: "", autoRefresh: true, pmState: "running" });
+    playUiStore.set({ entityId: "", autoRefresh: true, pmState: "running", paused: false });
     setPlayEntityId("12345");
     assert.equal(playUiStore.get().entityId, "12345");
     assert.equal(playUiStore.get().pmState, "running");
