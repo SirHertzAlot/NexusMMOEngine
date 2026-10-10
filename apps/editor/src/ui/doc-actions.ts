@@ -16,6 +16,8 @@
  * or return issues and write nothing (hosts validate first).
  */
 
+import * as React from "react";
+
 /** One thing wrong with the open document, for the Problems tab and the status bar. */
 export interface DocProblem {
   severity: "error" | "warn";
@@ -84,6 +86,23 @@ export function clearDocActions(actions?: DocActions): void {
   current = null;
   emit();
 }
+
+/**
+ * Register what the open document can do for as long as the panel shows it.
+ * `build` runs every render (so it reads current state) and returns null
+ * while nothing is open; the registration moves with the latest object.
+ */
+export function useDocActions(build: () => DocActions | null): void {
+  React.useEffect(() => {
+    const target = build();
+    if (!target) return;
+    registerDocActions(target);
+    return () => clearDocActions(target);
+  });
+}
+
+/** For panels whose edits apply directly: Undo and Redo stay disabled. */
+export const NO_HISTORY = { canUndo: false, canRedo: false, undo: () => undefined, redo: () => undefined } as const;
 
 export function subscribeDocActions(fn: () => void): () => void {
   listeners.add(fn);

@@ -27,7 +27,7 @@ import {
   type BrushTool,
 } from "@mmo-engine/protocol";
 import { TerrainView } from "../terrain/terrain-view.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 import { getTool } from "./tool-store.js";
 import { canSculptTerrain } from "./viewport-tools.js";
 import {
@@ -199,19 +199,14 @@ export function TerrainEditorPanel(): React.JSX.Element {
 
   // Toolbar Save target for the loaded area (no undo stack — sculpt
   // dabs apply directly, so Undo/Redo stay disabled).
-  React.useEffect(() => {
-    if (!world) return;
-    const target = {
+  useDocActions(() => {
+    if (!world) return null;
+    return {
       label: "terrain area",
       canSave: dirtyCount > 0,
-      canUndo: false,
-      canRedo: false,
+      ...NO_HISTORY,
       save: () => void save(),
-      undo: () => undefined,
-      redo: () => undefined,
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   async function save(): Promise<void> {

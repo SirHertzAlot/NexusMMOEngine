@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import { edgePath } from "../inspectors/graph-editor.js";
 import { checkStoryRemote, loadStory, saveStory, StorySaveError } from "../story-client.js";
 import {
@@ -18,7 +19,7 @@ import {
 } from "../story-model.js";
 import type { StoryFile, StoryFiles, StoryIssue } from "../story-validate.js";
 import { Button, Input } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { useDocActions } from "./doc-actions.js";
 
 const STATES: QuestState[] = ["available", "active", "ready", "done", "unavailable"];
 type Sel = { kind: "dialog" | "quest"; id: string };
@@ -264,11 +265,11 @@ export function StoryEditorPanel(): React.JSX.Element {
   }, [files]);
 
   // Toolbar Save/Undo/Redo target once the documents load.
-  React.useEffect(() => {
-    if (!files || !sel || !history.current) return;
+  useDocActions(() => {
+    if (!files || !sel || !history.current) return null;
     const h = history.current;
     const snapshot = JSON.stringify(files);
-    const target = {
+    return {
       label: "story files",
       canSave: saved !== null && snapshot !== JSON.stringify(saved),
       canUndo: h.canUndo,
@@ -283,8 +284,6 @@ export function StoryEditorPanel(): React.JSX.Element {
         bump();
       },
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   if (!files || !sel) {
@@ -339,10 +338,14 @@ export function StoryEditorPanel(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2" data-testid="story-editor">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={!h.canUndo} onClick={() => { h.undo(); bump(); }}>Undo</Button>
-        <Button size="sm" variant="outline" disabled={!h.canRedo} onClick={() => { h.redo(); bump(); }}>Redo</Button>
-        <Button size="sm" disabled={!dirty || errors.length > 0} onClick={() => void save()}>Save</Button>
-        <Button size="sm" variant="outline" onClick={() => void load()}>Reload</Button>
+        <DocBar
+          dirty={dirty}
+          saveBlocked={errors.length > 0}
+          onSave={() => void save()}
+          history={{ canUndo: h.canUndo, canRedo: h.canRedo, undo: () => { h.undo(); bump(); }, redo: () => { h.redo(); bump(); } }}
+        >
+          <Button size="sm" variant="outline" onClick={() => void load()}>Reload</Button>
+        </DocBar>
         <span className="text-xs">{errors.length} error(s), {issues.length - errors.length} warning(s){dirty ? " | unsaved changes" : ""}</span>
         <span className="text-xs text-muted-foreground">{msg}</span>
       </div>

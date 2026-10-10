@@ -8,6 +8,7 @@
  * client at a node.
  */
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import { duplicateFlowNode, renameFlowNode } from "../flow-context.js";
 import {
   addFlowEdge,
@@ -25,7 +26,7 @@ import {
 import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
 import { pastDragThreshold } from "./drag-threshold.js";
 import { MIcon } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 import { getTool } from "./tool-store.js";
 import { canDragGraphNode } from "./viewport-tools.js";
 import { editorSelection } from "./editor-selection.js";
@@ -97,21 +98,16 @@ export function FlowEditor(): React.JSX.Element {
 
   // Toolbar Save target while the flow is open (no undo stack here —
   // edits apply directly, so Undo/Redo stay disabled).
-  React.useEffect(() => {
-    if (!doc) return;
+  useDocActions(() => {
+    if (!doc) return null;
     const snapshot = JSON.stringify(doc);
-    const target = {
+    return {
       label: "game flow",
       canSave: snapshot !== saved,
-      canUndo: false,
-      canRedo: false,
+      ...NO_HISTORY,
       problems: validateFlow(doc, { scenes }).map((i) => ({ severity: "error" as const, where: i.path || "(flow)", message: i.message })),
       save: () => void save(),
-      undo: () => undefined,
-      redo: () => undefined,
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   if (!doc) {
@@ -170,12 +166,7 @@ export function FlowEditor(): React.JSX.Element {
         <span style={{ color: issues.length ? "#E8A33D" : "#6FCF97" }}>{issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"}` : "valid"}</span>
         <span className="ml-auto flex items-center gap-2">
           {dirty && <span style={{ color: "#E8A33D" }}>unsaved</span>}
-          <button className={btn} style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)", opacity: dirty ? 1 : 0.5 }} disabled={!dirty} onClick={() => void save()}>
-            Save
-          </button>
-          <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} disabled={!dirty} onClick={() => edit(JSON.parse(saved) as FlowDoc)}>
-            Revert
-          </button>
+          <DocBar dirty={dirty} onSave={() => void save()} onRevert={() => edit(JSON.parse(saved) as FlowDoc)} />
         </span>
       </div>
       {status && <div className="text-[12px]" style={{ color: "var(--m3-on-surface-variant)" }}>{status}</div>}

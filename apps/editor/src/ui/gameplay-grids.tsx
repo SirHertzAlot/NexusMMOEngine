@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import {
   addRow,
   batchScale,
@@ -246,9 +247,14 @@ export function GameplayGridsPanel(): React.JSX.Element {
         <span className="text-xs text-muted-foreground">{shownRows.length} of {mine.length} rows{localErrors > 0 ? `, ${localErrors} cell problem${localErrors === 1 ? "" : "s"}` : ""}</span>
         <div className="ml-auto flex items-center gap-2">
           {status && <Badge tone={status.tone}>{status.text}</Badge>}
-          <Button size="sm" variant="ghost" onClick={() => { setRows({ ...rows, [table]: saved }); setIssues([]); setStatus(null); }} disabled={busy || !dirty(table)}>Revert</Button>
-          <Button size="sm" variant="outline" onClick={() => void run("check")} disabled={busy}>Check</Button>
-          <Button size="sm" onClick={() => void run("save")} disabled={busy || !dirty(table)}>Save</Button>
+          <DocBar
+            dirty={dirty(table)}
+            busy={busy}
+            onSave={() => void run("save")}
+            onRevert={() => { setRows({ ...rows, [table]: saved }); setIssues([]); setStatus(null); }}
+          >
+            <Button size="sm" variant="outline" onClick={() => void run("check")} disabled={busy}>Check</Button>
+          </DocBar>
         </div>
       </div>
 

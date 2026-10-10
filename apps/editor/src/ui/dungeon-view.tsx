@@ -30,7 +30,7 @@ import type { PoolEntry } from "../dungeon-host.js";
 import { DungeonScene, type Pick } from "./dungeon-scene.js";
 import { getTool } from "./tool-store.js";
 import { canDragDungeonProp } from "./viewport-tools.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { useDocActions } from "./doc-actions.js";
 import { pushBake } from "../dock-feed.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
 import { editorSelection } from "./editor-selection.js";
@@ -156,9 +156,9 @@ export function DungeonPanel(): React.JSX.Element {
   const dirty = patch !== null && JSON.stringify(patch) !== saved;
 
   // Toolbar Save/Undo/Redo target while a dungeon is open.
-  React.useEffect(() => {
-    if (!dungeon || !patch) return;
-    const target = {
+  useDocActions(() => {
+    if (!dungeon || !patch) return null;
+    return {
       label: `dungeon "${dungeon.id}"`,
       canSave: dirty,
       canUndo: undo.length > 0,
@@ -175,8 +175,6 @@ export function DungeonPanel(): React.JSX.Element {
         setRedo((r) => r.slice(0, -1));
       },
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   return (

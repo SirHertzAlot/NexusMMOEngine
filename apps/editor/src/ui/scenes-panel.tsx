@@ -35,7 +35,7 @@ import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene
 import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
-import { clearDocActions, registerDocActions, type DocActions } from "./doc-actions.js";
+import { useDocActions } from "./doc-actions.js";
 import { readClipboard, writeClipboard } from "./clipboard.js";
 import { subscribeOpenAsset } from "./open-asset.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
@@ -151,8 +151,8 @@ export function ScenesPanel(): React.JSX.Element {
   React.useEffect(refresh, []);
 
   // Toolbar Save/Undo/Redo target while a scene is open.
-  React.useEffect(() => {
-    if (!open) return;
+  useDocActions(() => {
+    if (!open) return null;
     const pasteNode = (parentId: string | null): void => {
       const data = readClipboard("scene-node") as SceneNode | null;
       if (!data) {
@@ -163,7 +163,7 @@ export function ScenesPanel(): React.JSX.Element {
       run("paste node", (d) => addNode(d, parentId, node));
       select(node.id);
     };
-    const target: DocActions = {
+    return {
       label: `scene "${open}"`,
       canSave: hist.dirty,
       canUndo: hist.canUndo,
@@ -276,8 +276,6 @@ export function ScenesPanel(): React.JSX.Element {
         setTimeout(() => URL.revokeObjectURL(url), 0);
       },
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   // The command palette asks us to open a specific scene by id.

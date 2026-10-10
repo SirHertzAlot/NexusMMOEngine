@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import {
   getRuleFile,
   listRuleFiles,
@@ -35,7 +36,7 @@ import {
   Label,
   SectionTitle,
 } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 /** What each file sets (content/rules/README.md, one line each). */
 const FILE_BLURBS: Record<string, string> = {
@@ -334,19 +335,14 @@ export function RulesPanel(): React.JSX.Element {
 
   // Toolbar Save target for the open rules file (no undo stack —
   // edits apply directly, so Undo/Redo stay disabled).
-  React.useEffect(() => {
-    if (selected === null || content === null) return;
-    const target = {
+  useDocActions(() => {
+    if (selected === null || content === null) return null;
+    return {
       label: `rules "${selected}.json"`,
       canSave: dirty,
-      canUndo: false,
-      canRedo: false,
+      ...NO_HISTORY,
       save: () => void onSave(),
-      undo: () => undefined,
-      redo: () => undefined,
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   return (
@@ -445,21 +441,18 @@ export function RulesPanel(): React.JSX.Element {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={() => void onSave()} disabled={saving || !dirty}>
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={saving || !dirty}
-                  onClick={() => {
+                <DocBar
+                  dirty={dirty}
+                  busy={saving}
+                  saveLabel={saving ? "Saving…" : "Save"}
+                  onSave={() => void onSave()}
+                  onRevert={() => {
                     setContent(pristine);
                     setIssues([]);
                     setError(null);
                     setSavedNote(null);
                   }}
-                >
-                  Revert
-                </Button>
+                />
                 <span className="text-xs text-muted-foreground">
                   Validated with the rules schemas on save; pretty-printed with
                   2 spaces.
