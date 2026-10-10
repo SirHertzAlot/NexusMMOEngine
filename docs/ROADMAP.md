@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-10-10)
 
-**104 items built, 26 in progress, 31 planned, 1 next up** (counted
+**102 items built, 28 in progress, 31 planned, 1 next up** (counted
 from the tables below; the tooling and asset performance section, 1e,
 added 15 of the planned). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
@@ -214,12 +214,12 @@ one propagates to every panel: audit in the project library
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
 | M1 | One `NodeGraph<N, E>` canvas for the PICG, flow and story graphs (pan, zoom, fit, drag, select) | ✅ | #199 |
-| M2 | One HTTP layer (`requestJson`, `callEnvelope`, `IssuesError`, `refuseInvalid`) for every client and host route | ✅ | #200; `callEnvelope` now serves the graph, dungeon, HUD, pipeline and terrain panels (#207) |
+| M2 | One HTTP layer (`requestJson`, `callEnvelope`, `IssuesError`, `refuseInvalid`) for every client and host route | ✅ | #200; `callEnvelope` reaches the graph, dungeon, HUD, pipeline and terrain panels with #207 |
 | M3 | `DocBar` and `useDocActions` for every document editor's Save, Undo, Redo, Revert | ✅ | #201 |
 | M4 | Shared form controls (`Select`, `Field`, `CheckField`), dead code removed, `createStore` / `createSlot` for the module-level stores | ✅ | #202, #203, #204 |
 | M5 | `useSaveTask` and `describeSaveFailure` for every document save | ✅ | #205 |
-| M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | ✅ | #206; the dungeon prop drag and the quest wire drag stay hand-written |
-| M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | ✅ | #207; flow gained Undo and Redo |
+| M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | 🚧 | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
+| M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | 🚧 | #207, in main with #209; flow gained Undo and Redo |
 | M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | 🚧 | Last of the stateful pieces |
 | M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 📋 | Audit first, then a shared hook |
 | M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
@@ -366,7 +366,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
-- **2026-10-10**: Roadmap caught up and extended. Merged since the last update: customizable toolbar (#185), Details shows unsaved Gameplay edits (#177), review fixes on the play stack (#198), the EA19 build and deploy pipeline (#187, #188), EA21, EA22, EA24 and EA25 foundations (#194, #196, #197, #195), the EA23 HUD drag editor (#190, #193), EA26 playtests and their pipeline stage (#189, #192), A6 appearance command (#191), and the editor DRY audit M1 to M7 (#199 to #207). Added §1e (tooling and asset performance: compression, gltfjsx, dev overlays, spikes) from [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) and §1f (editor maintainability).
+- **2026-10-10**: Roadmap caught up and extended. Merged since the last update: customizable toolbar (#185), Details shows unsaved Gameplay edits (#177), review fixes on the play stack (#198), the EA19 build and deploy pipeline (#187, #188), EA21, EA22, EA24 and EA25 foundations (#194, #196, #197, #195), the EA23 HUD drag editor (#190, #193), EA26 playtests and their pipeline stage (#189, #192), A6 appearance command (#191), and the editor DRY audit M1 to M5 (#199 to #205); M6 and M7 (#206, #207) went into their stack branches and reach main with #209. Added §1e (tooling and asset performance: compression, gltfjsx, dev overlays, spikes) from [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) and §1f (editor maintainability).
 - **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
