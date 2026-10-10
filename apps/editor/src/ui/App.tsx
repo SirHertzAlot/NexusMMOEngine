@@ -2360,17 +2360,34 @@ function TickTimingsPanel(): React.JSX.Element {
   const [error, setError] = React.useState("");
   React.useEffect(() => {
     let live = true;
+    // One query at a time: a slow server must not pile up a request every 2 s.
+    let inFlight = false;
     const load = async (): Promise<void> => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const c = getPlayController();
-        if (!c) {
-          if (live) setTimings(null);
+        if (!c || c.getState() !== "running") {
+          if (live) {
+            setTimings(null);
+            setError("");
+          }
           return;
         }
-        // The controller's debug method is not directly exposed; skip if unavailable.
-        if (live) setTimings(null);
-      } catch (e) {
-        if (live) setError((e as Error).message);
+        const res = await c.debugTimings();
+        if (!live) return;
+        if (res.query === "timings") {
+          setTimings({ ticks: res.ticks, p50: res.p50, p99: res.p99, systems: res.systems });
+          setError("");
+        }
+      } catch {
+        // Running but unanswered: the query rides the player's client, which Simulate doesn't connect.
+        if (live) {
+          setTimings(null);
+          setError("Tick timings come through the player's client; Simulate runs without one.");
+        }
+      } finally {
+        inFlight = false;
       }
     };
     void load();
@@ -2380,7 +2397,7 @@ function TickTimingsPanel(): React.JSX.Element {
       clearInterval(t);
     };
   }, []);
-  if (error) return <p className="px-3 text-xs" style={{ color: "var(--m3-error)" }}>{error}</p>;
+  if (error) return <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{error}</p>;
   if (!timings) {
     return (
       <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -2399,7 +2416,7 @@ function TickTimingsPanel(): React.JSX.Element {
           {timings.systems.slice(0, 5).map((s) => (
             <li key={s.name} className="flex justify-between font-mono text-xs">
               <span>{s.name}</span>
-              <span style={{ color: "var(--m3-on-surface-variant)" }}>{s.avg.toFixed(1)}ms avg</span>
+              <span style={{ color: "var(--m3-on-surface-variant)" }}>{s.avg.toFixed(2)}ms avg · {s.max.toFixed(1)} max</span>
             </li>
           ))}
         </ul>
