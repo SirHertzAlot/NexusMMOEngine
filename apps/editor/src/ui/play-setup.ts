@@ -208,6 +208,7 @@ export function simulateLabel(setup: PlaySetup): string {
  * report). Keys are setup fields; values explain why.
  */
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
-  from: "Login and character creation need the client to run the actual UI flow instead of auto-login",
+  where: "Only the viewport is wired: a new window / simulate needs a client windowing path",
+  from: "The owned server boots the open world; starting at a flow node is not wired",
   net: "No edge/core switch on start; the owned server always runs core",
 };

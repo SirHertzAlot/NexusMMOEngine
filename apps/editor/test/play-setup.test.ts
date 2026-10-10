@@ -105,11 +105,11 @@ describe("play-setup", () => {
   });
 
   it("preview notes cover every unhonored dimension", () => {
-    for (const dim of ["where", "from", "net", "latency", "fresh", "keep"]) {
+    for (const dim of ["where", "from", "net"]) {
       assert.ok(PLAY_PREVIEW_NOTES[dim], dim);
     }
   });
   it("honored dimensions carry no preview note (the menu would badge them)", () => {
-    for (const dim of ["clients", "bots", "tint"]) assert.equal(PLAY_PREVIEW_NOTES[dim], undefined, dim);
+    for (const dim of ["clients", "bots", "tint", "latency", "fresh", "keep"]) assert.equal(PLAY_PREVIEW_NOTES[dim], undefined, dim);
   });
 });
