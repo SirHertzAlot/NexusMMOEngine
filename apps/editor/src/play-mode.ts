@@ -53,6 +53,11 @@ export interface PlayStartOptions {
    * server as MMO_BOTS; undefined leaves the server default alone.
    */
   bots?: number;
+  /**
+   * Simulate mode: start the server but do not connect a mirror client.
+   * The world ticks; the editor shows status, not a game view.
+   */
+  noClient?: boolean;
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */
@@ -128,18 +133,21 @@ export class PlayModeController {
         this.restoreEditorState();
         return;
       }
-      this.client = await this.connectClient(this.server);
-      if (token !== this.startToken) {
-        try {
-          this.client?.disconnect();
-        } catch {
-          /* a stop already owns the outcome; ignore */
-        } finally {
-          this.client = null;
+      // Simulate mode: the world ticks with no player client.
+      if (!opts?.noClient) {
+        this.client = await this.connectClient(this.server);
+        if (token !== this.startToken) {
+          try {
+            this.client?.disconnect();
+          } catch {
+            /* a stop already owns the outcome; ignore */
+          } finally {
+            this.client = null;
+          }
+          await this.cleanupOwnedServer();
+          this.restoreEditorState();
+          return;
         }
-        await this.cleanupOwnedServer();
-        this.restoreEditorState();
-        return;
       }
       this.setState("running");
     } catch (err) {

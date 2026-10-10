@@ -6,15 +6,16 @@
  * pass a fake. The UI defaults to window.localStorage when present.
  *
  * Honored today (passed to serverControl.start / the shell):
- * - where = "viewport" (the embedded game view; "window"/"simulate"
- *   need a client windowing / headless path that does not exist yet);
+ * - where = "viewport" (the embedded game view) or "simulate" (world only,
+ *   no player client; "window" needs a client windowing path that does
+ *   not exist yet);
  * - clients = "1" (one mirror client; 2/4/8 need extra clients);
  * - bots (sent as MMO_BOTS for the owned server);
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - where window/simulate, from (entry node), clients > 1, net,
+ * - where window, from (entry node), clients > 1, net,
  *   latency, fresh/keep (world snapshot/restore).
  */
 
@@ -175,11 +176,25 @@ export function setupSummary(setup: PlaySetup): string {
 }
 
 /**
+ * Whether the start path should connect a mirror client (player view).
+ * Simulate mode runs the world with no player: the server ticks, the
+ * editor shows status, no game view opens.
+ */
+export function shouldConnectPlayer(setup: PlaySetup): boolean {
+  return setup.where !== "simulate";
+}
+
+/** Status label for the play mode panel. */
+export function simulateLabel(setup: PlaySetup): string {
+  return setup.where === "simulate" ? "Simulate — world only, no player" : setupSummary(setup);
+}
+
+/**
  * Dimensions the start path cannot honor yet (menu badges + leftover
  * report). Keys are setup fields; values explain why.
  */
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
-  where: "Only the viewport is wired: a new window / simulate needs a client windowing path",
+  where: "Only the viewport and simulate are wired: a new window needs a client windowing path",
   from: "The owned server boots the open world; starting at a flow node is not wired",
   clients: "Only 1 client connects today; 2/4/8 need extra mirror clients",
   net: "No edge/core switch on start; the owned server always runs core",

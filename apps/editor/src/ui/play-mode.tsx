@@ -21,7 +21,7 @@ import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "./previews.js";
-import { botsCount, loadLastSetup } from "./play-setup.js";
+import { botsCount, loadLastSetup, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -175,9 +175,13 @@ export function PlayModePanel(): React.JSX.Element {
     setBusy(true);
     setDetail(undefined);
     try {
-      // The Play menu's only honored start option: bots → MMO_BOTS.
-      // Everything else stays preview until its slice lands.
-      await controller.start({ bots: botsCount(loadLastSetup()) });
+      // The Play menu's honored start options: bots → MMO_BOTS, and
+      // simulate mode (world only, no player client).
+      const setup = loadLastSetup();
+      await controller.start({
+        bots: botsCount(setup),
+        noClient: !shouldConnectPlayer(setup),
+      });
     } catch (err) {
       // detail already carries the message via onStateChange(error)
       void err;
@@ -269,6 +273,14 @@ export function PlayModePanel(): React.JSX.Element {
               </p>
             )}
           </div>
+
+          {running && !mirror && server && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">
+              {simulateLabel(loadLastSetup())}. The world ticks on the owned server with no player connected, so
+              there is no game view, and the overlays and tick timings (which ask through the player&apos;s
+              client) stay empty until you play with a client.
+            </p>
+          )}
 
           {running && mirror && server && (
             <div className="flex flex-col gap-2">
