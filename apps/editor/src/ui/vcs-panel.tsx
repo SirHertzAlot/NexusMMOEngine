@@ -9,7 +9,7 @@ import {
   vcsCommit, vcsDiff, vcsLocks, vcsResolve, vcsStage, vcsStatus, vcsSync, vcsUnstage,
   type VcsConflict, type VcsDiff, type VcsFile,
 } from "../vcs-client.js";
-import { Badge, Button, Input, notify } from "./components.js";
+import { Badge, Button, Input, notify, CheckField } from "./components.js";
 
 const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -98,9 +98,7 @@ export function ChangesPanel(): React.JSX.Element {
         <Button disabled={!staged || !message.trim()} onClick={() => run(vcsCommit(message).then(() => setMessage("")), "Committed")}>Commit</Button>
       </div>
       <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-xs">
-          <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> Confirm pull / push
-        </label>
+        <CheckField checked={confirm} onChange={setConfirm} label="Confirm pull / push" />
         <Button variant="outline" disabled={!confirm} onClick={() => run(vcsSync("pull"), "Pulled")}>Pull</Button>
         <Button variant="outline" disabled={!confirm} onClick={() => run(vcsSync("push"), "Pushed")}>Push</Button>
       </div>

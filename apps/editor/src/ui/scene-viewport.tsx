@@ -11,7 +11,7 @@ import type { LiveTransform, SceneDoc, Vec3 } from "@mmo-engine/scene";
 import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
-import { Button } from "./components.js";
+import { Button, CheckField } from "./components.js";
 import { clearViewportActions, registerViewportActions } from "./viewport-actions.js";
 import { setSceneCameraPos } from "./camera-position.js";
 
@@ -138,12 +138,8 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
             {label}
           </Button>
         ))}
-        <label className="flex items-center gap-1 text-xs">
-          <input type="checkbox" checked={snapTerrain} onChange={(e) => setSnapTerrain(e.target.checked)} /> Snap to terrain
-        </label>
-        <label className="flex items-center gap-1 text-xs">
-          <input type="checkbox" checked={snapGrid} onChange={(e) => setSnapGrid(e.target.checked)} /> Grid snap
-        </label>
+        <CheckField checked={snapTerrain} onChange={setSnapTerrain} label="Snap to terrain" />
+        <CheckField checked={snapGrid} onChange={setSnapGrid} label="Grid snap" />
         <Button size="sm" variant="outline" title="Frame selection (F)" onClick={() => viewRef.current?.frame()}>Frame</Button>
         <Button size="sm" variant="outline" disabled={!props.selected} title="Delete (Del)" onClick={() => props.selected && props.onDelete(props.selected)}>Delete</Button>
         {note && <span className="text-xs opacity-70">{note}</span>}

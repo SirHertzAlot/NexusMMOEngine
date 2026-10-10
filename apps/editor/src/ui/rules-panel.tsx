@@ -33,7 +33,7 @@ import {
   type RulesSnapshot,
   type Table,
 } from "../rules-control.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 const control = createRulesControl();
@@ -357,9 +357,8 @@ function Field(props: {
   if (spec.kind === "bool" || spec.kind === "enum") {
     const options = spec.kind === "bool" ? ["true", "false"] : spec.options === "techniques" ? props.techniques : spec.options;
     control = (
-      <select
+      <Select size="md"
         id={id}
-        className={`h-9 rounded-md border border-input bg-background px-2 text-sm ${ring}`}
         value={value === undefined ? "" : String(value)}
         onChange={(e) => onChange(parseField(spec, e.target.value))}
       >
@@ -369,7 +368,7 @@ function Field(props: {
             {o}
           </option>
         ))}
-      </select>
+      </Select>
     );
   } else {
     control = (

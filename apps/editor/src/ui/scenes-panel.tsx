@@ -34,14 +34,12 @@ import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-clien
 import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
 import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
-import { Button, Input, Label, SectionTitle } from "./components.js";
+import { Button, Input, Label, SectionTitle, Select } from "./components.js";
 import { useDocActions } from "./doc-actions.js";
 import { readClipboard, writeClipboard } from "./clipboard.js";
 import { subscribeOpenAsset } from "./open-asset.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
-
-const sel = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
 /** Scene names become file names: lowercase letters, digits and dashes, starting with a letter or digit. */
 export const SCENE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -67,9 +65,9 @@ function FieldInput({ spec, value, onChange }: { spec: FieldSpec; value: unknown
   }
   if (spec.type === "enum") {
     return (
-      <select className={sel} value={String(value)} onChange={(e) => onChange(e.target.value)}>
+      <Select size="md" value={String(value)} onChange={(e) => onChange(e.target.value)}>
         {spec.options.map((o) => <option key={o}>{o}</option>)}
-      </select>
+      </Select>
     );
   }
   if (spec.type === "number") {
@@ -387,10 +385,10 @@ export function ScenesPanel(): React.JSX.Element {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <select className={sel} value={open ?? ""} onChange={(e) => e.target.value && load(e.target.value)} aria-label="Open scene">
+        <Select size="md" value={open ?? ""} onChange={(e) => e.target.value && load(e.target.value)} aria-label="Open scene">
           <option value="">{names.length ? "Open scene…" : "No scenes yet"}</option>
           {names.map((n) => <option key={n}>{n}</option>)}
-        </select>
+        </Select>
         <Button size="sm" variant="outline" onClick={create}>New</Button>
         <Button size="sm" disabled={!open} onClick={save}>Save{hist.dirty ? " *" : ""}</Button>
         <Button size="sm" variant="outline" disabled={!open} onClick={() => open && load(open)}>Reload</Button>
@@ -524,9 +522,9 @@ export function ScenesPanel(): React.JSX.Element {
             open ? (
               <div className="flex flex-col gap-2">
                 <Label>Scene kind</Label>
-                <select className={sel} value={doc.kind} onChange={(e) => run("scene kind", (d) => ({ ...d, kind: e.target.value as SceneKind }))}>
+                <Select size="md" value={doc.kind} onChange={(e) => run("scene kind", (d) => ({ ...d, kind: e.target.value as SceneKind }))}>
                   {SCENE_KINDS.map((k) => <option key={k}>{k}</option>)}
-                </select>
+                </Select>
                 <Button size="sm" variant="outline" onClick={() => {
                   const id = nextId(doc, "node");
                   run("add node", (d) => addNode(d, null, { id, kind: "group" }));
@@ -541,9 +539,9 @@ export function ScenesPanel(): React.JSX.Element {
               <Label>Name</Label>
               <Input className="h-9" value={node.name ?? ""} onChange={(e) => run("rename", (d) => setNodeProp(d, node.id, "name", e.target.value))} />
               <Label>Kind</Label>
-              <select className={sel} value={node.kind ?? "group"} onChange={(e) => run("kind", (d) => setNodeProp(d, node.id, "kind", e.target.value))}>
+              <Select size="md" value={node.kind ?? "group"} onChange={(e) => run("kind", (d) => setNodeProp(d, node.id, "kind", e.target.value))}>
                 {NODE_KINDS.map((k) => <option key={k}>{k}</option>)}
-              </select>
+              </Select>
               <Label>Prefab</Label>
               <Input className="h-9" value={node.prefab ?? ""} placeholder="e.g. camps/goblin" onChange={(e) => run("prefab", (d) => setNodeProp(d, node.id, "prefab", e.target.value))} />
               {(["position", "rotation", "scale"] as const).map((key) => (
@@ -582,10 +580,10 @@ export function ScenesPanel(): React.JSX.Element {
                   ))}
                 </div>
               ))}
-              <select className={sel} value="" aria-label="Add component" onChange={(e) => e.target.value && run("add component", (d) => addComponent(d, node.id, e.target.value))}>
+              <Select size="md" value="" aria-label="Add component" onChange={(e) => e.target.value && run("add component", (d) => addComponent(d, node.id, e.target.value))}>
                 <option value="">Add component…</option>
                 {Object.keys(COMPONENTS).filter((c) => !node.components?.[c]).map((c) => <option key={c} value={c}>{COMPONENTS[c].label}</option>)}
-              </select>
+              </Select>
             </div>
           )}
         </section>
