@@ -158,9 +158,9 @@ Each spike is time-boxed. Pass = meets the bar below; fail = write the reason an
 
 ## Appendix: pinned versions (fill in Phase 0)
 
-- gltfpack binary: _
-- @gltf-transform/cli npm: _
-- gltfjsx npm: _
-- leva npm: _
-- lil-gui npm: _
-- animouse npm: _ (0.8.0 verified 2026-10-10)
+- gltfpack binary: v1.3 (#216)
+- @gltf-transform/cli npm: 4.5.1
+- gltfjsx npm: 6.5.3
+- leva npm: 0.10.1
+- lil-gui npm: 0.21.0
+- animouse npm: 0.8.0 (verified 2026-10-10)
