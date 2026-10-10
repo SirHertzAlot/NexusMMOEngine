@@ -270,28 +270,6 @@ export function OutlinedField({ label, value, wide = false }: { label: string; v
   );
 }
 
-export function SegRow({ label, options, value }: { label: string; options: string[]; value: string }): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-32 flex-none text-[13px]" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</span>
-      <div className="flex h-9 flex-1 items-center overflow-hidden rounded-full text-sm" role="group" aria-label={label} style={{ border: "1px solid var(--m3-outline-variant)" }}>
-        {options.map((o) => {
-          const on = value === o;
-          return (
-            <span
-              key={o}
-              className="flex h-full flex-1 items-center justify-center whitespace-nowrap px-2"
-              style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-            >
-              {o}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function SectionLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -753,163 +731,6 @@ function effective(base: Record<number, Record<string, string>>, drafts: DbDraft
   return d ? { value: d.after, drafted: true } : { value: base[id]?.[field] ?? "", drafted: false };
 }
 
-export function DataGridPreview(): React.JSX.Element {
-  const { table, rowId, drafts } = dbStore.use();
-  const info = TABLE_INFO[table];
-  const isState = table === "character_state";
-  const ids = Object.keys(GRID_BASE).map(Number);
-
-  return (
-    <div className="flex flex-col gap-2">
-      <PreviewBadge slice="EA · Database (§7b)">Reads run on a worker snapshot; writes are typed mutations applied between ticks.</PreviewBadge>
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        <span className="font-mono" style={{ color: "var(--m3-on-surface-variant)" }}>
-          {table === "character_state" ? "characters.db" : "world.db"} › {table}
-        </span>
-        <Pill tone="info">⚡ Live via persistence core</Pill>
-        {info && <Pill tone="plain">owner: {info.owner}</Pill>}
-        {isState && (
-          <span className="ml-auto rounded-lg border px-3 py-1.5 font-mono text-xs" style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
-            health &lt; 50
-          </span>
-        )}
-        {isState && (
-          <button
-            onClick={() => notify("Add row — staged for EA · database (typed insert via the owning store)")}
-            title="Add row (staged — append-only tables stay read-only)"
-            className="m3-focus flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
-            style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}
-          >
-            <MIcon name="add" size={15} />Add row
-          </button>
-        )}
-      </div>
-      {drafts.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl px-3 py-2.5 text-sm" style={{ background: "var(--m3-primary-container)", color: "var(--m3-on-primary-container)" }}>
-          <MIcon name="edit" size={17} />
-          <strong>{drafts.length} pending mutation{drafts.length === 1 ? "" : "s"}</strong>
-          <span className="font-mono text-xs">
-            {drafts.map((d) => `${table}[${d.id}] ${d.field} ${d.before}→${d.after}`).join(" · ")}
-          </span>
-          <span className="ml-auto flex gap-2">
-            <button onClick={() => dbStore.set((p) => ({ ...p, drafts: [] }))} className="m3-focus rounded-full px-2 py-1 hover:bg-white/10">
-              Discard
-            </button>
-            <span
-              className="rounded-full px-3 py-1 font-semibold opacity-60"
-              style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)" }}
-              title="Send to core needs the persistence-core slice (typed mutations over admin 0x10). Drafts stay local until then."
-            >
-              ▷ Send to core
-            </span>
-          </span>
-        </div>
-      )}
-      {isState ? (
-        <div className="overflow-x-auto rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
-          <table className="w-full border-collapse font-mono text-xs">
-            <thead>
-              <tr>
-                {["character_id ↑", "name (join)", "x", "y", "z", "health", "stamina", "saved_at"].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-2 text-left font-medium" style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface-variant)", height: 32 }}>{h}</th>
-                ))}
-                <th className="w-10" style={{ background: "var(--m3-surface-2)", height: 32 }}><span className="sr-only">Row actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {ids.map((id) => {
-                const on = id === rowId;
-                return (
-                  <tr
-                    key={id}
-                    onClick={() => dbStore.set((p) => ({ ...p, rowId: id }))}
-                    className="group cursor-pointer"
-                    style={{ borderBottom: "1px solid #2a2b31", background: on ? "#2b2f4a" : undefined }}
-                  >
-                    <td className="px-2" style={{ height: 30 }}>{id}</td>
-                    <td className="px-2" style={{ fontFamily: "var(--m3-font-ui)" }}>{GRID_BASE[id].name}</td>
-                    {(["x", "y", "z", "health", "stamina"] as const).map((f) => {
-                      const eff = effective(GRID_BASE, drafts, id, f);
-                      return (
-                        <td key={f} className="px-2" style={{ height: 30 }}>
-                          <span style={eff.drafted ? { boxShadow: "inset 0 0 0 2px var(--m3-primary)", background: "#1f2440", padding: "2px 8px" } : undefined}>
-                            {eff.value}{eff.drafted ? " θ" : ""}
-                          </span>
-                        </td>
-                      );
-                    })}
-                    <td className="px-2" style={{ height: 30 }}>{GRID_BASE[id].saved}</td>
-                    <td className="px-1" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}>
-                      <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                        <OverflowMenu
-                          label={`Row ${id} actions`}
-                          items={[
-                            { label: `Inspect row ${id}`, icon: "search", run: () => dbStore.set((p) => ({ ...p, rowId: id })) },
-                            "sep",
-                            { label: "Duplicate row", icon: "content_copy", stagedFor: "EA · database" },
-                            { label: "Delete row", icon: "delete", danger: true, stagedFor: "EA · database" },
-                          ]}
-                        />
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="flex justify-between px-3 py-2 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-            <span>312 rows · page 2 of 26 · read from a read-only snapshot in a worker</span>
-            <span>last applied: tick 18,402</span>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-xl p-4" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="font-mono text-sm">
-            {table} <span style={{ color: "var(--m3-on-surface-variant)" }}>· {info?.rows ?? "?"} rows · owner {info?.owner}</span>
-          </p>
-          <p className="mt-2 text-[13px]" style={{ color: "var(--m3-on-surface-variant)" }}>Columns</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {(info?.columns ?? []).map((c) => (
-              <span key={c} className="rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--m3-surface-4)" }}>{c}</span>
-            ))}
-          </div>
-          <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-            Full row grid for this table arrives with the slice — character_state is the staged sample. Append-only
-            tables (events, item_events, snapshots) stay read-only even then.
-          </p>
-        </div>
-      )}
-      <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-        <p className="mb-2 text-sm font-medium">Audit log</p>
-        <MiniTable
-          mono
-          head={["Tick", "Admin", "Mutation", "Result", ""]}
-          rows={[
-            ["18,402", "P", "character_state[12].health 60→74", <Pill tone="ok">applied</Pill>, <UndoMutation label="character_state[12].health 60→74" />],
-            ["18,377", "P", "item 88213 → ledger: moved to bag 4/2", <Pill tone="ok">event #128,904</Pill>, <UndoMutation label="item 88213 move" />],
-            ["18,350", "P", 'characters[30].name "x" → "Xan"', <Pill tone="err">refused: name taken</Pill>, <UndoMutation label="characters[30].name" />],
-            ["18,120", "P", "guild_members[7].rank recruit→member", <Pill tone="ok">applied</Pill>, <UndoMutation label="guild_members[7].rank" />],
-          ]}
-        />
-      </div>
-    </div>
-  );
-}
-
-function UndoMutation({ label }: { label: string }): React.JSX.Element {
-  return (
-    <button
-      onClick={() => notify(`Undo ${label} — staged for EA · database (inverse mutation via the audit log)`)}
-      title={`Undo ${label} (staged)`}
-      aria-label={`Undo ${label} (staged)`}
-      className="m3-focus rounded-full p-1"
-      style={{ color: "var(--m3-on-surface-variant)" }}
-    >
-      ↩
-    </button>
-  );
-}
-
 export function DatabaseRowDetails(): React.JSX.Element {
   const { rowId, drafts } = dbStore.use();
   const base = GRID_BASE[rowId] ?? GRID_BASE[17];
@@ -948,74 +769,6 @@ export function DatabaseRowDetails(): React.JSX.Element {
             {m}
           </span>
         ))}
-      </div>
-    </div>
-  );
-}
-
-export function QueryPreview(): React.JSX.Element {
-  return (
-    <div className="flex flex-col gap-3">
-      <PreviewBadge slice="EA · Database (§7b)">Read-only SQL with the registered deterministic functions in autocomplete.</PreviewBadge>
-      <div className="rounded-xl p-4 font-mono text-[13px] leading-[1.9]" style={{ background: "var(--m3-surface-0)" }}>
-        <p><span style={{ color: "#7aa2ff" }}>SELECT</span> <span style={{ color: "#E8A33D" }}>item_def(def)</span> <span style={{ color: "#7aa2ff" }}>AS</span> item, <span style={{ color: "#7aa2ff" }}>count(*)</span> <span style={{ color: "#7aa2ff" }}>AS</span> n</p>
-        <p><span style={{ color: "#7aa2ff" }}>FROM</span> item_latest</p>
-        <p><span style={{ color: "#7aa2ff" }}>WHERE</span> <span style={{ color: "#E8A33D" }}>chunk_of(x, z)</span> = <span style={{ color: "#E8A33D" }}>chunk_of(120, -40)</span></p>
-        <p>&nbsp;&nbsp;<span style={{ color: "#7aa2ff" }}>AND</span> kind = <span style={{ color: "#9CD67D" }}>'ground'</span></p>
-        <p><span style={{ color: "#7aa2ff" }}>GROUP BY</span> item <span style={{ color: "#7aa2ff" }}>ORDER BY</span> n <span style={{ color: "#7aa2ff" }}>DESC</span>;</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="rounded-full px-4 py-2 text-sm font-semibold" style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)" }}>▷&nbsp; Run (read-only)</span>
-        <span className="rounded-full px-4 py-2 text-sm" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>⚙ Explain</span>
-        <span className="ml-auto font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>6 rows · 0.4 ms · worker connection</span>
-      </div>
-      <div className="rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
-        <MiniTable
-          crud="EA · database"
-          head={["item", "n"]}
-          rows={[["Rusty dagger", "14"], ["Goblin axe", "9"], ["Copper ore", "7"], ["Wolf pelt", "5"], ["Iron mace", "2"], ["Healing herb", "1"]]}
-        />
-      </div>
-      <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-        <p className="mb-2 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>⚙ QUERY PLAN</p>
-        <div className="font-mono text-xs leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
-          <p>├ SEARCH item_latest USING INDEX item_latest_chunk (chunk_of(x,z)=?)</p>
-          <p>├ USE TEMP B-TREE FOR GROUP BY</p>
-          <p>└ USE TEMP B-TREE FOR ORDER BY</p>
-        </div>
-        <p className="mt-2 rounded-lg px-3 py-2 text-[12.5px]" style={{ background: "#1F5110", color: "#d7f8c3" }}>✓ Uses the expression index on chunk_of(x, z). No full scan.</p>
-        <p className="mt-2 rounded-lg px-3 py-2 text-[12.5px]" style={{ background: "#3d2b12", color: "#E8A33D" }}>⚠ Same query on item_events would SCAN 128k rows. Use item_latest.</p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="mb-2 text-sm font-medium">Statements</p>
-          <MiniTable
-            mono
-            crud="EA · database"
-            head={["Statement", "calls/min", "p50", "p99"]}
-            rows={[
-              ["characters.byId", "1,920", "6 µs", "21 µs"],
-              ["characters.saveState", "214", "18 µs", "70 µs"],
-              ["ledger.appendBatch", "60", "0.9 ms", "3.1 ms"],
-              ["ledger.latestForItem", "310", "4 µs", "15 µs"],
-              ["chunks.entitiesIn", "95", "0.2 ms", "0.8 ms"],
-              ["guilds.roster", "40 ⚠", "31 µs", "2.4 ms"],
-            ]}
-          />
-        </div>
-        <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
-          <p className="mb-2 text-sm font-medium">Caches</p>
-          <BarRow label="character by id" pct={98.7} text="98.7% · 312 / 512" bar="#9CD67D" />
-          <BarRow label="item definition" pct={99.9} text="99.9% · 1,204" bar="#9CD67D" />
-          <BarRow label="guild roster" pct={71.2} text="71.2% · 38 / 64" bar="#E8A33D" />
-          <BarRow label="chunk entities" pct={93.4} text="93.4% · 289 / 1,024" bar="#9CD67D" />
-          <SectionLabel>Pragmas · world.db</SectionLabel>
-          <p className="font-mono text-xs leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
-            journal_mode wal · synchronous normal<br />
-            cache_size -65536 · mmap_size 256 MB<br />
-            WAL 3.1 MB · last checkpoint 14:31:05 (worker)
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -1174,16 +927,6 @@ export function rewireQuestEdge(edge: QuestEdgeView, to: string): void {
     });
   }
   notify(`Rewired ${QUEST_NODES[edge.from].title} → ${QUEST_NODES[to].title} locally — Reset restores the shipped graph`);
-}
-
-export function removeQuestEdge(shipped: number): void {
-  const e = QUEST_EDGES[shipped];
-  storyStore.set((p) => (p.edgeRemoved.includes(shipped) ? p : { ...p, edgeRemoved: [...p.edgeRemoved, shipped] }));
-  if (e) notify(`Removed ${QUEST_NODES[e.from].title} → ${QUEST_NODES[e.to].title} locally — Reset restores it`);
-}
-
-export function deleteQuestDraft(id: number): void {
-  storyStore.set((p) => ({ ...p, edgeDrafts: p.edgeDrafts.filter((d) => d.id !== id) }));
 }
 
 export interface QuestEdgeGeom {
@@ -2693,29 +2436,9 @@ export function getFlowEdges(): FlowEdgeView[] {
   return [...kept, ...drafts.map((d) => ({ from: d.from, to: d.to, label: d.label, dashed: true, draft: d.id }))];
 }
 
-export function flowDraftCount(): number {
-  const { drafts, removed, pos, bend } = flowStore.get();
-  return drafts.length + removed.length + Object.keys(pos).length + Object.keys(bend).length;
-}
-
 /** Identity key for an edge (shipped index or draft id). */
 export function flowEdgeKey(e: FlowEdgeView): string {
   return e.draft !== undefined ? `d${e.draft}` : `s${e.shipped}`;
-}
-
-export function setFlowBend(key: string, x: number, y: number): void {
-  const cx = Math.min(960, Math.max(-80, Math.round(x)));
-  const cy = Math.min(460, Math.max(-80, Math.round(y)));
-  flowStore.set((p) => ({ ...p, bend: { ...p.bend, [key]: { x: cx, y: cy } } }));
-}
-
-export function clearFlowBend(key: string): void {
-  flowStore.set((p) => {
-    if (!p.bend[key]) return p;
-    const bend = { ...p.bend };
-    delete bend[key];
-    return { ...p, bend };
-  });
 }
 
 export function startFlowConnect(from: string): void {
@@ -2726,30 +2449,6 @@ export function startFlowConnect(from: string): void {
 
 export function cancelFlowConnect(): void {
   flowStore.set((p) => ({ ...p, connectFrom: null }));
-}
-
-export function completeFlowConnect(to: string): void {
-  const { connectFrom } = flowStore.get();
-  if (!connectFrom || !FLOW_SCREENS[to]) return;
-  if (to === connectFrom) {
-    notify("A screen cannot transition to itself — pick another target");
-    return;
-  }
-  const exists = getFlowEdges().some((e) => e.from === connectFrom && e.to === to);
-  if (exists) {
-    notify(`${FLOW_SCREENS[connectFrom].title} → ${FLOW_SCREENS[to].title} already exists`);
-    flowStore.set((p) => ({ ...p, connectFrom: null }));
-    return;
-  }
-  const from = connectFrom;
-  flowStore.set((p) => ({
-    ...p,
-    connectFrom: null,
-    screen: to,
-    seq: p.seq + 1,
-    drafts: [...p.drafts, { id: p.seq, from, to, label: `to ${FLOW_SCREENS[to].title.toLowerCase()}` }],
-  }));
-  notify(`Draft transition ${FLOW_SCREENS[from].title} → ${FLOW_SCREENS[to].title} — local, ships with the scenes slice`);
 }
 
 export function removeFlowEdge(shipped: number): void {
@@ -2810,18 +2509,6 @@ export function renameFlowDraft(id: number, label: string): void {
   flowStore.set((p) => ({ ...p, drafts: p.drafts.map((d) => (d.id === id ? { ...d, label } : d)) }));
 }
 
-export function resetFlowDrafts(): void {
-  flowStore.set((p) => ({ ...p, drafts: [], removed: [], pos: {}, bend: {} }));
-  notify("Flow document reset to the shipped version");
-}
-
-/** Effective node position: shipped home overridden by a local drag. */
-export function flowPos(id: string): { x: number; y: number } {
-  const s = FLOW_SCREENS[id];
-  const o = flowStore.get().pos[id];
-  return { x: o?.x ?? s.x, y: o?.y ?? s.y };
-}
-
 export function moveFlowNode(id: string, x: number, y: number): void {
   if (!FLOW_SCREENS[id]) return;
   const cx = Math.min(860, Math.max(-80, Math.round(x)));
@@ -2878,76 +2565,6 @@ function BendHandle({ x, y, accent, toUnits, onMove, onReset }: {
       <circle cx={x} cy={y} r={1.5} fill={accent ? "#B9C3FF" : "#90909A"} pointerEvents="none" />
     </g>
   );
-}
-
-export interface FlowEdgeGeom {
-  d: string;
-  /** label position */
-  lx: number;
-  ly: number;
-  anchor?: "middle" | "end";
-  /** draggable control point */
-  cx: number;
-  cy: number;
-}
-
-/** Full edge geometry: endpoints follow dragged nodes, the control point
- *  follows the bend handle (default = route midpoint, i.e. straight). */
-export function flowEdgeGeom(e: FlowEdgeView): FlowEdgeGeom {
-  const a = { ...FLOW_SCREENS[e.from], ...flowPos(e.from) };
-  const b = { ...FLOW_SCREENS[e.to], ...flowPos(e.to) };
-  let p0: [number, number];
-  let p1: [number, number];
-  let c: [number, number];
-  // Label offset from the curve midpoint (keeps tuned placement, rides bends).
-  let off: [number, number] = [0, 0];
-  let anchor: "middle" | "end" | undefined;
-  const bend = flowStore.get().bend[flowEdgeKey(e)];
-  if (e.dashed && !e.draft && Math.abs(a.y - b.y) < 40) {
-    // Shipped logout loop arcs over the top.
-    p0 = [a.x + 168, a.y + 26];
-    p1 = [b.x, 14];
-    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, -60];
-    off = [40, -8];
-  } else if (Math.abs(a.y - b.y) < 40) {
-    // Same row: right edge to left edge.
-    p0 = [a.x + 168, a.y + 26];
-    p1 = [b.x, b.y + 26];
-    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
-    off = [0, -10];
-    anchor = "middle";
-  } else if (Math.abs(a.x - b.x) < 40) {
-    // Same column: straight down, straight back up. Down-labels sit right
-    // of the line, up-labels left, so a pair never overlaps.
-    const x = Math.round((a.x + b.x) / 2 + 84);
-    const down = a.y < b.y;
-    p0 = down ? [x, a.y + 52 + a.guards.length * 18] : [a.x + 24, a.y];
-    p1 = down ? [x, b.y] : [b.x + 24, b.y + 52 + b.guards.length * 18];
-    c = bend ? [bend.x, bend.y] : [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
-    off = down ? [8, 4] : [-8, 4];
-    anchor = down ? undefined : "end";
-  } else {
-    // Diagonal: right edge of source to top of target, gently bowed.
-    p0 = [a.x + 168, a.y + 26];
-    p1 = [b.x + 84, b.y];
-    const mx = (p0[0] + p1[0]) / 2;
-    const my = (p0[1] + p1[1]) / 2;
-    const dx = p1[0] - p0[0];
-    const dy = p1[1] - p0[1];
-    const len = Math.hypot(dx, dy) || 1;
-    c = bend ? [bend.x, bend.y] : [mx + (-dy / len) * 36, my + (dx / len) * 36];
-    off = [-24, -6];
-  }
-  const qx = (p0[0] + 2 * c[0] + p1[0]) / 4;
-  const qy = (p0[1] + 2 * c[1] + p1[1]) / 4;
-  return {
-    d: `M${r1(p0[0])},${r1(p0[1])} Q${r1(c[0])},${r1(c[1])} ${r1(p1[0])},${r1(p1[1])}`,
-    lx: r1(qx + off[0]),
-    ly: r1(qy + off[1]),
-    anchor,
-    cx: r1(c[0]),
-    cy: r1(c[1]),
-  };
 }
 
 function r1(n: number): number {

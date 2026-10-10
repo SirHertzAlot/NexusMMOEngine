@@ -295,29 +295,6 @@ export function IconButton({
   );
 }
 
-/** M3 text button (low emphasis, e.g. Discard, Review diff helpers). */
-export function TextButton({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="m3-focus inline-flex h-8 items-center px-3 text-sm font-medium transition-opacity disabled:opacity-40"
-      style={{ color: "var(--m3-primary)" }}
-    >
-      {children}
-    </button>
-  );
-}
-
 /** M3 switch — no form logic, controlled by the caller. */
 export function Switch({
   checked,
