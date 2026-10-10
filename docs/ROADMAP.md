@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-10-10)
 
-**102 items built, 28 in progress, 31 planned, 1 next up** (counted
+**109 items built, 24 in progress, 31 planned, 1 next up** (counted
 from the tables below; the tooling and asset performance section, 1e,
 added 15 of the planned). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
@@ -133,7 +133,7 @@ loadable modules, a database editor and production tools.
 | EA11 | Sidecars | 📋 | |
 | EA12 | Edge modules | 📋 | |
 | EA13 | Existing tools as modules | 📋 | |
-| EA14 | The play menu | 📋 | |
+| EA14 | The play menu | ✅ | #212: saved setups (one-key start), edge+core runs as core only and says so |
 | EA15 | Fill every workspace | 🚧 | `feat/ea15-gameplay-authoring`: Gameplay data grids over creatures (with drops), item bases, skills, spells and species, and a Content browser with `GET /api/editor/content-catalog` (a scene-viewport drag source). Saves go through `/api/editor/gameplay`, validated by the server's own loaders, refused saves write nothing. Deferred: the other workspaces' fill-in, live values beside authored ones, crafting recipes and combat moves (code, not data), a prefab file format |
 | EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
@@ -141,10 +141,10 @@ loadable modules, a database editor and production tools.
 | EA19 | Build and deploy | 🚧 | Backend merged (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. Pipeline view merged (PR #188): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Open: staging target (blocked on the container-platform decision) |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 🚧 | Foundation merged (#194): `Animation` component (`clipId`, `startTick`, `rate`, `layerMask`), `AnimationSystem` (combat moves to attack/block clips, locomotion from velocity), `ClipId` registry in the protocol. Open: the client reading the component, retargeting, foot IK, the editor panel. The client-side blending layer is the animouse spike ([§1e](#1e-tooling-and-asset-performance), TS1) |
-| EA22 | VFX and materials | 🚧 | Materials foundation merged (#196): zod-validated toon and surface definitions in `packages/art` with samples in `content/materials/`. Open: the particle editor (NixieFX spike, TS2), tier presets |
+| EA22 | VFX and materials | 🚧 | Materials foundation merged (#196): zod-validated toon and surface definitions in `packages/art` with samples in `content/materials/`. Particle tier budgets: `content/vfx/budgets.json` (zod-validated, monotonic across tiers), client respects the active tier's budget via `budgetMultiplierForTier`. NixieFX spike TS2: FAIL — runtime is MIT but the editor is hosted-only proprietary ("free to use", no license); not vendored or adopted as toolchain. Agnostic VFX format (#218): `VfxEffect`/`VfxEmitter`/`VfxSpawnShape`/`VfxForce`/`VfxCurve` zod schemas in `packages/art`, `vfxToQuarks()` converter for the client. Particle editor port: three.quarks-editor (MIT) bezier curve editor + property panels ported to the editor's Art & audio → VFX workspace; effects author/save as agnostic `VfxEffect` JSON in `content/vfx/effects/` (validated by `parseVfxEffect()` on the host), preview via `vfxToQuarks()`, tier budget warnings per active tier. |
 | EA23 | HUD layout editor | 🚧 | Foundation merged (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Drag editor merged (PR #193): move widgets on a 16:9 canvas, anchors, visibility, overlap warnings, save. Open: widget catalog, self-positioning widget migration |
-| EA24 | Audio | 🚧 | Foundation merged (#197): zod-validated audio events (bus, variations, 2D/3D, max distance) in engine-core and `content/audio/events.json`. Open: the Web Audio engine and hooks (footstep time events come from the animouse spike, TS1) |
-| EA25 | Localization | 🚧 | Foundation merged (#195): string tables, `t()`, a minimal ICU subset (placeholders, plurals) and a pseudo-locale in engine-core. Open: client string extraction behind `t()`, the Strings panel, full ICU |
+| EA24 | Audio | 🚧 | #213: event engine, game hooks (combat, surfaces, weather, scenes), and editor Audio panel. Open: footstep time events from the animouse spike (TS1), full mixer tuning |
+| EA25 | Localization | ✅ | #211: client strings behind `t()`, string tables in content/, Strings panel in the editor. Foundation was #195 |
 | EA26 | Automated playtests | 🚧 | Core merged (PR #189): `@mmo-engine/playtest` (zod scenarios, headless SimWorld runner, assertions, sealed failure replays), `BotSystem` exported, `npm run playtest`, sample scenario. Pipeline stage merged (PR #192): a `playtest` stage after `test` in the default build profile, input-hash cached. Open: viewport replay scrubbing, headless screenshots/GIFs |
 
 ## 1d. Editor interaction repairs
@@ -218,9 +218,9 @@ one propagates to every panel: audit in the project library
 | M3 | `DocBar` and `useDocActions` for every document editor's Save, Undo, Redo, Revert | ✅ | #201 |
 | M4 | Shared form controls (`Select`, `Field`, `CheckField`), dead code removed, `createStore` / `createSlot` for the module-level stores | ✅ | #202, #203, #204 |
 | M5 | `useSaveTask` and `describeSaveFailure` for every document save | ✅ | #205 |
-| M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | 🚧 | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
-| M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | 🚧 | #207, in main with #209; flow gained Undo and Redo |
-| M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | 🚧 | Last of the stateful pieces |
+| M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | ✅ | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
+| M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | ✅ | #207, in main with #209; flow gained Undo and Redo |
+| M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | ✅ | #210: `useTableDrafts` for the rules tables and gameplay grids, plus `sameValue` |
 | M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 📋 | Audit first, then a shared hook |
 | M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
 | M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |

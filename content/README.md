@@ -21,5 +21,10 @@ Game content the engine generates from, committed with the code:
   pool layouts each draws from). `MMO_DUNGEONS` overrides the path; the
   layouts are the pool `npm run dungeon:bake` writes to `<data>/dungeons`.
 
+- `animation/` — `clips.json` (roadmap EA21): the clip map, which clip in
+  the animation library each server clip id plays, and whether it loops and
+  how long it crossfades (format: `@mmo-engine/art` `clip-map.ts`). The
+  client reads it on load; the editor's Animation panel edits it.
+
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.
