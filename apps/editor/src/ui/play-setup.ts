@@ -207,7 +207,6 @@ export const PLAY_PREVIEW_NOTES: Record<string, string> = {
   where: "Only the viewport and simulate are wired: a new window needs a client windowing path",
   from: "The owned server boots the open world; starting at a flow node is not wired",
   net: "No edge/core switch on start; the owned server always runs core",
-  latency: "No simulated-latency control on the client connections",
   fresh: "No world snapshot/restore: stop leaves world.db as-is",
   keep: "No keep/discard of play changes: the world keeps what the tick wrote",
 };

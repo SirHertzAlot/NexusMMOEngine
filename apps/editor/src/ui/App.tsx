@@ -1699,7 +1699,7 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
         <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={setup.clients} onPick={(v) => set({ clients: v })} />
         <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={setup.bots} onPick={(v) => set({ bots: v })} />
         <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={setup.net} onPick={(v) => set({ net: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.net} />
-        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.latency} />
+        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} />
       </div>
 
       <div className="mt-2 flex flex-col gap-2.5 text-sm">
