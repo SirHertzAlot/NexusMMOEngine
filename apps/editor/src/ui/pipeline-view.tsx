@@ -4,17 +4,11 @@
  * the Release workspace.
  */
 import * as React from "react";
+import { callEnvelope } from "../api.js";
 import { Select } from "./components.js";
 import { Pill, MiniTable } from "./previews.js";
 import type { BuildProfile } from "@mmo-engine/build";
 import type { DeployState, RunRecord, StageState } from "../build-host.js";
-
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || body.ok === false) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body;
-}
 
 function stageTone(s: StageState["status"]): "ok" | "warn" | "err" | "info" | "plain" {
   switch (s) {
@@ -44,9 +38,9 @@ export function PipelineView(): React.JSX.Element {
   const refresh = React.useCallback(async () => {
     try {
       const [p, r, d] = await Promise.all([
-        getJson<{ profiles: BuildProfile[] }>("/api/editor/build/profiles"),
-        getJson<{ runs: RunRecord[] }>("/api/editor/build/runs"),
-        getJson<{ deploy: DeployState }>("/api/editor/build/deploy/status"),
+        callEnvelope<{ profiles: BuildProfile[] }>("/api/editor/build/profiles", "GET"),
+        callEnvelope<{ runs: RunRecord[] }>("/api/editor/build/runs", "GET"),
+        callEnvelope<{ deploy: DeployState }>("/api/editor/build/deploy/status", "GET"),
       ]);
       setProfiles(p.profiles);
       setProfile((cur) => cur || p.profiles[0]?.name || "");
@@ -70,7 +64,7 @@ export function PipelineView(): React.JSX.Element {
       if (pollRef.current !== null) window.clearInterval(pollRef.current);
       pollRef.current = window.setInterval(async () => {
         try {
-          const { run: rec } = await getJson<{ run: RunRecord }>(`/api/editor/build/runs/${id}`);
+          const { run: rec } = await callEnvelope<{ run: RunRecord }>(`/api/editor/build/runs/${id}`, "GET");
           setRun(rec);
           if (rec.status !== "running") {
             if (pollRef.current !== null) window.clearInterval(pollRef.current);
@@ -88,11 +82,7 @@ export function PipelineView(): React.JSX.Element {
   const startRun = async (): Promise<void> => {
     setError(null);
     try {
-      const { run: rec } = await getJson<{ run: RunRecord }>("/api/editor/build/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile }),
-      });
+      const { run: rec } = await callEnvelope<{ run: RunRecord }>("/api/editor/build/run", "POST", { profile });
       setRun(rec);
       pollRun(rec.id);
     } catch (err) {
@@ -103,15 +93,12 @@ export function PipelineView(): React.JSX.Element {
   const startDeploy = async (): Promise<void> => {
     setError(null);
     try {
-      const { deploy: d } = await getJson<{ deploy: DeployState }>("/api/editor/build/deploy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ port: Number(port) }),
+      const { deploy: d } = await callEnvelope<{ deploy: DeployState }>("/api/editor/build/deploy", "POST", { port: Number(port),
       });
       setDeploy(d);
       const t = window.setInterval(async () => {
         try {
-          const { deploy: cur } = await getJson<{ deploy: DeployState }>("/api/editor/build/deploy/status");
+          const { deploy: cur } = await callEnvelope<{ deploy: DeployState }>("/api/editor/build/deploy/status", "GET");
           setDeploy(cur);
           if (cur.status !== "running") window.clearInterval(t);
         } catch {

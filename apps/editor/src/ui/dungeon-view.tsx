@@ -15,6 +15,7 @@
  */
 
 import * as React from "react";
+import { callEnvelope } from "../api.js";
 import {
   dungeonView,
   editPatch,
@@ -31,26 +32,19 @@ import { DungeonScene, type Pick } from "./dungeon-scene.js";
 import { getTool } from "./tool-store.js";
 import { canDragDungeonProp } from "./viewport-tools.js";
 import { useDocActions } from "./doc-actions.js";
+import { DocBar } from "./doc-bar.js";
+import { useDocument } from "./use-document.js";
 import { pushBake } from "../dock-feed.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, SectionTitle, Select, Field, CheckField } from "./components.js";
 import { editorSelection } from "./editor-selection.js";
-
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || body.ok === false) throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { body });
-  return body;
-}
 
 export function DungeonPanel(): React.JSX.Element {
   const [pool, setPool] = React.useState<PoolEntry[]>([]);
   const [archetypes, setArchetypes] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [dungeon, setDungeon] = React.useState<DungeonFileView | null>(null);
-  const [patch, setPatch] = React.useState<DungeonPatch | null>(null);
-  const [saved, setSaved] = React.useState<string>("");
-  const [undo, setUndo] = React.useState<DungeonPatch[]>([]);
-  const [redo, setRedo] = React.useState<DungeonPatch[]>([]);
+  const doc = useDocument<DungeonPatch>();
+  const patch = doc.value;
   const [selected, setSelected] = React.useState<Pick>(null);
   const pick = (p: Pick): void => {
     setSelected(p);
@@ -74,7 +68,7 @@ export function DungeonPanel(): React.JSX.Element {
 
   const refreshPool = React.useCallback(async () => {
     try {
-      const r = await getJson<{ dungeons: PoolEntry[]; archetypes: string[] }>("/api/editor/dungeons");
+      const r = await callEnvelope<{ dungeons: PoolEntry[]; archetypes: string[] }>("/api/editor/dungeons", "GET");
       setPool(r.dungeons);
       setArchetypes(r.archetypes);
     } catch (e) {
@@ -88,14 +82,11 @@ export function DungeonPanel(): React.JSX.Element {
     setIssues([]);
     setNotice(null);
     try {
-      const r = await getJson<{ dungeon: DungeonFileView; patch: DungeonPatch | null }>(`/api/editor/dungeons/${id}`);
+      const r = await callEnvelope<{ dungeon: DungeonFileView; patch: DungeonPatch | null }>(`/api/editor/dungeons/${id}`, "GET");
       const p = r.patch && r.patch.hash === r.dungeon.hash ? r.patch : emptyPatch(r.dungeon);
       if (r.patch && r.patch.hash !== r.dungeon.hash) setNotice("Its saved patch is stale (made for another layout) and was not loaded.");
       setDungeon(r.dungeon);
-      setPatch(p);
-      setSaved(JSON.stringify(p));
-      setUndo([]);
-      setRedo([]);
+      doc.load(p);
       pick(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -107,9 +98,7 @@ export function DungeonPanel(): React.JSX.Element {
     if (!dungeon || !patch) return;
     try {
       const next = editPatch(dungeon, patch, e);
-      if (!merge) setUndo((u) => [...u.slice(-199), patch]);
-      setRedo([]);
-      setPatch(next);
+      doc.edit(next, { merge });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -119,12 +108,8 @@ export function DungeonPanel(): React.JSX.Element {
     if (!dungeon || !patch) return;
     setIssues([]);
     try {
-      const r = await getJson<{ edits: number }>(`/api/editor/dungeons/${dungeon.id}/patch`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patch }),
-      });
-      setSaved(JSON.stringify(patch));
+      const r = await callEnvelope<{ edits: number }>(`/api/editor/dungeons/${dungeon.id}/patch`, "PUT", { patch });
+      doc.markSaved(patch);
       setNotice(r.edits ? `Saved ${r.edits} edit${r.edits === 1 ? "" : "s"} to ${dungeon.id}.patch.json.` : "No edits: the patch file was removed.");
       void refreshPool();
     } catch (e) {
@@ -139,7 +124,7 @@ export function DungeonPanel(): React.JSX.Element {
       const body: Record<string, unknown> = { count: Number(bake.count) };
       if (bake.seed.trim()) body.seed = bake.seed.trim() === "random" ? "random" : Number(bake.seed);
       if (bake.rank.trim()) body.rank = Number(bake.rank);
-      const r = await getJson<{ log: string }>("/api/editor/dungeons/bake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await callEnvelope<{ log: string }>("/api/editor/dungeons/bake", "POST", body);
       const last = r.log.split("\n").pop() ?? "baked";
       setNotice(last);
       pushBake("dungeons", last || "baked");
@@ -153,7 +138,7 @@ export function DungeonPanel(): React.JSX.Element {
   };
 
   const view = React.useMemo(() => (dungeon && patch ? dungeonView(dungeon, patch) : null), [dungeon, patch]);
-  const dirty = patch !== null && JSON.stringify(patch) !== saved;
+  const dirty = doc.dirty;
 
   // Toolbar Save/Undo/Redo target while a dungeon is open.
   useDocActions(() => {
@@ -161,19 +146,8 @@ export function DungeonPanel(): React.JSX.Element {
     return {
       label: `dungeon "${dungeon.id}"`,
       canSave: dirty,
-      canUndo: undo.length > 0,
-      canRedo: redo.length > 0,
+      ...doc.history,
       save: () => void save(),
-      undo: () => {
-        setRedo((r) => [...r, patch]);
-        setPatch(undo[undo.length - 1]);
-        setUndo((u) => u.slice(0, -1));
-      },
-      redo: () => {
-        setUndo((u) => [...u, patch]);
-        setPatch(redo[redo.length - 1]);
-        setRedo((r) => r.slice(0, -1));
-      },
     };
   });
 
@@ -244,33 +218,7 @@ export function DungeonPanel(): React.JSX.Element {
                 <Button size="sm" variant={placing ? "default" : "outline"} onClick={() => setPlacing((p) => !p)}>
                   {placing ? "Click the floor…" : "Place prop"}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={undo.length === 0}
-                  onClick={() => {
-                    setRedo((r) => [...r, patch!]);
-                    setPatch(undo[undo.length - 1]);
-                    setUndo((u) => u.slice(0, -1));
-                  }}
-                >
-                  Undo
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={redo.length === 0}
-                  onClick={() => {
-                    setUndo((u) => [...u, patch!]);
-                    setPatch(redo[redo.length - 1]);
-                    setRedo((r) => r.slice(0, -1));
-                  }}
-                >
-                  Redo
-                </Button>
-                <Button size="sm" onClick={() => void save()} disabled={!dirty}>
-                  Save patch
-                </Button>
+                <DocBar dirty={dirty} history={doc.history} saveLabel="Save patch" onSave={() => void save()} />
               </div>
             )}
           </div>

@@ -11,10 +11,11 @@
 
 import * as React from "react";
 import { DocBar } from "./doc-bar.js";
+import { useDocument } from "./use-document.js";
 import { useSaveTask } from "./use-save-task.js";
 import { checkStoryRemote, loadStory, saveStory } from "../story-client.js";
 import {
-  addDialogNode, addReply, deleteDialogNode, dialogGraph, History, questGraph, renameDialogNode, startTest,
+  addDialogNode, addReply, deleteDialogNode, dialogGraph, questGraph, renameDialogNode, startTest,
   type DialogDoc, type DialogReply, type DialogTest, type MockState, type QuestDoc, type QuestState, type QuestsDoc,
 } from "../story-model.js";
 import type { StoryFile, StoryFiles, StoryIssue } from "../story-validate.js";
@@ -223,9 +224,8 @@ function Tester({ d, quests }: { d: DialogDoc; quests: string[] }): React.JSX.El
 // ------------------------------------------------------------------- panel
 
 export function StoryEditorPanel(): React.JSX.Element {
-  const [saved, setSaved] = React.useState<StoryFiles | null>(null);
-  const history = React.useRef<History<StoryFiles> | null>(null);
-  const [, bump] = React.useReducer((n: number) => n + 1, 0);
+  const doc = useDocument<StoryFiles>();
+  const { saved, dirty } = doc;
   const [sel, setSel] = React.useState<Sel | null>(null);
   const [node, setNode] = React.useState<string | null>(null);
   const task = useSaveTask<StoryIssue>();
@@ -237,8 +237,7 @@ export function StoryEditorPanel(): React.JSX.Element {
   const load = React.useCallback(async () => {
     try {
       const { files } = await loadStory();
-      history.current = new History(files);
-      setSaved(files);
+      doc.load(files);
       setSel((s) => s ?? { kind: "dialog", id: Object.keys(dialogsOf(files))[0] });
       setMsg("");
     } catch (e) {
@@ -247,8 +246,7 @@ export function StoryEditorPanel(): React.JSX.Element {
   }, []);
   React.useEffect(() => void load(), [load]);
 
-  const files = history.current?.value ?? null;
-  const dirty = files !== null && saved !== null && JSON.stringify(files) !== JSON.stringify(saved);
+  const files = doc.value;
 
   // Validate (debounced) as the set changes.
   React.useEffect(() => {
@@ -259,23 +257,12 @@ export function StoryEditorPanel(): React.JSX.Element {
 
   // Toolbar Save/Undo/Redo target once the documents load.
   useDocActions(() => {
-    if (!files || !sel || !history.current) return null;
-    const h = history.current;
-    const snapshot = JSON.stringify(files);
+    if (!files || !sel) return null;
     return {
       label: "story files",
-      canSave: saved !== null && snapshot !== JSON.stringify(saved),
-      canUndo: h.canUndo,
-      canRedo: h.canRedo,
+      canSave: dirty,
+      ...doc.history,
       save: () => void save(),
-      undo: () => {
-        h.undo();
-        bump();
-      },
-      redo: () => {
-        h.redo();
-        bump();
-      },
     };
   });
 
@@ -288,8 +275,7 @@ export function StoryEditorPanel(): React.JSX.Element {
       </div>
     );
   }
-  const h = history.current!;
-  const edit = (next: StoryFiles): void => { h.push(next); bump(); };
+  const edit = (next: StoryFiles): void => doc.edit(next);
   const dialogs = dialogsOf(files);
   const quests = questsOf(files).quests;
   const questIds = Object.keys(quests);
@@ -304,7 +290,7 @@ export function StoryEditorPanel(): React.JSX.Element {
     for (const f of Object.keys(files) as StoryFile[]) if (JSON.stringify(files[f]) !== JSON.stringify(saved![f])) changes[f] = files[f];
     await task.run(async () => {
       setIssues(await saveStory(changes));
-      setSaved(files);
+      doc.markSaved(files);
     }, {
       keepIssues: true,
       ok: `Saved ${Object.keys(changes).join(", ")}`,
@@ -335,7 +321,7 @@ export function StoryEditorPanel(): React.JSX.Element {
           dirty={dirty}
           saveBlocked={errors.length > 0}
           onSave={() => void save()}
-          history={{ canUndo: h.canUndo, canRedo: h.canRedo, undo: () => { h.undo(); bump(); }, redo: () => { h.redo(); bump(); } }}
+          history={doc.history}
         >
           <Button size="sm" variant="outline" onClick={() => void load()}>Reload</Button>
         </DocBar>

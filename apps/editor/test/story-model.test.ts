@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  addDialogNode, addReply, deleteDialogNode, dialogGraph, History, questGraph, renameDialogNode, startTest, type DialogDoc, type QuestsDoc,
+  addDialogNode, addReply, deleteDialogNode, dialogGraph, questGraph, renameDialogNode, startTest, type DialogDoc, type QuestsDoc,
 } from "../src/story-model.js";
 
 const REPO = dirname(fileURLToPath(new URL("../../../../package.json", import.meta.url)));
@@ -64,21 +64,6 @@ describe("edits", () => {
     const d1 = addReply(addDialogNode(d0, "extra"), "extra", { text: "Back.", next: "greet" });
     assert.deepEqual(d1.nodes.extra.replies, [{ text: "Back.", next: "greet" }]);
     assert.equal(d0.nodes.extra, undefined);
-  });
-});
-
-describe("History", () => {
-  it("undoes and redoes, and a new edit clears redo", () => {
-    const h = new History({ n: 0 });
-    h.push({ n: 1 });
-    h.push({ n: 2 });
-    assert.equal(h.undo()!.n, 1);
-    assert.equal(h.undo()!.n, 0);
-    assert.equal(h.undo(), null);
-    assert.equal(h.redo()!.n, 1);
-    h.push({ n: 9 });
-    assert.equal(h.canRedo, false);
-    assert.equal(h.value.n, 9);
   });
 });
 

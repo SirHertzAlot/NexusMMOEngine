@@ -29,7 +29,8 @@ import { issueCount } from "../save-outcome.js";
 import { useSaveTask } from "./use-save-task.js";
 import { NodeGraph } from "./node-graph.js";
 import { MIcon, Select } from "./components.js";
-import { NO_HISTORY, useDocActions } from "./doc-actions.js";
+import { useDocActions } from "./doc-actions.js";
+import { useDocument } from "./use-document.js";
 import { getTool, subscribeTool } from "./tool-store.js";
 import { canDragGraphNode } from "./viewport-tools.js";
 import { editorSelection } from "./editor-selection.js";
@@ -48,8 +49,10 @@ function pos(doc: FlowDoc, id: string): { x: number; y: number } {
 
 export function FlowEditor(): React.JSX.Element {
   const tool = React.useSyncExternalStore(subscribeTool, getTool);
-  const [doc, setDoc] = React.useState<FlowDoc | null>(null);
-  const [saved, setSaved] = React.useState("");
+  const flow = useDocument<FlowDoc>();
+  const doc = flow.value;
+  // One undo step per node drag: the first move opens it, the rest merge into it.
+  const dragging = React.useRef(false);
   const [scenes, setScenes] = React.useState<string[]>([]);
   const [events, setEvents] = React.useState<string[]>([]);
   const [selected, setSelected] = React.useState<string | null>(null);
@@ -86,8 +89,7 @@ export function FlowEditor(): React.JSX.Element {
     setStatus("loading…");
     getFlow()
       .then((b) => {
-        setDoc(b.content);
-        setSaved(JSON.stringify(b.content));
+        flow.load(b.content);
         setScenes(b.scenes);
         setEvents(b.events);
         setNewScene(b.scenes[0] ?? "login");
@@ -104,11 +106,10 @@ export function FlowEditor(): React.JSX.Element {
   // edits apply directly, so Undo/Redo stay disabled).
   useDocActions(() => {
     if (!doc) return null;
-    const snapshot = JSON.stringify(doc);
     return {
       label: "game flow",
-      canSave: snapshot !== saved,
-      ...NO_HISTORY,
+      canSave: flow.dirty,
+      ...flow.history,
       problems: validateFlow(doc, { scenes }).map((i) => ({ severity: "error" as const, where: i.path || "(flow)", message: i.message })),
       save: () => void save(),
     };
@@ -128,17 +129,17 @@ export function FlowEditor(): React.JSX.Element {
     );
   }
   const issues = validateFlow(doc, { scenes });
-  const dirty = JSON.stringify(doc) !== saved;
+  const dirty = flow.dirty;
   const reach = flowReachable(doc);
   const edit = (next: FlowDoc): void => {
-    setDoc(next);
+    flow.edit(next);
     task.setIssues([]);
   };
   const ids = Object.keys(doc.nodes);
   const flagged = new Set(issues.filter((i) => i.path.startsWith("nodes.")).map((i) => i.path.split(".")[1]));
 
   const save = async (): Promise<void> => {
-    if (await task.run(() => saveFlow(doc), { ok: "saved to content/flow/game.flow.json", refused: (i) => `refused: ${issueCount(i.length)}` })) setSaved(JSON.stringify(doc));
+    if (await task.run(() => saveFlow(doc), { ok: "saved to content/flow/game.flow.json", refused: (i) => `refused: ${issueCount(i.length)}` })) flow.markSaved(doc);
   };
   const play = (id: string): void => {
     const r = playFromUrl(doc, id, { client, server: server.url && server.user ? server : undefined });
@@ -158,7 +159,7 @@ export function FlowEditor(): React.JSX.Element {
         <span style={{ color: issues.length ? "#E8A33D" : "#6FCF97" }}>{issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"}` : "valid"}</span>
         <span className="ml-auto flex items-center gap-2">
           {dirty && <span style={{ color: "#E8A33D" }}>unsaved</span>}
-          <DocBar dirty={dirty} onSave={() => void save()} onRevert={() => edit(JSON.parse(saved) as FlowDoc)} />
+          <DocBar dirty={dirty} history={flow.history} onSave={() => void save()} onRevert={flow.revert} />
         </span>
       </div>
       {status && <div className="text-[12px]" style={{ color: "var(--m3-on-surface-variant)" }}>{status}</div>}
@@ -183,7 +184,11 @@ export function FlowEditor(): React.JSX.Element {
         selectedId={sel}
         onSelect={pick}
         canMove={canDragGraphNode(tool)}
-        onMove={(id, x, y) => setDoc((cur) => (cur ? moveFlowNode(cur, id, Math.max(0, Math.round(x)), Math.max(0, Math.round(y))) : cur))}
+        onMove={(id, x, y) => {
+          flow.edit((cur) => moveFlowNode(cur, id, Math.max(0, Math.round(x)), Math.max(0, Math.round(y))), { merge: dragging.current });
+          dragging.current = true;
+        }}
+        onMoveEnd={() => { dragging.current = false; }}
         onNodeContextMenu={(id, at) => {
           pick(id);
           setCtx({ id, x: at.x, y: at.y });

@@ -3,6 +3,7 @@
  * anchors, flag overlaps, save to content/ui/hud.json.
  */
 import * as React from "react";
+import { callEnvelope } from "../api.js";
 import { Select } from "./components.js";
 import { useDrag } from "./use-drag.js";
 import { Pill } from "./previews.js";
@@ -17,13 +18,6 @@ import {
 
 interface Layout {
   widgets: Record<string, WidgetPlacement>;
-}
-
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || body.ok === false) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body;
 }
 
 const ANCHORS: Anchor[] = [
@@ -56,7 +50,7 @@ export function HudEditor(): React.JSX.Element {
   const [saved, setSaved] = React.useState(false);
 
   React.useEffect(() => {
-    getJson<{ layout: Layout }>("/api/editor/hud/layout")
+    callEnvelope<{ layout: Layout }>("/api/editor/hud/layout", "GET")
       .then(({ layout: l }) => {
         setLayout(l);
         setError(null);
@@ -116,11 +110,7 @@ export function HudEditor(): React.JSX.Element {
     if (!layout) return;
     setError(null);
     try {
-      await getJson("/api/editor/hud/layout", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layout }),
-      });
+      await callEnvelope("/api/editor/hud/layout", "PUT", { layout });
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -11,6 +11,7 @@
  */
 
 import * as React from "react";
+import { callEnvelope } from "../api.js";
 import { DocBar } from "./doc-bar.js";
 import { GraphEditor, parseFieldValue, type GraphDocument, type GraphViewModel, type NodeView, type PropertyView } from "../inspectors/graph-editor.js";
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
@@ -25,13 +26,6 @@ import { editorSelection } from "./editor-selection.js";
 const NODE_W = 168;
 const NODE_H = 52;
 
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || body.ok === false) throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { body });
-  return body;
-}
-
 export function GraphEditorPanel(): React.JSX.Element {
   const [docs, setDocs] = React.useState<PcgDocumentInfo[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -41,7 +35,7 @@ export function GraphEditorPanel(): React.JSX.Element {
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
 
   React.useEffect(() => {
-    getJson<{ docs: PcgDocumentInfo[] }>("/api/editor/pcg/docs")
+    callEnvelope<{ docs: PcgDocumentInfo[] }>("/api/editor/pcg/docs", "GET")
       .then(({ docs }) => {
         setDocs(docs);
         const ed = new GraphEditor(new Map(docs.filter((d) => d.kind === "subgraph" && d.guid).map((d) => [d.guid!, d.file])));
@@ -52,7 +46,7 @@ export function GraphEditorPanel(): React.JSX.Element {
   React.useEffect(() => editor?.subscribe(bump), [editor]);
 
   const fetchDoc = React.useCallback(async (file: string) => {
-    const { info, doc } = await getJson<{ info: PcgDocumentInfo; doc: GraphDocument }>(`/api/editor/pcg/doc?file=${encodeURIComponent(file)}`);
+    const { info, doc } = await callEnvelope<{ info: PcgDocumentInfo; doc: GraphDocument }>(`/api/editor/pcg/doc?file=${encodeURIComponent(file)}`, "GET");
     return { info, doc };
   }, []);
 
@@ -88,7 +82,7 @@ export function GraphEditorPanel(): React.JSX.Element {
     let saved = 0;
     for (const { file, doc } of editor.pendingSaves()) {
       try {
-        await getJson(`/api/editor/pcg/doc`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, doc }) });
+        await callEnvelope(`/api/editor/pcg/doc`, "PUT", { file, doc });
         editor.markSaved(file);
         saved++;
       } catch (e) {
