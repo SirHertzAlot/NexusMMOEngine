@@ -23,7 +23,7 @@ export interface DocState<T> {
 
 export const emptyDoc = <T>(): DocState<T> => ({ present: null, saved: null, past: [], future: [], dirty: false });
 
-const same = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
+export const sameValue = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
 
 export type DocAction<T> =
   /** A document loaded from disk: clean, with no history. */
@@ -46,22 +46,22 @@ export function docReducer<T>(state: DocState<T>, action: DocAction<T>): DocStat
       const next = typeof action.next === "function" ? (action.next as (cur: T) => T)(state.present) : action.next;
       if (next === state.present) return state;
       const past = action.merge && state.past.length > 0 ? state.past : [...state.past.slice(-(HISTORY_LIMIT - 1)), state.present];
-      return { ...state, present: next, past, future: [], dirty: !same(next, state.saved) };
+      return { ...state, present: next, past, future: [], dirty: !sameValue(next, state.saved) };
     }
     case "undo": {
       if (state.present === null || state.past.length === 0) return state;
       const prev = state.past[state.past.length - 1];
-      return { ...state, present: prev, past: state.past.slice(0, -1), future: [...state.future, state.present], dirty: !same(prev, state.saved) };
+      return { ...state, present: prev, past: state.past.slice(0, -1), future: [...state.future, state.present], dirty: !sameValue(prev, state.saved) };
     }
     case "redo": {
       if (state.present === null || state.future.length === 0) return state;
       const next = state.future[state.future.length - 1];
-      return { ...state, present: next, future: state.future.slice(0, -1), past: [...state.past, state.present], dirty: !same(next, state.saved) };
+      return { ...state, present: next, future: state.future.slice(0, -1), past: [...state.past, state.present], dirty: !sameValue(next, state.saved) };
     }
     case "saved": {
       if (state.present === null) return state;
       const doc = action.doc ?? state.present;
-      return { ...state, saved: doc, dirty: !same(state.present, doc) };
+      return { ...state, saved: doc, dirty: !sameValue(state.present, doc) };
     }
     case "revert": {
       if (state.present === null || state.saved === null || !state.dirty) return state;

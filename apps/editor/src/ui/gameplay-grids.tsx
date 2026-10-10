@@ -12,6 +12,7 @@
 import * as React from "react";
 import { DocBar } from "./doc-bar.js";
 import { useSaveTask } from "./use-save-task.js";
+import { useTableDrafts } from "./use-table-drafts.js";
 import { issueCount } from "../save-outcome.js";
 import {
   addRow,
@@ -103,7 +104,8 @@ function Cell(props: { col: GridColumn; value: unknown; error: string | null; ct
 
 export function GameplayGridsPanel(): React.JSX.Element {
   const [snap, setSnap] = React.useState<GameplaySnapshot | null>(null);
-  const [rows, setRows] = React.useState<Rows | null>(null);
+  const grids = useTableDrafts<GameplayTable, GridRow[]>();
+  const { drafts: rows, saved: savedRows, load: loadRows } = grids;
   const [table, setTable] = React.useState<GameplayTable>("creatures");
   const [search, setSearch] = React.useState("");
   const [filterKey, setFilterKey] = React.useState("");
@@ -122,30 +124,30 @@ export function GameplayGridsPanel(): React.JSX.Element {
     try {
       const s = await loadGameplay();
       setSnap(s);
-      setRows(rowsOf(s));
+      loadRows(rowsOf(s));
       setIssues([]);
       setStatus(null);
       setSelected(new Set());
     } catch (e) {
       setStatus({ tone: "bad", text: (e as Error).message });
     }
-  }, []);
+  }, [loadRows]);
   React.useEffect(() => void load(), [load]);
 
   // The Details pane lists what this grid has changed against what is saved (every table, not only the shown one).
   React.useEffect(() => {
-    if (!snap || !rows) return;
+    if (!snap || !rows || !savedRows) return;
     const refs = { items: rows.items.map((r) => r.id), creatures: rows.creatures.map((r) => r.id) };
     const ctx: GridContext = { refs, options: snap.context.options };
-    const saved = rowsOf(snap);
+    const saved = savedRows;
     const changes = GAMEPLAY_TABLES.flatMap((t) =>
       diffRows(saved[t], rows[t], TABLE_DEFS[t].columns, ctx).map((c) => ({ ...c, path: `${t}.${c.path}` })),
     );
     setPendingChanges(changes.length > 0 ? { label: "Gameplay tables", changes } : null);
-  }, [snap, rows]);
+  }, [snap, rows, savedRows]);
   React.useEffect(() => () => setPendingChanges(null), []);
 
-  if (!snap || !rows) {
+  if (!snap || !rows || !savedRows) {
     return (
       <Card>
         <CardContent className="p-4 text-sm text-muted-foreground">{status ? status.text : "Loading the game's data…"}</CardContent>
@@ -155,14 +157,13 @@ export function GameplayGridsPanel(): React.JSX.Element {
 
   const def: TableDef = TABLE_DEFS[table];
   const mine = rows[table];
-  const saved = rowsOf(snap)[table];
-  const dirty = (t: GameplayTable): boolean => JSON.stringify(rows[t]) !== JSON.stringify(rowsOf(snap)[t]);
+  const dirty = grids.dirtyOf;
   const ctx: GridContext = {
     refs: { items: rows.items.map((r) => r.id), creatures: rows.creatures.map((r) => r.id) },
     options: snap.context.options,
   };
   const setMine = (next: GridRow[]): void => {
-    setRows({ ...rows, [table]: next });
+    grids.edit(table, next);
     setStatus(null);
   };
   const shownRows = viewRows(mine, { search, filters: filterKey ? { [filterKey]: filterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
@@ -249,7 +250,7 @@ export function GameplayGridsPanel(): React.JSX.Element {
             dirty={dirty(table)}
             busy={busy}
             onSave={() => void run("save")}
-            onRevert={() => { setRows({ ...rows, [table]: saved }); setIssues([]); setStatus(null); }}
+            onRevert={() => { grids.revert(table); setIssues([]); setStatus(null); }}
           >
             <Button size="sm" variant="outline" onClick={() => void run("check")} disabled={busy}>Check</Button>
           </DocBar>
