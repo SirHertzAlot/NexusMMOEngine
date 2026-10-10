@@ -239,3 +239,52 @@ describe("validateManifest sidecar (EA11)", () => {
     assert.equal(r.manifest, undefined);
   });
 });
+
+
+describe("validateManifest edge (EA12)", () => {
+  const good = {
+    name: "voice-us-east",
+    version: "1.0.0",
+    edge: { regions: ["us-east"], endpoint: "wss://voice-us-east.example.com", capabilities: ["voice", "video"] },
+  };
+  it("accepts a valid edge declaration", () => {
+    const r = validateManifest(good, "voice-us-east");
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.edge, good.edge);
+  });
+  it("accepts http/https endpoints too", () => {
+    for (const endpoint of ["http://cdn.example.com/assets", "https://lobby.example.com:8443/match"]) {
+      const r = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["eu"], endpoint, capabilities: ["cdn"] } }, "e");
+      assert.deepEqual(r.problems, [], endpoint);
+    }
+  });
+  it("rejects bad regions", () => {
+    const badRegions: unknown[] = [[], ["US-EAST"], ["us east"], [42], "us-east", undefined];
+    for (const regions of badRegions) {
+      const raw: Record<string, unknown> = { name: "e", version: "1.0.0", edge: { regions, endpoint: "wss://x.example.com", capabilities: ["voice"] } };
+      const r = validateManifest(raw, "e");
+      assert.ok(r.problems.some((p) => p.path === "edge.regions"), `regions=${JSON.stringify(regions)}`);
+    }
+  });
+  it("rejects bad endpoints", () => {
+    for (const endpoint of ["voice-us-east.example.com", "ftp://x.example.com", "", 42, "wss://"]) {
+      const r = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint, capabilities: ["voice"] } }, "e");
+      assert.ok(r.problems.some((p) => p.path === "edge.endpoint"), `endpoint=${JSON.stringify(endpoint)}`);
+    }
+  });
+  it("rejects bad capabilities and unknown edge keys", () => {
+    const r1 = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint: "wss://x.example.com", capabilities: ["voice", ""] } }, "e");
+    assert.ok(r1.problems.some((p) => p.path === "edge.capabilities"));
+    const r2 = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint: "wss://x.example.com", capabilities: [], bogus: 1 } }, "e");
+    assert.ok(r2.problems.some((p) => p.path === "edge.bogus"));
+    // empty capabilities list is fine (a module may declare regions first)
+    const r3 = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint: "wss://x.example.com", capabilities: [] } }, "e");
+    assert.deepEqual(r3.problems, []);
+  });
+  it("lists every edge problem at once", () => {
+    const r = validateManifest({ name: "e", version: "1.0.0", edge: { regions: [], endpoint: "nope", capabilities: [7] } }, "e");
+    assert.equal(r.manifest, undefined);
+    const paths = r.problems.map((p) => p.path);
+    assert.deepEqual(paths.sort(), ["edge.capabilities", "edge.endpoint", "edge.regions"]);
+  });
+});
