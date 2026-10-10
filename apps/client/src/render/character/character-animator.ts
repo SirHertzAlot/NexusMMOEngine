@@ -15,7 +15,7 @@
  */
 
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { createGltfLoader } from "../gltf-loader.js";
 import { LocomotionMode } from "@mmo-engine/protocol";
 import type { AnimationClipInfo, AnimationManifest } from "@mmo-engine/art/browser";
 import { DEFAULT_KIT_URL } from "./character-kit.js";
@@ -36,7 +36,7 @@ export class AnimationLibrary {
     if (!res.ok) throw new Error(`animations: ${baseUrl}animations.json (${res.status}) — run npm run convert:animations -w @mmo-engine/art`);
     const manifest = (await res.json()) as AnimationManifest;
     if (manifest.version !== 2) throw new Error(`animations: manifest version ${manifest.version} — re-run convert:animations`);
-    const loader = new GLTFLoader();
+    const loader = createGltfLoader();
     const sources = manifest.sources.filter((s) => opts.reference || !s.reference);
     const sets = await Promise.all(sources.map((s) => loader.loadAsync(`${baseUrl}${s.file}`)));
     return new AnimationLibrary(
