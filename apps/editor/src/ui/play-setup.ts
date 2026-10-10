@@ -9,13 +9,14 @@
  * - where = "viewport" (the embedded game view) or "simulate" (world only,
  *   no player client; "window" needs a client windowing path that does
  *   not exist yet);
- * - clients = "1" (one mirror client; 2/4/8 need extra clients);
+ * - clients = "1"/"2"/"4"/"8" (mirror clients; client 0 drives the view,
+ *   the rest are headless load);
  * - bots (sent as MMO_BOTS for the owned server);
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - where window, from (entry node), clients > 1, net,
+ * - where window, from (entry node), net,
  *   latency, fresh/keep (world snapshot/restore).
  */
 
@@ -168,6 +169,15 @@ export function botsCount(setup: PlaySetup): number {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
 }
 
+/**
+ * How many mirror clients to connect (1/2/4/8). Invalid → 1.
+ * Client 0 drives the game view; the rest are headless load.
+ */
+export function clientCount(setup: PlaySetup): number {
+  const n = Number(setup.clients);
+  return n === 1 || n === 2 || n === 4 || n === 8 ? n : 1;
+}
+
 /** One-line chip: what Play will do ("In viewport · World · 1 client"). */
 export function setupSummary(setup: PlaySetup): string {
   const where = setup.where === "viewport" ? "In viewport" : setup.where === "window" ? "New window" : "Simulate";
@@ -196,7 +206,6 @@ export function simulateLabel(setup: PlaySetup): string {
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
   where: "Only the viewport and simulate are wired: a new window needs a client windowing path",
   from: "The owned server boots the open world; starting at a flow node is not wired",
-  clients: "Only 1 client connects today; 2/4/8 need extra mirror clients",
   net: "No edge/core switch on start; the owned server always runs core",
   latency: "No simulated-latency control on the client connections",
   fresh: "No world snapshot/restore: stop leaves world.db as-is",
