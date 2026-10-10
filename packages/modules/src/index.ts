@@ -91,7 +91,7 @@ export function validateManifest(
   const only = (o: Record<string, unknown>, keys: string[], at: string): void => {
     for (const k of Object.keys(o)) if (!keys.includes(k)) bad(at ? `${at}.${k}` : k, `unknown key "${k}"`);
   };
-  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server"], "");
+  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "edge"], "");
   if (typeof raw.name !== "string" || !NAME_RE.test(raw.name)) bad("name", "must be lowercase letters, digits and dashes, starting with a letter");
   else if (raw.name !== dirName) bad("name", `must match the folder name "${dirName}"`);
   if (typeof raw.version !== "string" || !SEMVER_RE.test(raw.version)) bad("version", 'must be "major.minor.patch"');
@@ -164,6 +164,30 @@ export function validateManifest(
       server = { ...(e ? { entry: e } : {}), systems };
     }
   }
+  let edge: ModuleManifest["edge"];
+  if (raw.edge !== undefined) {
+    if (!isObj(raw.edge)) bad("edge", "must be an object");
+    else {
+      only(raw.edge, ["regions", "endpoint", "capabilities"], "edge");
+      let regions: string[] | undefined;
+      if (
+        !Array.isArray(raw.edge.regions) ||
+        raw.edge.regions.length === 0 ||
+        raw.edge.regions.some((r) => typeof r !== "string" || !NAME_RE.test(r))
+      ) {
+        bad("edge.regions", "must be a non-empty list of region names (lowercase letters, digits and dashes)");
+      } else regions = raw.edge.regions as string[];
+      let endpoint: string | undefined;
+      if (typeof raw.edge.endpoint !== "string" || !/^(wss?|https?):\/\/[^\s/$.?#].[^\s]*$/i.test(raw.edge.endpoint)) {
+        bad("edge.endpoint", "must be a ws://, wss://, http:// or https:// URL");
+      } else endpoint = raw.edge.endpoint;
+      let capabilities: string[] | undefined;
+      if (!Array.isArray(raw.edge.capabilities) || raw.edge.capabilities.some((c) => typeof c !== "string" || c.length === 0)) {
+        bad("edge.capabilities", "must be a list of capability names");
+      } else capabilities = raw.edge.capabilities as string[];
+      if (regions && endpoint && capabilities) edge = { regions, endpoint, capabilities };
+    }
+  }
   if (problems.length > 0) return { problems };
   return {
     manifest: {
@@ -174,6 +198,7 @@ export function validateManifest(
       ...(dependsOn ? { dependsOn } : {}),
       ...(editor ? { editor } : {}),
       ...(server ? { server } : {}),
+      ...(edge ? { edge } : {}),
     },
     problems,
   };

@@ -24,6 +24,7 @@ import { netLogger } from "@mmo-engine/nethealth";
 import { loadConfig } from "./config.js";
 import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
+import { EdgeRegistry, edgeModulesHandler, loadEdgeModules } from "./edge-registry.js";
 import { createCoreLifecycle } from "./lifecycle.js";
 import { createMirrorBuffer } from "./mirror-buffer.js";
 import { pushTick } from "./tick-buffer.js";
@@ -77,6 +78,11 @@ app.get("/health", (_req, res) => {
   res.json(lifecycle.health());
 });
 app.get("/metrics", metricsHandler(metrics, coreMetrics));
+// EA12: edge module registry — clients discover regional edges here.
+const edgeModules = loadEdgeModules(join(findRepoRoot(), "modules"), join(findRepoRoot(), "content", "modules.json"));
+for (const p of edgeModules.problems) console.warn(`[edge] edge registry: ${p.module} ${p.path}: ${p.message}`);
+const edgeRegistry: EdgeRegistry = edgeModules.registry;
+app.get("/api/edge/modules", edgeModulesHandler(edgeRegistry));
 const httpServer: Server = app.listen(config.httpPort, () => {
   console.log(`[edge] http on :${config.httpPort} (${routes.length} routes)`);
 });

@@ -36,4 +36,9 @@ Edge modules register with the orchestrator. Clients discover the nearest edge v
 
 ## Status
 
-Design complete. Manifest schema reserved.
+Implemented (2026-10-10): manifest `edge` validation in `packages/modules`
+(regions/endpoint/capabilities, unknown keys refused); `EdgeRegistry` +
+`loadEdgeModules` + latency-probe `discoverNearestEdge` in
+`apps/edge/src/edge-registry.ts`; `GET /api/edge/modules` on the edge HTTP
+server (region/capability filters). Registration/discovery only — the edge
+never simulates.
