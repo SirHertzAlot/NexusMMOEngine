@@ -107,9 +107,9 @@ import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from ".
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
+import { createPlaySnapshot } from "./play-snapshot.js";
 import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
 import { runProfile } from "@mmo-engine/build";
-import { backupWorld, discardBackup, restoreWorld } from "@mmo-engine/engine-core";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -439,9 +439,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
-  /** Snapshot bookkeeping for the Play menu's fresh/keep options. */
-  let snapshotActive = false;
-  let snapshotKeep = false;
+  /** world.db snapshot for the Play menu's fresh/keep options. */
+  const playSnapshot = createPlaySnapshot(join(dataDir, "world.db"));
   let dbCore: DatabaseCore | null = null;
   // The owned server's output, kept after boot for the Output dock; it survives the
   // server's exit (to read why) and restarts empty on the next start.
@@ -856,19 +855,23 @@ export function editorHost(options: EditorHostOptions): Plugin {
             } catch {
               /* empty / non-JSON body: server defaults */
             }
-            // Fresh state: back up world.db before the server starts.
-            // Not fresh: discard any stale backup (e.g. from a crashed
-            // play session) so it cannot be restored by accident later.
-            if (fresh) {
-              backupWorld(join(dataDir, "world.db"));
-              snapshotActive = true;
-              snapshotKeep = keep;
-            } else {
-              discardBackup(join(dataDir, "world.db"));
+            // Back up world.db before the server starts (see play-snapshot).
+            // Not while a server runs: that start fails with 409, and its
+            // world is mid-play.
+            const snapshotting = owned === null;
+            if (snapshotting) {
+              const note = playSnapshot.begin({ fresh, keep });
+              if (note) console.warn(`[editor-host] ${note}`);
             }
-            const s = await startOwned(
-              bots !== undefined || scene !== undefined || spawn !== undefined ? { bots, scene, spawn } : undefined,
-            );
+            let s: OwnedServer;
+            try {
+              s = await startOwned(
+                bots !== undefined || scene !== undefined || spawn !== undefined ? { bots, scene, spawn } : undefined,
+              );
+            } catch (err) {
+              if (snapshotting) playSnapshot.fail();
+              throw err;
+            }
             sendJson(res, 200, {
               ok: true,
               pid: s.pid,
@@ -886,16 +889,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             await readBody(req);
             const stopped = await stopOwned();
             // Fresh/keep: restore the backup unless keeping play changes.
-            if (snapshotActive) {
-              const dbPath = join(dataDir, "world.db");
-              if (snapshotKeep) {
-                discardBackup(dbPath);
-              } else {
-                restoreWorld(dbPath);
-              }
-              snapshotActive = false;
-              snapshotKeep = false;
-            }
+            playSnapshot.end();
             sendJson(res, 200, { ok: true, stopped });
             return;
           }

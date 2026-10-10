@@ -333,6 +333,12 @@ export interface GatewayOptions {
   };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
+  /**
+   * The spawn point was chosen for this run (the editor's Play menu
+   * "Start from"): characters enter there instead of where they were
+   * saved. Vitals and skills are still restored. Default false.
+   */
+  spawnOverridden?: boolean;
   /** A baked world's extent and coarse map, sent in every welcome. */
   worldInfo?: WorldInfo;
   /** The world's day clock, sent in every welcome (clients derive the time of day from the tick). */
@@ -642,6 +648,7 @@ export class Gateway {
       | "magic"
       | "creatures"
       | "spawnPoint"
+      | "spawnOverridden"
       | "worldInfo"
       | "dayClock"
       | "playerAbilities"
@@ -690,6 +697,7 @@ export class Gateway {
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
+  private readonly spawnOverridden: boolean;
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
   /** Forced weather (`weather` command); auto follows the sky. Resets on restart. */
@@ -800,6 +808,7 @@ export class Gateway {
     this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
+    this.spawnOverridden = opts.spawnOverridden ?? false;
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
@@ -1562,6 +1571,8 @@ export class Gateway {
    * Put a freshly spawned avatar where its character last was, with the
    * health and stamina it had. A character saved dead (or never saved)
    * keeps the ordinary spawn: death and respawn are the rules' business.
+   * With spawnOverridden the position is not restored (the run asked for
+   * a spawn point), only the vitals.
    */
   private restoreCharacterState(eid: number, characterId: number): void {
     const saved = this.mastery && eid >= 0 ? this.characterStore.loadSkills?.(characterId) : null;
@@ -1572,10 +1583,12 @@ export class Gateway {
     }
     const st = eid >= 0 ? this.characterStore.loadState?.(characterId) : null;
     if (!st || !(st.health > 0)) return;
-    const T = C.Transform;
-    T.px[eid] = st.x;
-    T.pz[eid] = st.z;
-    T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+    if (!this.spawnOverridden) {
+      const T = C.Transform;
+      T.px[eid] = st.x;
+      T.pz[eid] = st.z;
+      T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+    }
     C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
     C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
   }

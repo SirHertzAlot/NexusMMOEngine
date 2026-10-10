@@ -141,7 +141,14 @@ export function PlayModePanel(): React.JSX.Element {
           // headless, so it never drives the game view.
           const username = server.loadUsers?.[index - 1];
           if (!username) throw new Error(`no login for extra client ${index}`);
-          const c = await connectMirror(server.url, `mmo-editor-load-${index}`, { username, password: server.password }, () => undefined);
+          // Same simulated latency as the game view's client.
+          const c = await connectMirror(
+            server.url,
+            `mmo-editor-load-${index}`,
+            { username, password: server.password },
+            () => undefined,
+            { latency: loadLastSetup().latency },
+          );
           return { debug: (q) => c.debug(q as DebugQuery), disconnect: () => c.disconnect() };
         }
         // Credentials come from the host: it seeds a one-session dev user

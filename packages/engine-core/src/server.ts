@@ -136,7 +136,7 @@ import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { healthHttpHandler } from "./net/health.js";
-import { parseSpawnOverride } from "./spawn-override.js";
+import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
@@ -324,17 +324,24 @@ async function main(): Promise<void> {
   const storedSpawn = spawnMeta ? (JSON.parse(spawnMeta) as { x: number; z: number }) : { x: 0, z: 0 };
   // The editor's play mode overrides the spawn via MMO_SPAWN_OVERRIDE="x,z"
   // (Play menu "Start from"). Malformed values fall back to the stored point.
-  const spawn = parseSpawnOverride(process.env.MMO_SPAWN_OVERRIDE) ?? storedSpawn;
+  // Clamped into a baked world's chunk range, so it cannot land off the world.
+  const spawnOverride = parseSpawnOverride(process.env.MMO_SPAWN_OVERRIDE);
+  const boundsMeta = store.getMeta("world_bounds");
+  const bakedRange = boundsMeta ? (JSON.parse(boundsMeta) as { minChunk: number; maxChunk: number }) : null;
+  const spawn = spawnOverride
+    ? bakedRange
+      ? clampSpawn(spawnOverride, bakedRange.minChunk, bakedRange.maxChunk, CHUNK_SIZE)
+      : spawnOverride
+    : storedSpawn;
   const scx = Math.floor(spawn.x / CHUNK_SIZE);
   const scz = Math.floor(spawn.z / CHUNK_SIZE);
   const area: Array<[number, number]> = [];
   for (let dz = -WORLD_RADIUS; dz <= WORLD_RADIUS; dz++) {
     for (let dx = -WORLD_RADIUS; dx <= WORLD_RADIUS; dx++) area.push([scx + dx, scz + dz]);
   }
-  const boundsMeta = store.getMeta("world_bounds");
   let bounds: ChunkBounds;
-  if (boundsMeta) {
-    const { minChunk, maxChunk } = JSON.parse(boundsMeta) as { minChunk: number; maxChunk: number };
+  if (bakedRange) {
+    const { minChunk, maxChunk } = bakedRange;
     bounds = { minCx: minChunk, minCz: minChunk, maxCx: maxChunk, maxCz: maxChunk };
   } else {
     bounds = { minCx: scx - WORLD_RADIUS, minCz: scz - WORLD_RADIUS, maxCx: scx + WORLD_RADIUS, maxCz: scz + WORLD_RADIUS };
@@ -812,6 +819,8 @@ async function main(): Promise<void> {
       entities: () => creatures.entities(),
     },
     spawnPoint: spawn,
+    // "Start from": characters enter at the chosen point, not where they were saved.
+    spawnOverridden: spawnOverride !== null,
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,

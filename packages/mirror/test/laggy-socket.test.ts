@@ -54,9 +54,9 @@ describe("LaggySocket", () => {
     assert.ok(received !== null, "should have received after the lag");
   });
 
-  it("forwards close/onclose/onerror/onopen", () => {
+  it("forwards close/onclose/onerror/onopen (no lag: at once)", () => {
     const inner = fakeSocket();
-    const laggy = new LaggySocket(inner, 10);
+    const laggy = new LaggySocket(inner, 0);
     let closed = false;
     laggy.onclose = () => { closed = true; };
     inner.onclose!();
@@ -66,5 +66,34 @@ describe("LaggySocket", () => {
     (inner as { close(): void }).close = () => { innerClosed = true; };
     laggy.close();
     assert.equal(innerClosed, true);
+  });
+
+  it("a remote close arrives after the messages sent before it", async () => {
+    const inner = fakeSocket();
+    const laggy = new LaggySocket(inner, 30);
+    const events: string[] = [];
+    laggy.onmessage = (d) => events.push(`msg ${d[0]}`);
+    laggy.onclose = () => events.push("close");
+    inner.onmessage!(new Uint8Array([1]));
+    inner.onmessage!(new Uint8Array([2]));
+    inner.onclose!();
+    assert.deepEqual(events, [], "nothing before the lag");
+    await sleep(60);
+    assert.deepEqual(events, ["msg 1", "msg 2", "close"]);
+  });
+
+  it("after close() nothing is delivered or sent", async () => {
+    const inner = fakeSocket();
+    const laggy = new LaggySocket(inner, 30);
+    let received = 0;
+    laggy.onmessage = () => { received++; };
+    inner.onmessage!(new Uint8Array([1]));
+    laggy.send(new Uint8Array([1]));
+    laggy.close();
+    laggy.send(new Uint8Array([2]));
+    inner.onmessage!(new Uint8Array([3]));
+    await sleep(60);
+    assert.equal(received, 0);
+    assert.equal(inner.sent.length, 0);
   });
 });

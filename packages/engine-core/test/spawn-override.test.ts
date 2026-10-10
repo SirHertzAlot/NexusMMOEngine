@@ -7,7 +7,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseSpawnOverride } from "../src/spawn-override.js";
+import { clampSpawn, parseSpawnOverride } from "../src/spawn-override.js";
 
 describe("parseSpawnOverride", () => {
   it("parses 'x,z'", () => {
@@ -32,7 +32,26 @@ describe("parseSpawnOverride", () => {
     assert.equal(parseSpawnOverride("10,20,30"), null);
   });
 
+  it("an empty half → null (not 0)", () => {
+    assert.equal(parseSpawnOverride(" ,5"), null);
+    assert.equal(parseSpawnOverride("5,"), null);
+    assert.equal(parseSpawnOverride(","), null);
+  });
+
   it("whitespace is tolerated", () => {
     assert.deepEqual(parseSpawnOverride(" 10 , 20 "), { x: 10, z: 20 });
+  });
+});
+
+describe("clampSpawn", () => {
+  it("keeps a point inside the chunk range as is", () => {
+    assert.deepEqual(clampSpawn({ x: 10, z: -20 }, -2, 1, 32), { x: 10, z: -20 });
+  });
+
+  it("pulls a point past the edge back inside the last chunk", () => {
+    const p = clampSpawn({ x: 5000, z: -5000 }, -2, 1, 32);
+    assert.equal(p.z, -64);
+    assert.ok(p.x < 64 && p.x > 63.9, String(p.x));
+    assert.equal(Math.floor(p.x / 32), 1);
   });
 });
