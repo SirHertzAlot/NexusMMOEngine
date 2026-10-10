@@ -11,9 +11,11 @@ interface Job {
   file: string;
   sql: string;
   limit: number;
+  /** Named `:param` bindings for EA17 database functions; absent for plain queries. */
+  params?: Record<string, string | number | null>;
 }
 
-const { file, sql, limit } = JSON.parse(process.argv[2]) as Job;
+const { file, sql, limit, params } = JSON.parse(process.argv[2]) as Job;
 const db = new Database(file, { readonly: true, fileMustExist: true });
 let reply: unknown;
 try {
@@ -24,7 +26,8 @@ try {
   const columns = stmt.columns().map((c) => c.name);
   const rows: unknown[][] = [];
   let truncated = false;
-  for (const row of stmt.raw(true).iterate() as Iterable<unknown[]>) {
+  const bound = params && Object.keys(params).length > 0 ? [params] : [];
+  for (const row of stmt.raw(true).iterate(...bound) as Iterable<unknown[]>) {
     if (rows.length >= limit) {
       truncated = true;
       break;
