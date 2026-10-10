@@ -5,44 +5,24 @@
  * problem by path, and nothing is written.
  */
 
+import { IssuesError, invalidMessage, requestJson } from "./api.js";
 import type { SceneDoc, SceneIssue } from "@mmo-engine/scene";
 
-export class SceneSaveError extends Error {
-  constructor(readonly issues: SceneIssue[]) {
-    super(`invalid scene: ${issues.length} problem${issues.length === 1 ? "" : "s"}`);
-    this.name = "SceneSaveError";
+export class SceneSaveError extends IssuesError<SceneIssue> {
+  constructor(issues: SceneIssue[]) {
+    super(issues, invalidMessage("scene", issues.length));
   }
 }
 
-async function readError(res: Response, fallback: string): Promise<Error> {
-  try {
-    const body = (await res.json()) as { error?: unknown; issues?: unknown };
-    if (res.status === 400 && Array.isArray(body.issues)) return new SceneSaveError(body.issues as SceneIssue[]);
-    if (typeof body.error === "string" && body.error) return new Error(body.error);
-  } catch {
-    /* fall through */
-  }
-  return new Error(`${fallback}: HTTP ${res.status}`);
-}
+const refused = (issues: SceneIssue[]): Error => new SceneSaveError(issues);
+const url = (base: string, name?: string): string => `${base}/api/editor/scenes${name === undefined ? "" : `/${encodeURIComponent(name)}`}`;
 
-export async function listScenes(base = ""): Promise<string[]> {
-  const res = await fetch(`${base}/api/editor/scenes`);
-  if (!res.ok) throw await readError(res, "scene list failed");
-  return ((await res.json()) as { scenes?: string[] }).scenes ?? [];
-}
+export const listScenes = async (base = ""): Promise<string[]> =>
+  (await requestJson<{ scenes?: string[] }>(url(base), { fail: "scene list failed", refused })).scenes ?? [];
 
-export async function getScene(name: string, base = ""): Promise<SceneDoc> {
-  const res = await fetch(`${base}/api/editor/scenes/${encodeURIComponent(name)}`);
-  if (!res.ok) throw await readError(res, "scene read failed");
-  return ((await res.json()) as { content: SceneDoc }).content;
-}
+export const getScene = async (name: string, base = ""): Promise<SceneDoc> =>
+  (await requestJson<{ content: SceneDoc }>(url(base, name), { fail: "scene read failed", refused })).content;
 
 /** Validate on the host and write only when valid; throws SceneSaveError otherwise. */
-export async function saveScene(name: string, content: SceneDoc, base = ""): Promise<void> {
-  const res = await fetch(`${base}/api/editor/scenes/${encodeURIComponent(name)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) throw await readError(res, "scene save failed");
-}
+export const saveScene = (name: string, content: SceneDoc, base = ""): Promise<void> =>
+  requestJson(url(base, name), { method: "PUT", body: { content }, fail: "scene save failed", refused });

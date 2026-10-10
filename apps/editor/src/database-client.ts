@@ -1,4 +1,5 @@
 /** Browser-side calls to the dev host's /api/editor/database routes (see database-host.ts). */
+import { callEnvelope } from "./api.js";
 import type { Mutation, SqlValue, Table } from "./database-model.js";
 
 export interface Db {
@@ -26,15 +27,8 @@ export interface LogEntry {
   undoneBy: number | null;
 }
 
-async function call<T>(route: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api/editor/database/${route}`, {
-    method: body === undefined ? "GET" : "POST",
-    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-  });
-  const json = (await res.json().catch(() => ({}))) as T & { ok?: boolean; error?: string };
-  if (!res.ok || json.ok === false) throw new Error(json.error ?? `HTTP ${res.status}`);
-  return json;
-}
+const call = <T>(route: string, body?: unknown): Promise<T> =>
+  callEnvelope<T>(`/api/editor/database/${route}`, body === undefined ? "GET" : "POST", body);
 
 export const fetchCatalog = async (): Promise<Db[]> => (await call<{ databases: Db[] }>("catalog")).databases;
 export const runQuery = async (db: string, sql: string, limit?: number): Promise<QueryResult> =>
