@@ -40,6 +40,7 @@ import { placeholderColor, type AssetProvider } from "./assets.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
 import { QuarksFx } from "./vfx/quarks-fx.js";
+import { budgetMultiplierForTier } from "./fx/particle-fx.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
 import type { WorkerRequester } from "../workers/pool.js";
 import { PcgMeshes } from "./pcg-meshes.js";
@@ -245,7 +246,7 @@ export class EntityLayer {
   /** Apply a quality preset: character outlines, and the effects' particle budget. */
   setQuality(q: QualitySettings): void {
     this.quality = q;
-    this.vfx.setBudget(q.particles);
+    this.vfx.setBudget(budgetMultiplierForTier(q.tier));
     if (this.kit?.outlineMaterial) this.kit.outlineMaterial.visible = q.outlines;
   }
 
