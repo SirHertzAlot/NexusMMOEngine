@@ -14,32 +14,50 @@ export class LaggySocket implements SocketLike {
   onerror: ((err: unknown) => void) | null = null;
   onopen: (() => void) | null = null;
 
+  /** Set by close(): nothing more is sent or delivered. */
+  private closed = false;
+  /** Delayed sends and deliveries, cancelled by close(). */
+  private readonly pending = new Set<ReturnType<typeof setTimeout>>();
+
   constructor(
     private readonly inner: SocketLike,
     private readonly lagMs: number,
   ) {
-    inner.onmessage = (data) => {
-      if (this.lagMs <= 0) {
-        this.onmessage?.(data);
-      } else {
-        setTimeout(() => this.onmessage?.(data), this.lagMs);
-      }
+    inner.onmessage = (data) => this.later(() => this.onmessage?.(data));
+    // The close travels the same slow link: messages that arrived before
+    // it are delivered first (timers of equal delay fire in order).
+    inner.onclose = () => {
+      if (this.closed) this.onclose?.();
+      else this.later(() => this.onclose?.());
     };
-    inner.onclose = () => this.onclose?.();
     inner.onerror = (err) => this.onerror?.(err);
     inner.onopen = () => this.onopen?.();
   }
 
   send(data: Uint8Array): void {
-    if (this.lagMs <= 0) {
-      this.inner.send(data);
-    } else {
-      setTimeout(() => this.inner.send(data), this.lagMs);
-    }
+    if (this.closed) return;
+    this.later(() => this.inner.send(data));
   }
 
   close(): void {
+    this.closed = true;
+    for (const t of this.pending) clearTimeout(t);
+    this.pending.clear();
     this.inner.close();
+  }
+
+  /** Run `fn` after the lag, unless close() comes first. */
+  private later(fn: () => void): void {
+    if (this.closed) return;
+    if (this.lagMs <= 0) {
+      fn();
+      return;
+    }
+    const t = setTimeout(() => {
+      this.pending.delete(t);
+      if (!this.closed) fn();
+    }, this.lagMs);
+    this.pending.add(t);
   }
 }
 

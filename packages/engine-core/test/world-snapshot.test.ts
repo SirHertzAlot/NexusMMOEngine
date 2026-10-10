@@ -11,10 +11,10 @@
  */
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { backupWorld, restoreWorld, discardBackup, snapshotPath } from "../src/world-snapshot.js";
+import { backupWorld, restoreWorld, discardBackup, hasBackup, snapshotPath } from "../src/world-snapshot.js";
 
 describe("world snapshot", () => {
   let dir: string;
@@ -67,6 +67,54 @@ describe("world snapshot", () => {
     writeFileSync(dbPath, "x");
     discardBackup(dbPath); // no throw
     assert.equal(readFileSync(dbPath, "utf8"), "x");
+  });
+
+  it("backs up and restores the -wal and -shm sidecars with the db", () => {
+    writeFileSync(dbPath, "db-v1");
+    writeFileSync(`${dbPath}-wal`, "wal-v1");
+    writeFileSync(`${dbPath}-shm`, "shm-v1");
+    backupWorld(dbPath);
+    writeFileSync(dbPath, "db-play");
+    writeFileSync(`${dbPath}-wal`, "wal-play");
+    writeFileSync(`${dbPath}-shm`, "shm-play");
+    restoreWorld(dbPath);
+    assert.equal(readFileSync(dbPath, "utf8"), "db-v1");
+    assert.equal(readFileSync(`${dbPath}-wal`, "utf8"), "wal-v1");
+    assert.equal(readFileSync(`${dbPath}-shm`, "utf8"), "shm-v1");
+    assert.equal(hasBackup(dbPath), false);
+  });
+
+  it("restore drops a -wal the play session left when the backup had none", () => {
+    writeFileSync(dbPath, "db-v1");
+    backupWorld(dbPath);
+    writeFileSync(`${dbPath}-wal`, "wal-play");
+    restoreWorld(dbPath);
+    assert.equal(readFileSync(dbPath, "utf8"), "db-v1");
+    assert.equal(existsSync(`${dbPath}-wal`), false);
+  });
+
+  it("a world that did not exist before play is removed again on restore", () => {
+    backupWorld(dbPath);
+    assert.equal(hasBackup(dbPath), true);
+    writeFileSync(dbPath, "created-by-play");
+    writeFileSync(`${dbPath}-wal`, "wal-play");
+    restoreWorld(dbPath);
+    assert.equal(existsSync(dbPath), false);
+    assert.equal(existsSync(`${dbPath}-wal`), false);
+    assert.equal(hasBackup(dbPath), false);
+  });
+
+  it("a new backup replaces every file of the old one", () => {
+    writeFileSync(dbPath, "db-v1");
+    writeFileSync(`${dbPath}-wal`, "wal-v1");
+    backupWorld(dbPath);
+    rmSync(`${dbPath}-wal`);
+    writeFileSync(dbPath, "db-v2");
+    backupWorld(dbPath);
+    writeFileSync(`${dbPath}-wal`, "wal-play");
+    restoreWorld(dbPath);
+    assert.equal(readFileSync(dbPath, "utf8"), "db-v2");
+    assert.equal(existsSync(`${dbPath}-wal`), false);
   });
 
   it("snapshotPath is the db path with .bak", () => {

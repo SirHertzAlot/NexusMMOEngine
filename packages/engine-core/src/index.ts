@@ -318,4 +318,4 @@ export {
 } from "./channel-server.js";
 export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
 export type { GatewayTick } from "./net/gateway.js";
-export { backupWorld, discardBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
+export { backupWorld, discardBackup, hasBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
