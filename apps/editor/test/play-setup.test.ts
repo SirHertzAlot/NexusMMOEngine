@@ -13,10 +13,12 @@ import {
   defaultPlaySetup,
   loadLastSetup,
   loadSavedSetups,
-  netPlan,
+  fromNodeId,
+  setupsFromDoc,
+  setupsToDoc,
+  useEdge,
   normalizePlaySetup,
   persistSavedSetups,
-  PLAY_PREVIEW_NOTES,
   removeSavedSetup,
   saveLastSetup,
   setupDetail,
@@ -161,15 +163,26 @@ describe("play-setup", () => {
     assert.equal(setupDetail({ ...defaultPlaySetup(), latency: "80 ms", where: "simulate" }), "1 client · 10 bots · 80 ms · simulate");
   });
 
-  it("the network option says what it really runs", () => {
-    assert.deepEqual(netPlan({ ...defaultPlaySetup(), net: "Core only" }), { runs: "core", honored: true });
-    const edge = netPlan({ ...defaultPlaySetup(), net: "Edge + core" });
-    assert.equal(edge.honored, false);
-    assert.match(edge.note ?? "", /plays as core only/);
+  it("Edge + core starts the edge; core only does not", () => {
+    assert.equal(useEdge({ ...defaultPlaySetup(), net: "Core only" }), false);
+    assert.equal(useEdge({ ...defaultPlaySetup(), net: "Edge + core" }), true);
   });
 
-  it("preview notes cover the unhonored dimensions only", () => {
-    for (const dim of ["from", "net"]) assert.ok(PLAY_PREVIEW_NOTES[dim], dim);
-    for (const dim of ["where", "clients", "bots", "tint", "latency", "fresh", "keep"]) assert.equal(PLAY_PREVIEW_NOTES[dim], undefined, dim);
+  it("a start choice names a flow node", () => {
+    assert.equal(fromNodeId("Character creation"), "character-creation");
+    assert.equal(fromNodeId("character-select"), "character-select");
+    assert.equal(fromNodeId("Camera position"), "world");
+    assert.equal(normalizePlaySetup({ from: "character-select" }).from, "character-select");
+  });
+
+  it("saved setups round-trip through the repo document, dropping entries that fail today's rules", () => {
+    const all = [
+      { name: "Raid", setup: { ...defaultPlaySetup(), clients: "8" }, shortcut: "F6" },
+      { name: "Quick", setup: defaultPlaySetup(), shortcut: null },
+    ];
+    assert.deepEqual(setupsFromDoc(setupsToDoc(all)), all);
+    const dup = setupsFromDoc({ version: 1, setups: [{ name: "A", shortcut: "F6", setup: {} }, { name: "B", shortcut: "F6", setup: {} }, { name: "A", setup: {} }] });
+    assert.deepEqual(dup.map((s) => [s.name, s.shortcut]), [["A", "F6"], ["B", null]]);
+    assert.deepEqual(setupsFromDoc(null), []);
   });
 });

@@ -18,6 +18,7 @@ import {
 } from "@mmo-engine/build";
 import { existsSync, readFileSync, readdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
+import { deleteProfileFile, saveProfileFile } from "./build-profiles.js";
 
 export type StageStatus = "pending" | "running" | "skipped" | "passed" | "failed";
 export type RunStatus = "running" | "passed" | "failed";
@@ -43,6 +44,8 @@ export type PipelineRunner = (
   rootDir: string,
   profile: BuildProfile,
   onStage: (result: StageResult) => void,
+  /** fresh: ignore the stage cache, every stage runs. */
+  opts?: { fresh?: boolean },
 ) => Promise<void>;
 
 export type DeployStatus = "idle" | "running" | "ok" | "failed";
@@ -72,7 +75,11 @@ export interface BuildHostOptions {
 
 export interface BuildHost {
   listProfiles(): BuildProfile[];
-  startRun(profileName: string): RunRecord;
+  startRun(profileName: string, opts?: { fresh?: boolean }): RunRecord;
+  /** Validate and write a profile file (content/build/profiles); replaces one of the same name. */
+  saveProfile(raw: unknown): BuildProfile;
+  /** Delete a profile file; false when there was none. */
+  deleteProfile(name: string): boolean;
   getRun(id: string): RunRecord | null;
   listRuns(): RunRecord[];
   /** Resolve when the run finishes (for tests and the deploy flow). */
@@ -150,7 +157,22 @@ export function createBuildHost(opts: BuildHostOptions): BuildHost {
       return opts.profiles;
     },
 
-    startRun(profileName: string): RunRecord {
+    saveProfile(raw: unknown): BuildProfile {
+      const p = saveProfileFile(opts.rootDir, raw);
+      const at = opts.profiles.findIndex((x) => x.name === p.name);
+      if (at < 0) opts.profiles.push(p);
+      else opts.profiles[at] = p;
+      return p;
+    },
+
+    deleteProfile(name: string): boolean {
+      const gone = deleteProfileFile(opts.rootDir, name);
+      const at = opts.profiles.findIndex((x) => x.name === name);
+      if (at >= 0) opts.profiles.splice(at, 1);
+      return gone;
+    },
+
+    startRun(profileName: string, runOpts?: { fresh?: boolean }): RunRecord {
       const profile = opts.profiles.find((p) => p.name === profileName);
       if (!profile) throw new Error(`unknown profile: ${profileName}`);
       if (runs.some((r) => r.status === "running")) {
@@ -170,17 +192,22 @@ export function createBuildHost(opts: BuildHostOptions): BuildHost {
       // Drive the pipeline in the background; stage callbacks update the record.
       void (async () => {
         try {
-          await opts.runner(opts.rootDir, profile, (result) => {
-            const st = rec.stages.find((s) => s.id === result.id);
-            if (!st) return;
-            st.ms = result.ms;
-            st.status = result.exitCode === null ? "skipped" : result.exitCode === 0 ? "passed" : "failed";
-            if (st.status === "failed") {
-              for (const later of rec.stages) {
-                if (later.status === "pending") later.status = "skipped";
+          await opts.runner(
+            opts.rootDir,
+            profile,
+            (result) => {
+              const st = rec.stages.find((s) => s.id === result.id);
+              if (!st) return;
+              st.ms = result.ms;
+              st.status = result.exitCode === null ? "skipped" : result.exitCode === 0 ? "passed" : "failed";
+              if (st.status === "failed") {
+                for (const later of rec.stages) {
+                  if (later.status === "pending") later.status = "skipped";
+                }
               }
-            }
-          });
+            },
+            runOpts?.fresh ? { fresh: true } : undefined,
+          );
           rec.status = rec.stages.some((s) => s.status === "failed") ? "failed" : "passed";
         } catch (err) {
           rec.status = "failed";
