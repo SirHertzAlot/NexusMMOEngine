@@ -105,6 +105,7 @@ export function FlowEditor(): React.JSX.Element {
       canSave: snapshot !== saved,
       canUndo: false,
       canRedo: false,
+      problems: validateFlow(doc, { scenes }).map((i) => ({ severity: "error" as const, where: i.path || "(flow)", message: i.message })),
       save: () => void save(),
       undo: () => undefined,
       redo: () => undefined,
