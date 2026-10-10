@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "bots-under-load",
+  "description": "Forty server bots roam while one scripted player heals, teleports and walks; the tick must stay inside its budget.",
+  "seed": 1234,
+  "bots": 40,
+  "durationTicks": 300,
+  "script": [
+    { "at": 0, "do": "admin", "command": "heal" },
+    { "at": 20, "do": "admin", "command": "teleport", "args": { "x": 10, "z": 10 } },
+    { "at": 40, "do": "move", "mx": 1, "mz": 0, "ticks": 90 },
+    { "at": 150, "do": "chat", "text": "hello from the playtest" }
+  ],
+  "assertions": [
+    { "kind": "connected" },
+    { "kind": "no-errors" },
+    { "kind": "admin-ok" },
+    { "kind": "tick-p99-ms", "max": 33 }
+  ]
+}
