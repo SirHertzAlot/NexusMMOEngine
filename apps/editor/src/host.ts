@@ -7,7 +7,12 @@
  *
  *   POST /api/editor/server/start  → spawn `npm run server` (one only)
  *   POST /api/editor/server/stop   → stop ONLY the process we started
- *   GET  /api/editor/server/status → { running, pid?, port? }
+ *   GET  /api/editor/server/status → { running, pid?, port?, url?, username?, password? }
+ *                                    (the one-session login lets the Live ops and Network
+ *                                    panels connect an admin link; loopback only)
+ *   GET/PUT /api/editor/network    → content/edge/routes.json + a probe of the edge's /metrics (network-host.ts)
+ *   /api/editor/playtests[/<name>[/run]], /api/editor/playtest-replays/<id>[/run]
+ *                                  → scenario files, runs, history, replays (playtest-host.ts)
  *   GET  /api/editor/terrain       → the heightmap tiles + props around (0,0)
  *   POST /api/editor/terrain/area  → the same for an area {cx, cz, radius}
  *   POST /api/editor/terrain/generate → generator preview (not saved)
@@ -57,7 +62,9 @@
  *                                    deaths, saved state and ledger items
  *                                    (characters.db + world.db, read-only)
  *   GET  /api/editor/build/profiles → build profiles (EA19, build-host.ts)
- *   POST /api/editor/build/run      → {profile}: start a pipeline run (409
+ *   PUT  /api/editor/build/profiles → {profile}: validated save of content/build/profiles/<name>.json
+ *   DELETE /api/editor/build/profiles/:name → delete a profile file
+ *   POST /api/editor/build/run      → {profile, fresh?}: start a pipeline run (409
  *                                    while one runs)
  *   GET  /api/editor/build/runs     → run history, newest first
  *   GET  /api/editor/build/runs/:id → one run with stage-by-stage status
@@ -82,12 +89,18 @@
 import type { Plugin, ViteDevServer } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { tmpdir } from "node:os";
+import { spawn, type ChildProcess } from "node:child_process";
+import { killProcessTree } from "./proc-tree.js";
+// Re-exported so existing importers (host.test.ts) keep working.
+export { killProcessTree };
 import {
   createReadStream,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -100,12 +113,22 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handleProblemsRoute } from "./problems-host.js";
+import { handleFilesRoute } from "./files-host.js";
+import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
+import { handlePlaytestRoute } from "./playtest-host.js";
+import { createScratchRunner } from "./playtest-server.js";
+import { handleNetworkRoute } from "./network-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleAudioRoute } from "./audio-host.js";
-import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
+import { handleVfxRoute } from "./vfx-host.js";
+import { handleAnimationRoute } from "./animation-host.js";
+import { handleModulesRoute, parseTickOrder, setFilePath } from "./modules-host.js";
+import { discoverModules, readEnabledSet, resolveModuleSet } from "@mmo-engine/modules";
+import { SidecarManager, type SidecarReport } from "./sidecar-manager.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
 import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from "./database-host.js";
@@ -113,6 +136,7 @@ import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
 import { createPlaySnapshot } from "./play-snapshot.js";
+import { createClientServer, handlePlaySetupsRoute, startEdge } from "./play-host.js";
 import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
 import { runProfile } from "@mmo-engine/build";
 
@@ -153,32 +177,6 @@ export function npmInvocation(
 }
 
 /**
- * Terminate a process tree we spawned. POSIX: signal the detached
- * process group (negative pid). Windows has no process groups or
- * catchable signals, so `taskkill /T /F` ends the whole tree
- * (npm → cmd → node) — `process.kill(-pid)` would throw there and leave
- * the real server orphaned on the port.
- */
-export function killProcessTree(
-  pid: number,
-  signal: NodeJS.Signals,
-  platform: NodeJS.Platform = process.platform,
-): void {
-  if (pid <= 0) return;
-  try {
-    if (platform === "win32") {
-      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        windowsHide: true,
-      });
-    } else {
-      process.kill(-pid, signal);
-    }
-  } catch {
-    /* already gone */
-  }
-}
-
 /** Whether any process of the tree is still alive (best effort). */
 function treeAlive(pid: number): boolean {
   try {
@@ -219,6 +217,12 @@ interface OwnedServer {
   loadUsers: string[];
   /** The tick order the server reported at boot (Modules window). */
   tickOrder(): string[] | null;
+  /** EA11: sidecars started before this server; stopped with it. */
+  sidecars: SidecarManager;
+  /** Per-module outcome of the pre-boot sidecar health check. */
+  sidecarReports: SidecarReport[];
+  /** The edge process of an "Edge + core" session (null: core only). */
+  edge: ChildProcess | null;
 }
 
 const LISTEN_RE = /listening on ws:\/\/[^:]+:(\d+)/;
@@ -443,9 +447,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const assetsRoot = join(repoRoot, "assets");
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
+  const playtestRunner = createScratchRunner(repoRoot);
   let owned: OwnedServer | null = null;
   /** world.db snapshot for the Play menu's fresh/keep options. */
   const playSnapshot = createPlaySnapshot(join(dataDir, "world.db"));
+  /** The player's client dev server ("New window" play), started on demand. */
+  const clientServer = createClientServer(repoRoot);
   let dbCore: DatabaseCore | null = null;
   // The owned server's output, kept after boot for the Output dock; it survives the
   // server's exit (to read why) and restarts empty on the next start.
@@ -455,7 +462,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const buildHost = createBuildHost({
     rootDir: repoRoot,
     profiles: loadProfiles(repoRoot, (msg) => console.warn(`[editor-host] ${msg}`)),
-    runner: (rootDir, profile, onStage) => runProfile(rootDir, profile, { onStage }).then(() => {}),
+    // fresh: an empty cache folder, so every stage runs and the real cache is left alone.
+    runner: (rootDir, profile, onStage, o) =>
+      runProfile(rootDir, profile, { onStage, ...(o?.fresh ? { cacheDir: mkdtempSync(join(tmpdir(), "mmo-build-cache-")) } : {}) }).then(() => {}),
     deployer: createLocalDeployer(repoRoot),
   });
 
@@ -511,41 +520,66 @@ export function editorHost(options: EditorHostOptions): Plugin {
     });
   }
 
+  /**
+   * EA11: start the sidecars of the resolved enabled modules. A module set
+   * that does not resolve, or no sidecar declarations, means no sidecars —
+   * never a failed server start.
+   */
+  async function startModuleSidecars(manager: SidecarManager): Promise<SidecarReport[]> {
+    const found = discoverModules(join(repoRoot, "modules"));
+    const set = readEnabledSet(setFilePath(repoRoot));
+    const resolved = resolveModuleSet(found.valid, set.modules);
+    if (!resolved.ok) {
+      serverLog.append(
+        `[editor] sidecars skipped: module set does not resolve (${resolved.problems.length} problems)\n`,
+        "editor",
+      );
+      return [];
+    }
+    return manager.start(resolved.modules);
+  }
+
   async function stopOwned(): Promise<boolean> {
     if (!owned) return false;
     const child = owned.child;
+    const sidecars = owned.sidecars;
+    if (owned.edge?.pid) killProcessTree(owned.edge.pid, "SIGKILL");
     owned = null;
-    if (child.exitCode !== null || child.signalCode !== null) return true;
-    // The child leads its own process tree (see startOwned): `npm run
-    // server` spawns shell → node grandchildren, so killing just the npm
-    // wrapper would orphan the real server. killProcessTree ends the
-    // whole tree — still only ever OUR tree.
-    const pid = child.pid ?? -1;
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        killProcessTree(pid, "SIGKILL");
-      }, 5000);
-      timer.unref();
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      // POSIX: SIGTERM lets the server run its shutdown save. Windows
-      // has no catchable SIGTERM, so this is a hard stop there; the
-      // periodic save (every 300 ticks) bounds what play mode loses.
-      killProcessTree(pid, "SIGTERM");
-      // If the tree is already gone, the exit event may never fire.
-      setTimeout(() => {
-        if (!treeAlive(pid)) {
+    if (child.exitCode === null && child.signalCode === null) {
+      // The child leads its own process tree (see startOwned): `npm run
+      // server` spawns shell → node grandchildren, so killing just the npm
+      // wrapper would orphan the real server. killProcessTree ends the
+      // whole tree — still only ever OUR tree.
+      const pid = child.pid ?? -1;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          killProcessTree(pid, "SIGKILL");
+        }, 5000);
+        timer.unref();
+        child.once("exit", () => {
           clearTimeout(timer);
           resolve();
-        }
-      }, 500).unref();
-    });
+        });
+        // POSIX: SIGTERM lets the server run its shutdown save. Windows
+        // has no catchable SIGTERM, so this is a hard stop there; the
+        // periodic save (every 300 ticks) bounds what play mode loses.
+        killProcessTree(pid, "SIGTERM");
+        // If the tree is already gone, the exit event may never fire.
+        setTimeout(() => {
+          if (!treeAlive(pid)) {
+            clearTimeout(timer);
+            resolve();
+          }
+        }, 500).unref();
+      });
+    }
+    // EA11: sidecars stop after the server they run alongside — even when
+    // the server already exited on its own.
+    await sidecars.stop();
     return true;
   }
 
-  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest; spawn?: { x: number; z: number } }): Promise<OwnedServer> {
+  async function startOwned(opts?: { bots?: number; scene?: PlaySceneRequest; spawn?: { x: number; z: number }; edge?: boolean }): Promise<OwnedServer> {
     if (owned) {
       throw Object.assign(new Error("a play-mode server is already running"), {
         status: 409,
@@ -558,7 +592,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // at startup — users added afterwards would not be visible.
     // EA6: the open scene (validated before anything starts; may be unsaved).
     const sceneEnv = playSceneEnv(repoRoot, dataDir, opts?.scene);
-    const usersCsv = join(dataDir, "users.csv");
+    // Play accounts live in a scratch CSV rebuilt each start (MMO_USERS_CSV):
+    // the saved world's users.csv is neither read nor written by a play session.
+    const usersCsv = join(dataDir, "play-users.csv");
+    mkdirSync(dataDir, { recursive: true });
+    rmSync(usersCsv, { force: true });
     const { username, password } = editorLogin(dataDir);
     const loadUsers = editorLoadUsers(username);
     // Dev-only local credential: the plaintext goes to the browser over
@@ -624,6 +662,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
         ...process.env,
         MMO_PORT: String(serverPort),
         MMO_DATA_DIR: dataDir,
+        MMO_USERS_CSV: usersCsv,
         // The Play menu's Bots choice, when the start request carries it.
         ...(opts?.bots !== undefined ? { MMO_BOTS: String(opts.bots) } : {}),
         // The Play menu's "Start from" spawn target, when the request carries it.
@@ -659,6 +698,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // its epoch is stale by then, so none of that lands in the new run's log.
     const logEpoch = serverLog.reset();
     serverLog.append(`[editor] starting the play server on port ${serverPort}\n`, "editor");
+    // EA11: sidecars start BEFORE the game server. An unhealthy sidecar
+    // disables only its module (logged + reported below); the server
+    // still boots.
+    const sidecarManager = new SidecarManager({
+      log: (line) => {
+        if (serverLog.current(logEpoch)) serverLog.append(`${line}\n`, "editor");
+      },
+    });
+    const sidecarReports = await startModuleSidecars(sidecarManager);
+    for (const r of sidecarReports) {
+      if (r.status === "unhealthy") {
+        serverLog.append(`[editor] module "${r.name}" disabled for this run: sidecar unhealthy (${r.reason})\n`, "editor");
+      }
+    }
     child.stdout?.on("data", (d: Buffer) => {
       if (serverLog.current(logEpoch)) serverLog.append(d.toString("utf8"), "stdout");
     });
@@ -670,10 +723,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
         serverLog.flush();
         serverLog.append(`[editor] the play server exited (${code !== null ? `code ${code}` : `signal ${signal}`})\n`, "editor");
       }
-      if (owned?.child === child) owned = null;
+      if (owned?.child === child) {
+        // The server died on its own: its sidecars die with it, or they
+        // would linger with nobody to serve.
+        const dead = owned;
+        owned = null;
+        void dead.sidecars.stop();
+      }
     });
 
-    const url = await new Promise<string>((resolve, reject) => {
+    // A failed boot must not orphan sidecars: stopOwned() only knows the
+    // owned server, which is not assigned until the ready wait resolves.
+    let url: string;
+    try {
+      url = await new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
         void stopOwned();
@@ -711,10 +774,15 @@ export function editorHost(options: EditorHostOptions): Plugin {
       child.stdout?.on("data", check);
       child.stderr?.on("data", check);
     });
+    } catch (e) {
+      await sidecarManager.stop();
+      throw e;
+    }
 
     // Track the child IMMEDIATELY (before the ready wait can time out),
     // so a startup timeout can still kill the group via stopOwned().
     owned = {
+      edge: null,
       child,
       pid,
       port: serverPort,
@@ -723,10 +791,21 @@ export function editorHost(options: EditorHostOptions): Plugin {
       password,
       loadUsers,
       tickOrder: () => bootOrder,
+      sidecars: sidecarManager,
+      sidecarReports,
     };
     // Adopt the actual bound port from the server's listen line once
     // ready (normally identical to serverPort).
     owned.url = url;
+    // "Edge + core": the edge runs beside the core and must see it before Play goes on.
+    if (opts?.edge) {
+      try {
+        owned.edge = await startEdge(repoRoot, dataDir, npmInvocation, (p) => killProcessTree(p, "SIGKILL"));
+      } catch (e) {
+        await stopOwned();
+        throw e;
+      }
+    }
     return owned;
   }
 
@@ -807,8 +886,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           // Tree kill — matches the detached spawn in startOwned().
           // Synchronous on every platform, as an "exit" handler must be.
           killProcessTree(owned.child.pid ?? -1, "SIGKILL");
+          owned.sidecars.killNow();
+          if (owned.edge?.pid) killProcessTree(owned.edge.pid, "SIGKILL");
           owned = null;
         }
+        clientServer.stop();
       };
       process.once("exit", exitHandler);
       // Vite closes this HTTP server on shutdown AND on every dev-server
@@ -845,8 +927,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
             let fresh = false;
             let keep = false;
             let spawn: { x: number; z: number } | undefined;
+            let edge = false;
             try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown; spawn?: unknown };
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown; spawn?: unknown; network?: unknown };
+              edge = parsed.network === "edge";
               if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
                 bots = Math.floor(parsed.bots);
               }
@@ -871,7 +955,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             let s: OwnedServer;
             try {
               s = await startOwned(
-                bots !== undefined || scene !== undefined || spawn !== undefined ? { bots, scene, spawn } : undefined,
+                bots !== undefined || scene !== undefined || spawn !== undefined || edge ? { bots, scene, spawn, edge } : undefined,
               );
             } catch (err) {
               if (snapshotting) playSnapshot.fail();
@@ -887,7 +971,15 @@ export function editorHost(options: EditorHostOptions): Plugin {
               // startOwned). Never logged; only the hash is persisted.
               password: s.password,
               loadUsers: s.loadUsers,
+              // EA11: per-module sidecar outcome of the pre-boot health check.
+              sidecars: s.sidecarReports,
+              edge: s.edge !== null,
             });
+            return;
+          }
+          if (url === "/api/editor/play/client" && req.method === "POST") {
+            await readBody(req);
+            sendJson(res, 200, { ok: true, url: await clientServer.ensure() });
             return;
           }
           if (url === "/api/editor/server/stop" && req.method === "POST") {
@@ -908,6 +1000,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
               running: owned !== null,
               pid: owned?.pid,
               port: owned?.port,
+              edge: owned?.edge != null,
+              // Loopback only (checked above): the Live ops and Network
+              // panels connect an admin link with the same one-session login.
+              url: owned?.url,
+              username: owned?.username,
+              password: owned?.password,
             });
             return;
           }
@@ -1060,6 +1158,26 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, 200, { ok: true, profiles: buildHost.listProfiles() });
             return;
           }
+          // Profile files (content/build/profiles): validated save, delete; a refused save writes nothing.
+          const profileUrl = /^\/api\/editor\/build\/profiles\/([a-z0-9-]+)$/.exec(url);
+          if (url === "/api/editor/build/profiles" && req.method === "PUT") {
+            try {
+              const saved = buildHost.saveProfile((JSON.parse((await readBody(req)) || "null") as { profile?: unknown } | null)?.profile);
+              sendJson(res, 200, { ok: true, profile: saved });
+            } catch (err) {
+              const issues = (err as { issues?: string[] }).issues;
+              sendJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err), ...(issues ? { issues } : {}) });
+            }
+            return;
+          }
+          if (profileUrl && req.method === "DELETE") {
+            try {
+              sendJson(res, 200, { ok: true, deleted: buildHost.deleteProfile(profileUrl[1]!) });
+            } catch (err) {
+              sendJson(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+            return;
+          }
           if (url === "/api/editor/build/run" && req.method === "POST") {
             let body: unknown;
             try {
@@ -1074,7 +1192,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             try {
-              const rec = buildHost.startRun(profile);
+              const rec = buildHost.startRun(profile, { fresh: (body as { fresh?: unknown }).fresh === true });
               sendJson(res, 200, { ok: true, run: rec });
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -1150,10 +1268,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
               sendJson(res, 400, { ok: false, error: "body.layout must be a HUD layout" });
               return;
             }
-            // Basic shape check; the client validates fully on load.
-            const widgets = (layout as { widgets?: unknown }).widgets;
-            if (!widgets || typeof widgets !== "object") {
-              sendJson(res, 400, { ok: false, error: "layout.widgets must be an object" });
+            const hudIssues = validateHudLayout(layout);
+            if (hudIssues.length > 0) {
+              sendJson(res, 400, { ok: false, error: `invalid HUD layout: ${hudIssues.join("; ")}`, issues: hudIssues.map((message) => ({ message })) });
               return;
             }
             const file = join(repoRoot, "content", "ui", "hud.json");
@@ -1250,7 +1367,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             repoRoot,
             req.method ?? "GET",
             modulesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            req.method === "PUT" && modulesUrl.pathname === "/api/editor/modules" ? await readBody(req) : undefined,
             {
               running: () => owned?.tickOrder() ?? null,
               // "Apply modules": the server reads the set at boot, so a running one restarts.
@@ -1258,7 +1375,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
                 if (!owned) return { restarted: false };
                 await stopOwned();
                 const s = await startOwned();
-                return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password };
+                return { restarted: true, pid: s.pid, port: s.port, url: s.url, username: s.username, password: s.password, sidecars: s.sidecarReports };
               },
             },
           );
@@ -1267,6 +1384,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           const scenesUrl = new URL(req.url ?? "/", "http://localhost");
+          // Saved Play menu setups (EA14, play-host.ts): content/play/setups.json.
+          const playReply = handlePlaySetupsRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/play/setups" ? await readBody(req) : undefined,
+          );
+          if (playReply) {
+            sendJson(res, playReply.status, playReply.body);
+            return;
+          }
           const flowReply = handleFlowRoute(
             repoRoot,
             req.method ?? "GET",
@@ -1288,6 +1416,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, stringsReply.status, stringsReply.body);
             return;
           }
+          // Playtests (EA26) and the Network workspace's routes file.
+          const needsBody = req.method === "PUT" || req.method === "POST";
+          const playtestReply = scenesUrl.pathname.startsWith("/api/editor/playtest")
+            ? await handlePlaytestRoute(repoRoot, dataDir, req.method ?? "GET", scenesUrl.pathname, needsBody ? await readBody(req) : undefined, playtestRunner)
+            : null;
+          if (playtestReply) {
+            sendJson(res, playtestReply.status, playtestReply.body);
+            return;
+          }
+          const networkReply = await handleNetworkRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && scenesUrl.pathname === "/api/editor/network" ? await readBody(req) : undefined);
+          if (networkReply) {
+            sendJson(res, networkReply.status, networkReply.body);
+            return;
+          }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
           const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (gameplayReply) {
@@ -1299,11 +1441,34 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, audioReply.status, audioReply.body);
             return;
           }
+          const vfxReply = await handleVfxRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, () => readBody(req));
+          if (vfxReply) {
+            sendJson(res, vfxReply.status, vfxReply.body);
+            return;
+          }
+          // Animation clip map (EA21, animation-host.ts).
+          const animationReply = await handleAnimationRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
+          if (animationReply) {
+            sendJson(res, animationReply.status, animationReply.body);
+            return;
+          }
+          // Every validator over what is on disk, for the bottom dock's Problems tab (problems-host.ts).
+          const problemsReply = await handleProblemsRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname);
+          if (problemsReply) {
+            sendJson(res, problemsReply.status, problemsReply.body);
+            return;
+          }
+          // Rename / duplicate / delete for the documents the editor owns (files-host.ts).
+          const filesReply = await handleFilesRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "POST" ? await readBody(req) : undefined);
+          if (filesReply) {
+            sendJson(res, filesReply.status, filesReply.body);
+            return;
+          }
           const scenesReply = handleScenesRoute(
             repoRoot,
             req.method ?? "GET",
             scenesUrl.pathname,
-            req.method === "PUT" ? await readBody(req) : undefined,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/scenes") ? await readBody(req) : undefined,
           );
           if (scenesReply) {
             sendJson(res, scenesReply.status, scenesReply.body);

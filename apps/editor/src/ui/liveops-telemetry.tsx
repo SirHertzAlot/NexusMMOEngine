@@ -136,7 +136,7 @@ export function LiveOpsTelemetry(): React.JSX.Element {
   );
 }
 
-function TelemetryCharts({ snapshot }: { snapshot: TelemetrySnapshot }): React.JSX.Element {
+export function TelemetryCharts({ snapshot }: { snapshot: TelemetrySnapshot }): React.JSX.Element {
   const { tick, totals } = snapshot;
   return (
     <>

@@ -148,6 +148,14 @@ export function DungeonPanel(): React.JSX.Element {
       canSave: dirty,
       ...doc.history,
       save: () => void save(),
+      canRevert: dirty,
+      revert: () => void open(dungeon.id),
+      exportDoc: () => ({ name: `${dungeon.id}.patch`, data: patch }),
+      importDoc: (incoming: unknown) => {
+        const p = incoming as typeof patch;
+        if (p.hash !== dungeon.hash) throw new Error(`this patch was made for another layout of ${dungeon.id}`);
+        doc.edit(p);
+      },
     };
   });
 

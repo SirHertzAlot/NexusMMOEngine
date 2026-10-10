@@ -54,6 +54,11 @@ describe("database host routes", () => {
     apply: async (a) => (calls.push(`apply:${a}`), []),
     log: () => [],
     undo: async (a, id) => (calls.push(`undo:${a}:${id}`), {}),
+    listDbFunctions: () => ({ functions: [{ name: "character_power", db: "characters", params: ["character_id"] }], problems: [] }),
+    runDbFunction: async (name, params) => (calls.push(`run:${name}:${JSON.stringify(params)}`), { rows: [[1]] }),
+    createDbFunction: async (input) => (calls.push(`create:${input.name}`), { ...input, params: [] }),
+    listDbCaches: () => ({ caches: [{ name: "leaderboard", db: "characters", lastRefreshed: null, rowCount: null }], problems: [] }),
+    refreshDbCache: async (name) => (calls.push(`refresh:${name}`), { name, rows: 3 }),
   };
   const deps = { core, serverRunning: async () => running };
   const post = (route: string, body: unknown, contentType = "application/json") => handleDatabase(deps, { method: "POST", route, body, contentType });
@@ -73,5 +78,36 @@ describe("database host routes", () => {
   it("rejects malformed bodies and unknown routes", async () => {
     assert.equal((await post("query", {})).status, 400);
     assert.equal((await post("nope", {})).status, 404);
+  });
+  it("lists functions and caches (EA17)", async () => {
+    const fns = await handleDatabase(deps, { method: "GET", route: "functions", body: null });
+    assert.equal(fns.status, 200);
+    assert.deepEqual((fns.body as { functions: unknown }).functions, {
+      functions: [{ name: "character_power", db: "characters", params: ["character_id"] }],
+      problems: [],
+    });
+    const caches = await handleDatabase(deps, { method: "GET", route: "caches", body: null });
+    assert.equal(caches.status, 200);
+    assert.equal((caches.body as { caches: { caches: unknown[] } }).caches.caches.length, 1);
+  });
+  it("creates, runs and validates functions (EA17)", async () => {
+    const created = await post("functions", { name: "death_count", db: "characters", sql: "SELECT COUNT(*) FROM deaths WHERE character_id = :character_id" });
+    assert.equal(created.status, 200);
+    assert.deepEqual(calls.pop(), "create:death_count");
+    assert.equal((await post("functions", { name: "x" })).status, 400);
+    const run = await post("functions/run", { name: "character_power", params: { character_id: 1 } });
+    assert.equal(run.status, 200);
+    assert.deepEqual(calls.pop(), 'run:character_power:{"character_id":1}');
+    assert.equal((await post("functions/run", {})).status, 400);
+    assert.equal((await post("functions/run", { name: "x", params: [] })).status, 400);
+  });
+  it("refreshes caches in maintenance mode only (EA17)", async () => {
+    const r = await post("cache/refresh", { name: "leaderboard" });
+    assert.equal(r.status, 200);
+    assert.deepEqual(calls.pop(), "refresh:leaderboard");
+    assert.equal((await post("cache/refresh", {})).status, 400);
+    running = true;
+    assert.equal((await post("cache/refresh", { name: "leaderboard" })).status, 409);
+    running = false;
   });
 });

@@ -37,12 +37,24 @@ import System, {
 } from "three-nebula";
 import presets from "./particles.json" with { type: "json" };
 import type { Weather, WeatherKind, WeatherRules } from "./weather.js";
+import { budgetForTier, DEFAULT_PARTICLE_BUDGETS, type QualityTier } from "@mmo-engine/art/browser";
 
 /** nebula multiplies forces by this (pixels); our data is in metres. */
 const NEBULA_FORCE_SCALE = 100;
 const MAX_PARTICLES = 8000;
 /** Emission step: nebula emits `count` particles every `EMIT_EVERY` seconds. */
 const EMIT_EVERY = 0.05;
+
+/** The tier budgets, validated at load. */
+const BUDGETS = DEFAULT_PARTICLE_BUDGETS;
+
+/**
+ * The emission multiplier for a quality tier, from the budget file.
+ * Ultra's budget is the renderer's native capacity (MAX_PARTICLES).
+ */
+export function budgetMultiplierForTier(tier: QualityTier): number {
+  return budgetForTier(BUDGETS, tier).maxParticles / MAX_PARTICLES;
+}
 
 interface WeatherPreset {
   rate: number;
@@ -71,6 +83,12 @@ interface SplashPreset {
 export const WEATHER_RULES: WeatherRules = { biomes: presets.biomes as WeatherRules["biomes"], spellMinutes: presets.spellMinutes };
 const WEATHER = presets.weather as Record<WeatherKind, WeatherPreset>;
 const SPLASH = presets.splash as SplashPreset;
+
+/** Replace the weather and splash looks with the content's (content/vfx/effects.json); weather emitters built after this use them. */
+export function setParticleLooks(weather: Record<WeatherKind, WeatherPreset>, splash: SplashPreset): void {
+  Object.assign(WEATHER, weather);
+  Object.assign(SPLASH, splash);
+}
 const FADE_SECONDS = presets.fadeSeconds;
 
 /** A soft round dot (snow, ash, droplets). */
@@ -120,6 +138,8 @@ export class ParticleFx {
   private splashCooldown = 0;
   /** The quality preset's particle multiplier. */
   private budget = 1;
+  /** Most live weather particles (the tier's weatherBudget). */
+  private weatherCap = Infinity;
   private disposed = false;
 
   constructor(camera: THREE.Camera) {
@@ -167,8 +187,9 @@ export class ParticleFx {
   }
 
   /** Scale every emission by the quality preset's particle budget (1 as designed). */
-  setBudget(multiplier: number): void {
+  setBudget(multiplier: number, weatherCap = Infinity): void {
     this.budget = Math.max(0, multiplier);
+    this.weatherCap = weatherCap;
   }
 
   /** Particles alive now (tests, HUD). */
@@ -194,7 +215,7 @@ export class ParticleFx {
       const target = weather.kind === w.kind ? weather.intensity : 0;
       w.level += Math.sign(target - w.level) * Math.min(Math.abs(target - w.level), step);
       // Rate changes only when the particle count per step actually changes.
-      const count = Math.round(w.preset.rate * w.level * EMIT_EVERY * Math.min(this.budget, MAX_PARTICLES / (w.preset.rate * w.preset.life * 1.2)));
+      const count = Math.round(w.preset.rate * w.level * EMIT_EVERY * Math.min(this.budget, Math.min(MAX_PARTICLES, this.weatherCap) / (w.preset.rate * w.preset.life * 1.2)));
       if (count !== w.count) {
         w.count = count;
         w.emitter.setRate(new Rate(new Span(count, count), new Span(EMIT_EVERY)));

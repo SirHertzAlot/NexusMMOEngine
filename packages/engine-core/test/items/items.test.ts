@@ -191,6 +191,22 @@ describe("ItemService", () => {
     assert.equal(hasComponent(sim.ecs, C.WorldItem, eid), false);
   });
 
+  it("a scene-placed fixture never despawns on the timer, and discardGround removes it unless picked up", () => {
+    const { sim, avatar } = world();
+    const items = new ItemService({ defs, loot: loot({ despawnSeconds: 1 }), tickHz: 30 });
+    const fixed = items.placeFixture(sim, 0, 0, 0);
+    const taken = items.placeFixture(sim, 1, 0, 0);
+    sim.beginTick(30 * 60);
+    items.step(sim);
+    assert.equal(items.store.exists(fixed.item), true, "still lying there a minute on");
+    assert.equal(items.pickup(sim, 5, avatar(0, 0), sim.wireId(taken.eid)).ok, true);
+    assert.equal(items.discardGround(sim, taken.item), false, "in a bag now: left alone");
+    assert.equal(items.store.exists(taken.item), true);
+    assert.equal(items.discardGround(sim, fixed.item), true);
+    assert.equal(items.store.exists(fixed.item), false);
+    assert.equal(items.groundCount, 0);
+  });
+
   it("past the ground cap, the oldest drop goes", () => {
     const { sim } = world();
     const items = new ItemService({ defs, loot: loot({ maxGroundItems: 2 }), tickHz: 30 });

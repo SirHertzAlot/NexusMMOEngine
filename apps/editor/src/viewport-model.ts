@@ -49,14 +49,19 @@ const SPECIES_COLOR = 0xd9534f;
 const PROP_COLOR = 0x5cb85c;
 const SPAWN_COLOR = 0xf0c040;
 const GROUP_COLOR = 0x8899aa;
+const ITEM_COLOR = 0xe0a030;
+const QUEST_COLOR = 0x4a90d9;
 
 /** How a node is drawn: spawn points are cones, groups octahedra, prefabs boxes (species red, props green). */
 export function markerFor(node: SceneNode, species: ReadonlySet<string>): Marker {
   if (node.kind === "spawn-point") return { shape: "cone", color: SPAWN_COLOR };
+  if (node.components?.ItemSpawn) return { shape: "box", color: ITEM_COLOR };
+  if (node.components?.QuestGiver) return { shape: "octahedron", color: QUEST_COLOR };
   const prefab = node.prefab;
   const creature = node.components?.Spawner?.creature;
-  if (!prefab && typeof creature !== "string") return { shape: "octahedron", color: GROUP_COLOR };
-  const names = [prefab ?? "", (prefab ?? "").split("/").pop() ?? "", typeof creature === "string" ? creature : ""];
+  const kind = node.components?.Spawner?.species;
+  if (!prefab && typeof creature !== "string" && typeof kind !== "string") return { shape: "octahedron", color: GROUP_COLOR };
+  const names = [prefab ?? "", (prefab ?? "").split("/").pop() ?? "", typeof creature === "string" ? creature : "", typeof kind === "string" ? kind : ""];
   return { shape: "box", color: names.some((n) => n && species.has(n)) ? SPECIES_COLOR : PROP_COLOR };
 }
 

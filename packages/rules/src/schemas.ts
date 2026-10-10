@@ -394,8 +394,22 @@ export const ItemsSchema = z.strictObject({
 
 // ------------------------------------------------------------------ loot
 
+/** One line of a loot table: a named item base, how likely, how many. */
+export const LootEntrySchema = z.strictObject({
+  /** The item base dropped (an id in items.json). */
+  base: id,
+  /** Only this rank of the base (a rank id of the loot pool); absent: the lowest rank. */
+  rank: id.optional(),
+  /** Chance this line drops at all, 0..1. */
+  chance: share.default(1),
+  /** How many drop when it does (inclusive range). */
+  count: z.tuple([z.number().int().min(1), z.number().int().min(1)]).default([1, 1]),
+});
+
 /** Items on the ground and in bags (docs/ALPHA-PLAN.md, decisions D2 and D3). */
 export const LootSchema = z.strictObject({
+  /** Named loot tables: a creature's `drops.table` rolls every line of one. */
+  tables: z.record(id, z.strictObject({ entries: z.array(LootEntrySchema).min(1) })).optional(),
   /** Seconds a drop belongs to whoever earned it before anyone may take it. */
   ownershipSeconds: z.number().min(0).default(30),
   /** Seconds before an item left on the ground disappears. */
@@ -471,6 +485,8 @@ export const CreatureSchema = z.strictObject({
     .strictObject({
       rolls: z.tuple([z.number().int().min(0), z.number().int().min(0)]).default([1, 2]),
       chance: share.default(0.8),
+      /** A loot table (loot.json `tables`) whose lines also drop, each by its own chance. */
+      table: id.optional(),
     })
     .default({ rolls: [1, 2], chance: 0.8 }),
 });

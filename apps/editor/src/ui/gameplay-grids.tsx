@@ -186,8 +186,8 @@ export function GameplayGridsPanel(): React.JSX.Element {
   const mine = rows[table];
   const dirty = grids.dirtyOf;
   const ctx: GridContext = {
-    refs: { items: rows.items.map((r) => r.id), creatures: rows.creatures.map((r) => r.id) },
-    options: snap.context.options,
+    refs: { ...snap.context.refs, items: rows.items.map((r) => r.id), creatures: rows.creatures.map((r) => r.id), prefabs: rows.prefabs.map((r) => r.id) },
+    options: { ...snap.context.options, lootTables: rows.loot.map((r) => r.id) },
   };
   const setMine = (next: GridRow[]): void => {
     grids.edit(table, next);

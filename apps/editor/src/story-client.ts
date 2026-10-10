@@ -6,6 +6,7 @@
  */
 
 import { IssuesError, invalidMessage, requestJson } from "./api.js";
+import { renameQuestId } from "./story-rename.js";
 import { STORY_FILES, type StoryFiles, type StoryIssue, type StoryRefs } from "./story-validate.js";
 
 export class StorySaveError extends IssuesError<StoryIssue> {
@@ -39,4 +40,10 @@ export async function checkStoryRemote(files: StoryFiles, base = ""): Promise<St
 /** Save the changed documents together; throws StorySaveError when the set has errors. Returns warnings. */
 export async function saveStory(changes: Partial<StoryFiles>, base = ""): Promise<StoryIssue[]> {
   return (await requestJson<{ issues: StoryIssue[] }>(`${base}/api/editor/story`, { method: "PUT", body: { files: changes }, fail: "story save failed", refused })).issues;
+}
+
+/** Rename a quest id everywhere it is named (quests, prerequisites, dialog replies); the host validates the renamed set and writes both files or neither. */
+export async function renameQuestRemote(from: string, to: string, base = ""): Promise<void> {
+  const { files } = await loadStory(base);
+  await saveStory(renameQuestId(files, from, to), base);
 }
