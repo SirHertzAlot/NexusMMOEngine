@@ -18,6 +18,7 @@
  */
 
 import * as React from "react";
+import { pushBake } from "../dock-feed.js";
 import {
   applyBrush,
   chunkKey,
@@ -283,10 +284,15 @@ export function TerrainEditorPanel(): React.JSX.Element {
           `${r.reseatedProps} prop(s) moved onto the new ground.` +
           (r.stoppedPlayMode ? " Play mode was stopped." : ""),
       });
+      pushBake(
+        "terrain",
+        `${regenTarget === "area" ? "area" : `region ${regenTarget}`} regenerated: ${r.chunks} chunk(s), ${r.changed} differed from the spec, survey ${(r.surveyMs / 1000).toFixed(1)} s, ${r.reseatedProps} prop(s) moved`,
+      );
       showWorld(await loadTerrain(areaRef.current), true);
       void refreshOverview();
     } catch (err) {
       setMessage({ tone: "bad", text: errText(err) });
+      pushBake("terrain", `regenerate failed: ${errText(err)}`, false);
     } finally {
       setBusy(null);
     }

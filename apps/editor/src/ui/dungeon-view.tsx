@@ -31,6 +31,7 @@ import { DungeonScene, type Pick } from "./dungeon-scene.js";
 import { getTool } from "./tool-store.js";
 import { canDragDungeonProp } from "./viewport-tools.js";
 import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { pushBake } from "../dock-feed.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
 import { editorSelection } from "./editor-selection.js";
 
@@ -139,10 +140,13 @@ export function DungeonPanel(): React.JSX.Element {
       if (bake.seed.trim()) body.seed = bake.seed.trim() === "random" ? "random" : Number(bake.seed);
       if (bake.rank.trim()) body.rank = Number(bake.rank);
       const r = await getJson<{ log: string }>("/api/editor/dungeons/bake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      setNotice(r.log.split("\n").pop() ?? "baked");
+      const last = r.log.split("\n").pop() ?? "baked";
+      setNotice(last);
+      pushBake("dungeons", last || "baked");
       await refreshPool();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      pushBake("dungeons", `bake failed: ${e instanceof Error ? e.message : String(e)}`, false);
     } finally {
       setBaking(false);
     }
