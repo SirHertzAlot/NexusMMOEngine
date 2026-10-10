@@ -5,6 +5,8 @@
  *  - Base: locomotion chosen from how the character moves (the server's
  *    velocity and locomotion mode) — idle, walk, jog, sprint, swimming,
  *    in the air — crossfaded, with playback scaled to the ground speed.
+ *    Or, when the server sends an Animation row (EA21), the clip it names,
+ *    at the rate it sets (see `update`'s plan).
  *  - Action: a clip over the base (an attack, a block, a hit), on the whole
  *    body or the upper body only (so the legs keep walking), faded in and
  *    out. It can start part-way through, to line up with the moment the
@@ -17,7 +19,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { LocomotionMode } from "@mmo-engine/protocol";
-import type { AnimationClipInfo, AnimationManifest } from "@mmo-engine/art/browser";
+import { crossfadeWeights, playhead, type AnimationClipInfo, type AnimationManifest, type ClipPlan } from "@mmo-engine/art/browser";
 import { DEFAULT_KIT_URL } from "./character-kit.js";
 
 export class AnimationLibrary {
@@ -178,6 +180,13 @@ class ActionLayer {
 export class CharacterAnimator {
   private readonly mixer: THREE.AnimationMixer;
   private base: { name: string; action: THREE.AnimationAction } | null = null;
+  /** The base clip being left, fading out while the new one fades in. */
+  private leaving: { action: THREE.AnimationAction; elapsed: number; duration: number } | null = null;
+  /** The base clip the server asked for (EA21); null: choose from the motion. */
+  private serverBase: { name: string; timeScale: number; fade: number } | null = null;
+  /** The server clip (by plan key) the action layer is playing, and that layer (a later `play` replaces it). */
+  private planKey: string | null = null;
+  private planLayer: ActionLayer | null = null;
   private layer: ActionLayer | null = null;
   private readonly bones: THREE.Object3D[] = [];
   private readonly hips: THREE.Object3D | null;
@@ -201,6 +210,13 @@ export class CharacterAnimator {
   /** The action on show (null: locomotion only). */
   get action(): string | null {
     return this.layer && !this.layer.stopping ? this.layer.name : null;
+  }
+
+  /** The base crossfade in progress (null: settled): the clip being left, the one coming in, and how far in (0..1). */
+  get fading(): { from: string; to: string; progress: number } | null {
+    const f = this.leaving;
+    if (!f || !this.base) return null;
+    return { from: f.action.getClip().name, to: this.base.name, progress: crossfadeWeights(f.elapsed, f.duration).to };
   }
 
   /** The base clip on show. */
@@ -240,33 +256,77 @@ export class CharacterAnimator {
     this.layer.stopping = true;
   }
 
-  /** Advance by `dt` seconds with the character moving as `motion`. */
-  update(dt: number, motion: Motion): void {
+  /**
+   * Advance by `dt` seconds with the character moving as `motion`.
+   *
+   * `plan` is the server's Animation row planned for this tick (art
+   * `planClip`): a looping clip on the base layer becomes the base clip, an
+   * upper-body clip plays as the action over the legs' locomotion, and a
+   * one-shot on the base plays whole-body over it. No plan (undefined or
+   * null): the base follows the motion, and `play`/`stop` drive the action.
+   */
+  update(dt: number, motion: Motion, plan?: ClipPlan | null): void {
+    this.follow(plan ?? null);
     if (this.layer?.done) {
       this.layer.dispose();
       this.layer = null;
     }
     this.chooseBase(motion, dt);
+    this.fadeBase(dt);
     this.mixer.update(dt);
     this.layer?.apply(dt);
+  }
+
+  /** Take the server's clip: the base for a gait, the action layer for the rest. */
+  private follow(plan: ClipPlan | null): void {
+    if (!plan || (plan.layers.base && plan.loop && !plan.layers.upper)) {
+      this.serverBase = plan && { name: plan.clip, timeScale: plan.timeScale, fade: plan.fade };
+      // Release the server's action, but never an action the game started itself (a roll).
+      if (this.planKey !== null && this.layer === this.planLayer) this.stop(plan?.fade);
+      this.planKey = null;
+      this.planLayer = null;
+      return;
+    }
+    this.serverBase = null;
+    if (plan.key === this.planKey) return;
+    this.planKey = plan.key;
+    const clip = this.library.clips.get(this.resolve(plan.clip));
+    // The clip may already be under way (a late join, a tick of lag): start where it would be.
+    this.play(plan.clip, {
+      offset: clip ? playhead(plan.elapsed, plan.timeScale, clip.duration, plan.loop) : 0,
+      loop: plan.loop,
+      mask: plan.layers.upper ? "upper" : "full",
+      fadeIn: plan.fade,
+      fadeOut: plan.fade,
+      timeScale: plan.timeScale,
+    });
+    this.planLayer = this.layer;
   }
 
   private chooseBase(m: Motion, dt: number): void {
     let name: string;
     let timeScale = 1;
+    let fade = BASE_FADE;
     const gait = (gaits: Gait[], idle: string): void => {
       const g = [...gaits].reverse().find((x) => m.speed >= x.from);
       name = g ? g.clip : idle;
       if (g) timeScale = THREE.MathUtils.clamp(m.speed / g.speed, 0.6, 1.6);
     };
-    if (m.mode === LocomotionMode.Swim) gait(SWIM, IDLE.swim);
+    this.airTime = Math.abs(m.vy) > AIRBORNE_VY ? this.airTime + dt : 0;
+    const grounded = m.mode !== LocomotionMode.Swim && m.mode !== LocomotionMode.Fly && this.airTime <= 0.05;
+    if (this.serverBase && grounded) {
+      // The server's gait and rate; it never sends swimming or airborne, so those stay with the motion.
+      ({ name, timeScale, fade } = this.serverBase);
+    } else if (m.mode === LocomotionMode.Swim) gait(SWIM, IDLE.swim);
     else if (m.mode === LocomotionMode.Fly) gait(FLY, IDLE.fly);
-    else {
-      this.airTime = Math.abs(m.vy) > AIRBORNE_VY ? this.airTime + dt : 0;
-      if (this.airTime > 0.05) name = IDLE.air;
-      else gait(GROUND, IDLE.ground);
-    }
+    else if (this.airTime > 0.05) name = IDLE.air;
+    else gait(GROUND, IDLE.ground);
     name = this.resolve(this.library.clips.has(name!) ? name! : IDLE.ground);
+    this.setBase(name, timeScale, fade);
+  }
+
+  /** Make `name` the base clip: the old one fades out as this one fades in. */
+  private setBase(name: string, timeScale: number, fade: number): void {
     if (this.base?.name === name) {
       this.base.action.timeScale = timeScale;
       return;
@@ -281,9 +341,26 @@ export class CharacterAnimator {
       // Keep the feet in step: start the new gait at the same phase.
       const prev = this.base.action;
       next.time = (prev.time / prev.getClip().duration) * clip.duration;
-      prev.crossFadeTo(next, BASE_FADE, false);
+      // A fade in progress is cut short: the clip it was leaving is gone.
+      this.leaving?.action.stop();
+      this.leaving = { action: prev, elapsed: 0, duration: fade };
     }
     this.base = { name, action: next };
+    this.fadeBase(0);
+  }
+
+  /** The base crossfade, on art's eased weights (they add to 1: the pose never dips). */
+  private fadeBase(dt: number): void {
+    const leaving = this.leaving;
+    if (!leaving || !this.base) return;
+    leaving.elapsed += dt;
+    const w = crossfadeWeights(leaving.elapsed, leaving.duration);
+    this.base.action.setEffectiveWeight(w.to);
+    leaving.action.setEffectiveWeight(w.from);
+    if (leaving.elapsed >= leaving.duration) {
+      leaving.action.stop();
+      this.leaving = null;
+    }
   }
 
   private upperBody(name: string, clip: THREE.AnimationClip): THREE.AnimationClip {

@@ -37,12 +37,24 @@ import System, {
 } from "three-nebula";
 import presets from "./particles.json" with { type: "json" };
 import type { Weather, WeatherKind, WeatherRules } from "./weather.js";
+import { budgetForTier, DEFAULT_PARTICLE_BUDGETS, type QualityTier } from "@mmo-engine/art/browser";
 
 /** nebula multiplies forces by this (pixels); our data is in metres. */
 const NEBULA_FORCE_SCALE = 100;
 const MAX_PARTICLES = 8000;
 /** Emission step: nebula emits `count` particles every `EMIT_EVERY` seconds. */
 const EMIT_EVERY = 0.05;
+
+/** The tier budgets, validated at load. */
+const BUDGETS = DEFAULT_PARTICLE_BUDGETS;
+
+/**
+ * The emission multiplier for a quality tier, from the budget file.
+ * Ultra's budget is the renderer's native capacity (MAX_PARTICLES).
+ */
+export function budgetMultiplierForTier(tier: QualityTier): number {
+  return budgetForTier(BUDGETS, tier).maxParticles / MAX_PARTICLES;
+}
 
 interface WeatherPreset {
   rate: number;
