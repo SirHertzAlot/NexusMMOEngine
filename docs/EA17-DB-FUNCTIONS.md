@@ -34,4 +34,13 @@ Refreshed on a schedule or on demand via the Database workspace.
 
 ## Status
 
-Design complete. Builds on EA16's PersistenceCore.
+Implemented 2026-10-10 (branch `arlo/ea17-db-functions`): SQLite adaptation —
+functions are named parameterized read-only SELECTs in `content/db/functions/*.sql`
+(`:name` placeholders, validated at load, bound at run time through the
+read-only query child process); caches are `_cache_<name>` snapshot tables
+built from `content/db/caches/*.sql`, refreshed as DELETE + re-INSERT in one
+transaction with freshness tracked in `_cache_meta`. Editor routes under
+`/api/editor/database/`: `GET functions`, `POST functions`, `POST functions/run`,
+`GET caches`, `POST cache/refresh`. Seeded with `character_power` (net kills
+minus deaths — the real schema has no attack/defense/magic columns) and the
+`leaderboard` cache. Design doc above retained for reference.
