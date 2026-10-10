@@ -54,6 +54,8 @@ export function createHostServerControl(
         body: JSON.stringify({
           ...(opts?.bots !== undefined ? { bots: opts.bots } : {}),
           ...(open ? { scene: { name: open.name, content: open.doc } } : {}),
+          ...(opts?.fresh !== undefined ? { fresh: opts.fresh } : {}),
+          ...(opts?.keep !== undefined ? { keep: opts.keep } : {}),
         }),
       });
       const body = (await res.json()) as {

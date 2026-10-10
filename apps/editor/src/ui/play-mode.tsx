@@ -187,12 +187,15 @@ export function PlayModePanel(): React.JSX.Element {
     setDetail(undefined);
     try {
       // The Play menu's honored start options: bots → MMO_BOTS, simulate
-      // mode (world only, no player), and client count (1/2/4/8).
+      // mode (world only, no player), client count (1/2/4/8), and
+      // fresh/keep (world snapshot/restore).
       const setup = loadLastSetup();
       await controller.start({
         bots: botsCount(setup),
         noClient: !shouldConnectPlayer(setup),
         clients: clientCount(setup),
+        fresh: setup.fresh,
+        keep: setup.keep,
       });
     } catch (err) {
       // detail already carries the message via onStateChange(error)

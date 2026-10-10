@@ -109,6 +109,7 @@ import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } fr
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
 import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
 import { runProfile } from "@mmo-engine/build";
+import { backupWorld, discardBackup, restoreWorld } from "@mmo-engine/engine-core";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -381,6 +382,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
   let owned: OwnedServer | null = null;
+  /** Snapshot bookkeeping for the Play menu's fresh/keep options. */
+  let snapshotActive = false;
+  let snapshotKeep = false;
   let dbCore: DatabaseCore | null = null;
 
   // EA19 build pipeline: profiles, background runs, local deploy.
@@ -750,20 +754,31 @@ export function editorHost(options: EditorHostOptions): Plugin {
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
             const startBody = await readBody(req);
-            // Start options honored today: bots → MMO_BOTS, and the optional
-            // {scene: {name, content?}} for playing the open scene (EA6).
+            // Start options honored today: bots → MMO_BOTS, the optional
+            // {scene: {name, content?}} for playing the open scene (EA6),
+            // and fresh/keep for world snapshot/restore.
             // Anything else in the body is ignored (the Play menu badges
             // those dimensions "preview" instead of pretending).
             let bots: number | undefined;
             let scene: PlaySceneRequest | undefined;
+            let fresh = false;
+            let keep = false;
             try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest };
+              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown };
               if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
                 bots = Math.floor(parsed.bots);
               }
               scene = parsed.scene;
+              fresh = parsed.fresh === true;
+              keep = parsed.keep === true;
             } catch {
               /* empty / non-JSON body: server defaults */
+            }
+            // Fresh state: back up world.db before the server starts.
+            if (fresh) {
+              backupWorld(join(dataDir, "world.db"));
+              snapshotActive = true;
+              snapshotKeep = keep;
             }
             const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
             sendJson(res, 200, {
@@ -782,6 +797,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           if (url === "/api/editor/server/stop" && req.method === "POST") {
             await readBody(req);
             const stopped = await stopOwned();
+            // Fresh/keep: restore the backup unless keeping play changes.
+            if (snapshotActive) {
+              const dbPath = join(dataDir, "world.db");
+              if (snapshotKeep) {
+                discardBackup(dbPath);
+              } else {
+                restoreWorld(dbPath);
+              }
+              snapshotActive = false;
+              snapshotKeep = false;
+            }
             sendJson(res, 200, { ok: true, stopped });
             return;
           }
