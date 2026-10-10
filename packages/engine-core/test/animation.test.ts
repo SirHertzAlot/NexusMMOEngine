@@ -12,6 +12,7 @@ import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { AnimationSystem, ensureAnimation } from "../src/animation.js";
 import { ClipId, Move } from "@mmo-engine/protocol";
+import { collectDeltaState, collectFullState, DeltaTracker } from "../src/snapshot.js";
 
 function animatedWorld(): { sim: SimWorld; eid: number } {
   SimWorld.resetEntityCursorForTesting();
@@ -93,5 +94,46 @@ describe("AnimationSystem", () => {
     anim.step(sim, 1 / 30);
     sim.endTick();
     assert.equal(C.Animation.clipId[eid], ClipId.Block);
+  });
+
+  it("restarts the clip when the same move is made again", () => {
+    const { sim, eid } = animatedWorld();
+    addComponent(sim.ecs, C.Action, eid);
+    C.Action.move[eid] = Move.SwordA;
+    C.Action.started[eid] = 100;
+    const anim = new AnimationSystem();
+    sim.beginTick(100);
+    anim.step(sim, 1 / 30);
+    sim.endTick();
+    C.Action.started[eid] = 130;
+    sim.beginTick(130);
+    anim.step(sim, 1 / 30);
+    sim.endTick();
+    assert.equal(C.Animation.clipId[eid], ClipId.AttackSwordA);
+    assert.equal(C.Animation.startTick[eid], 130);
+  });
+
+  it("replicates: the Animation row is in snapshots and in deltas when it changes", () => {
+    const { sim, eid } = animatedWorld();
+    addComponent(sim.ecs, C.Velocity, eid);
+    C.Velocity.lx[eid] = 3;
+    const anim = new AnimationSystem();
+    sim.beginTick(10);
+    anim.step(sim, 1 / 30);
+    sim.endTick();
+    const full = collectFullState(sim, 10);
+    assert.equal(full.animations.length, 1);
+    assert.equal(full.animations[0].clipId, ClipId.Walk);
+    const tracker = new DeltaTracker();
+    tracker.commit(sim);
+    C.Velocity.lx[eid] = 5;
+    sim.beginTick(11);
+    anim.step(sim, 1 / 30);
+    sim.endTick();
+    const delta = collectDeltaState(sim, 11, 10, tracker);
+    assert.deepEqual(delta.animations.map((r) => r.clipId), [C.Animation.clipId[eid]]);
+    assert.equal(delta.animations[0].clipId, ClipId.Jog);
+    tracker.commit(sim);
+    assert.equal(collectDeltaState(sim, 12, 11, tracker).animations.length, 0);
   });
 });

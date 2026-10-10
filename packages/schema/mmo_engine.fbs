@@ -103,6 +103,7 @@ table Snapshot {
   actions: ActionBlock;
   staminas: StaminaBlock;
   characterRefs: CharacterRefBlock;
+  animations: AnimationBlock;
 }
 
 table Delta {
@@ -123,6 +124,7 @@ table Delta {
   actions: ActionBlock;
   staminas: StaminaBlock;
   characterRefs: CharacterRefBlock;
+  animations: AnimationBlock;
 }
 
 // ---- client -> server intent events (slice 1.3, additive) ----
@@ -231,5 +233,21 @@ table CharacterRef {
 }
 
 table CharacterRefBlock { entities: [uint64]; items: [CharacterRef]; }
+
+// ---- animation (additive; ComponentId 17, EA21) ----
+// The server's clip decision for a character (protocol animation.ts
+// ClipId; 0 = none, use locomotion), the server tick the clip started,
+// its playback rate, and the layers it plays on (bit 1 = base/full body,
+// bit 2 = upper body). Server-owned (AnimationSystem); the client plays
+// the clip from its start tick and blends the rest.
+
+table Animation {
+  clipId: uint16;
+  startTick: uint32;
+  rate: float;
+  layerMask: uint8;
+}
+
+table AnimationBlock { entities: [uint64]; items: [Animation]; }
 
 root_type Snapshot;

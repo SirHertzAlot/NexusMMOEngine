@@ -81,7 +81,11 @@ export interface ParticlePreset {
   texture: "soft" | "spark";
 }
 
-/** The composer's particle effects, by id (catalog `params.effect`). */
+/**
+ * The composer's particle effects, by id (catalog `params.effect`). These
+ * are the built-in set; content/vfx/effects.json replaces them at start
+ * (`setParticleEffects`), and the editor's VFX panel edits that file.
+ */
 export const PARTICLE_PRESETS: Record<string, ParticlePreset> = {
   embers: { color: ["#ffb347", "#ff3b0a"], alpha: [0, 1, 0], size: [0.05, 0.12], life: [1.2, 2.2], speed: [0.2, 0.6], rate: 18, shape: "sphere", radius: 0.6, lift: 1.2, wander: 0.6, blending: "additive", texture: "spark" },
   snow: { color: ["#ffffff", "#cfe9ff"], alpha: [0, 0.9, 0], size: [0.05, 0.1], life: [1.5, 2.5], speed: [0.05, 0.2], rate: 16, shape: "sphere", radius: 0.9, lift: -0.4, wander: 0.4, orbit: 0.8, blending: "normal", texture: "soft" },
@@ -97,6 +101,12 @@ export const PARTICLE_PRESETS: Record<string, ParticlePreset> = {
 const AURA: ParticlePreset = {
   color: ["#ffffff", "#ffffff"], alpha: [0, 0.8, 0], size: [0.12, 0.22], life: [1, 1.6], speed: [0, 0.05], rate: 30, shape: "ring", radius: 1.2, lift: 0.9, wander: 0.1, orbit: 1.4, blending: "additive", texture: "soft",
 };
+
+/** Replace the effects with the content's (in place, so every importer sees them). */
+export function setParticleEffects(effects: Record<string, ParticlePreset>): void {
+  for (const k of Object.keys(PARTICLE_PRESETS)) delete PARTICLE_PRESETS[k];
+  Object.assign(PARTICLE_PRESETS, effects);
+}
 
 export interface VfxHandle {
   readonly system: ParticleSystem;
@@ -133,7 +143,11 @@ export class QuarksFx {
   private readonly materials = new Map<string, THREE.MeshBasicMaterial>();
   /** Every live system and its designed emission rate (the budget scales it). */
   private readonly live = new Map<ParticleSystem, number>();
+  /** Mean particle life per system (seconds), for the tier's live-particle cap. */
+  private readonly lives = new WeakMap<ParticleSystem, number>();
   private budget = 1;
+  /** Most live particles one effect may hold (the tier's effectBudget); Infinity: no cap. */
+  private cap = Infinity;
   private ground: ((x: number, z: number) => number | null) | null = null;
   /** Keeps particles above the ground: shared by every system, reads the current ground. */
   private readonly floor = {
@@ -151,9 +165,15 @@ export class QuarksFx {
   }
 
   /** Scale every emission by the quality preset's particle budget (1 as designed). */
-  setBudget(multiplier: number): void {
+  setBudget(multiplier: number, cap = Infinity): void {
     this.budget = Math.max(0, multiplier);
-    for (const [system, rate] of this.live) system.emissionOverTime = new ConstantValue(rate * this.budget);
+    this.cap = cap;
+    for (const [system, rate] of this.live) system.emissionOverTime = new ConstantValue(this.emission(system, rate));
+  }
+
+  /** Particles a second after the tier's multiplier, held under its live-particle cap. */
+  private emission(system: ParticleSystem, rate: number): number {
+    return Math.min(rate * this.budget, this.cap / (this.lives.get(system) ?? 1));
   }
 
   /** The ground height at world (x, z), or null where it isn't known; particles land on it. */
@@ -209,13 +229,14 @@ export class QuarksFx {
       startSpeed: new IntervalValue(p.speed[0], p.speed[1]),
       startSize: new IntervalValue(p.size[0], p.size[1]),
       startColor: new ConstantColor(v4(c0, 1)),
-      emissionOverTime: new ConstantValue(p.rate * this.budget),
+      emissionOverTime: new ConstantValue(Math.min(p.rate * this.budget, this.cap / ((p.life[0] + p.life[1]) / 2))),
       material: this.material(p),
       renderMode: RenderMode.BillBoard,
       behaviors,
     });
     // A ring at the feet: turned to lie flat on the ground.
     if (p.shape === "ring") system.emitter.rotation.x = -Math.PI / 2;
+    this.lives.set(system, (p.life[0] + p.life[1]) / 2);
     return this.start(system, target, p.rate);
   }
 

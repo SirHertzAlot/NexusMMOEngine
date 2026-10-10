@@ -33,7 +33,7 @@ export interface DocActions {
   canSave: boolean;
   canUndo: boolean;
   canRedo: boolean;
-  save: () => void;
+  save: () => void | Promise<void>;
   undo: () => void;
   redo: () => void;
   /** What validation says about the document right now; absent when the panel does not validate. */
@@ -55,12 +55,21 @@ export interface DocActions {
   selectAll?: () => void;
 
   // --- File menu: document lifecycle (optional per panel) ---
+  /**
+   * The document as JSON for File > Export (`name` is the download's base name).
+   * A panel that gives this and `importDoc` gets Export and Import from doc-io.ts
+   * (import is shape-checked first, then run through the panel's own validation);
+   * a panel with its own file handling uses importFile / exportFile instead.
+   */
+  exportDoc?: () => { name: string; data: unknown };
+  /** Replace the draft with an imported document; throws a readable Error to refuse it. Nothing is written until Save. */
+  importDoc?: (data: unknown) => void | Promise<void>;
   canSaveAll?: boolean;
   canRevert?: boolean;
   canImport?: boolean;
   canExport?: boolean;
   saveAll?: () => void;
-  revert?: () => void;
+  revert?: () => void | Promise<void>;
   importFile?: () => void;
   exportFile?: () => void;
 }

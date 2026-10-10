@@ -21,7 +21,9 @@ import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
 import { createStore } from "../store.js";
-import { botsCount, clientCount, loadLastSetup, netPlan, shouldConnectPlayer, simulateLabel } from "./play-setup.js";
+import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel, useEdge } from "./play-setup.js";
+import { clientWindows, worldNodeOf } from "./play-launch.js";
+import { getFlow } from "../flow-client.js";
 import { resolveSpawnTarget } from "../flow-spawn.js";
 import { getSceneCameraPos } from "./camera-position.js";
 import { armPlayPopup, openPlayPopupShell, takePendingPopup } from "./play-popup.js";
@@ -201,6 +203,7 @@ export function PlayModePanel(): React.JSX.Element {
   }, [controller]);
 
   async function onStart(): Promise<void> {
+    let shells: Array<Window | null> = [];
     setBusy(true);
     setDetail(undefined);
     try {
@@ -208,11 +211,16 @@ export function PlayModePanel(): React.JSX.Element {
       // mode (world only, no player), client count (1/2/4/8),
       // fresh/keep (world snapshot/restore), and "Start from" (spawn target).
       const setup = loadLastSetup();
-      const spawnTarget = resolveSpawnTarget(setup.from, getSceneCameraPos());
+      // The flow names the world node; a start anywhere else opens the player's client.
+      const flow = (await getFlow().catch(() => null))?.content ?? null;
+      const spawnTarget = resolveSpawnTarget(setup.from, getSceneCameraPos(), worldNodeOf(flow));
+      const nodeStart = spawnTarget.kind === "node" && shouldConnectPlayer(setup);
+      // One window per account, opened in this click (a blocker eats later opens) and pointed at its address once the server is up.
+      shells = nodeStart ? Array.from({ length: clientCount(setup) }, (_, i) => window.open("", `mmo-editor-client-${i}`)) : [];
       // "New window": open the popup in this click gesture (or the blocker
       // eats it). The game view attaches when it mounts; a failed start
       // closes the orphan popup.
-      const wantPopup = setup.where === "window" && shouldConnectPlayer(setup);
+      const wantPopup = !nodeStart && setup.where === "window" && shouldConnectPlayer(setup);
       const popup = wantPopup ? openPlayPopupShell("Play") : null;
       if (wantPopup && !popup) {
         setDetail("Popup blocked — the game view stays in the viewport. Allow popups and try again.");
@@ -220,24 +228,44 @@ export function PlayModePanel(): React.JSX.Element {
       armPlayPopup(popup);
       await controller.start({
         bots: botsCount(setup),
-        noClient: !shouldConnectPlayer(setup),
+        noClient: !shouldConnectPlayer(setup) || nodeStart,
+        network: useEdge(setup) ? "edge" : "core",
         clients: clientCount(setup),
         fresh: setup.fresh,
         keep: setup.keep,
         ...(spawnTarget.kind === "at" ? { spawn: { x: spawnTarget.x, z: spawnTarget.z } } : {}),
       });
-      const net = netPlan(setup);
-      if (!net.honored) {
-        setDetail(`Network "${setup.net}" is preview: ${net.note}`);
-      } else if (spawnTarget.kind === "preview") {
-        // Honest: the menu badges it, but surface the reason here too.
-        setDetail(`Start from "${setup.from}" is preview: ${spawnTarget.reason}`);
+      if (nodeStart && spawnTarget.kind === "node") {
+        const server = controller.serverInfo;
+        const shut = (): void => shells.forEach((w) => w?.close());
+        if (!server || !flow) {
+          shut();
+          setDetail(flow ? "the server is not running" : "the flow document could not be read");
+        } else {
+          try {
+            const res = await fetch("/api/editor/play/client", { method: "POST" });
+            const body = (await res.json()) as { ok?: boolean; url?: string; error?: string };
+            if (!res.ok || !body.url) throw new Error(body.error ?? `HTTP ${res.status}`);
+            const plan = clientWindows(setup, flow, spawnTarget.node, body.url, server);
+            if ("error" in plan) {
+              shut();
+              setDetail(plan.error);
+            } else {
+              const blocked = plan.windows.filter((w, i) => (shells[i] ? ((shells[i]!.location.href = w.url), false) : window.open(w.url) === null));
+              if (blocked.length > 0) setDetail("Popup blocked — allow popups to open the player's client windows.");
+            }
+          } catch (e) {
+            shut();
+            setDetail(`the player's client did not start: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
       } else if (spawnTarget.kind === "default" && "note" in spawnTarget) {
         setDetail(spawnTarget.note);
       }
     } catch (err) {
       // detail already carries the message via onStateChange(error).
       // A failed start must not leave an orphan popup behind.
+      shells.forEach((w) => w?.close());
       const orphan = takePendingPopup();
       if (orphan) {
         try {

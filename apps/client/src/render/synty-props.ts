@@ -17,7 +17,7 @@
 
 import * as THREE from "three";
 import { simplifyLods, type LodLevel } from "./lod.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { createGltfLoader } from "./gltf-loader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { PropModels } from "./instanced-props.js";
 
@@ -63,7 +63,7 @@ export class SyntyProps implements PropModels {
   /** Atlases by URL, loaded once. */
   private readonly textures = new Map<string, THREE.Texture>();
   private readonly textureLoader = new THREE.TextureLoader();
-  private readonly loader: GLTFLoader;
+  private readonly loader: ReturnType<typeof createGltfLoader>;
   private disposed = false;
 
   constructor(
@@ -72,7 +72,7 @@ export class SyntyProps implements PropModels {
   ) {
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((url) => (/\.(png|jpe?g|webp)$/i.test(url) ? BLANK_PNG : url));
-    this.loader = new GLTFLoader(manager);
+    this.loader = createGltfLoader(manager);
   }
 
   /** Models ready. */

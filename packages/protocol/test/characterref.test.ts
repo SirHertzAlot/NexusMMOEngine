@@ -28,7 +28,7 @@ const empty = (tick: number): CollectedState => ({
   locomotions: [],
   appearances: [],
   actions: [],
-  characterRefs: [],
+  characterRefs: [], animations: [],
 });
 
 test("characterref rows round-trip in snapshots and deltas", () => {
@@ -39,4 +39,14 @@ test("characterref rows round-trip in snapshots and deltas", () => {
   ];
   assert.deepEqual(decodeSnapshot(encodeSnapshot(state)).characterRefs, state.characterRefs);
   assert.deepEqual(decodeDelta(encodeDelta(state)).characterRefs, state.characterRefs);
+});
+
+test("animation rows (EA21) round-trip in snapshots and deltas", () => {
+  const state = empty(9);
+  state.animations = [
+    { wireId: 3n, clipId: 10, startTick: 120, rate: 1.5, layerMask: 2 },
+    { wireId: 4n, clipId: 3, startTick: 7, rate: 0.5, layerMask: 1 },
+  ];
+  assert.deepEqual(decodeSnapshot(encodeSnapshot(state)).animations, state.animations);
+  assert.deepEqual(decodeDelta(encodeDelta(state)).animations, state.animations);
 });

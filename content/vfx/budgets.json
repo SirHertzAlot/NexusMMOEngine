@@ -1,0 +1,1 @@
+{"tiers":{"high":{"maxEmitters":32,"maxParticles":5000},"low":{"maxEmitters":8,"maxParticles":1000},"medium":{"maxEmitters":16,"maxParticles":2500},"ultra":{"maxEmitters":48,"maxParticles":8000}},"version":1}

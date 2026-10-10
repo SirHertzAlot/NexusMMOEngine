@@ -12,7 +12,7 @@ import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
 import { Button, CheckField } from "./components.js";
-import { clearViewportActions, registerViewportActions } from "./viewport-actions.js";
+import { clearViewportActions, registerViewportActions, viewportFlags } from "./viewport-actions.js";
 import { setSceneCameraPos } from "./camera-position.js";
 
 export interface SceneViewportProps {
@@ -70,6 +70,8 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
       zoomIn: () => view.zoomIn(),
       zoomOut: () => view.zoomOut(),
       reset: () => view.frame(),
+      supports: { grid: true, gizmos: true, wireframe: true },
+      screenshot: () => view.screenshot(),
     };
     registerViewportActions(viewport);
     let alive = true;
@@ -88,6 +90,12 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
       view.dispose();
     };
   }, []);
+
+  // Grid / gizmos / wireframe follow the toolbar's viewport options.
+  const flags = viewportFlags.use();
+  React.useEffect(() => viewRef.current?.setGrid(flags.grid), [flags.grid, webgl]);
+  React.useEffect(() => viewRef.current?.setGizmos(flags.gizmos), [flags.gizmos, webgl]);
+  React.useEffect(() => viewRef.current?.setWireframe(flags.wireframe), [flags.wireframe, webgl, content]);
 
   const species = React.useMemo(() => new Set(content?.species.map((s) => s.id) ?? []), [content]);
   React.useEffect(() => {
