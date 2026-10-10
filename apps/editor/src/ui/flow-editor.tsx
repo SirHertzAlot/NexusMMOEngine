@@ -8,6 +8,7 @@
  * client at a node.
  */
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import { duplicateFlowNode, renameFlowNode } from "../flow-context.js";
 import {
   addFlowEdge,
@@ -25,8 +26,8 @@ import {
 import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
 import { leftRightRoute } from "../graph-view.js";
 import { NodeGraph } from "./node-graph.js";
-import { MIcon } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { MIcon, Select } from "./components.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 import { getTool, subscribeTool } from "./tool-store.js";
 import { canDragGraphNode } from "./viewport-tools.js";
 import { editorSelection } from "./editor-selection.js";
@@ -96,21 +97,16 @@ export function FlowEditor(): React.JSX.Element {
 
   // Toolbar Save target while the flow is open (no undo stack here —
   // edits apply directly, so Undo/Redo stay disabled).
-  React.useEffect(() => {
-    if (!doc) return;
+  useDocActions(() => {
+    if (!doc) return null;
     const snapshot = JSON.stringify(doc);
-    const target = {
+    return {
       label: "game flow",
       canSave: snapshot !== saved,
-      canUndo: false,
-      canRedo: false,
+      ...NO_HISTORY,
       problems: validateFlow(doc, { scenes }).map((i) => ({ severity: "error" as const, where: i.path || "(flow)", message: i.message })),
       save: () => void save(),
-      undo: () => undefined,
-      redo: () => undefined,
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   if (!doc) {
@@ -165,12 +161,7 @@ export function FlowEditor(): React.JSX.Element {
         <span style={{ color: issues.length ? "#E8A33D" : "#6FCF97" }}>{issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"}` : "valid"}</span>
         <span className="ml-auto flex items-center gap-2">
           {dirty && <span style={{ color: "#E8A33D" }}>unsaved</span>}
-          <button className={btn} style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)", opacity: dirty ? 1 : 0.5 }} disabled={!dirty} onClick={() => void save()}>
-            Save
-          </button>
-          <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} disabled={!dirty} onClick={() => edit(JSON.parse(saved) as FlowDoc)}>
-            Revert
-          </button>
+          <DocBar dirty={dirty} onSave={() => void save()} onRevert={() => edit(JSON.parse(saved) as FlowDoc)} />
         </span>
       </div>
       {status && <div className="text-[12px]" style={{ color: "var(--m3-on-surface-variant)" }}>{status}</div>}
@@ -322,16 +313,16 @@ export function FlowEditor(): React.JSX.Element {
           <h3 className="text-[13px] font-semibold">Transitions</h3>
           {doc.edges.map((e, i) => (
             <div key={i} className="flex flex-wrap items-center gap-1 text-[12px]">
-              <select aria-label={`edge ${i} from`} className={field} style={fieldStyle} value={e.from} onChange={(ev) => edit({ ...doc, edges: doc.edges.map((x, k) => (k === i ? { ...x, from: ev.target.value } : x)) })}>
+              <Select size="md" aria-label={`edge ${i} from`} value={e.from} onChange={(ev) => edit({ ...doc, edges: doc.edges.map((x, k) => (k === i ? { ...x, from: ev.target.value } : x)) })}>
                 {ids.map((id) => <option key={id}>{id}</option>)}
-              </select>
-              <select aria-label={`edge ${i} event`} className={field} style={fieldStyle} value={e.on} onChange={(ev) => edit({ ...doc, edges: doc.edges.map((x, k) => (k === i ? { ...x, on: ev.target.value } : x)) })}>
+              </Select>
+              <Select size="md" aria-label={`edge ${i} event`} value={e.on} onChange={(ev) => edit({ ...doc, edges: doc.edges.map((x, k) => (k === i ? { ...x, on: ev.target.value } : x)) })}>
                 {events.map((n) => <option key={n}>{n}</option>)}
-              </select>
+              </Select>
               <span>→</span>
-              <select aria-label={`edge ${i} to`} className={field} style={fieldStyle} value={e.to} onChange={(ev) => edit(rewireFlowEdge(doc, i, ev.target.value))}>
+              <Select size="md" aria-label={`edge ${i} to`} value={e.to} onChange={(ev) => edit(rewireFlowEdge(doc, i, ev.target.value))}>
                 {ids.map((id) => <option key={id}>{id}</option>)}
-              </select>
+              </Select>
               <button aria-label={`delete transition ${i}`} className={btn} onClick={() => edit(removeFlowEdge(doc, i))}><MIcon name="delete" size={16} /></button>
             </div>
           ))}
@@ -348,9 +339,9 @@ export function FlowEditor(): React.JSX.Element {
           <h3 className="text-[13px] font-semibold">Nodes</h3>
           <div className="flex flex-wrap items-center gap-1 text-[12px]">
             <input aria-label="new node id" className={field} style={fieldStyle} placeholder="node-id" value={newId} onChange={(e) => setNewId(e.target.value)} />
-            <select aria-label="new node scene" className={field} style={fieldStyle} value={newScene} onChange={(e) => setNewScene(e.target.value)}>
+            <Select size="md" aria-label="new node scene" value={newScene} onChange={(e) => setNewScene(e.target.value)}>
               {scenes.map((s) => <option key={s}>{s}</option>)}
-            </select>
+            </Select>
             <button className={btn} style={{ border: "1px solid var(--m3-outline-variant)" }} disabled={!newId || newId in doc.nodes} onClick={() => { edit(addFlowNode(doc, newId, { scene: newScene })); pick(newId); setNewId(""); }}>
               Add node
             </button>

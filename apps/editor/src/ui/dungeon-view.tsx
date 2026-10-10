@@ -30,9 +30,9 @@ import type { PoolEntry } from "../dungeon-host.js";
 import { DungeonScene, type Pick } from "./dungeon-scene.js";
 import { getTool } from "./tool-store.js";
 import { canDragDungeonProp } from "./viewport-tools.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { useDocActions } from "./doc-actions.js";
 import { pushBake } from "../dock-feed.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, SectionTitle, Select, Field, CheckField } from "./components.js";
 import { editorSelection } from "./editor-selection.js";
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -156,9 +156,9 @@ export function DungeonPanel(): React.JSX.Element {
   const dirty = patch !== null && JSON.stringify(patch) !== saved;
 
   // Toolbar Save/Undo/Redo target while a dungeon is open.
-  React.useEffect(() => {
-    if (!dungeon || !patch) return;
-    const target = {
+  useDocActions(() => {
+    if (!dungeon || !patch) return null;
+    return {
       label: `dungeon "${dungeon.id}"`,
       canSave: dirty,
       canUndo: undo.length > 0,
@@ -175,8 +175,6 @@ export function DungeonPanel(): React.JSX.Element {
         setRedo((r) => r.slice(0, -1));
       },
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   return (
@@ -217,18 +215,15 @@ export function DungeonPanel(): React.JSX.Element {
           <div className="border-t border-border pt-2">
             <SectionTitle>Bake more</SectionTitle>
             <div className="mt-1 grid grid-cols-[1fr_1.6fr_1fr] gap-1.5">
-              <label>
-                <Label>count</Label>
+              <Field label="count">
                 <Input value={String(bake.count)} onChange={(e) => setBake({ ...bake, count: Number(e.target.value) || 1 })} />
-              </label>
-              <label>
-                <Label>seed</Label>
+              </Field>
+              <Field label="seed">
                 <Input value={bake.seed} onChange={(e) => setBake({ ...bake, seed: e.target.value })} />
-              </label>
-              <label>
-                <Label>rank</Label>
+              </Field>
+              <Field label="rank">
                 <Input value={bake.rank} placeholder="1-5" onChange={(e) => setBake({ ...bake, rank: e.target.value })} />
-              </label>
+              </Field>
             </div>
             <Button size="sm" className="mt-2 w-full" onClick={() => void runBake()} disabled={baking}>
               {baking ? "Baking…" : "Bake into the pool"}
@@ -370,22 +365,18 @@ function Details({
           {r.w}×{r.h} · depth {r.depth} · difficulty {r.difficulty.toFixed(2)}
           {r.species ? ` · ${r.species}` : ""}
         </p>
-        <label>
-          <Label>role (baked: {r.baked})</Label>
-          <select
-            className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1"
+        <Field label={`role (baked: ${r.baked})`}>
+          <Select size="xs" className="mt-0.5 w-full"
             value={r.type}
             onChange={(e) => edit({ kind: "roomType", room: r.id, type: e.target.value as RoomType })}
           >
             {ROOM_TYPES.map((t) => (
               <option key={t}>{t}</option>
             ))}
-          </select>
-        </label>
-        <label>
-          <Label>archetype</Label>
-          <select
-            className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1"
+          </Select>
+        </Field>
+        <Field label="archetype">
+          <Select size="xs" className="mt-0.5 w-full"
             value={r.archetype}
             onChange={(e) => edit({ kind: "roomArchetype", room: r.id, archetype: e.target.value })}
           >
@@ -393,8 +384,8 @@ function Details({
             {archetypes.map((a) => (
               <option key={a}>{a}</option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
         {r.edited && (
           <Button size="sm" variant="outline" onClick={() => edit({ kind: "resetRoom", room: r.id })}>
             Back to the bake
@@ -414,14 +405,9 @@ function Details({
         <p className="text-muted-foreground">
           tier {s.tier} · room {s.room} · ({s.x}, {s.y}){s.species ? ` · ${s.species}` : ""}
         </p>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={s.pinned} onChange={(e) => edit({ kind: "spawn", index: s.index, pinned: e.target.checked })} />
-          <span>Pinned (a re-dress keeps who stands here)</span>
-        </label>
-        <label>
-          <Label>rank</Label>
-          <select
-            className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1"
+        <CheckField checked={s.pinned} onChange={(pinned) => edit({ kind: "spawn", index: s.index, pinned })} label="Pinned (a re-dress keeps who stands here)" />
+        <Field label="rank">
+          <Select size="xs" className="mt-0.5 w-full"
             value={s.rank}
             onChange={(e) => edit({ kind: "spawn", index: s.index, rank: Number(e.target.value) })}
           >
@@ -430,8 +416,8 @@ function Details({
                 {n}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
         <Button size="sm" variant="outline" onClick={() => onSelect({ kind: "room", id: s.room })}>
           Its room
         </Button>

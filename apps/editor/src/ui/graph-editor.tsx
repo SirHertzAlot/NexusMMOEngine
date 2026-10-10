@@ -11,12 +11,13 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import { GraphEditor, parseFieldValue, type GraphDocument, type GraphViewModel, type NodeView, type PropertyView } from "../inspectors/graph-editor.js";
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
 import { topDownRoute } from "../graph-view.js";
 import { NodeGraph } from "./node-graph.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { Badge, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
+import { useDocActions } from "./doc-actions.js";
 import { getTool, subscribeTool } from "./tool-store.js";
 import { canDragGraphNode } from "./viewport-tools.js";
 import { editorSelection } from "./editor-selection.js";
@@ -102,9 +103,9 @@ export function GraphEditorPanel(): React.JSX.Element {
   const vm = editor?.viewModel() ?? null;
 
   // Toolbar Save/Undo/Redo target while a graph is open.
-  React.useEffect(() => {
-    if (!editor || !vm || vm.crumbs.length === 0) return;
-    const target = {
+  useDocActions(() => {
+    if (!editor || !vm || vm.crumbs.length === 0) return null;
+    return {
       label: `PICG graph "${vm.file}"`,
       canSave: vm.dirtyFiles.length > 0,
       canUndo: vm.canUndo,
@@ -113,8 +114,6 @@ export function GraphEditorPanel(): React.JSX.Element {
       undo: () => editor.undo(),
       redo: () => editor.redo(),
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   return (
@@ -156,20 +155,14 @@ export function GraphEditorPanel(): React.JSX.Element {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Breadcrumb vm={vm} onUp={(d) => editor?.up(d)} />
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" onClick={() => editor?.undo()} disabled={!vm?.canUndo}>
-                Undo
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => editor?.redo()} disabled={!vm?.canRedo}>
-                Redo
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => vm && editor?.revert(vm.file)} disabled={!vm?.dirty}>
-                Revert
-              </Button>
-              <Button size="sm" onClick={() => void save()} disabled={!vm?.dirtyFiles.length}>
-                Save{vm?.dirtyFiles.length ? ` (${vm.dirtyFiles.length})` : ""}
-              </Button>
-            </div>
+            <DocBar
+              dirty={!!vm?.dirtyFiles.length}
+              saveLabel={`Save${vm?.dirtyFiles.length ? ` (${vm.dirtyFiles.length})` : ""}`}
+              onSave={() => void save()}
+              canRevert={!!vm?.dirty}
+              onRevert={() => vm && editor?.revert(vm.file)}
+              history={{ canUndo: !!vm?.canUndo, canRedo: !!vm?.canRedo, undo: () => editor?.undo(), redo: () => editor?.redo() }}
+            />
           </div>
         </CardHeader>
         <CardContent>

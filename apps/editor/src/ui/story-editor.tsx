@@ -10,14 +10,15 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import { checkStoryRemote, loadStory, saveStory, StorySaveError } from "../story-client.js";
 import {
   addDialogNode, addReply, deleteDialogNode, dialogGraph, History, questGraph, renameDialogNode, startTest,
   type DialogDoc, type DialogReply, type DialogTest, type MockState, type QuestDoc, type QuestState, type QuestsDoc,
 } from "../story-model.js";
 import type { StoryFile, StoryFiles, StoryIssue } from "../story-validate.js";
-import { Button, Input } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { Button, Input, Select, Field } from "./components.js";
+import { useDocActions } from "./doc-actions.js";
 import { NodeGraph } from "./node-graph.js";
 
 const STATES: QuestState[] = ["available", "active", "ready", "done", "unavailable"];
@@ -36,21 +37,12 @@ function setQuest(f: StoryFiles, id: string, q: QuestDoc): StoryFiles {
 
 const cls = "w-full rounded border border-input bg-background px-1.5 py-1 text-xs";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+function StringSelect({ value, options, onChange, blank }: { value: string; options: string[]; onChange: (v: string) => void; blank?: string }): React.JSX.Element {
   return (
-    <label className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
-      {label}
-      {children}
-    </label>
-  );
-}
-
-function Select({ value, options, onChange, blank }: { value: string; options: string[]; onChange: (v: string) => void; blank?: string }): React.JSX.Element {
-  return (
-    <select className={cls} value={value} onChange={(e) => onChange(e.target.value)}>
+    <Select size="xs" className="w-full" value={value} onChange={(e) => onChange(e.target.value)}>
       {blank !== undefined && <option value="">{blank}</option>}
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
+    </Select>
   );
 }
 
@@ -100,16 +92,16 @@ function ReplyEditor({ r, nodes, quests, onChange, onDelete }: { r: DialogReply;
     <div className="flex flex-col gap-1 rounded border border-border/60 p-1.5">
       <Input value={r.text} aria-label="reply text" className="h-7 text-xs" onChange={(e) => onChange({ ...r, text: e.target.value })} />
       <div className="flex gap-1">
-        <Select value={r.next ?? ""} blank="(ends the talk)" options={nodes} onChange={(v) => { const { next: _n, ...rest } = r; onChange(v ? { ...rest, next: v } : rest); }} />
+        <StringSelect value={r.next ?? ""} blank="(ends the talk)" options={nodes} onChange={(v) => { const { next: _n, ...rest } = r; onChange(v ? { ...rest, next: v } : rest); }} />
         <button type="button" className="px-1 text-xs hover:text-red-400" aria-label="delete reply" onClick={onDelete}>x</button>
       </div>
       <div className="flex gap-1">
-        <Select value={r.if?.quest ?? ""} blank="(always shown)" options={qs} onChange={(v) => { const { if: _i, ...rest } = r; onChange(v ? { ...rest, if: { quest: v, is: r.if?.is ?? "available" } } : rest); }} />
-        {r.if && <Select value={r.if.is} options={STATES} onChange={(v) => onChange({ ...r, if: { quest: r.if!.quest, is: v as QuestState } })} />}
+        <StringSelect value={r.if?.quest ?? ""} blank="(always shown)" options={qs} onChange={(v) => { const { if: _i, ...rest } = r; onChange(v ? { ...rest, if: { quest: v, is: r.if?.is ?? "available" } } : rest); }} />
+        {r.if && <StringSelect value={r.if.is} options={STATES} onChange={(v) => onChange({ ...r, if: { quest: r.if!.quest, is: v as QuestState } })} />}
       </div>
       <div className="flex gap-1">
-        <Select value={doKind} blank="(no effect)" options={["accept", "complete"]} onChange={(v) => { const { do: _d, ...rest } = r; onChange(v ? { ...rest, do: v === "accept" ? { accept: doQuest || qs[0] } : { complete: doQuest || qs[0] } } : rest); }} />
-        {r.do && <Select value={doQuest} options={qs} onChange={(v) => onChange({ ...r, do: doKind === "accept" ? { accept: v } : { complete: v } })} />}
+        <StringSelect value={doKind} blank="(no effect)" options={["accept", "complete"]} onChange={(v) => { const { do: _d, ...rest } = r; onChange(v ? { ...rest, do: v === "accept" ? { accept: doQuest || qs[0] } : { complete: doQuest || qs[0] } } : rest); }} />
+        {r.do && <StringSelect value={doQuest} options={qs} onChange={(v) => onChange({ ...r, do: doKind === "accept" ? { accept: v } : { complete: v } })} />}
       </div>
     </div>
   );
@@ -159,7 +151,7 @@ function QuestProps({ q, npcs, onEdit }: { q: QuestDoc; npcs: string[]; onEdit: 
   return (
     <div className="flex flex-col gap-2">
       <Field label="Name"><Input value={q.name} className="h-7 text-xs" onChange={(e) => set({ name: e.target.value })} /></Field>
-      <Field label="Giver"><Select value={q.giver} options={npcs} onChange={(v) => set({ giver: v })} /></Field>
+      <Field label="Giver"><StringSelect value={q.giver} options={npcs} onChange={(v) => set({ giver: v })} /></Field>
       <Field label="Summary"><textarea className={cls} rows={3} value={q.summary} onChange={(e) => set({ summary: e.target.value })} /></Field>
       <Field label="After (quest ids, comma separated)"><Input value={(q.after ?? []).join(", ")} className="h-7 text-xs" onChange={(e) => set({ after: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></Field>
       <p className="text-[11px] font-semibold uppercase text-muted-foreground">Steps</p>
@@ -173,7 +165,7 @@ function QuestProps({ q, npcs, onEdit }: { q: QuestDoc; npcs: string[]; onEdit: 
               <button type="button" aria-label="delete step" className="px-1 text-xs hover:text-red-400" onClick={() => set({ steps: q.steps.filter((_, j) => j !== i) })}>x</button>
             </div>
             <div className="flex flex-wrap gap-1">
-              <Select value={String(s.objective.type)} options={Object.keys(OBJECTIVES)} onChange={(t) => upd({ objective: { ...OBJECTIVES[t] } })} />
+              <StringSelect value={String(s.objective.type)} options={Object.keys(OBJECTIVES)} onChange={(t) => upd({ objective: { ...OBJECTIVES[t] } })} />
               {Object.entries(s.objective).filter(([k]) => k !== "type").map(([k, v]) => (
                 <Input key={k} aria-label={k} placeholder={k} className="h-7 w-24 text-xs" value={String(v)}
                   onChange={(e) => upd({ objective: { ...s.objective, [k]: typeof v === "number" ? Number(e.target.value) : e.target.value } })} />
@@ -206,7 +198,7 @@ function Tester({ d, quests }: { d: DialogDoc; quests: string[] }): React.JSX.El
         {keys.map((k) => (
           <React.Fragment key={k}>
             <span className="truncate self-center text-[11px]">{k}</span>
-            <Select value={live.quests[k] ?? "unavailable"} options={STATES} onChange={(v) => { const m = { ...live, quests: { ...live.quests, [k]: v as QuestState } }; setMock(m); setRun(run.withState(m)); }} />
+            <StringSelect value={live.quests[k] ?? "unavailable"} options={STATES} onChange={(v) => { const m = { ...live, quests: { ...live.quests, [k]: v as QuestState } }; setMock(m); setRun(run.withState(m)); }} />
           </React.Fragment>
         ))}
       </div>
@@ -263,11 +255,11 @@ export function StoryEditorPanel(): React.JSX.Element {
   }, [files]);
 
   // Toolbar Save/Undo/Redo target once the documents load.
-  React.useEffect(() => {
-    if (!files || !sel || !history.current) return;
+  useDocActions(() => {
+    if (!files || !sel || !history.current) return null;
     const h = history.current;
     const snapshot = JSON.stringify(files);
-    const target = {
+    return {
       label: "story files",
       canSave: saved !== null && snapshot !== JSON.stringify(saved),
       canUndo: h.canUndo,
@@ -282,8 +274,6 @@ export function StoryEditorPanel(): React.JSX.Element {
         bump();
       },
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   if (!files || !sel) {
@@ -338,10 +328,14 @@ export function StoryEditorPanel(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2" data-testid="story-editor">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={!h.canUndo} onClick={() => { h.undo(); bump(); }}>Undo</Button>
-        <Button size="sm" variant="outline" disabled={!h.canRedo} onClick={() => { h.redo(); bump(); }}>Redo</Button>
-        <Button size="sm" disabled={!dirty || errors.length > 0} onClick={() => void save()}>Save</Button>
-        <Button size="sm" variant="outline" onClick={() => void load()}>Reload</Button>
+        <DocBar
+          dirty={dirty}
+          saveBlocked={errors.length > 0}
+          onSave={() => void save()}
+          history={{ canUndo: h.canUndo, canRedo: h.canRedo, undo: () => { h.undo(); bump(); }, redo: () => { h.redo(); bump(); } }}
+        >
+          <Button size="sm" variant="outline" onClick={() => void load()}>Reload</Button>
+        </DocBar>
         <span className="text-xs">{errors.length} error(s), {issues.length - errors.length} warning(s){dirty ? " | unsaved changes" : ""}</span>
         <span className="text-xs text-muted-foreground">{msg}</span>
       </div>

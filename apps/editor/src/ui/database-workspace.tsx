@@ -7,7 +7,7 @@
 import * as React from "react";
 import { applyMutations, fetchCatalog, fetchLog, runQuery, undoEntry, type Db, type LogEntry, type QueryResult } from "../database-client.js";
 import { parseCell, rowKey, stage, toMutations, viewRows, type Pending, type Table } from "../database-model.js";
-import { Badge, Button, Input, MIcon, notify } from "./components.js";
+import { Badge, Button, Input, MIcon, notify, Select } from "./components.js";
 import { getDbSelection, setDbSelection, subscribeDbSelection } from "./db-selection.js";
 
 const cell = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
@@ -203,9 +203,9 @@ export function DatabaseQueryPanel(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-3">
       <div className="flex items-center gap-2">
-        <select className="h-8 rounded border border-input bg-background px-2 text-sm" value={target} onChange={(e) => setDb(e.target.value)} aria-label="Database">
+        <Select size="sm" value={target} onChange={(e) => setDb(e.target.value)} aria-label="Database">
           {dbs.map((d) => <option key={d.name} value={d.name}>{d.file}</option>)}
-        </select>
+        </Select>
         <Button size="sm" onClick={run} disabled={!target}>Run (read-only)</Button>
         <span className="text-xs text-muted-foreground">SELECT only · 500 rows · 2 s limit</span>
       </div>

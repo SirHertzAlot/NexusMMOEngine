@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import {
   addRow,
   batchScale,
@@ -31,7 +32,7 @@ import { CATALOG_KINDS, type CatalogEntry, type CatalogKind } from "../content-c
 import { getAt } from "../rules-control.js";
 import { diffRows } from "../gameplay-diff.js";
 import { setPendingChanges } from "./pending-changes.js";
-import { Badge, Button, Card, CardContent, Input } from "./components.js";
+import { Badge, Button, Card, CardContent, Input, Select, Field } from "./components.js";
 
 export const CONTENT_MIME = "application/x-mmo-content";
 
@@ -61,14 +62,14 @@ function Cell(props: { col: GridColumn; value: unknown; error: string | null; ct
   if (col.kind === "enum") {
     const opts = col.optionsFrom ? ctx.options[col.optionsFrom] : col.options === "techniques" ? ctx.options.techniques : col.options;
     return (
-      <select aria-label={label} title={label} className={cls} value={typeof value === "string" ? value : ""} onChange={(e) => onCommit(e.target.value === "" ? undefined : e.target.value)}>
+      <Select size="xs" invalid={!!shown} className="w-full font-mono" aria-label={label} title={label} value={typeof value === "string" ? value : ""} onChange={(e) => onCommit(e.target.value === "" ? undefined : e.target.value)}>
         <option value="">{col.def !== undefined ? `(${String(col.def)})` : ""}</option>
         {(opts ?? []).map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
         ))}
-      </select>
+      </Select>
     );
   }
   const commit = (): void => {
@@ -237,28 +238,33 @@ export function GameplayGridsPanel(): React.JSX.Element {
 
       <div className="flex flex-wrap items-center gap-2">
         <Input className="h-8 w-48" placeholder={`Search ${def.label.toLowerCase()}…`} aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select aria-label="Filter column" className="h-8 rounded border border-input bg-background px-1 text-xs" value={filterKey} onChange={(e) => setFilterKey(e.target.value)}>
+        <Select size="xs" aria-label="Filter column" value={filterKey} onChange={(e) => setFilterKey(e.target.value)}>
           <option value="">filter by…</option>
           {def.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-        </select>
+        </Select>
         {filterKey && <Input className="h-8 w-32" aria-label="Filter text" placeholder="contains" value={filterText} onChange={(e) => setFilterText(e.target.value)} />}
         <Button size="sm" variant="ghost" onClick={() => setDense(!dense)}>{dense ? "Comfortable rows" : "Compact rows"}</Button>
         <span className="text-xs text-muted-foreground">{shownRows.length} of {mine.length} rows{localErrors > 0 ? `, ${localErrors} cell problem${localErrors === 1 ? "" : "s"}` : ""}</span>
         <div className="ml-auto flex items-center gap-2">
           {status && <Badge tone={status.tone}>{status.text}</Badge>}
-          <Button size="sm" variant="ghost" onClick={() => { setRows({ ...rows, [table]: saved }); setIssues([]); setStatus(null); }} disabled={busy || !dirty(table)}>Revert</Button>
-          <Button size="sm" variant="outline" onClick={() => void run("check")} disabled={busy}>Check</Button>
-          <Button size="sm" onClick={() => void run("save")} disabled={busy || !dirty(table)}>Save</Button>
+          <DocBar
+            dirty={dirty(table)}
+            busy={busy}
+            onSave={() => void run("save")}
+            onRevert={() => { setRows({ ...rows, [table]: saved }); setIssues([]); setStatus(null); }}
+          >
+            <Button size="sm" variant="outline" onClick={() => void run("check")} disabled={busy}>Check</Button>
+          </DocBar>
         </div>
       </div>
 
       {ids.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-accent/40 px-2 py-1 text-xs" role="toolbar" aria-label="Batch actions">
           <span>{ids.length} selected</span>
-          <select aria-label="Batch column" className="h-7 rounded border border-input bg-background px-1" value={batchKey} onChange={(e) => setBatchKey(e.target.value)}>
+          <Select size="sm" aria-label="Batch column" value={batchKey} onChange={(e) => setBatchKey(e.target.value)}>
             <option value="">column…</option>
             {def.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-          </select>
+          </Select>
           <Input className="h-7 w-28" aria-label="Batch value" placeholder="value" value={batchText} onChange={(e) => setBatchText(e.target.value)} />
           <Button size="sm" variant="outline" className="h-7" onClick={() => batch("set")} disabled={!batchKey}>Set</Button>
           <Button size="sm" variant="outline" className="h-7" onClick={() => batch("scale")} disabled={!numeric.some((c) => c.key === batchKey)}>Multiply by</Button>
@@ -312,11 +318,9 @@ export function GameplayGridsPanel(): React.JSX.Element {
                     <td colSpan={mainCols.length + 1} className="px-1 py-2">
                       <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4 gap-y-2">
                         {nestedCols.map((c) => (
-                          <label key={c.key} className="flex flex-col gap-0.5">
-                            <span className="text-[11px] text-muted-foreground">{c.label}{c.ref ? ` (${c.ref})` : ""}</span>
+                          <Field key={c.key} label={`${c.label}${c.ref ? ` (${c.ref})` : ""}`} error={errorOf(r, c)}>
                             <Cell col={c} value={getAt(r.data, c.key)} error={errorOf(r, c)} ctx={ctx} onCommit={(v) => setMine(editCell(mine, r.id, c.key, v))} />
-                            {errorOf(r, c) && <span className="text-[11px] text-red-400">{errorOf(r, c)}</span>}
-                          </label>
+                          </Field>
                         ))}
                       </div>
                     </td>

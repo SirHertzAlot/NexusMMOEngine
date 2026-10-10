@@ -79,6 +79,53 @@ export function Input({
   );
 }
 
+// ---------------------------------------------------------------- Select
+
+const selectSizes = { xs: "h-7 px-1.5 text-xs", sm: "h-8 px-2 text-sm", md: "h-9 px-2 text-sm" } as const;
+
+/** The editor's one native dropdown. Children are its `<option>`s. */
+export function Select({
+  size = "md",
+  invalid = false,
+  className,
+  ...rest
+}: Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size"> & { size?: keyof typeof selectSizes; invalid?: boolean }): React.JSX.Element {
+  return (
+    <select
+      className={cn(
+        "rounded-md border bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        invalid ? "border-red-500" : "border-input",
+        selectSizes[size],
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+// ---------------------------------------------------------------- Field
+
+/** A control with its label above it and, when given, the error under it. */
+export function Field({ label, error, className, children }: { label: React.ReactNode; error?: string | null; className?: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <label className={cn("flex flex-col gap-0.5", className)}>
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      {children}
+      {error && <span className="text-[11px] text-red-400">{error}</span>}
+    </label>
+  );
+}
+
+/** A checkbox with its label beside it. */
+export function CheckField({ label, checked, onChange, className }: { label: React.ReactNode; checked: boolean; onChange: (checked: boolean) => void; className?: string }): React.JSX.Element {
+  return (
+    <label className={cn("flex items-center gap-1.5 text-xs", className)}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
 // ---------------------------------------------------------------- Card
 
 export function Card({

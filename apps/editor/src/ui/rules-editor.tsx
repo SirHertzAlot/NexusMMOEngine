@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import {
   getRuleFile,
   listRuleFiles,
@@ -24,18 +25,8 @@ import {
   type PathSegment,
   type RuleIssueView,
 } from "../rules-tree.js";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  SectionTitle,
-} from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 /** What each file sets (content/rules/README.md, one line each). */
 const FILE_BLURBS: Record<string, string> = {
@@ -183,16 +174,15 @@ function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: Node
           <p className="text-xs text-muted-foreground">Empty list.</p>
         )}
         <div className="flex items-center gap-2">
-          <select
+          <Select size="xs"
             value={addKind}
             onChange={(e) => setAddKind(e.target.value as LeafKind)}
             aria-label={`New item kind for ${path}`}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
           >
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>{k}</option>
             ))}
-          </select>
+          </Select>
           <Button size="sm" variant="outline" onClick={() => onChange([...value, blankOf(addKind)])}>
             Add item
           </Button>
@@ -233,17 +223,16 @@ function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: Node
         ) : (
           <span className="font-mono text-xs text-muted-foreground">null</span>
         )}
-        <select
+        <Select size="xs"
           value={kind}
           onChange={(e) => onChange(blankOf(e.target.value as LeafKind))}
           aria-label={`Kind of ${path || "root"}`}
           title="Change this value's kind (replaces it with a blank)"
-          className="h-8 rounded-md border border-input bg-background px-1 text-xs text-muted-foreground"
         >
           {KIND_OPTIONS.map((k) => (
             <option key={k} value={k}>{k}</option>
           ))}
-        </select>
+        </Select>
         {onRemove !== null && depth > 0 && (
           <span className="text-[11px] text-muted-foreground">remove with × above</span>
         )}
@@ -334,19 +323,14 @@ export function RulesPanel(): React.JSX.Element {
 
   // Toolbar Save target for the open rules file (no undo stack —
   // edits apply directly, so Undo/Redo stay disabled).
-  React.useEffect(() => {
-    if (selected === null || content === null) return;
-    const target = {
+  useDocActions(() => {
+    if (selected === null || content === null) return null;
+    return {
       label: `rules "${selected}.json"`,
       canSave: dirty,
-      canUndo: false,
-      canRedo: false,
+      ...NO_HISTORY,
       save: () => void onSave(),
-      undo: () => undefined,
-      redo: () => undefined,
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   return (
@@ -445,21 +429,18 @@ export function RulesPanel(): React.JSX.Element {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={() => void onSave()} disabled={saving || !dirty}>
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={saving || !dirty}
-                  onClick={() => {
+                <DocBar
+                  dirty={dirty}
+                  busy={saving}
+                  saveLabel={saving ? "Saving…" : "Save"}
+                  onSave={() => void onSave()}
+                  onRevert={() => {
                     setContent(pristine);
                     setIssues([]);
                     setError(null);
                     setSavedNote(null);
                   }}
-                >
-                  Revert
-                </Button>
+                />
                 <span className="text-xs text-muted-foreground">
                   Validated with the rules schemas on save; pretty-printed with
                   2 spaces.

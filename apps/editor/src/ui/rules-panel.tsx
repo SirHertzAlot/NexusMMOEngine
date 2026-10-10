@@ -11,6 +11,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import {
   CREATURE_FIELDS,
   DEATH_FIELDS,
@@ -32,8 +33,8 @@ import {
   type RulesSnapshot,
   type Table,
 } from "../rules-control.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 const control = createRulesControl();
 
@@ -89,21 +90,16 @@ export function RulesPanel(): React.JSX.Element {
 
   // Toolbar Save target for the open table (edits apply directly, so
   // Undo/Redo stay disabled — Revert lives in the panel).
-  React.useEffect(() => {
-    if (!saved || !drafts) return;
-    const target = {
+  useDocActions(() => {
+    if (!saved || !drafts) return null;
+    return {
       label: `rules table "${table}.json"`,
       canSave: (Object.keys(drafts) as Table[]).some(
         (t) => JSON.stringify(drafts[t]) !== JSON.stringify(saved.tables[t]),
       ),
-      canUndo: false,
-      canRedo: false,
+      ...NO_HISTORY,
       save: () => void save(),
-      undo: () => undefined,
-      redo: () => undefined,
     };
-    registerDocActions(target);
-    return () => clearDocActions(target);
   });
 
   if (!saved || !drafts) {
@@ -169,12 +165,7 @@ export function RulesPanel(): React.JSX.Element {
           <CardTitle>{TABLE_LABELS[table]}</CardTitle>
           <div className="flex items-center gap-2">
             {status && (status.table ?? table) === table && <Badge tone={status.tone}>{status.text}</Badge>}
-            <Button size="sm" variant="ghost" onClick={revert} disabled={busy || !dirty(table)}>
-              Revert
-            </Button>
-            <Button size="sm" onClick={() => void save()} disabled={busy || !dirty(table)}>
-              Save
-            </Button>
+            <DocBar dirty={dirty(table)} busy={busy} onSave={() => void save()} onRevert={revert} />
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -366,9 +357,8 @@ function Field(props: {
   if (spec.kind === "bool" || spec.kind === "enum") {
     const options = spec.kind === "bool" ? ["true", "false"] : spec.options === "techniques" ? props.techniques : spec.options;
     control = (
-      <select
+      <Select size="md"
         id={id}
-        className={`h-9 rounded-md border border-input bg-background px-2 text-sm ${ring}`}
         value={value === undefined ? "" : String(value)}
         onChange={(e) => onChange(parseField(spec, e.target.value))}
       >
@@ -378,7 +368,7 @@ function Field(props: {
             {o}
           </option>
         ))}
-      </select>
+      </Select>
     );
   } else {
     control = (
