@@ -35,6 +35,9 @@ export interface QualitySettings {
   ao: false | { quality: "performance" | "low" | "medium" | "high" | "ultra"; halfRes: boolean };
   /** Particle budget multiplier (weather, effects, auras). */
   particles: number;
+  /** Most live particles one effect holds / the weather holds (content/vfx/tiers.json); absent: no cap. */
+  effectBudget?: number;
+  weatherBudget?: number;
   /** Toon outlines on characters. */
   outlines: boolean;
   /** "physical": the takram precomputed-scattering sky and aerial perspective; "classic": DaySky's keyframed sky. */
@@ -47,6 +50,14 @@ export const QUALITY_PRESETS: Record<QualityTier, QualitySettings> = {
   high: { tier: "high", dpr: [1, 2], effects: true, msaa: 4, bloom: true, ao: { quality: "medium", halfRes: true }, particles: 1, outlines: true, sky: "physical" },
   ultra: { tier: "ultra", dpr: [1, 2], effects: true, msaa: 4, bloom: true, ao: { quality: "high", halfRes: false }, particles: 1.5, outlines: true, sky: "physical" },
 };
+
+/**
+ * Replace the presets with the content's (content/vfx/tiers.json): the
+ * post effects, resolution, particle multipliers and budgets per tier.
+ */
+export function setQualityPresets(tiers: Record<QualityTier, QualitySettings>): void {
+  for (const t of QUALITY_TIERS) Object.assign(QUALITY_PRESETS[t], tiers[t]);
+}
 
 /** What detect-gpu said (the fields we use). */
 export interface GpuTierResult {
