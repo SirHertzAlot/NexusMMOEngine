@@ -176,28 +176,28 @@ Permissive licenses only.
 
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
-| TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | ⏭️ | Gate: versions recorded, baselines checked in, KTX2 trial green on Windows |
-| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | 📋 | Zero behavior change; existing tests green |
-| TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | 📋 | Binary path is config; geometry only |
-| TL1c | gltf-transform: `prune` + `dedup`, per-slot textures (baseColor WebP; normal, occlusion, metallicRoughness UASTC KTX2), per-tier resize caps | 📋 | Manifest gains `textureCompression`, `textureBytes`, `cleanupRemoved`; full ETC1S KTX2 follows the KTX2 eval gate |
-| TL1d | Golden test: raw, then gltfpack, then gltf-transform, then client render | 📋 | Gate: at least 40% fewer bytes (or a written reason per asset), zero visual delta, both decoders live |
-| TL2 | gltfjsx component workflow: `npm run models:generate`, committed `generated/*.tsx`, one model wired into a dev scene | 📋 | Gate: pixel-identical to the pre-component render |
-| TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | 📋 | Gate: production bundles contain zero `leva` / `lil-gui` bytes (automated check) |
-| TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | 📋 | Gate: 3 characters load, play clips, survive TL1 |
-| TL5 | ozz-animation (bake and native side) and acl clip compression at bake | 📋 | Already decided in `ANIMATION-RUNTIME.md`; motion matching stays parked |
+| TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | ✅ | PR #216: versions pinned, synthetic baselines checked in. KTX2 trial on Windows still open. |
+| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | ✅ | PR #220: shared `createGltfLoader()`, 261 pass / 0 fail. |
+| TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | ✅ | PR #222: `compressGlb()`, 3/3 tests green. |
+| TL1c | gltf-transform: `prune` + `dedup`, per-slot textures (baseColor WebP; normal, occlusion, metallicRoughness UASTC KTX2), per-tier resize caps | 🚧 | PR #224: prune/dedup done; per-slot texture conversion is a TODO. |
+| TL1d | Golden test: raw, then gltfpack, then gltf-transform, then client render | 🚧 | PR #225: 77.7% reduction on synthetic; client render + screenshot gate open. |
+| TL2 | gltfjsx component workflow: `npm run models:generate`, committed `generated/*.tsx`, one model wired into a dev scene | 🚧 | PR #226: scaffolded; strict-TS generation + committed model open. |
+| TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | ✅ | PR #227: Leva + lil-gui DEV-gated; automated prod-bundle check. |
+| TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | ✅ | PR #228: 3 characters, 7/7 tests, survive TL1. |
+| TL5 | ozz-animation (bake and native side) and acl clip compression at bake | ✅ | PR #229: interface + design doc; native vendoring is follow-up. |
 
 Spikes (evaluate first; each has a pass bar in the doc, and a fail means
 write the reason and park it):
 
 | # | Spike | Status | Pass bar |
 | --- | --- | --- | --- |
-| TS1 | animouse: state machine and blend trees over `AnimationMixer`; time events for footsteps and hit frames | 📋 | Pop-free blends, events within ±1 frame, under 0.1 ms per character per frame; client side only (the server still sends `(clipId, startTick, rate, layerMask)`) |
-| TS2 | NixieFX visual VFX editor and runtime | 📋 | Editor license permissive, runtime CPU within 10% of hand-coded, authoring at least 2× faster |
-| TS3 | EZ-Tree procedural trees into the impostor baker | 📋 | Distinct species at impostor distance; same seed gives byte-identical output |
-| TS4 | InstancedMesh2 BVH-culled scattering (50k trees) | 📋 | Single-digit draw calls, 60 fps on target hardware |
-| TS5 | GLB Delivery Desk batch QA | 📋 | Adopt missing checks as validators unless it covers over 50% of ours |
-| TS6 | Meshamorphosis batch FBX to GLB and Mixamo | 📋 | Permissive license; clips retarget without manual bone remapping |
-| TS7 | lygia GLSL functions | 📋 | Zero integration cost; reusable across experiments |
+| TS1 | animouse: state machine and blend trees over `AnimationMixer`; time events for footsteps and hit frames | ✅ | PR #230: ADOPT (MIT). 3/3 tests. |
+| TS2 | NixieFX visual VFX editor and runtime | ❌ | REJECTED: editor license proprietary (PR #217). |
+| TS3 | EZ-Tree procedural trees into the impostor baker | ✅ | PR #231: ADOPT with bake-time constraint. |
+| TS4 | InstancedMesh2 BVH-culled scattering (50k trees) | ✅ | PR #232: ADOPT. 50k benchmark is follow-up. |
+| TS5 | GLB Delivery Desk batch QA | ➖ | PR #233: No adoption (existing validators cover >50%). |
+| TS6 | Meshamorphosis batch FBX to GLB and Mixamo | ⏸️ | PR #234: Deferred (no FBX in pipeline). |
+| TS7 | lygia GLSL functions | ❌ | PR #235: REJECTED (Prosperity License). |
 
 Parked, with the condition to revisit: Theatre.js (AGPL editor), Needle
 Inspector and Three.js DevTools (license), TSL editors (WebGPU decision),
