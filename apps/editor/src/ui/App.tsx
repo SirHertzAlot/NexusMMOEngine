@@ -32,6 +32,7 @@ import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
 import { getViewportActions, subscribeViewportActions } from "./viewport-actions.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
+import { usePendingChanges } from "./pending-changes.js";
 import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.js";
 import { requestOpenAsset } from "./open-asset.js";
 import { loadCatalog } from "../gameplay-client.js";
@@ -2618,6 +2619,39 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
 
 // ---------------------------------------------------------------- right dock
 
+function GameplayDetails(): React.JSX.Element {
+  const report = usePendingChanges();
+  const icon = { edit: "edit", add: "add_circle", remove: "remove_circle", error: "error" } as const;
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="rounded-xl p-2.5 text-[12.5px]"
+        style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
+      >
+        <MIcon name="bolt" size={16} /> Saved tables hot-reload into the running server
+      </div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
+        Unsaved changes
+      </p>
+      {report === null ? (
+        <p className="text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+          Nothing changed. Edits in the grid list here until you save; a refused save writes nothing.
+        </p>
+      ) : (
+        <ul className="text-[12.5px]" aria-label={`Unsaved changes in ${report.label}`}>
+          {report.changes.map((c, i) => (
+            <li key={`${c.kind}:${c.path}:${i}`} className="flex items-center gap-2 border-b py-1.5" style={{ borderColor: "#2a2b31" }}>
+              <MIcon name={icon[c.kind]} size={16} />
+              <span className="font-mono text-xs">{c.path}</span>
+              <span className="ml-auto text-right" style={{ color: c.kind === "error" ? "var(--m3-error)" : "var(--m3-on-surface-variant)" }}>{c.change}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
@@ -2628,21 +2662,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <StoryDetails />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
-  if (workspace === "gameplay") {
-    return (
-      <div className="flex flex-col gap-3">
-        <div
-          className="rounded-xl p-2.5 text-[12.5px]"
-          style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
-        >
-          <MIcon name="bolt" size={16} /> Saved tables hot-reload into the running server
-        </div>
-        <p className="text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Select a row in the grid to see its details here. Edits stay validated — a refused save writes nothing.
-        </p>
-      </div>
-    );
-  }
+  if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
     return (
