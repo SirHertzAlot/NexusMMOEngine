@@ -73,3 +73,13 @@ test("constructor rejects nonsense config", () => {
   assert.throws(() => new TickLoop(() => {}, 0), RangeError);
   assert.throws(() => new TickLoop(() => {}, STEP_MS, 0), RangeError);
 });
+
+test("step runs one tick outside the clock; rearm drops the backlog", () => {
+  const ticks: number[] = [];
+  const loop = new TickLoop((t) => ticks.push(t));
+  loop.frame(0);
+  loop.step();
+  loop.rearm(10_000);
+  assert.equal(loop.frame(10_000 + STEP_MS), 1);
+  assert.deepEqual(ticks, [0, 1]);
+});

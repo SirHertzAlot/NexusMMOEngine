@@ -12,6 +12,8 @@ import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
 import { Button } from "./components.js";
+import { clearViewportActions, registerViewportActions } from "./viewport-actions.js";
+import { setSceneCameraPos } from "./camera-position.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
@@ -49,12 +51,27 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
         onSelect: (id) => latest.current.onSelect(id),
         onTransform: (id, t) => latest.current.onTransform(id, t),
         onPlace: (prefab, position) => latest.current.onPlace(prefab, position),
+        // Play menu "Start from camera position" reads this store.
+        onCameraGround: (p) => setSceneCameraPos(p),
       });
     } catch {
       setWebgl(false);
       return;
     }
+    // Publish the initial view (orbit 'change' only fires on interaction).
+    setSceneCameraPos({ x: 0, z: 0 });
     viewRef.current = view;
+    // The View menu's Zoom/Reset act on the mounted viewport.
+    const viewport = {
+      label: "scene viewport",
+      canZoomIn: true,
+      canZoomOut: true,
+      canReset: true,
+      zoomIn: () => view.zoomIn(),
+      zoomOut: () => view.zoomOut(),
+      reset: () => view.frame(),
+    };
+    registerViewportActions(viewport);
     let alive = true;
     loadTerrain().then(
       (t) => alive && view.setTerrain(t.tiles, t.chunkWorldSize),
@@ -67,6 +84,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     return () => {
       alive = false;
       viewRef.current = null;
+      clearViewportActions(viewport);
       view.dispose();
     };
   }, []);

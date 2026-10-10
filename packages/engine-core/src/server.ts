@@ -57,6 +57,8 @@
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
  *   MMO_BOTS_RADIUS how far from home they roam, metres (default 18)
+ *   MMO_SPAWN_OVERRIDE "x,z" player spawn point, overriding the world's stored
+ *                  spawn_point (the editor's Play menu "Start from")
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
  *   MMO_ADMINS     comma-separated admin usernames for the admin console
@@ -133,6 +135,8 @@ import {
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { healthHttpHandler } from "./net/health.js";
+import { parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
@@ -155,6 +159,7 @@ import { SkillSheet } from "./stats/mastery.js";
 import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
+import { AnimationSystem } from "./animation.js";
 import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { QuestService } from "./quests/quest-service.js";
 import { SqliteQuestStore } from "./quests/quest-store.js";
@@ -316,7 +321,10 @@ async function main(): Promise<void> {
   // A baked world records its chunk range and spawn point. A legacy world
   // is just the spawn area around the origin.
   const spawnMeta = store.getMeta("spawn_point");
-  const spawn = spawnMeta ? (JSON.parse(spawnMeta) as { x: number; z: number }) : { x: 0, z: 0 };
+  const storedSpawn = spawnMeta ? (JSON.parse(spawnMeta) as { x: number; z: number }) : { x: 0, z: 0 };
+  // The editor's play mode overrides the spawn via MMO_SPAWN_OVERRIDE="x,z"
+  // (Play menu "Start from"). Malformed values fall back to the stored point.
+  const spawn = parseSpawnOverride(process.env.MMO_SPAWN_OVERRIDE) ?? storedSpawn;
   const scx = Math.floor(spawn.x / CHUNK_SIZE);
   const scz = Math.floor(spawn.z / CHUNK_SIZE);
   const area: Array<[number, number]> = [];
@@ -748,6 +756,7 @@ async function main(): Promise<void> {
         mastery,
         integrate: new IntegrateSystem(),
         character,
+        animation: new AnimationSystem(),
         "prop-collision": new PropCollisionSystem(),
         collider: new ColliderSystem(),
         obstacles,
@@ -772,6 +781,8 @@ async function main(): Promise<void> {
   const gw: Gateway = new Gateway({
     port: PORT,
     sessionStore,
+    // GET /health for deploy health checks (EA19); PCG's handler composes with it.
+    http: healthHttpHandler,
     presence: {
       report: (names) => void worldClient?.reportPresence(names),
       query: (names) => {

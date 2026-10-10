@@ -44,7 +44,10 @@ export function startPcgService(gw: Gateway, dir = DEFAULT_PCG_ASSETS, cooker = 
   const library = PcgAssetLibrary.load(dir, cooker.cooker);
   const rpc = new RpcServer({ authenticate: (token) => gw.sessionUser(token) });
   registerPcgRpc(rpc, library);
-  gw.setHttpHandler((req, res) => rpc.handle(req, res));
+  // Compose with whatever handler is already mounted (e.g. /health):
+  // the first handler to claim the request wins.
+  const prev = gw.getHttpHandler();
+  gw.setHttpHandler((req, res) => (prev ? prev(req, res) : false) || rpc.handle(req, res));
   const assets = library.list();
   const summary =
     `${assets.length} PCG asset(s) (${assets.map((a) => a.id).join(", ")}) from ${dir}; ` +

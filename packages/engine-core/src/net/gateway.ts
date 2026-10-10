@@ -49,6 +49,7 @@
 import * as crypto from "node:crypto";
 import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
+import { TickTimings } from "../tick-timings.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -94,6 +95,8 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
+import { parseAppearanceArgs, applyAppearanceEdit } from "../admin/appearance.js";
+import { ensureAnimation } from "../animation.js";
 import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
@@ -890,6 +893,9 @@ export class Gateway {
     return this.transport?.kind ?? null;
   }
 
+  /** Admin pause: the wall-clock driver skips ticks (step still runs one). */
+  private paused = false;
+
   /**
    * Begin the wall-clock tick driver (production). Tests skip this and
    * drive frame() manually with a synthetic clock instead.
@@ -897,7 +903,8 @@ export class Gateway {
   startTicking(): void {
     if (this.tickTimer) return;
     this.tickTimer = setInterval(() => {
-      this.loop.frame(this.clock());
+      if (this.paused) this.loop.rearm(this.clock());
+      else this.loop.frame(this.clock());
     }, STEP_MS / 2);
     this.tickTimer.unref();
   }
@@ -960,6 +967,14 @@ export class Gateway {
   }
 
   /**
+   * The current HTTP handler (null: none). Services that mount after
+   * construction (PCG, health) compose with it instead of replacing it.
+   */
+  getHttpHandler(): HttpHandler | null {
+    return this.httpHandler;
+  }
+
+  /**
    * The account behind a live session token (the welcome's
    * session_token), or null: how HTTP services authenticate callers.
    */
@@ -983,6 +998,8 @@ export class Gateway {
   }
 
   private readonly tickTimeListeners: Array<(ms: number) => void> = [];
+  /** Per-tick durations and system costs, served to the editor's Debug workspace. */
+  private readonly tickTimings = new TickTimings();
 
   /** Called with each tick's wall time in ms, once the tick is done (E6). */
   addTickTimeListener(cb: (ms: number) => void): void {
@@ -1032,6 +1049,12 @@ export class Gateway {
     const ms = performance.now() - t0;
     this.telemetry.tickMs(ms);
     for (const l of this.tickTimeListeners) l(ms);
+    this.tickTimings.endTick(ms);
+  }
+
+  /** Snapshot for the editor's Debug workspace (via the debug API). */
+  getTickTimings(): ReturnType<TickTimings["snapshot"]> {
+    return this.tickTimings.snapshot();
   }
 
   private runTick(tick: number): void {
@@ -1039,7 +1062,13 @@ export class Gateway {
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
     const dt = STEP_MS / 1000;
-    for (const s of this.systems) s.step(sim, dt);
+    // Each system's cost feeds the editor's Debug workspace (tick timings).
+    const timings = this.tickTimings;
+    for (const s of this.systems) {
+      const t0 = performance.now();
+      s.step(sim, dt);
+      timings.recordSystem(s.name, performance.now() - t0);
+    }
     sim.emitTick(tick);
     const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage> = [
       ...this.sendHits(sim, tick),
@@ -2026,6 +2055,16 @@ export class Gateway {
         query: "tiles",
         tiles: this.debugSource?.tiles() ?? [],
       };
+    } else if (q.query === "timings") {
+      const t = this.getTickTimings();
+      res = {
+        kind: "debug",
+        query: "timings",
+        ticks: t.ticks,
+        p50: t.p50,
+        p99: t.p99,
+        systems: t.systems,
+      };
     } else {
       this.sendError(s, 4003, "unknown debug query");
       return;
@@ -2066,7 +2105,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2087,6 +2126,13 @@ export class Gateway {
       }
     } else if (cmd.command === "set") {
       res = this.runSet(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "appearance") {
+      res = this.runAppearance(s, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -2154,6 +2200,17 @@ export class Gateway {
           this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "time", day }));
         }
       }
+    } else if (cmd.command === "pause" || cmd.command === "resume") {
+      this.paused = cmd.command === "pause";
+      res = { kind: "admin", command: cmd.command, ok: true, message: this.paused ? "paused" : "running" };
+    } else if (cmd.command === "step") {
+      if (this.paused) this.loop.step();
+      res = {
+        kind: "admin",
+        command: cmd.command,
+        ok: this.paused,
+        message: this.paused ? `tick ${this.loop.stats().ticks}` : "step needs a paused server",
+      };
     } else if (cmd.command === "weather") {
       const r = parseWeatherCommand(this.weatherOverride, cmd.args);
       res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
@@ -2236,6 +2293,36 @@ export class Gateway {
     const r = applySet(this.world, target.wireId, parsed.data.component, parsed.data.field, parsed.data.value);
     if (!r.ok) return { kind: "admin", command: "set", ok: false, message: r.message };
     return { kind: "admin", command: "set", ok: true, message: r.message };
+  }
+
+  /**
+   * `appearance` (roadmap A6): view and edit a character's look live.
+   * Args: {entity: "<u64>" | "me", args: string[]}. Parts and colours are
+   * validated against the character catalog; the change applies via
+   * sim.setLook and syncs like any appearance update.
+   */
+  private runAppearance(s: ClientSession, args: unknown): AdminResult {
+    const parsed = z.object({
+      entity: z.string().default("me"),
+      args: z.array(z.string()).default([]),
+    }).safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "appearance", ok: false, message: "usage: appearance {entity?: \"me\"|<id>, args?: string[]}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "appearance", ok: false, message: target.error };
+    }
+    const edit = parseAppearanceArgs(parsed.data.args);
+    if (!edit.ok) {
+      return { kind: "admin", command: "appearance", ok: false, message: edit.message };
+    }
+    const r = applyAppearanceEdit(this.world, target.wireId, edit.edit, this.characterCatalog ?? null);
+    if (!r.ok) return { kind: "admin", command: "appearance", ok: false, message: r.message ?? "appearance failed" };
+    // Equipment overlays (held models) still apply on top.
+    const eid = this.world.resolveWireId(target.wireId);
+    if (eid >= 0) this.refreshAvatarLook(eid, this.holderOf(s));
+    return { kind: "admin", command: "appearance", ok: true, message: r.message ?? "appearance updated" };
   }
 
   /**
@@ -3962,6 +4049,7 @@ export class Gateway {
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;
+    ensureAnimation(sim, eid);
     if (characterId !== null) {
       addComponent(sim.ecs, C.CharacterRef, eid);
       C.CharacterRef.idHi[eid] = Math.floor(characterId / 4294967296);
