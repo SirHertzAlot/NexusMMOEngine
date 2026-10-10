@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-10-10)
 
-**108 items built, 25 in progress, 28 planned, 1 next up** (counted
+**109 items built, 25 in progress, 27 planned, 1 next up** (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -176,8 +176,8 @@ Permissive licenses only.
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
 | TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | 🚧 | #216: versions pinned in `packages/art/README.md`, three generated baseline GLBs and a manifest checked in. Open: the KTX2 trial on Windows (verified on Linux only), load-time and screenshot-hash baselines |
-| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | ⏭️ | Zero behavior change; existing tests green |
-| TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | 📋 | Binary path is config; geometry only |
+| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | ✅ | #220: `createGltfLoader()` used by every GLTF call site, Basis wasm in `apps/client/public/basis/`; zero behavior change, client tests unchanged |
+| TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | ⏭️ | Binary path is config; geometry only |
 | TL1c | gltf-transform: `prune` + `dedup`, per-slot textures (baseColor WebP; normal, occlusion, metallicRoughness UASTC KTX2), per-tier resize caps | 📋 | Manifest gains `textureCompression`, `textureBytes`, `cleanupRemoved`; full ETC1S KTX2 follows the KTX2 eval gate |
 | TL1d | Golden test: raw, then gltfpack, then gltf-transform, then client render | 📋 | Gate: at least 40% fewer bytes (or a written reason per asset), zero visual delta, both decoders live |
 | TL2 | gltfjsx component workflow: `npm run models:generate`, committed `generated/*.tsx`, one model wired into a dev scene | 📋 | Gate: pixel-identical to the pre-component render |
@@ -365,7 +365,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
-- **2026-10-10 (night)**: Merged #209 to #219 (and #214 to #216): editor DRY audit finished (`useTableDrafts`, #210), EA25 localization (#211), EA14 play menu (#212), EA24 audio engine and panel (#213), EA21 client animation and panel (#214), TL0 versions pinned and baselines (#216), EA22 particle budgets (#217), agnostic VFX format (#218) and the particle editor port (#219; NixieFX spike TS2 failed its license gate). #218's schema test moved to `node:test` (vitest isn't in the repo and broke the art build). Remaining on EA21 and TL0 listed in their rows.
+- **2026-10-10 (night)**: Merged #209 to #219 (and #214 to #216, #220): editor DRY audit finished (`useTableDrafts`, #210), EA25 localization (#211), EA14 play menu (#212), EA24 audio engine and panel (#213), EA21 client animation and panel (#214), TL0 versions pinned and baselines (#216), TL1a client decoders (#220), EA22 particle budgets (#217), agnostic VFX format (#218) and the particle editor port (#219; NixieFX spike TS2 failed its license gate). #218's schema test moved to `node:test` (vitest isn't in the repo and broke the art build). Remaining on EA21 and TL0 listed in their rows.
 - **2026-10-10**: Roadmap caught up and extended. Merged since the last update: customizable toolbar (#185), Details shows unsaved Gameplay edits (#177), review fixes on the play stack (#198), the EA19 build and deploy pipeline (#187, #188), EA21, EA22, EA24 and EA25 foundations (#194, #196, #197, #195), the EA23 HUD drag editor (#190, #193), EA26 playtests and their pipeline stage (#189, #192), A6 appearance command (#191), and the editor DRY audit M1 to M5 (#199 to #205); M6 and M7 (#206, #207) went into their stack branches and reach main with #209. Added §1e (tooling and asset performance: compression, gltfjsx, dev overlays, spikes) from [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) and §1f (editor maintainability).
 - **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
