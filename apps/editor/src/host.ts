@@ -105,6 +105,7 @@ import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleAudioRoute } from "./audio-host.js";
+import { handleVfxRoute } from "./vfx-host.js";
 import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
@@ -1289,6 +1290,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const audioReply = await handleAudioRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, () => readBody(req));
           if (audioReply) {
             sendJson(res, audioReply.status, audioReply.body);
+            return;
+          }
+          const vfxReply = await handleVfxRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, () => readBody(req));
+          if (vfxReply) {
+            sendJson(res, vfxReply.status, vfxReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(

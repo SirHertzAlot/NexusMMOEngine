@@ -15,3 +15,5 @@ export * from "./character/colour-slots.js";
 export * from "./character/look.js";
 export * from "./character/animations.js";
 export { loadParticleBudgets, budgetForTier, DEFAULT_PARTICLE_BUDGETS, type ParticleBudgets, type TierBudget, type QualityTier } from "./particle-budgets.js";
+export { VfxEffect, parseVfxEffect, type VfxEmitter, type VfxSpawnShape, type VfxForce, type VfxCurve, type VfxScalar, type VfxColor, type VfxColorGradient } from "./vfx-schema.js";
+export { vfxToQuarks } from "./vfx-convert.js";

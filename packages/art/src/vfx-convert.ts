@@ -20,10 +20,10 @@ import {
   PiecewiseBezier,
   PointEmitter,
   SphereEmitter,
-  BoxEmitter,
+  RectangleEmitter,
   SizeOverLife,
   ApplyForce,
-  GravityForce,
+  Vector3,
   type EmitterShape,
 } from "three.quarks";
 import type {
@@ -45,12 +45,12 @@ function toQuarksScalar(s: VfxScalar) {
     return new ConstantValue(s);
   }
   // PiecewiseBezier from our curve points
-  const beziers = s.points.map((p, i) => {
+  const beziers: [Bezier, number][] = s.points.map((p, i) => {
     const next = s.points[Math.min(i + 1, s.points.length - 1)];
     // Approximate each segment as a bezier with matching endpoints
-    return [new Bezier(p.value, p.value, next.value, next.value), p.t] as const;
+    return [new Bezier(p.value, p.value, next.value, next.value), p.t];
   });
-  return new PiecewiseBezier([beziers.map(([b, t]) => [b, t] as [Bezier, number])]);
+  return new PiecewiseBezier(beziers);
 }
 
 // ---------------------------------------------------------------------------
@@ -68,11 +68,10 @@ function toQuarksShape(shape: VfxSpawnShape): EmitterShape {
         arc: Math.PI * 2,
       } as never);
     case "box":
-      return new BoxEmitter({
+      return new RectangleEmitter({
         width: shape.halfExtents.x * 2,
         height: shape.halfExtents.y * 2,
-        depth: shape.halfExtents.z * 2,
-      } as never);
+      });
     case "cone":
       return new ConeEmitter({
         radius: shape.radius,
@@ -95,28 +94,17 @@ function toQuarksShape(shape: VfxSpawnShape): EmitterShape {
 
 function toQuarksColor(color: VfxColor | VfxColorGradient, system: ParticleSystem) {
   if ("stops" in color) {
-    const gradient = new Gradient();
+    const colors: [Vector3, number][] = [];
+    const alphas: [number, number][] = [];
     for (const stop of color.stops) {
-      gradient.addPoint(
-        stop.t,
-        new ConstantColor({
-          x: stop.color.r,
-          y: stop.color.g,
-          z: stop.color.b,
-          w: stop.color.a,
-        } as never)
-      );
+      colors.push([new Vector3(stop.color.r, stop.color.g, stop.color.b), stop.t]);
+      alphas.push([stop.color.a, stop.t]);
     }
-    system.addBehavior(new ColorOverLife(gradient));
+    system.addBehavior(new ColorOverLife(new Gradient(colors, alphas)));
   } else {
-    system.addBehavior(
-      new ColorOverLife(
-        new ColorRange(
-          { x: color.r, y: color.g, z: color.b, w: color.a } as never,
-          { x: color.r, y: color.g, z: color.b, w: color.a } as never
-        )
-      )
-    );
+    // Constant color: wrap in a gradient with two identical stops
+    const v = new Vector3(color.r, color.g, color.b);
+    system.addBehavior(new ColorOverLife(new Gradient([[v, 0], [v, 1]], [[color.a, 0], [color.a, 1]])));
   }
 }
 
@@ -129,8 +117,8 @@ function toQuarksForce(force: VfxForce, system: ParticleSystem) {
     case "gravity":
       system.addBehavior(
         new ApplyForce(
-          new GravityForce(force.acceleration.x, force.acceleration.y, force.acceleration.z),
-          1
+          new Vector3(force.acceleration.x, force.acceleration.y, force.acceleration.z).normalize(),
+          new ConstantValue(new Vector3(force.acceleration.x, force.acceleration.y, force.acceleration.z).length())
         )
       );
       break;
@@ -172,7 +160,7 @@ function toQuarksEmitter(emitter: VfxEmitter): ParticleSystem {
     })) as never,
   } as never);
 
-  system.emitterName = emitter.name;
+  (system as unknown as { emitterName: string }).emitterName = emitter.name;
 
   // Direction and spread
   // (three.quarks uses shape orientation; direction is applied via rotation)
@@ -210,5 +198,6 @@ export function vfxToQuarks(effect: VfxEffect): ParticleSystem[] {
  * (for QuarksLoader, if needed).
  */
 export function vfxToQuarksJson(effect: VfxEffect): unknown[] {
-  return vfxToQuarks(effect).map((s) => s.toJSON());
+  const meta = { geometries: {}, materials: {}, textures: {}, images: {}, shapes: {}, skeletons: {}, animations: {}, nodes: {} };
+  return vfxToQuarks(effect).map((s) => s.toJSON(meta));
 }
