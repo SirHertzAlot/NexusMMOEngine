@@ -1280,6 +1280,9 @@ function Toolbar(props: {
   const { pmState } = playUiStore.use();
   const stopping = pmState === "stopping";
   const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
+  // Toolbar customization (Gap #7): toggle sections, persisted.
+  const [showTransform, setShowTransform] = useLocalStorage("mmo-editor.toolbar.showTransform", true);
+  const [customizeOpen, setCustomizeOpen] = React.useState(false);
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent): void {
@@ -1305,7 +1308,39 @@ function Toolbar(props: {
           ? "2px solid var(--m3-tertiary)"
           : "1px solid var(--m3-outline-variant)",
       }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setCustomizeOpen(true);
+      }}
+      title="Right-click to customize the toolbar"
     >
+      {customizeOpen && (
+        <>
+          <span className="fixed inset-0 z-40" onClick={() => setCustomizeOpen(false)} aria-hidden="true" />
+          <div
+            className="absolute right-2 top-[52px] z-50 w-56 rounded-xl p-2 shadow-lg"
+            style={{ background: "var(--m3-surface-3)" }}
+            role="menu"
+            aria-label="Customize toolbar"
+          >
+            <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
+              Toolbar
+            </p>
+            <button
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--m3-secondary-container)]"
+              onClick={() => setShowTransform(!showTransform)}
+              role="menuitemcheckbox"
+              aria-checked={showTransform}
+            >
+              <MIcon name={showTransform ? "check_box" : "check_box_outline_blank"} size={16} />
+              Transform tools
+            </button>
+            <p className="px-2 pt-2 text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+              Right-click the toolbar to customize it. Settings persist in this browser.
+            </p>
+          </div>
+        </>
+      )}
       <div className="flex items-center gap-0.5" role="toolbar" aria-label="Edit tools">
         <IconButton
           label={doc ? (doc.canSave ? `Save ${doc.label} (Ctrl S)` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
@@ -1336,7 +1371,7 @@ function Toolbar(props: {
         </IconButton>
       </div>
       <div
-        className="mx-1 hidden items-center gap-0.5 lg:flex"
+        className={`mx-1 items-center gap-0.5 ${showTransform ? "hidden lg:flex" : "hidden"}`}
         role="toolbar"
         aria-label="Transform tools"
         style={{ borderLeft: "1px solid var(--m3-outline-variant)", paddingLeft: 8 }}
