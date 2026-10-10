@@ -29,6 +29,8 @@ export interface SceneViewHandlers {
   onTransform(id: string, t: LiveTransform): void;
   /** A content-browser item was dropped on the ground at `position`. */
   onPlace(prefab: string, position: Vec3): void;
+  /** The orbit camera moved: ground (x, z) it looks at. */
+  onCameraGround?(pos: { x: number; z: number }): void;
 }
 
 const DEG = 180 / Math.PI;
@@ -86,6 +88,12 @@ export class SceneView {
     this.orbit = new OrbitControls(this.camera, canvas);
     this.orbit.enableDamping = false;
     this.orbit.target.set(0, 0, 0);
+    // Publish the ground point the camera looks at (Play menu "Start from
+    // camera position"). Fires on orbit changes; the initial view publishes
+    // once below.
+    this.orbit.addEventListener("change", () => {
+      this.handlers.onCameraGround?.({ x: this.orbit.target.x, z: this.orbit.target.z });
+    });
 
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.setSize(0.8);
@@ -281,6 +289,26 @@ export class SceneView {
   /** Where the camera looks, on the ground (for "place at the view centre"). */
   centre(): Vec3 {
     return [round(this.orbit.target.x), 0, round(this.orbit.target.z)];
+  }
+
+  /** Dolly the camera toward the orbit target (View menu Zoom In). */
+  zoomIn(): void {
+    const dir = this.camera.position.clone().sub(this.orbit.target);
+    const len = dir.length();
+    if (len > 1) {
+      dir.setLength(len * 0.8);
+      this.camera.position.copy(this.orbit.target).add(dir);
+    }
+  }
+
+  /** Dolly the camera away from the orbit target (View menu Zoom Out). */
+  zoomOut(): void {
+    const dir = this.camera.position.clone().sub(this.orbit.target);
+    const len = dir.length();
+    if (len < 1000) {
+      dir.setLength(len * 1.25);
+      this.camera.position.copy(this.orbit.target).add(dir);
+    }
   }
 
   dispose(): void {

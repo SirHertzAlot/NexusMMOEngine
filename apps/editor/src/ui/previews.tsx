@@ -11,6 +11,8 @@
 import * as React from "react";
 import { MIcon, TreeItem, OverflowMenu, IconButton, notify, staged } from "./components.js";
 import type { MenuItem } from "./components.js";
+import { fetchCatalog, type Db } from "../database-client.js";
+import { getDbSelection, setDbSelection, subscribeDbSelection } from "./db-selection.js";
 import { assetUiStore, setAssetFilter, setAssetPreview, useAssetManifest } from "./asset-inspector.js";
 import { Chart } from "./charts.js";
 import { LiveOpsTelemetry } from "./liveops-telemetry.js";
@@ -608,12 +610,6 @@ export function LiveOpsDetails(): React.JSX.Element {
 
 // ---------------------------------------------------------------- database (ux-09, ux-10)
 
-const SCHEMA: Array<[string, Array<[string, string?, string?]>]> = [
-  ["world.db", [["snapshots", "6"], ["events", "18.2k", "ledger"], ["chunk_entities", "41k"], ["formation_tiles_v2", "2.3k"], ["item_events", "128k", "ledger"], ["item_latest", "9.4k", "cache"], ["terrain_tiles", "1.0k"]]],
-  ["characters.db", [["characters", "312"], ["character_state", "312"], ["character_skills", "298"], ["deaths", "4.1k"], ["admin_log", "57"]]],
-  ["guilds.db", []], ["social.db", []], ["navmesh.db", []],
-];
-
 interface DbDraft {
   id: number;
   field: string;
@@ -664,48 +660,72 @@ const TABLE_INFO: Record<string, { rows: string; owner: string; columns: string[
 };
 
 export function SchemaTree(): React.JSX.Element {
-  const { table } = dbStore.use();
-  const [open, setOpen] = React.useState<string[]>(["characters.db"]);
+  // The Data grid opens whatever is picked here (see db-selection.ts).
+  const picked = React.useSyncExternalStore(subscribeDbSelection, getDbSelection);
+  const [open, setOpen] = React.useState<string[]>([]);
+  const [dbs, setDbs] = React.useState<Db[] | null>(null);
+  const [error, setError] = React.useState("");
+  React.useEffect(() => {
+    let live = true;
+    fetchCatalog().then(
+      (d) => {
+        if (!live) return;
+        setDbs(d);
+        // Open the first db by default.
+        if (d.length > 0) setOpen([d[0].name]);
+      },
+      (e: Error) => live && setError(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
   const toggle = (id: string): void => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const crud = (label: string): Array<MenuItem | "sep"> => [
-    { label: `Inspect ${label}`, icon: "search", run: () => dbStore.set((p) => ({ ...p, table: label })) },
+  const crud = (db: string, label: string): Array<MenuItem | "sep"> => [
+    { label: `Inspect ${label}`, icon: "search", run: () => setDbSelection({ db, table: label }) },
     "sep",
     { label: "Rename…", icon: "edit", stagedFor: "EA · database" },
     { label: "Duplicate", icon: "content_copy", stagedFor: "EA · database" },
     { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · database" },
   ];
+  if (error) {
+    return <p className="px-2 py-1 text-xs" style={{ color: "var(--m3-error)" }}>Failed to load databases: {error}</p>;
+  }
+  if (!dbs) {
+    return <p className="px-2 py-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Loading databases…</p>;
+  }
+  if (dbs.length === 0) {
+    return <p className="px-2 py-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>No databases found.</p>;
+  }
   return (
     <div className="flex flex-col gap-0.5">
-      {SCHEMA.map(([db, tables]) => {
-        const dbOpen = open.includes(db);
+      {dbs.map((db) => {
+        const dbOpen = open.includes(db.name);
         return (
-          <div key={db}>
+          <div key={db.name}>
             <TreeItem
-              icon="database" label={db} mono
-              hasKids expanded={dbOpen} onToggle={() => toggle(db)}
-              selected={false} onPick={() => toggle(db)}
+              icon="database" label={db.name} mono
+              hasKids expanded={dbOpen} onToggle={() => toggle(db.name)}
+              selected={false} onPick={() => toggle(db.name)}
               menu={[
-                { label: "New table…", icon: "note_add", stagedFor: "EA · database" },
                 { label: "Backup…", icon: "save", stagedFor: "EA · database" },
               ]}
             />
-            {dbOpen && tables.map(([t, n, tag]) => {
-              const on = t === table;
-              const tOpen = open.includes(t);
-              const cols = TABLE_INFO[t]?.columns ?? [];
+            {dbOpen && db.tables.map((t) => {
+              const on = picked?.db === db.name && picked.table === t.name;
+              const cols = t.columns.map((c) => c.name);
+              // Table names repeat across databases; expansion is per db.
+              const key = `${db.name}/${t.name}`;
               return (
-                <div key={t}>
+                <div key={t.name} className="ml-4">
                   <TreeItem
-                    icon="table_view" label={t} trailing={`${tag ? `${tag} · ` : ""}${n}`} depth={1} mono
-                    hasKids={cols.length > 0} expanded={tOpen} onToggle={() => toggle(t)}
-                    selected={on} onPick={() => dbStore.set((p) => ({ ...p, table: t }))}
-                    menu={crud(t)}
+                    icon="table" label={`${t.name} (${t.rowCount})`} mono
+                    hasKids={cols.length > 0} expanded={open.includes(key)} onToggle={() => toggle(key)}
+                    selected={on} onPick={() => setDbSelection({ db: db.name, table: t.name })}
+                    menu={crud(db.name, t.name)}
                   />
-                  {tOpen && cols.map((c) => (
-                    <TreeItem
-                      key={c} icon="chevron_right" label={c} depth={2} mono
-                      menu={crud(`${t}.${c}`)}
-                    />
+                  {open.includes(key) && cols.map((c) => (
+                    <p key={c} className="ml-8 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{c}</p>
                   ))}
                 </div>
               );

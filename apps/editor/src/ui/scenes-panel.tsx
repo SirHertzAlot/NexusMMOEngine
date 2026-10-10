@@ -23,6 +23,7 @@ import {
   setTransform,
   validateScene,
   type FieldSpec,
+  type SceneDoc,
   type SceneIssue,
   type SceneKind,
   type SceneNode,
@@ -30,10 +31,12 @@ import {
 } from "@mmo-engine/scene";
 import { keepLiveTransform, liveTransform, placePrefab, type LiveTransform } from "@mmo-engine/scene";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
-import { openScene } from "../open-scene.js";
+import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
+import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, SectionTitle } from "./components.js";
-import { clearDocActions, registerDocActions } from "./doc-actions.js";
+import { clearDocActions, registerDocActions, type DocActions } from "./doc-actions.js";
+import { readClipboard, writeClipboard } from "./clipboard.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
 
@@ -82,6 +85,14 @@ export function ScenesPanel(): React.JSX.Element {
   const [selected, setSelected] = React.useState<string | null>(null);
   const [issues, setIssues] = React.useState<SceneIssue[]>([]);
   const [status, setStatus] = React.useState("");
+  // Inline "new scene" dialog (window.prompt is blocked in some webviews).
+  const [naming, setNaming] = React.useState<string | null>(null);
+  const [nameError, setNameError] = React.useState("");
+  // Outliner context menu: {id, x, y} when open.
+  const [ctx, setCtx] = React.useState<{ id: string; x: number; y: number } | null>(null);
+  // Inline rename: node id being renamed.
+  const [renaming, setRenaming] = React.useState<string | null>(null);
+  const renameCancelled = React.useRef(false);
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
 
@@ -121,13 +132,37 @@ export function ScenesPanel(): React.JSX.Element {
     }
     bump();
   };
+  // Context menu actions (also wired to the Edit menu via DocActions).
+  const duplicateNode = (id: string): void => {
+    const n = findNode(hist.doc, id);
+    if (!n) return;
+    // Fresh ids for the whole subtree, placed beside the original (same parent).
+    const copy = withFreshIds(hist.doc, n);
+    const parent = parentIdOf(hist.doc, id);
+    run("duplicate node", (d) => addNode(d, parent, copy));
+    select(copy.id);
+  };
+  const deleteNode = (id: string): void => {
+    run("delete node", (d) => removeNode(d, id));
+    if (selected === id) select(null);
+  };
   const refresh = (): void => void listScenes().then(setNames, (e: Error) => setStatus(e.message));
   React.useEffect(refresh, []);
 
   // Toolbar Save/Undo/Redo target while a scene is open.
   React.useEffect(() => {
     if (!open) return;
-    const target = {
+    const pasteNode = (parentId: string | null): void => {
+      const data = readClipboard("scene-node") as SceneNode | null;
+      if (!data) {
+        setStatus("nothing to paste");
+        return;
+      }
+      const node = withFreshIds(hist.doc, data);
+      run("paste node", (d) => addNode(d, parentId, node));
+      select(node.id);
+    };
+    const target: DocActions = {
       label: `scene "${open}"`,
       canSave: hist.dirty,
       canUndo: hist.canUndo,
@@ -142,6 +177,101 @@ export function ScenesPanel(): React.JSX.Element {
         hist.redo();
         setIssues(validateScene(hist.doc));
         bump();
+      },
+      // Edit menu: the outliner selection is the clipboard unit.
+      canCut: !!node,
+      canCopy: !!node,
+      canPaste: readClipboard("scene-node") !== null,
+      canDuplicate: !!node,
+      canDelete: !!node,
+      canSelectAll: doc.nodes.length > 0,
+      cut: () => {
+        if (!node) return;
+        writeClipboard("scene-node", node);
+        run("cut node", (d) => removeNode(d, node.id));
+        select(null);
+      },
+      copy: () => {
+        if (!node) return;
+        writeClipboard("scene-node", node);
+        setStatus(`copied ${node.id}`);
+      },
+      paste: () => pasteNode(selected),
+      duplicate: () => {
+        if (!node) return;
+        const copy = withFreshIds(hist.doc, node);
+        // Duplicate beside the original: same parent.
+        const parent = parentIdOf(hist.doc, node.id);
+        run("duplicate node", (d) => addNode(d, parent, copy));
+        select(copy.id);
+      },
+      deleteSelection: () => {
+        if (!node) return;
+        run("delete node", (d) => removeNode(d, node.id));
+        select(null);
+      },
+      selectAll: () => {
+        const first = doc.nodes[0];
+        if (first) select(first.id);
+      },
+      // File menu.
+      canSaveAll: hist.dirty,
+      canRevert: hist.dirty,
+      canImport: true,
+      canExport: true,
+      saveAll: save,
+      revert: () => {
+        getScene(open).then(
+          (d) => {
+            hist.replace(d);
+            setIssues(validateScene(d));
+            setStatus(`reverted ${open}`);
+            bump();
+          },
+          (e: Error) => setStatus(e.message),
+        );
+      },
+      importFile: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/json";
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          file.text().then(
+            (text) => {
+              try {
+                // The file may come from another scene's export; it takes the open
+                // scene's name, since the host only saves a doc under its own name.
+                const data = { ...(JSON.parse(text) as SceneDoc), name: open };
+                const issues = validateScene(data);
+                if (issues.length > 0) {
+                  setIssues(issues);
+                  setStatus("import refused: invalid scene");
+                  return;
+                }
+                hist.replace(data);
+                setIssues([]);
+                setStatus(`imported ${file.name}`);
+                bump();
+              } catch {
+                setStatus("import refused: not JSON");
+              }
+            },
+            () => setStatus("import failed"),
+          );
+        };
+        input.click();
+      },
+      exportFile: () => {
+        const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${open}.scene.json`;
+        a.click();
+        // Revoking in the same task can cancel the download in some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 0);
       },
     };
     registerDocActions(target);
@@ -185,18 +315,33 @@ export function ScenesPanel(): React.JSX.Element {
     );
   };
   const create = (): void => {
-    const name = window.prompt("New scene name (lowercase, digits, dashes): ^[a-z0-9][a-z0-9-]*$");
-    if (!name) return;
+    setNaming("");
+    setNameError("");
+  };
+  const confirmCreate = (): void => {
+    const name = (naming ?? "").trim();
     if (!isValidSceneName(name)) {
-      setStatus(`invalid scene name "${name}": use ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and dashes, starting with a letter or digit) - nothing was created`);
+      setNameError(`invalid scene name "${name}": use ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and dashes, starting with a letter or digit)`);
       return;
     }
     hist.replace(emptyScene(name, "arena"));
     setOpen(name);
     setSelected(null);
     setIssues(validateScene(hist.doc));
+    setNaming(null);
+    setNameError("");
     bump();
   };
+
+  // File → New Scene… lands here: now if the panel is mounted, on mount if not.
+  const createRef = React.useRef(create);
+  createRef.current = create;
+  React.useEffect(() => {
+    if (takeNewSceneRequest()) createRef.current();
+    return onNewSceneRequest(() => {
+      if (takeNewSceneRequest()) createRef.current();
+    });
+  }, []);
 
   const setVec = (key: "position" | "rotation" | "scale", i: number, v: number): void => {
     if (!node) return;
@@ -207,6 +352,31 @@ export function ScenesPanel(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2.5 text-[13px]" data-testid="scenes-panel">
+      {naming !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-label="New scene">
+          <div className="rounded-lg border p-4 shadow-lg" style={{ background: "var(--m3-surface)", borderColor: "var(--m3-outline-variant)" }}>
+            <h3 className="mb-2 text-sm font-medium">New scene</h3>
+            <input
+              autoFocus
+              className="mb-2 w-64 rounded border px-2 py-1 text-sm"
+              style={{ borderColor: "var(--m3-outline)" }}
+              value={naming}
+              onChange={(e) => setNaming(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmCreate();
+                else if (e.key === "Escape") setNaming(null);
+              }}
+              placeholder="lowercase, digits, dashes"
+              aria-label="Scene name"
+            />
+            {nameError && <p className="mb-2 text-xs" style={{ color: "var(--m3-error)" }}>{nameError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setNaming(null)}>Cancel</Button>
+              <Button size="sm" onClick={confirmCreate}>Create</Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <select className={sel} value={open ?? ""} onChange={(e) => e.target.value && load(e.target.value)} aria-label="Open scene">
           <option value="">{names.length ? "Open scene…" : "No scenes yet"}</option>
@@ -232,7 +402,7 @@ export function ScenesPanel(): React.JSX.Element {
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(150px,1fr)_minmax(320px,3fr)_minmax(220px,1.3fr)] gap-3">
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Outliner">
           <SectionTitle>Outliner</SectionTitle>
-          <div className="mb-2 flex gap-1">
+          <div className="mb-2 flex flex-wrap gap-1">
             <Button size="sm" variant="outline" disabled={!open} onClick={() => {
               const id = nextId(doc, "node");
               run("add node", (d) => addNode(d, selected, { id, kind: "group" }));
@@ -253,12 +423,73 @@ export function ScenesPanel(): React.JSX.Element {
               tabIndex={0}
               onClick={() => select(n.id)}
               onKeyDown={(e) => e.key === "Enter" && select(n.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                select(n.id);
+                setCtx({ id: n.id, x: e.clientX, y: e.clientY });
+              }}
               className="cursor-pointer rounded px-2 py-1"
               style={{ paddingLeft: 8 + depth * 14, background: n.id === selected ? "var(--m3-secondary-container)" : undefined }}
             >
-              {n.name || n.id} <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
+              {renaming === n.id ? (
+                <input
+                  autoFocus
+                  className="w-full rounded border px-1 text-sm"
+                  defaultValue={n.name || n.id}
+                  onBlur={(e) => {
+                    // Escape cancels; the blur that follows unmounting must not commit.
+                    if (renameCancelled.current) {
+                      renameCancelled.current = false;
+                      return;
+                    }
+                    const v = e.target.value.trim();
+                    if (v && v !== (n.name || n.id)) run("rename node", (d) => setNodeProp(d, n.id, "name", v));
+                    setRenaming(null);
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    else if (e.key === "Escape") {
+                      renameCancelled.current = true;
+                      setRenaming(null);
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <>{n.name || n.id} <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span></>
+              )}
             </div>
           ))}
+          {ctx && <span className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />}
+          {ctx && (
+            <div
+              className="fixed z-50 min-w-40 rounded-lg border py-1 shadow-lg"
+              style={{
+                left: ctx.x,
+                top: ctx.y,
+                background: "var(--m3-surface)",
+                borderColor: "var(--m3-outline-variant)",
+              }}
+              role="menu"
+              onMouseLeave={() => setCtx(null)}
+            >
+              {[
+                { label: "Rename", run: () => { setRenaming(ctx.id); setCtx(null); } },
+                { label: "Duplicate", run: () => { setCtx(null); duplicateNode(ctx.id); } },
+                { label: "Delete", run: () => { setCtx(null); deleteNode(ctx.id); } },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  className="block w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--m3-secondary-container)]"
+                  onClick={item.run}
+                  role="menuitem"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
           {open && doc.nodes.length === 0 && <p className="text-xs opacity-70">Empty scene. Add a node.</p>}
         </section>
         <section className="min-h-0" aria-label="Viewport">

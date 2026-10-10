@@ -8,6 +8,7 @@ import * as React from "react";
 import { applyMutations, fetchCatalog, fetchLog, runQuery, undoEntry, type Db, type LogEntry, type QueryResult } from "../database-client.js";
 import { parseCell, rowKey, stage, toMutations, viewRows, type Pending, type Table } from "../database-model.js";
 import { Badge, Button, Input, MIcon, notify } from "./components.js";
+import { getDbSelection, setDbSelection, subscribeDbSelection } from "./db-selection.js";
 
 const cell = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
 const th = "sticky top-0 bg-muted px-2 py-1 text-left text-xs font-medium whitespace-nowrap";
@@ -62,7 +63,14 @@ export function DatabaseGridPanel(): React.JSX.Element {
     setSort(null);
     setStatus("");
     load({ db, table: t });
+    setDbSelection({ db, table: t });
   };
+  // The left schema tree picks tables too; follow it (and open its pick on mount).
+  const shared = React.useSyncExternalStore(subscribeDbSelection, getDbSelection);
+  React.useEffect(() => {
+    if (shared && (shared.db !== sel?.db || shared.table !== sel?.table)) pick(shared.db, shared.table);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shared]);
 
   const editCell = (row: unknown[], column: string, text: string): void => {
     if (!table || !data) return;

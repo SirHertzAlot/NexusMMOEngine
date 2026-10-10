@@ -44,6 +44,7 @@ import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import type { CombatFeedback } from "./combat-feedback.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
+import { EYE_HEIGHT, firstPersonCamera } from "./first-person-camera.js";
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
@@ -136,6 +137,10 @@ export interface WorldCanvasProps {
   onNearEntrance?: (entrance: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
   combat?: CombatFeedback;
+  /** Camera view: "third" (follow) or "first" (eye-level). Uncontrolled by default (V toggles). */
+  view?: "third" | "first";
+  /** Fires when the view changes (V key or the controlled prop). */
+  onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
 }
@@ -294,6 +299,8 @@ function MirrorWorld({
   instance,
   combat,
   onCombat,
+  view: viewProp,
+  onViewChange,
   settings,
   screen,
   physicalSky,
@@ -306,6 +313,12 @@ function MirrorWorld({
   const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
   latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
+  // Camera view: third-person follow or first-person. Controlled by the
+  // `view` prop when given; otherwise the V key toggles it internally.
+  const [viewState, setViewState] = useState<"third" | "first">("third");
+  const view = viewProp ?? viewState;
+  const viewRef = useRef(view);
+  viewRef.current = view;
   // Last values sent: nearDrop, and the combat view's numbers (onCombat fires only when one moves).
   const loop = useRef({
     pointerMoved: false,
@@ -321,6 +334,8 @@ function MirrorWorld({
   });
   const perf = useRef(new PerfSampler(performance.now()));
   const pointer = useRef(new THREE.Vector2());
+  // Scratch eye position for first-person mode (no per-frame allocation).
+  const eyePos = useRef(new THREE.Vector3());
   // Nearest hit only: with BVHs (bvh.ts) a ray stops at its first triangle.
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
   // For CombatFeedback.prune, made once per client rather than every frame.
@@ -466,6 +481,24 @@ function MirrorWorld({
     rt.current?.input.setBindings(bindings);
   }, [bindings]);
 
+  // V toggles first/third person (uncontrolled mode only; a controlled
+  // `view` prop owns the state instead).
+  useEffect(() => {
+    if (viewProp !== undefined) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.code !== "KeyV" || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      setViewState((v) => {
+        const next = v === "third" ? "first" : "third";
+        onViewChange?.(next);
+        return next;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewProp, onViewChange]);
+
   useEffect(() => {
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);
   }, [showcase, camera]);
@@ -542,7 +575,16 @@ function MirrorWorld({
       raycaster.current.setFromCamera(pointer.current, camera);
       r.layer.hover(raycaster.current);
     }
-    followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    if (viewRef.current === "first" && r.layer.player) {
+      // First person: camera at the avatar's eye, own avatar hidden.
+      r.layer.setPlayerHidden(true);
+      eyePos.current.copy(r.layer.player);
+      eyePos.current.y += EYE_HEIGHT;
+      firstPersonCamera(camera, eyePos.current, r.input.lookYaw, r.input.lookPitch);
+    } else {
+      r.layer.setPlayerHidden(false);
+      followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    }
     const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 

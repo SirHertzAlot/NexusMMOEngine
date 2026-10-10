@@ -51,6 +51,10 @@ export interface GameViewProps {
   /** The view's frame, for what draws over it. */
   containerRef?: React.Ref<HTMLDivElement>;
   children?: React.ReactNode;
+  /** Camera view: "third" (follow) or "first" (eye-level). Uncontrolled by default (V toggles). */
+  view?: "third" | "first";
+  /** Fires when the view changes. */
+  onViewChange?: (view: "third" | "first") => void;
 }
 
 export function GameView({
@@ -67,6 +71,8 @@ export function GameView({
   combat: givenCombat,
   containerRef,
   children,
+  view,
+  onViewChange,
 }: GameViewProps): React.JSX.Element {
   const [assets] = React.useState(() => new PlaceholderAssets());
   const [ownCombat] = React.useState(() => new CombatFeedback());
@@ -98,6 +104,8 @@ export function GameView({
         onHud={onHud}
         onGpu={onGpu}
         onQuality={onQuality}
+        view={view}
+        onViewChange={onViewChange}
       />
       {children}
     </div>

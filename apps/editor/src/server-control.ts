@@ -14,6 +14,8 @@ export interface PlayServerLike {
   /** One-session dev credentials seeded by the host for this server. */
   username: string;
   password: string;
+  /** Logins for extra (headless) clients, sharing the password. */
+  loadUsers?: string[];
 }
 
 /**
@@ -23,6 +25,9 @@ export interface PlayServerLike {
  */
 export interface PlayServerStartOptions {
   bots?: number;
+  fresh?: boolean;
+  keep?: boolean;
+  spawn?: unknown;
 }
 
 /** Server-control surface the editor UI drives (implements ServerControl). */
@@ -52,6 +57,9 @@ export function createHostServerControl(
         body: JSON.stringify({
           ...(opts?.bots !== undefined ? { bots: opts.bots } : {}),
           ...(open ? { scene: { name: open.name, content: open.doc } } : {}),
+          ...(opts?.fresh !== undefined ? { fresh: opts.fresh } : {}),
+          ...(opts?.keep !== undefined ? { keep: opts.keep } : {}),
+          ...(opts?.spawn !== undefined ? { spawn: opts.spawn } : {}),
         }),
       });
       const body = (await res.json()) as {
@@ -61,6 +69,7 @@ export function createHostServerControl(
         url: string;
         username: string;
         password: string;
+        loadUsers?: string[];
         error?: string;
       };
       if (!res.ok || !body.ok) {
@@ -72,6 +81,7 @@ export function createHostServerControl(
         pid: body.pid,
         username: body.username,
         password: body.password,
+        ...(Array.isArray(body.loadUsers) ? { loadUsers: body.loadUsers } : {}),
       };
     },
     async stop() {
