@@ -28,3 +28,9 @@ Game content the engine generates from, committed with the code:
 
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.
+
+- `playtests/` — automated playtest scenarios (roadmap EA26): one
+  `<name>.playtest.json` each, a bot script (admin commands, moves, chat at
+  ticks), a seed and bot count for a scratch world, and assertions. The
+  editor's Release > Playtests runs them headless on a scratch server;
+  results and replays are kept under the data dir, not here.

@@ -53,33 +53,23 @@ import { editorSelection, isSelectionVisible, useEditorSelection } from "./edito
 import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
 import { useDrag } from "./use-drag.js";
 import { SelectableList } from "./selectable-list.js";
-import type { LiveOpsScope } from "./previews.js";
+import { ViewList } from "./view-list.js";
+import { LiveOpsDetailsLive, LiveOpsViews } from "./liveops-live.js";
+import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network-live.js";
+import { PlaytestsPanel } from "./playtests-live.js";
+import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
 import {
   AnimDetails,
   ArtAudioTree,
   HudPreview,
-  LiveOpsDetails,
   DatabaseRowDetails,
   FlowDetails,
   HudDetails,
-  LiveOpsPreview,
-  PlaytestPreview,
-  QuestPreview,
   ReleaseDeployDetails,
   SchemaTree,
-  StoryDetails,
   WidgetList,
-  PLAYERS,
   applyDeepSelection,
-  liveOpsStore,
   readDeepSelection,
-  selectLiveOpsPlayer,
-  selectLiveOpsScope,
-  liveOpsScopeLabel,
-  LIVEOPS_ACCOUNTS,
-  LIVEOPS_GUILDS,
-  LIVEOPS_PARTIES,
-  storyStore,
   subscribeDeepSelection,
 } from "./previews.js";
 
@@ -161,13 +151,16 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "liveops", label: "Live ops", icon: "groups",
-    views: [{ id: "overview", label: "Overview", icon: "groups", kind: "panel", panel: <LiveOpsPreview /> }],
-    leftTitle: "Scopes",
+    views: LiveOpsViews(),
+    leftTitle: "Live ops",
   },
   {
     id: "network", label: "Network", icon: "lan",
-    views: [{ id: "network", label: "Routes", icon: "lan", kind: "soon", soon: { icon: "lan", title: "Edge routes arrive with the edge split", body: "Core vs local module routes, channel health and /metrics links (§7c)." } }],
-    leftTitle: "Routes",
+    views: [
+      { id: "routes", label: "Edge routes", icon: "lan", kind: "panel", panel: <EdgeRoutesPanel /> },
+      { id: "connections", label: "Connections", icon: "network_check", kind: "panel", panel: <ConnectionsPanel /> },
+    ],
+    leftTitle: "Network",
   },
   {
     id: "debug", label: "Debug", icon: "monitoring",
@@ -192,7 +185,7 @@ const WORKSPACES: Workspace[] = [
     id: "story", label: "Story", icon: "auto_stories",
     views: [
       { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
-      { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestPreview /> },
+      { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
       { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
     ],
     leftTitle: "Stories",
@@ -211,7 +204,7 @@ const WORKSPACES: Workspace[] = [
     id: "release", label: "Release", icon: "rocket_launch",
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
-      { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestPreview /> },
+      { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
       { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudEditor /> },
     ],
     leftTitle: "Profiles",
@@ -261,9 +254,9 @@ const VIEW_KEYWORDS: Record<string, string> = {
   modules: "modules enable disable apply",
 };
 
-const SOON_WS: ReadonlySet<WorkspaceId> = new Set(["network"]);
+const SOON_WS: ReadonlySet<WorkspaceId> = new Set([]);
 /** Workspaces showing mockup-faithful previews over sample data. */
-const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "story", "artaudio", "release"]);
+const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "story", "artaudio", "release"]);
 
 // ---------------------------------------------------------------- shell
 
@@ -1873,10 +1866,11 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   if (props.workspace === "world") return <WorldTree />;
   if (props.workspace === "database") return <SchemaTree />;
   if (props.workspace === "flow") return <WidgetList />;
-  if (props.workspace === "story") return <StoryTree />;
+  if (props.workspace === "story") return <QuestsTree onView={props.onView} />;
   if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} onView={props.onView} />;
   if (props.workspace === "release") return <ReleaseTree />;
-  if (props.workspace === "liveops") return <LiveOpsTree />;
+  if (props.workspace === "liveops") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Every control sends one of the running server's admin commands." />;
+  if (props.workspace === "network") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Routes are content/edge/routes.json; connections are the running server's." />;
   if (props.workspace === "gameplay" || props.workspace === "dungeons") {
     return (
       <div>
@@ -1972,179 +1966,6 @@ function WorldTree(): React.JSX.Element {
       />
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
         Region editing, bakes and the tile cache arrive with world-scale editing (E9).
-      </p>
-    </div>
-  );
-}
-
-/** Live ops scopes (ux-08). Players bind to the admin console selection;
- *  account/guild/party leaves scope the preview table, telemetry/chat/
- *  ledger leaves swap in their section. */
-function LiveOpsTree(): React.JSX.Element {
-  const t = useTree();
-  const { scope } = liveOpsStore.use();
-  const group = (id: string, icon: string, label: string, trailing: string, kids: React.ReactNode): React.JSX.Element => (
-    <div key={id}>
-      <TreeItem
-        icon={icon} label={label} trailing={trailing}
-        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={false} onPick={() => t.toggle(id)}
-        menu={crudMenu(label, "EA · live ops")}
-      />
-      {t.open.includes(id) && kids}
-    </div>
-  );
-  const scopeLeaf = (id: string, label: string, s: LiveOpsScope, depth = 1): React.JSX.Element => (
-    <TreeItem
-      key={id} icon="chevron_right" label={label} depth={depth} mono
-      selected={scope.kind !== "all" && liveOpsScopeLabel(scope) === liveOpsScopeLabel(s)}
-      onPick={() => selectLiveOpsScope(s)}
-      menu={crudMenu(label, "EA · live ops")}
-    />
-  );
-  const playerLeaf = (n: string): React.JSX.Element => (
-    <TreeItem
-      key={n} icon="person" label={n} depth={1}
-      selected={false}
-      onPick={() => selectLiveOpsPlayer(n)}
-      menu={crudMenu(n, "EA · live ops")}
-    />
-  );
-  return (
-    <div className="flex flex-col gap-0.5">
-      {group("players", "groups", "Players", "214", <>{PLAYERS.map(([c]) => playerLeaf(c))}</>)}
-      {group("accounts", "badge", "Accounts", String(Object.keys(LIVEOPS_ACCOUNTS).length), (
-        <>
-          {Object.entries(LIVEOPS_ACCOUNTS).map(([a, members]) => (
-            <div key={a}>
-              <TreeItem
-                icon="chevron_right" label={a} depth={1} mono
-                hasKids expanded={t.open.includes(`account:${a}`)} onToggle={() => t.toggle(`account:${a}`)}
-                selected={false}
-                onPick={() => selectLiveOpsScope({ kind: "account", name: a })}
-                menu={crudMenu(a, "EA · live ops")}
-              />
-              {t.open.includes(`account:${a}`) && members.map((m) => (
-                <TreeItem
-                  key={m} icon="person" label={m} depth={2}
-                  selected={false}
-                  onPick={() => selectLiveOpsPlayer(m)}
-                  menu={crudMenu(m, "EA · live ops")}
-                />
-              ))}
-            </div>
-          ))}
-        </>
-      ))}
-      {group("guilds", "diversity_3", "Guilds", String(Object.keys(LIVEOPS_GUILDS).length), (
-        <>
-          {Object.entries(LIVEOPS_GUILDS).map(([g, members]) => (
-            <div key={g}>
-              <TreeItem
-                icon="chevron_right" label={g} depth={1}
-                hasKids expanded={t.open.includes(`guild:${g}`)} onToggle={() => t.toggle(`guild:${g}`)}
-                selected={false}
-                onPick={() => selectLiveOpsScope({ kind: "guild", name: g })}
-                menu={crudMenu(g, "EA · live ops")}
-              />
-              {t.open.includes(`guild:${g}`) && members.map((m) => (
-                <TreeItem
-                  key={m} icon="person" label={m} depth={2}
-                  selected={false}
-                  onPick={() => selectLiveOpsPlayer(m)}
-                  menu={crudMenu(m, "EA · live ops")}
-                />
-              ))}
-            </div>
-          ))}
-        </>
-      ))}
-      {group("parties", "group", "Parties", String(Object.keys(LIVEOPS_PARTIES).length), (
-        <>
-          {Object.entries(LIVEOPS_PARTIES).map(([p, members]) => (
-            <div key={p}>
-              <TreeItem
-                icon="chevron_right" label={p} depth={1} mono
-                hasKids expanded={t.open.includes(`party:${p}`)} onToggle={() => t.toggle(`party:${p}`)}
-                selected={false}
-                onPick={() => selectLiveOpsScope({ kind: "party", name: p })}
-                menu={crudMenu(p, "EA · live ops")}
-              />
-              {t.open.includes(`party:${p}`) && members.map((m) => (
-                <TreeItem
-                  key={m} icon="person" label={m} depth={2}
-                  selected={false}
-                  onPick={() => selectLiveOpsPlayer(m)}
-                  menu={crudMenu(m, "EA · live ops")}
-                />
-              ))}
-            </div>
-          ))}
-        </>
-      ))}
-      {group("chat", "forum", "Chat & events", "5", <>{scopeLeaf("chat", "All channels", { kind: "chat" })}</>)}
-      {group("ledger", "receipt_long", "Item ledger", "128k", <>{scopeLeaf("ledger", "Recent events", { kind: "ledger" })}</>)}
-      {group("telemetry", "monitoring", "Telemetry", "p99", <>{scopeLeaf("telemetry", "Tick budget", { kind: "telemetry" })}</>)}
-    </div>
-  );
-}
-
-/** Story quests and dialogs (ux-13). Quest steps bind to the graph selection. */
-function StoryTree(): React.JSX.Element {
-  const t = useTree();
-  const steps: Record<string, Array<[string, string]>> = {
-    "warden-hale": [["talk", "Talk"], ["clear", "Clear"], ["return", "Return"], ["reward", "Reward"], ["refused", "Refused"]],
-    "lost-pelts": [["track", "Track"], ["trap", "Trap"], ["return", "Return"]],
-    "tower-key": [["knock", "Knock"], ["riddle", "Riddle"], ["fetch", "Fetch"], ["craft", "Craft"], ["climb", "Climb"], ["unlock", "Unlock"], ["claim", "Claim"]],
-  };
-  const quests: Array<[string, string, string]> = [
-    ["warden-hale", "5 steps", "flag"],
-    ["lost-pelts", "3 steps", "flag"],
-    ["tower-key", "7 steps", "flag"],
-    ["hale.intro", "12 beats", "forum"],
-    ["hale.return", "4 beats", "forum"],
-    ["smith.shop", "6 beats", "forum"],
-    ["camp-errands", "generated", "auto_awesome"],
-  ];
-  return (
-    <div className="flex flex-col gap-0.5">
-      {quests.map(([q, trailing, icon]) => {
-        const kids = steps[q];
-        const open = t.open.includes(q);
-        return (
-          <div key={q}>
-            <TreeItem
-              icon={icon}
-              label={q}
-              trailing={trailing}
-              mono
-              hasKids={kids !== undefined}
-              expanded={open}
-              onToggle={kids ? () => t.toggle(q) : undefined}
-              selected={t.sel === q}
-              onPick={() => t.pick(q)}
-              menu={crudMenu(q, "EA · story")}
-            />
-            {kids && open && kids.map(([id, label]) => (
-              <TreeItem
-                key={id}
-                icon="chevron_right"
-                label={label}
-                depth={1}
-                mono
-                selected={false}
-                onPick={() => {
-                  if (q === "warden-hale") storyStore.set((p) => ({ ...p, node: id }));
-                  else notify(`${q} · ${label} — staged for EA · story`);
-                }}
-                menu={crudMenu(`${q} · ${label}`, "EA · story")}
-              />
-            ))}
-          </div>
-        );
-      })}
-      <p className="px-3 pt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-        content/quests · validated as a set at boot
       </p>
     </div>
   );
@@ -2437,12 +2258,13 @@ function GameplayDetails(): React.JSX.Element {
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
-  if (workspace === "liveops") return <LiveOpsDetails />;
+  if (workspace === "liveops") return <LiveOpsDetailsLive />;
+  if (workspace === "network") return <NetworkDetailsLive />;
   if (workspace === "database") return <DatabaseRowDetails />;
   if (workspace === "release") return <ReleaseDeployDetails />;
   if (workspace === "flow" && view === "hud") return <HudDetails />;
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
-  if (workspace === "story" && view === "quests") return <StoryDetails />;
+  if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
   if (workspace === "gameplay") return <GameplayDetails />;
 

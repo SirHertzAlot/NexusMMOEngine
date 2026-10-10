@@ -7,7 +7,12 @@
  *
  *   POST /api/editor/server/start  → spawn `npm run server` (one only)
  *   POST /api/editor/server/stop   → stop ONLY the process we started
- *   GET  /api/editor/server/status → { running, pid?, port? }
+ *   GET  /api/editor/server/status → { running, pid?, port?, url?, username?, password? }
+ *                                    (the one-session login lets the Live ops and Network
+ *                                    panels connect an admin link; loopback only)
+ *   GET/PUT /api/editor/network    → content/edge/routes.json + a probe of the edge's /metrics (network-host.ts)
+ *   /api/editor/playtests[/<name>[/run]], /api/editor/playtest-replays/<id>[/run]
+ *                                  → scenario files, runs, history, replays (playtest-host.ts)
  *   GET  /api/editor/terrain       → the heightmap tiles + props around (0,0)
  *   POST /api/editor/terrain/area  → the same for an area {cx, cz, radius}
  *   POST /api/editor/terrain/generate → generator preview (not saved)
@@ -101,6 +106,9 @@ import {
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
 import { handleStringsRoute } from "./strings-host.js";
+import { handlePlaytestRoute } from "./playtest-host.js";
+import { createScratchRunner } from "./playtest-server.js";
+import { handleNetworkRoute } from "./network-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -445,6 +453,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const assetsRoot = join(repoRoot, "assets");
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
   const rulesDir = join(repoRoot, "content", "rules");
+  const playtestRunner = createScratchRunner(repoRoot);
   let owned: OwnedServer | null = null;
   /** world.db snapshot for the Play menu's fresh/keep options. */
   const playSnapshot = createPlaySnapshot(join(dataDir, "world.db"));
@@ -910,6 +919,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
               running: owned !== null,
               pid: owned?.pid,
               port: owned?.port,
+              // Loopback only (checked above): the Live ops and Network
+              // panels connect an admin link with the same one-session login.
+              url: owned?.url,
+              username: owned?.username,
+              password: owned?.password,
             });
             return;
           }
@@ -1280,6 +1294,20 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (stringsReply) {
             sendJson(res, stringsReply.status, stringsReply.body);
+            return;
+          }
+          // Playtests (EA26) and the Network workspace's routes file.
+          const needsBody = req.method === "PUT" || req.method === "POST";
+          const playtestReply = scenesUrl.pathname.startsWith("/api/editor/playtest")
+            ? await handlePlaytestRoute(repoRoot, dataDir, req.method ?? "GET", scenesUrl.pathname, needsBody ? await readBody(req) : undefined, playtestRunner)
+            : null;
+          if (playtestReply) {
+            sendJson(res, playtestReply.status, playtestReply.body);
+            return;
+          }
+          const networkReply = await handleNetworkRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "PUT" && scenesUrl.pathname === "/api/editor/network" ? await readBody(req) : undefined);
+          if (networkReply) {
+            sendJson(res, networkReply.status, networkReply.body);
             return;
           }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
