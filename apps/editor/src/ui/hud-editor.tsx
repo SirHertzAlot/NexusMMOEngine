@@ -4,6 +4,7 @@
  */
 import * as React from "react";
 import { Select } from "./components.js";
+import { useDrag } from "./use-drag.js";
 import { Pill } from "./previews.js";
 import {
   widgetRect,
@@ -53,7 +54,6 @@ export function HudEditor(): React.JSX.Element {
   const [selected, setSelected] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
-  const dragRef = React.useRef<{ id: string; startX: number; startY: number } | null>(null);
 
   React.useEffect(() => {
     getJson<{ layout: Layout }>("/api/editor/hud/layout")
@@ -79,35 +79,22 @@ export function HudEditor(): React.JSX.Element {
 
   const overlaps = React.useMemo(() => findOverlaps(boxes), [boxes]);
 
-  const onMouseDown = (id: string, e: React.MouseEvent): void => {
-    setSelected(id);
-    dragRef.current = { id, startX: e.clientX, startY: e.clientY };
-    e.preventDefault();
-  };
-
-  const onMouseMove = (e: React.MouseEvent): void => {
-    const drag = dragRef.current;
-    if (!drag || !layout) return;
-    const scale = SCREEN.w / 1920;
-    const dx = (e.clientX - drag.startX) / scale;
-    const dy = (e.clientY - drag.startY) / scale;
-    drag.startX = e.clientX;
-    drag.startY = e.clientY;
-    setLayout((cur) => {
-      if (!cur) return cur;
-      const p = cur.widgets[drag.id];
-      if (!p) return cur;
-      const size = WIDGET_SIZES[drag.id] ?? { w: 200, h: 100 };
-      return {
-        widgets: { ...cur.widgets, [drag.id]: moveWidget(p, { dx, dy }, { w: 1920, h: 1080 }, size) },
-      };
-    });
-    setSaved(false);
-  };
-
-  const onMouseUp = (): void => {
-    dragRef.current = null;
-  };
+  const drag = useDrag<{ id: string }>({
+    threshold: 0,
+    move: (_e, g, d) => {
+      if (!layout) return;
+      const scale = SCREEN.w / 1920;
+      const delta = { dx: d.stepX / scale, dy: d.stepY / scale };
+      setLayout((cur) => {
+        if (!cur) return cur;
+        const p = cur.widgets[g.id];
+        if (!p) return cur;
+        const size = WIDGET_SIZES[g.id] ?? { w: 200, h: 100 };
+        return { widgets: { ...cur.widgets, [g.id]: moveWidget(p, delta, { w: 1920, h: 1080 }, size) } };
+      });
+      setSaved(false);
+    },
+  });
 
   const setAnchor = (id: string, anchor: Anchor): void => {
     setLayout((cur) => {
@@ -181,14 +168,16 @@ export function HudEditor(): React.JSX.Element {
         <div
           className="relative shrink-0 rounded-xl"
           style={{ width: SCREEN.w, height: SCREEN.h, background: "var(--m3-surface-2)", cursor: "default" }}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp}
+          {...drag.handlers}
         >
           {boxes.map((b) => (
             <div
               key={b.id}
-              onMouseDown={(e) => onMouseDown(b.id, e)}
+              onPointerDown={(e) => {
+                setSelected(b.id);
+                e.preventDefault();
+                drag.begin(e, { id: b.id });
+              }}
               className="absolute rounded-lg border-2 text-xs"
               style={{
                 left: b.x,

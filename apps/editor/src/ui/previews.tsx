@@ -10,7 +10,10 @@
 
 import * as React from "react";
 import { createStore } from "../store.js";
-import { MIcon, TreeItem, OverflowMenu, notify } from "./components.js";
+import { useDrag } from "./use-drag.js";
+import { SelectableList } from "./selectable-list.js";
+import { DataTable, type Column } from "./data-table.js";
+import { MIcon, TreeItem, notify } from "./components.js";
 import type { MenuItem } from "./components.js";
 import { fetchCatalog, type Db } from "../database-client.js";
 import { getDbSelection, setDbSelection, subscribeDbSelection } from "./db-selection.js";
@@ -150,6 +153,13 @@ export function BarRow({ label, pct, text, bar }: { label: string; pct: number; 
   );
 }
 
+const CRUD_ACTIONS: Array<[string, string]> = [
+  ["visibility", "Inspect"],
+  ["edit", "Edit"],
+  ["content_copy", "Duplicate"],
+  ["delete", "Delete"],
+];
+
 export function MiniTable({ head, rows, mono = false, crud, addLabel }: {
   head: string[];
   rows: React.ReactNode[][];
@@ -173,54 +183,24 @@ export function MiniTable({ head, rows, mono = false, crud, addLabel }: {
           </button>
         </div>
       )}
-    <table className="w-full border-collapse text-[12.5px]">
-      <thead>
-        <tr>
-          {head.map((h) => (
-            <th
-              key={h}
-              className="sticky top-0 whitespace-nowrap px-2 text-left font-medium"
-              style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface-variant)", height: 32 }}
-            >
-              {h}
-            </th>
-          ))}
-          {crud && <th className="w-10" style={{ background: "var(--m3-surface-2)", height: 32 }}><span className="sr-only">Row actions</span></th>}
-        </tr>
-      </thead>
-      <tbody className={mono ? "font-mono text-xs" : undefined}>
-        {rows.map((r, i) => (
-          <tr key={i} className="group" style={{ borderBottom: "1px solid #2a2b31" }}>
-            {r.map((c, j) => (
-              <td key={j} className="whitespace-nowrap px-2" style={{ height: 30 }}>{c}</td>
-            ))}
-            {crud && (
-              <td className="px-1" style={{ height: 30 }}>
-                <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  {[
-                    ["visibility", `Inspect row ${i + 1}`],
-                    ["edit", `Edit row ${i + 1}`],
-                    ["content_copy", `Duplicate row ${i + 1}`],
-                    ["delete", `Delete row ${i + 1}`],
-                  ].map(([icon, label]) => (
-                    <button
-                      key={icon}
-                      title={`${label} — staged`}
-                      aria-label={`${label} (staged)`}
-                      onClick={() => notify(`${label} — staged for ${crud}`)}
-                      className="m3-focus rounded-full p-1"
-                      style={{ color: "var(--m3-on-surface-variant)" }}
-                    >
-                      <MIcon name={icon} size={15} />
-                    </button>
-                  ))}
-                </span>
-              </td>
-            )}
-          </tr>
-        ))}
-          </tbody>
-        </table>
+      <DataTable
+        mono={mono}
+        rows={rows}
+        rowKey={(_, i) => String(i)}
+        rowActions={crud ? (_, i) => CRUD_ACTIONS.map(([icon, label]) => (
+          <button
+            key={icon}
+            title={`${label} row ${i + 1} — staged`}
+            aria-label={`${label} row ${i + 1} (staged)`}
+            onClick={() => notify(`${label} row ${i + 1} — staged for ${crud}`)}
+            className="m3-focus rounded-full p-1"
+            style={{ color: "var(--m3-on-surface-variant)" }}
+          >
+            <MIcon name={icon} size={15} />
+          </button>
+        )) : undefined}
+        columns={head.map((h, j) => ({ id: `${j}:${h}`, header: h, nowrap: true, cell: (r: React.ReactNode[]) => r[j] }))}
+      />
       </div>
   );
 }
@@ -413,51 +393,28 @@ export function LiveOpsPreview(): React.JSX.Element {
             <MIcon name="add" size={15} />Add
           </button>
         </div>
-        <table className="w-full border-collapse text-[12.5px]">
-          <thead>
-            <tr>
-              {["Character", "Scene", "Region", "RTT", "State", "Actions/min"].map((h) => (
-                <th key={h} className="whitespace-nowrap px-2 text-left font-medium" style={{ color: "var(--m3-on-surface-variant)", height: 32 }}>{h}</th>
-              ))}
-              <th className="w-10" style={{ height: 32 }}><span className="sr-only">Row actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map(([c, s, r, rtt, st, a]) => {
-              const on = c === player;
-              return (
-                <tr
-                  key={c}
-                  onClick={() => selectLiveOpsPlayer(c)}
-                  className="group cursor-pointer"
-                  title={`Inspect ${c} in the admin console`}
-                  style={{ borderBottom: "1px solid #2a2b31", background: on ? "#2b2f4a" : undefined }}
-                >
-                  <td className="px-2" style={{ height: 30 }}>{c}</td>
-                  <td className="px-2" style={{ height: 30 }}>{s}</td>
-                  <td className="px-2 font-mono" style={{ height: 30 }}>{r}</td>
-                  <td className="px-2 font-mono" style={{ height: 30 }}>{rtt}</td>
-                  <td className="px-2" style={{ height: 30 }}><Pill tone={st === "dead" ? "err" : "info"}>{st}</Pill></td>
-                  <td className="px-2 font-mono" style={{ height: 30 }}>{a}</td>
-                  <td className="px-1" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}>
-                    <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                      <OverflowMenu
-                        label={`${c} actions`}
-                        items={[
+        <DataTable
+          rows={visible}
+          rowKey={([c]) => c}
+          selected={([c]) => c === player}
+          onPick={([c]) => selectLiveOpsPlayer(c)}
+          rowTitle={([c]) => `Inspect ${c} in the admin console`}
+          menu={([c]) => [
                           { label: `Inspect ${c}`, icon: "search", run: () => selectLiveOpsPlayer(c) },
                           "sep",
                           { label: "Teleport…", icon: "teleport", stagedFor: "EA · live ops" },
                           { label: "Send message…", icon: "mail", stagedFor: "EA · live ops" },
                           { label: "Kick", icon: "logout", danger: true, stagedFor: "EA · live ops" },
                         ]}
-                      />
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          columns={[
+            { id: "character", header: "Character", cell: ([c]) => c },
+            { id: "scene", header: "Scene", cell: ([, s]) => s },
+            { id: "region", header: "Region", mono: true, cell: ([, , r]) => r },
+            { id: "rtt", header: "RTT", mono: true, cell: ([, , , rtt]) => rtt },
+            { id: "state", header: "State", cell: ([, , , , st]) => <Pill tone={st === "dead" ? "err" : "info"}>{st}</Pill> },
+            { id: "apm", header: "Actions/min", mono: true, cell: ([, , , , , a]) => a },
+          ]}
+        />
         {section !== null && <LiveOpsSection section={section} />}
       </div>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -779,56 +736,38 @@ export function DataGridPreview(): React.JSX.Element {
       )}
       {isState ? (
         <div className="overflow-x-auto rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
-          <table className="w-full border-collapse font-mono text-xs">
-            <thead>
-              <tr>
-                {["character_id ↑", "name (join)", "x", "y", "z", "health", "stamina", "saved_at"].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-2 text-left font-medium" style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface-variant)", height: 32 }}>{h}</th>
-                ))}
-                <th className="w-10" style={{ background: "var(--m3-surface-2)", height: 32 }}><span className="sr-only">Row actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {ids.map((id) => {
-                const on = id === rowId;
-                return (
-                  <tr
-                    key={id}
-                    onClick={() => dbStore.set((p) => ({ ...p, rowId: id }))}
-                    className="group cursor-pointer"
-                    style={{ borderBottom: "1px solid #2a2b31", background: on ? "#2b2f4a" : undefined }}
-                  >
-                    <td className="px-2" style={{ height: 30 }}>{id}</td>
-                    <td className="px-2" style={{ fontFamily: "var(--m3-font-ui)" }}>{GRID_BASE[id].name}</td>
-                    {(["x", "y", "z", "health", "stamina"] as const).map((f) => {
-                      const eff = effective(GRID_BASE, drafts, id, f);
-                      return (
-                        <td key={f} className="px-2" style={{ height: 30 }}>
-                          <span style={eff.drafted ? { boxShadow: "inset 0 0 0 2px var(--m3-primary)", background: "#1f2440", padding: "2px 8px" } : undefined}>
-                            {eff.value}{eff.drafted ? " θ" : ""}
-                          </span>
-                        </td>
-                      );
-                    })}
-                    <td className="px-2" style={{ height: 30 }}>{GRID_BASE[id].saved}</td>
-                    <td className="px-1" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}>
-                      <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                        <OverflowMenu
-                          label={`Row ${id} actions`}
-                          items={[
-                            { label: `Inspect row ${id}`, icon: "search", run: () => dbStore.set((p) => ({ ...p, rowId: id })) },
-                            "sep",
-                            { label: "Duplicate row", icon: "content_copy", stagedFor: "EA · database" },
-                            { label: "Delete row", icon: "delete", danger: true, stagedFor: "EA · database" },
-                          ]}
-                        />
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <DataTable
+            mono
+            className="w-full border-collapse font-mono text-xs"
+            rows={ids}
+            rowKey={(id) => String(id)}
+            selected={(id) => id === rowId}
+            onPick={(id) => dbStore.set((p) => ({ ...p, rowId: id }))}
+            menuLabel={(id) => `Row ${id} actions`}
+            menu={(id) => [
+              { label: `Inspect row ${id}`, icon: "search", run: () => dbStore.set((p) => ({ ...p, rowId: id })) },
+              "sep",
+              { label: "Duplicate row", icon: "content_copy", stagedFor: "EA · database" },
+              { label: "Delete row", icon: "delete", danger: true, stagedFor: "EA · database" },
+            ]}
+            columns={[
+              { id: "id", header: "character_id ↑", cell: (id) => id },
+              { id: "name", header: "name (join)", cell: (id) => <span style={{ fontFamily: "var(--m3-font-ui)" }}>{GRID_BASE[id].name}</span> },
+              ...(["x", "y", "z", "health", "stamina"] as const).map((f): Column<(typeof ids)[number]> => ({
+                id: f,
+                header: f,
+                cell: (id) => {
+                  const eff = effective(GRID_BASE, drafts, id, f);
+                  return (
+                    <span style={eff.drafted ? { boxShadow: "inset 0 0 0 2px var(--m3-primary)", background: "#1f2440", padding: "2px 8px" } : undefined}>
+                      {eff.value}{eff.drafted ? " θ" : ""}
+                    </span>
+                  );
+                },
+              })),
+              { id: "saved", header: "saved_at", cell: (id) => GRID_BASE[id].saved },
+            ]}
+          />
           <div className="flex justify-between px-3 py-2 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
             <span>312 rows · page 2 of 26 · read from a read-only snapshot in a worker</span>
             <span>last applied: tick 18,402</span>
@@ -1224,26 +1163,23 @@ function QuestNode({ id }: { id: string }): React.JSX.Element {
   const rendered = lines[id] ?? n.lines;
   const selected = node === id;
   const h = 34 + rendered.length * 20;
-  const drag = React.useRef<{ sx: number; sy: number; ox: number; oy: number; k: number } | null>(null);
+  const drag = useDrag<{ ox: number; oy: number; k: number }>({
+    threshold: 5,
+    stopPropagation: true,
+    start: (ev) => {
+      graphDragMoved.moved = false;
+      const k = 900 / ((ev.currentTarget as SVGGElement).ownerSVGElement?.getBoundingClientRect().width || 900);
+      return { ox: x, oy: y, k };
+    },
+    move: (_ev, d0, d) => {
+      graphDragMoved.moved = true;
+      moveQuestNode(id, d0.ox + d.dx * d0.k, d0.oy + d.dy * d0.k);
+    },
+  });
   return (
     <g
       data-qnode={id}
-      onPointerDown={(ev) => {
-        if (ev.button !== 0 && ev.pointerType === "mouse") return;
-        ev.stopPropagation();
-        graphDragMoved.moved = false;
-        const k = 900 / ((ev.currentTarget as SVGGElement).ownerSVGElement?.getBoundingClientRect().width || 900);
-        drag.current = { sx: ev.clientX, sy: ev.clientY, ox: x, oy: y, k };
-        (ev.currentTarget as SVGGElement).setPointerCapture?.(ev.pointerId);
-      }}
-      onPointerMove={(ev) => {
-        const d = drag.current;
-        if (!d) return;
-        if (Math.abs(ev.clientX - d.sx) + Math.abs(ev.clientY - d.sy) <= 4) return;
-        graphDragMoved.moved = true;
-        moveQuestNode(id, d.ox + (ev.clientX - d.sx) * d.k, d.oy + (ev.clientY - d.sy) * d.k);
-      }}
-      onPointerUp={() => { drag.current = null; }}
+      {...drag.handlers}
       onClick={() => {
         if (graphDragMoved.moved) { graphDragMoved.moved = false; return; }
         storyStore.set((p) => ({ ...p, node: id }));
@@ -1580,49 +1516,27 @@ export function StringsPreview(): React.JSX.Element {
         <span className="ml-auto rounded-full px-4 py-1.5 text-sm" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>文A Pseudo-locale</span>
       </div>
       <div className="overflow-x-auto rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
-        <table className="w-full border-collapse text-[12.5px]">
-          <thead>
-            <tr>
-              {["id", "en · source", "fr", "de", "es"].map((h) => (
-                <th key={h} className="whitespace-nowrap px-2 text-left font-medium" style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface-variant)", height: 32 }}>{h}</th>
-              ))}
-              <th className="w-10" style={{ background: "var(--m3-surface-2)", height: 32 }}><span className="sr-only">Row actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {STRINGS.map(([id, en, fr, de, es]) => {
-              const on = id === row;
-              return (
-                <tr
-                  key={id}
-                  onClick={() => stringsStore.set((p) => ({ ...p, row: id }))}
-                  className="group cursor-pointer"
-                  style={{ borderBottom: "1px solid #2a2b31", background: on ? "#2b2f4a" : undefined }}
-                >
-                  <td className="whitespace-nowrap px-2 font-mono text-xs" style={{ height: 30 }}>{id}</td>
-                  <td className="whitespace-nowrap px-2" style={{ height: 30 }}>{en}</td>
-                  <td className="px-2" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}><StrCell id={id} lang="fr" v={fr} /></td>
-                  <td className="px-2" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}><StrCell id={id} lang="de" v={de} /></td>
-                  <td className="px-2" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}><StrCell id={id} lang="es" v={es} /></td>
-                  <td className="px-1" style={{ height: 30 }} onClick={(e) => e.stopPropagation()}>
-                    <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                      <OverflowMenu
-                        label={`${id} actions`}
-                        items={[
+        <DataTable
+          rows={STRINGS}
+          rowKey={([id]) => id}
+          selected={([id]) => id === row}
+          onPick={([id]) => stringsStore.set((p) => ({ ...p, row: id }))}
+          menuLabel={([id]) => `${id} actions`}
+          menu={() => [
                           { label: "Reveal usages", icon: "search", stagedFor: "EA · story" },
                           "sep",
                           { label: "Rename id…", icon: "edit", stagedFor: "EA · story" },
                           { label: "Duplicate", icon: "content_copy", stagedFor: "EA · story" },
                           { label: "Delete string", icon: "delete", danger: true, stagedFor: "EA · story" },
                         ]}
-                      />
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          columns={[
+            { id: "id", header: "id", nowrap: true, mono: true, cellClass: () => "text-xs", cell: ([id]) => id },
+            { id: "en", header: "en · source", nowrap: true, cell: ([, en]) => en },
+            { id: "fr", header: "fr", interactive: true, cell: ([id, , fr]) => <StrCell id={id} lang="fr" v={fr} /> },
+            { id: "de", header: "de", interactive: true, cell: ([id, , , de]) => <StrCell id={id} lang="de" v={de} /> },
+            { id: "es", header: "es", interactive: true, cell: ([id, , , , es]) => <StrCell id={id} lang="es" v={es} /> },
+          ]}
+        />
       </div>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
@@ -1668,23 +1582,16 @@ export function ClipList(): React.JSX.Element {
   const { clip } = artStore.use();
   return (
     <div>
-      <ul className="flex flex-col gap-0.5">
-        {CLIPS.map(([c, tag]) => {
-          const on = c === clip;
-          return (
-            <li key={c}>
-              <button
-                onClick={() => artStore.set((p) => ({ ...p, clip: c }))}
-                className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="directions_run" size={16} />{c}
-                <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <SelectableList
+        mono
+        items={CLIPS}
+        itemKey={([c]) => c}
+        label={([c]) => c}
+        tag={([, tag]) => tag}
+        icon="directions_run"
+        selected={clip}
+        onPick={([c]) => artStore.set((p) => ({ ...p, clip: c }))}
+      />
       <SectionLabel>Retarget</SectionLabel>
       <p className="px-1 font-mono text-[11px] leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
         source: Kevin Iglesias rig<br />target: Synty humanoid<br />✓ 41 bones mapped
@@ -1699,23 +1606,16 @@ export function ArtAudioTree({ view, onView }: { view: string; onView?: (view: s
   const { effect, event } = artStore.use();
   if (view === "vfx") {
     return (
-      <ul className="flex flex-col gap-0.5">
-        {EFFECTS.map(([e, tag]) => {
-          const on = e === effect;
-          return (
-            <li key={e}>
-              <button
-                onClick={() => artStore.set((p) => ({ ...p, effect: e }))}
-                className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="auto_awesome" size={15} />{e}
-                <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <SelectableList
+        mono
+        items={EFFECTS}
+        itemKey={([e]) => e}
+        label={([e]) => e}
+        tag={([, tag]) => tag}
+        icon="auto_awesome"
+        selected={effect}
+        onPick={([e]) => artStore.set((p) => ({ ...p, effect: e }))}
+      />
     );
   }
   if (view === "audio") {
@@ -1724,20 +1624,18 @@ export function ArtAudioTree({ view, onView }: { view: string; onView?: (view: s
         {AUDIO_EVENTS.map(([group, evts]) => (
           <div key={group} className="mb-1">
             <p className="px-2 py-1 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>⌄ {group}</p>
-            {evts.map(([e, n]) => {
-              const on = e === event;
-              return (
-                <button
-                  key={e}
-                  onClick={() => artStore.set((p) => ({ ...p, event: e }))}
-                  className="m3-focus flex h-8 w-full items-center gap-2 rounded-full px-2 pl-5 font-mono text-xs"
-                  style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-                >
-                  <MIcon name="audio_file" size={15} />{e}
-                  <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{n}</span>
-                </button>
-              );
-            })}
+            <SelectableList
+              mono
+              size="sm"
+              indent={8}
+              items={evts}
+              itemKey={([e]) => e}
+              label={([e]) => e}
+              tag={([, n]) => n}
+              icon="audio_file"
+              selected={event}
+              onPick={([e]) => artStore.set((p) => ({ ...p, event: e }))}
+            />
           </div>
         ))}
       </div>
@@ -2084,20 +1982,16 @@ export function VfxPreview(): React.JSX.Element {
       <PreviewBadge slice="EA · Art & audio (§7c.5)">Particles, materials, post and quality tiers with per-tier budgets.</PreviewBadge>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[200px_1fr_280px]">
         <div className="rounded-xl p-2" style={{ background: "var(--m3-surface-2)" }}>
-          {EFFECTS.map(([e, tag]) => {
-            const on = e === effect;
-            return (
-              <button
-                key={e}
-                onClick={() => artStore.set((p) => ({ ...p, effect: e }))}
-                className="m3-focus flex h-9 w-full items-center gap-2 rounded-full px-3 font-mono text-xs"
-                style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="auto_awesome" size={15} />{e}
-                <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-            );
-          })}
+          <SelectableList
+            mono
+            items={EFFECTS}
+            itemKey={([e]) => e}
+            label={([e]) => e}
+            tag={([, tag]) => tag}
+            icon="auto_awesome"
+            selected={effect}
+            onPick={([e]) => artStore.set((p) => ({ ...p, effect: e }))}
+          />
           <SectionLabel>Materials</SectionLabel>
           {["toon.skin", "toon.cloth", "toon.metal", "surface.grass", "surface.rock"].map((m) => (
             <p key={m} className="flex h-8 items-center gap-2 px-3 font-mono text-xs" style={{ color: "var(--m3-on-surface)" }}>
@@ -2298,20 +2192,18 @@ export function AudioPreview(): React.JSX.Element {
           {AUDIO_EVENTS.map(([group, evts]) => (
             <div key={group} className="mb-1">
               <p className="px-2 py-1 font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>⌄ {group}</p>
-              {evts.map(([e, n]) => {
-                const on = e === event;
-                return (
-                  <button
-                    key={e}
-                    onClick={() => artStore.set((p) => ({ ...p, event: e }))}
-                    className="m3-focus flex h-8 w-full items-center gap-2 rounded-full px-2 pl-5 font-mono text-xs"
-                    style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-                  >
-                    <MIcon name="audio_file" size={15} />{e}
-                    <span className="ml-auto" style={{ color: "var(--m3-on-surface-variant)" }}>{n}</span>
-                  </button>
-                );
-              })}
+              <SelectableList
+              mono
+              size="sm"
+              indent={8}
+              items={evts}
+              itemKey={([e]) => e}
+              label={([e]) => e}
+              tag={([, n]) => n}
+              icon="audio_file"
+              selected={event}
+              onPick={([e]) => artStore.set((p) => ({ ...p, event: e }))}
+            />
             </div>
           ))}
         </div>
@@ -2490,6 +2382,15 @@ const releaseStore = createStore<{ scenario: string }>({ scenario: "camp-loop" }
 
 export { releaseStore };
 
+const SCENARIOS: Array<[string, string, "passed" | "failed" | "blocked"]> = [
+  ["camp-loop", "12 bots · 200 s · arena-01", "failed"],
+  ["coast-quest", "4 bots · warden-hale", "passed"],
+  ["stress-200", "200 bots × 120 goblins", "passed"],
+  ["ledger-soak", "loot and trade · 30 min", "passed"],
+  ["login-flow", "8 clients · flow", "passed"],
+  ["dungeon-run", "party of 5 · D4", "blocked"],
+];
+
 export function PlaytestPreview(): React.JSX.Element {
   const { scenario } = releaseStore.use();
   const scen = scenario;
@@ -2499,43 +2400,22 @@ export function PlaytestPreview(): React.JSX.Element {
       <PreviewBadge slice="EA · Release (§7c.9)">Playtest scenarios, replays and results with assertions.</PreviewBadge>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[210px_1fr_250px]">
         <div className="rounded-xl p-2" style={{ background: "var(--m3-surface-2)" }}>
-          {[
-            ["camp-loop", "12 bots · 200 s · arena-01", "failed"],
-            ["coast-quest", "4 bots · warden-hale", "passed"],
-            ["stress-200", "200 bots × 120 goblins", "passed"],
-            ["ledger-soak", "loot and trade · 30 min", "passed"],
-            ["login-flow", "8 clients · flow", "passed"],
-            ["dungeon-run", "party of 5 · D4", "blocked"],
-          ].map(([s, d, st]) => {
-            const on = s === scen;
-            return (
-              <div
-                key={s as string}
-                className="group flex items-center gap-0.5 rounded-xl px-1 py-0.5"
-                style={on ? { background: "var(--m3-secondary-container)" } : undefined}
-              >
-                <button
-                  onClick={() => releaseStore.set({ scenario: s as string })}
-                  className="m3-focus min-w-0 flex-1 rounded-xl px-2 py-1.5 text-left"
-                >
-                  <span className="flex items-center font-mono text-xs font-semibold">{s}<span className="ml-auto"><Pill tone={st === "passed" ? "ok" : st === "failed" ? "err" : "warn"}>{st as string}</Pill></span></span>
-                  <span className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{d}</span>
-                </button>
-                <span className="flex-none opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  <OverflowMenu
-                    label={`${s} actions`}
-                    items={[
-                      { label: `Inspect ${s}`, icon: "search", run: () => releaseStore.set({ scenario: s as string }) },
-                      { label: "Run scenario", icon: "play_arrow", stagedFor: "EA · release" },
-                      "sep",
-                      { label: "Duplicate", icon: "content_copy", stagedFor: "EA · release" },
-                      { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · release" },
-                    ]}
-                  />
-                </span>
-              </div>
-            );
-          })}
+          <SelectableList
+            items={SCENARIOS}
+            itemKey={([s]) => s}
+            label={([s]) => s}
+            tag={([, , st]) => <Pill tone={st === "passed" ? "ok" : st === "failed" ? "err" : "warn"}>{st}</Pill>}
+            detail={([, d]) => d}
+            selected={scen}
+            onPick={([s]) => releaseStore.set({ scenario: s })}
+            menu={([s]) => [
+              { label: `Inspect ${s}`, icon: "search", run: () => releaseStore.set({ scenario: s }) },
+              { label: "Run scenario", icon: "play_arrow", stagedFor: "EA · release" },
+              "sep",
+              { label: "Duplicate", icon: "content_copy", stagedFor: "EA · release" },
+              { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · release" },
+            ]}
+          />
         </div>
         <div className="flex flex-col gap-3">
           <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
@@ -2814,7 +2694,19 @@ function BendHandle({ x, y, accent, toUnits, onMove, onReset }: {
   onMove: (x: number, y: number) => void;
   onReset: () => void;
 }): React.JSX.Element {
-  const drag = React.useRef<{ sx: number; sy: number } | null>(null);
+  const drag = useDrag<true>({
+    threshold: 5,
+    stopPropagation: true,
+    start: () => {
+      graphDragMoved.moved = false;
+      return true;
+    },
+    move: (ev) => {
+      graphDragMoved.moved = true;
+      const p = toUnits(ev.clientX, ev.clientY);
+      onMove(p.x, p.y);
+    },
+  });
   return (
     <g opacity={accent ? 1 : 0} className="group-hover:opacity-100">
       <circle
@@ -2823,22 +2715,7 @@ function BendHandle({ x, y, accent, toUnits, onMove, onReset }: {
         r={13}
         fill="rgba(0,0,0,0)"
         style={{ cursor: "move" }}
-        onPointerDown={(ev) => {
-          if (ev.button !== 0 && ev.pointerType === "mouse") return;
-          ev.stopPropagation();
-          graphDragMoved.moved = false;
-          drag.current = { sx: ev.clientX, sy: ev.clientY };
-          (ev.currentTarget as SVGCircleElement).setPointerCapture?.(ev.pointerId);
-        }}
-        onPointerMove={(ev) => {
-          const d = drag.current;
-          if (!d) return;
-          if (Math.abs(ev.clientX - d.sx) + Math.abs(ev.clientY - d.sy) <= 4) return;
-          graphDragMoved.moved = true;
-          const p = toUnits(ev.clientX, ev.clientY);
-          onMove(p.x, p.y);
-        }}
-        onPointerUp={() => { drag.current = null; }}
+        {...drag.handlers}
         onDoubleClick={(ev) => {
           ev.stopPropagation();
           onReset();
@@ -3041,35 +2918,23 @@ export function WidgetList(): React.JSX.Element {
   const widget = useHudWidget();
   return (
     <div>
-      <ul className="flex flex-col gap-0.5">
-        {WIDGETS.map(([w, tag]) => {
-          const on = w === widget;
-          return (
-            <li key={w} className="group flex items-center gap-0.5 rounded-full" style={on ? { background: "var(--m3-secondary-container)" } : undefined}>
-              <button
-                onClick={() => selectHudWidget(w)}
-                className="m3-focus flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full px-3 text-sm"
-                style={on ? { color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}
-              >
-                <MIcon name="widgets" size={19} />{w}
-                <span className="ml-auto text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{tag}</span>
-              </button>
-              <span className="flex-none opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                <OverflowMenu
-                  label={`${w} actions`}
-                  items={[
-                    { label: `Inspect ${w}`, icon: "search", run: () => selectHudWidget(w) },
-                    "sep",
-                    { label: "Rename…", icon: "edit", stagedFor: "EA · flow & UI" },
-                    { label: "Duplicate", icon: "content_copy", stagedFor: "EA · flow & UI" },
-                    { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · flow & UI" },
-                  ]}
-                />
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+      <SelectableList
+        size="lg"
+        items={WIDGETS}
+        itemKey={([w]) => w}
+        label={([w]) => w}
+        tag={([, tag]) => tag}
+        icon="widgets"
+        selected={widget}
+        onPick={([w]) => selectHudWidget(w)}
+        menu={([w]) => [
+          { label: `Inspect ${w}`, icon: "search", run: () => selectHudWidget(w) },
+          "sep",
+          { label: "Rename…", icon: "edit", stagedFor: "EA · flow & UI" },
+          { label: "Duplicate", icon: "content_copy", stagedFor: "EA · flow & UI" },
+          { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · flow & UI" },
+        ]}
+      />
       <SectionLabel>Player theme</SectionLabel>
       <div className="flex gap-1.5 px-1">
         {["#E8C33D", "#3a2c14", "#efe8d8", "#8a2f1a", "#4d7a45"].map((c) => (

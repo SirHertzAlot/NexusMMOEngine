@@ -16,6 +16,7 @@
  */
 
 import * as React from "react";
+import { DataTable } from "./data-table.js";
 import { ManifestAssetProvider, type AssetManifest, type AssetLoadStatus } from "@mmo-engine/art/browser";
 import {
   Badge,
@@ -296,24 +297,18 @@ function ModelTable({
     );
   }
   return (
-    <table className="mt-1 w-full text-xs">
-      <tbody>
-        {rows.map((r) => (
-          <tr
-            key={r.id}
-            onClick={onSelect ? () => onSelect(r.id) : undefined}
-            className={
-              "border-b border-border/50 last:border-0" +
-              (onSelect ? " cursor-pointer hover:bg-accent" : "") +
-              (selected === r.id ? " bg-accent" : "")
-            }
-          >
-            <td className="py-1 pr-3 font-mono font-semibold">{r.id}</td>
-            <td className="py-1 font-mono text-muted-foreground">{r.file}</td>
-            <td className="py-1 text-right text-muted-foreground">{r.extra}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTable
+      headless
+      className="mt-1 w-full text-xs"
+      rows={rows}
+      rowKey={(r) => r.id}
+      selected={selected}
+      onPick={onSelect ? (r) => onSelect(r.id) : undefined}
+      columns={[
+        { id: "id", mono: true, cellClass: () => "font-semibold", cell: (r) => r.id },
+        { id: "file", mono: true, cell: (r) => <span style={{ color: "var(--m3-on-surface-variant)" }}>{r.file}</span> },
+        { id: "extra", align: "right", cell: (r) => <span style={{ color: "var(--m3-on-surface-variant)" }}>{r.extra}</span> },
+      ]}
+    />
   );
 }

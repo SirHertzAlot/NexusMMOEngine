@@ -23,10 +23,10 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  KvTable,
   Label,
   SectionTitle,
 } from "./components.js";
+import { KvTable } from "./data-table.js";
 import { editorSelection } from "./editor-selection.js";
 
 const ALL_COMPONENTS: ComponentKind[] = [

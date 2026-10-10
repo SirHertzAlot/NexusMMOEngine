@@ -22,10 +22,10 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  KvTable,
   Label,
   SectionTitle,
 } from "./components.js";
+import { KvTable } from "./data-table.js";
 
 function fmtDate(ms: number): string {
   const d = new Date(ms);
