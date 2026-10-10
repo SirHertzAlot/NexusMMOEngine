@@ -27,6 +27,7 @@ import { StringsPanel } from "./strings-panel.js";
 import { AudioPanel } from "./audio-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
 import { ParticlePanel } from "./particle-panel.js";
+import { MaterialsPanel } from "./materials-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -203,6 +204,7 @@ const WORKSPACES: Workspace[] = [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
       { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
       { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <ParticlePanel /> },
+      { id: "materials", label: "Materials", icon: "texture", kind: "panel", panel: <MaterialsPanel /> },
       { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPanel /> },
     ],
     leftTitle: "Library",

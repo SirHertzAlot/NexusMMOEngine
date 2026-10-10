@@ -20,6 +20,7 @@
 
 import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
+import { getAllMedia } from "../media-client.js";
 import {
   CombatFeedback,
   DEFAULT_BINDINGS,
@@ -27,6 +28,7 @@ import {
   PcgRpcClient,
   PlaceholderAssets,
   WorldCanvas,
+  applyGameContent,
   type GpuInfo,
   type HudData,
   type QualityTier,
@@ -77,6 +79,14 @@ export function GameView({
   const [assets] = React.useState(() => new PlaceholderAssets());
   const [ownCombat] = React.useState(() => new CombatFeedback());
   const combat = givenCombat ?? ownCombat;
+  // The animation-side content (combat moves, locomotion graph, materials) is applied before the world is built.
+  const [contentReady, setContentReady] = React.useState(false);
+  React.useEffect(() => {
+    getAllMedia()
+      .then((c) => void applyGameContent(c))
+      .catch((e: unknown) => console.warn(`[editor] game content: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setContentReady(true));
+  }, []);
   const pcg = React.useMemo(
     () => new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken),
     [client, url],
@@ -91,7 +101,7 @@ export function GameView({
       }
       data-testid="game-view"
     >
-      <WorldCanvas
+      {contentReady && <WorldCanvas
         client={client}
         assets={assets}
         pcg={pcg}
@@ -106,7 +116,7 @@ export function GameView({
         onQuality={onQuality}
         view={view}
         onViewChange={onViewChange}
-      />
+      />}
       {children}
     </div>
   );

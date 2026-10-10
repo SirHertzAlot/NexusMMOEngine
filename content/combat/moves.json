@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "moves": [
+    {
+      "id": 1,
+      "name": "sword A",
+      "clip": "Sword_Regular_A",
+      "kind": "attack",
+      "duration": 0.4333,
+      "chain": {
+        "next": 2,
+        "from": 0.08,
+        "to": 0.4333
+      },
+      "branchAt": 0.4333,
+      "recovery": 4,
+      "advance": {
+        "distance": 0.79,
+        "from": 0,
+        "to": 0.4333
+      },
+      "moveScale": 0,
+      "hitAt": 0.2,
+      "sound": {
+        "start": "sword-swing"
+      }
+    },
+    {
+      "id": 2,
+      "name": "sword B",
+      "clip": "Sword_Regular_B",
+      "kind": "attack",
+      "duration": 0.5333,
+      "chain": {
+        "next": 3,
+        "from": 0.08,
+        "to": 0.5333
+      },
+      "branchAt": 0.5333,
+      "recovery": 5,
+      "moveScale": 0,
+      "hitAt": 0.25,
+      "sound": {
+        "start": "sword-swing"
+      }
+    },
+    {
+      "id": 3,
+      "name": "sword C (finisher)",
+      "clip": "Sword_Regular_C",
+      "kind": "attack",
+      "duration": 2,
+      "advance": {
+        "distance": 1.49,
+        "from": 0.1,
+        "to": 0.9
+      },
+      "moveScale": 0,
+      "hitAt": 0.5,
+      "sound": {
+        "start": "sword-swing"
+      }
+    },
+    {
+      "id": 4,
+      "name": "sword A recovery",
+      "clip": "Sword_Regular_A_Rec",
+      "kind": "attack",
+      "duration": 0.9667,
+      "chain": {
+        "next": 2,
+        "from": 0,
+        "to": 0.25
+      },
+      "branchAt": 0.25,
+      "advance": {
+        "distance": 0.3,
+        "from": 0,
+        "to": 0.6
+      },
+      "moveScale": 0.3
+    },
+    {
+      "id": 5,
+      "name": "sword B recovery",
+      "clip": "Sword_Regular_B_Rec",
+      "kind": "attack",
+      "duration": 1.0333,
+      "chain": {
+        "next": 3,
+        "from": 0,
+        "to": 0.25
+      },
+      "branchAt": 0.25,
+      "advance": {
+        "distance": 0.35,
+        "from": 0,
+        "to": 0.6
+      },
+      "moveScale": 0.3
+    },
+    {
+      "id": 6,
+      "name": "guard",
+      "clip": "Idle_Shield_Loop",
+      "kind": "guard",
+      "duration": 2.5,
+      "held": true,
+      "moveScale": 0.35
+    },
+    {
+      "id": 7,
+      "name": "roll",
+      "clip": "Roll",
+      "kind": "dodge",
+      "duration": 1.4667,
+      "advance": {
+        "distance": 4.5,
+        "from": 0.05,
+        "to": 1.05
+      },
+      "moveScale": 0,
+      "iframes": {
+        "from": 0.05,
+        "to": 0.8
+      }
+    },
+    {
+      "id": 8,
+      "name": "shield bash",
+      "clip": "Shield_OneShot",
+      "kind": "attack",
+      "duration": 0.8333,
+      "moveScale": 0,
+      "sound": {
+        "start": "sword-swing"
+      }
+    }
+  ]
+}

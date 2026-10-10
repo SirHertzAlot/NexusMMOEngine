@@ -55,6 +55,11 @@ import { AudioEngine } from "./audio/engine.js";
 import { loadVolumes, saveVolumes, type AudioBus, type Volumes } from "./audio/volumes.js";
 import audioBankJson from "virtual:audio-events";
 import { parseAudioBank, type Listener } from "./audio/sound-logic.js";
+import combatMovesDoc from "virtual:combat-moves";
+import animationDoc from "virtual:animation-doc";
+import materialsDoc from "virtual:materials-doc";
+import { applyGameContent } from "./render/game-content.js";
+import { setMoveSound } from "./render/entity-layer.js";
 import {
   loadBindings,
   prettyCode,
@@ -64,6 +69,9 @@ import {
 } from "./input/bindings.js";
 
 /** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
+// The animation-side content (combat moves, locomotion graph, materials) is applied once, before any world is built.
+applyGameContent({ combat: combatMovesDoc, animation: animationDoc, materials: materialsDoc } as Parameters<typeof applyGameContent>[0]);
+
 const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
 const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
 
@@ -141,7 +149,11 @@ export function App(): React.ReactElement {
     for (const e of errors) console.warn(`audio events: ${e}`);
     audio.setBank(bank);
     audio.setListener(listener);
+    // A combat move's sounds (content/combat) are audio events played where the mover stands.
+    setMoveSound((event, x, y, z) => void audio.playEvent(event, { x, y, z }));
+    return () => setMoveSound(null);
   }, [audio, listener]);
+  const onFootstep = useCallback((event: string, at: { x: number; y: number; z: number }) => void audio.playEvent(event, at), [audio]);
   const bagCount = useRef<number | null>(null);
   useEffect(() => {
     const unlock = (e: Event): void => {
@@ -592,6 +604,7 @@ export function App(): React.ReactElement {
           onQuality={onQuality}
           onHud={setHud}
           listener={listener}
+          onFootstep={onFootstep}
           onBag={toggleBag}
           onStance={onStance}
           onTreat={onTreat}

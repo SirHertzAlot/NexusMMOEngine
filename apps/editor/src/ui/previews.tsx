@@ -10,6 +10,7 @@
 
 import * as React from "react";
 import { createStore } from "../store.js";
+import { animationStore } from "./animation-store.js";
 import { useDrag } from "./use-drag.js";
 import { SelectableList } from "./selectable-list.js";
 import { DataTable, type Column } from "./data-table.js";
@@ -1442,24 +1443,32 @@ const artStore = createStore<{ clip: string; effect: string; event: string }>({
 
 export { artStore };
 
+/** The animation library: the rig's clips (or the ones the graph and the moves play) and the combat moves, as the Animation panel loaded them. */
 export function ClipList(): React.JSX.Element {
-  const { clip } = artStore.use();
+  const { clip, move, clips, moves } = animationStore.use();
   return (
     <div>
       <SelectableList
         mono
-        items={CLIPS}
-        itemKey={([c]) => c}
-        label={([c]) => c}
-        tag={([, tag]) => tag}
+        items={clips}
+        itemKey={(c) => c}
+        label={(c) => c}
         icon="directions_run"
         selected={clip}
-        onPick={([c]) => artStore.set((p) => ({ ...p, clip: c }))}
+        onPick={(c) => animationStore.set((p) => ({ ...p, clip: c, tab: "clips" }))}
       />
-      <SectionLabel>Retarget</SectionLabel>
-      <p className="px-1 font-mono text-[11px] leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
-        source: Kevin Iglesias rig<br />target: Synty humanoid<br />✓ 41 bones mapped
-      </p>
+      {clips.length === 0 && <p className="px-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Open the Animation view to load the clips.</p>}
+      <SectionLabel>Combat moves</SectionLabel>
+      <SelectableList
+        mono
+        items={moves}
+        itemKey={([id]) => String(id)}
+        label={([, name]) => name}
+        tag={([id]) => String(id)}
+        icon="swords"
+        selected={moves.some(([id]) => id === move) ? String(move) : undefined}
+        onPick={([id]) => animationStore.set((p) => ({ ...p, move: id, tab: "combat" }))}
+      />
     </div>
   );
 }
@@ -1467,6 +1476,9 @@ export function ClipList(): React.JSX.Element {
 /** Left library for Art & audio: clips, effects, or events per active view. */
 export function ArtAudioTree({ view, onView }: { view: string; onView?: (view: string) => void }): React.JSX.Element {
   if (view === "animation") return <ClipList />;
+  if (view === "materials") {
+    return <p className="px-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>The toon look and the terrain surfaces live in content/materials/materials.json; edit them in the panel.</p>;
+  }
   const { effect, event } = artStore.use();
   if (view === "vfx") {
     return (
@@ -1608,40 +1620,26 @@ function AssetLibraryTree({ onView }: { onView?: (view: string) => void }): Reac
   );
 }
 
+/** Details for the Animation view: the facts of the selection the open view published (a clip, a locomotion state, a combat move). */
 export function AnimDetails(): React.JSX.Element {
-  const { clip } = artStore.use();
+  const { detail } = animationStore.use();
   return (
-    <div className="flex flex-col gap-2">
-      <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-        CLIP · {clip.toUpperCase().replace(/_/g, " ")}
-      </p>
-      <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Transition · Walk → Jog
-      </p>
-      <DraftField label="Condition" value="speed > 1.8" />
-      <DraftField label="Crossfade" value="0.20 s" />
-      <SectionLabel>Blend space · jog</SectionLabel>
-      <svg viewBox="0 0 160 130" className="w-full rounded-xl" style={{ background: "var(--m3-surface-2)" }} aria-hidden="true">
-        <line x1="80" y1="8" x2="80" y2="122" stroke="#46464F" />
-        <line x1="8" y1="65" x2="152" y2="65" stroke="#46464F" />
-        <circle cx="80" cy="18" r="5" fill="#B9C3FF" />
-        <circle cx="30" cy="65" r="5" fill="#B9C3FF" />
-        <circle cx="130" cy="65" r="5" fill="#B9C3FF" />
-        <circle cx="80" cy="112" r="5" fill="#B9C3FF" />
-        <circle cx="108" cy="44" r="8" fill="none" stroke="#FFB59A" strokeWidth="2" />
-        <text x="90" y="20" fill="#C6C5D0" fontSize="9">fwd</text>
-        <text x="4" y="60" fill="#C6C5D0" fontSize="9">strafe L</text>
-        <text x="112" y="60" fill="#C6C5D0" fontSize="9">strafe R</text>
-        <text x="70" y="124" fill="#C6C5D0" fontSize="9">back</text>
-      </svg>
-      <SectionLabel>Played on</SectionLabel>
-      <div className="flex h-9 items-center overflow-hidden rounded-full text-sm" style={{ border: "1px solid var(--m3-outline-variant)" }}>
-        {["Human F", "Human M", "Goblin"].map((m, i) => (
-          <span key={m} className="flex h-full flex-1 items-center justify-center" style={i === 0 ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { color: "var(--m3-on-surface)" }}>
-            {m}
-          </span>
+    <div className="flex flex-col gap-2" data-details="animation">
+      <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>ANIMATION</p>
+      {detail.title ? (
+        <p className="text-sm font-semibold">{detail.title}</p>
+      ) : (
+        <p className="text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>Pick a clip, a locomotion state or a combat move to see its details.</p>
+      )}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+        {detail.rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt style={{ color: "var(--m3-on-surface-variant)" }}>{k}</dt>
+            <dd className="font-mono">{v}</dd>
+          </React.Fragment>
         ))}
-      </div>
+      </dl>
+      {detail.note && <p className="text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>{detail.note}</p>}
     </div>
   );
 }

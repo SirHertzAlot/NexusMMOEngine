@@ -107,6 +107,7 @@ import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleAudioRoute } from "./audio-host.js";
 import { handleVfxRoute } from "./vfx-host.js";
 import { handleAnimationRoute } from "./animation-host.js";
+import { handleMediaRoute } from "./media-host.js";
 import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
@@ -1302,6 +1303,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const animationReply = await handleAnimationRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (animationReply) {
             sendJson(res, animationReply.status, animationReply.body);
+            return;
+          }
+          // Combat moves, locomotion graph and materials (EA21/EA22, media-host.ts).
+          const mediaReply = await handleMediaRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
+          if (mediaReply) {
+            sendJson(res, mediaReply.status, mediaReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(

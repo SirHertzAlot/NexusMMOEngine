@@ -28,6 +28,7 @@
  *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
  *   MMO_RULES      game rules dir (default: the repo's content/rules); a
  *                  bad rules file stops the server with every problem named
+ *   MMO_COMBAT     combat moves file (default: the repo's content/combat/moves.json)
  *   MMO_SCATTER    what grows on new chunks: "ecology" (natural placement of
  *                  the Synty nature set, content/ecology/wilds.ecology.json)
  *                  or "pcg" (the PCG forest graph with PICG trees). Default:
@@ -140,6 +141,7 @@ import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
+import { loadCombatContent } from "./combat-content.js";
 import { assembleServerSystems } from "./modules.js";
 const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
@@ -241,6 +243,9 @@ async function main(): Promise<void> {
     throw err;
   }
   console.log(`[server] ${game.summary}`);
+  // The combat moves (content/combat/moves.json, MMO_COMBAT): timing, chaining and travel the fight runs on.
+  const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
+  if (combatLine) console.log(`[server] ${combatLine}`);
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
 

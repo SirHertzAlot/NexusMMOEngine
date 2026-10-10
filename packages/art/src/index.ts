@@ -19,5 +19,6 @@ export * from "./character/animations.js";
 export { loadMaterial, type Material } from "./materials.js";
 export * from "./character/clip-map.js";
 export * from "./character/clip-playback.js";
+export * from "./media/index.js";
 export * from "./character/stand-in.js";
 export { loadParticleBudgets, budgetForTier, DEFAULT_PARTICLE_BUDGETS, type ParticleBudgets, type TierBudget, type QualityTier } from "./particle-budgets.js";

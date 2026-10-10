@@ -1,0 +1,51 @@
+{
+  "version": 3,
+  "sources": [],
+  "clips": [],
+  "locomotion": {
+    "fade": 0.2,
+    "airborneVy": 1.5,
+    "airSeconds": 0.05,
+    "scale": [
+      0.6,
+      1.6
+    ],
+    "idle": {
+      "ground": "Idle_Loop",
+      "swim": "Swim_Idle_Loop",
+      "fly": "Swim_Idle_Loop",
+      "air": "Jump_Loop"
+    },
+    "ground": [
+      {
+        "clip": "Walk_Loop",
+        "speed": 1.4,
+        "from": 0.3
+      },
+      {
+        "clip": "Jog_Fwd_Loop",
+        "speed": 3.6,
+        "from": 2.2
+      },
+      {
+        "clip": "Sprint_Loop",
+        "speed": 6.2,
+        "from": 4.8
+      }
+    ],
+    "swim": [
+      {
+        "clip": "Swim_Fwd_Loop",
+        "speed": 1.4,
+        "from": 0.3
+      }
+    ],
+    "fly": [
+      {
+        "clip": "Swim_Fwd_Loop",
+        "speed": 6,
+        "from": 0.5
+      }
+    ]
+  }
+}

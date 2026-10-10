@@ -18,8 +18,10 @@
 
 import * as THREE from "three";
 import { createGltfLoader } from "../gltf-loader.js";
-import { LocomotionMode } from "@mmo-engine/protocol";
-import { crossfadeWeights, playhead, type AnimationClipInfo, type AnimationManifest, type ClipPlan } from "@mmo-engine/art/browser";
+import {
+  DEFAULT_LOCOMOTION, crossfadeWeights, manifestLocomotion, pickLocomotion, playhead,
+  type AnimationClipInfo, type AnimationManifest, type ClipPlan, type LocomotionGraph,
+} from "@mmo-engine/art/browser";
 import { DEFAULT_KIT_URL } from "./character-kit.js";
 
 export class AnimationLibrary {
@@ -37,7 +39,8 @@ export class AnimationLibrary {
     const res = await fetch(`${baseUrl}animations.json`);
     if (!res.ok) throw new Error(`animations: ${baseUrl}animations.json (${res.status}) — run npm run convert:animations -w @mmo-engine/art`);
     const manifest = (await res.json()) as AnimationManifest;
-    if (manifest.version !== 2) throw new Error(`animations: manifest version ${manifest.version} — re-run convert:animations`);
+    // v2 (the converter's) and v3 (adds the locomotion graph) load; anything else needs a re-convert.
+    if (manifestLocomotion(manifest) === null) throw new Error(`animations: manifest version ${manifest.version} — re-run convert:animations`);
     const loader = createGltfLoader();
     const sources = manifest.sources.filter((s) => opts.reference || !s.reference);
     const sets = await Promise.all(sources.map((s) => loader.loadAsync(`${baseUrl}${s.file}`)));
@@ -71,28 +74,19 @@ export interface Motion {
   mode: number;
 }
 
-interface Gait {
-  clip: string;
-  /** The clip's own ground speed (m/s): playback is scaled to the actual speed. */
-  speed: number;
-  /** Speeds from here up use this gait. */
-  from: number;
+/**
+ * The locomotion state machine in force: which base clip plays at which
+ * speed, and the crossfades. content/animation/animations.json (a v3
+ * manifest) sets it at start (`setLocomotion`); without it the library
+ * manifest's own graph, else the engine default (art `pickLocomotion`).
+ */
+let locomotion: LocomotionGraph | null = null;
+export function setLocomotion(graph: LocomotionGraph | null): void {
+  locomotion = graph;
 }
-
-// Tuned by eye against the retargeted clips.
-const GROUND: Gait[] = [
-  { clip: "Walk_Loop", speed: 1.4, from: 0.3 },
-  { clip: "Jog_Fwd_Loop", speed: 3.6, from: 2.2 },
-  { clip: "Sprint_Loop", speed: 6.2, from: 4.8 },
-];
-const SWIM: Gait[] = [{ clip: "Swim_Fwd_Loop", speed: 1.4, from: 0.3 }];
-const FLY: Gait[] = [{ clip: "Swim_Fwd_Loop", speed: 6, from: 0.5 }];
-const IDLE = { ground: "Idle_Loop", swim: "Swim_Idle_Loop", fly: "Swim_Idle_Loop", air: "Jump_Loop" };
-
-/** Vertical speed that means the feet left the ground. */
-const AIRBORNE_VY = 1.5;
-/** Crossfade between base clips, seconds. */
-const BASE_FADE = 0.2;
+export function getLocomotion(): LocomotionGraph | null {
+  return locomotion;
+}
 
 /** Bones of the upper body (spine up): an upper-body action leaves the legs to the base. */
 function isUpperBody(bone: THREE.Object3D): boolean {
@@ -304,24 +298,13 @@ export class CharacterAnimator {
   }
 
   private chooseBase(m: Motion, dt: number): void {
-    let name: string;
-    let timeScale = 1;
-    let fade = BASE_FADE;
-    const gait = (gaits: Gait[], idle: string): void => {
-      const g = [...gaits].reverse().find((x) => m.speed >= x.from);
-      name = g ? g.clip : idle;
-      if (g) timeScale = THREE.MathUtils.clamp(m.speed / g.speed, 0.6, 1.6);
-    };
-    this.airTime = Math.abs(m.vy) > AIRBORNE_VY ? this.airTime + dt : 0;
-    const grounded = m.mode !== LocomotionMode.Swim && m.mode !== LocomotionMode.Fly && this.airTime <= 0.05;
-    if (this.serverBase && grounded) {
-      // The server's gait and rate; it never sends swimming or airborne, so those stay with the motion.
-      ({ name, timeScale, fade } = this.serverBase);
-    } else if (m.mode === LocomotionMode.Swim) gait(SWIM, IDLE.swim);
-    else if (m.mode === LocomotionMode.Fly) gait(FLY, IDLE.fly);
-    else if (this.airTime > 0.05) name = IDLE.air;
-    else gait(GROUND, IDLE.ground);
-    name = this.resolve(this.library.clips.has(name!) ? name! : IDLE.ground);
+    const g = locomotion ?? manifestLocomotion(this.library.manifest) ?? DEFAULT_LOCOMOTION;
+    this.airTime = Math.abs(m.vy) > g.airborneVy ? this.airTime + dt : 0;
+    const pick = pickLocomotion(g, m, this.airTime);
+    let { clip: name, timeScale, fade } = pick;
+    // The server's gait and rate; it never sends swimming or airborne, so those stay with the motion.
+    if (this.serverBase && pick.medium === "ground") ({ name, timeScale, fade } = this.serverBase);
+    name = this.resolve(this.library.clips.has(name) ? name : g.idle.ground);
     this.setBase(name, timeScale, fade);
   }
 
