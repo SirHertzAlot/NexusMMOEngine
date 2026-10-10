@@ -107,6 +107,14 @@ export function GraphEditorPanel(): React.JSX.Element {
       save: () => void save(),
       undo: () => editor.undo(),
       redo: () => editor.redo(),
+      canRevert: vm.dirtyFiles.length > 0,
+      revert: () => editor.pendingSaves().forEach((p) => editor.revert(p.file)),
+      exportDoc: () => ({ name: vm.file, data: editor.currentDocument() }),
+      importDoc: (incoming: unknown) => {
+        const d = incoming as { version?: unknown; nodes?: unknown };
+        if (typeof d.version !== "string" || !Array.isArray(d.nodes)) throw new Error("a PICG graph has a version and a node list");
+        editor.replaceCurrent(incoming as GraphDocument);
+      },
     };
   });
 

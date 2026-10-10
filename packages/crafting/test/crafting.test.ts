@@ -6,11 +6,14 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { KINDS } from "@mmo-engine/species";
 import { BUILTIN_DRESSING } from "@mmo-engine/dungeon";
 import { bakeLootPool, BUILTIN_CATALOG, composeItem, composeCreature } from "@mmo-engine/compose";
 import {
-  BUILTIN_MATERIALS, craftReport, gatherHours, isTradable, materialProblems, recipeFor, REFINING, topGearNeeds, TRADABILITY,
+  BUILTIN_MATERIALS, craftReport, gatherHours, isTradable, materialProblems, recipeFor, craftingRules, checkCraftingRules, loadCraftingRules, topGearNeeds, TRADABILITY, type CraftingRules,
 } from "../src/index.js";
 
 const WORLD = {
@@ -30,8 +33,8 @@ describe("materials", () => {
   it("refine every composer material from known raw materials", () => {
     for (const [id, comp] of Object.entries(BUILTIN_CATALOG.components)) {
       if (comp.slot !== "material") continue;
-      assert.ok(REFINING[id], `${id} has a refining recipe`);
-      for (const raw of Object.keys(REFINING[id])) assert.ok(BUILTIN_MATERIALS[raw], `${id}: ${raw} is a material`);
+      assert.ok(craftingRules().refining[id], `${id} has a refining recipe`);
+      for (const raw of Object.keys(craftingRules().refining[id].inputs)) assert.ok(BUILTIN_MATERIALS[raw], `${id}: ${raw} is a material`);
     }
   });
 
@@ -48,7 +51,7 @@ describe("recipes", () => {
   it("follow the item: material by base size, reagents by element, runes and uniques", () => {
     const x = composeItem("greatsword", "legendary", { seed: 3 }).bundle;
     const r = recipeFor(x);
-    const refine = REFINING[x.Material!];
+    const refine = craftingRules().refining[x.Material!].inputs;
     for (const [raw, n] of Object.entries(refine)) assert.ok(r.inputs[raw] >= n * 6, `${raw}: a two-handed item takes six units`);
     assert.ok(r.inputs["rune-stone"] >= 4, "runes and a unique ability take rune stone");
     assert.equal(r.skill, "Smithing");
@@ -81,5 +84,53 @@ describe("the pool, crafted", () => {
     assert.equal(r.byRank.legendary.tradableShare, 0, "legendaries need bound materials");
     const one = recipeFor(pool.items[0].bundle);
     assert.ok(gatherHours(one) > 0);
+  });
+});
+
+describe("the rules file (content/crafting/recipes.json)", () => {
+  const edited = (fn: (r: CraftingRules) => void): CraftingRules => {
+    const r = structuredClone(craftingRules());
+    fn(r);
+    return r;
+  };
+
+  it("passes its own checks", () => {
+    assert.deepEqual(checkCraftingRules(craftingRules()), []);
+  });
+
+  it("is what recipes are built from: change a cost, the recipe changes", () => {
+    const x = composeItem("greatsword", "common", { seed: 3 }).bundle;
+    const before = recipeFor(x);
+    const dearer = edited((r) => {
+      r.units[1].units = 12;
+    });
+    const after = recipeFor(x, { rules: dearer });
+    const raw = Object.keys(craftingRules().refining[x.Material!].inputs)[0];
+    assert.equal(after.inputs[raw], before.inputs[raw] * 2, "two-handed bases take twice the units");
+  });
+
+  it("lists every problem: unknown raw materials, a missing refining row, a stray row, bad shape", () => {
+    const bad = edited((r) => {
+      r.refining.steel.inputs = { unobtainium: 1 };
+      delete (r.refining as Record<string, unknown>).iron;
+      (r.refining as Record<string, unknown>).wibble = { inputs: { coal: 1 } };
+      r.reagents.fire.extra = "nope";
+    });
+    const text = checkCraftingRules(bad).map((i) => `${i.path}: ${i.message}`).join("\n");
+    assert.match(text, /refining\.steel\.inputs\.unobtainium: "unobtainium" is not a known raw material/);
+    assert.match(text, /refining\.iron: composer material "iron" has no refining recipe/);
+    assert.match(text, /refining\.wibble: "wibble" is not a composer material component/);
+    assert.match(text, /reagents\.fire\.extra/);
+    assert.match(checkCraftingRules({ version: 1 }).map((i) => i.path).join(), /refining/);
+  });
+
+  it("loadCraftingRules refuses a bad file and says where", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mmo-craft-"));
+    const file = join(dir, "recipes.json");
+    writeFileSync(file, JSON.stringify(edited((r) => void (r.defaultUnits = 0))));
+    assert.throws(() => loadCraftingRules(file), /defaultUnits/);
+    writeFileSync(file, "{nope");
+    assert.throws(() => loadCraftingRules(file), /not valid JSON/);
+    assert.throws(() => loadCraftingRules(join(dir, "none.json")), /no such file/);
   });
 });

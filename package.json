@@ -44,7 +44,8 @@
     "stress:world": "node scripts/world-stress/run.mjs",
     "package": "node scripts/package.mjs",
     "deploy:local": "node scripts/deploy-local.mjs",
-    "playtest": "node scripts/playtest.mjs --all"
+    "playtest": "node scripts/playtest.mjs --all",
+    "build:native": "node scripts/build-native.mjs"
   },
   "version": "0.1.0",
   "workspaces": [

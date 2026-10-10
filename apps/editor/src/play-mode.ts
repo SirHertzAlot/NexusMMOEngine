@@ -80,6 +80,8 @@ export interface PlayStartOptions {
    * units. Reaches the server as MMO_SPAWN_OVERRIDE.
    */
   spawn?: { x: number; z: number };
+  /** "edge" also starts the edge process beside the core (Play menu: Edge + core). */
+  network?: "core" | "edge";
 }
 
 /** Minimal mirror-client surface the play-mode inspector needs. */

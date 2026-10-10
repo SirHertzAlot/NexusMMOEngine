@@ -93,9 +93,9 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   appearance: ["body"],
   stats: [],
   items: ["combat"],
-  loot: [],
+  loot: ["items"],
   ingress: [],
-  creatures: ["items"],
+  creatures: ["items", "loot"],
   needs: [],
   spells: [],
 };
@@ -257,6 +257,17 @@ function crossCheck(r: Rules): RulesIssue[] {
     if (c.leashRadius <= c.aggroRadius) add("creatures", `creatures.${kind}.leashRadius`, "must be beyond aggroRadius");
     c.weapons.forEach((w, i) => {
       if (!(w in r.items.bases)) add("creatures", `creatures.${kind}.weapons[${i}]`, `no item base "${w}"`);
+    });
+    if (c.drops.table !== undefined && !(c.drops.table in (r.loot.tables ?? {}))) {
+      add("creatures", `creatures.${kind}.drops.table`, `no loot table "${c.drops.table}" in loot.json`);
+    }
+  }
+
+  // Loot tables: every line names an item base.
+  for (const [t, table] of Object.entries(r.loot.tables ?? {})) {
+    table.entries.forEach((e, i) => {
+      if (!(e.base in r.items.bases)) add("loot", `tables.${t}.entries[${i}].base`, `no item base "${e.base}"`);
+      if (e.count[0] > e.count[1]) add("loot", `tables.${t}.entries[${i}].count`, "min is above max");
     });
   }
 

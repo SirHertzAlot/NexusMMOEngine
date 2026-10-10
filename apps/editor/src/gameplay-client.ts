@@ -18,8 +18,8 @@ export interface GameplayIssue {
 export interface GameplaySnapshot {
   tables: Record<GameplayTable, unknown>;
   context: {
-    refs: { items: string[]; creatures: string[] };
-    options: { techniques: string[]; families: string[] };
+    refs: { items: string[]; creatures: string[]; materials: string[]; prefabs: string[] };
+    options: { techniques: string[]; families: string[]; nodeKinds: string[]; lootTables: string[]; materials: string[] };
     builtinSpecies: string[];
   };
 }

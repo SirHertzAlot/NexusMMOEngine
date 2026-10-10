@@ -97,6 +97,7 @@ export function GameView({
         pcg={pcg}
         lastStateAt={lastStateAt}
         wireframe={wireframe}
+        captureFrames
         showcase={showcase}
         bindings={DEFAULT_BINDINGS}
         quality={quality}
