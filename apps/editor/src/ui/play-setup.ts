@@ -1,6 +1,6 @@
 /**
- * Play setup persistence — what the Play menu chose, and what the
- * play-start path actually honors.
+ * Play setup: what the Play menu chose, how it is validated, saved by name
+ * (with a key that starts it), and what the play-start path honors.
  *
  * Pure logic (no React, no DOM): storage is injected so node:test can
  * pass a fake. The UI defaults to window.localStorage when present.
@@ -9,68 +9,79 @@
  * - where = "viewport" (the embedded game view), "window" (the game view
  *   pops out into a separate window via adoptNode), or "simulate" (world
  *   only, no player client);
- * - clients = "1"/"2"/"4"/"8" (mirror clients; client 0 drives the view,
- *   the rest are headless load);
+ * - clients = 1 to 8 (mirror clients, each with its own seeded account;
+ *   client 0 drives the view, the rest are headless load);
  * - bots (sent as MMO_BOTS for the owned server);
+ * - latency (a laggy socket on every client);
  * - fresh/keep (world snapshot/restore: fresh backs up world.db on start;
  *   on stop the backup is restored unless keep is set);
  * - from = "World" (default spawn) or "Camera position" (the scene
- *   viewport camera's ground target → MMO_SPAWN_OVERRIDE; "Login" and
- *   "Character creation" need client-side flow execution);
+ *   viewport camera's ground target → MMO_SPAWN_OVERRIDE);
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - from Login / Character creation, net (edge/core switch).
+ * - from Login / Character creation (need client-side flow execution);
+ * - net = "Edge + core" (the edge process is not started; plays as core).
  */
 
-export interface PlaySetup {
-  where: string;
-  from: string;
-  clients: string;
-  bots: string;
-  net: string;
-  latency: string;
-  fresh: boolean;
-  keep: boolean;
-  tint: boolean;
-}
+import { latencyMs } from "@mmo-engine/mirror";
+import { z } from "zod";
+import { normalizeShortcut, validateShortcut } from "./play-shortcuts.js";
+
+export const PLAY_WHERE = ["viewport", "window", "simulate"] as const;
+export const PLAY_FROM = ["Login", "Character creation", "World", "Camera position"] as const;
+export const PLAY_NET = ["Core only", "Edge + core"] as const;
+export const PLAY_LATENCY = ["0", "80 ms", "200 ms"] as const;
+export const MAX_PLAY_CLIENTS = 8;
+export const MAX_PLAY_BOTS = 2000;
+
+const intIn = (min: number, max: number) =>
+  z
+    .string()
+    .regex(/^\d{1,5}$/)
+    .refine((v) => Number(v) >= min && Number(v) <= max);
+
+/** The one definition of a play setup: every field's allowed values. */
+export const playSetupSchema = z.object({
+  where: z.enum(PLAY_WHERE),
+  from: z.enum(PLAY_FROM),
+  clients: intIn(1, MAX_PLAY_CLIENTS),
+  bots: intIn(0, MAX_PLAY_BOTS),
+  net: z.enum(PLAY_NET),
+  latency: z.string().regex(/^\d{1,4}( ms)?$/),
+  fresh: z.boolean(),
+  keep: z.boolean(),
+  tint: z.boolean(),
+});
+
+export type PlaySetup = z.infer<typeof playSetupSchema>;
 
 export const DEFAULT_PLAY_SETUP: PlaySetup = {
   where: "viewport",
   from: "World",
   clients: "1",
   bots: "10",
-  net: "Edge + core",
+  // The owned server is the core; the edge is not started (see netPlan).
+  net: "Core only",
   latency: "0",
   fresh: true,
   keep: false,
   tint: true,
 };
 
-const CLEAN_DEFAULT: PlaySetup = { ...DEFAULT_PLAY_SETUP };
-
 export function defaultPlaySetup(): PlaySetup {
-  return { ...CLEAN_DEFAULT };
+  return { ...DEFAULT_PLAY_SETUP };
 }
 
-const STR_FIELDS = ["where", "from", "clients", "bots", "net", "latency"] as const;
-const BOOL_FIELDS = ["fresh", "keep", "tint"] as const;
-
-/** Validate an unknown value into a PlaySetup (unknown → defaults). */
+/** Validate an unknown value into a PlaySetup: each bad or missing field falls back to its default. */
 export function normalizePlaySetup(raw: unknown): PlaySetup {
   const out = defaultPlaySetup();
   if (typeof raw !== "object" || raw === null) return out;
   const r = raw as Record<string, unknown>;
-  for (const f of STR_FIELDS) {
-    if (typeof r[f] === "string" && (r[f] as string).length > 0) {
-      (out as unknown as Record<string, string>)[f] = r[f] as string;
-    }
-  }
-  for (const f of BOOL_FIELDS) {
-    if (typeof r[f] === "boolean") {
-      (out as unknown as Record<string, boolean>)[f] = r[f] as boolean;
-    }
+  for (const f of Object.keys(playSetupSchema.shape) as Array<keyof PlaySetup>) {
+    const ok = playSetupSchema.shape[f].safeParse(r[f]);
+    if (ok.success) (out as Record<string, unknown>)[f] = ok.data;
   }
   return out;
 }
@@ -126,45 +137,65 @@ export function saveLastSetup(setup: PlaySetup, storage: PlayStorage = defaultPl
   }
 }
 
-/** Named setups ("Raid test: 8 clients…"), by name. */
-export function loadNamedSetups(storage: PlayStorage = defaultPlayStorage()): Record<string, PlaySetup> {
+/** A named setup, with the key that starts it (null: none). */
+export interface SavedPlaySetup {
+  name: string;
+  setup: PlaySetup;
+  shortcut: string | null;
+}
+
+/** Saved setups ("Raid test: 8 clients, 50 bots"), in the order they were first saved. */
+export function loadSavedSetups(storage: PlayStorage = defaultPlayStorage()): SavedPlaySetup[] {
   try {
     const raw = storage.getItem(NAMED_SETUPS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const out: Record<string, PlaySetup> = {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (k.trim() !== "") out[k] = normalizePlaySetup(v);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
+    const out: SavedPlaySetup[] = [];
+    for (const [name, v] of Object.entries(parsed)) {
+      if (name.trim() === "") continue;
+      const key = (v as { shortcut?: unknown } | null)?.shortcut;
+      const norm = typeof key === "string" ? normalizeShortcut(key) : null;
+      // A stored key that fails today's rules or repeats an earlier one is dropped, never run.
+      const shortcut = norm !== null && validateShortcut(norm, out) === null ? norm : null;
+      out.push({ name, setup: normalizePlaySetup(v), shortcut });
     }
     return out;
   } catch {
-    return {};
+    return [];
   }
 }
 
-function writeNamedSetups(all: Record<string, PlaySetup>, storage: PlayStorage): void {
+export function persistSavedSetups(all: SavedPlaySetup[], storage: PlayStorage = defaultPlayStorage()): void {
+  const rec: Record<string, PlaySetup & { shortcut?: string }> = {};
+  for (const s of all) rec[s.name] = { ...s.setup, ...(s.shortcut ? { shortcut: s.shortcut } : {}) };
   try {
-    storage.setItem(NAMED_SETUPS_KEY, JSON.stringify(all));
+    storage.setItem(NAMED_SETUPS_KEY, JSON.stringify(rec));
   } catch {
     /* prefs stay in memory */
   }
 }
 
-export function saveNamedSetup(name: string, setup: PlaySetup, storage: PlayStorage = defaultPlayStorage()): Record<string, PlaySetup> {
-  const trimmed = name.trim();
-  if (trimmed === "") return loadNamedSetups(storage);
-  const all = loadNamedSetups(storage);
-  all[trimmed] = { ...setup };
-  writeNamedSetups(all, storage);
-  return all;
+/** Save (or overwrite) a setup by name, keeping its key. A blank name changes nothing. */
+export function upsertSavedSetup(all: SavedPlaySetup[], name: string, setup: PlaySetup): SavedPlaySetup[] {
+  const n = name.trim();
+  if (n === "") return all;
+  if (!all.some((s) => s.name === n)) return [...all, { name: n, setup: { ...setup }, shortcut: null }];
+  return all.map((s) => (s.name === n ? { ...s, setup: { ...setup } } : s));
 }
 
-export function deleteNamedSetup(name: string, storage: PlayStorage = defaultPlayStorage()): Record<string, PlaySetup> {
-  const all = loadNamedSetups(storage);
-  delete all[name];
-  writeNamedSetups(all, storage);
-  return all;
+export function removeSavedSetup(all: SavedPlaySetup[], name: string): SavedPlaySetup[] {
+  return all.filter((s) => s.name !== name);
+}
+
+/** Bind (or, with null, clear) a setup's key. The error says why a key was refused. */
+export function bindSetupShortcut(all: SavedPlaySetup[], name: string, key: string | null): { all: SavedPlaySetup[]; error: string | null } {
+  const rebind = (shortcut: string | null): SavedPlaySetup[] => all.map((s) => (s.name === name ? { ...s, shortcut } : s));
+  if (key === null) return { all: rebind(null), error: null };
+  const norm = normalizeShortcut(key);
+  if (norm === null) return { all, error: `“${key}” is not a key` };
+  const error = validateShortcut(norm, all.filter((s) => s.name !== name));
+  return error ? { all, error } : { all: rebind(norm), error: null };
 }
 
 /** Bots count the owned server can honor (MMO_BOTS). NaN → 0. */
@@ -174,12 +205,12 @@ export function botsCount(setup: PlaySetup): number {
 }
 
 /**
- * How many mirror clients to connect (1/2/4/8). Invalid → 1.
+ * How many mirror clients to connect (1 to 8). Invalid → 1.
  * Client 0 drives the game view; the rest are headless load.
  */
 export function clientCount(setup: PlaySetup): number {
   const n = Number(setup.clients);
-  return n === 1 || n === 2 || n === 4 || n === 8 ? n : 1;
+  return Number.isInteger(n) && n >= 1 && n <= MAX_PLAY_CLIENTS ? n : 1;
 }
 
 /** One-line chip: what Play will do ("In viewport · World · 1 client"). */
@@ -187,6 +218,15 @@ export function setupSummary(setup: PlaySetup): string {
   const where = setup.where === "viewport" ? "In viewport" : setup.where === "window" ? "New window" : "Simulate";
   const clients = `${setup.clients} client${setup.clients === "1" ? "" : "s"}`;
   return `${where} · ${setup.from} · ${clients}`;
+}
+
+/** The longer line for a saved setup ("8 clients · 50 bots · 80 ms"). */
+export function setupDetail(setup: PlaySetup): string {
+  const parts = [`${setup.clients} client${setup.clients === "1" ? "" : "s"}`, `${setup.bots} bots`];
+  const lag = latencyMs(setup.latency);
+  if (lag > 0) parts.push(`${lag} ms`);
+  if (setup.where !== "viewport") parts.push(setup.where === "window" ? "new window" : "simulate");
+  return parts.join(" · ");
 }
 
 /**
@@ -208,7 +248,14 @@ export function simulateLabel(setup: PlaySetup): string {
  * report). Keys are setup fields; values explain why.
  */
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
-  where: "Only the viewport is wired: a new window / simulate needs a client windowing path",
-  from: "The owned server boots the open world; starting at a flow node is not wired",
-  net: "No edge/core switch on start; the owned server always runs core",
+  from: "Login and Character creation need client-side flow execution; the owned server boots the open world",
+  net: "The edge process is not started with the owned server: Edge + core plays as core only",
 };
+
+/**
+ * What the network option does on start. The owned server is the core and
+ * the edge process is not started with it, so "Edge + core" runs as core.
+ */
+export function netPlan(setup: PlaySetup): { runs: "core"; honored: boolean; note?: string } {
+  return setup.net === "Edge + core" ? { runs: "core", honored: false, note: PLAY_PREVIEW_NOTES.net } : { runs: "core", honored: true };
+}
