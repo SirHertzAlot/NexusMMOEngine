@@ -26,6 +26,7 @@ import {
   type RuleIssueView,
 } from "../rules-tree.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
+import { sameValue } from "../document-state.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 /** What each file sets (content/rules/README.md, one line each). */
@@ -270,10 +271,7 @@ export function RulesPanel(): React.JSX.Element {
     };
   }, []);
 
-  const dirty =
-    content !== null &&
-    pristine !== null &&
-    JSON.stringify(content) !== JSON.stringify(pristine);
+  const dirty = content !== null && pristine !== null && !sameValue(content, pristine);
 
   async function onSelect(name: string): Promise<void> {
     if (dirty && !window.confirm("Discard unsaved changes to this file?")) return;

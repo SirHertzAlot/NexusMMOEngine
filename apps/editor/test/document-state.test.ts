@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { HISTORY_LIMIT, docReducer, emptyDoc, type DocState } from "../src/document-state.js";
+import { HISTORY_LIMIT, docReducer, emptyDoc, sameValue, type DocState } from "../src/document-state.js";
 
 type D = { n: number };
 const run = (...steps: Array<Parameters<typeof docReducer<D>>[1]>): DocState<D> => steps.reduce((s, a) => docReducer(s, a), emptyDoc<D>());
@@ -62,4 +62,9 @@ describe("document state", () => {
     for (let i = 1; i <= HISTORY_LIMIT + 50; i++) s = docReducer(s, { type: "edit", next: { n: i } });
     assert.equal(s.past.length, HISTORY_LIMIT);
   });
+});
+
+it("sameValue compares by value, so typing a field back leaves it clean", () => {
+  assert.equal(sameValue({ a: [1, 2] }, { a: [1, 2] }), true);
+  assert.equal(sameValue({ a: 1 }, { a: 2 }), false);
 });

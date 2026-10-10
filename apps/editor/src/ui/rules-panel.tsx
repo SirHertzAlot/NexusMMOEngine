@@ -34,7 +34,8 @@ import {
   type Table,
 } from "../rules-control.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
-import { NO_HISTORY, useDocActions } from "./doc-actions.js";
+import { useDocActions } from "./doc-actions.js";
+import { useTableDrafts } from "./use-table-drafts.js";
 
 const control = createRulesControl();
 
@@ -65,8 +66,9 @@ const FLAT: Record<Table, FieldSpec[]> = {
 type Status = { tone: "ok" | "bad" | "info"; text: string; table?: Table } | null;
 
 export function RulesPanel(): React.JSX.Element {
-  const [saved, setSaved] = React.useState<RulesSnapshot | null>(null);
-  const [drafts, setDrafts] = React.useState<Record<Table, unknown> | null>(null);
+  const [snap, setSnap] = React.useState<RulesSnapshot | null>(null);
+  const tables = useTableDrafts<Table, unknown>();
+  const { drafts, load: loadTables } = tables;
   const [table, setTable] = React.useState<Table>("items");
   const [issues, setIssues] = React.useState<RulesIssue[]>([]);
   const [status, setStatus] = React.useState<Status>(null);
@@ -74,35 +76,32 @@ export function RulesPanel(): React.JSX.Element {
 
   const load = React.useCallback(async () => {
     try {
-      const snap = await control.load();
-      setSaved(snap);
-      setDrafts(snap.tables);
+      const fresh = await control.load();
+      setSnap(fresh);
+      loadTables(fresh.tables);
       setIssues([]);
       setStatus(null);
     } catch (err) {
       setStatus({ tone: "bad", text: (err as Error).message });
     }
-  }, []);
+  }, [loadTables]);
 
   React.useEffect(() => {
     void load();
   }, [load]);
 
-  // Toolbar Save target for the open table (edits apply directly, so
-  // Undo/Redo stay disabled — Revert lives in the panel).
+  // Toolbar Save target for the open table; Undo and Redo walk the edits across tables.
   useDocActions(() => {
-    if (!saved || !drafts) return null;
+    if (!snap || !drafts) return null;
     return {
       label: `rules table "${table}.json"`,
-      canSave: (Object.keys(drafts) as Table[]).some(
-        (t) => JSON.stringify(drafts[t]) !== JSON.stringify(saved.tables[t]),
-      ),
-      ...NO_HISTORY,
+      canSave: tables.anyDirty,
+      ...tables.history,
       save: () => void save(),
     };
   });
 
-  if (!saved || !drafts) {
+  if (!snap || !drafts) {
     return (
       <Card>
         <CardContent className="p-4 text-sm text-muted-foreground">
@@ -113,9 +112,9 @@ export function RulesPanel(): React.JSX.Element {
   }
 
   const draft = drafts[table];
-  const dirty = (t: Table): boolean => JSON.stringify(drafts[t]) !== JSON.stringify(saved.tables[t]);
+  const dirty = tables.dirtyOf;
   const edit = (next: unknown): void => {
-    setDrafts({ ...drafts, [table]: next });
+    tables.edit(table, next);
     setStatus(null);
   };
 
@@ -124,7 +123,7 @@ export function RulesPanel(): React.JSX.Element {
     try {
       const res = await control.save(table, draft);
       if (res.ok) {
-        setSaved({ ...saved, tables: { ...saved.tables, [table]: draft } });
+        tables.markSaved(table);
         setIssues([]);
         setStatus({ tone: "ok", text: `Saved ${table}.json — a running server applies it on its next tick.`, table });
       } else {
@@ -139,7 +138,7 @@ export function RulesPanel(): React.JSX.Element {
   };
 
   const revert = (): void => {
-    setDrafts({ ...drafts, [table]: saved.tables[table] });
+    tables.revert(table);
     setIssues([]);
     setStatus(null);
   };
@@ -176,7 +175,7 @@ export function RulesPanel(): React.JSX.Element {
               basePath=""
               table={table}
               issues={issues}
-              techniques={saved.techniques}
+              techniques={snap.techniques}
               onChange={edit}
             />
           )}
@@ -189,7 +188,7 @@ export function RulesPanel(): React.JSX.Element {
               fields={record.fields}
               value={draft}
               issues={issues}
-              techniques={saved.techniques}
+              techniques={snap.techniques}
               bases={bases}
               onChange={edit}
             />
