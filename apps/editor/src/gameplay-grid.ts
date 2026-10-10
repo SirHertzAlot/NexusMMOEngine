@@ -24,6 +24,8 @@ export type GridColumn = GridKind & {
   ref?: string;
   /** An enum whose options come from `options[optionsFrom]` in the context. */
   optionsFrom?: string;
+  /** The cell holds asset ID(s); the grid offers a 3D preview. */
+  assetKind?: "model" | "texture";
   /** A JSON column's own check: the problem with `value`, or null. */
   check?: (value: unknown, ctx: GridContext) => string | null;
 };

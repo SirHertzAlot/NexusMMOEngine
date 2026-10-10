@@ -50,7 +50,7 @@ export const TABLE_DEFS: Record<GameplayTable, TableDef> = {
     shape: "record",
     idPattern: RULES_ID,
     columns: [
-      ...CREATURE_FIELDS.map((f) => col(f, { nested: creatureNested.has(f.key), ...(f.key === "weapons" ? { ref: "items" } : {}) })),
+      ...CREATURE_FIELDS.map((f) => col(f, { nested: creatureNested.has(f.key), ...(f.key === "weapons" ? { ref: "items" } : {}), ...(f.key === "model" ? { assetKind: "model" } : {}) })),
       { key: "drops.rolls", label: "Drop rolls", kind: "pair", def: [1, 2], nested: true },
       { key: "drops.chance", label: "Drop chance", ...share, def: 0.8, nested: true },
       { key: "drops.table", label: "Loot table (named drops)", kind: "enum", options: [], optionsFrom: "lootTables", nested: true },
@@ -76,7 +76,7 @@ export const TABLE_DEFS: Record<GameplayTable, TableDef> = {
     under: "bases",
     shape: "record",
     idPattern: RULES_ID,
-    columns: ITEM_BASE_FIELDS.map((f) => col(f, { nested: itemNested.has(f.key) })),
+    columns: ITEM_BASE_FIELDS.map((f) => col(f, { nested: itemNested.has(f.key), ...(f.key === "models" ? { assetKind: "model" } : {}) })),
     newData: () => newEntry("items", []),
   },
   skills: {
