@@ -101,6 +101,19 @@ export function defaultToonRamp(): THREE.DataTexture {
   if (sharedRamp) return sharedRamp;
   const W = 64, H = 10;
   const data = new Uint8Array(W * H * 4);
+  fillRamp(data, W, H);
+  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat);
+  tex.colorSpace = THREE.LinearSRGBColorSpace;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  sharedRamp = tex;
+  return tex;
+}
+
+/** Paint the ramp rows from DEFAULT_RAMP into `data`. */
+function fillRamp(data: Uint8Array, W: number, H: number): void {
   // Authored top-down: image row k (from the top) is texture row H-1-k (flipY is off).
   const put = (k: number, a: Rgb, b: Rgb): void => {
     const y = H - 1 - k;
@@ -116,14 +129,32 @@ export function defaultToonRamp(): THREE.DataTexture {
     put(k, ...DEFAULT_RAMP[row].day);
     put(k + 5, ...DEFAULT_RAMP[row].night);
   });
-  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat);
-  tex.colorSpace = THREE.LinearSRGBColorSpace;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearFilter;
-  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.needsUpdate = true;
-  sharedRamp = tex;
-  return tex;
+}
+
+/** The toon look in force: the options a material starts from (content/materials/materials.json). */
+const TOON_DEFAULTS = { band: [0.42, 0.45] as [number, number], specular: 0.15, rim: 0.35, rimPower: 6 };
+
+/**
+ * Set the toon look from content: the band, highlight and rim defaults, and
+ * the ramp's shadow colours. The shared ramp is repainted in place, so
+ * materials already built follow.
+ */
+export function setToonContent(toon: {
+  band: [number, number];
+  specular: number;
+  rim: number;
+  rimPower: number;
+  ramp: Record<ToonRow, { day: [Rgb, Rgb]; night: [Rgb, Rgb] }>;
+}): void {
+  TOON_DEFAULTS.band = [...toon.band];
+  TOON_DEFAULTS.specular = toon.specular;
+  TOON_DEFAULTS.rim = toon.rim;
+  TOON_DEFAULTS.rimPower = toon.rimPower;
+  for (const row of TOON_ROWS) DEFAULT_RAMP[row] = toon.ramp[row];
+  if (sharedRamp) {
+    fillRamp(sharedRamp.image.data as Uint8Array, sharedRamp.image.width, sharedRamp.image.height);
+    sharedRamp.needsUpdate = true;
+  }
 }
 
 const PARS = /* glsl */ `
@@ -273,10 +304,10 @@ export function applyToon<M extends THREE.MeshStandardMaterial>(material: M, o: 
     uToonRow: { value: TOON_ROWS.indexOf(o.row ?? "cloth") },
     uToonDay: TOON_GLOBALS.uToonDay,
     uToonShadow: { value: new THREE.Color(o.shadowColor ?? 0xffffff) },
-    uToonBand: { value: new THREE.Vector2(...(o.band ?? [0.42, 0.45])) },
-    uToonSpecular: { value: o.specular ?? 0.15 },
-    uToonRim: { value: o.rim ?? 0.35 },
-    uToonRimPower: { value: o.rimPower ?? 6 },
+    uToonBand: { value: new THREE.Vector2(...(o.band ?? TOON_DEFAULTS.band)) },
+    uToonSpecular: { value: o.specular ?? TOON_DEFAULTS.specular },
+    uToonRim: { value: o.rim ?? TOON_DEFAULTS.rim },
+    uToonRimPower: { value: o.rimPower ?? TOON_DEFAULTS.rimPower },
     uToonLightMap: { value: o.lightMap ?? null },
     uToonMatcap: { value: o.matcap ?? null },
     uToonFace: { value: o.faceShadow ?? null },

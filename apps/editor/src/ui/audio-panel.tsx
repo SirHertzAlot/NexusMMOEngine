@@ -81,6 +81,14 @@ export function AudioPanel(): React.JSX.Element {
       ...NO_HISTORY,
       problems: issues.map((i) => ({ severity: "error" as const, where: i.event || "(audio)", message: i.message })),
       save: () => void save(),
+      canRevert: dirty,
+      revert,
+      exportDoc: () => ({ name: "audio-events", data: toDocument(bank) }),
+      importDoc: (incoming: unknown) => {
+        const parsed = parseAudioBank(incoming);
+        task.setIssues([]);
+        setBank(parsed.bank);
+      },
     };
   });
 

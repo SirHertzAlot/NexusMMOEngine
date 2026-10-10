@@ -25,6 +25,7 @@ import { checkRuleSave, readRuleFile, rulesDir, saveRuleFile } from "./rules-hos
 import { readRulesTables } from "./rules-store.js";
 import { isGameplayTable, type GameplayTable } from "./gameplay-tables.js";
 import { refuseInvalid } from "./api.js";
+import { checkDataTable, isDataTable, readDataTables, saveDataTable } from "./data-host.js";
 
 export interface GameplayIssue {
   file: string;
@@ -33,8 +34,8 @@ export interface GameplayIssue {
 }
 
 export interface GameplayContext {
-  refs: { items: string[]; creatures: string[] };
-  options: { techniques: string[]; families: string[] };
+  refs: { items: string[]; creatures: string[]; materials: string[]; prefabs: string[] };
+  options: { techniques: string[]; families: string[]; nodeKinds: string[]; lootTables: string[]; materials: string[] };
   /** Species the engine ships: they can be overridden, not removed. */
   builtinSpecies: string[];
 }
@@ -81,17 +82,20 @@ export async function readGameplay(repoRoot: string): Promise<GameplaySnapshot> 
   const sp = await loadSpeciesModule(repoRoot);
   const file = speciesFile(repoRoot);
   const roster = existsSync(file) ? sp.loadSpecies(file) : sp.BUILTIN_SPECIES;
+  const data = await readDataTables(repoRoot);
   return {
     tables: {
       creatures: rt.creatures,
+      loot: readRuleFile(repoRoot, "loot").content,
       items: rt.items,
       skills: readRuleFile(repoRoot, "skills").content,
       spells: readRuleFile(repoRoot, "spells").content,
       species: { species: roster },
+      ...data.tables,
     },
     context: {
-      refs: { items: keys(rt.items, "bases"), creatures: keys(rt.creatures, "creatures") },
-      options: { techniques, families: skills.families ?? [] },
+      refs: { items: keys(rt.items, "bases"), creatures: keys(rt.creatures, "creatures"), ...data.refs },
+      options: { techniques, families: skills.families ?? [], ...data.options },
       builtinSpecies: Object.keys(sp.BUILTIN_SPECIES),
     },
   };
@@ -114,6 +118,8 @@ export function findUsages(repoRoot: string): { creatures: Map<string, string[]>
     const spawner = (o.components as Record<string, { creature?: unknown }> | undefined)?.Spawner;
     if (typeof spawner?.creature === "string" && spawner.creature) add(out.creatures, spawner.creature, where);
     if (typeof o.fallbackCreature === "string") add(out.creatures, o.fallbackCreature, where);
+    const itemSpawn = (o.components as Record<string, { base?: unknown }> | undefined)?.ItemSpawn;
+    if (typeof itemSpawn?.base === "string" && itemSpawn.base) add(out.items, itemSpawn.base, where);
     if (quests) {
       if (o.type === "kill" && typeof o.kind === "string") add(out.creatures, o.kind, where);
       if (typeof o.base === "string") add(out.items, o.base, where);
@@ -131,6 +137,7 @@ export function findUsages(repoRoot: string): { creatures: Map<string, string[]>
     }
   };
   scan(join(repoRoot, "content", "scenes"), "content/scenes", (f) => f.endsWith(".scene.json"), false);
+  scan(join(repoRoot, "content", "prefabs"), "content/prefabs", (f) => f.endsWith(".prefab.json"), false);
   scan(join(repoRoot, "content", "dungeons"), "content/dungeons", (f) => f.endsWith(".json"), false);
   scan(join(repoRoot, "content", "quests"), "content/quests", (f) => f.endsWith(".json"), true);
   return out;
@@ -152,6 +159,7 @@ function removalIssues(repoRoot: string, table: "creatures" | "items", content: 
 /** Every issue the server's loaders (and the removal rule) would raise for `content` as `table`. Nothing is written. */
 export async function checkGameplay(repoRoot: string, table: GameplayTable, content: unknown): Promise<GameplayIssue[]> {
   if (table === "species") return (await speciesOverlay(repoRoot, content)).issues;
+  if (isDataTable(table)) return checkDataTable(repoRoot, table, content);
   const issues: GameplayIssue[] = checkRuleSave(repoRoot, table, content);
   if (table === "creatures" || table === "items") issues.push(...removalIssues(repoRoot, table, content));
   return issues;
@@ -206,6 +214,7 @@ export async function saveGameplay(repoRoot: string, table: GameplayTable, conte
     renameSync(tmp, file);
     return;
   }
+  if (isDataTable(table)) return saveDataTable(repoRoot, table, content);
   const issues = await checkGameplay(repoRoot, table, content);
   if (issues.length > 0) fail(issues);
   saveRuleFile(repoRoot, table, content);

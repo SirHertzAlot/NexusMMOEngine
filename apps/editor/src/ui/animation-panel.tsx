@@ -6,7 +6,7 @@
  * writes nothing when refused.
  */
 import * as React from "react";
-import { checkClipMap, type ClipMap, type ClipMapEntry, type ClipMapIssue } from "@mmo-engine/art";
+import { checkClipMap, type ClipMap, type ClipMapEntry, type ClipMapIssue } from "@mmo-engine/art/browser";
 import { getClipMap, saveClipMap } from "../animation-client.js";
 import { Button, Field, Input, NumberInput, CheckField } from "./components.js";
 import { DataTable, type Column } from "./data-table.js";

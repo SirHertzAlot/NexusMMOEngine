@@ -102,6 +102,12 @@ export function StringsPanel(): React.JSX.Element {
       save: () => void save(),
       revert: doc.revert,
       canRevert: doc.dirty,
+      exportDoc: () => ({ name: "strings", data: tables }),
+      importDoc: (incoming: unknown) => {
+        const found = validateTables(incoming as StringTables);
+        if (found.length > 0) throw new Error(`invalid strings: ${found.slice(0, 3).map((i) => `${i.lang}${i.id ? `:${i.id}` : ""} ${i.message}`).join("; ")}`);
+        doc.edit(incoming as StringTables);
+      },
     };
   });
 

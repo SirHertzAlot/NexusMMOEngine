@@ -112,6 +112,18 @@ export function FlowEditor(): React.JSX.Element {
       ...flow.history,
       problems: validateFlow(doc, { scenes }).map((i) => ({ severity: "error" as const, where: i.path || "(flow)", message: i.message })),
       save: () => void save(),
+      canRevert: flow.dirty,
+      revert: () => {
+        flow.revert();
+        task.setIssues([]);
+      },
+      exportDoc: () => ({ name: "game.flow", data: doc }),
+      importDoc: (incoming: unknown) => {
+        const found = validateFlow(incoming, { scenes });
+        if (found.length > 0) throw new Error(`invalid flow: ${found.slice(0, 3).map((i) => `${i.path} ${i.message}`).join("; ")}`);
+        flow.edit(incoming as FlowDoc);
+        task.setIssues([]);
+      },
     };
   });
 

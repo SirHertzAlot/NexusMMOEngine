@@ -10,7 +10,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveSpawnTarget, type SpawnTarget } from "../src/flow-spawn.js";
+import { resolveSpawnTarget } from "../src/flow-spawn.js";
 
 describe("resolveSpawnTarget", () => {
   it("World → default", () => {
@@ -32,19 +32,14 @@ describe("resolveSpawnTarget", () => {
     assert.ok((t as { note?: string }).note);
   });
 
-  it("Login → preview", () => {
-    const t = resolveSpawnTarget("Login", null) as Extract<SpawnTarget, { kind: "preview" }>;
-    assert.equal(t.kind, "preview");
-    assert.ok(t.reason.length > 0);
+  it("Login and Character creation start the player's client at that flow node", () => {
+    assert.deepEqual(resolveSpawnTarget("Login", null), { kind: "node", node: "login" });
+    assert.deepEqual(resolveSpawnTarget("Character creation", null), { kind: "node", node: "character-creation" });
+    assert.deepEqual(resolveSpawnTarget("character-select", null), { kind: "node", node: "character-select" });
   });
 
-  it("Character creation → preview", () => {
-    const t = resolveSpawnTarget("Character creation", null) as Extract<SpawnTarget, { kind: "preview" }>;
-    assert.equal(t.kind, "preview");
-    assert.ok(t.reason.length > 0);
-  });
-
-  it("unknown value → default (never crashes)", () => {
-    assert.deepEqual(resolveSpawnTarget("???", null), { kind: "default" });
+  it("the flow's world node is the default spawn, whatever it is called", () => {
+    assert.deepEqual(resolveSpawnTarget("world", null), { kind: "default" });
+    assert.deepEqual(resolveSpawnTarget("realm", null, "realm"), { kind: "default" });
   });
 });
