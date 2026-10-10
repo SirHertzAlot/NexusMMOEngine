@@ -303,7 +303,7 @@ export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
 export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";
-export { loadAudioEvent, AudioBus, type AudioEvent } from "./audio.js";
+export { loadAudioEvent, loadAudioBank, AudioBus, AudioBank, BusSettings, type AudioEvent } from "./audio.js";
 
 // Edge/core split E3: the core's end of the internal channel.
 export {

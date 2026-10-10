@@ -16,11 +16,12 @@
  *   (story-validate.ts) and writes (atomically) only when there is no error.
  */
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { STORY_FILES, validateStory, type QuestServer, type StoryFile, type StoryFiles, type StoryIssue, type StoryRefs } from "./story-validate.js";
 import { refuseInvalid } from "./api.js";
+import { writeJsonAtomic } from "./json-file.js";
 
 export function storyFileNames(): StoryFile[] {
   return [...STORY_FILES];
@@ -120,12 +121,7 @@ export async function saveStoryFiles(repoRoot: string, changes: Partial<StoryFil
   if (errors.length > 0) {
     throw refuseInvalid("story", issues, errors.length);
   }
-  names.forEach((n, i) => {
-    const tmp = `${paths[i]}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(changes[n as StoryFile], null, 2)}
-`, "utf8");
-    renameSync(tmp, paths[i]);
-  });
+  names.forEach((n, i) => writeJsonAtomic(paths[i], changes[n as StoryFile]));
   return issues;
 }
 

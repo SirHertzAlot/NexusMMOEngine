@@ -10,11 +10,12 @@
  * dangling, events and scenes known, every node reachable); a refused save
  * answers 400 with every issue and writes nothing.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ASSIGNED_SCENE, BUILTIN_SCREENS, FLOW_EVENTS, validateFlow } from "@mmo-engine/scene";
 import { listScenes } from "./scenes-host.js";
 import { refuseInvalid } from "./api.js";
+import { writeJsonAtomic } from "./json-file.js";
 
 export const flowFile = (repoRoot: string): string => join(resolve(repoRoot, "content", "flow"), "game.flow.json");
 const sceneNames = (repoRoot: string): string[] => [...BUILTIN_SCREENS, ASSIGNED_SCENE, ...listScenes(repoRoot)];
@@ -24,11 +25,7 @@ export function saveFlow(repoRoot: string, content: unknown): void {
   if (issues.length > 0) {
     throw refuseInvalid("flow", issues);
   }
-  const file = flowFile(repoRoot);
-  mkdirSync(resolve(repoRoot, "content", "flow"), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(content, null, 2)}\n`, "utf8");
-  renameSync(tmp, file);
+  writeJsonAtomic(flowFile(repoRoot), content);
 }
 
 export function handleFlowRoute(

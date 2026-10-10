@@ -14,9 +14,10 @@
  *   problems. A refused save answers 400 with every issue and writes nothing.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { validateScene, type SceneIssue } from "@mmo-engine/scene";
+import { writeJsonAtomic } from "./json-file.js";
 import { refuseInvalid } from "./api.js";
 
 const SUFFIX = ".scene.json";
@@ -67,10 +68,7 @@ export function saveScene(repoRoot: string, name: string, content: unknown): voi
   if (issues.length > 0) {
     throw refuseInvalid("scene", issues);
   }
-  mkdirSync(scenesDir(repoRoot), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(content, null, 2)}\n`, "utf8");
-  renameSync(tmp, file);
+  writeJsonAtomic(file, content);
 }
 
 export interface SceneRouteResult {

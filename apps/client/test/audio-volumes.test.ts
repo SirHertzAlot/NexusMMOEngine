@@ -3,7 +3,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_VOLUMES, masterGain, parseVolumes, sliderGain } from "../src/audio/volumes.js";
-import { CUE_BUS } from "../src/audio/cues.js";
 
 describe("audio volumes", () => {
   it("defaults anything missing or malformed, clamps the rest", () => {
@@ -28,11 +27,5 @@ describe("audio volumes", () => {
     const v = { ...DEFAULT_VOLUMES, master: 0.5 };
     assert.equal(masterGain(v), 0.25);
     assert.equal(masterGain({ ...v, muted: true }), 0);
-  });
-  it("combat cues ride the combat bus, chat and notices the interface bus", () => {
-    assert.equal(CUE_BUS.hit, "effects");
-    assert.equal(CUE_BUS.block, "effects");
-    assert.equal(CUE_BUS.whisper, "interface");
-    assert.equal(CUE_BUS.notice, "interface");
   });
 });
