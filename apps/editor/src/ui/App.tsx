@@ -11,12 +11,14 @@
 
 import * as React from "react";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, playUiStore, requestPlayStop, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { PlayModePanel, getPlayController, playUiStore, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { AssetInspectorPanel } from "./asset-inspector.js";
 import { TerrainEditorPanel } from "./terrain-editor.js";
 import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
+import { PipelineView } from "./pipeline-view.js";
+import { HudEditor } from "./hud-editor.js";
 import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
 import { ScenesPanel } from "./scenes-panel.js";
@@ -26,9 +28,12 @@ import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
 import { Chip, DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
+import { getViewportActions, subscribeViewportActions } from "./viewport-actions.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { usePendingChanges } from "./pending-changes.js";
+import { requestNewScene } from "../open-scene.js";
 import {
   deleteNamedSetup,
   loadLastSetup,
@@ -55,7 +60,6 @@ import {
   FlowDetails,
   HudDetails,
   LiveOpsPreview,
-  PipelinePreview,
   PlaytestPreview,
   QuestPreview,
   ReleaseDeployDetails,
@@ -205,8 +209,9 @@ const WORKSPACES: Workspace[] = [
   {
     id: "release", label: "Release", icon: "rocket_launch",
     views: [
-      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelinePreview /> },
+      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestPreview /> },
+      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudEditor /> },
     ],
     leftTitle: "Profiles",
   },
@@ -306,6 +311,13 @@ export function App(): React.JSX.Element {
     setPlayMenu(false);
   }
 
+  /** Open the Play mode panel without starting anything. */
+  function showPlay(): void {
+    pickWorkspace("debug");
+    setView("play");
+  }
+
+  /** Play with the last setup: open the panel and start the server unless one is already running. */
   function goPlay(): void {
     pickWorkspace("debug");
     setView("play");
@@ -359,7 +371,7 @@ export function App(): React.JSX.Element {
   function setRunMode(m: RunMode): void {
     setMode(m);
     if (m === "edit") pickWorkspace("scene");
-    else goPlay();
+    else showPlay();
   }
 
   // Deep links (#/workspace/view/selection): read once on load and on
@@ -437,6 +449,69 @@ export function App(): React.JSX.Element {
           e.preventDefault();
           target.redo();
         }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "x") {
+        // Cut / copy / paste / duplicate act on the open document; skip
+        // when typing in a field so the OS clipboard keeps working there.
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canCut) {
+          e.preventDefault();
+          target.cut?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "c") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canCopy) {
+          e.preventDefault();
+          target.copy?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "v") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canPaste) {
+          e.preventDefault();
+          target.paste?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "d") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canDuplicate) {
+          e.preventDefault();
+          target.duplicate?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "a") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canSelectAll) {
+          e.preventDefault();
+          target.selectAll?.();
+        }
+      } else if (e.key === "Delete") {
+        if (shouldSkipShortcut(e.target)) return;
+        const target = getDocActions();
+        if (target?.canDelete) {
+          e.preventDefault();
+          target.deleteSelection?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "+" || e.key === "=")) {
+        // View menu zoom acts on the mounted 3D viewport.
+        const vp = getViewportActions();
+        if (vp?.canZoomIn) {
+          e.preventDefault();
+          vp.zoomIn();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "-") {
+        const vp = getViewportActions();
+        if (vp?.canZoomOut) {
+          e.preventDefault();
+          vp.zoomOut();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "0") {
+        const vp = getViewportActions();
+        if (vp?.canReset) {
+          e.preventDefault();
+          vp.reset();
+        }
       } else if (e.key === "Escape") {
         setPalette(false);
         setPlayMenu(false);
@@ -458,7 +533,7 @@ export function App(): React.JSX.Element {
           // Unreachable today (Shift F5 is handled above with the F5
           // branch), but must stay the real stop, not a navigation.
           void requestPlayStop();
-          goPlay();
+          showPlay();
         } else {
           const label = TOOL_SHORTCUT_BUTTON_LABELS[action];
           const btn = document.querySelector(`button[aria-label="${label}"]`);
@@ -496,6 +571,7 @@ export function App(): React.JSX.Element {
         onTogglePlayMenu={() => setPlayMenu((v) => !v)}
         onClosePlayMenu={() => setPlayMenu(false)}
         onPlay={goPlay}
+        onShowPlay={showPlay}
         playSetup={playSetup}
         onPlaySetup={updatePlaySetup}
         mode={mode}
@@ -527,7 +603,7 @@ export function App(): React.JSX.Element {
           }}
           onStop={() => {
             void requestPlayStop();
-            goPlay();
+            showPlay();
             setPalette(false);
           }}
         />
@@ -816,38 +892,67 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
     else void document.documentElement.requestFullscreen().catch(() => notify("Fullscreen was blocked by the browser"));
   }
 
-  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string } | "sep">> = {
+  const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
+  // Re-render the menus when the clipboard changes (Paste enables after Copy).
+  React.useSyncExternalStore(subscribeClipboard, () => clipboardVersion());
+  // The View menu's viewport items follow the mounted 3D viewport.
+  const viewport = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
+  // A menu item is enabled when there's an open document that supports it.
+  // Unsupported operations disable with a reason — no "soon" placeholders.
+  const docItem = (
+    label: string,
+    kbd: string | undefined,
+    can: boolean | undefined,
+    run: (() => void) | undefined,
+    noDocReason = "no open document to act on",
+  ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
+    if (!doc) return { label, kbd, disabled: true, disabledReason: noDocReason };
+    if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${doc.label} doesn't support ${label.toLowerCase()}` };
+    return { label, kbd, run };
+  };
+  // The View menu's viewport items act on the mounted 3D viewport.
+  const viewportItem = (
+    label: string,
+    kbd: string | undefined,
+    can: boolean | undefined,
+    run: (() => void) | undefined,
+  ): { label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } => {
+    if (!viewport) return { label, kbd, disabled: true, disabledReason: "no viewport open" };
+    if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${viewport.label} doesn't support ${label.toLowerCase()}` };
+    return { label, kbd, run };
+  };
+  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean; disabledReason?: string } | "sep">> = {
     File: [
-      { label: "New Scene", run: staged("New Scene", "EA · scenes"), stagedFor: "EA · scenes" },
-      { label: "Open Scene…", run: staged("Open Scene", "EA · scenes"), stagedFor: "EA · scenes" },
+      { label: "New Scene…", run: () => { requestNewScene(); onGo("scenes"); } },
+      { label: "Open Scene…", run: () => onGo("scenes") },
       "sep",
-      { label: "Save", run: staged("Save", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Save All", run: staged("Save All", "the open document's slice"), stagedFor: "the open document's slice" },
-      { label: "Revert", run: staged("Revert", "the open document's slice"), stagedFor: "the open document's slice" },
+      { label: doc ? `Save ${doc.label}` : "Save", kbd: "Ctrl S", disabled: !doc?.canSave, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.save() },
+      docItem("Save All", undefined, doc?.canSaveAll, doc?.saveAll),
+      docItem("Revert", undefined, doc?.canRevert, doc?.revert),
       "sep",
-      { label: "Import…", run: staged("Import", "EA · content browser"), stagedFor: "EA · content browser" },
-      { label: "Export…", run: staged("Export", "EA · content browser"), stagedFor: "EA · content browser" },
+      docItem("Import…", undefined, doc?.canImport, doc?.importFile),
+      docItem("Export…", undefined, doc?.canExport, doc?.exportFile),
     ],
     Edit: [
-      { label: "Undo", run: staged("Undo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Redo", run: staged("Redo", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      { label: "Undo", kbd: "Ctrl Z", disabled: !doc?.canUndo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.undo() },
+      { label: "Redo", kbd: "Ctrl Y", disabled: !doc?.canRedo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.redo() },
       "sep",
-      { label: "Cut", run: staged("Cut", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Copy", run: staged("Copy", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Paste", run: staged("Paste", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Duplicate", run: staged("Duplicate", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
-      { label: "Delete", run: staged("Delete", "the shared command stack (§3.1)"), stagedFor: "the shared command stack (§3.1)" },
+      docItem("Cut", "Ctrl X", doc?.canCut, doc?.cut),
+      docItem("Copy", "Ctrl C", doc?.canCopy, doc?.copy),
+      docItem("Paste", "Ctrl V", doc?.canPaste, doc?.paste),
+      docItem("Duplicate", "Ctrl D", doc?.canDuplicate, doc?.duplicate),
+      docItem("Delete", "Del", doc?.canDelete, doc?.deleteSelection),
       "sep",
-      { label: "Select All", run: staged("Select All", "the shared selection model (§3.1)"), stagedFor: "the shared selection model (§3.1)" },
+      docItem("Select All", "Ctrl A", doc?.canSelectAll, doc?.selectAll),
     ],
     View: [
       { label: `${docks.left ? "✓ " : ""}Left dock`, run: () => onToggleDock("left") },
       { label: `${docks.right ? "✓ " : ""}Right dock`, run: () => onToggleDock("right") },
       { label: `${docks.bottom ? "✓ " : ""}Bottom dock`, run: () => onToggleDock("bottom") },
       "sep",
-      { label: "Zoom In", run: staged("Zoom In", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Zoom Out", run: staged("Zoom Out", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
-      { label: "Reset Viewport", run: staged("Reset Viewport", "EA · viewport tools"), stagedFor: "EA · viewport tools" },
+      viewportItem("Zoom In", "Ctrl +", viewport?.canZoomIn, viewport?.zoomIn),
+      viewportItem("Zoom Out", "Ctrl -", viewport?.canZoomOut, viewport?.zoomOut),
+      viewportItem("Reset Viewport", "Ctrl 0", viewport?.canReset, viewport?.reset),
       "sep",
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],
@@ -916,17 +1021,23 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                   }
                   const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
                   const stagedRow = it.stagedFor !== undefined;
+                  const off = stagedRow || it.disabled === true;
+                  const tip = stagedRow
+                    ? `${it.label} — soon (${it.stagedFor})`
+                    : it.disabled
+                      ? `${it.label} — ${it.disabledReason ?? "not available"}`
+                      : undefined;
                   return (
                     <li key={it.label} className="list-none">
                       <button
-                        disabled={stagedRow}
-                        title={stagedRow ? `${it.label} — soon (${it.stagedFor})` : undefined}
+                        disabled={off}
+                        title={tip}
                         onClick={() => {
                           setOpen(null);
                           run();
                         }}
                         className="m3-focus flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]"
-                        style={{ color: "var(--m3-on-surface)", opacity: stagedRow ? 0.55 : undefined }}
+                        style={{ color: "var(--m3-on-surface)", opacity: off ? 0.55 : undefined }}
                       >
                         {it.label}
                         {stagedRow && (
@@ -1116,6 +1227,7 @@ function Toolbar(props: {
   onTogglePlayMenu: () => void;
   onClosePlayMenu: () => void;
   onPlay: () => void;
+  onShowPlay: () => void;
   playSetup: PlaySetup;
   onPlaySetup: (s: PlaySetup) => void;
   mode: RunMode;
@@ -1166,9 +1278,12 @@ function Toolbar(props: {
   // The toolbar's document target: panels register while they hold an
   // open document; with none the buttons disable with a tooltip.
   const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
-  const { pmState } = playUiStore.use();
+  const { pmState, paused } = playUiStore.use();
   const stopping = pmState === "stopping";
   const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
+  // Toolbar customization (Gap #7): toggle sections, persisted.
+  const [showTransform, setShowTransform] = useLocalStorage("mmo-editor.toolbar.showTransform", true);
+  const [customizeOpen, setCustomizeOpen] = React.useState(false);
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent): void {
@@ -1194,7 +1309,39 @@ function Toolbar(props: {
           ? "2px solid var(--m3-tertiary)"
           : "1px solid var(--m3-outline-variant)",
       }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setCustomizeOpen(true);
+      }}
+      title="Right-click to customize the toolbar"
     >
+      {customizeOpen && (
+        <>
+          <span className="fixed inset-0 z-40" onClick={() => setCustomizeOpen(false)} aria-hidden="true" />
+          <div
+            className="absolute right-2 top-[52px] z-50 w-56 rounded-xl p-2 shadow-lg"
+            style={{ background: "var(--m3-surface-3)" }}
+            role="menu"
+            aria-label="Customize toolbar"
+          >
+            <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
+              Toolbar
+            </p>
+            <button
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--m3-secondary-container)]"
+              onClick={() => setShowTransform(!showTransform)}
+              role="menuitemcheckbox"
+              aria-checked={showTransform}
+            >
+              <MIcon name={showTransform ? "check_box" : "check_box_outline_blank"} size={16} />
+              Transform tools
+            </button>
+            <p className="px-2 pt-2 text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+              Right-click the toolbar to customize it. Settings persist in this browser.
+            </p>
+          </div>
+        </>
+      )}
       <div className="flex items-center gap-0.5" role="toolbar" aria-label="Edit tools">
         <IconButton
           label={doc ? (doc.canSave ? `Save ${doc.label} (Ctrl S)` : `${doc.label} — no unsaved changes`) : "Save — no open document"}
@@ -1225,7 +1372,7 @@ function Toolbar(props: {
         </IconButton>
       </div>
       <div
-        className="mx-1 hidden items-center gap-0.5 lg:flex"
+        className={`mx-1 items-center gap-0.5 ${showTransform ? "hidden lg:flex" : "hidden"}`}
         role="toolbar"
         aria-label="Transform tools"
         style={{ borderLeft: "1px solid var(--m3-outline-variant)", paddingLeft: 8 }}
@@ -1270,7 +1417,7 @@ function Toolbar(props: {
         >
           <button
             onClick={props.onPlay}
-            title="Play with the last settings (F5) — opens Play mode"
+            title="Play with the last settings (F5)"
             className="m3-focus flex h-full items-center gap-1.5 pl-4 pr-3"
           >
             <MIcon name="play_arrow" size={20} />
@@ -1288,18 +1435,20 @@ function Toolbar(props: {
           </button>
         </div>
         <IconButton
-          label="Pause — not available: the owned server's tick loop has no pause control"
-          title="Pause — not available: the owned server's tick loop has no pause control"
+          label={pmState !== "running" ? "Pause — play mode is not running" : paused ? "Resume the server's tick loop" : "Pause the server's tick loop"}
+          title={pmState !== "running" ? "Pause — play mode is not running" : paused ? "Resume the server's tick loop" : "Pause the server's tick loop"}
           size={36}
-          disabled
+          disabled={pmState !== "running"}
+          onClick={() => void requestPlayTick(paused ? "resume" : "pause")}
         >
-          <MIcon name="pause" size={20} />
+          <MIcon name={paused ? "play_arrow" : "pause"} size={20} />
         </IconButton>
         <IconButton
-          label="Step one tick — not available: the owned server has no single-tick control"
-          title="Step one tick — not available: the owned server has no single-tick control"
+          label={paused ? "Step one tick" : "Step — pause the server first"}
+          title={paused ? "Step one tick" : "Step — pause the server first"}
           size={36}
-          disabled
+          disabled={pmState !== "running" || !paused}
+          onClick={() => void requestPlayTick("step")}
         >
           <MIcon name="skip_next" size={20} />
         </IconButton>
@@ -1310,7 +1459,7 @@ function Toolbar(props: {
           disabled={!canStop || stopping}
           onClick={() => {
             void requestPlayStop();
-            props.onPlay();
+            props.onShowPlay();
           }}
         >
           <MIcon name="stop" size={20} />
@@ -1487,18 +1636,6 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
 // tint are honored today — everything else is badged preview (see
 // ui/play-setup.ts) and never pretended.
 
-function PreviewBadge({ why }: { why: string }): React.JSX.Element {
-  return (
-    <span
-      className="ml-1.5 rounded-full px-1.5 py-px font-mono text-[10px]"
-      style={{ border: "1px solid var(--m3-outline)", color: "var(--m3-on-surface-variant)" }}
-      title={`Preview — ${why}`}
-    >
-      preview
-    </span>
-  );
-}
-
 function PlayMenu({ setup, onChange, onPlay, onClose }: {
   setup: PlaySetup;
   onChange: (s: PlaySetup) => void;
@@ -1522,43 +1659,48 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
       <div className="mb-3 grid grid-cols-3 gap-2">
         {(
           [
-            ["viewport", "fullscreen", "In viewport", "Panels stay around it", false],
-            ["window", "open_in_new", "New window", "The player's client", true],
-            ["simulate", "visibility", "Simulate", "World only, no player", true],
-          ] as Array<[string, string, string, string, boolean]>
-        ).map(([id, icon, title, body, preview]) => {
+            ["viewport", "fullscreen", "In viewport", "Panels stay around it"],
+            ["window", "open_in_new", "New window", "The player's client"],
+            ["simulate", "visibility", "Simulate", "World only, no player"],
+          ] as Array<[string, string, string, string]>
+        ).map(([id, icon, title, body]) => {
           const on = setup.where === id;
           return (
             <button
               key={id}
               onClick={() => set({ where: id })}
               aria-pressed={on}
-              title={preview ? `Preview — ${PLAY_PREVIEW_NOTES.where}` : undefined}
               className="m3-focus flex flex-col gap-1 rounded-xl p-3 text-left"
               style={on ? { background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" } : { background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
             >
               <MIcon name={icon} size={22} />
-              <span className="text-sm font-medium">{title}{preview && <PreviewBadge why={PLAY_PREVIEW_NOTES.where} />}</span>
+              <span className="text-sm font-medium">{title}</span>
               <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{body}</span>
             </button>
           );
         })}
       </div>
 
-      <PlayMenuLabel>Start from<PreviewBadge why={PLAY_PREVIEW_NOTES.from} /></PlayMenuLabel>
-      <PlayMenuRow options={["Login", "Character creation", "World", "Camera position"]} value={setup.from} onPick={(v) => set({ from: v })} />
+      <PlayMenuLabel>Start from</PlayMenuLabel>
+      <PlayMenuRow
+        options={["Login", "Character creation", "World", "Camera position"]}
+        value={setup.from}
+        onPick={(v) => set({ from: v })}
+        markPreview={(o) => o === "Login" || o === "Character creation"}
+        previewWhy={PLAY_PREVIEW_NOTES.from}
+      />
 
       <PlayMenuLabel>Test setup</PlayMenuLabel>
       <div className="mb-1 flex flex-col gap-2">
-        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={setup.clients} onPick={(v) => set({ clients: v })} markPreview={(o) => o !== "1"} previewWhy={PLAY_PREVIEW_NOTES.clients} />
+        <PlayMenuSplit label="Clients" options={["1", "2", "4", "8"]} value={setup.clients} onPick={(v) => set({ clients: v })} />
         <PlayMenuSplit label="Bots near spawn" options={["0", "10", "50", "200"]} value={setup.bots} onPick={(v) => set({ bots: v })} />
         <PlayMenuSplit label="Network" options={["Core only", "Edge + core"]} value={setup.net} onPick={(v) => set({ net: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.net} />
-        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} markPreview={() => true} previewWhy={PLAY_PREVIEW_NOTES.latency} />
+        <PlayMenuSplit label="Simulated latency" options={["0", "80 ms", "200 ms"]} value={setup.latency} onPick={(v) => set({ latency: v })} />
       </div>
 
       <div className="mt-2 flex flex-col gap-2.5 text-sm">
-        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)<PreviewBadge why={PLAY_PREVIEW_NOTES.fresh} /></>} />
-        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop<PreviewBadge why={PLAY_PREVIEW_NOTES.keep} /></>} />
+        <PlayCheck checked={setup.fresh} onFlip={() => set({ fresh: !setup.fresh })} label={<>Fresh world from the scene (discard saved state)</>} />
+        <PlayCheck checked={setup.keep} onFlip={() => set({ keep: !setup.keep })} label={<>Keep play changes on stop</>} />
         <PlayCheck checked={setup.tint} onFlip={() => set({ tint: !setup.tint })} label="Tint the editor while playing" />
       </div>
 
@@ -1570,7 +1712,7 @@ function PlayMenu({ setup, onChange, onPlay, onClose }: {
           }}
           className="m3-focus flex items-center gap-2 rounded-lg px-2 py-1.5 text-left"
           style={{ color: "var(--m3-on-surface-variant)" }}
-          title="Play with the last settings (F5) — opens Play mode"
+          title="Play with the last settings (F5)"
         >
           <MIcon name="history" size={16} /> Last: {setupSummary(loadLastSetup())}
           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)" }}>F5</kbd>
@@ -1657,13 +1799,21 @@ function PlayMenuLabel({ children }: { children: React.ReactNode }): React.JSX.E
   );
 }
 
-function PlayMenuRow({ options, value, onPick }: { options: string[]; value: string; onPick: (v: string) => void }): React.JSX.Element {
+function PlayMenuRow({ options, value, onPick, markPreview, previewWhy }: { options: string[]; value: string; onPick: (v: string) => void; markPreview?: (o: string) => boolean; previewWhy?: string }): React.JSX.Element {
   return (
     <div className="mb-2.5 flex flex-wrap gap-1.5">
       {options.map((o) => (
-        <Chip key={o} selected={value === o} onClick={() => onPick(o)}>
+        <Chip
+          key={o}
+          selected={value === o}
+          onClick={() => onPick(o)}
+          title={markPreview?.(o) ? `Preview — ${previewWhy ?? ""}` : undefined}
+        >
           {value === o && o !== "1" && o !== "0" && <MIcon name="check" size={15} />}
           {o}
+          {markPreview?.(o) && (
+            <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>preview</span>
+          )}
         </Chip>
       ))}
     </div>
@@ -2167,23 +2317,6 @@ function ReleaseTree(): React.JSX.Element {
 function DebugTree(): React.JSX.Element {
   const t = useTree();
   const { entityId, autoRefresh, pmState } = playUiStore.use();
-  const stagedGroup = (id: string, icon: string, label: string, leaves: string[]): React.JSX.Element => (
-    <div key={id}>
-      <TreeItem
-        icon={icon} label={label}
-        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={false} onPick={() => t.toggle(id)}
-        menu={crudMenu(label, "EA · debug")}
-      />
-      {t.open.includes(id) && leaves.map((l) => (
-        <TreeItem
-          key={l} icon="chevron_right" label={l} depth={1}
-          menu={crudMenu(l, "EA · debug")}
-          onPick={() => notify(`${l} — staged for EA · debug (E5 overlays)`)}
-        />
-      ))}
-    </div>
-  );
   return (
     <div className="flex flex-col gap-0.5">
       <TreeItem
@@ -2217,11 +2350,81 @@ function DebugTree(): React.JSX.Element {
         Auto-refresh overlays
         <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>2 s</span>
       </button>
-      {stagedGroup("timings", "timer", "Tick timings", ["Per-tick p50 / p99", "Slow systems list"])}
-      {stagedGroup("costs", "bar_chart", "Per-system costs", ["System cost table", "Budget alerts"])}
+      <TickTimingsPanel />
       <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Timings arrive with E5; entity and refresh already drive the live overlays.
+        Timings come from the running play server via the debug API.
       </p>
+    </div>
+  );
+}
+
+/** Live tick timings from the play server (debug API). */
+function TickTimingsPanel(): React.JSX.Element {
+  const [timings, setTimings] = React.useState<{ ticks: number; p50: number; p99: number; systems: Array<{ name: string; avg: number; max: number }> } | null>(null);
+  const [error, setError] = React.useState("");
+  React.useEffect(() => {
+    let live = true;
+    // One query at a time: a slow server must not pile up a request every 2 s.
+    let inFlight = false;
+    const load = async (): Promise<void> => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const c = getPlayController();
+        if (!c || c.getState() !== "running") {
+          if (live) {
+            setTimings(null);
+            setError("");
+          }
+          return;
+        }
+        const res = await c.debugTimings();
+        if (!live) return;
+        if (res.query === "timings") {
+          setTimings({ ticks: res.ticks, p50: res.p50, p99: res.p99, systems: res.systems });
+          setError("");
+        }
+      } catch {
+        // Running but unanswered: the query rides the player's client, which Simulate doesn't connect.
+        if (live) {
+          setTimings(null);
+          setError("Tick timings come through the player's client; Simulate runs without one.");
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+    void load();
+    const t = setInterval(() => void load(), 2000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+  if (error) return <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{error}</p>;
+  if (!timings) {
+    return (
+      <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
+        Start play mode to see live tick timings.
+      </p>
+    );
+  }
+  return (
+    <div className="px-3">
+      <p className="text-xs font-medium">Tick timings ({timings.ticks} ticks)</p>
+      <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
+        p50 {timings.p50.toFixed(1)}ms · p99 {timings.p99.toFixed(1)}ms
+      </p>
+      {timings.systems.length > 0 && (
+        <ul className="mt-1">
+          {timings.systems.slice(0, 5).map((s) => (
+            <li key={s.name} className="flex justify-between font-mono text-xs">
+              <span>{s.name}</span>
+              <span style={{ color: "var(--m3-on-surface-variant)" }}>{s.avg.toFixed(2)}ms avg · {s.max.toFixed(1)} max</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

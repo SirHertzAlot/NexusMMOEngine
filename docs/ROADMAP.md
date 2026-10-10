@@ -83,7 +83,7 @@ Doc: [`EDITOR.md`](EDITOR.md)
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
 | E3 | Art asset pipeline: pack models to GLB, previews | ✅ | |
-| E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ✅ | Play-mode game view: the client's `WorldCanvas` in the Play Mode tab via `@mmo-engine/client/render`, stats row, lazy-loaded (#92) |
+| E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ✅ | Play-mode game view: the client's `WorldCanvas` in the Play Mode tab via `@mmo-engine/client/render`, stats row, lazy-loaded (#92). First-person view: V or the toggle button, own avatar hidden (#182). "New window" pops the live view into a popup via adoptNode, same GL context (#181) |
 | E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | ✅ | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111). The client no longer mounts developer panels. |
 | E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | ✅ | Selection card in the play-mode debugger: click an entity, see every mirror component and, for a PICG asset, its graph, shape, seed and exposed parameters (#113) |
 | E7 | PICG slice 4: hierarchical graph editor | ✅ | PICG Graphs tab: graphs and linked parts on a canvas, enter and climb the hierarchy, node properties and parameter defaults, undo, saves validated by a cook preparation (#115) |
@@ -108,7 +108,7 @@ stay read-only here; this edits the running game.
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | ✅ | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; `god` toggles the God tag (no combat/hunger/drowning/trap Health loss) and peaks every skill, kept when switched off; `noclip` toggles the Noclip tag (free vertical flight, dungeon walls let go); `time` shows and sets the clock (newcomers via welcome, live clients by broadcast) and `weather` forces the sky (auto/clear/rain/snow/ash, same path); `injure {part, kind?, amount?}` (#99) and `skill {id, value}` (#112) live; `heal` also fills mana and makes the body whole |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
-| A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
+| A6 | Appearance and equipment editor, live on the character | 🚧 | `arlo/a6-appearance-editor` (PR #191): `appearance` admin command (parts/colours per slot, validated against the catalog, live via sim.setLook). Equipment overlays re-apply. |
 | A7 | **Bots in web workers**: an admin command spawns N simulated players (each its own socket, moving and fighting) in worker threads, to stress the server and feel play under load | 📋 | U14 (worker pool), A1; builds on `scripts/world-stress` |
 
 ## 1c. Modular editor
@@ -120,7 +120,7 @@ loadable modules, a database editor and production tools.
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
-| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices |
+| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices. Menus complete (2026-10-09, PRs #163–166): File/Edit/View act on the open document via DocActions/ViewportActions (no staged placeholders); Ctrl+K palette over commands/assets/settings with asset deep-linking; toolbar Play/F5 starts play with last setup; dock shows real server log/validation/bakes. |
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
 | EA3 | Editor modules | 🚧 | `feat/ea3-ea9-modules`: `packages/modules` (manifest schema collecting every problem, discovery, `content/modules.json` set, dependency order); host routes `/api/editor/modules` (list, validated save, apply); the shell imports enabled modules' editor entries dynamically and a Modules workspace enables and disables them; the header count is real; the Characters Records panel is now the `characters` module. Deferred: other panels as modules (EA13), commands and document kinds as contributions, Controller/EditorContext contracts (EA2) |
 | EA4 | Scene documents | ✅ | `feat/ea4-scene-documents`: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5. |
@@ -138,14 +138,14 @@ loadable modules, a database editor and production tools.
 | EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
 | EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
-| EA19 | Build and deploy | 📋 | |
+| EA19 | Build and deploy | 🚧 | `arlo/ea19-build-deploy` (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. `arlo/ea19-pipeline-view` (PR #188, stacks on #187): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Open: staging target (blocked on the container-platform decision) |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
 | EA21 | Animation | 📋 | |
 | EA22 | VFX and materials | 📋 | |
-| EA23 | HUD layout editor | 📋 | |
+| EA23 | HUD layout editor | 🚧 | `arlo/ea23-hud-editor` (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Open: editor drag UI, overlap checks, widget catalog, self-positioning widget migration |
 | EA24 | Audio | 📋 | |
 | EA25 | Localization | 📋 | |
-| EA26 | Automated playtests | 📋 | |
+| EA26 | Automated playtests | 🚧 | `arlo/ea26-playtests` (PR #189): `@mmo-engine/playtest` (zod scenarios, headless SimWorld runner, assertions, sealed failure replays), `BotSystem` exported, `npm run playtest`, sample scenario. Open: viewport replay scrubbing, headless screenshots/GIFs, pipeline integration |
 
 ## 1d. Editor interaction repairs
 
@@ -162,6 +162,7 @@ with no retry). Fixing them as one wave, tracked here.
 | R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | ✅ | `fix/ed-keys-menus`: F5/Shift+F5/V/W/E/R wired; staged rows disabled with no kbd hint; drag-to-place removed until the scene viewport slice lands |
 | R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | ✅ | `fix/ed-panels` |
 | R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | ✅ | `fix/ed-selection`; panel highlight restoration on reload deferred |
+| R5 | Pause and Step drive the owned server's tick loop | ✅ | `feat/editor-pause-step`: admin `pause`/`resume`/`step` on the gateway (`TickLoop.step`/`rearm`); the play cluster's Pause toggles Resume, Step runs one tick while paused. Server-side pause only. |
 
 ## 2. Game client: the player's interface
 
@@ -304,6 +305,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
 - **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.

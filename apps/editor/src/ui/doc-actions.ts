@@ -1,10 +1,16 @@
 /**
- * Active-document registry — what the toolbar's Save / Undo / Redo act on.
+ * Active-document registry — what the toolbar's Save / Undo / Redo and the
+ * File / Edit menus act on.
  *
  * Each document panel (scenes, flow, rules, graphs, dungeons, terrain,
  * story) registers its actions while it has an open document and clears
- * them when it unmounts or closes it. The toolbar subscribes: with no
- * registration the buttons render disabled with a tooltip.
+ * them when it unmounts or closes it. The toolbar and menus subscribe:
+ * with no registration the buttons render disabled with a tooltip.
+ *
+ * The core (label, save, undo, redo) is required. The edit surface
+ * (clipboard, selection, revert, import/export, save-all) is optional:
+ * panels implement what their document model supports, and the menus
+ * disable the rest with a reason instead of showing "soon" placeholders.
  *
  * Refused saves keep their contract: panel save() implementations throw
  * or return issues and write nothing (hosts validate first).
@@ -19,6 +25,31 @@ export interface DocActions {
   save: () => void;
   undo: () => void;
   redo: () => void;
+
+  // --- Edit menu: clipboard & selection (optional per panel) ---
+  /** Whether the panel has a clipboard-worthy selection right now. */
+  canCut?: boolean;
+  canCopy?: boolean;
+  canPaste?: boolean;
+  canDuplicate?: boolean;
+  canDelete?: boolean;
+  canSelectAll?: boolean;
+  cut?: () => void;
+  copy?: () => void;
+  paste?: () => void;
+  duplicate?: () => void;
+  deleteSelection?: () => void;
+  selectAll?: () => void;
+
+  // --- File menu: document lifecycle (optional per panel) ---
+  canSaveAll?: boolean;
+  canRevert?: boolean;
+  canImport?: boolean;
+  canExport?: boolean;
+  saveAll?: () => void;
+  revert?: () => void;
+  importFile?: () => void;
+  exportFile?: () => void;
 }
 
 let current: DocActions | null = null;

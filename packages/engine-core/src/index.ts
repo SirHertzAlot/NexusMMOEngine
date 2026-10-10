@@ -300,6 +300,10 @@ export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
 export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
 export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
 export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
+export { BotSystem } from "./bots.js";
+export { AnimationSystem, ensureAnimation } from "./animation.js";
+export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";
+export { loadAudioEvent, AudioBus, type AudioEvent } from "./audio.js";
 
 // Edge/core split E3: the core's end of the internal channel.
 export {
@@ -314,3 +318,4 @@ export {
 } from "./channel-server.js";
 export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
 export type { GatewayTick } from "./net/gateway.js";
+export { backupWorld, discardBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";

@@ -1,0 +1,38 @@
+/**
+ * TDD: MMO_SPAWN_OVERRIDE parsing for the world server.
+ *
+ * The editor's play mode passes the "Start from" spawn target as
+ * MMO_SPAWN_OVERRIDE="x,z". It takes precedence over the world's stored
+ * spawn_point. Malformed values are ignored (default spawn wins).
+ */
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { parseSpawnOverride } from "../src/spawn-override.js";
+
+describe("parseSpawnOverride", () => {
+  it("parses 'x,z'", () => {
+    assert.deepEqual(parseSpawnOverride("10,20"), { x: 10, z: 20 });
+  });
+
+  it("parses negatives and decimals", () => {
+    assert.deepEqual(parseSpawnOverride("-12.5,3.25"), { x: -12.5, z: 3.25 });
+  });
+
+  it("undefined → null", () => {
+    assert.equal(parseSpawnOverride(undefined), null);
+  });
+
+  it("empty → null", () => {
+    assert.equal(parseSpawnOverride(""), null);
+  });
+
+  it("non-numeric → null", () => {
+    assert.equal(parseSpawnOverride("abc,def"), null);
+    assert.equal(parseSpawnOverride("10"), null);
+    assert.equal(parseSpawnOverride("10,20,30"), null);
+  });
+
+  it("whitespace is tolerated", () => {
+    assert.deepEqual(parseSpawnOverride(" 10 , 20 "), { x: 10, z: 20 });
+  });
+});

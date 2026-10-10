@@ -6,16 +6,22 @@
  * pass a fake. The UI defaults to window.localStorage when present.
  *
  * Honored today (passed to serverControl.start / the shell):
- * - where = "viewport" (the embedded game view; "window"/"simulate"
- *   need a client windowing / headless path that does not exist yet);
- * - clients = "1" (one mirror client; 2/4/8 need extra clients);
+ * - where = "viewport" (the embedded game view), "window" (the game view
+ *   pops out into a separate window via adoptNode), or "simulate" (world
+ *   only, no player client);
+ * - clients = "1"/"2"/"4"/"8" (mirror clients; client 0 drives the view,
+ *   the rest are headless load);
  * - bots (sent as MMO_BOTS for the owned server);
+ * - fresh/keep (world snapshot/restore: fresh backs up world.db on start;
+ *   on stop the backup is restored unless keep is set);
+ * - from = "World" (default spawn) or "Camera position" (the scene
+ *   viewport camera's ground target → MMO_SPAWN_OVERRIDE; "Login" and
+ *   "Character creation" need client-side flow execution);
  * - tint (the shell tints tertiary + Details goes read-only while
  *   running).
  *
  * Preview-only (badged "preview" in the menu, never pretended):
- * - where window/simulate, from (entry node), clients > 1, net,
- *   latency, fresh/keep (world snapshot/restore).
+ * - from Login / Character creation, net (edge/core switch).
  */
 
 export interface PlaySetup {
@@ -167,11 +173,34 @@ export function botsCount(setup: PlaySetup): number {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
 }
 
+/**
+ * How many mirror clients to connect (1/2/4/8). Invalid → 1.
+ * Client 0 drives the game view; the rest are headless load.
+ */
+export function clientCount(setup: PlaySetup): number {
+  const n = Number(setup.clients);
+  return n === 1 || n === 2 || n === 4 || n === 8 ? n : 1;
+}
+
 /** One-line chip: what Play will do ("In viewport · World · 1 client"). */
 export function setupSummary(setup: PlaySetup): string {
   const where = setup.where === "viewport" ? "In viewport" : setup.where === "window" ? "New window" : "Simulate";
   const clients = `${setup.clients} client${setup.clients === "1" ? "" : "s"}`;
   return `${where} · ${setup.from} · ${clients}`;
+}
+
+/**
+ * Whether the start path should connect a mirror client (player view).
+ * Simulate mode runs the world with no player: the server ticks, the
+ * editor shows status, no game view opens.
+ */
+export function shouldConnectPlayer(setup: PlaySetup): boolean {
+  return setup.where !== "simulate";
+}
+
+/** Status label for the play mode panel. */
+export function simulateLabel(setup: PlaySetup): string {
+  return setup.where === "simulate" ? "Simulate — world only, no player" : setupSummary(setup);
 }
 
 /**
@@ -181,9 +210,5 @@ export function setupSummary(setup: PlaySetup): string {
 export const PLAY_PREVIEW_NOTES: Record<string, string> = {
   where: "Only the viewport is wired: a new window / simulate needs a client windowing path",
   from: "The owned server boots the open world; starting at a flow node is not wired",
-  clients: "Only 1 client connects today; 2/4/8 need extra mirror clients",
   net: "No edge/core switch on start; the owned server always runs core",
-  latency: "No simulated-latency control on the client connections",
-  fresh: "No world snapshot/restore: stop leaves world.db as-is",
-  keep: "No keep/discard of play changes: the world keeps what the tick wrote",
 };

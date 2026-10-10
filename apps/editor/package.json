@@ -10,9 +10,10 @@
     "react-dom": "^19.3.0",
     "three": "^0.186.1",
     "@mmo-engine/mirror": "0.1.0",
-    "@mmo-engine/picg": "0.1.0"
+    "@mmo-engine/picg": "0.1.0",
+    "@mmo-engine/build": "0.1.0"
   },
-  "description": "Rogue Engine Editor customization: dockable ECS inspector, local-server play mode, and art asset pipeline \u2014 one shell, three inspectors",
+  "description": "Rogue Engine Editor customization: dockable ECS inspector, local-server play mode, and art asset pipeline — one shell, three inspectors",
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.3.0",
