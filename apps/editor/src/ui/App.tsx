@@ -33,6 +33,10 @@ import { getViewportActions, subscribeViewportActions } from "./viewport-actions
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { TOOLBAR_GROUPS, isShown, loadToolbar, saveToolbar, toggleGroup, DEFAULT_TOOLBAR, type ToolbarConfig } from "../toolbar-config.js";
+import { usePendingChanges } from "./pending-changes.js";
+import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.js";
+import { requestOpenAsset } from "./open-asset.js";
+import { loadCatalog } from "../gameplay-client.js";
 import { BakesPane, OutputPane, ProblemsPane, useDocProblems, useServerOutput, type ServerOutput } from "./dock-panes.js";
 import { requestNewScene } from "../open-scene.js";
 import {
@@ -237,6 +241,30 @@ function syncModuleViews(): void {
 syncModuleViews();
 moduleRegistry.subscribe(syncModuleViews);
 
+/** Words that find a view in Ctrl K beyond its label. */
+const VIEW_KEYWORDS: Record<string, string> = {
+  terrain: "terrain sculpt brush heightmap regenerate world map",
+  ecs: "ecs inspector entities components live",
+  scene: "scene document outliner nodes viewport place",
+  flow: "flow graph screens login character select transitions",
+  hud: "hud layout frames chat bag widgets",
+  records: "characters records accounts saved",
+  grids: "creatures items skills spells species stats balance",
+  content: "content browser catalog assets prefabs",
+  tables: "tables rules items loot",
+  rules: "rules editor combat death body",
+  dungeons: "dungeon rooms layout instances",
+  graphs: "picg graph nodes procedural",
+  play: "play mode debugger overlays navmesh waypoints server",
+  changes: "git commit diff merge locks version control",
+  grid: "database sqlite tables rows",
+  query: "database sql query",
+  audit: "database audit log undo",
+  "story-editor": "quest dialog npc story graph",
+  assets: "art assets models textures import",
+  modules: "modules enable disable apply",
+};
+
 const SOON_WS: ReadonlySet<WorkspaceId> = new Set(["network"]);
 /** Workspaces showing mockup-faithful previews over sample data. */
 const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "story", "artaudio", "release"]);
@@ -324,6 +352,39 @@ export function App(): React.JSX.Element {
   function goPlay(): void {
     pickWorkspace("debug");
     setView("play");
+  }
+
+  /** The shell's own commands for Ctrl K: what the menus, toolbar and shortcuts do, plus the layout and play settings. */
+  function shellCommands(): PaletteCommand[] {
+    const doc = getDocActions();
+    const close = (run: () => void) => () => {
+      setPalette(false);
+      run();
+    };
+    const cmds: PaletteCommand[] = [];
+    if (doc?.canSave) cmds.push({ id: "cmd:save", label: `Save ${doc.label}`, group: "Command", hint: "Ctrl S", icon: "save", run: close(() => doc.save()) });
+    if (doc?.canUndo) cmds.push({ id: "cmd:undo", label: `Undo ${doc.label}`, group: "Command", hint: "Ctrl Z", icon: "undo", run: close(() => doc.undo()) });
+    if (doc?.canRedo) cmds.push({ id: "cmd:redo", label: `Redo ${doc.label}`, group: "Command", hint: "Ctrl Y", icon: "redo", run: close(() => doc.redo()) });
+    cmds.push(
+      { id: "cmd:tool-select", label: "Tool: Select", group: "Command", hint: "V", icon: "nearby", run: close(() => setTool("select")) },
+      { id: "cmd:tool-move", label: "Tool: Move", group: "Command", hint: "W", icon: "open_with", run: close(() => setTool("move")) },
+      { id: "cmd:tool-rotate", label: "Tool: Rotate", group: "Command", hint: "E", icon: "rotate_right", run: close(() => setTool("rotate")) },
+      { id: "cmd:tool-scale", label: "Tool: Scale", group: "Command", hint: "R", icon: "expand", run: close(() => setTool("scale")) },
+      { id: "cmd:layout-reset", label: "Reset layout", group: "Command", icon: "restart_alt", run: close(() => applyLayout(defaultLayout())) },
+      { id: "cmd:layout-save", label: "Save layout…", group: "Command", hint: "Ctrl Shift S", icon: "dashboard", run: close(() => setLayoutMenu(true)) },
+      { id: "cmd:fullscreen", label: "Toggle fullscreen", group: "Command", hint: "F11", icon: "fullscreen", run: close(() => {
+        if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+        else void document.documentElement.requestFullscreen().catch(() => notify("Fullscreen was blocked by the browser"));
+      }) },
+      { id: "set:dock-left", label: `${docks.left ? "Hide" : "Show"} the left dock`, group: "Setting", icon: "left_panel_open", run: close(() => toggleDock("left")) },
+      { id: "set:dock-right", label: `${docks.right ? "Hide" : "Show"} the right dock`, group: "Setting", icon: "right_panel_open", run: close(() => toggleDock("right")) },
+      { id: "set:dock-bottom", label: `${docks.bottom ? "Hide" : "Show"} the bottom dock`, group: "Setting", icon: "bottom_panel_open", run: close(() => toggleDock("bottom")) },
+      { id: "set:tint", label: `Play tint: ${playSetup.tint ? "on" : "off"} (click to turn ${playSetup.tint ? "off" : "on"})`, group: "Setting", icon: "palette", run: close(() => updatePlaySetup({ ...playSetup, tint: !playSetup.tint })) },
+    );
+    for (const n of ["0", "10", "50", "200"]) {
+      cmds.push({ id: `set:bots-${n}`, label: `Play setup: ${n} bots${playSetup.bots === n ? " (current)" : ""}`, group: "Setting", icon: "smart_toy", run: close(() => updatePlaySetup({ ...playSetup, bots: n })) });
+    }
+    return cmds;
   }
 
   function go(ws: WorkspaceId, view?: string): void {
@@ -596,10 +657,11 @@ export function App(): React.JSX.Element {
       {palette && (
         <CommandPalette
           onClose={() => setPalette(false)}
-          onWorkspace={(id) => {
-            pickWorkspace(id);
+          onGo={(ws, v) => {
+            go(ws as WorkspaceId, v);
             setPalette(false);
           }}
+          commands={shellCommands()}
           onPlay={() => {
             goPlay();
             setPalette(false);
@@ -1885,29 +1947,50 @@ function PlayCheck({ checked, onFlip, label }: { checked: boolean; onFlip: () =>
 
 // ---------------------------------------------------------------- command palette
 
-function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
+function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
   onClose: () => void;
-  onWorkspace: (id: WorkspaceId) => void;
+  onGo: (workspace: string, view: string) => void;
   onPlay: () => void;
   onStop: () => void;
+  commands: PaletteCommand[];
 }): React.JSX.Element {
   const [q, setQ] = React.useState("");
+  const [cursor, setCursor] = React.useState(0);
+  const [assets, setAssets] = React.useState<PaletteCommand[]>([]);
   const inputRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => inputRef.current?.focus(), []);
+  // Assets come from the content catalog (the host reads the files); the palette works without them.
+  React.useEffect(() => {
+    let live = true;
+    loadCatalog().then(
+      (c) => live && setAssets(catalogCommands(c.entries, onGo, requestOpenAsset)),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const commands: Array<{ label: string; hint: string; icon: string; run: () => void }> = [
+  const commands: PaletteCommand[] = [
     ...WORKSPACES.flatMap((w) =>
       w.views.map((v) => ({
+        id: `go:${w.id}:${v.id}`,
         label: `${w.label} → ${v.label}`,
+        group: "Go to" as const,
         hint: SOON_WS.has(w.id) ? "module slot" : PREVIEW_WS.has(w.id) ? "preview" : "workspace",
         icon: v.icon,
-        run: () => onWorkspace(w.id),
+        keywords: VIEW_KEYWORDS[v.id],
+        run: () => onGo(w.id, v.id),
       })),
     ),
-    { label: "Play with the last settings", hint: "F5", icon: "play_arrow", run: onPlay },
-    { label: "Stop play mode", hint: "Shift F5", icon: "stop", run: onStop },
+    { id: "cmd:play", label: "Play with the last settings", group: "Command", hint: "F5", icon: "play_arrow", run: onPlay },
+    { id: "cmd:stop", label: "Stop play mode", group: "Command", hint: "Shift F5", icon: "stop", run: onStop },
+    ...shell,
+    ...assets,
   ];
-  const hits = commands.filter((c) => c.label.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 12);
+  const hits = rankCommands(commands, q, 12);
+  const at = Math.min(cursor, Math.max(hits.length - 1, 0));
 
   return (
     <>
@@ -1923,9 +2006,18 @@ function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
           <input
             ref={inputRef}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setCursor(0);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && hits.length > 0) hits[0].run();
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setCursor(Math.min(at + 1, hits.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setCursor(Math.max(at - 1, 0));
+              } else if (e.key === "Enter" && hits.length > 0) hits[at].run();
             }}
             placeholder="Find any command, panel, asset or setting…"
             aria-label="Command search"
@@ -1937,20 +2029,26 @@ function CommandPalette({ onClose, onWorkspace, onPlay, onStop }: {
           </kbd>
         </div>
         <ul className="m3-scroll max-h-80 overflow-y-auto p-2">
-          {hits.map((h) => (
-            <li key={h.label}>
-              <button onClick={h.run} className="m3-focus flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5">
+          {hits.map((h, i) => (
+            <li key={h.id}>
+              <button
+                onClick={h.run}
+                onMouseEnter={() => setCursor(i)}
+                aria-current={i === at ? "true" : undefined}
+                className="m3-focus flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm"
+                style={i === at ? { background: "rgba(255,255,255,.08)" } : undefined}
+              >
                 <span style={{ color: "var(--m3-on-surface-variant)" }}>
                   <MIcon name={h.icon} size={18} />
                 </span>
-                {h.label}
-                <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-outline)" }}>{h.hint}</span>
+                <span className="min-w-0 truncate">{h.label}</span>
+                <span className="ml-auto flex-none font-mono text-[11px]" style={{ color: "var(--m3-outline)" }}>{h.hint ?? h.group}</span>
               </button>
             </li>
           ))}
           {hits.length === 0 && (
             <li className="px-3 py-6 text-center text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
-              No command matches “{q}”. Modules add their own commands here.
+              No command, asset or setting matches “{q}”.
             </li>
           )}
         </ul>
@@ -2535,6 +2633,39 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
 
 // ---------------------------------------------------------------- right dock
 
+function GameplayDetails(): React.JSX.Element {
+  const report = usePendingChanges();
+  const icon = { edit: "edit", add: "add_circle", remove: "remove_circle", error: "error" } as const;
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="rounded-xl p-2.5 text-[12.5px]"
+        style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
+      >
+        <MIcon name="bolt" size={16} /> Saved tables hot-reload into the running server
+      </div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
+        Unsaved changes
+      </p>
+      {report === null ? (
+        <p className="text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
+          Nothing changed. Edits in the grid list here until you save; a refused save writes nothing.
+        </p>
+      ) : (
+        <ul className="text-[12.5px]" aria-label={`Unsaved changes in ${report.label}`}>
+          {report.changes.map((c, i) => (
+            <li key={`${c.kind}:${c.path}:${i}`} className="flex items-center gap-2 border-b py-1.5" style={{ borderColor: "#2a2b31" }}>
+              <MIcon name={icon[c.kind]} size={16} />
+              <span className="font-mono text-xs">{c.path}</span>
+              <span className="ml-auto text-right" style={{ color: c.kind === "error" ? "var(--m3-error)" : "var(--m3-on-surface-variant)" }}>{c.change}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
@@ -2545,21 +2676,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow" && view === "flow") return <FlowDetails />;
   if (workspace === "story" && view === "quests") return <StoryDetails />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
-  if (workspace === "gameplay") {
-    return (
-      <div className="flex flex-col gap-3">
-        <div
-          className="rounded-xl p-2.5 text-[12.5px]"
-          style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
-        >
-          <MIcon name="bolt" size={16} /> Saved tables hot-reload into the running server
-        </div>
-        <p className="text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Select a row in the grid to see its details here. Edits stay validated — a refused save writes nothing.
-        </p>
-      </div>
-    );
-  }
+  if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
     return (

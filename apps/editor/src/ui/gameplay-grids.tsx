@@ -29,6 +29,8 @@ import { GAMEPLAY_TABLES, TABLE_DEFS, cellOfIssue, fromRows, toRows, type Gamepl
 import { GameplaySaveError, checkGameplayRemote, loadCatalog, loadGameplay, saveGameplayRemote, type GameplayIssue, type GameplaySnapshot } from "../gameplay-client.js";
 import { CATALOG_KINDS, type CatalogEntry, type CatalogKind } from "../content-catalog-types.js";
 import { getAt } from "../rules-control.js";
+import { diffRows } from "../gameplay-diff.js";
+import { setPendingChanges } from "./pending-changes.js";
 import { Badge, Button, Card, CardContent, Input } from "./components.js";
 
 export const CONTENT_MIME = "application/x-mmo-content";
@@ -127,6 +129,19 @@ export function GameplayGridsPanel(): React.JSX.Element {
     }
   }, []);
   React.useEffect(() => void load(), [load]);
+
+  // The Details pane lists what this grid has changed against what is saved (every table, not only the shown one).
+  React.useEffect(() => {
+    if (!snap || !rows) return;
+    const refs = { items: rows.items.map((r) => r.id), creatures: rows.creatures.map((r) => r.id) };
+    const ctx: GridContext = { refs, options: snap.context.options };
+    const saved = rowsOf(snap);
+    const changes = GAMEPLAY_TABLES.flatMap((t) =>
+      diffRows(saved[t], rows[t], TABLE_DEFS[t].columns, ctx).map((c) => ({ ...c, path: `${t}.${c.path}` })),
+    );
+    setPendingChanges(changes.length > 0 ? { label: "Gameplay tables", changes } : null);
+  }, [snap, rows]);
+  React.useEffect(() => () => setPendingChanges(null), []);
 
   if (!snap || !rows) {
     return (
