@@ -58,6 +58,7 @@ export type {
   LocomotionRow,
   AppearanceRow,
   ActionRow,
+  AnimationRow,
   StaminaRow,
   TransformRow,
   VelocityRow,

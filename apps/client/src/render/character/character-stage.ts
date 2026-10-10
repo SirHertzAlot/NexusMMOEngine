@@ -3,11 +3,16 @@
  * orbit and zoom: the viewport of character creation (and the dev
  * preview). The character stands at the origin, facing the camera, idling
  * when the animation library is there.
+ *
+ * The editor's Animation panel (EA21) reuses it to preview clips: with the
+ * licensed kit installed it shows a real character, without it a procedural
+ * stand-in rig (`createStandIn`), and `drive` plays the server's clip plan
+ * on either — the same animator the game uses.
  */
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { CharacterLook } from "@mmo-engine/art/browser";
+import { buildStandIn, buildStandInClips, standInClipInfo, type CharacterLook, type ClipPlan } from "@mmo-engine/art/browser";
 import { CharacterKit, type ModularCharacter } from "./character-kit.js";
 import { AnimationLibrary, CharacterAnimator } from "./character-animator.js";
 
@@ -20,13 +25,18 @@ export class CharacterStage {
   private readonly controls: OrbitControls;
   private readonly resizeObserver: ResizeObserver;
   private character: ModularCharacter | null = null;
-  private animator: CharacterAnimator | null = null;
+  /** A model that is not a kit character (the stand-in rig). */
+  private model: THREE.Object3D | null = null;
+  private _animator: CharacterAnimator | null = null;
+  private driver: (() => ClipPlan | null) | null = null;
+  /** Hold the pose (the preview's pause). */
+  paused = false;
   private readonly clock = new THREE.Clock();
   private disposed = false;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
-    readonly kit: CharacterKit,
+    private readonly _kit: CharacterKit | null,
     /** The stage loaded the kit itself, so it releases it. */
     private readonly ownsKit: boolean,
     /** Clips to animate the character with (null: it stands still). */
@@ -60,7 +70,8 @@ export class CharacterStage {
     this.resizeObserver.observe(canvas);
     this.resize();
     this.renderer.setAnimationLoop(() => {
-      this.animator?.update(Math.min(0.1, this.clock.getDelta()), STILL);
+      const dt = Math.min(0.1, this.clock.getDelta());
+      this.animator?.update(this.paused ? 0 : dt, STILL, this.driver?.() ?? null);
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     });
@@ -76,6 +87,42 @@ export class CharacterStage {
       : new CharacterStage(canvas, await CharacterKit.load(), true, await animations);
   }
 
+  /** A stage with no kit: the procedural stand-in rig and clips (no art installed). */
+  static createStandIn(canvas: HTMLCanvasElement): CharacterStage {
+    const clips = buildStandInClips();
+    const stage = new CharacterStage(canvas, null, false, AnimationLibrary.of(clips, standInClipInfo(clips)));
+    const { root } = buildStandIn();
+    stage.showModel(root);
+    return stage;
+  }
+
+  /** The kit this stage builds characters from (a stand-in stage has none). */
+  get kit(): CharacterKit {
+    if (!this._kit) throw new Error("character stage: this stage has no kit (it shows the stand-in rig)");
+    return this._kit;
+  }
+
+  get hasKit(): boolean {
+    return this._kit !== null;
+  }
+
+  /** The animator of the character on show (null until one is). */
+  get animator(): CharacterAnimator | null {
+    return this._animator;
+  }
+
+  /** Show a rigged model that is not a kit character; the animator drives its bones. */
+  showModel(root: THREE.Object3D): void {
+    this.model = root;
+    this.scene.add(root);
+    if (this.animations) this._animator = new CharacterAnimator(root, this.animations);
+  }
+
+  /** Play what `plan` says each frame (the server's clip, EA21); null removes the driver. */
+  drive(plan: (() => ClipPlan | null) | null): void {
+    this.driver = plan;
+  }
+
   /** Show `look` (the first call builds the character; later calls restyle it). */
   async show(look: CharacterLook): Promise<ModularCharacter> {
     if (!this.character) {
@@ -87,7 +134,7 @@ export class CharacterStage {
       character.relaxArms();
       this.character = character;
       this.scene.add(character.root);
-      if (this.animations) this.animator = new CharacterAnimator(character.root, this.animations);
+      if (this.animations) this._animator = new CharacterAnimator(character.root, this.animations);
     } else {
       await this.character.setLook(look);
     }
@@ -96,9 +143,9 @@ export class CharacterStage {
 
   /** Play a clip over the idle, repeating (dev preview); null goes back to idling. */
   playClip(name: string | null): void {
-    if (!this.animator) return;
-    if (name === null) this.animator.stop();
-    else this.animator.play(name, { loop: true });
+    if (!this._animator) return;
+    if (name === null) this._animator.stop();
+    else this._animator.play(name, { loop: true });
   }
 
   /** Frame the head (closer) or the whole body. */
@@ -125,11 +172,17 @@ export class CharacterStage {
     this.renderer.setAnimationLoop(null);
     this.resizeObserver.disconnect();
     this.controls.dispose();
-    this.animator?.dispose();
-    this.animator = null;
+    this._animator?.dispose();
+    this._animator = null;
     this.character?.dispose();
     this.character = null;
-    if (this.ownsKit) this.kit.dispose();
+    this.model?.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      mesh.geometry?.dispose();
+      (mesh.material as THREE.Material | undefined)?.dispose();
+    });
+    this.model = null;
+    if (this.ownsKit) this._kit?.dispose();
     this.renderer.dispose();
   }
 }

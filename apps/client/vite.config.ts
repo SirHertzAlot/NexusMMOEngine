@@ -4,10 +4,11 @@ import react from "@vitejs/plugin-react";
 import { localAssets } from "./vite-local-assets.js";
 import { gpuBenchmarks } from "./vite-gpu-benchmarks.js";
 import { gameFlow } from "./vite-game-flow.js";
+import { clientContent } from "./vite-content.js";
 
 export default defineConfig({
   // localAssets: dev server only — the licensed art never enters a build.
-  plugins: [react(), gameFlow(fileURLToPath(new URL("../../content/flow/game.flow.json", import.meta.url))),localAssets(fileURLToPath(new URL("../../assets", import.meta.url))), gpuBenchmarks()],
+  plugins: [react(), gameFlow(fileURLToPath(new URL("../../content/flow/game.flow.json", import.meta.url))),localAssets(fileURLToPath(new URL("../../assets", import.meta.url))), gpuBenchmarks(), clientContent(fileURLToPath(new URL("../../content", import.meta.url)))],
   server: { port: 5173 },
   build: {
     outDir: "dist-app",
