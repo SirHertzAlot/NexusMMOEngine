@@ -3,5 +3,14 @@
   "despawnSeconds": 300,
   "pickupRange": 2.5,
   "bagSlots": 24,
-  "maxGroundItems": 4096
+  "maxGroundItems": 4096,
+  "tables": {
+    "goblin-spoils": {
+      "entries": [
+        { "base": "dagger", "chance": 0.35 },
+        { "base": "axe", "chance": 0.15 },
+        { "base": "mace", "chance": 0.1 }
+      ]
+    }
+  }
 }

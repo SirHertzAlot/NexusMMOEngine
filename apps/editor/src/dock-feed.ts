@@ -52,3 +52,31 @@ export function pushBake(source: string, text: string, ok = true): void {
 
 export const getBakes = bakes.get;
 export const subscribeBakes = bakes.subscribe;
+
+/** Minimal shape of a build-pipeline run (build-host.ts RunRecord) the Bakes tab reads. */
+export interface RunLike {
+  id: string;
+  profile: string;
+  startedAt: string;
+  stages: Array<{ id: string; status: string; ms: number }>;
+}
+
+/** One entry per bake stage of every pipeline run that reached it. */
+export function pipelineBakeLines(runs: readonly RunLike[]): BakeEntry[] {
+  return runs.flatMap((r) =>
+    r.stages
+      .filter((s) => s.id.startsWith("bake") && s.status !== "pending" && s.status !== "running")
+      .map((s) => ({
+        at: Date.parse(r.startedAt) || 0,
+        source: `pipeline ${r.profile}`,
+        text: `run ${r.id} · ${s.id} · ${s.status}${s.status === "skipped" ? " (inputs unchanged)" : ` · ${(s.ms / 1000).toFixed(1)} s`}`,
+        ok: s.status !== "failed",
+      })),
+  );
+}
+
+export async function fetchRuns(base = ""): Promise<RunLike[]> {
+  const res = await fetch(`${base}/api/editor/build/runs`);
+  if (!res.ok) throw new Error(`build runs failed: HTTP ${res.status}`);
+  return ((await res.json()) as { runs: RunLike[] }).runs;
+}

@@ -38,6 +38,7 @@ import { debuggerLayoutDefaults } from "../debugger-layout.js";
 import { DEFAULT_BINDINGS } from "@mmo-engine/client/render";
 import { GameView } from "./game-view.js";
 import { Button } from "./components.js";
+import { clearViewportActions, registerViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
 import { editorSelection } from "./editor-selection.js";
@@ -59,7 +60,8 @@ export interface PlayDebuggerProps {
 export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerProps): React.JSX.Element {
   const [hud, setHud] = React.useState<HudData | null>(null);
   const [gpu, setGpu] = React.useState<GpuInfo | null>(null);
-  const [wireframe, setWireframe] = React.useState(false);
+  // Wireframe is the shared viewport toggle (the toolbar's viewport options and the tools panel below).
+  const wireframe = viewportFlags.use().wireframe;
   const [showcase, setShowcase] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
   // Camera view: third-person follow or first-person (V toggles in the view too).
@@ -69,6 +71,27 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
+  // The game view is the active viewport while it shows: it owns its camera (no zoom/reset), has no
+  // grid or gizmos, and can toggle wireframe and take a screenshot.
+  React.useEffect(() => {
+    if (!frame) return;
+    const viewport = {
+      label: "game view",
+      canZoomIn: false,
+      canZoomOut: false,
+      canReset: false,
+      zoomIn: () => undefined,
+      zoomOut: () => undefined,
+      reset: () => undefined,
+      supports: { wireframe: true },
+      screenshot: () => {
+        const canvas = frame.querySelector("canvas");
+        return new Promise<Blob | null>((resolve) => (canvas ? canvas.toBlob((b) => resolve(b), "image/png") : resolve(null)));
+      },
+    };
+    registerViewportActions(viewport);
+    return () => clearViewportActions(viewport);
+  }, [frame]);
   // Popped-out view handle ("New window"): attach the frame when it mounts.
   const poppedRef = React.useRef<PoppedOutView | null>(null);
   React.useEffect(() => {
@@ -182,7 +205,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       content: (
         <>
           <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => setWireframe((w) => !w)}>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => toggleViewportFlag("wireframe")}>
               {wireframe ? "solid terrain" : "wireframe terrain"}
             </Button>
             <Button
