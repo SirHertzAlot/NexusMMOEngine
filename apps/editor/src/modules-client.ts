@@ -18,6 +18,8 @@ export interface ModuleInfo {
   editor: boolean;
   systems: string[];
 }
+import { IssuesError, invalidMessage, requestJson } from "./api.js";
+
 export interface ModuleProblem {
   module: string;
   path: string;
@@ -108,39 +110,20 @@ export class ModuleRegistry {
   }
 }
 
-export class ModulesError extends Error {
-  constructor(message: string, readonly issues: ModuleProblem[]) {
-    super(message);
-    this.name = "ModulesError";
+export class ModulesError extends IssuesError<ModuleProblem> {
+  constructor(message: string, issues: ModuleProblem[]) {
+    super(issues, message);
   }
 }
 
-async function json(res: Response, fallback: string): Promise<Record<string, unknown>> {
-  let body: Record<string, unknown> = {};
-  try {
-    body = (await res.json()) as Record<string, unknown>;
-  } catch {
-    /* no body */
-  }
-  if (!res.ok) {
-    throw new ModulesError(typeof body.error === "string" ? body.error : `${fallback}: HTTP ${res.status}`, Array.isArray(body.issues) ? (body.issues as ModuleProblem[]) : []);
-  }
-  return body;
-}
+// The host's refusal carries its own message, so a refused call keeps it.
+const call = <T>(url: string, fail: string, method?: "PUT" | "POST", body?: unknown): Promise<T> =>
+  requestJson<T>(url, { method, body, fail, refused: (issues) => new ModulesError(invalidMessage("module set", issues.length), issues) });
 
-export async function fetchModules(base = ""): Promise<ModulesState> {
-  return (await json(await fetch(`${base}/api/editor/modules`), "module list failed")) as unknown as ModulesState;
-}
+export const fetchModules = (base = ""): Promise<ModulesState> => call(`${base}/api/editor/modules`, "module list failed");
 
 /** Validate on the host and write only when valid; throws ModulesError with every problem otherwise. */
-export async function saveEnabled(enabled: string[], base = ""): Promise<void> {
-  await json(
-    await fetch(`${base}/api/editor/modules`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) }),
-    "module save failed",
-  );
-}
+export const saveEnabled = (enabled: string[], base = ""): Promise<void> => call(`${base}/api/editor/modules`, "module save failed", "PUT", { enabled });
 
 /** Restart the owned play server with the saved set (no-op when none is running). */
-export async function applyModules(base = ""): Promise<{ restarted: boolean }> {
-  return (await json(await fetch(`${base}/api/editor/modules/apply`, { method: "POST" }), "apply failed")) as unknown as { restarted: boolean };
-}
+export const applyModules = (base = ""): Promise<{ restarted: boolean }> => call(`${base}/api/editor/modules/apply`, "apply failed", "POST");

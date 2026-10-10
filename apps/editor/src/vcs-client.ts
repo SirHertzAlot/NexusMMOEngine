@@ -1,4 +1,5 @@
 /** Browser-safe adapter for the dev host's `/api/editor/vcs` routes (see vcs-host.ts). */
+import { callEnvelope } from "./api.js";
 
 export interface VcsFile {
   path: string;
@@ -19,15 +20,7 @@ export interface VcsConflict {
   theirs?: unknown;
 }
 
-async function call<T>(method: "GET" | "POST", route: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api/editor/vcs/${route}`, {
-    method,
-    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-  });
-  const json = (await res.json().catch(() => ({}))) as T & { ok?: boolean; error?: string };
-  if (!res.ok || json.ok === false) throw new Error(json.error ?? `HTTP ${res.status}`);
-  return json;
-}
+const call = <T>(method: "GET" | "POST", route: string, body?: unknown): Promise<T> => callEnvelope<T>(`/api/editor/vcs/${route}`, method, body);
 
 export const vcsStatus = (): Promise<{ branch: string; files: VcsFile[] }> => call("GET", "status");
 export const vcsDiff = (path: string): Promise<VcsDiff> => call("GET", `diff?path=${encodeURIComponent(path)}`);

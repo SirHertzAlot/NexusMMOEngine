@@ -18,6 +18,7 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { discoverModules, readEnabledSet, resolveModuleSet, type Problem } from "@mmo-engine/modules";
+import { invalidMessage } from "./api.js";
 
 export interface ModulesHooks {
   /** The running owned server's tick order, null when none is running or it has not reported one. */
@@ -51,7 +52,7 @@ export async function handleModulesRoute(
   const modulesDir = join(repoRoot, "modules");
   const issues = (problems: Problem[]): ModulesRouteResult => ({
     status: 400,
-    body: { ok: false, error: `invalid module set: ${problems.length} problem${problems.length === 1 ? "" : "s"}`, issues: problems },
+    body: { ok: false, error: invalidMessage("module set", problems.length), issues: problems },
   });
 
   if (pathname === `${BASE}/apply`) {

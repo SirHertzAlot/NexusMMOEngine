@@ -24,10 +24,11 @@ import {
   type SceneIssue,
 } from "@mmo-engine/scene";
 import { FlowSaveError, getFlow, playFromUrl, saveFlow } from "../flow-client.js";
-import { pastDragThreshold } from "./drag-threshold.js";
+import { leftRightRoute } from "../graph-view.js";
+import { NodeGraph } from "./node-graph.js";
 import { MIcon } from "./components.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
-import { getTool } from "./tool-store.js";
+import { getTool, subscribeTool } from "./tool-store.js";
 import { canDragGraphNode } from "./viewport-tools.js";
 import { editorSelection } from "./editor-selection.js";
 
@@ -44,6 +45,7 @@ function pos(doc: FlowDoc, id: string): { x: number; y: number } {
 }
 
 export function FlowEditor(): React.JSX.Element {
+  const tool = React.useSyncExternalStore(subscribeTool, getTool);
   const [doc, setDoc] = React.useState<FlowDoc | null>(null);
   const [saved, setSaved] = React.useState("");
   const [scenes, setScenes] = React.useState<string[]>([]);
@@ -74,9 +76,6 @@ export function FlowEditor(): React.JSX.Element {
   const [newScene, setNewScene] = React.useState("login");
   const [client, setClient] = React.useState("http://localhost:5173");
   const [server, setServer] = React.useState({ url: "", user: "", pass: "" });
-  const drag = React.useRef<{ kind: "pan" | "node"; id: string | null; dx: number; dy: number; sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const svgRef = React.useRef<SVGSVGElement | null>(null);
-  const [view, setView] = React.useState({ x: 0, y: 0 });
 
   const load = React.useCallback((): void => {
     setStatus("loading…");
@@ -152,10 +151,6 @@ export function FlowEditor(): React.JSX.Element {
       window.open(r.url, "_blank", "noopener");
     }
   };
-  const toUnits = (ev: React.PointerEvent): { x: number; y: number } => {
-    const r = svgRef.current?.getBoundingClientRect();
-    return { x: ev.clientX - (r?.left ?? 0) + view.x, y: ev.clientY - (r?.top ?? 0) + view.y };
-  };
   const sel = selected && doc.nodes[selected] ? selected : null;
 
   return (
@@ -178,93 +173,42 @@ export function FlowEditor(): React.JSX.Element {
         </ul>
       )}
 
-      <svg
-        ref={svgRef}
-        width="100%"
+      <NodeGraph
+        label="Game flow graph"
+        testId="flow-graph"
+        nodes={ids}
+        edges={doc.edges.filter((e) => doc.nodes[e.from] && doc.nodes[e.to])}
+        nodeId={(id) => id}
+        nodePos={(id) => pos(doc, id)}
+        nodeSize={{ w: NODE_W, h: NODE_H }}
+        edgeEnds={(e) => ({ from: e.from, to: e.to })}
         height={Math.max(260, ...ids.map((id) => pos(doc, id).y + NODE_H + 30))}
-        className="rounded-xl"
-        style={{ background: "var(--m3-surface-0)", touchAction: "none" }}
-        role="img"
-        aria-label="Game flow graph"
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          drag.current = { kind: "pan", id: null, dx: 0, dy: 0, sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
-          (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
-          setSelected(null);
+        selectedId={sel}
+        onSelect={pick}
+        canMove={canDragGraphNode(tool)}
+        onMove={(id, x, y) => setDoc((cur) => (cur ? moveFlowNode(cur, id, Math.max(0, Math.round(x)), Math.max(0, Math.round(y))) : cur))}
+        onNodeContextMenu={(id, at) => {
+          pick(id);
+          setCtx({ id, x: at.x, y: at.y });
         }}
-        onPointerMove={(ev) => {
-          const d = drag.current;
-          if (!d) return;
-          if (!pastDragThreshold(d.sx, d.sy, ev.clientX, ev.clientY)) return;
-          if (d.kind === "pan") {
-            setView({ x: d.ox - (ev.clientX - d.sx), y: d.oy - (ev.clientY - d.sy) });
-            return;
-          }
-          if (d.id === null) return;
-          const p = toUnits(ev);
-          const id = d.id;
-          setDoc((cur) => (cur ? moveFlowNode(cur, id, Math.max(0, Math.round(p.x - d.dx)), Math.max(0, Math.round(p.y - d.dy))) : cur));
-        }}
-        onPointerUp={() => (drag.current = null)}
-      >
-        <defs>
-          <marker id="ah-gameflow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill="#90909A" />
-          </marker>
-        </defs>
-        <g transform={`translate(${-view.x},${-view.y})`}>
-        {doc.edges.map((e, i) => {
-          if (!doc.nodes[e.from] || !doc.nodes[e.to]) return null;
-          const a = pos(doc, e.from);
-          const b = pos(doc, e.to);
-          const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2;
-          const back = x2 <= x1;
-          const d = back
-            ? `M${a.x + NODE_W / 2},${a.y + NODE_H} C${a.x + NODE_W / 2},${a.y + NODE_H + 60} ${b.x + NODE_W / 2},${b.y + NODE_H + 60} ${b.x + NODE_W / 2},${b.y + NODE_H}`
-            : `M${x1},${y1} C${x1 + 50},${y1} ${x2 - 50},${y2} ${x2},${y2}`;
-          return (
-            <g key={i}>
-              <path d={d} fill="none" stroke="#90909A" strokeWidth={1.5} markerEnd="url(#ah-gameflow)" />
-              <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 + (back ? 56 : -6)} fontSize={10} textAnchor="middle" fill="#90909A">{e.on}</text>
-            </g>
-          );
-        })}
-        {ids.map((id) => {
-          const p = pos(doc, id);
+        route={(a, b) => leftRightRoute(a.box, b.box)}
+        renderEdge={(e, geom, arrow) => (
+          <>
+            <path d={geom.d} fill="none" stroke="#90909A" strokeWidth={1.5} markerEnd={arrow} />
+            <text x={geom.mid.x} y={geom.mid.y} fontSize={10} textAnchor="middle" fill="#90909A">{e.on}</text>
+          </>
+        )}
+        renderNode={(id, { selected }) => {
           const bad = flagged.has(id) || !reach.has(id);
           return (
-            <g
-              key={id}
-              data-fnode={id}
-              transform={`translate(${p.x},${p.y})`}
-              style={{ cursor: "grab" }}
-              onContextMenu={(ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-                pick(id);
-                setCtx({ id, x: ev.clientX, y: ev.clientY });
-              }}
-              onPointerDown={(ev) => {
-                if (ev.button !== 0) return;
-                ev.stopPropagation();
-                // Nodes drag only with the move tool; otherwise a press
-                // picks the node (thresholded drag shape, P-drag mechanics).
-                if (canDragGraphNode(getTool())) {
-                  const pt = toUnits(ev);
-                  drag.current = { kind: "node", id, dx: pt.x - p.x, dy: pt.y - p.y, sx: ev.clientX, sy: ev.clientY, ox: p.x, oy: p.y };
-                  (ev.currentTarget as SVGGElement).setPointerCapture(ev.pointerId);
-                }
-                pick(id);
-              }}
-            >
-              <rect width={NODE_W} height={NODE_H} rx={10} fill="var(--m3-surface-2, #26272c)" stroke={bad ? "#E8A33D" : id === sel ? "var(--m3-primary)" : "#4a4b52"} strokeWidth={id === sel || bad ? 2 : 1} />
+            <>
+              <rect width={NODE_W} height={NODE_H} rx={10} fill="var(--m3-surface-2, #26272c)" stroke={bad ? "#E8A33D" : selected ? "var(--m3-primary)" : "#4a4b52"} strokeWidth={selected || bad ? 2 : 1} />
               <text x={10} y={19} fontSize={13} fontWeight={600} fill="currentColor">{id}{id === doc.start ? "  ▶" : ""}</text>
               <text x={10} y={35} fontSize={11} fill="#90909A">{doc.nodes[id].scene}{bad ? " · unreachable" : ""}</text>
-            </g>
+            </>
           );
-        })}
-        </g>
-      </svg>
+        }}
+      />
       {ctx && <span className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />}
       {ctx && (
         <div

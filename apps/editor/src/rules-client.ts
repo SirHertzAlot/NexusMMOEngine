@@ -9,35 +9,22 @@
  * issues, and nothing is written.
  */
 
+import { IssuesError, invalidMessage, requestJson } from "./api.js";
 import type { RuleIssueView } from "./rules-tree.js";
 
 /** A failed save: every problem, by file and field. */
-export class RulesSaveError extends Error {
-  constructor(readonly issues: RuleIssueView[]) {
-    super(`invalid rules: ${issues.length} problem${issues.length === 1 ? "" : "s"}`);
-    this.name = "RulesSaveError";
+export class RulesSaveError extends IssuesError<RuleIssueView> {
+  constructor(issues: RuleIssueView[]) {
+    super(issues, invalidMessage("rules", issues.length));
   }
 }
 
-async function readError(res: Response, fallback: string): Promise<Error> {
-  try {
-    const body = (await res.json()) as { error?: unknown; issues?: unknown };
-    if (res.status === 400 && Array.isArray(body.issues)) {
-      return new RulesSaveError(body.issues as RuleIssueView[]);
-    }
-    if (typeof body.error === "string" && body.error) return new Error(body.error);
-  } catch {
-    /* fall through to the fallback */
-  }
-  return new Error(`${fallback}: HTTP ${res.status}`);
-}
+const refused = (issues: RuleIssueView[]): Error => new RulesSaveError(issues);
+const url = (base: string, name?: string): string => `${base}/api/editor/rules${name === undefined ? "" : `/${encodeURIComponent(name)}`}`;
 
 /** The rules files (content/rules/<name>.json), in schema order. */
 export async function listRuleFiles(base = ""): Promise<string[]> {
-  const res = await fetch(`${base}/api/editor/rules`);
-  if (!res.ok) throw await readError(res, "rules list failed");
-  const body = (await res.json()) as { files?: string[] };
-  return body.files ?? [];
+  return (await requestJson<{ files?: string[] }>(url(base), { fail: "rules list failed", refused })).files ?? [];
 }
 
 /** One rules file's parsed content (or the engine default when missing). */
@@ -45,9 +32,7 @@ export async function getRuleFile(
   base = "",
   name: string,
 ): Promise<{ name: string; content: unknown; missing: boolean }> {
-  const res = await fetch(`${base}/api/editor/rules/${encodeURIComponent(name)}`);
-  if (!res.ok) throw await readError(res, "rules read failed");
-  const body = (await res.json()) as { name: string; content: unknown; missing?: boolean };
+  const body = await requestJson<{ name: string; content: unknown; missing?: boolean }>(url(base, name), { fail: "rules read failed", refused });
   return { name: body.name, content: body.content, missing: body.missing ?? false };
 }
 
@@ -55,11 +40,5 @@ export async function getRuleFile(
  * Validate on the host and write back pretty-printed JSON only when
  * valid. Throws RulesSaveError (with per-path issues) otherwise.
  */
-export async function saveRuleFile(base = "", name: string, content: unknown): Promise<void> {
-  const res = await fetch(`${base}/api/editor/rules/${encodeURIComponent(name)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) throw await readError(res, "rules save failed");
-}
+export const saveRuleFile = (base = "", name: string, content: unknown): Promise<void> =>
+  requestJson(url(base, name), { method: "PUT", body: { content }, fail: "rules save failed", refused });
