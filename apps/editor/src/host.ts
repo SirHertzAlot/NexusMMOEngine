@@ -775,10 +775,14 @@ export function editorHost(options: EditorHostOptions): Plugin {
               /* empty / non-JSON body: server defaults */
             }
             // Fresh state: back up world.db before the server starts.
+            // Not fresh: discard any stale backup (e.g. from a crashed
+            // play session) so it cannot be restored by accident later.
             if (fresh) {
               backupWorld(join(dataDir, "world.db"));
               snapshotActive = true;
               snapshotKeep = keep;
+            } else {
+              discardBackup(join(dataDir, "world.db"));
             }
             const s = await startOwned(bots !== undefined || scene !== undefined ? { bots, scene } : undefined);
             sendJson(res, 200, {
