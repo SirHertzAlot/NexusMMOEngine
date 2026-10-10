@@ -44,5 +44,13 @@ EA10 formalizes these as modules rather than hardcoded addons.
 
 ## Status
 
-Design complete. Implementation follows the Jolt addon pattern.
-The `native` field is reserved in the manifest schema.
+Implemented 2026-10-10.
+- `native` manifest field validated in `@mmo-engine/modules` (`validateManifest`);
+  `resolveModuleSet` orders native systems after the module's JS systems.
+- `assembleServerSystems` (`packages/engine-core/src/modules.ts`) loads the
+  `.node` entry via require and calls its `createSystems(ctx)`; missing file
+  disables the module with a clear error pointing at `npm run build:native`.
+- `npm run build:native` (scripts/build-native.mjs) compiles every module
+  with a `native.entry` via node-gyp.
+- Tests: manifest validation + ordering (packages/modules), loader incl.
+  missing-file disable and refusal paths (engine-core).
