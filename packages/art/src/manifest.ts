@@ -60,6 +60,14 @@ const ModelEntrySchema = z.object({
    * and appears in fallbackStatus(), but is never auto-selected.
    */
   forShape: z.string().min(1).optional(),
+  /**
+   * Compression info (TL1b). Set by the gltfpack compress step.
+   * `compression` is the codec used ("meshopt" for gltfpack -cc).
+   * `rawBytes` and `compressedBytes` record the size before/after.
+   */
+  compression: z.enum(["meshopt"]).optional(),
+  rawBytes: z.number().int().nonnegative().optional(),
+  compressedBytes: z.number().int().nonnegative().optional(),
 });
 
 const TextureEntrySchema = z.object({
