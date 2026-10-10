@@ -36,6 +36,11 @@ export interface ModuleManifest {
    * `core` module, whose systems server.ts constructs).
    */
   server?: { entry?: string; systems: SystemSpec[] };
+  /**
+   * Native contribution (EA10). `entry` is a compiled N-API `.node` file
+   * exporting `createSystems`. The host loads it via require().
+   */
+  native?: { entry: string; systems: string[] };
 }
 export interface Problem {
   module: string;
