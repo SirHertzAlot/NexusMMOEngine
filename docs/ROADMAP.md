@@ -20,11 +20,11 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-06)
+## At a glance (2026-10-10)
 
-**85 items built, 14 in progress, 30 planned** (22 of the planned are the
-modular editor's slices).
-modular editor's slices). The game is playable end to end: `npm start`
+**102 items built, 28 in progress, 31 planned, 1 next up** (counted
+from the tables below; the tooling and asset performance section, 1e,
+added 15 of the planned). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
 contests, injuries, bleeding, dismemberment, Medicine, disciplines, mana
@@ -108,7 +108,7 @@ stay read-only here; this edits the running game.
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
 | A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | ✅ | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; `god` toggles the God tag (no combat/hunger/drowning/trap Health loss) and peaks every skill, kept when switched off; `noclip` toggles the Noclip tag (free vertical flight, dungeon walls let go); `time` shows and sets the clock (newcomers via welcome, live clients by broadcast) and `weather` forces the sky (auto/clear/rain/snow/ash, same path); `injure {part, kind?, amount?}` (#99) and `skill {id, value}` (#112) live; `heal` also fills mana and makes the body whole |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
-| A6 | Appearance and equipment editor, live on the character | 🚧 | `arlo/a6-appearance-editor` (PR #191): `appearance` admin command (parts/colours per slot, validated against the catalog, live via sim.setLook). Equipment overlays re-apply. |
+| A6 | Appearance and equipment editor, live on the character | 🚧 | Merged (PR #191): `appearance` admin command (parts/colours per slot, validated against the catalog, live via sim.setLook). Equipment overlays re-apply. Open: the editor panel. |
 | A7 | **Bots in web workers**: an admin command spawns N simulated players (each its own socket, moving and fighting) in worker threads, to stress the server and feel play under load | 📋 | U14 (worker pool), A1; builds on `scripts/world-stress` |
 
 ## 1c. Modular editor
@@ -120,7 +120,7 @@ loadable modules, a database editor and production tools.
 | # | Item | Status | Notes |
 | --- | --- | --- | --- |
 | EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
-| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices. Menus complete (2026-10-09, PRs #163–166): File/Edit/View act on the open document via DocActions/ViewportActions (no staged placeholders); Ctrl+K palette over commands/assets/settings with asset deep-linking; toolbar Play/F5 starts play with last setup; dock shows real server log/validation/bakes. |
+| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices. Menus complete (2026-10-09, PRs #163–166): File/Edit/View act on the open document via DocActions/ViewportActions (no staged placeholders); Ctrl+K palette over commands/assets/settings with asset deep-linking; toolbar Play/F5 starts play with last setup; dock shows real server log/validation/bakes. Customizable toolbar (#185); the Details pane shows the real unsaved Gameplay edits (#177). |
 | EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
 | EA3 | Editor modules | 🚧 | `feat/ea3-ea9-modules`: `packages/modules` (manifest schema collecting every problem, discovery, `content/modules.json` set, dependency order); host routes `/api/editor/modules` (list, validated save, apply); the shell imports enabled modules' editor entries dynamically and a Modules workspace enables and disables them; the header count is real; the Characters Records panel is now the `characters` module. Deferred: other panels as modules (EA13), commands and document kinds as contributions, Controller/EditorContext contracts (EA2) |
 | EA4 | Scene documents | ✅ | `feat/ea4-scene-documents`: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5. |
@@ -138,14 +138,14 @@ loadable modules, a database editor and production tools.
 | EA16 | Persistence core and the Database workspace | 🚧 | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
 | EA17 | Database functions and caches | 📋 | |
 | EA18 | Version control | 🚧 | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
-| EA19 | Build and deploy | 🚧 | `arlo/ea19-build-deploy` (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. `arlo/ea19-pipeline-view` (PR #188, stacks on #187): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Open: staging target (blocked on the container-platform decision) |
+| EA19 | Build and deploy | 🚧 | Backend merged (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. Pipeline view merged (PR #188): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Open: staging target (blocked on the container-platform decision) |
 | EA20 | Quest and dialog editor | 🚧 | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
-| EA21 | Animation | 📋 | |
-| EA22 | VFX and materials | 📋 | |
-| EA23 | HUD layout editor | 🚧 | `arlo/ea23-hud-editor` (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Open: editor drag UI, overlap checks, widget catalog, self-positioning widget migration |
-| EA24 | Audio | 📋 | |
-| EA25 | Localization | 📋 | |
-| EA26 | Automated playtests | 🚧 | `arlo/ea26-playtests` (PR #189): `@mmo-engine/playtest` (zod scenarios, headless SimWorld runner, assertions, sealed failure replays), `BotSystem` exported, `npm run playtest`, sample scenario. Open: viewport replay scrubbing, headless screenshots/GIFs, pipeline integration |
+| EA21 | Animation | 🚧 | Foundation merged (#194): `Animation` component (`clipId`, `startTick`, `rate`, `layerMask`), `AnimationSystem` (combat moves to attack/block clips, locomotion from velocity), `ClipId` registry in the protocol. Open: the client reading the component, retargeting, foot IK, the editor panel. The client-side blending layer is the animouse spike ([§1e](#1e-tooling-and-asset-performance), TS1) |
+| EA22 | VFX and materials | 🚧 | Materials foundation merged (#196): zod-validated toon and surface definitions in `packages/art` with samples in `content/materials/`. Open: the particle editor (NixieFX spike, TS2), tier presets |
+| EA23 | HUD layout editor | 🚧 | Foundation merged (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Drag editor merged (PR #193): move widgets on a 16:9 canvas, anchors, visibility, overlap warnings, save. Open: widget catalog, self-positioning widget migration |
+| EA24 | Audio | 🚧 | Foundation merged (#197): zod-validated audio events (bus, variations, 2D/3D, max distance) in engine-core and `content/audio/events.json`. Open: the Web Audio engine and hooks (footstep time events come from the animouse spike, TS1) |
+| EA25 | Localization | 🚧 | Foundation merged (#195): string tables, `t()`, a minimal ICU subset (placeholders, plurals) and a pseudo-locale in engine-core. Open: client string extraction behind `t()`, the Strings panel, full ICU |
+| EA26 | Automated playtests | 🚧 | Core merged (PR #189): `@mmo-engine/playtest` (zod scenarios, headless SimWorld runner, assertions, sealed failure replays), `BotSystem` exported, `npm run playtest`, sample scenario. Pipeline stage merged (PR #192): a `playtest` stage after `test` in the default build profile, input-hash cached. Open: viewport replay scrubbing, headless screenshots/GIFs |
 
 ## 1d. Editor interaction repairs
 
@@ -163,6 +163,67 @@ with no retry). Fixing them as one wave, tracked here.
 | R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | ✅ | `fix/ed-panels` |
 | R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | ✅ | `fix/ed-selection`; panel highlight restoration on reload deferred |
 | R5 | Pause and Step drive the owned server's tick loop | ✅ | `feat/editor-pause-step`: admin `pause`/`resume`/`step` on the gateway (`TickLoop.step`/`rearm`); the play cluster's Pause toggles Resume, Step runs one tick while paused. Server-side pause only. |
+
+## 1e. Tooling and asset performance
+
+Doc: [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) (findings, spike bars and
+the pinned-version appendix). Tools that shrink what we ship and load
+(compressed meshes and textures, generated components), speed up
+authoring, and give the client a locomotion-blending layer. Each phase
+ends with a gate and the next one does not start until it is green;
+numbers go in the manifest, because what isn't measured didn't happen.
+Permissive licenses only.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | ⏭️ | Gate: versions recorded, baselines checked in, KTX2 trial green on Windows |
+| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | 📋 | Zero behavior change; existing tests green |
+| TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | 📋 | Binary path is config; geometry only |
+| TL1c | gltf-transform: `prune` + `dedup`, per-slot textures (baseColor WebP; normal, occlusion, metallicRoughness UASTC KTX2), per-tier resize caps | 📋 | Manifest gains `textureCompression`, `textureBytes`, `cleanupRemoved`; full ETC1S KTX2 follows the KTX2 eval gate |
+| TL1d | Golden test: raw, then gltfpack, then gltf-transform, then client render | 📋 | Gate: at least 40% fewer bytes (or a written reason per asset), zero visual delta, both decoders live |
+| TL2 | gltfjsx component workflow: `npm run models:generate`, committed `generated/*.tsx`, one model wired into a dev scene | 📋 | Gate: pixel-identical to the pre-component render |
+| TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | 📋 | Gate: production bundles contain zero `leva` / `lil-gui` bytes (automated check) |
+| TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | 📋 | Gate: 3 characters load, play clips, survive TL1 |
+| TL5 | ozz-animation (bake and native side) and acl clip compression at bake | 📋 | Already decided in `ANIMATION-RUNTIME.md`; motion matching stays parked |
+
+Spikes (evaluate first; each has a pass bar in the doc, and a fail means
+write the reason and park it):
+
+| # | Spike | Status | Pass bar |
+| --- | --- | --- | --- |
+| TS1 | animouse: state machine and blend trees over `AnimationMixer`; time events for footsteps and hit frames | 📋 | Pop-free blends, events within ±1 frame, under 0.1 ms per character per frame; client side only (the server still sends `(clipId, startTick, rate, layerMask)`) |
+| TS2 | NixieFX visual VFX editor and runtime | 📋 | Editor license permissive, runtime CPU within 10% of hand-coded, authoring at least 2× faster |
+| TS3 | EZ-Tree procedural trees into the impostor baker | 📋 | Distinct species at impostor distance; same seed gives byte-identical output |
+| TS4 | InstancedMesh2 BVH-culled scattering (50k trees) | 📋 | Single-digit draw calls, 60 fps on target hardware |
+| TS5 | GLB Delivery Desk batch QA | 📋 | Adopt missing checks as validators unless it covers over 50% of ours |
+| TS6 | Meshamorphosis batch FBX to GLB and Mixamo | 📋 | Permissive license; clips retarget without manual bone remapping |
+| TS7 | lygia GLSL functions | 📋 | Zero integration cost; reusable across experiments |
+
+Parked, with the condition to revisit: Theatre.js (AGPL editor), Needle
+Inspector and Three.js DevTools (license), TSL editors (WebGPU decision),
+GSAP 4 (no concrete tween need), AI 3D generators (license and style
+review). Bookmarked only: gltf.report, Kenney, Quaternius, Polyhaven,
+AmbientCG, Mixamo, the VAT Blender addon.
+
+## 1f. Editor maintainability (DRY audit)
+
+The editor's repeated code moved into shared generics so a change to
+one propagates to every panel: audit in the project library
+(`editor-dry-audit/DRY-AUDIT.md`).
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| M1 | One `NodeGraph<N, E>` canvas for the PICG, flow and story graphs (pan, zoom, fit, drag, select) | ✅ | #199 |
+| M2 | One HTTP layer (`requestJson`, `callEnvelope`, `IssuesError`, `refuseInvalid`) for every client and host route | ✅ | #200; `callEnvelope` reaches the graph, dungeon, HUD, pipeline and terrain panels with #207 |
+| M3 | `DocBar` and `useDocActions` for every document editor's Save, Undo, Redo, Revert | ✅ | #201 |
+| M4 | Shared form controls (`Select`, `Field`, `CheckField`), dead code removed, `createStore` / `createSlot` for the module-level stores | ✅ | #202, #203, #204 |
+| M5 | `useSaveTask` and `describeSaveFailure` for every document save | ✅ | #205 |
+| M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | 🚧 | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
+| M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | 🚧 | #207, in main with #209; flow gained Undo and Redo |
+| M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | 🚧 | Last of the stateful pieces |
+| M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 📋 | Audit first, then a shared hook |
+| M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
+| M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
 
 ## 2. Game client: the player's interface
 
@@ -305,6 +366,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-10**: Roadmap caught up and extended. Merged since the last update: customizable toolbar (#185), Details shows unsaved Gameplay edits (#177), review fixes on the play stack (#198), the EA19 build and deploy pipeline (#187, #188), EA21, EA22, EA24 and EA25 foundations (#194, #196, #197, #195), the EA23 HUD drag editor (#190, #193), EA26 playtests and their pipeline stage (#189, #192), A6 appearance command (#191), and the editor DRY audit M1 to M5 (#199 to #205); M6 and M7 (#206, #207) went into their stack branches and reach main with #209. Added §1e (tooling and asset performance: compression, gltfjsx, dev overlays, spikes) from [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) and §1f (editor maintainability).
 - **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
 - **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
 - **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
