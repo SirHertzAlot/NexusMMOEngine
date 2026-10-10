@@ -14,3 +14,4 @@ export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
 export * from "./character/look.js";
 export * from "./character/animations.js";
+export { loadParticleBudgets, budgetForTier, DEFAULT_PARTICLE_BUDGETS, type ParticleBudgets, type TierBudget, type QualityTier } from "./particle-budgets.js";
