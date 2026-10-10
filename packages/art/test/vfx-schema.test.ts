@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import {
   VfxEffect,
   parseVfxEffect,
@@ -41,16 +42,16 @@ const validEffect = {
 describe("VfxEffect schema", () => {
   it("accepts a valid effect", () => {
     const effect = parseVfxEffect(validEffect);
-    expect(effect.id).toBe("fireball");
-    expect(effect.emitters).toHaveLength(1);
+    assert.equal(effect.id, "fireball");
+    assert.equal(effect.emitters.length, 1);
   });
 
   it("rejects invalid effect IDs", () => {
-    expect(() => parseVfxEffect({ ...validEffect, id: "Fire Ball!" })).toThrow();
+    assert.throws(() => parseVfxEffect({ ...validEffect, id: "Fire Ball!" }));
   });
 
   it("rejects empty emitters", () => {
-    expect(() => parseVfxEffect({ ...validEffect, emitters: [] })).toThrow();
+    assert.throws(() => parseVfxEffect({ ...validEffect, emitters: [] }));
   });
 
   it("applies defaults", () => {
@@ -70,11 +71,11 @@ describe("VfxEffect schema", () => {
       ],
     };
     const effect = parseVfxEffect(minimal);
-    expect(effect.version).toBe(1);
-    expect(effect.blendMode).toBe("normal");
-    expect(effect.authoredTier).toBe("medium");
-    expect(effect.emitters[0].looping).toBe(true);
-    expect(effect.emitters[0].rate).toBe(0);
+    assert.equal(effect.version, 1);
+    assert.equal(effect.blendMode, "normal");
+    assert.equal(effect.authoredTier, "medium");
+    assert.equal(effect.emitters[0].looping, true);
+    assert.equal(effect.emitters[0].rate, 0);
   });
 
   it("validates all spawn shapes", () => {
@@ -86,13 +87,13 @@ describe("VfxEffect schema", () => {
       { kind: "disc", radius: 1 },
     ];
     for (const shape of shapes) {
-      expect(() => VfxSpawnShape.parse(shape)).not.toThrow();
+      assert.doesNotThrow(() => VfxSpawnShape.parse(shape));
     }
   });
 
   it("rejects invalid spawn shape params", () => {
-    expect(() => VfxSpawnShape.parse({ kind: "sphere", radius: -1 })).toThrow();
-    expect(() => VfxSpawnShape.parse({ kind: "cone", angle: 5, radius: 1, height: 1 })).toThrow();
+    assert.throws(() => VfxSpawnShape.parse({ kind: "sphere", radius: -1 }));
+    assert.throws(() => VfxSpawnShape.parse({ kind: "cone", angle: 5, radius: 1, height: 1 }));
   });
 
   it("validates all force types", () => {
@@ -103,7 +104,7 @@ describe("VfxEffect schema", () => {
       { kind: "attractor", target: { x: 0, y: 0, z: 0 }, strength: 5 },
     ];
     for (const force of forces) {
-      expect(() => VfxForce.parse(force)).not.toThrow();
+      assert.doesNotThrow(() => VfxForce.parse(force));
     }
   });
 
@@ -117,7 +118,7 @@ describe("VfxEffect schema", () => {
         },
       ],
     };
-    expect(() => parseVfxEffect(bad)).toThrow();
+    assert.throws(() => parseVfxEffect(bad));
   });
 
   it("validates color channels are in [0,1]", () => {
@@ -130,6 +131,6 @@ describe("VfxEffect schema", () => {
         },
       ],
     };
-    expect(() => parseVfxEffect(bad)).toThrow();
+    assert.throws(() => parseVfxEffect(bad));
   });
 });
