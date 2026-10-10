@@ -48,6 +48,9 @@
  *   PUT  /api/editor/story[/:name] → {files} or {content}: validate the whole set, then write; 400
  *                                    with per-path issues writes nothing
  *   POST /api/editor/story/check   → {files} → issues, nothing written
+ *   GET  /api/editor/audio         → the audio events and mixer settings (EA24, audio-host.ts)
+ *   POST /api/editor/audio/save    → {content}: validate with the server's AudioBank schema, then
+ *                                    write; 400 with per-path issues writes nothing
  *   GET  /api/editor/characters    → the account's characters (id, name)
  *                                    from <dataDir>/characters.db (read-only)
  *   GET  /api/editor/characters/:id → one character's record: name, look,
@@ -97,9 +100,11 @@ import {
 } from "./rules-host.js";
 import { handleScenesRoute } from "./scenes-host.js";
 import { handleFlowRoute } from "./flow-host.js";
+import { handleStringsRoute } from "./strings-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
+import { handleAudioRoute } from "./audio-host.js";
 import { handleModulesRoute, parseTickOrder } from "./modules-host.js";
 import { checkStory, isStoryFile, readStoryFile, saveStoryFiles, storyFileNames } from "./story-host.js";
 import { pathToFileURL } from "node:url";
@@ -1264,10 +1269,26 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, flowReply.status, flowReply.body);
             return;
           }
+          // Localization string tables (EA25, strings-host.ts).
+          const stringsReply = handleStringsRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/strings" ? await readBody(req) : undefined,
+          );
+          if (stringsReply) {
+            sendJson(res, stringsReply.status, stringsReply.body);
+            return;
+          }
           // Gameplay grids and the content catalog (EA15, gameplay-routes.ts).
           const gameplayReply = await handleGameplayRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
           if (gameplayReply) {
             sendJson(res, gameplayReply.status, gameplayReply.body);
+            return;
+          }
+          const audioReply = await handleAudioRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, () => readBody(req));
+          if (audioReply) {
+            sendJson(res, audioReply.status, audioReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(

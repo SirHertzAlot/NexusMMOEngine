@@ -27,6 +27,7 @@
  * welcome's day clock, so every client sees the same hour.
  */
 
+import type { Listener } from "../audio/sound-logic.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -99,6 +100,8 @@ export interface HudData {
   perf: PerfSample[];
 }
 
+const earDir = new THREE.Vector3();
+
 export interface WorldCanvasProps {
   /** A joined mirror client (welcome received). */
   client: MirrorClient;
@@ -117,6 +120,8 @@ export interface WorldCanvasProps {
   /** The preset running now, and the one detected for the GPU (null until known). */
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
+  /** Written every frame with where the camera hears from (audio panning and distance, EA24). */
+  listener?: Listener;
   /** The bag key was pressed (M3a). */
   onBag?: () => void;
   /** The technique or aim key (M3): turn to the next one. */
@@ -288,6 +293,7 @@ function MirrorWorld({
   showcase,
   bindings,
   onHud,
+  listener,
   onBag,
   onStance,
   onTreat,
@@ -310,8 +316,8 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ listener, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { listener, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
   // `view` prop when given; otherwise the V key toggles it internally.
@@ -508,6 +514,16 @@ function MirrorWorld({
     if (!r) return;
     const now = performance.now();
     const l = loop.current;
+    const ear = latest.current.listener;
+    if (ear) {
+      const dir = camera.getWorldDirection(earDir);
+      const h = Math.hypot(dir.x, dir.z) || 1;
+      ear.x = camera.position.x;
+      ear.y = camera.position.y;
+      ear.z = camera.position.z;
+      ear.fx = dir.x / h;
+      ear.fz = dir.z / h;
+    }
     // What the last frame drew (every pass), before this one starts counting.
     perf.current.frame(delta * 1000, gl.info.render.calls, gl.info.render.triangles);
     gl.info.reset();

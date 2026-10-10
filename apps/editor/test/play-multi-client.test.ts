@@ -25,8 +25,8 @@ describe("multi-client", () => {
     assert.equal(clientCount(setup("16")), 1);
   });
 
-  it("only 1, 2, 4, 8 are valid", () => {
-    assert.equal(clientCount(setup("3")), 1);
-    assert.equal(clientCount(setup("5")), 1);
+  it("every count from 1 to 8 is valid", () => {
+    for (let n = 1; n <= 8; n++) assert.equal(clientCount(setup(String(n))), n);
+    assert.equal(clientCount(setup("9")), 1);
   });
 });

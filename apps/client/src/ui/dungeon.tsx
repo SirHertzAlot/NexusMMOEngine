@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import type { DungeonMessage } from "@mmo-engine/protocol";
 import { Button } from "./components.js";
+import { t } from "../i18n.js";
 
 export type DungeonState = Extract<DungeonMessage, { op: "state" }>;
 export type DungeonEnded = Extract<DungeonMessage, { op: "ended" }>;
@@ -41,47 +42,46 @@ export function unopenedChests(state: DungeonState | null): string[] {
   return state.chests.filter((c) => !c.opened).map((c) => c.id);
 }
 
-const OUTCOME: Record<DungeonEnded["outcome"], { title: string; tone: string; line: string }> = {
-  cleared: { title: "Dungeon cleared", tone: "text-yellow-300", line: "The boss is slain." },
-  timeout: { title: "Out of time", tone: "text-orange-300", line: "The dungeon closes behind you." },
-  abandoned: { title: "Run abandoned", tone: "text-muted-foreground", line: "Everyone left the dungeon." },
+const OUTCOME_TONE: Record<DungeonEnded["outcome"], string> = {
+  cleared: "text-yellow-300",
+  timeout: "text-orange-300",
+  abandoned: "text-muted-foreground",
 };
 
 /** The result card's title, line and loot text. */
 export function outcomeText(r: DungeonEnded): { title: string; tone: string; line: string; loot: string } {
-  const o = OUTCOME[r.outcome];
-  const loot = r.items === 0 ? "No loot this time." : `${r.items} item${r.items === 1 ? "" : "s"} waiting in your bag.`;
-  return { ...o, loot };
+  const loot = r.items === 0 ? t("dungeon.noLoot") : t("dungeon.loot", { count: r.items });
+  return { title: t(`dungeon.${r.outcome}.title`), tone: OUTCOME_TONE[r.outcome], line: t(`dungeon.${r.outcome}.line`), loot };
 }
 
 /** Top-centre while inside: the dungeon's name, the clock, what's left to kill, and the chest button. */
 export function DungeonHud({ run, onOpen }: { run: Extract<DungeonRun, { phase: "in" }>; onOpen: () => void }): React.ReactElement {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(performance.now()), 500);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(performance.now()), 500);
+    return () => clearInterval(timer);
   }, []);
   const s = run.state;
   const left = s ? secondsLeft(s, run.at, now) : null;
   const closed = unopenedChests(s);
   return (
-    <div className="pointer-events-none rounded-lg border border-violet-400/30 bg-card/85 px-4 py-2 text-center text-card-foreground shadow-sm" aria-label="dungeon">
+    <div className="pointer-events-none rounded-lg border border-violet-400/30 bg-card/85 px-4 py-2 text-center text-card-foreground shadow-sm" aria-label={t("dungeon.title")}>
       <div className="text-sm font-semibold text-violet-200">{run.dungeon}</div>
       {s && (
         <div className="mt-0.5 flex items-center justify-center gap-3 text-xs text-muted-foreground">
           <span className={`tabular-nums ${left !== null && left < 300 ? "text-orange-300" : ""}`}>⏳ {formatClock(left ?? 0)}</span>
-          <span>{s.creaturesLeft} left</span>
-          <span className={s.bossLeft > 0 ? "text-red-300" : "text-yellow-300"}>{s.bossLeft > 0 ? "boss awaits" : "boss slain"}</span>
+          <span>{t("dungeon.left", { count: s.creaturesLeft })}</span>
+          <span className={s.bossLeft > 0 ? "text-red-300" : "text-yellow-300"}>{s.bossLeft > 0 ? t("dungeon.bossAwaits") : t("dungeon.bossSlain")}</span>
         </div>
       )}
       {closed.length > 0 && (
         <button
           type="button"
           onClick={onOpen}
-          aria-label={`open chest (${closed.length} unopened)`}
+          aria-label={t("dungeon.openChestLabel", { count: closed.length })}
           className="m3-focus pointer-events-auto mt-1.5 w-full rounded-full border border-amber-300/40 px-3 py-1 text-xs text-amber-200"
         >
-          🎁 open chest{closed.length === 1 ? "" : "s"} ({closed.length})
+          🎁 {t("dungeon.openChest", { count: closed.length })}
         </button>
       )}
     </div>
@@ -90,15 +90,15 @@ export function DungeonHud({ run, onOpen }: { run: Extract<DungeonRun, { phase: 
 
 /** The run is over: how it went, the loot, and back to the world. */
 export function DungeonResult({ run, onLeave }: { run: Extract<DungeonRun, { phase: "ended" }>; onLeave: () => void }): React.ReactElement {
-  const t = outcomeText(run.result);
+  const result = outcomeText(run.result);
   return (
-    <div className="pointer-events-auto w-80 rounded-lg border bg-card/95 p-4 text-center text-card-foreground shadow-lg" role="dialog" aria-label="dungeon result">
+    <div className="pointer-events-auto w-80 rounded-lg border bg-card/95 p-4 text-center text-card-foreground shadow-lg" role="dialog" aria-label={t("dungeon.result")}>
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{run.dungeon}</div>
-      <div className={`mt-1 text-lg font-semibold ${t.tone}`}>{t.title}</div>
-      <div className="mt-1 text-sm">{t.line}</div>
-      <div className="mt-2 text-sm text-muted-foreground">{t.loot}</div>
+      <div className={`mt-1 text-lg font-semibold ${result.tone}`}>{result.title}</div>
+      <div className="mt-1 text-sm">{result.line}</div>
+      <div className="mt-2 text-sm text-muted-foreground">{result.loot}</div>
       <Button className="mt-3 w-full" onClick={onLeave}>
-        return to the world
+        {t("dungeon.return")}
       </Button>
     </div>
   );
@@ -109,7 +109,7 @@ export function DungeonTransit({ run }: { run: Extract<DungeonRun, { phase: "ent
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/70">
       <div className="text-center">
-        <div className="text-xs uppercase tracking-widest text-violet-300/80">{run.phase === "entering" ? "entering" : "leaving"}</div>
+        <div className="text-xs uppercase tracking-widest text-violet-300/80">{run.phase === "entering" ? t("dungeon.entering") : t("dungeon.leaving")}</div>
         <div className="mt-1 text-2xl font-semibold text-violet-100">{run.dungeon}</div>
       </div>
     </div>

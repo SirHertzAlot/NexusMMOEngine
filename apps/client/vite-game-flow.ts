@@ -1,15 +1,16 @@
 import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
-const ID = "virtual:game-flow";
-
-/** Serves content/flow/game.flow.json as the `virtual:game-flow` module; edits reload the page in dev. */
-export function gameFlow(file: string): Plugin {
+/**
+ * Serves a content JSON file as the module `id` (`import x from "virtual:…"`);
+ * an edit to the file reloads the page in dev.
+ */
+export function jsonModule(id: string, file: string): Plugin {
   return {
-    name: "game-flow",
-    resolveId: (id) => (id === ID ? `\0${ID}` : null),
-    load(id) {
-      if (id !== `\0${ID}`) return null;
+    name: id,
+    resolveId: (req) => (req === id ? `\0${id}` : null),
+    load(req) {
+      if (req !== `\0${id}`) return null;
       this.addWatchFile(file);
       return `export default ${readFileSync(file, "utf8")};`;
     },
@@ -21,3 +22,9 @@ export function gameFlow(file: string): Plugin {
     },
   };
 }
+
+/** content/flow/game.flow.json as `virtual:game-flow`. */
+export const gameFlow = (file: string): Plugin => jsonModule("virtual:game-flow", file);
+
+/** content/audio/events.json as `virtual:audio-events` (EA24). */
+export const audioEvents = (file: string): Plugin => jsonModule("virtual:audio-events", file);

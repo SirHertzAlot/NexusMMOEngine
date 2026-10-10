@@ -2,6 +2,7 @@
  * CharacterSheet: modifier-delta math (pure, no DOM needed).
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { groupSkills, statDelta } from "../src/ui/character-sheet.js";

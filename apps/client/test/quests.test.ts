@@ -3,6 +3,7 @@
  * and which npc the interact key talks to.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { NpcView, QuestStepView, QuestView } from "@mmo-engine/protocol";

@@ -79,6 +79,24 @@ export function Input({
   );
 }
 
+/** A number box: `onChange` gets the number, or NaN while the box is empty. */
+export function NumberInput({
+  value,
+  onChange,
+  className,
+  ...rest
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & { value: number; onChange: (value: number) => void }): React.JSX.Element {
+  return (
+    <Input
+      type="number"
+      className={cn("h-9", className)}
+      value={Number.isFinite(value) ? String(value) : ""}
+      onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))}
+      {...rest}
+    />
+  );
+}
+
 // ---------------------------------------------------------------- Select
 
 const selectSizes = { xs: "h-7 px-1.5 text-xs", sm: "h-8 px-2 text-sm", md: "h-9 px-2 text-sm" } as const;

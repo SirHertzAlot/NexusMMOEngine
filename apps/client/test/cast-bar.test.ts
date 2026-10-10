@@ -2,6 +2,7 @@
  * CastBar: which spell messages start and end the player's cast, and how far it is.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { SpellMessage } from "@mmo-engine/protocol";

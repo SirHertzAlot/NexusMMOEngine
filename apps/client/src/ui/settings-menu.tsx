@@ -7,16 +7,19 @@
 import { useEffect, useState } from "react";
 import { Button } from "./components.js";
 import {
-  ACTION_LABELS,
+  actionLabel,
   ACTIONS,
   FIXED_MOUSE,
+  fixedMouseLabel,
+  mouseButtonLabel,
   prettyCode,
   setBinding,
   type ActionId,
   type Bindings,
 } from "../input/bindings.js";
 import { UI_SCALES, type UiScale } from "./ui-scale.js";
-import { AUDIO_BUSES, BUS_LABELS, type AudioBus, type Volumes } from "../audio/volumes.js";
+import { AUDIO_BUSES, busLabel, type AudioBus, type Volumes } from "../audio/volumes.js";
+import { lang, languageName, languages, storeLang, t } from "../i18n.js";
 
 export function SettingsMenu({
   quality,
@@ -49,16 +52,16 @@ export function SettingsMenu({
   const [rebinding, setRebinding] = useState<{ action: ActionId; index: number } | null>(null);
   return (
     <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-2 text-sm">
-      <Button size="sm" variant="secondary" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Settings" title="Settings">
-        ⚙ menu
+      <Button size="sm" variant="secondary" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={t("settings.title")} title={t("settings.title")}>
+        {t("settings.menu")}
       </Button>
       {open && (
         <div className="flex max-h-[calc(100vh-11rem)] w-64 flex-col gap-1.5 overflow-y-auto rounded-md bg-slate-950/85 p-2 shadow backdrop-blur-sm">
-          <Button size="sm" variant="secondary" onClick={onQuality} title="Cycle the graphics quality">
-            graphics: {quality}
+          <Button size="sm" variant="secondary" onClick={onQuality} title={t("settings.graphicsTitle")}>
+            {t("settings.graphics", { quality })}
           </Button>
           <div className="flex flex-col gap-1 px-1 pt-1">
-            <span className="text-xs text-muted-foreground">interface size</span>
+            <span className="text-xs text-muted-foreground">{t("settings.interfaceSize")}</span>
             <div className="flex gap-1">
               {UI_SCALES.map((s) => (
                 <Button
@@ -67,15 +70,34 @@ export function SettingsMenu({
                   variant={s === uiScale ? "default" : "outline"}
                   className="flex-1"
                   onClick={() => onUiScale(s)}
-                  title={`UI scale ${s}%`}
+                  title={t("settings.uiScale", { percent: s })}
                 >
                   {s}
                 </Button>
               ))}
             </div>
           </div>
+          {languages().length > 1 && (
+            <label className="flex items-center justify-between gap-2 px-1 pt-1">
+              <span className="text-xs text-muted-foreground">{t("settings.language")}</span>
+              <select
+                className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+                value={lang}
+                onChange={(e) => {
+                  storeLang(e.target.value);
+                  location.reload();
+                }}
+              >
+                {languages().map((l) => (
+                  <option key={l} value={l}>
+                    {languageName(l)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="flex items-center justify-between px-1 pt-1">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">audio</span>
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("settings.audio")}</span>
             <Button
               size="sm"
               variant={volumes.muted ? "default" : "ghost"}
@@ -83,24 +105,24 @@ export function SettingsMenu({
               aria-pressed={volumes.muted}
               onClick={() => onVolumes({ ...volumes, muted: !volumes.muted })}
             >
-              {volumes.muted ? "muted" : "mute"}
+              {volumes.muted ? t("settings.muted") : t("settings.mute")}
             </Button>
           </div>
-          <VolumeSlider label="master" value={volumes.master} disabled={volumes.muted} onChange={(master) => onVolumes({ ...volumes, master })} onRelease={() => onPreview("interface")} />
+          <VolumeSlider label={t("audio.bus.master")} value={volumes.master} disabled={volumes.muted} onChange={(master) => onVolumes({ ...volumes, master })} onRelease={() => onPreview("interface")} />
           {AUDIO_BUSES.map((b) => (
             <VolumeSlider
               key={b}
-              label={BUS_LABELS[b]}
+              label={busLabel(b)}
               value={volumes[b]}
               disabled={volumes.muted}
               onChange={(v) => onVolumes({ ...volumes, [b]: v })}
               onRelease={() => onPreview(b)}
             />
           ))}
-          <div className="px-1 pt-1 text-xs uppercase tracking-wide text-muted-foreground">controls</div>
+          <div className="px-1 pt-1 text-xs uppercase tracking-wide text-muted-foreground">{t("settings.controls")}</div>
           {ACTIONS.map((a) => (
             <div key={a} className="flex items-center justify-between gap-2 px-1">
-              <span className="text-xs text-muted-foreground">{ACTION_LABELS[a]}</span>
+              <span className="text-xs text-muted-foreground">{actionLabel(a)}</span>
               <div className="flex gap-1">
                 {bindings[a].map((code, i) => (
                   <Button
@@ -109,7 +131,7 @@ export function SettingsMenu({
                     variant={rebinding?.action === a && rebinding.index === i ? "default" : "outline"}
                     data-rebind={`${a}:${i}`}
                     onClick={() => setRebinding({ action: a, index: i })}
-                    title={`Rebind ${ACTION_LABELS[a]}`}
+                    title={t("settings.rebind", { action: actionLabel(a) })}
                   >
                     {prettyCode(code)}
                   </Button>
@@ -119,8 +141,8 @@ export function SettingsMenu({
           ))}
           {FIXED_MOUSE.map((m) => (
             <div key={m.code} className="flex items-center justify-between gap-2 px-1">
-              <span className="text-xs text-muted-foreground">{m.label}</span>
-              <span className="text-xs text-foreground">{m.code === "Mouse0" ? "left click" : "right click"}</span>
+              <span className="text-xs text-muted-foreground">{fixedMouseLabel(m)}</span>
+              <span className="text-xs text-foreground">{mouseButtonLabel(m.code)}</span>
             </div>
           ))}
           {rebinding && (
@@ -132,11 +154,11 @@ export function SettingsMenu({
               rebinding={rebinding}
             />
           )}
-          <Button size="sm" variant="ghost" onClick={onResetBindings} title="Restore default keys">
-            reset keys
+          <Button size="sm" variant="ghost" onClick={onResetBindings} title={t("settings.resetKeysTitle")}>
+            {t("settings.resetKeys")}
           </Button>
           <Button size="sm" variant="outline" onClick={onDisconnect}>
-            leave the world
+            {t("settings.leave")}
           </Button>
         </div>
       )}
@@ -169,7 +191,7 @@ function VolumeSlider({
         step={5}
         value={pct}
         disabled={disabled}
-        aria-label={`${label} volume`}
+        aria-label={t("settings.volume", { label })}
         className="h-1.5 flex-1 cursor-pointer accent-primary"
         onChange={(e) => onChange(Number(e.target.value) / 100)}
         onPointerUp={onRelease}
@@ -208,5 +230,5 @@ function RebindCapture({
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [bindings, rebinding, onBindings, onDone]);
-  return <div className="px-1 text-xs text-foreground">press a key… (Esc cancels)</div>;
+  return <div className="px-1 text-xs text-foreground">{t("settings.pressKey")}</div>;
 }

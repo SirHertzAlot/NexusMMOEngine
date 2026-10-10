@@ -2,6 +2,7 @@
  * Bindings (U4): defaults, rebind-with-steal, reset, and tolerant parsing.
  */
 
+import "./i18n-setup.js";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
