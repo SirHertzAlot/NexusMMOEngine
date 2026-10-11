@@ -14,6 +14,8 @@
  *   3. the world: `npm run bake:world` when there's no world.db
  *   4. the loot pool: `npm run loot:bake` when there's no pool.jsonl
  *   5. dungeons: `npm run dungeon:bake` when the dungeon pool is empty
+ *   6. the native entries of the modules under modules/: `npm run build:native`
+ *      (skips every one already built)
  * The data folder is MMO_DATA_DIR, else packages/engine-core/data, where
  * the server keeps it.
  *
@@ -22,36 +24,30 @@
  *   npm start -- --dev         the server and editor development environment
  *                              (http://localhost:5174)
  *   npm start -- --no-setup    skip the setup checks
+ *   npm start -- --build       run the full `npm run build` first
  *
  * `npm run dev` is `npm start -- --dev`.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
+import { npm as runNpm, root, win } from "./lib/run.mjs";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const dev = flag("--dev");
 const serverOnly = flag("--server");
+const build = flag("--build");
 
-const win = process.platform === "win32";
 const log = (msg) => console.log(`[start] ${msg}`);
 
 // ---- setup
 
 /** Run an npm command in the foreground; stop everything if it fails. */
 function npm(npmArgs, env = {}, hint = "") {
-  log(`npm ${npmArgs.join(" ")}`);
-  const r = spawnSync("npm", npmArgs, { cwd: root, stdio: "inherit", shell: win, env: { ...process.env, ...env } });
-  if (r.status !== 0) {
-    if (hint) console.error(`[start] ${hint}`);
-    console.error(`[start] npm ${npmArgs.join(" ")} failed (${r.status ?? r.signal}); fix that and run npm start again`);
-    process.exit(r.status || 1);
-  }
+  runNpm("start", npmArgs, { env, hint, again: "fix that and run npm start again" });
 }
 
 function setup() {
@@ -95,9 +91,13 @@ function setup() {
     log("no dungeons: baking 10");
     npm(["run", "dungeon:bake", "--", "--n", "10"], { MMO_DATA_DIR: data });
   }
+
+  // 6. Native module entries (a module's own addon; built ones are skipped).
+  npm(["run", "build:native"]);
 }
 
 if (!flag("--no-setup")) setup();
+if (build) npm(["run", "build"]);
 
 // ---- the server and development surface
 

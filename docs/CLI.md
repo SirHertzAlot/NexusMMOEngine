@@ -35,6 +35,9 @@ npm passes flags to a script only after `--`, as in
 | `npm start -- --dev` | Setup, then the server and editor development environment |
 | `npm start -- --server` | Setup and the server only |
 | `npm start -- --no-setup` | Skip the setup checks |
+| `npm start -- --build` | Run the full `npm run build` first, then start |
+| `npm run build` | Build everything: the bindings, every package, the client and editor bundles, the native addons and the modules' native entries |
+| `npm run build -- --no-native` | The same without the native steps (TypeScript and bundles only) |
 | `npm run dev` | Same as `npm start -- --dev` |
 | `npm run server` | The game server alone (ws://localhost:7777), no setup |
 | `npm run client` | The player's client alone (http://localhost:5173) |
@@ -45,7 +48,8 @@ npm passes flags to a script only after `--`, as in
 The setup that `npm start` does, each step only when it is missing:
 `npm ci` (also when the lockfile changed since the last start),
 `npm run codegen`, `npm run bake:world`, `npm run loot:bake` and
-`npm run dungeon:bake -- --n 10`. Data goes in `MMO_DATA_DIR`, else
+`npm run dungeon:bake -- --n 10`, and `npm run build:native` (the native
+entries of the modules under `modules/`; built ones are skipped). Data goes in `MMO_DATA_DIR`, else
 `packages/engine-core/data`.
 
 ## Bake content

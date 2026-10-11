@@ -12,7 +12,7 @@
   "scripts": {
     "bench": "npm run bench --workspace=@mmo-engine/bench",
     "bench:e5": "node scripts/bench-e5.mjs",
-    "build": "npm run build --workspaces --if-present",
+    "build": "node scripts/build.mjs",
     "client": "npm run dev --workspace=@mmo-engine/client",
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
