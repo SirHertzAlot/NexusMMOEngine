@@ -19,7 +19,7 @@ import { DocBar } from "./doc-bar.js";
 import { useDocActions } from "./doc-actions.js";
 import { useDocument } from "./use-document.js";
 import { useSaveTask } from "./use-save-task.js";
-import { BarRow, Pill, SectionLabel } from "./previews.js";
+import { BarRow, Pill, SectionLabel } from "./widgets.js";
 import { stringsStore } from "./strings-selection.js";
 
 type Show = "all" | "missing" | "problems";

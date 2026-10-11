@@ -6,7 +6,8 @@
 import * as React from "react";
 import { callEnvelope } from "../api.js";
 import { Select } from "./components.js";
-import { Pill, MiniTable } from "./previews.js";
+import { Pill } from "./widgets.js";
+import { DataTable } from "./data-table.js";
 import type { BuildProfile } from "@mmo-engine/build";
 import type { DeployState, RunRecord, StageState } from "../build-host.js";
 
@@ -241,17 +242,17 @@ export function PipelineView(): React.JSX.Element {
 
       <div className="overflow-x-auto rounded-xl" style={{ background: "var(--m3-surface-2)" }}>
         <div className="p-3 pb-0 text-sm font-medium">Runs</div>
-        <MiniTable
+        <DataTable
           mono
-          crud="EA · release"
-          head={["Profile", "Started", "Steps", "Time", "Result"]}
-          rows={runs.map((r) => [
-            r.profile,
-            new Date(r.startedAt).toLocaleTimeString(),
-            `${r.stages.length} · ${r.stages.filter((s) => s.status === "skipped").length} skipped`,
-            r.finishedAt ? fmtMs(new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime()) : "—",
-            <Pill tone={r.status === "passed" ? "ok" : r.status === "failed" ? "err" : "info"}>{r.status}</Pill>,
-          ])}
+          rows={runs}
+          rowKey={(r) => r.id}
+          columns={[
+            { id: "profile", header: "Profile", nowrap: true, cell: (r) => r.profile },
+            { id: "started", header: "Started", nowrap: true, cell: (r) => new Date(r.startedAt).toLocaleTimeString() },
+            { id: "steps", header: "Steps", nowrap: true, cell: (r) => `${r.stages.length} · ${r.stages.filter((s) => s.status === "skipped").length} skipped` },
+            { id: "time", header: "Time", nowrap: true, cell: (r) => (r.finishedAt ? fmtMs(new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime()) : "—") },
+            { id: "result", header: "Result", nowrap: true, cell: (r) => <Pill tone={r.status === "passed" ? "ok" : r.status === "failed" ? "err" : "info"}>{r.status}</Pill> },
+          ]}
         />
       </div>
 

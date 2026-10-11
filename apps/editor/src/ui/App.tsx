@@ -54,14 +54,10 @@ import { SelectableList } from "./selectable-list.js";
 import { ViewList } from "./view-list.js";
 import { LiveOpsDetailsLive, LiveOpsViews } from "./liveops-live.js";
 import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network-live.js";
-import { PlaytestsPanel } from "./playtests-live.js";
+import { PlaytestDetails, PlaytestsPanel } from "./playtests-live.js";
 import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
-import {
-  AssetLibraryTree,
-  applyDeepSelection,
-  readDeepSelection,
-  subscribeDeepSelection,
-} from "./previews.js";
+import { AssetLibraryTree } from "./asset-library-tree.js";
+import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
 
 // ---------------------------------------------------------------- config
 
@@ -110,9 +106,7 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "flow", label: "Flow & UI", icon: "account_tree",
-    views: [
-      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudPreview /> },
-    ], // flow graph contributed by the flow module (modules/flow/editor)
+    views: [], // flow graph contributed by the flow module (modules/flow/editor)
     leftTitle: "Widgets",
   },
   {
@@ -173,7 +167,6 @@ const WORKSPACES: Workspace[] = [
   {
     id: "story", label: "Story", icon: "auto_stories",
     views: [
-      { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
       { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
       { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
     ], // quest & dialog editor contributed by the story module (modules/story/editor)
@@ -192,8 +185,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
-      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudEditor /> },
-    ],
+    ], // HUD layout editor contributed by the hud module (modules/hud/editor)
     leftTitle: "Profiles",
   },
   {
@@ -2133,7 +2125,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "liveops") return <LiveOpsDetailsLive />;
   if (workspace === "network") return <NetworkDetailsLive />;
   if (workspace === "database") return <DatabaseNote />;
-  if (workspace === "release") return <ReleaseNote />;
+  if (workspace === "release") return view === "playtests" ? <PlaytestDetails /> : <ReleaseNote />;
   if (workspace === "flow") return <FlowNote />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "gameplay") return <GameplayDetails />;

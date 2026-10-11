@@ -6,8 +6,9 @@
  * the renamed set and writes both files or neither.
  */
 import * as React from "react";
-import { loadStory, renameQuestRemote, StorySaveError } from "../story-client.js";
-import { TreeItem, notify } from "./components.js";
+import { loadStory } from "../story-client.js";
+import { TreeItem } from "./components.js";
+import { renameQuestPrompt } from "./quest-rename.js";
 
 const dim = { color: "var(--m3-on-surface-variant)" } as const;
 
@@ -37,20 +38,7 @@ export function StoryTree({ onOpen }: { onOpen: () => void }): React.JSX.Element
   React.useEffect(reload, [reload]);
 
   const rename = (from: string): void => {
-    const to = window.prompt(`Rename quest id "${from}" to (lowercase letters, digits, dashes):`, from);
-    if (!to || to === from) return;
-    renameQuestRemote(from, to).then(
-      () => {
-        reload();
-        notify(`Renamed quest ${from} to ${to} (quests and dialogs updated)`);
-      },
-      (e: Error) =>
-        notify(
-          e instanceof StorySaveError
-            ? `Rename refused, nothing written: ${e.issues.filter((i) => i.severity === "error").slice(0, 2).map((i) => i.message).join("; ")}`
-            : `Rename refused: ${e.message}`,
-        ),
-    );
+    void renameQuestPrompt(from).then((changed) => changed && reload());
   };
 
   if (error) return <p className="px-3 text-xs" style={dim}>Could not read the quests: {error}</p>;
