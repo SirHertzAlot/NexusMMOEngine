@@ -1,20 +1,59 @@
 # MMO Engine
 
 An authoritative, extensible, data-oriented, ECS-capable procedural-generation
-MMO engine. One Node.js process is the authority — it simulates the world,
-persists it, and streams it; the three.js client is a mirror, never the
-source of truth.
+MMO engine. Each region's `engine-core` process owns its simulation and
+regional state; the edge/core split and world server support client ingress
+and region coordination. The React Three Fiber client mirrors authoritative
+state and is never the source of truth.
 
-**Decisions (locked):** JS world (bitECS) with C++ systems (physics,
-collision, pathfinding, procgen) as in-process N-API addons; SQLite embedded
-in the Node process; FlatBuffers contract shared by C++ and JS; 30 Hz fixed
-sim tick; multiplayer from the start. Full rationale lives in
-[`docs/DECISIONS.md`](docs/DECISIONS.md) and the
-[`mmo-engine` skill](../../skills/mmo-engine/SKILL.md).
+**Documentation:** the full index is [`docs/README.md`](docs/README.md);
+start with [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md). Full
+engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 **Roadmap:** what's built, in progress and next, with a running update
 log, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). Pick an item there to
 help.
+
+## Implemented features
+
+The engine is playable end to end, from account creation through the
+authoritative world and back. The [roadmap](docs/ROADMAP.md) tracks which
+features are complete, in progress, or still planned; this section
+summarizes the capabilities already present.
+
+- **World simulation and rendering:** a fixed 30 Hz, server-authoritative
+  ECS simulation with streamed world chunks, a climate-driven 4 × 4 km
+  world, water, sky and weather, terrain LOD, biomes and optional wild
+  creature packs. The client uses React Three Fiber and interpolates server
+  snapshots and deltas without client-side prediction.
+- **Generation and content:** WFC formations, baked and dressed dungeons,
+  species and creature spawn tables, ranks and prefab composition, PICG
+  asset cooking, loot pools, and material/recipe data.
+- **Characters and gameplay:** account and character sign-in/creation,
+  movement and stamina, attributes and use-based skills, weapon stances,
+  combat and defense, body-part injuries, bleeding, healing, death and
+  respawn, creature AI, mana and spells, hunger and thirst, ground loot,
+  and a first-cut inventory/equipment flow.
+- **Social and progression:** region chat, whispers, friends, blocks,
+  parties, guilds, quests and dialog. Character data, skills, items, social
+  lists, parties, guilds and quest progress have persistence as tracked in
+  the roadmap. Dungeon runs include party entry, a run HUD, results and
+  return to the world.
+- **Player experience:** login and character screens, health/resource and
+  needs meters, character and injury views, inventory, chat/social,
+  party/guild features, quest screens, remappable controls, UI scaling and
+  configurable audio.
+- **Editor and operations:** a standalone editor with a play-mode game
+  view and debugger, read-only ECS inspection, rules and gameplay-table
+  editing, PICG graph editing, dungeon tools, world-scale terrain editing,
+  and an art pipeline. The edge/core split includes framed internal
+  transport, outage recovery and network metrics; the world server
+  provides a region registry, migration hand-offs and a stress harness.
+
+Some areas remain partial rather than finished: inventory/equipment still
+needs the remaining armor and equipment work, and the client cutover to the
+edge, world-server accounts/social event stream, and the modular editor are
+not complete. See the roadmap for exact scope and dependencies.
 
 ## Repo layout
 
@@ -49,35 +88,43 @@ scripts/                # codegen (flatc vendored), dev launcher, valgrind
 
 ```sh
 npm install        # workspaces + native toolchain (node-gyp builds template addon)
-npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts}
+npm run codegen    # flatc --cpp --ts -> packages/schema/generated/{cpp,ts} (scripts/codegen.mjs)
 npm test           # builds TS packages, runs all node:test suites + native addon test
 ```
 
-## Run the game (server + mirror client)
+## Run the game: `npm start`
 
 ```sh
-# 1. create an account in the client ("Create account" tab), or headless:
-MMO_DEV_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))") \
-  npm run seed:user --workspace=@mmo-engine/engine-core -- <name>
-#    (password via env only — never CLI args; 8-128 chars)
-
-# 2a. developing: the server and the client with its developer panels
-#     (performance graphs, wireframe, FX showcase; ` hides them)
-npm run dev
-
-# 2b. playing: the server, and the player's client (no developer tools)
-npm run server
-npm run client          # http://localhost:5173
-
-# the editor (inspectors, play mode, art pipeline)
-npm run editor
+npm start                  # everything: setup, the server and the player's client
+                           # → http://localhost:5173
+npm start -- --dev         # the server and editor development environment
+                           # → http://localhost:5174; same as npm run dev
+npm start -- --server      # the server only
+npm start -- --build       # run the full build first, then start
+npm run build              # build everything: packages, client and editor bundles, native addons and modules
+npm run editor             # the editor (inspectors, play mode, art pipeline)
 ```
 
+`npm start` works from a fresh clone. It does only the setup that's
+missing, then starts the server and the client together (Ctrl+C stops
+both): it installs dependencies (`npm ci`, also after the lockfile
+changes), generates the FlatBuffers bindings, and bakes the world, the
+loot pool and 10 dungeons into the data folder. The first start takes a
+few minutes; after that it goes straight to the server.
 
-Server env: `MMO_PORT` (7777), `MMO_DATA_DIR` (./data), `MMO_WORLD_SEED`
-(1234), `MMO_CHUNK_SIZE` (16). Create an account via the client's
-"Create account" tab (or the CLI above), then log in; the
-client mirrors authoritative snapshots/deltas with interpolation and
+It runs the same on Linux, macOS and Windows (PowerShell or cmd, no bash
+or WSL). It needs Node 22 or newer, Python 3, and a C++17 compiler for the
+native addons: on Windows the Visual Studio Build Tools with "Desktop
+development with C++", on macOS Xcode's command line tools
+(`xcode-select --install`), on Linux `build-essential`. flatc is vendored
+for all three.
+
+Create an account in the client's "Create account" tab and log in. Every
+other command (bakes, tools, benchmarks, servers, the admin console, chat
+commands and keys) is in [`docs/CLI.md`](docs/CLI.md).
+
+Server env: `MMO_PORT` (7777), `MMO_DATA_DIR` (packages/engine-core/data),
+`MMO_WORLD_SEED` (1234), `MMO_CHUNK_SIZE` (16). The client mirrors authoritative snapshots/deltas with interpolation and
 sends WASD/mouse-look intents upstream — no client prediction yet.
 Details: [`apps/client/README.md`](apps/client/README.md).
 

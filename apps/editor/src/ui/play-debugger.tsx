@@ -1,7 +1,7 @@
 /**
  * Play-mode debugger (ROADMAP E5) — the developer panels over the game view.
  *
- * The developer client's own dockable HUD (`@mmo-engine/client/debug`):
+ * The shared dockable HUD (`@mmo-engine/client/debug`):
  * panels you drag, resize, fade, fold and close, ` hides them all, and
  * the "dev" menu reopens them or resets the layout. Here they sit inside
  * the game view rather than the window, and the layout is kept per
@@ -23,11 +23,13 @@ import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import { CombatFeedback, QUALITY_TIERS, type GpuInfo, type HudData, type QualityTier } from "@mmo-engine/client/render";
 import {
-  ACTION_LABELS,
+  actionLabel,
   ACTIONS,
   AdminConsole,
   DevHud,
   FIXED_MOUSE,
+  fixedMouseLabel,
+  mouseButtonLabel,
   PerfHud,
   prettyCode,
   type DevPanelSpec,
@@ -36,8 +38,11 @@ import { debuggerLayoutDefaults } from "../debugger-layout.js";
 import { DEFAULT_BINDINGS } from "@mmo-engine/client/render";
 import { GameView } from "./game-view.js";
 import { Button } from "./components.js";
+import { clearViewportActions, registerViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
+import { editorSelection } from "./editor-selection.js";
+import { attachMountToPopup, popOutGameView, takePendingPopup, type PoppedOutView } from "./play-popup.js";
 
 /** How often the selection card re-reads the picked entity (the mirror changes every tick). */
 const CARD_REFRESH_MS = 250;
@@ -55,23 +60,85 @@ export interface PlayDebuggerProps {
 export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerProps): React.JSX.Element {
   const [hud, setHud] = React.useState<HudData | null>(null);
   const [gpu, setGpu] = React.useState<GpuInfo | null>(null);
-  const [wireframe, setWireframe] = React.useState(false);
+  // Wireframe is the shared viewport toggle (the toolbar's viewport options and the tools panel below).
+  const wireframe = viewportFlags.use().wireframe;
   const [showcase, setShowcase] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
+  // Camera view: third-person follow or first-person (V toggles in the view too).
+  const [view, setView] = React.useState<"third" | "first">("third");
   const [quality, setQuality] = React.useState<"auto" | QualityTier>("auto");
   const [activeQuality, setActiveQuality] = React.useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
+  // The game view is the active viewport while it shows: it owns its camera (no zoom/reset), has no
+  // grid or gizmos, and can toggle wireframe and take a screenshot.
+  React.useEffect(() => {
+    if (!frame) return;
+    const viewport = {
+      label: "game view",
+      canZoomIn: false,
+      canZoomOut: false,
+      canReset: false,
+      zoomIn: () => undefined,
+      zoomOut: () => undefined,
+      reset: () => undefined,
+      supports: { wireframe: true },
+      screenshot: () => {
+        const canvas = frame.querySelector("canvas");
+        return new Promise<Blob | null>((resolve) => (canvas ? canvas.toBlob((b) => resolve(b), "image/png") : resolve(null)));
+      },
+    };
+    registerViewportActions(viewport);
+    return () => clearViewportActions(viewport);
+  }, [frame]);
+  // Popped-out view handle ("New window"): attach the frame when it mounts.
+  const poppedRef = React.useRef<PoppedOutView | null>(null);
+  React.useEffect(() => {
+    if (!frame) return;
+    const popup = takePendingPopup();
+    if (!popup) return;
+    const handle = attachMountToPopup(popup, frame);
+    if (handle) {
+      poppedRef.current = handle;
+    } else {
+      // Popup closed before the view mounted: close the orphan.
+      try {
+        popup.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    return () => {
+      // Unmount (stop): move the view back before React tears it down.
+      poppedRef.current?.close();
+      poppedRef.current = null;
+    };
+  }, [frame]);
   // The picked entity (a left click in the view) and its card.
   const [combat] = React.useState(() => new CombatFeedback());
   const library = usePcgLibrary();
   const [card, setCard] = React.useState<SelectionCard | null>(null);
+  const selectedWireId = React.useRef<string | null>(null);
   React.useEffect(() => {
     const read = (): void => {
       const target = combat.target;
       const entity = target !== null ? client.state.get(target) : undefined;
-      setCard(entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null);
+      const next = entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null;
+      setCard(next);
+      if (next?.wireId === selectedWireId.current) return;
+      selectedWireId.current = next?.wireId ?? null;
+      if (!next) {
+        editorSelection.clear("viewport");
+        return;
+      }
+      editorSelection.select({
+        source: "viewport",
+        kind: next.kind,
+        id: next.wireId,
+        label: next.name ?? next.kind,
+        components: next.components,
+      });
     };
     read();
     const t = setInterval(read, CARD_REFRESH_MS);
@@ -138,7 +205,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       content: (
         <>
           <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => setWireframe((w) => !w)}>
+            <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => toggleViewportFlag("wireframe")}>
               {wireframe ? "solid terrain" : "wireframe terrain"}
             </Button>
             <Button
@@ -155,6 +222,30 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
             </Button>
             <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setMaximized((m) => !m)}>
               {maximized ? "restore view" : "maximize view"}
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant="outline"
+              title="Toggle first-person view (V)"
+              onClick={() => setView((v) => (v === "third" ? "first" : "third"))}
+            >
+              {view === "third" ? "first person" : "third person"}
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant="outline"
+              disabled={!frame || poppedRef.current?.isOpen}
+              title={poppedRef.current?.isOpen ? "The view is already in a new window" : "Pop the game view out into a new window"}
+              onClick={() => {
+                if (!frame || poppedRef.current?.isOpen) return;
+                // In the click gesture: the popup blocker stays quiet.
+                const handle = popOutGameView(frame, { title: "Play" });
+                if (handle) poppedRef.current = handle;
+              }}
+            >
+              pop out
             </Button>
           </div>
           <AdminConsole client={client} />
@@ -189,9 +280,9 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       title: "controls",
       content: (
         <div className="text-muted-foreground">
-          {ACTIONS.map((a) => `${ACTION_LABELS[a]}: ${DEFAULT_BINDINGS[a].map(prettyCode).join("/")}`).join(" · ")}
+          {ACTIONS.map((a) => `${actionLabel(a)}: ${DEFAULT_BINDINGS[a].map(prettyCode).join("/")}`).join(" · ")}
           <br />
-          {FIXED_MOUSE.map((m) => `${m.label}: ${m.code === "Mouse0" ? "left click" : "right click"}`).join(" · ")}
+          {FIXED_MOUSE.map((m) => `${fixedMouseLabel(m)}: ${mouseButtonLabel(m.code)}`).join(" · ")}
           {" "}· mouse look (click the view; Esc frees the pointer) · wheel zoom · ` hides the panels
         </div>
       ),
@@ -212,6 +303,8 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       onQuality={onQuality}
       combat={combat}
       containerRef={setFrame}
+      view={view}
+      onViewChange={setView}
     >
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>

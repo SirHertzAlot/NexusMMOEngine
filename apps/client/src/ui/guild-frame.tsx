@@ -8,6 +8,7 @@
 
 import { useEffect, useRef } from "react";
 import type { GuildRank, GuildState } from "@mmo-engine/protocol";
+import { t, tName } from "../i18n.js";
 
 /** The server lapses an invite after 60 s and does not tell the invitee. */
 export const GUILD_INVITE_SHOWN_MS = 60_000;
@@ -39,8 +40,8 @@ export function GuildFrame({ guild, self, onAccept, onLeave, onKick, onRank, onI
   expired.current = onInviteExpired;
   useEffect(() => {
     if (!invite) return;
-    const t = setTimeout(() => expired.current(), GUILD_INVITE_SHOWN_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => expired.current(), GUILD_INVITE_SHOWN_MS);
+    return () => clearTimeout(timer);
   }, [invite?.from, invite?.guild]);
   const inGuild = !!guild && guild.name !== "";
   if (!invite && !inGuild) return null;
@@ -51,15 +52,15 @@ export function GuildFrame({ guild, self, onAccept, onLeave, onKick, onRank, onI
       {invite && (
         <div role="alert" className="rounded-lg border bg-card/90 p-2 text-card-foreground shadow-sm">
           <div className="break-words">
-            <b>{invite.from}</b> invites you to <b>{invite.guild}</b>
+            <b>{invite.from}</b> {t("guild.invitesYouTo")} <b>{invite.guild}</b>
           </div>
           <button type="button" className="mt-1 text-xs underline" onClick={onAccept}>
-            accept
+            {t("guild.accept")}
           </button>
         </div>
       )}
       {inGuild && guild && (
-        <div className="rounded-lg border bg-card/90 p-2 text-card-foreground shadow-sm" aria-label="guild">
+        <div className="rounded-lg border bg-card/90 p-2 text-card-foreground shadow-sm" aria-label={t("guild.title")}>
           <div className="truncate font-semibold">
             {guild.name} <span className="text-muted-foreground">&lt;{guild.tag}&gt;</span>
           </div>
@@ -73,27 +74,27 @@ export function GuildFrame({ guild, self, onAccept, onLeave, onKick, onRank, onI
                 <li key={m.name} className="flex items-center gap-1.5">
                   <span
                     className={`h-2 w-2 shrink-0 rounded-full ${m.online ? "bg-emerald-400" : "bg-muted-foreground/50"}`}
-                    title={m.online ? "online" : "offline"}
+                    title={m.online ? t("presence.online") : t("presence.offline")}
                   />
                   <span className={`truncate ${m.online ? "" : "text-muted-foreground"}`}>{m.name}</span>
-                  <span className="text-xs text-muted-foreground" title={m.rank}>
+                  <span className="text-xs text-muted-foreground" title={tName("rank", m.rank)}>
                     {m.rank === "leader" ? "★" : m.rank === "officer" ? "◆" : ""}
                   </span>
                   {canAct && (
                     <span className="ml-auto flex gap-1">
                       {up && (
-                        <button type="button" className="text-xs underline" onClick={() => onRank(m.name, up)} title={`make ${up}`}>
-                          up
+                        <button type="button" className="text-xs underline" onClick={() => onRank(m.name, up)} title={t("guild.makeRank", { rank: tName("rank", up) })}>
+                          {t("guild.up")}
                         </button>
                       )}
                       {down && (
-                        <button type="button" className="text-xs underline" onClick={() => onRank(m.name, down)} title={`make ${down}`}>
-                          down
+                        <button type="button" className="text-xs underline" onClick={() => onRank(m.name, down)} title={t("guild.makeRank", { rank: tName("rank", down) })}>
+                          {t("guild.down")}
                         </button>
                       )}
                       {myLevel >= rankLevel("officer") && (
-                        <button type="button" className="text-xs underline" onClick={() => onKick(m.name)} title="remove from guild">
-                          kick
+                        <button type="button" className="text-xs underline" onClick={() => onKick(m.name)} title={t("guild.kickTitle")}>
+                          {t("guild.kick")}
                         </button>
                       )}
                     </span>
@@ -103,7 +104,7 @@ export function GuildFrame({ guild, self, onAccept, onLeave, onKick, onRank, onI
             })}
           </ul>
           <button type="button" className="mt-1.5 text-xs underline" onClick={onLeave}>
-            leave guild
+            {t("guild.leave")}
           </button>
         </div>
       )}

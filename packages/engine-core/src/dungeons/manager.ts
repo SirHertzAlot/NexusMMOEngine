@@ -1,7 +1,9 @@
 /**
  * InstanceManager (roadmap D4): the region side of dungeon instances.
  *
- * It is the region gateway's `dungeon` extension. A party asks at an
+ * It is the region gateway's `dungeon` extension. Each player entering
+ * the world is told where the entrances are (`{kind:"dungeon",
+ * op:"entrances", entrances}`). A party asks at an
  * entrance (`{kind:"dungeon", op:"enter", entrance}` from a member standing
  * within its radius); the manager picks a pool layout that fits the
  * entrance's rank and themes, starts a DungeonInstance, and sends each
@@ -21,7 +23,7 @@
 
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
-import type { Weapon } from "../combat.js";
+import { FIGHT_DIFFICULTY, type Weapon } from "../combat.js";
 import type { GameRules } from "../rules/boot.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
@@ -40,9 +42,18 @@ export interface InstanceManagerOptions {
   /** Character names in a character's party, itself included. */
   partyOf: (name: string) => string[];
   weaponOf?: (characterId: number) => Weapon | null;
+  /** The share of a blow a character's worn armour lets through. */
+  armourOf?: (characterId: number) => number;
   lootPool?: () => readonly number[];
+  chestPool?: () => readonly number[];
   /** Put item definition `def` in a character's bag; false when it couldn't. */
   grant: (characterId: number, def: number) => boolean;
+  /**
+   * Train one use of a skill for a character (dungeon skill gains).
+   * The manager calls it once per kill for the killer's weapon skill;
+   * absent: runs grant loot but train nothing.
+   */
+  train?: (characterId: number, skill: string, difficulty: number, key: number) => void;
   /** The address clients reach an instance's port at. */
   endpoint: (port: number) => string;
   results: InstanceResultStore;
@@ -72,6 +83,9 @@ export class InstanceManager implements GatewayExtension {
 
   onEnter(p: ExtensionPlayer): void {
     if (p.characterId !== null) this.online.set(p.characterId, p);
+    // Where runs start, so the client can draw the entrances and ask at one.
+    const entrances = Object.entries(this.opts.content.entrances).map(([id, e]) => ({ id, name: e.name, x: e.x, z: e.z, radius: e.radius }));
+    p.send({ kind: "dungeon", op: "entrances", entrances });
   }
 
   onLeave(p: ExtensionPlayer): void {
@@ -138,7 +152,9 @@ export class InstanceManager implements GatewayExtension {
         credentialStore: this.opts.credentialStore,
         characterStore: this.opts.characterStore,
         weaponOf: this.opts.weaponOf,
+        armourOf: this.opts.armourOf,
         lootPool: this.opts.lootPool?.() ?? [],
+        chestPool: this.opts.chestPool?.() ?? [],
         onEnd: (result) => this.commit(result),
         transport: this.opts.transport,
         now: this.now,
@@ -182,6 +198,20 @@ export class InstanceManager implements GatewayExtension {
     for (const l of result.loot) {
       if (this.opts.grant(l.characterId, l.def)) granted++;
       else lost++;
+    }
+    // Skill gains: one use of the killer's weapon skill per kill, at the
+    // same difficulty as an open-world landed hit, keyed by victim kind
+    // for repeat falloff. Deaths train nothing: per-hit defence events
+    // never enter the batch.
+    const train = this.opts.train;
+    if (train) {
+      const techniques = this.opts.game().rules.combat.techniques;
+      for (const k of result.kills) {
+        const skill = techniques[this.opts.weaponOf?.(k.characterId)?.technique ?? ""]?.skill;
+        if (!skill) continue;
+        const key = hashId(k.kind);
+        for (let i = 0; i < k.count; i++) train(k.characterId, skill, FIGHT_DIFFICULTY, key);
+      }
     }
     this.opts.results.record(result, granted, lost);
     this.opts.onCommitted?.(result);

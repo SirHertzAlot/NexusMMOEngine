@@ -1,0 +1,195 @@
+/**
+ * Scene spawning (roadmap EA6): a world scene's nodes become ordinary
+ * entities through the creature and scatter spawn paths; a restart does
+ * not duplicate them; a bad scene or a frontend scene is refused.
+ */
+
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parseSpawnTableJSON } from "@mmo-engine/scatter";
+import { SimWorld } from "../src/world.js";
+import * as C from "../src/components.js";
+import { CreatureSystem } from "../src/creatures.js";
+import { loadGameRules } from "../src/rules/boot.js";
+import { loadPrefabs, loadSceneFile, spawnScene, spawnSceneOnBoot, type SceneMeta } from "../src/scene-spawn.js";
+
+const game = loadGameRules();
+const table = parseSpawnTableJSON({ version: 1, archetypes: { oak: { asset: "oak" } } });
+
+function setup() {
+  SimWorld.resetEntityCursorForTesting();
+  const sim = new SimWorld();
+  const creatures = new CreatureSystem({ creatures: game.rules.creatures.creatures, bases: game.rules.items.bases });
+  const deps = { sim, creatures, table: () => table, groundHeightAt: (x: number, z: number) => 2 + x * 0 + z * 0 };
+  return { sim, creatures, deps };
+}
+
+const doc = (nodes: unknown[], kind = "arena") => ({ version: 1, name: "t", kind, nodes });
+
+describe("spawnScene", () => {
+  it("spawns creatures and props where the nodes are, on the ground", () => {
+    const { sim, creatures, deps } = setup();
+    const r = spawnScene(
+      doc([
+        { id: "spawn", kind: "spawn-point", transform: { position: [0, 0, 0] } },
+        { id: "camp", prefab: "camps/goblin", transform: { position: [20, 0, -10] }, components: { Spawner: { creature: "goblin", respawnSeconds: 60 } } },
+        { id: "wolf", kind: "prefab", prefab: "goblin", transform: { position: [5, 0, 5] } },
+        { id: "tree", kind: "prefab", prefab: "oak", transform: { position: [7, 1, 8], rotation: [0, 90, 0], scale: [2, 2, 2] } },
+        { id: "nothing", prefab: "no-such-thing" },
+      ]) as never,
+      deps,
+    );
+    const by = (id: string) => r.spawned.find((s) => s.id === id)!;
+    assert.ok(by("camp").entities.length >= 1);
+    assert.ok(by("wolf").entities.every((e) => creatures.isCreature(e)));
+    for (const e of by("camp").entities) {
+      assert.ok(Math.abs(C.Transform.px[e] - 20) < 5 && Math.abs(C.Transform.pz[e] + 10) < 5);
+    }
+    const tree = by("tree").entities[0];
+    assert.equal(C.Transform.px[tree], 7);
+    assert.equal(C.Transform.py[tree], 3, "node height sits on the ground height");
+    assert.equal(C.Transform.sx[tree], 2);
+    assert.ok(Math.abs(C.Transform.qy[tree] - Math.sin(Math.PI / 4)) < 1e-6, "yaw 90 degrees");
+    assert.equal(sim.resolveWireId(sim.wireId(tree)), tree);
+    assert.deepEqual(r.skipped.map((s) => s.id).sort(), ["nothing", "spawn"]);
+  });
+
+  it("composes a child under its parent", () => {
+    const { deps } = setup();
+    const r = spawnScene(
+      doc([{ id: "g", transform: { position: [100, 0, 0] }, children: [{ id: "tree", prefab: "oak", transform: { position: [1, 0, 0] } }] }]) as never,
+      deps,
+    );
+    assert.equal(C.Transform.px[r.spawned[0].entities[0]], 101);
+  });
+});
+
+describe("data-driven entities in a scene", () => {
+  it("instantiates prefab files: the bundle, the node's overrides and the prefab's children", () => {
+    const { deps } = setup();
+    const prefabs = {
+      "goblin-camp": {
+        version: 1,
+        name: "goblin-camp",
+        components: { Spawner: { creature: "goblin" } },
+        children: [{ id: "lookout", transform: { position: [10, 0, 0] }, components: { Spawner: { creature: "goblin" } } }],
+      },
+    };
+    const r = spawnScene(doc([{ id: "camp", prefab: "goblin-camp", transform: { position: [100, 0, 0] } }]) as never, { ...deps, prefabs: prefabs as never });
+    assert.deepEqual(r.spawned.map((s) => s.id), ["camp", "camp.lookout"]);
+    const look = r.spawned[1].entities[0];
+    assert.ok(Math.abs(C.Transform.px[look] - 110) < 5, "the child sits relative to the node");
+    assert.deepEqual(r.skipped, []);
+  });
+
+  it("spawns a species at its roster pack size, and says why one can't spawn", () => {
+    const { creatures, deps } = setup();
+    const species = (id: string) => (id === "goblin" ? { pack: [5, 5] as const } : id === "void-watcher" ? { pack: [1, 1] as const } : undefined);
+    const r = spawnScene(
+      doc([
+        { id: "s", components: { Spawner: { species: "goblin" } } },
+        { id: "v", components: { Spawner: { species: "void-watcher" } } },
+        { id: "x", components: { Spawner: { species: "dragon" } } },
+      ]) as never,
+      { ...deps, species },
+    );
+    assert.equal(r.spawned[0].entities.length, 5);
+    assert.ok(r.spawned[0].entities.every((e) => creatures.isCreature(e)));
+    assert.match(r.skipped.find((s) => s.id === "v")!.reason, /no creature rules/);
+    assert.match(r.skipped.find((s) => s.id === "x")!.reason, /no species "dragon"/);
+  });
+
+  it("places items and quest posts through the deps, and reports refusals", () => {
+    const { deps } = setup();
+    const placed: string[] = [];
+    const moved: string[] = [];
+    const items = {
+      place: (base: string, rank: string | undefined, x: number, z: number) => (base === "sword" ? (placed.push(`${base}/${rank ?? "-"}@${x},${z}`), { item: 7 }) : null),
+      discard: () => undefined,
+    };
+    const quests = { place: (q: string, x: number, z: number) => (q === "goblin-trouble" ? (moved.push(`${q}@${x},${z}`), null) : `no quest "${q}"`) };
+    const r = spawnScene(
+      doc([
+        { id: "i", transform: { position: [3, 0, 4] }, components: { ItemSpawn: { base: "sword", rank: "rare" } } },
+        { id: "no", components: { ItemSpawn: { base: "wand" } } },
+        { id: "q", transform: { position: [8, 0, 9] }, components: { QuestGiver: { quest: "goblin-trouble" } } },
+        { id: "nq", components: { QuestGiver: { quest: "ghost" } } },
+      ]) as never,
+      { ...deps, items, quests },
+    );
+    assert.deepEqual(placed, ["sword/rare@3,4"]);
+    assert.deepEqual(moved, ["goblin-trouble@8,9"]);
+    assert.deepEqual(r.spawned.map((s) => [s.id, s.items ?? []]), [["i", [7]], ["q", []]]);
+    assert.deepEqual(r.skipped.map((s) => s.id), ["no", "nq"]);
+  });
+
+  it("discards the items an earlier boot placed before placing again", () => {
+    const { deps } = setup();
+    const data = new Map<string, string>();
+    const meta: SceneMeta = { getMeta: (k) => data.get(k) ?? null, setMeta: (k, v) => void data.set(k, v) };
+    const discarded: number[][] = [];
+    const items = { place: () => ({ item: 11 }), discard: (ids: readonly number[]) => void discarded.push([...ids]) };
+    const d = doc([{ id: "i", components: { ItemSpawn: { base: "sword" } } }]) as never;
+    spawnSceneOnBoot(d, { ...deps, items }, meta);
+    spawnSceneOnBoot(d, { ...deps, items }, meta);
+    assert.deepEqual(discarded, [[11]]);
+  });
+});
+
+describe("loadPrefabs", () => {
+  const dir = join(tmpdir(), `mmo-prefabs-${process.pid}`);
+  it("reads valid prefab files and refuses bad ones, listing each problem", () => {
+    mkdirSync(dir, { recursive: true });
+    try {
+      assert.deepEqual(loadPrefabs(join(dir, "none")), {});
+      writeFileSync(join(dir, "camp.prefab.json"), JSON.stringify({ version: 1, name: "camp", components: { Spawner: { creature: "goblin" } } }));
+      assert.deepEqual(Object.keys(loadPrefabs(dir)), ["camp"]);
+      writeFileSync(join(dir, "wrong.prefab.json"), JSON.stringify({ version: 1, name: "other" }));
+      writeFileSync(join(dir, "bad.prefab.json"), JSON.stringify({ version: 1, name: "bad", components: { Nope: {} } }));
+      assert.throws(() => loadPrefabs(dir), (e: Error) => /wrong\.prefab\.json: name must match/.test(e.message) && /bad\.prefab\.json: components\.Nope unknown component/.test(e.message));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("spawnSceneOnBoot", () => {
+  const fakeMeta = (): SceneMeta & { data: Map<string, string> } => {
+    const data = new Map<string, string>();
+    return { data, getMeta: (k) => data.get(k) ?? null, setMeta: (k, v) => void data.set(k, v) };
+  };
+  it("removes what the previous boot spawned before spawning again", () => {
+    const { sim, deps } = setup();
+    const meta = fakeMeta();
+    const d = doc([{ id: "tree", prefab: "oak" }]) as never;
+    const first = spawnSceneOnBoot(d, deps, meta);
+    const oldWire = sim.wireId(first.spawned[0].entities[0]);
+    assert.ok(sim.resolveWireId(oldWire) >= 0);
+    spawnSceneOnBoot(d, deps, meta);
+    assert.equal(sim.resolveWireId(oldWire), -1, "the previous boot's entity is gone");
+    assert.equal(sim.liveEntityCount, 1);
+    assert.equal(JSON.parse(meta.data.get("scene_entities")!).length, 1);
+  });
+});
+
+describe("loadSceneFile", () => {
+  const dir = join(tmpdir(), `mmo-scene-spawn-${process.pid}`);
+  it("loads a valid world/arena scene and refuses bad names, invalid and frontend scenes", () => {
+    mkdirSync(dir, { recursive: true });
+    try {
+      writeFileSync(join(dir, "a.scene.json"), JSON.stringify(doc([{ id: "x" }])));
+      writeFileSync(join(dir, "bad.scene.json"), JSON.stringify({ version: 1, name: "bad", kind: "arena", nodes: [{}] }));
+      writeFileSync(join(dir, "ui.scene.json"), JSON.stringify({ version: 1, name: "ui", kind: "frontend", nodes: [] }));
+      assert.equal(loadSceneFile(dir, "a").name, "t");
+      assert.throws(() => loadSceneFile(dir, "../a"), /bad scene name/);
+      assert.throws(() => loadSceneFile(dir, "missing"), /no scene/);
+      assert.throws(() => loadSceneFile(dir, "bad"), /invalid scene/);
+      assert.throws(() => loadSceneFile(dir, "ui"), /frontend/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

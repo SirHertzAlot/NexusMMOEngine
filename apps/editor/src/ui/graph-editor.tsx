@@ -11,19 +11,20 @@
  */
 
 import * as React from "react";
-import { edgePath, GraphEditor, parseFieldValue, type GraphDocument, type GraphViewModel, type NodeView, type PropertyView } from "../inspectors/graph-editor.js";
+import { callEnvelope } from "../api.js";
+import { DocBar } from "./doc-bar.js";
+import { GraphEditor, parseFieldValue, type GraphDocument, type GraphViewModel, type NodeView, type PropertyView } from "../inspectors/graph-editor.js";
 import type { PcgDocumentInfo, PcgIssue } from "../pcg-host.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
+import { topDownRoute } from "../graph-view.js";
+import { NodeGraph } from "./node-graph.js";
+import { Badge, Card, CardContent, CardHeader, CardTitle, SectionTitle } from "./components.js";
+import { useDocActions } from "./doc-actions.js";
+import { getTool, subscribeTool } from "./tool-store.js";
+import { canDragGraphNode } from "./viewport-tools.js";
+import { editorSelection } from "./editor-selection.js";
 
 const NODE_W = 168;
 const NODE_H = 52;
-
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || body.ok === false) throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { body });
-  return body;
-}
 
 export function GraphEditorPanel(): React.JSX.Element {
   const [docs, setDocs] = React.useState<PcgDocumentInfo[]>([]);
@@ -34,7 +35,7 @@ export function GraphEditorPanel(): React.JSX.Element {
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
 
   React.useEffect(() => {
-    getJson<{ docs: PcgDocumentInfo[] }>("/api/editor/pcg/docs")
+    callEnvelope<{ docs: PcgDocumentInfo[] }>("/api/editor/pcg/docs", "GET")
       .then(({ docs }) => {
         setDocs(docs);
         const ed = new GraphEditor(new Map(docs.filter((d) => d.kind === "subgraph" && d.guid).map((d) => [d.guid!, d.file])));
@@ -45,7 +46,7 @@ export function GraphEditorPanel(): React.JSX.Element {
   React.useEffect(() => editor?.subscribe(bump), [editor]);
 
   const fetchDoc = React.useCallback(async (file: string) => {
-    const { info, doc } = await getJson<{ info: PcgDocumentInfo; doc: GraphDocument }>(`/api/editor/pcg/doc?file=${encodeURIComponent(file)}`);
+    const { info, doc } = await callEnvelope<{ info: PcgDocumentInfo; doc: GraphDocument }>(`/api/editor/pcg/doc?file=${encodeURIComponent(file)}`, "GET");
     return { info, doc };
   }, []);
 
@@ -81,7 +82,7 @@ export function GraphEditorPanel(): React.JSX.Element {
     let saved = 0;
     for (const { file, doc } of editor.pendingSaves()) {
       try {
-        await getJson(`/api/editor/pcg/doc`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file, doc }) });
+        await callEnvelope(`/api/editor/pcg/doc`, "PUT", { file, doc });
         editor.markSaved(file);
         saved++;
       } catch (e) {
@@ -94,6 +95,28 @@ export function GraphEditorPanel(): React.JSX.Element {
   };
 
   const vm = editor?.viewModel() ?? null;
+
+  // Toolbar Save/Undo/Redo target while a graph is open.
+  useDocActions(() => {
+    if (!editor || !vm || vm.crumbs.length === 0) return null;
+    return {
+      label: `PICG graph "${vm.file}"`,
+      canSave: vm.dirtyFiles.length > 0,
+      canUndo: vm.canUndo,
+      canRedo: vm.canRedo,
+      save: () => void save(),
+      undo: () => editor.undo(),
+      redo: () => editor.redo(),
+      canRevert: vm.dirtyFiles.length > 0,
+      revert: () => editor.pendingSaves().forEach((p) => editor.revert(p.file)),
+      exportDoc: () => ({ name: vm.file, data: editor.currentDocument() }),
+      importDoc: (incoming: unknown) => {
+        const d = incoming as { version?: unknown; nodes?: unknown };
+        if (typeof d.version !== "string" || !Array.isArray(d.nodes)) throw new Error("a PICG graph has a version and a node list");
+        editor.replaceCurrent(incoming as GraphDocument);
+      },
+    };
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_320px]" data-testid="graph-editor">
@@ -134,20 +157,14 @@ export function GraphEditorPanel(): React.JSX.Element {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Breadcrumb vm={vm} onUp={(d) => editor?.up(d)} />
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" onClick={() => editor?.undo()} disabled={!vm?.canUndo}>
-                Undo
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => editor?.redo()} disabled={!vm?.canRedo}>
-                Redo
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => vm && editor?.revert(vm.file)} disabled={!vm?.dirty}>
-                Revert
-              </Button>
-              <Button size="sm" onClick={() => void save()} disabled={!vm?.dirtyFiles.length}>
-                Save{vm?.dirtyFiles.length ? ` (${vm.dirtyFiles.length})` : ""}
-              </Button>
-            </div>
+            <DocBar
+              dirty={!!vm?.dirtyFiles.length}
+              saveLabel={`Save${vm?.dirtyFiles.length ? ` (${vm.dirtyFiles.length})` : ""}`}
+              onSave={() => void save()}
+              canRevert={!!vm?.dirty}
+              onRevert={() => vm && editor?.revert(vm.file)}
+              history={{ canUndo: !!vm?.canUndo, canRedo: !!vm?.canRedo, undo: () => editor?.undo(), redo: () => editor?.redo() }}
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -300,107 +317,58 @@ function FieldRow({
   );
 }
 
+/** A pin's x along its node's top (inputs) or bottom (outputs) side. */
 function pinX(node: NodeView, pins: string[], pin: string): number {
   const i = Math.max(0, pins.indexOf(pin));
   return node.x + ((i + 1) * NODE_W) / (pins.length + 1);
 }
 
-/** The SVG canvas: nodes, edges, pan, zoom, drag. */
+/** The graph's canvas: the shared NodeGraph, drawing PCG nodes with pins. */
 function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: GraphEditor; onEnter: (id: string) => void }): React.JSX.Element {
-  const svg = React.useRef<SVGSVGElement>(null);
-  const [view, setView] = React.useState({ x: -60, y: -60, scale: 1 });
-  const drag = React.useRef<{ kind: "pan" | "node"; id?: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
-
-  // Fit the level when it changes (another document or definition).
-  const levelKey = `${vm.file}|${vm.title}`;
-  React.useEffect(() => {
-    if (vm.nodes.length === 0) return;
-    const minX = Math.min(...vm.nodes.map((n) => n.x));
-    const minY = Math.min(...vm.nodes.map((n) => n.y));
-    setView({ x: minX - 80, y: minY - 60, scale: 1 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelKey]);
-
-  const toWorld = (e: React.PointerEvent | React.WheelEvent): { x: number; y: number } => {
-    const r = svg.current!.getBoundingClientRect();
-    return { x: view.x + (e.clientX - r.left) / view.scale, y: view.y + (e.clientY - r.top) / view.scale };
+  const tool = React.useSyncExternalStore(subscribeTool, getTool);
+  const pick = (id: string | null): void => {
+    editor.select(id);
+    const node = id === null ? null : vm.nodes.find((n) => n.id === id);
+    if (node) {
+      editorSelection.select({
+        source: "outliner",
+        kind: "graph-node",
+        id: node.id,
+        label: node.title || node.id,
+        components: [{ name: "Graph node", fields: [{ key: "id", value: node.id }, { key: "type", value: node.type }] }],
+      });
+    } else {
+      const cur = editorSelection.get();
+      if (cur && cur.kind === "graph-node") editorSelection.clear();
+    }
   };
-  const byId = new Map(vm.nodes.map((n) => [n.id, n]));
-
   return (
-    <svg
-      ref={svg}
-      className="h-[60vh] min-h-[420px] w-full cursor-grab touch-none select-none rounded-md border border-border bg-[#0b1220]"
-      data-testid="graph-canvas"
-      viewBox={`${view.x} ${view.y} ${(svg.current?.clientWidth ?? 800) / view.scale} ${(svg.current?.clientHeight ?? 500) / view.scale}`}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
-        (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
-        editor.select(null);
+    <NodeGraph
+      label="PCG graph"
+      testId="graph-canvas"
+      nodes={vm.nodes}
+      edges={vm.edges}
+      nodeId={(n) => n.id}
+      nodePos={(n) => n}
+      nodeSize={{ w: NODE_W, h: NODE_H }}
+      edgeEnds={(e) => ({ from: e.source, to: e.target })}
+      fitKey={`${vm.file}|${vm.title}`}
+      selectedId={vm.selected?.node.id ?? null}
+      onSelect={pick}
+      // Nodes drag only with the move tool; with select a press picks the
+      // node and the background gesture pans.
+      canMove={canDragGraphNode(tool)}
+      onMove={(id, x, y) => editor.apply({ kind: "move", node: id, x, y })}
+      onMoveEnd={() => editor.endMove()}
+      onNodeDoubleClick={(id) => {
+        if (vm.nodes.find((n) => n.id === id)?.enter) onEnter(id);
       }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (!d) return;
-        const dx = (e.clientX - d.sx) / view.scale;
-        const dy = (e.clientY - d.sy) / view.scale;
-        if (d.kind === "pan") setView((v) => ({ ...v, x: d.ox - dx, y: d.oy - dy }));
-        else if (d.id) editor.apply({ kind: "move", node: d.id, x: d.ox + dx, y: d.oy + dy });
-      }}
-      onPointerUp={() => {
-        if (drag.current?.kind === "node") editor.endMove();
-        drag.current = null;
-      }}
-      onWheel={(e) => {
-        const p = toWorld(e);
-        const scale = Math.min(2.5, Math.max(0.3, view.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-        const k = view.scale / scale;
-        setView({ scale, x: p.x - (p.x - view.x) * k, y: p.y - (p.y - view.y) * k });
-      }}
-    >
-      <defs>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" strokeWidth="1" />
-        </pattern>
-      </defs>
-      <rect x={view.x - 4000} y={view.y - 4000} width="12000" height="12000" fill="url(#grid)" />
-      {vm.edges.map((e) => {
-        const s = byId.get(e.source);
-        const t = byId.get(e.target);
-        if (!s || !t) return null;
-        return (
-          <path
-            key={e.id}
-            d={edgePath(pinX(s, s.outputs, e.sourcePin), s.y + NODE_H, pinX(t, t.inputs, e.targetPin), t.y)}
-            fill="none"
-            stroke="#38bdf8"
-            strokeOpacity="0.7"
-            strokeWidth="2"
-          />
-        );
-      })}
-      {vm.nodes.map((n) => {
-        const selected = vm.selected?.node.id === n.id;
+      route={(a, b, e) => topDownRoute(a.box, b.box, { fromX: pinX(a.node, a.node.outputs, e.sourcePin), toX: pinX(b.node, b.node.inputs, e.targetPin) })}
+      renderEdge={(e, geom) => <path key={e.id} d={geom.d} fill="none" stroke="#38bdf8" strokeOpacity="0.7" strokeWidth="2" />}
+      renderNode={(n, { selected }) => {
         const fill = n.enter ? "#1e3a5f" : n.structural ? "#27272a" : "#1e293b";
         return (
-          <g
-            key={n.id}
-            data-node={n.id}
-            transform={`translate(${n.x} ${n.y})`}
-            className="cursor-pointer"
-            onPointerDown={(e) => {
-              if (e.button !== 0) return;
-              e.stopPropagation();
-              editor.select(n.id);
-              drag.current = { kind: "node", id: n.id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
-              // Captured on the node (not the canvas), so its double-click still lands on it.
-              (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              if (n.enter) onEnter(n.id);
-            }}
-          >
+          <>
             <rect width={NODE_W} height={NODE_H} rx="6" fill={fill} stroke={selected ? "#fbbf24" : n.enter?.kind === "missing" ? "#ef4444" : "#475569"} strokeWidth={selected ? 2 : 1} />
             <text x="10" y="21" fill="#f1f5f9" fontSize="13" fontWeight="600">
               {n.title.length > 20 ? `${n.title.slice(0, 19)}…` : n.title}
@@ -419,9 +387,9 @@ function GraphCanvas({ vm, editor, onEnter }: { vm: GraphViewModel; editor: Grap
                 <title>{p}</title>
               </circle>
             ))}
-          </g>
+          </>
         );
-      })}
-    </svg>
+      }}
+    />
   );
 }

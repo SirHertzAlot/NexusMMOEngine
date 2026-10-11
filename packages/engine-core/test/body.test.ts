@@ -64,6 +64,18 @@ describe("body", () => {
     assert.equal(Injury.move[e], 1);
   });
 
+  it("a god takes no blow: parts stay healthy, Health stays full", () => {
+    const w = setup();
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    addComponent(w.sim.ecs, C.God, e);
+    const r = w.body.applyBlow(w.sim, e, "torso", "cut", 50);
+    assert.equal(r.part, "torso");
+    assert.equal(r.state, "healthy");
+    assert.deepEqual(r.lost, []);
+    assert.ok(near(C.Health.current[e], 100));
+  });
+
   it("a cut harms the part, opens a wound that bleeds, and clots", () => {
     const w = setup();
     const e = w.make();

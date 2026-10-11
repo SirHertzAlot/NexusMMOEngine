@@ -14,6 +14,9 @@ valgrind-out/
 
 # native addon build output
 build/
+!packages/build/
+# build profiles are content (EA19), not build output
+!content/build/
 *.node
 
 # misc

@@ -4,6 +4,7 @@
  */
 
 import type { SpellMessage } from "@mmo-engine/protocol";
+import { t } from "../i18n.js";
 
 /** "mend" -> "Mend". */
 export const spellTitle = (id: string): string => id.charAt(0).toUpperCase() + id.slice(1).replace(/([A-Z])/g, " $1");
@@ -14,19 +15,19 @@ export function spellNotice(s: SpellMessage, me: string | null, name = spellTitl
   if (s.caster === me) {
     switch (s.state) {
       case "started":
-        return `Casting ${name}${s.seconds ? ` (${Math.round(s.seconds)} s)` : ""}`;
+        return t("spell.casting", { name, timed: s.seconds ? "yes" : "no", seconds: Math.round(s.seconds ?? 0) });
       case "done":
-        return s.amount !== undefined ? `${name} healed ${self ? "you" : "them"} for ${Math.round(s.amount)}` : `${name} cast`;
+        return s.amount !== undefined ? t("spell.healed", { name, who: self ? "self" : "other", amount: Math.round(s.amount) }) : t("spell.cast", { name });
       case "stopped":
-        return "Cast stopped";
+        return t("spell.stopped");
     }
   }
   if (s.target !== me) return null;
   switch (s.state) {
     case "started":
-      return `Someone is casting ${name} on you`;
+      return t("spell.castingOnYou", { name });
     case "done":
-      return s.amount !== undefined ? `${name} healed you for ${Math.round(s.amount)}` : null;
+      return s.amount !== undefined ? t("spell.healedYou", { name, amount: Math.round(s.amount) }) : null;
     case "stopped":
       return null;
   }

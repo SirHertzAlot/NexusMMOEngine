@@ -2,7 +2,7 @@
  * In-memory WorldStore. Used by unit tests and by `WORLD_DB_URL=mem:`
  * dev runs. Production uses SurrealWorldStore (src/surreal-store.ts).
  */
-import type { MigrationRecord, MigrationState, RegionRecord, WorldStore } from "./types.js";
+import type { MigrationRecord, MigrationState, RegionRecord, StoredDungeonRun, WorldStore } from "./types.js";
 
 export class MemoryWorldStore implements WorldStore {
   private regions = new Map<string, RegionRecord>();
@@ -102,5 +102,33 @@ export class MemoryWorldStore implements WorldStore {
       if (m.state !== "begun" && m.updatedAt < cutoffMs) { this.migrations.delete(id); n++; }
     }
     return n;
+  }
+
+  private dungeonRuns = new Map<string, StoredDungeonRun>();
+
+  async recordDungeonRun(run: StoredDungeonRun): Promise<boolean> {
+    if (this.dungeonRuns.has(run.instance)) return false;
+    this.dungeonRuns.set(run.instance, { ...run });
+    return true;
+  }
+
+  async listDungeonRuns(regionId?: string): Promise<StoredDungeonRun[]> {
+    return [...this.dungeonRuns.values()]
+      .filter((r) => regionId === undefined || r.regionId === regionId)
+      .map((r) => ({ ...r }));
+  }
+
+  private presence = new Map<string, Set<string>>();
+
+  async setPresence(regionId: string, names: string[]): Promise<void> {
+    this.presence.set(regionId, new Set(names));
+  }
+
+  async queryPresence(names: string[]): Promise<Map<string, string | null>> {
+    const found = new Map<string, string>();
+    for (const [regionId, online] of this.presence) {
+      for (const n of names) if (online.has(n) && !found.has(n)) found.set(n, regionId);
+    }
+    return new Map(names.map((n) => [n, found.get(n) ?? null]));
   }
 }

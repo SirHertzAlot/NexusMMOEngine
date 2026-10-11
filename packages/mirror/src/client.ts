@@ -33,6 +33,9 @@ import {
   type FriendsState,
   type BlocksState,
   type DialogMessage,
+  type DungeonEntranceView,
+  type DungeonMessage,
+  type DungeonOp,
   type NpcView,
   type NpcsMessage,
   type QuestLogMessage,
@@ -45,6 +48,7 @@ import {
   type DebugQuery,
   type DebugResponse,
   type DropsMessage,
+  type ArmourSlotName,
   type InventoryMessage,
   type ErrorMessage,
   type HelloMessage,
@@ -62,6 +66,9 @@ import {
   type NamesMessage,
   type RegisterMessage,
   type StatsMessage,
+  type TimeMessage,
+  type WeatherMessage,
+  type WeatherOverride,
   type WelcomeMessage,
   type DayClock,
   type WireLook,
@@ -108,6 +115,12 @@ export interface MirrorEvents {
   onNpcs?(n: NpcsMessage): void;
   /** An npc's line and the replies open to the player, or the dialog closed (P1). */
   onDialog?(d: DialogMessage): void;
+  /** Dungeon instances (D4): entrances on entering, a transfer into a run, the run's state, its end. */
+  onDungeon?(d: DungeonMessage): void;
+  /** The day clock changed (roadmap A4 `time`): the sky follows from here on. */
+  onTime?(t: TimeMessage): void;
+  /** The weather override changed (roadmap A4 `weather`). */
+  onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
@@ -154,6 +167,8 @@ export class MirrorClient {
   world: WorldInfo | null = null;
   /** The world's day clock, from the welcome; null when the server runs no day cycle. */
   day: DayClock | null = null;
+  /** The weather override, from the welcome or a broadcast; auto follows the sky. */
+  weatherOverride: WeatherOverride = "auto";
   lastError: ErrorMessage | null = null;
   closed = false;
   /** The account's characters, from the last account message (join()). */
@@ -168,6 +183,8 @@ export class MirrorClient {
   mana: ManaMessage | null = null;
   /** Quest givers and their markers (P1), as last sent; the world draws them. */
   npcs: NpcView[] = [];
+  /** Dungeon entrances (D4), as last sent; the world draws them. */
+  entrances: DungeonEntranceView[] = [];
   /**
    * Character names by entity wire id, from the names control message
    * (C3). Pruned as entities despawn; the entity layer reads it for
@@ -342,10 +359,14 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "equip", item })));
   }
 
-  /** Ask to put what a hand holds back in the bag (M3b, 0x13). */
-  unequip(hand: "main" | "off"): void {
+  /** Ask to put what a hand holds, or an armour slot wears, back in the bag (M3b/U10, 0x13). */
+  unequip(slot: "main" | "off" | ArmourSlotName): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "unequip", hand })));
+    const action =
+      slot === "main" || slot === "off"
+        ? { kind: "item", action: "unequip", hand: slot }
+        : { kind: "item", action: "unequip", slot };
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl(action)));
   }
 
   chat(channel: ChatChannel, text: string, to?: string): void {
@@ -391,6 +412,12 @@ export class MirrorClient {
    * back as onDialog / onQuests, refusals as system chat lines.
    */
   quest(op: QuestOp): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
+  }
+
+  /** A dungeon op (D4, on the chat envelope): ask for a run at an entrance, or the run's state. */
+  dungeon(op: DungeonOp): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
   }
@@ -700,8 +727,14 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage>(payload);
-        if (m.kind === "party") this.events.onParty?.(m);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage | TimeMessage | WeatherMessage>(payload);
+        if (m.kind === "time") {
+          this.day = m.day;
+          this.events.onTime?.(m);
+        } else if (m.kind === "weather") {
+          this.weatherOverride = m.weather;
+          this.events.onWeather?.(m);
+        } else if (m.kind === "party") this.events.onParty?.(m);
         else if (m.kind === "guild") this.events.onGuild?.(m);
         else if (m.kind === "friends") this.events.onFriends?.(m);
         else if (m.kind === "blocks") this.events.onBlocks?.(m);
@@ -710,6 +743,10 @@ export class MirrorClient {
           this.npcs = m.npcs;
           this.events.onNpcs?.(m);
         } else if (m.kind === "dialog") this.events.onDialog?.(m);
+        else if (m.kind === "dungeon") {
+          if (m.op === "entrances") this.entrances = m.entrances;
+          this.events.onDungeon?.(m);
+        }
         else this.events.onChat?.(m);
         break;
       }
@@ -777,6 +814,7 @@ export class MirrorClient {
     this.tickHz = w.tick_hz;
     this.world = w.world ?? null;
     this.day = w.day ?? null;
+    this.weatherOverride = w.weather ?? "auto";
     this.events.onWelcome(w);
     this.settle({ kind: "welcome", welcome: w });
   }

@@ -15,6 +15,7 @@
  * way the server cooks (pcg-host.ts validatePcgDocument).
  */
 
+import { verticalCurve } from "../graph-view.js";
 import { canonicalGuid, cloneGraph, StructuralNode, type PcgEdge, type PcgNode, type PcgParameter } from "@mmo-engine/picg";
 
 /** A graph level: a document's root, or an embedded subgraph definition. */
@@ -285,6 +286,23 @@ export class GraphEditor {
     this.changed();
   }
 
+  /** The JSON of the document the breadcrumb is in. */
+  currentDocument(): GraphDocument {
+    return this.open_().doc;
+  }
+
+  /** Replace the current document with an imported one, as a single undoable edit. */
+  replaceCurrent(doc: GraphDocument): void {
+    const d = this.open_();
+    d.undo.push(d.doc);
+    if (d.undo.length > UNDO_LIMIT) d.undo.shift();
+    d.redo = [];
+    d.doc = JSON.parse(JSON.stringify(doc)) as GraphDocument;
+    this.path = [{ file: d.file, defs: [] }];
+    this.lastMove = null;
+    this.changed();
+  }
+
   /** Every document with unsaved edits, with its JSON to save. */
   pendingSaves(): Array<{ file: string; doc: GraphDocument }> {
     return [...this.docs.values()].filter((d) => JSON.stringify(d.doc) !== d.saved).map((d) => ({ file: d.file, doc: d.doc }));
@@ -407,7 +425,4 @@ export function parseFieldValue(editor: PropertyView["editor"], text: string): u
 }
 
 /** For the canvas: a cubic edge from an output pin (a node's bottom) down to an input pin (a node's top); PICG graphs flow downwards. */
-export function edgePath(x1: number, y1: number, x2: number, y2: number): string {
-  const dy = Math.max(30, Math.abs(y2 - y1) / 2);
-  return `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
-}
+export const edgePath = verticalCurve;

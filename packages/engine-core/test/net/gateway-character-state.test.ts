@@ -141,4 +141,27 @@ describe("character save", () => {
     await c.hello("editor", { username: "user-c", password: TEST_PASSWORD });
     assert.equal(gw.saveCharacters(), 0);
   });
+
+  it("with the spawn overridden (Play \"Start from\") it enters at the spawn but keeps its vitals", async () => {
+    const { url, gw, store } = await startGateway({ spawnPoint: { x: 100, z: 200 }, spawnOverridden: true });
+    const { c, id, eid } = await join(url, gw, "Arya");
+    C.Transform.px[eid] = 12;
+    C.Transform.pz[eid] = -7;
+    C.Health.current[eid] = 31;
+    assert.equal(gw.saveCharacters(), 1);
+    assert.equal(store.loadState(id)!.x, 12);
+
+    await leave(c, gw);
+    const again = await connect(url);
+    const acct = again.waitFor(MessageType.Account, 1);
+    again.sendRaw(
+      MessageType.Hello,
+      encodeControl({ protocol: PROTOCOL_VERSION, client: "test", want_snapshot: true, characters: true, username: "alice", password: TEST_PASSWORD }),
+    );
+    await acct;
+    const eid2 = await enterAs(again, gw, id);
+    assert.ok(Math.abs(C.Transform.px[eid2] - 100) < 20, `x ${C.Transform.px[eid2]} near the spawn`);
+    assert.ok(Math.abs(C.Transform.pz[eid2] - 200) < 20, `z ${C.Transform.pz[eid2]} near the spawn`);
+    assert.equal(C.Health.current[eid2], 31);
+  });
 });

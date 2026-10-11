@@ -23,11 +23,16 @@ class FakeServer implements ServerControl {
   stopped = 0;
   failStart = false;
   failStop = false;
+  lastOpts: { bots?: number } | undefined;
+  /** When set, start() waits for release() before resolving. */
+  gate: Promise<void> | null = null;
   private live = false;
 
-  async start(): Promise<PlayServer> {
+  async start(opts?: { bots?: number }): Promise<PlayServer> {
     this.started++;
+    this.lastOpts = opts;
     if (this.failStart) throw new Error("fake: spawn failed");
+    if (this.gate) await this.gate;
     this.live = true;
     return {
       url: "ws://127.0.0.1:7777",
@@ -179,5 +184,93 @@ describe("PlayModeController", () => {
     await h.controller.stop();
     await h.controller.stop();
     assert.equal(h.server.stopped, 1);
+  });
+
+  it("start forwards play options (bots) to the server control", async () => {
+    const h = makeHarness();
+    await h.controller.start({ bots: 50 });
+    assert.deepEqual(h.server.lastOpts, { bots: 50 });
+    assert.equal(h.controller.getState(), "running");
+    await h.controller.stop();
+  });
+
+  it("stop during starting aborts: idle, server cleaned up, no orphan run", async () => {
+    const h = makeHarness();
+    let release!: () => void;
+    h.server.gate = new Promise<void>((r) => (release = r));
+    const starting = h.controller.start();
+    // Let start() reach the gated server start.
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(h.controller.getState(), "starting");
+    await h.controller.stop();
+    assert.equal(h.controller.getState(), "idle");
+    release();
+    await starting;
+    assert.equal(h.controller.getState(), "idle", "no flip back to running");
+    assert.equal(h.server.stopped, 1, "late server is stopped");
+    assert.equal(h.server.isRunning(), false);
+    assert.deepEqual(h.exited, [{ selection: "entity-7" }]);
+    assert.deepEqual(h.states, ["starting", "stopping", "idle"]);
+  });
+});
+
+describe("PlayModeController: simulate (no client)", () => {
+  it("runs the server without connecting a client, and stops it", async () => {
+    const server = new FakeServer();
+    let connects = 0;
+    const c = new PlayModeController(
+      server,
+      async () => {
+        connects++;
+        return new FakeClient();
+      },
+      { onEnterPlay: () => null, onExitPlay: () => undefined, onStateChange: () => undefined },
+    );
+    await c.start({ noClient: true });
+    assert.equal(c.getState(), "running");
+    assert.equal(connects, 0);
+    // Debug queries need a client: they refuse instead of hanging.
+    await assert.rejects(() => c.debugTiles(), /not running/);
+    await c.stop();
+    assert.equal(c.getState(), "idle");
+    assert.equal(server.stopped, 1);
+  });
+});
+
+describe("PlayModeController: extra clients", () => {
+  const make = (failAt = -1) => {
+    const server = new FakeServer();
+    const asked: number[] = [];
+    const clients: FakeClient[] = [];
+    const details: Array<string | undefined> = [];
+    const c = new PlayModeController(
+      server,
+      async (_s, index) => {
+        asked.push(index);
+        if (index === failAt) throw new Error("login refused");
+        const fc = new FakeClient();
+        clients.push(fc);
+        return fc;
+      },
+      { onEnterPlay: () => null, onExitPlay: () => undefined, onStateChange: (_st, d) => details.push(d) },
+    );
+    return { c, server, asked, clients, details };
+  };
+
+  it("connects each client with its own index, and stop disconnects them all", async () => {
+    const h = make();
+    await h.c.start({ clients: 4 });
+    assert.deepEqual(h.asked, [0, 1, 2, 3]);
+    await h.c.stop();
+    assert.deepEqual(h.clients.map((x) => x.disconnected), [1, 1, 1, 1]);
+  });
+
+  it("a failed extra client still runs, and says how many connected", async () => {
+    const h = make(2);
+    await h.c.start({ clients: 4 });
+    assert.equal(h.c.getState(), "running");
+    assert.deepEqual(h.asked, [0, 1, 2]);
+    assert.match(h.details.at(-1) ?? "", /2 of 4 clients connected \(login refused\)/);
+    await h.c.stop();
   });
 });

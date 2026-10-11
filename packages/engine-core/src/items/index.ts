@@ -4,3 +4,4 @@ export { ItemService, parseEntityArg, type ItemResult, type ItemServiceOptions }
 export { defRemap, heldFromLedger, rebakeKeepingHeld, remapLedger, type RebakeOptions, type RebakeResult } from "./rebake.js";
 export { FALLBACK_POOL_SIZE, loadItemDefs, type LoadedItems } from "./boot.js";
 export { LootDropper, type LootDropperOptions } from "./loot-dropper.js";
+export { lineDef, rollTable, type LootTables } from "./loot-tables.js";

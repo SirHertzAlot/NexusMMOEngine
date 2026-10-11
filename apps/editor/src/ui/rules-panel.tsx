@@ -11,6 +11,7 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
 import {
   CREATURE_FIELDS,
   DEATH_FIELDS,
@@ -32,7 +33,9 @@ import {
   type RulesSnapshot,
   type Table,
 } from "../rules-control.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
+import { useDocActions } from "./doc-actions.js";
+import { useTableDrafts } from "./use-table-drafts.js";
 
 const control = createRulesControl();
 
@@ -63,8 +66,9 @@ const FLAT: Record<Table, FieldSpec[]> = {
 type Status = { tone: "ok" | "bad" | "info"; text: string; table?: Table } | null;
 
 export function RulesPanel(): React.JSX.Element {
-  const [saved, setSaved] = React.useState<RulesSnapshot | null>(null);
-  const [drafts, setDrafts] = React.useState<Record<Table, unknown> | null>(null);
+  const [snap, setSnap] = React.useState<RulesSnapshot | null>(null);
+  const tables = useTableDrafts<Table, unknown>();
+  const { drafts, load: loadTables } = tables;
   const [table, setTable] = React.useState<Table>("items");
   const [issues, setIssues] = React.useState<RulesIssue[]>([]);
   const [status, setStatus] = React.useState<Status>(null);
@@ -72,21 +76,37 @@ export function RulesPanel(): React.JSX.Element {
 
   const load = React.useCallback(async () => {
     try {
-      const snap = await control.load();
-      setSaved(snap);
-      setDrafts(snap.tables);
+      const fresh = await control.load();
+      setSnap(fresh);
+      loadTables(fresh.tables);
       setIssues([]);
       setStatus(null);
     } catch (err) {
       setStatus({ tone: "bad", text: (err as Error).message });
     }
-  }, []);
+  }, [loadTables]);
 
   React.useEffect(() => {
     void load();
   }, [load]);
 
-  if (!saved || !drafts) {
+  // Toolbar Save target for the open table; Undo and Redo walk the edits across tables.
+  useDocActions(() => {
+    if (!snap || !drafts) return null;
+    return {
+      label: `rules table "${table}.json"`,
+      canSave: tables.anyDirty,
+      ...tables.history,
+      save: () => void save(),
+      canRevert: tables.dirtyOf(table),
+      revert: () => tables.revert(table),
+      exportDoc: () => ({ name: `rules-${table}`, data: drafts[table] }),
+      // The host validates the whole rules set on Save and refuses a bad one, so an import only fills the draft.
+      importDoc: (incoming: unknown) => tables.edit(table, incoming),
+    };
+  });
+
+  if (!snap || !drafts) {
     return (
       <Card>
         <CardContent className="p-4 text-sm text-muted-foreground">
@@ -97,9 +117,9 @@ export function RulesPanel(): React.JSX.Element {
   }
 
   const draft = drafts[table];
-  const dirty = (t: Table): boolean => JSON.stringify(drafts[t]) !== JSON.stringify(saved.tables[t]);
+  const dirty = tables.dirtyOf;
   const edit = (next: unknown): void => {
-    setDrafts({ ...drafts, [table]: next });
+    tables.edit(table, next);
     setStatus(null);
   };
 
@@ -108,7 +128,7 @@ export function RulesPanel(): React.JSX.Element {
     try {
       const res = await control.save(table, draft);
       if (res.ok) {
-        setSaved({ ...saved, tables: { ...saved.tables, [table]: draft } });
+        tables.markSaved(table);
         setIssues([]);
         setStatus({ tone: "ok", text: `Saved ${table}.json — a running server applies it on its next tick.`, table });
       } else {
@@ -123,7 +143,7 @@ export function RulesPanel(): React.JSX.Element {
   };
 
   const revert = (): void => {
-    setDrafts({ ...drafts, [table]: saved.tables[table] });
+    tables.revert(table);
     setIssues([]);
     setStatus(null);
   };
@@ -149,12 +169,7 @@ export function RulesPanel(): React.JSX.Element {
           <CardTitle>{TABLE_LABELS[table]}</CardTitle>
           <div className="flex items-center gap-2">
             {status && (status.table ?? table) === table && <Badge tone={status.tone}>{status.text}</Badge>}
-            <Button size="sm" variant="ghost" onClick={revert} disabled={busy || !dirty(table)}>
-              Revert
-            </Button>
-            <Button size="sm" onClick={() => void save()} disabled={busy || !dirty(table)}>
-              Save
-            </Button>
+            <DocBar dirty={dirty(table)} busy={busy} onSave={() => void save()} onRevert={revert} />
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -165,7 +180,7 @@ export function RulesPanel(): React.JSX.Element {
               basePath=""
               table={table}
               issues={issues}
-              techniques={saved.techniques}
+              techniques={snap.techniques}
               onChange={edit}
             />
           )}
@@ -178,7 +193,7 @@ export function RulesPanel(): React.JSX.Element {
               fields={record.fields}
               value={draft}
               issues={issues}
-              techniques={saved.techniques}
+              techniques={snap.techniques}
               bases={bases}
               onChange={edit}
             />
@@ -346,9 +361,8 @@ function Field(props: {
   if (spec.kind === "bool" || spec.kind === "enum") {
     const options = spec.kind === "bool" ? ["true", "false"] : spec.options === "techniques" ? props.techniques : spec.options;
     control = (
-      <select
+      <Select size="md"
         id={id}
-        className={`h-9 rounded-md border border-input bg-background px-2 text-sm ${ring}`}
         value={value === undefined ? "" : String(value)}
         onChange={(e) => onChange(parseField(spec, e.target.value))}
       >
@@ -358,7 +372,7 @@ function Field(props: {
             {o}
           </option>
         ))}
-      </select>
+      </Select>
     );
   } else {
     control = (

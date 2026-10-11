@@ -1,0 +1,12 @@
+{
+  "modules": [
+    "core",
+    "characters",
+    "scenes",
+    "flow",
+    "story",
+    "vfx",
+    "audio",
+    "hud"
+  ]
+}

@@ -40,10 +40,13 @@ import { placeholderColor, type AssetProvider } from "./assets.js";
 import { EntityFxSystem } from "./entity-fx.js";
 import { FxShowcase } from "./showcase.js";
 import { QuarksFx } from "./vfx/quarks-fx.js";
+import { budgetMultiplierForTier } from "./fx/particle-fx.js";
 import { InstancedProps, type PropAsset } from "./instanced-props.js";
+import type { WorkerRequester } from "../workers/pool.js";
 import { PcgMeshes } from "./pcg-meshes.js";
 import { ChainedPropModels, SyntyProps, fnv1a32 } from "./synty-props.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
+import { DEFAULT_CLIP_MAP, indexClipMap, parseClipMap, planClip } from "@mmo-engine/art/browser";
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
@@ -51,6 +54,8 @@ import type { QualitySettings } from "./quality.js";
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
+  /** Decode PCG meshes and build their BVHs off the main thread. */
+  workers?: WorkerRequester;
 }
 
 interface TrackedMesh {
@@ -88,6 +93,9 @@ const PLATE_TEXT_HEIGHT = 0.4;
 const EMPTY_NAMES: ReadonlyMap<bigint, string> = new Map();
 
 /** The server clock: combat moves play from their start tick. */
+/** The clip map the editor's Animation panel saves (EA21), served to the dev client. */
+const CLIP_MAP_URL = "/content/animation/clips.json";
+
 export interface ServerClock {
   tick: number;
   tickHz: number;
@@ -114,6 +122,9 @@ export class EntityLayer {
   readonly group = new THREE.Group();
   /** The player's interpolated position this frame (null until it appears). */
   player: THREE.Vector3 | null = null;
+  /** First-person mode hides the player's own avatar (set via setPlayerHidden). */
+  private playerHidden = false;
+  private lastPlayerWireId: bigint | null = null;
   private readonly meshes = new Map<bigint, TrackedMesh>();
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
@@ -122,6 +133,8 @@ export class EntityLayer {
   private kit: CharacterKit | null = null;
   /** The characters' clips; null until loaded (or when none are served). */
   private animations: AnimationLibrary | null = null;
+  /** Which library clip each server clip id plays (EA21); content/animation/clips.json over the shipped default. */
+  private clipMap = indexClipMap(DEFAULT_CLIP_MAP);
   /** Root object -> wire id for hover raycasting (non-terrain only). */
   private readonly pickMap = new Map<THREE.Object3D, bigint>();
   private readonly fx: EntityFxSystem;
@@ -146,7 +159,7 @@ export class EntityLayer {
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
   ) {
-    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged()) : null;
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
@@ -172,6 +185,12 @@ export class EntityLayer {
         if (!this.disposed) this.animations = lib;
       })
       .catch((e: unknown) => console.info(`[world] characters stay unanimated: ${e instanceof Error ? e.message : e}`));
+    fetch(CLIP_MAP_URL)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (json && !this.disposed) this.clipMap = indexClipMap(parseClipMap(json));
+      })
+      .catch((e: unknown) => console.info(`[world] default clip map: ${e instanceof Error ? e.message : e}`));
   }
 
   /** Scenery counts (dev tools, probes, the HUD). */
@@ -207,10 +226,27 @@ export class EntityLayer {
     this.flashes = flashes;
   }
 
+  /**
+   * First-person mode: hide the player's own avatar so the camera doesn't
+   * sit inside its head. Applied on every sync (the mesh may not exist yet
+   * when toggled).
+   */
+  setPlayerHidden(hidden: boolean): void {
+    this.playerHidden = hidden;
+    this.applyPlayerHidden();
+  }
+
+  private applyPlayerHidden(): void {
+    const wid = this.lastPlayerWireId;
+    if (wid === null) return;
+    const tracked = this.meshes.get(wid);
+    if (tracked) tracked.object.visible = !this.playerHidden;
+  }
+
   /** Apply a quality preset: character outlines, and the effects' particle budget. */
   setQuality(q: QualitySettings): void {
     this.quality = q;
-    this.vfx.setBudget(q.particles);
+    this.vfx.setBudget(budgetMultiplierForTier(q.tier));
     if (this.kit?.outlineMaterial) this.kit.outlineMaterial.visible = q.outlines;
   }
 
@@ -292,6 +328,8 @@ export class EntityLayer {
     for (const wid of gone) this.props.remove(wid);
 
     this.player = null;
+    this.lastPlayerWireId = playerWireId;
+    this.applyPlayerHidden();
 
     for (const [wid, e] of state.entities) {
       // Terrain chunks: TerrainRenderer (idempotent; rebuilds a flat
@@ -361,12 +399,19 @@ export class EntityLayer {
         if (!tracked.animator && this.animations) {
           tracked.animator = new CharacterAnimator(tracked.character.root, this.animations, { female: tracked.female });
         }
-        if (tracked.animator) playAction(tracked, e.action, clock);
-        tracked.animator?.update(dt, {
-          speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
-          vy: e.velocity?.ly ?? 0,
-          mode: e.locomotion?.mode ?? 0,
-        });
+        // The server's clip (EA21) when it sends one; otherwise the move and the motion decide.
+        const plan = planClip(e.animation, this.clipMap, clock.tick, clock.tickHz);
+        const planActs = plan !== null && (plan.layers.upper || !plan.loop);
+        if (tracked.animator && !planActs) playAction(tracked, e.action, clock);
+        tracked.animator?.update(
+          dt,
+          {
+            speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
+            vy: e.velocity?.ly ?? 0,
+            mode: e.locomotion?.mode ?? 0,
+          },
+          plan,
+        );
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
         tracked.object.scale.set(t.sx, t.sy, t.sz);
@@ -554,6 +599,12 @@ function highlight(obj: THREE.Object3D, mode: keyof typeof HIGHLIGHT): void {
   });
 }
 
+let moveSound: ((event: string, x: number, y: number, z: number) => void) | null = null;
+/** Where a move's sounds go (the game's audio engine); null: silent. */
+export function setMoveSound(fn: typeof moveSound): void {
+  moveSound = fn;
+}
+
 /**
  * Play the combat move the server says the character is in, from the
  * moment it started; back to locomotion when it's over. A guard is on the
@@ -569,6 +620,17 @@ function playAction(t: TrackedMesh, row: ActionRow | undefined, clock: ServerClo
     return;
   }
   const offset = Math.max(0, (clock.tick - row.started) / clock.tickHz);
+  // The move's sounds (content/combat): one as it starts, one on the hit frame.
+  if (moveSound && move.sound) {
+    const at = t.object.position;
+    if (move.sound.start && offset < 0.15) moveSound(move.sound.start, at.x, at.y, at.z);
+    if (move.sound.hit && move.hitAt !== undefined && offset < move.hitAt) {
+      const hit = move.sound.hit;
+      setTimeout(() => {
+        if (t.actionKey === key && moveSound) moveSound(hit, t.object.position.x, t.object.position.y, t.object.position.z);
+      }, (move.hitAt - offset) * 1000);
+    }
+  }
   t.animator!.play(move.clip, {
     offset: move.held ? offset % move.duration : offset,
     loop: move.held === true,

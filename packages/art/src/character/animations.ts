@@ -30,7 +30,10 @@ export interface AnimationSourceInfo {
 }
 
 export interface AnimationManifest {
-  version: 2;
+  /** 2: the converter's; 3 adds `locomotion` (content/animation/animations.json). */
+  version: 2 | 3;
   sources: AnimationSourceInfo[];
   clips: AnimationClipInfo[];
+  /** v3 only: the base-clip state machine (art `pickLocomotion`). */
+  locomotion?: import("../media/locomotion.js").LocomotionGraph;
 }

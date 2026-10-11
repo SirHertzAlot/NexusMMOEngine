@@ -4,14 +4,13 @@
  * just starts at the defaults.
  */
 
+import { t } from "../i18n.js";
+
 export const AUDIO_BUSES = ["effects", "interface", "ambience"] as const;
 export type AudioBus = (typeof AUDIO_BUSES)[number];
 
-export const BUS_LABELS: Record<AudioBus, string> = {
-  effects: "combat",
-  interface: "interface",
-  ambience: "ambience",
-};
+/** What a bus is called in the settings menu (the string table's `audio.bus.<id>`). */
+export const busLabel = (b: AudioBus): string => t(`audio.bus.${b}`);
 
 export interface Volumes {
   /** 0..1 each. */

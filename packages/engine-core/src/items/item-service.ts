@@ -24,7 +24,7 @@ import type { SimWorld } from "../world.js";
 import type { Held } from "@mmo-engine/art/character";
 import { HAND_CODE, HAND_NAME, type ItemDefs } from "./item-defs.js";
 import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
-import { HandSlot, ItemStore, ItemWhere } from "./item-store.js";
+import { ARMOUR_SLOTS, ArmourSlot, HandSlot, ItemStore, ItemWhere, type ArmourSlotName } from "./item-store.js";
 
 /** Height above the ground a lying item rests at, metres. */
 const REST_HEIGHT = 0.06;
@@ -97,6 +97,26 @@ export class ItemService implements SimSystem {
   }
 
   /**
+   * A scene-placed item (data-driven entities): lies at (x, z) for anyone and
+   * never despawns on the timer. Placed again each boot, so the scene spawner
+   * discards the old one first (`discardGround`).
+   */
+  placeFixture(sim: SimWorld, def: number, x: number, z: number): { item: number; eid: number } {
+    const r = this.spawnDrop(sim, def, x, z, 0);
+    WorldItem.despawnAt[r.eid] = 0xffffffff;
+    return r;
+  }
+
+  /** Remove `item` if it is still lying on the ground (not one picked up since); true when it was. */
+  discardGround(sim: SimWorld, item: number): boolean {
+    const eid = this.entityOf.get(item);
+    if (eid === undefined) return false;
+    this.removeGroundEntity(sim, item, eid);
+    this.store.destroy(item);
+    return true;
+  }
+
+  /**
    * Pick a ground item up into `character`'s bag. `avatar` is the
    * character's entity slot (for the range check); `entity` the ground
    * item's wire id.
@@ -141,17 +161,36 @@ export class ItemService implements SimSystem {
   }
 
   /**
+   * Wear armour from the bag (U10): it goes to its slot, and what that
+   * slot wore goes back to the bag. Refused when the item isn't wearable,
+   * isn't in the bag, or the bag has no room for what comes out.
+   */
+  wear(character: number, item: number): ItemResult {
+    if (!this.store.inBagOf(character, item)) return { ok: false, error: "you don't have that" };
+    const def = this.store.defs[this.store.slot(item)];
+    const slot = this.defs.slot[def];
+    const at = (ARMOUR_SLOTS as readonly string[]).indexOf(slot);
+    if (at < 0) return { ok: false, error: "you can't wear that" };
+    const out = this.store.worn(character)[at];
+    if (out !== 0 && this.store.emptySlots(character) < 1) return { ok: false, error: "your bag is too full to swap" };
+    this.store.wear(character, item, at);
+    if (out !== 0) this.store.putInBag(character, out);
+    return { ok: true, message: `wearing ${this.defs.names[def]}` };
+  }
+
+  /**
    * Hold an item from the bag (M3b): it goes to its hand, and what that
    * hand held goes back to the bag. A two-handed item empties both hands;
-   * an off-hand item displaces a two-handed one. Refused when the item
-   * can't be held, isn't in the bag, or the bag has no room for what
-   * comes out.
+   * an off-hand item displaces a two-handed one. Armour goes to its slot
+   * instead (U10). Refused when the item can't be held or worn, isn't in
+   * the bag, or the bag has no room for what comes out.
    */
   equip(character: number, item: number): ItemResult {
     if (!this.store.inBagOf(character, item)) return { ok: false, error: "you don't have that" };
     const def = this.store.defs[this.store.slot(item)];
     const hand = this.defs.hand[def];
-    if (hand === HAND_CODE.none) return { ok: false, error: "you can't hold that" };
+    if (hand === HAND_CODE.none && this.defs.slot[def] === "none") return { ok: false, error: "you can't hold that" };
+    if (hand === HAND_CODE.none) return this.wear(character, item);
     const hands = this.store.hands(character);
     const main = hands[HandSlot.Main];
     const off = hands[HandSlot.Off];
@@ -180,13 +219,30 @@ export class ItemService implements SimSystem {
     return hand === HAND_CODE.main ? ["main"] : hand === HAND_CODE.off ? ["off"] : hand === HAND_CODE.both ? ["main", "off"] : null;
   }
 
-  /** Put what a hand holds back in the bag. */
-  unequip(character: number, hand: "main" | "off"): ItemResult {
-    const item = this.store.hands(character)[hand === "main" ? HandSlot.Main : HandSlot.Off];
-    if (!item) return { ok: false, error: "that hand is empty" };
+  /** Put what a hand holds, or an armour slot wears, back in the bag. */
+  unequip(character: number, slot: "main" | "off" | ArmourSlotName): ItemResult {
+    if (slot === "main" || slot === "off") {
+      const item = this.store.hands(character)[slot === "main" ? HandSlot.Main : HandSlot.Off];
+      if (!item) return { ok: false, error: "that hand is empty" };
+      if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
+      this.store.putInBag(character, item);
+      return { ok: true, message: `put away ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+    }
+    const at = (ARMOUR_SLOTS as readonly string[]).indexOf(slot);
+    const item = this.store.worn(character)[at];
+    if (!item) return { ok: false, error: "that slot is empty" };
     if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
     this.store.putInBag(character, item);
-    return { ok: true, message: `put away ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+    return { ok: true, message: `took off ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+  }
+
+  /** The worn armour stats added up (U10 mitigation feeds on the `armour` total). */
+  armourTotal(character: number): number {
+    let total = 0;
+    for (const id of this.store.worn(character)) {
+      if (id !== 0) total += this.defs.stats[this.store.defs[this.store.slot(id)]]?.armour ?? 0;
+    }
+    return total;
   }
 
   /** The models a character holds (for its appearance; empty hands are left out). */
@@ -266,7 +322,7 @@ export class ItemService implements SimSystem {
       if (row.def < 0 || row.def >= this.defs.count) continue;
       this.store.restore(row);
       n++;
-      if (row.kind === LedgerKind.Bag || row.kind === LedgerKind.Hold) this.outfitted.add(row.owner);
+      if (row.kind === LedgerKind.Bag || row.kind === LedgerKind.Hold || row.kind === LedgerKind.Wear) this.outfitted.add(row.owner);
       else if (row.kind === LedgerKind.Ground) this.placeOnGround(sim, row.id, row.x, row.z, 0);
     }
     return n;
@@ -321,11 +377,17 @@ export class ItemService implements SimSystem {
     const out: InventoryMessage["bag"] = [];
     for (let i = 0; i < bag.length; i++) out.push(bag[i] === 0 ? null : this.view(bag[i]));
     const hands = this.store.hands(character);
+    const wornItems = this.store.worn(character);
+    const worn: NonNullable<InventoryMessage["worn"]> = {};
+    ARMOUR_SLOTS.forEach((name, i) => {
+      worn[name] = wornItems[i] ? this.view(wornItems[i]) : null;
+    });
     return {
       kind: "inventory",
       bag: out,
       main: hands[HandSlot.Main] ? this.view(hands[HandSlot.Main]) : null,
       off: hands[HandSlot.Off] ? this.view(hands[HandSlot.Off]) : null,
+      worn,
     };
   }
 
@@ -343,6 +405,7 @@ export class ItemService implements SimSystem {
       rank: defs.ranks[d],
       color: defs.colors[d],
       hand: HAND_NAME[defs.hand[d]],
+      slot: defs.slot[d],
       stats: { ...defs.stats[d] },
       durability: Math.round(this.store.durability[slot]),
       model: defs.models[d],

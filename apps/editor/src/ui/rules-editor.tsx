@@ -10,10 +10,11 @@
  */
 
 import * as React from "react";
+import { DocBar } from "./doc-bar.js";
+import { useSaveTask } from "./use-save-task.js";
 import {
   getRuleFile,
   listRuleFiles,
-  RulesSaveError,
   saveRuleFile,
 } from "../rules-client.js";
 import {
@@ -24,17 +25,9 @@ import {
   type PathSegment,
   type RuleIssueView,
 } from "../rules-tree.js";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  SectionTitle,
-} from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
+import { sameValue } from "../document-state.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 
 /** What each file sets (content/rules/README.md, one line each). */
 const FILE_BLURBS: Record<string, string> = {
@@ -182,16 +175,15 @@ function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: Node
           <p className="text-xs text-muted-foreground">Empty list.</p>
         )}
         <div className="flex items-center gap-2">
-          <select
+          <Select size="xs"
             value={addKind}
             onChange={(e) => setAddKind(e.target.value as LeafKind)}
             aria-label={`New item kind for ${path}`}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
           >
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>{k}</option>
             ))}
-          </select>
+          </Select>
           <Button size="sm" variant="outline" onClick={() => onChange([...value, blankOf(addKind)])}>
             Add item
           </Button>
@@ -232,17 +224,16 @@ function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: Node
         ) : (
           <span className="font-mono text-xs text-muted-foreground">null</span>
         )}
-        <select
+        <Select size="xs"
           value={kind}
           onChange={(e) => onChange(blankOf(e.target.value as LeafKind))}
           aria-label={`Kind of ${path || "root"}`}
           title="Change this value's kind (replaces it with a blank)"
-          className="h-8 rounded-md border border-input bg-background px-1 text-xs text-muted-foreground"
         >
           {KIND_OPTIONS.map((k) => (
             <option key={k} value={k}>{k}</option>
           ))}
-        </select>
+        </Select>
         {onRemove !== null && depth > 0 && (
           <span className="text-[11px] text-muted-foreground">remove with × above</span>
         )}
@@ -259,10 +250,12 @@ export function RulesPanel(): React.JSX.Element {
   const [pristine, setPristine] = React.useState<unknown>(null);
   const [missing, setMissing] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [issues, setIssues] = React.useState<RuleIssueView[]>([]);
-  const [savedNote, setSavedNote] = React.useState<string | null>(null);
+  const task = useSaveTask<RuleIssueView>();
+  const { issues, busy: saving } = task;
+  // Red status is the error line, green is the "saved" note.
+  const error = task.status?.tone === "bad" ? task.status.text : null;
+  const savedNote = task.status?.tone === "ok" ? task.status.text : null;
+  const setError = (text: string): void => task.setStatus({ tone: "bad", text });
 
   React.useEffect(() => {
     let live = true;
@@ -278,18 +271,13 @@ export function RulesPanel(): React.JSX.Element {
     };
   }, []);
 
-  const dirty =
-    content !== null &&
-    pristine !== null &&
-    JSON.stringify(content) !== JSON.stringify(pristine);
+  const dirty = content !== null && pristine !== null && !sameValue(content, pristine);
 
   async function onSelect(name: string): Promise<void> {
     if (dirty && !window.confirm("Discard unsaved changes to this file?")) return;
     setSelected(name);
     setLoading(true);
-    setError(null);
-    setIssues([]);
-    setSavedNote(null);
+    task.clear();
     try {
       const res = await getRuleFile("", name);
       setContent(res.content);
@@ -306,30 +294,33 @@ export function RulesPanel(): React.JSX.Element {
 
   async function onSave(): Promise<void> {
     if (selected === null || content === null) return;
-    setSaving(true);
-    setError(null);
-    setSavedNote(null);
-    try {
-      await saveRuleFile("", selected, content);
-      setPristine(content);
-      setIssues([]);
-      setMissing(false);
-      setSavedNote("Saved — validated, written back pretty-printed.");
-    } catch (err) {
-      if (err instanceof RulesSaveError) {
-        setIssues(err.issues);
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      setSaving(false);
-    }
+    // A refusal shows as the issue list, not as a status line.
+    if (!(await task.run(() => saveRuleFile("", selected, content), { ok: "Saved — validated, written back pretty-printed.", refused: () => null }))) return;
+    setPristine(content);
+    setMissing(false);
   }
 
   const fileName = selected === null ? "" : `${selected}.json`;
   const mine = issues.filter((i) => i.file === fileName);
   const others = issues.filter((i) => i.file !== fileName);
   const errors = groupIssues(mine);
+
+  // Toolbar Save target for the open rules file (no undo stack —
+  // edits apply directly, so Undo/Redo stay disabled).
+  useDocActions(() => {
+    if (selected === null || content === null) return null;
+    return {
+      label: `rules "${selected}.json"`,
+      canSave: dirty,
+      ...NO_HISTORY,
+      save: () => void onSave(),
+      canRevert: dirty,
+      revert: () => setContent(structuredClone(pristine)),
+      exportDoc: () => ({ name: `rules-${selected}`, data: content }),
+      // The host validates the whole rules set on Save and refuses a bad one, so an import only fills the draft.
+      importDoc: (incoming: unknown) => setContent(incoming),
+    };
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
@@ -418,7 +409,7 @@ export function RulesPanel(): React.JSX.Element {
                     value={content}
                     onChange={(nv) => {
                       setContent(nv);
-                      setSavedNote(null);
+                      task.setStatus(null);
                     }}
                     onRemove={null}
                     errors={errors}
@@ -427,21 +418,16 @@ export function RulesPanel(): React.JSX.Element {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={() => void onSave()} disabled={saving || !dirty}>
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={saving || !dirty}
-                  onClick={() => {
+                <DocBar
+                  dirty={dirty}
+                  busy={saving}
+                  saveLabel={saving ? "Saving…" : "Save"}
+                  onSave={() => void onSave()}
+                  onRevert={() => {
                     setContent(pristine);
-                    setIssues([]);
-                    setError(null);
-                    setSavedNote(null);
+                    task.clear();
                   }}
-                >
-                  Revert
-                </Button>
+                />
                 <span className="text-xs text-muted-foreground">
                   Validated with the rules schemas on save; pretty-printed with
                   2 spaces.

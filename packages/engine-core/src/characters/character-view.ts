@@ -54,7 +54,7 @@ export interface SavedStateView {
 }
 
 /** Where a ledger row says the item is. */
-export type CharacterItemWhere = "bag" | "held" | "ground" | "created";
+export type CharacterItemWhere = "bag" | "held" | "worn" | "ground" | "created";
 
 /** One of the character's items, as of its latest ledger event. */
 export interface CharacterItemView {
@@ -217,6 +217,7 @@ function readCharacterItems(
 function whereName(kind: number): CharacterItemWhere {
   if (kind === LedgerKind.Bag) return "bag";
   if (kind === LedgerKind.Hold) return "held";
+  if (kind === LedgerKind.Wear) return "worn";
   if (kind === LedgerKind.Ground) return "ground";
   return "created";
 }

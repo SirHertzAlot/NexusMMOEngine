@@ -218,6 +218,12 @@ viewport, the outliner or the ECS list sets one selection model every
 controller reads. Every document edit is a `Command` with `do` and `undo`,
 so undo spans panels the way it does in Unity.
 
+The shell implements this selection path with `EditorSelectionModel`.
+The World outliner, ECS entity list and Play Mode viewport publish a
+selection's source, identity and component fields; the Details dock reads
+that one model and decomposes the selected object. More panel controllers
+can join the same model without adding selection-specific shell state.
+
 **Existing panels map without rewrites.** `EcsInspector` becomes the
 controller of the play-mode outliner, `PlayModeController` the toolbar's,
 rules and tables keep their stores as models. EA2 moves them behind the
@@ -228,8 +234,9 @@ contracts; behaviour does not change.
 The editor's visual language follows Google's
 [Material Design 3](https://m3.material.io/), dark scheme first, adapted
 for a dense desktop tool. Concept mockups of scene editing, play mode, the
-flow editor and the Modules window go with the PR (kept out of the repo
-like all media).
+flow editor and the Modules window live in
+[`editor-update-refs/`](editor-update-refs/). They are documentation assets
+only: the editor loads no runtime data from them.
 
 - **Colour roles, not colours.** One seed colour generates the scheme
   (primary, secondary, tertiary, error, and the surface-container ladder)
@@ -928,7 +935,9 @@ does, in order, with their output.
 
 ### 7c.3 Quest and dialog editor
 
-**Today.** Nothing is built. The roadmap has P1 (progression graphs:
+**Built (EA20).** The editor edits the files the server loads today (`content/quests/{quests,dialogs,npcs,steps}.json`), not the per-document `*.quest.json` and `*.dialog.json` files planned below, which the server cannot run. Code: `story-validate.ts`, `story-host.ts`, `story-model.ts`, `ui/story-editor.tsx`. Not yet: WFC slots, "Play from here", string ids.
+
+**Was.** Nothing was built. The roadmap has P1 (progression graphs:
 quests and dialog, `DUNGEONS-AND-LOOT.md` §9) and U11 (quest log,
 tracker, dialog). That doc puts quests and dialog in the "progression"
 domain, with dialog as beats and replies, generated on the WFC like
@@ -1050,8 +1059,17 @@ The editor gets an **Audio panel** in Art & audio:
 
 ### 7c.8 Localization
 
-**Today.** None. UI strings are hard-coded in the client's TSX; item
-and creature names are in the rules JSON.
+**Today.** The client's player-facing text (login, character screen, HUD
+frames, bag, quests, chat, settings, notices) goes through `t()`; the
+tables are `content/strings/<lang>.json` (English is the source) and the
+ICU subset, `t()`, the pseudo-locale and the table checks are shared code
+in `@mmo-engine/scene` (`strings.ts`; engine-core re-exports `t`). The
+client takes `?lang=` (try `?lang=pseudo`), the stored choice or the
+browser's language. The Strings panel (Story workspace) edits the tables
+through `/api/editor/strings`. Not yet: item, creature, quest and dialog
+names still come from the rules and quest JSON, not string ids; no
+"stale" status (a table is id to text, with no record of the English a
+translation was made from).
 
 **Plan.**
 
@@ -1061,9 +1079,13 @@ and creature names are in the rules JSON.
   and moves them behind `t("id")`; rules tables and dialog lines refer to
   string ids for names and text.
 - **Strings panel** in Story: a grid of id, source, each language and
-  status (missing, stale because the source changed, done), with
-  in-context preview in the HUD panel and dialog tester, and a
+  status (missing, invalid, extra; "stale because the source changed"
+  needs a record of the source each translation was made from and is not
+  built), with a preview of the picked string in each language and the
   pseudo-locale (longer, accented text) to catch layouts that break.
+  Saves are validated by the dev host with the same rules the panel
+  shows live. In-context preview in the HUD panel and dialog tester is
+  not built.
 - The client picks the language from settings and loads one table.
 
 ### 7c.9 Automated playtests
@@ -1136,7 +1158,7 @@ in the new structure. This is the seed for the tool implementation list.
 | Rules editor | editor tab (E11) | `core`: document panel |
 | Character records | editor tab (E10) | `characters` module: panel |
 | Admin console | client (A1 to A4) | `core`: Output log console in play mode; click-to-pick from the viewport |
-| Play telemetry graphs | server done, graphs wait on E5 (T2) | `debugger` module |
+| Play telemetry graphs | Live Ops reads typed `stats` snapshots at the server's bucket cadence (T2) | `liveops` workspace |
 | PICG selection cards, graph editor | planned (E6, E7) | `picg` module: Details cards and a graph panel |
 | Dungeon view | planned (E8) | `dungeon` module: `instance` scene tools |
 | World-scale editing | planned (E9) | `world` module: `world` scene tools |

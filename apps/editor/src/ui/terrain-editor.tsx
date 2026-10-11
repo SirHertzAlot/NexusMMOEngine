@@ -18,6 +18,7 @@
  */
 
 import * as React from "react";
+import { pushBake } from "../dock-feed.js";
 import {
   applyBrush,
   chunkKey,
@@ -26,6 +27,9 @@ import {
   type BrushTool,
 } from "@mmo-engine/protocol";
 import { TerrainView } from "../terrain/terrain-view.js";
+import { NO_HISTORY, useDocActions } from "./doc-actions.js";
+import { getTool } from "./tool-store.js";
+import { canSculptTerrain } from "./viewport-tools.js";
 import {
   generateTerrain,
   loadTerrain,
@@ -38,17 +42,7 @@ import {
 } from "../terrain/terrain-api.js";
 import { areaAround, areaRange, brushRadius, brushSlider, chunkAt, followCamera, regionAt, type ChunkRange } from "../inspectors/world-map.js";
 import { WorldMapView } from "./world-map.js";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  SectionTitle,
-} from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select, CheckField } from "./components.js";
 
 const TOOLS: Array<{ id: BrushTool; label: string; hint: string }> = [
   { id: "raise", label: "Raise", hint: "units/s" },
@@ -102,6 +96,9 @@ export function TerrainEditorPanel(): React.JSX.Element {
     if (!canvas) return;
     const view = new TerrainView(canvas, {
       onDab(x, z, dt, first) {
+        // Belt and braces with the view's own gate: dabs only sculpt
+        // with the move tool (select orbits instead).
+        if (!canSculptTerrain(getTool())) return;
         const grid = gridRef.current;
         if (!grid) return;
         const { tool: t, radius: r, strength: s } = brush.current;
@@ -190,6 +187,18 @@ export function TerrainEditorPanel(): React.JSX.Element {
     viewRef.current?.setWireframe(wireframe);
   }, [wireframe]);
 
+  // Toolbar Save target for the loaded area (no undo stack — sculpt
+  // dabs apply directly, so Undo/Redo stay disabled).
+  useDocActions(() => {
+    if (!world) return null;
+    return {
+      label: "terrain area",
+      canSave: dirtyCount > 0,
+      ...NO_HISTORY,
+      save: () => void save(),
+    };
+  });
+
   async function save(): Promise<void> {
     const grid = gridRef.current;
     if (!grid || dirtyRef.current.size === 0) return;
@@ -260,10 +269,15 @@ export function TerrainEditorPanel(): React.JSX.Element {
           `${r.reseatedProps} prop(s) moved onto the new ground.` +
           (r.stoppedPlayMode ? " Play mode was stopped." : ""),
       });
+      pushBake(
+        "terrain",
+        `${regenTarget === "area" ? "area" : `region ${regenTarget}`} regenerated: ${r.chunks} chunk(s), ${r.changed} differed from the spec, survey ${(r.surveyMs / 1000).toFixed(1)} s, ${r.reseatedProps} prop(s) moved`,
+      );
       showWorld(await loadTerrain(areaRef.current), true);
       void refreshOverview();
     } catch (err) {
       setMessage({ tone: "bad", text: errText(err) });
+      pushBake("terrain", `regenerate failed: ${errText(err)}`, false);
     } finally {
       setBusy(null);
     }
@@ -312,7 +326,7 @@ export function TerrainEditorPanel(): React.JSX.Element {
         <CardContent>
           <canvas ref={canvasRef} className="block h-[560px] w-full rounded-md" />
           <p className="mt-2 text-xs text-muted-foreground">
-            Left-drag sculpt · right-drag orbit · middle-drag pan · wheel zoom
+            Move tool: left-drag sculpts · select: left-drag orbits · right-drag orbits · middle-drag pans · wheel zooms
           </p>
         </CardContent>
       </Card>
@@ -344,10 +358,7 @@ export function TerrainEditorPanel(): React.JSX.Element {
             <input id="terrain-strength" type="range" min={0.5} max={40} step={0.5}
               value={strength} onChange={(e) => setStrength(Number(e.target.value))} />
           </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input type="checkbox" checked={wireframe} onChange={(e) => setWireframe(e.target.checked)} />
-            Wireframe
-          </label>
+          <CheckField checked={wireframe} onChange={setWireframe} label="Wireframe" className="text-muted-foreground" />
 
           <div className="flex gap-2">
             <Button onClick={() => void save()} disabled={busy !== null || dirtyCount === 0}>
@@ -368,17 +379,13 @@ export function TerrainEditorPanel(): React.JSX.Element {
                 highlight={regenTarget === "area" ? null : regenRange}
                 onJump={jump}
               />
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
-                Follow camera (loads the area round it as you pan{dirtyCount > 0 ? "; paused: save first" : ""})
-              </label>
+              <CheckField checked={follow} onChange={setFollow} className="text-muted-foreground" label={`Follow camera (loads the area round it as you pan${dirtyCount > 0 ? "; paused: save first" : ""})`} />
               <SectionTitle>Regenerate from the world spec</SectionTitle>
               {overview.regenerate ? (
                 <p className="text-xs text-muted-foreground">Not available: {overview.regenerate}.</p>
               ) : (
                 <>
-                  <select
-                    className="rounded border border-input bg-background px-1.5 py-1 text-sm"
+                  <Select size="md"
                     value={regenTarget}
                     onChange={(e) => setRegenTarget(e.target.value)}
                     data-testid="regen-target"
@@ -393,7 +400,7 @@ export function TerrainEditorPanel(): React.JSX.Element {
                         </option>
                       );
                     })}
-                  </select>
+                  </Select>
                   <Button variant="secondary" size="sm" onClick={() => void regenerateFromSpec()} disabled={busy !== null || !regenRange}>
                     {busy === "regenerating" ? "Regenerating…" : "Regenerate"}
                   </Button>

@@ -40,6 +40,13 @@ service World
   # The record with its entity state: the target's backstop if the source dies
   - GetMigration(migrationId: string) => (migration: Migration)
 
+  # Slice D4: the region's committed dungeon runs, idempotent on instance
+  - ReportDungeonResults(input: ReportDungeonResultsInput) => (ingested: []string)
+
+  # Slice S2: cross-region presence (state: replace + query)
+  - SetPresence(input: SetPresenceInput) => ()
+  - QueryPresence(input: QueryPresenceInput) => (online: map<string,string>)
+
 struct ChunkRange
   - x0: int32
   - x1: int32
@@ -116,3 +123,41 @@ struct SnapshotReportInput
   - tick: uint64
   - entityCount: uint64
   - digest: string
+
+struct SetPresenceInput
+  - regionId: string
+  - names: []string
+
+struct QueryPresenceInput
+  - regionId: string
+  - names: []string
+
+struct ReportDungeonResultsInput
+  - regionId: string
+  - results: []DungeonRunResult
+
+struct DungeonRunResult
+  - instance: string
+  - dungeon: string
+  - entrance: string
+  # cleared | timeout | abandoned
+  - outcome: string
+  - startedAt: uint64
+  - endedAt: uint64
+  - members: []uint64
+  - kills: []DungeonKill
+  - deaths: []DungeonDeath
+  - loot: []DungeonLoot
+
+struct DungeonKill
+  - characterId: uint64
+  - kind: string
+  - count: uint64
+
+struct DungeonDeath
+  - characterId: uint64
+  - count: uint64
+
+struct DungeonLoot
+  - characterId: uint64
+  - def: uint64

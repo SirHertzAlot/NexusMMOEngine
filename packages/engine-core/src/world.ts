@@ -182,6 +182,15 @@ function writeComponentRows(
     Ac.seq[eid] = r.seq;
     Ac.yaw[eid] = r.yaw;
   }
+  const An = C.Animation;
+  for (const r of state.animations) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, An, eid);
+    An.clipId[eid] = r.clipId;
+    An.startTick[eid] = r.startTick;
+    An.rate[eid] = r.rate;
+    An.layerMask[eid] = r.layerMask;
+  }
   const R = C.CharacterRef;
   for (const r of state.characterRefs) {
     const eid = eidOf(r.wireId);
@@ -369,6 +378,7 @@ export class SimWorld {
     for (const r of state.appearances) take(r.wireId);
     for (const r of state.actions) take(r.wireId);
     for (const r of state.characterRefs) take(r.wireId);
+    for (const r of state.animations) take(r.wireId);
 
     let maxSlot = -1;
     for (const slot of wanted.keys()) if (slot > maxSlot) maxSlot = slot;
@@ -409,7 +419,7 @@ export class SimWorld {
    */
   spawnFromState(state: CollectedState): number[] {
     const ids = new Set<bigint>();
-    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.staminas, state.bodies, state.assets, state.locomotions, state.appearances, state.actions, state.characterRefs]) {
+    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.staminas, state.bodies, state.assets, state.locomotions, state.appearances, state.actions, state.characterRefs, state.animations]) {
       for (const r of block) ids.add(r.wireId);
     }
     const eids = new Map<bigint, number>();

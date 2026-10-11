@@ -23,13 +23,15 @@ export type ItemHand = "main" | "off" | "both" | "none";
  * - drop: an item from the bag onto the ground at the player's feet;
  * - equip: an item from the bag into its hand (M3b), swapping what was
  *   there back into the bag (a two-handed item empties both hands);
- * - unequip: what a hand holds back into the bag.
+ *   armour goes to its slot instead (U10);
+ * - unequip: what a hand holds, or an armour slot wears, back into the bag.
  */
 export type ItemAction =
   | { kind: "item"; action: "pickup"; entity: string }
   | { kind: "item"; action: "drop"; item: number }
   | { kind: "item"; action: "equip"; item: number }
-  | { kind: "item"; action: "unequip"; hand: "main" | "off" };
+  | { kind: "item"; action: "unequip"; hand: "main" | "off" }
+  | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 
 /** One item as its holder sees it. */
 export interface ItemView {
@@ -44,6 +46,8 @@ export interface ItemView {
   /** The rank's colour (#rrggbb), for names and borders. */
   color: string;
   hand: ItemHand;
+  /** Armour slot it is worn in (U10); "none" for held items, absent from older servers. */
+  slot?: string;
   /** The composed stats (power, armour, crit, …). */
   stats: Record<string, number>;
   /** Uses left before it breaks. */
@@ -56,12 +60,18 @@ export interface ItemView {
  * S→C (catalog §0x14): the player's bag, whole, after joining and after
  * every change. `bag[i]` is slot i's item, or null when the slot is empty.
  */
+/** Armour slots, in wear order. */
+export const ARMOUR_SLOT_NAMES = ["head", "chest", "hands", "legs", "ring", "amulet"] as const;
+export type ArmourSlotName = (typeof ARMOUR_SLOT_NAMES)[number];
+
 export interface InventoryMessage {
   kind: "inventory";
   bag: Array<ItemView | null>;
   /** What each hand holds (M3b); null: empty. A two-handed item is in `main`. */
   main?: ItemView | null;
   off?: ItemView | null;
+  /** What each armour slot wears (U10); null: empty. Absent from older servers. */
+  worn?: { [slot in ArmourSlotName]?: ItemView | null };
 }
 
 /**
@@ -184,7 +194,9 @@ export interface TreatmentMessage {
  * S->C (catalog 0x1b, M4): the player's own skills (0..max, and the
  * highest each has been), their familiarity with each item family used
  * (0..1), and the disciplines they have earned (`active`: the skills are at
- * its levels now, so what it unlocks can be used). Sent on joining and
+ * its levels now, so what it unlocks can be used). `requires` names each
+ * discipline's skill levels, and `toward` lists the ones not yet earned,
+ * so the character sheet can show the way to them. Sent on joining and
  * whenever a value (to a tenth) changes.
  */
 export interface SkillsMessage {
@@ -192,7 +204,15 @@ export interface SkillsMessage {
   max: number;
   skills: { id: string; name: string; value: number; peak: number }[];
   familiarity: { family: string; value: number }[];
-  disciplines: { id: string; name: string; active: boolean; unlocks: string[] }[];
+  disciplines: { id: string; name: string; active: boolean; unlocks: string[]; requires?: DisciplineRequirement[] }[];
+  /** Disciplines not yet earned, in rules order (absent from older servers). */
+  toward?: { id: string; name: string; unlocks: string[]; requires: DisciplineRequirement[] }[];
+}
+
+/** A skill (`skills` id) a discipline needs, and the level. */
+export interface DisciplineRequirement {
+  skill: string;
+  level: number;
 }
 
 /**
@@ -227,4 +247,90 @@ export interface SpellMessage {
   state: "started" | "done" | "stopped";
   seconds?: number;
   amount?: number;
+}
+
+/**
+ * C->S (catalog 0x1d, M5): ask to trigger an ability now.
+ */
+export interface AbilityTrigger {
+  kind: "trigger";
+  /** The ability id (server-defined; unknown ids are rejected). */
+  id: string;
+}
+
+/**
+ * S->C (catalog 0x1d, M5): how an ability trigger went. Broadcast like
+ * hits — the client's ability bar and cast bar read it.
+ */
+export interface AbilityMessage {
+  kind: "ability";
+  tick: number;
+  /** Who triggered, as a wire id. */
+  entity: string;
+  id: string;
+  state: "casting" | "queued" | "fired" | "interrupted" | "rejected";
+  /** Rejected: why ("unknown", "cooldown"). */
+  reason?: string;
+}
+
+/** A telegraph's shape on the ground plane (catalog 0x1e, M5). */
+export type TelegraphShapeView =
+  | { kind: "circle"; x: number; z: number; r: number }
+  | { kind: "cone"; x: number; z: number; yaw: number; range: number; halfAngle: number }
+  | { kind: "rect"; x: number; z: number; yaw: number; length: number; width: number };
+
+/**
+ * S->C (catalog 0x1e, M5): a telegraph warned, resolved, or cancelled.
+ * Broadcast — every client draws the warning; the server decides who the
+ * resolution hits. Entities are wire ids.
+ */
+export interface TelegraphMessage {
+  kind: "telegraph";
+  tick: number;
+  id: number;
+  source: string;
+  shape: TelegraphShapeView;
+  state: "warned" | "resolved" | "cancelled";
+  /** Warned: ticks until it lands. */
+  ticksUntilHit?: number;
+  /** Resolved: who was hit and how hard. */
+  hits?: { target: string; amount: number }[];
+}
+
+/**
+ * S->C (catalog 0x1f, M5): a buff or debuff was applied or removed.
+ * Broadcast; the client's status frame filters to the entities it shows.
+ */
+export interface StatusMessage {
+  kind: "status";
+  tick: number;
+  /** Who carries it, as a wire id. */
+  entity: string;
+  id: string;
+  state: "applied" | "removed";
+  stacks?: number;
+}
+
+/**
+ * C->S (catalog 0x20, M5): duel actions. `challenge` names the target's
+ * wire id; the rest act on the sender's own challenge or duel.
+ */
+export interface DuelAction {
+  kind: "duel";
+  action: "challenge" | "accept" | "decline" | "yield";
+  target?: string;
+}
+
+/**
+ * S->C (catalog 0x20, M5): duel events. Challenged/accepted/declined go
+ * to the pair; started/ended broadcast like hits. Entities are wire ids.
+ */
+export interface DuelMessage {
+  kind: "duel";
+  tick: number;
+  state: "challenged" | "accepted" | "declined" | "expired" | "started" | "ended";
+  a: string;
+  b: string;
+  reason?: "blood" | "yield" | "timeout" | "declined" | "expired" | "cancelled";
+  winner?: string;
 }

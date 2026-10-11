@@ -97,6 +97,48 @@ export interface MigrationRecord {
   updatedAt: number; // epoch ms
 }
 
+/**
+ * A committed dungeon run (roadmap D4): what a region's instance batch
+ * carries, recorded once per `instance` (replays are idempotent).
+ * Wire-compatible with engine-core's `InstanceResult`.
+ */
+export type DungeonRunOutcome = "cleared" | "timeout" | "abandoned";
+
+export interface DungeonRunResult {
+  instance: string;
+  dungeon: string;
+  entrance: string;
+  outcome: DungeonRunOutcome;
+  startedAt: number;
+  endedAt: number;
+  members: number[];
+  kills: { characterId: number; kind: string; count: number }[];
+  deaths: { characterId: number; count: number }[];
+  loot: { characterId: number; def: number }[];
+}
+
+/** A run as stored: who reported it and when. */
+export interface StoredDungeonRun extends DungeonRunResult {
+  regionId: string;
+  reportedAt: number; // epoch ms
+}
+
+export interface ReportDungeonResultsInput {
+  regionId: string;
+  results: DungeonRunResult[];
+}
+
+/** Character names playing on a region (slice S2 presence). */
+export interface SetPresenceInput {
+  regionId: string;
+  names: string[];
+}
+
+export interface QueryPresenceInput {
+  regionId: string;
+  names: string[];
+}
+
 /** A region as other regions see it (ListRegions): no secrets. */
 export interface RegionInfo {
   regionId: string;
@@ -167,6 +209,22 @@ export interface WorldStore {
   listBegunBefore(cutoffMs: number): Promise<string[]>;
   /** Delete final migrations last updated before `cutoffMs` (housekeeping). */
   pruneMigrations(cutoffMs: number): Promise<number>;
+
+  // -- dungeon runs (slice D4) --
+  /**
+   * Record one run. Returns true when stored, false when `instance` was
+   * already recorded (a retried batch): the caller still counts it
+   * ingested, so a replay never stores a run twice.
+   */
+  recordDungeonRun(run: StoredDungeonRun): Promise<boolean>;
+  /** Runs on record, oldest first; filtered by reporting region when given. */
+  listDungeonRuns(regionId?: string): Promise<StoredDungeonRun[]>;
+
+  // -- presence (slice S2) --
+  /** Replace the region's online character names. */
+  setPresence(regionId: string, names: string[]): Promise<void>;
+  /** Region per name for characters online now; null when nowhere. */
+  queryPresence(names: string[]): Promise<Map<string, string | null>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +248,24 @@ export interface WorldCore {
   getMigration(caller: string, migrationId: string): Promise<MigrationRecord>;
   /** Expire migrations begun longer ago than the timeout. Returns their ids. */
   expireMigrations(): Promise<string[]>;
+  /**
+   * Ingest a region's committed dungeon runs (slice D4). `caller` is the
+   * authenticated region id and must match `input.regionId`. Idempotent
+   * on `instance`: every input id is returned ingested, but a replayed
+   * run is stored only once.
+   */
+  reportDungeonResults(caller: string, input: ReportDungeonResultsInput): Promise<{ ingested: string[] }>;
+  /**
+   * Replace the region's online character names (slice S2 presence).
+   * `caller` must match `input.regionId`. State, not events: repeats are
+   * harmless, and logging out is an empty report.
+   */
+  setPresence(caller: string, input: SetPresenceInput): Promise<void>;
+  /**
+   * Where queried names play, by region (slice S2 presence). Absent or
+   * offline names map to null. `caller` must be a known region.
+   */
+  queryPresence(caller: string, input: QueryPresenceInput): Promise<{ online: Record<string, string | null> }>;
 }
 
 export interface WorldCoreOptions {

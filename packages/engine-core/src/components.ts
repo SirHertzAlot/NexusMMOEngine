@@ -96,6 +96,20 @@ export const Needs = defineComponent({
 });
 
 /**
+ * God mode (A4): a tag, never replicated. Every Health-loss path
+ * (combat blows, hunger, drowning, traps) skips a carrier; the `god`
+ * admin command adds and removes it.
+ */
+export const God = defineComponent();
+
+/**
+ * No-clip (A4): a tag, never replicated. Carriers move freely (vertical
+ * intent, no ground clamp, no gravity) and dungeon walls let them pass;
+ * the `noclip` admin command adds and removes it.
+ */
+export const Noclip = defineComponent();
+
+/**
  * BodyConfig — rigid-body description for the Jolt physics addon
  * (Phase 2). JS owns this component (authoritative config); the native
  * world owns the simulated state and writes results back into
@@ -152,6 +166,9 @@ export const COMPONENT_IDS = {
   Stamina: 12,
   CharacterRef: 13,
   Needs: 14,
+  God: 15,
+  Noclip: 16,
+  Animation: 17,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -331,4 +348,19 @@ export const WorldItem = defineComponent({
   owner: Types.f64,
   ownedUntil: Types.ui32,
   despawnAt: Types.ui32,
+});
+
+// ---------------------------------------------------------------------------
+// Animation (EA21): the server's clip decision for an entity — which clip,
+// when it started, at what rate, on which layers. The client renders bone
+// matrices from this; the server never computes bones. clipId 0 = no clip
+// (use locomotion fallback). layerMask bits: 1 = base (full body),
+// 2 = upper body only.
+// ---------------------------------------------------------------------------
+
+export const Animation = defineComponent({
+  clipId: Types.ui16,
+  startTick: Types.ui32,
+  rate: Types.f32,
+  layerMask: Types.ui8,
 });

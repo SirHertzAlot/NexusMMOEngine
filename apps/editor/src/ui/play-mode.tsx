@@ -18,7 +18,15 @@ import * as React from "react";
 import type { DebugResponse, DebugQuery } from "@mmo-engine/protocol";
 import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
+import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
+import { createStore } from "../store.js";
+import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel, useEdge } from "./play-setup.js";
+import { clientWindows, worldNodeOf } from "./play-launch.js";
+import { getFlow } from "../flow-client.js";
+import { resolveSpawnTarget } from "../flow-spawn.js";
+import { getSceneCameraPos } from "./camera-position.js";
+import { armPlayPopup, openPlayPopupShell, takePendingPopup } from "./play-popup.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { HudData } from "@mmo-engine/client/render";
 
@@ -49,12 +57,70 @@ interface OverlaySnapshot {
   tiles: DebugResponse | null;
 }
 
+/** Shared play-mode UI state: the debug dock drives the same entity-id
+ *  and auto-refresh the overlays query, and mirrors the lifecycle state. */
+export interface PlayUiState {
+  entityId: string;
+  autoRefresh: boolean;
+  pmState: PlayModeState;
+  paused: boolean;
+}
+
+export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle", paused: false });
+
+export function setPlayEntityId(entityId: string): void {
+  playUiStore.set((p) => ({ ...p, entityId }));
+}
+
+export function setPlayAutoRefresh(autoRefresh: boolean): void {
+  playUiStore.set((p) => ({ ...p, autoRefresh }));
+}
+
+/**
+ * The live controller, shared with the toolbar: its Pause/Step/Stop
+ * buttons act on this instead of just navigating to the panel. Set by
+ * the PlayModePanel while mounted; null when the panel is unmounted.
+ */
+let sharedController: PlayModeController | null = null;
+
+export function getPlayController(): PlayModeController | null {
+  return sharedController;
+}
+
+/** Toolbar Pause/Resume and Step: an admin command to the owned server; Pause toggles. */
+export async function requestPlayTick(command: "pause" | "resume" | "step"): Promise<void> {
+  const r = await sharedController?.admin(command);
+  if (r?.ok && command !== "step") playUiStore.set((p) => ({ ...p, paused: command === "pause" }));
+}
+
+/** Toolbar / shortcut stop: real controller.stop(), valid while running or starting. */
+export async function requestPlayStop(): Promise<void> {
+  const c = sharedController;
+  if (!c) return;
+  const s = c.getState();
+  if (s === "idle" || s === "stopping") return;
+  await c.stop();
+}
+
+// Toolbar Play / F5 / Play menu: start with the last setup. The panel owns the
+// controller and may not be mounted yet, so a request waits for it.
+let startHandler: (() => void) | null = null;
+let startPending = false;
+
+export function requestPlayStart(): void {
+  if (startHandler) startHandler();
+  else startPending = true;
+}
+
+/** For tests: whether a start request is waiting for the panel to mount. */
+export function isPlayStartPending(): boolean {
+  return startPending;
+}
+
 export function PlayModePanel(): React.JSX.Element {
-  const [pmState, setPmState] = React.useState<PlayModeState>("idle");
   const [detail, setDetail] = React.useState<string | undefined>();
   const [busy, setBusy] = React.useState(false);
-  const [entityId, setEntityId] = React.useState("");
-  const [autoRefresh, setAutoRefresh] = React.useState(true);
+  const { entityId, autoRefresh, pmState } = playUiStore.use();
   const [overlays, setOverlays] = React.useState<OverlaySnapshot>({
     waypoints: null,
     tiles: null,
@@ -67,10 +133,26 @@ export function PlayModePanel(): React.JSX.Element {
 
   const controllerRef = React.useRef<PlayModeController | null>(null);
   if (!controllerRef.current) {
-    const serverControl = createHostServerControl();
+    const serverControl = createHostServerControl("", playableScene);
     controllerRef.current = new PlayModeController(
       serverControl,
-      async (server) => {
+      async (server, index) => {
+        if (index > 0) {
+          // Extra load client: its own seeded login (one account per client;
+          // a second session of the play login would evict the game view's),
+          // headless, so it never drives the game view.
+          const username = server.loadUsers?.[index - 1];
+          if (!username) throw new Error(`no login for extra client ${index}`);
+          // Same simulated latency as the game view's client.
+          const c = await connectMirror(
+            server.url,
+            `mmo-editor-load-${index}`,
+            { username, password: server.password },
+            () => undefined,
+            { latency: loadLastSetup().latency },
+          );
+          return { debug: (q) => c.debug(q as DebugQuery), disconnect: () => c.disconnect() };
+        }
         // Credentials come from the host: it seeds a one-session dev user
         // for the server it just started (see src/host.ts).
         const c = await connectMirror(
@@ -80,10 +162,13 @@ export function PlayModePanel(): React.JSX.Element {
           () => {
             lastStateAt.current = performance.now();
           },
+          // The Play menu's simulated-latency option, honored here.
+          { latency: loadLastSetup().latency },
         );
         setMirror(c);
         return {
           debug: (q) => c.debug(q as DebugQuery),
+          admin: (command) => c.admin(command),
           disconnect: () => {
             setMirror(null);
             setHud(null);
@@ -93,36 +178,125 @@ export function PlayModePanel(): React.JSX.Element {
       },
       {
         // Snapshot the overlay inputs; they come back verbatim on exit.
-        onEnterPlay: () => ({ entityId, autoRefresh }),
+        onEnterPlay: () => ({ entityId: playUiStore.get().entityId, autoRefresh: playUiStore.get().autoRefresh }),
         onExitPlay: (saved) => {
           const s = saved as { entityId: string; autoRefresh: boolean } | null;
           if (s) {
-            setEntityId(s.entityId);
-            setAutoRefresh(s.autoRefresh);
+            setPlayEntityId(s.entityId);
+            setPlayAutoRefresh(s.autoRefresh);
           }
           setOverlays({ waypoints: null, tiles: null });
         },
         onStateChange: (s, d) => {
-          setPmState(s);
+          playUiStore.set((p) => ({ ...p, pmState: s, paused: s === "running" ? p.paused : false }));
           setDetail(d);
         },
       },
     );
   }
   const controller = controllerRef.current;
+  React.useEffect(() => {
+    sharedController = controller;
+    return () => {
+      if (sharedController === controller) sharedController = null;
+    };
+  }, [controller]);
 
   async function onStart(): Promise<void> {
+    let shells: Array<Window | null> = [];
     setBusy(true);
     setDetail(undefined);
     try {
-      await controller.start();
+      // The Play menu's honored start options: bots → MMO_BOTS, simulate
+      // mode (world only, no player), client count (1/2/4/8),
+      // fresh/keep (world snapshot/restore), and "Start from" (spawn target).
+      const setup = loadLastSetup();
+      // The flow names the world node; a start anywhere else opens the player's client.
+      const flow = (await getFlow().catch(() => null))?.content ?? null;
+      const spawnTarget = resolveSpawnTarget(setup.from, getSceneCameraPos(), worldNodeOf(flow));
+      const nodeStart = spawnTarget.kind === "node" && shouldConnectPlayer(setup);
+      // One window per account, opened in this click (a blocker eats later opens) and pointed at its address once the server is up.
+      shells = nodeStart ? Array.from({ length: clientCount(setup) }, (_, i) => window.open("", `mmo-editor-client-${i}`)) : [];
+      // "New window": open the popup in this click gesture (or the blocker
+      // eats it). The game view attaches when it mounts; a failed start
+      // closes the orphan popup.
+      const wantPopup = !nodeStart && setup.where === "window" && shouldConnectPlayer(setup);
+      const popup = wantPopup ? openPlayPopupShell("Play") : null;
+      if (wantPopup && !popup) {
+        setDetail("Popup blocked — the game view stays in the viewport. Allow popups and try again.");
+      }
+      armPlayPopup(popup);
+      await controller.start({
+        bots: botsCount(setup),
+        noClient: !shouldConnectPlayer(setup) || nodeStart,
+        network: useEdge(setup) ? "edge" : "core",
+        clients: clientCount(setup),
+        fresh: setup.fresh,
+        keep: setup.keep,
+        ...(spawnTarget.kind === "at" ? { spawn: { x: spawnTarget.x, z: spawnTarget.z } } : {}),
+      });
+      if (nodeStart && spawnTarget.kind === "node") {
+        const server = controller.serverInfo;
+        const shut = (): void => shells.forEach((w) => w?.close());
+        if (!server || !flow) {
+          shut();
+          setDetail(flow ? "the server is not running" : "the flow document could not be read");
+        } else {
+          try {
+            const res = await fetch("/api/editor/play/client", { method: "POST" });
+            const body = (await res.json()) as { ok?: boolean; url?: string; error?: string };
+            if (!res.ok || !body.url) throw new Error(body.error ?? `HTTP ${res.status}`);
+            const plan = clientWindows(setup, flow, spawnTarget.node, body.url, server);
+            if ("error" in plan) {
+              shut();
+              setDetail(plan.error);
+            } else {
+              const blocked = plan.windows.filter((w, i) => (shells[i] ? ((shells[i]!.location.href = w.url), false) : window.open(w.url) === null));
+              if (blocked.length > 0) setDetail("Popup blocked — allow popups to open the player's client windows.");
+            }
+          } catch (e) {
+            shut();
+            setDetail(`the player's client did not start: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      } else if (spawnTarget.kind === "default" && "note" in spawnTarget) {
+        setDetail(spawnTarget.note);
+      }
     } catch (err) {
-      // detail already carries the message via onStateChange(error)
+      // detail already carries the message via onStateChange(error).
+      // A failed start must not leave an orphan popup behind.
+      shells.forEach((w) => w?.close());
+      const orphan = takePendingPopup();
+      if (orphan) {
+        try {
+          orphan.close();
+        } catch {
+          /* ignore */
+        }
+      }
       void err;
     } finally {
       setBusy(false);
     }
   }
+
+  // Starts only from a stopped state: a click while running or starting does nothing.
+  const startRef = React.useRef<() => void>(() => undefined);
+  startRef.current = () => {
+    const st = controller.getState();
+    if (st === "idle" || st === "error") void onStart();
+  };
+  React.useEffect(() => {
+    const handler = (): void => startRef.current();
+    startHandler = handler;
+    if (startPending) {
+      startPending = false;
+      handler();
+    }
+    return () => {
+      if (startHandler === handler) startHandler = null;
+    };
+  }, []);
 
   async function onStop(): Promise<void> {
     setBusy(true);
@@ -176,12 +350,12 @@ export function PlayModePanel(): React.JSX.Element {
               </Button>
             )}
             {(running || pmState === "starting") && (
-              <Button variant="danger" onClick={onStop} disabled={busy || pmState !== "running"}>
+              <Button variant="danger" onClick={onStop} disabled={busy}>
                 {busy ? "Stopping…" : "⏹ Stop"}
               </Button>
             )}
             {pmState === "starting" && (
-              <p className="text-xs text-muted-foreground">Spawning local server…</p>
+              <p className="text-xs text-muted-foreground">Spawning local server… Stop stays available while it starts.</p>
             )}
             {pmState === "stopping" && (
               <p className="text-xs text-muted-foreground">
@@ -189,6 +363,18 @@ export function PlayModePanel(): React.JSX.Element {
               </p>
             )}
           </div>
+
+          {running && detail && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">{detail}</p>
+          )}
+
+          {running && !mirror && server && (
+            <p className="rounded-md border border-border p-3 text-xs text-muted-foreground" role="status">
+              {simulateLabel(loadLastSetup())}. The world ticks on the owned server with no player connected, so
+              there is no game view, and the overlays and tick timings (which ask through the player&apos;s
+              client) stay empty until you play with a client.
+            </p>
+          )}
 
           {running && mirror && server && (
             <div className="flex flex-col gap-2">
@@ -260,7 +446,7 @@ export function PlayModePanel(): React.JSX.Element {
               id="pm-autorefresh"
               type="checkbox"
               checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
+              onChange={(e) => setPlayAutoRefresh(e.target.checked)}
               disabled={!running}
             />
             <Label htmlFor="pm-autorefresh">Auto-refresh (2 s)</Label>
@@ -274,7 +460,7 @@ export function PlayModePanel(): React.JSX.Element {
             <div className="mt-2 flex gap-2">
               <Input
                 value={entityId}
-                onChange={(e) => setEntityId(e.target.value)}
+                onChange={(e) => setPlayEntityId(e.target.value)}
                 placeholder="entity wire id…"
                 aria-label="Entity wire id"
                 disabled={!running}
@@ -282,7 +468,7 @@ export function PlayModePanel(): React.JSX.Element {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEntityId(mirror?.playerEntity?.toString() ?? "")}
+                onClick={() => setPlayEntityId(mirror?.playerEntity?.toString() ?? "")}
                 disabled={!running || mirror?.playerEntity == null}
               >
                 My avatar

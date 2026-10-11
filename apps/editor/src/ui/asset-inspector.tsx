@@ -16,6 +16,7 @@
  */
 
 import * as React from "react";
+import { DataTable } from "./data-table.js";
 import { ManifestAssetProvider, type AssetManifest, type AssetLoadStatus } from "@mmo-engine/art/browser";
 import {
   Badge,
@@ -27,6 +28,49 @@ import {
   SectionTitle,
 } from "./components.js";
 import { ModelPreview } from "./model-preview.js";
+import { createStore } from "../store.js";
+
+/** Shared asset-browser UI: the dock search filters the panel's model
+ *  table, and picking a model previews it in the panel. */
+export interface AssetUiState {
+  filter: string;
+  previewId: string | null;
+}
+
+export const assetUiStore = createStore<AssetUiState>({ filter: "", previewId: null });
+
+export function setAssetFilter(filter: string): void {
+  assetUiStore.set((p) => ({ ...p, filter }));
+}
+
+export function setAssetPreview(previewId: string | null): void {
+  assetUiStore.set((p) => ({ ...p, previewId }));
+}
+
+/** Host-side pack scan, shared by the panel and the library dock so both
+ *  read one fetch. Refresh on demand (rescan). */
+export function useAssetManifest(): { scan: AssetScan | null; loading: boolean; refresh: () => void } {
+  const [scan, setScan] = React.useState<AssetScan | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/editor/assets");
+      setScan((await res.json()) as AssetScan);
+    } catch (err) {
+      setScan({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  return { scan, loading, refresh };
+}
 
 /** Table rows rendered at once (converted packs list thousands of models). */
 const MAX_ROWS = 200;
@@ -42,31 +86,10 @@ interface AssetScan {
 }
 
 export function AssetInspectorPanel(): React.JSX.Element {
-  const [scan, setScan] = React.useState<AssetScan | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const { scan, loading, refresh } = useAssetManifest();
   const [fallbacks, setFallbacks] = React.useState<AssetLoadStatus[] | null>(null);
   const [packLoading, setPackLoading] = React.useState(false);
-  const [filter, setFilter] = React.useState("");
-  const [previewId, setPreviewId] = React.useState<string | null>(null);
-
-  const refresh = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/editor/assets");
-      setScan((await res.json()) as AssetScan);
-    } catch (err) {
-      setScan({
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const { filter, previewId } = assetUiStore.use();
 
   async function loadPackInBrowser(): Promise<void> {
     if (!scan?.manifest || !loadable) return;
@@ -138,7 +161,7 @@ export function AssetInspectorPanel(): React.JSX.Element {
                   </SectionTitle>
                   <input
                     value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
+                    onChange={(e) => setAssetFilter(e.target.value)}
                     placeholder="filter, e.g. fantasy-kingdom/SM_Prop"
                     className="h-8 w-72 rounded-md border border-input bg-background px-2 text-xs"
                   />
@@ -146,7 +169,7 @@ export function AssetInspectorPanel(): React.JSX.Element {
                 {previewFile && <ModelPreview url={`/assets/${previewFile}`} />}
                 <ModelTable
                   selected={previewId}
-                  onSelect={setPreviewId}
+                  onSelect={setAssetPreview}
                   rows={matching.slice(0, MAX_ROWS).map((m) => ({
                     id: m.id,
                     file: m.file,
@@ -274,24 +297,18 @@ function ModelTable({
     );
   }
   return (
-    <table className="mt-1 w-full text-xs">
-      <tbody>
-        {rows.map((r) => (
-          <tr
-            key={r.id}
-            onClick={onSelect ? () => onSelect(r.id) : undefined}
-            className={
-              "border-b border-border/50 last:border-0" +
-              (onSelect ? " cursor-pointer hover:bg-accent" : "") +
-              (selected === r.id ? " bg-accent" : "")
-            }
-          >
-            <td className="py-1 pr-3 font-mono font-semibold">{r.id}</td>
-            <td className="py-1 font-mono text-muted-foreground">{r.file}</td>
-            <td className="py-1 text-right text-muted-foreground">{r.extra}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTable
+      headless
+      className="mt-1 w-full text-xs"
+      rows={rows}
+      rowKey={(r) => r.id}
+      selected={selected}
+      onPick={onSelect ? (r) => onSelect(r.id) : undefined}
+      columns={[
+        { id: "id", mono: true, cellClass: () => "font-semibold", cell: (r) => r.id },
+        { id: "file", mono: true, cell: (r) => <span style={{ color: "var(--m3-on-surface-variant)" }}>{r.file}</span> },
+        { id: "extra", align: "right", cell: (r) => <span style={{ color: "var(--m3-on-surface-variant)" }}>{r.extra}</span> },
+      ]}
+    />
   );
 }

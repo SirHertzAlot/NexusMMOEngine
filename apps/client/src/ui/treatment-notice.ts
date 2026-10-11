@@ -4,40 +4,35 @@
  */
 
 import type { TreatmentMessage } from "@mmo-engine/protocol";
-
-const WORDS: Record<TreatmentMessage["treatment"], { doing: string; did: string; do: string }> = {
-  bandage: { doing: "bandaging", did: "bandaged", do: "bandage" },
-  stump: { doing: "closing the stump of", did: "closed the stump of", do: "close the stump of" },
-  set: { doing: "setting", did: "set", do: "set" },
-};
+import { t } from "../i18n.js";
 
 /** "legLeft" -> "left leg"-ish: the id spelled out ("leg left"); the body message has proper names. */
 const spell = (part: string): string => part.replace(/([A-Z])/g, " $1").toLowerCase();
 
 /** The line to show, or null when there is nothing to say. `me` is the player's own wire id. */
-export function treatmentNotice(t: TreatmentMessage, me: string | null, partName?: string): string | null {
-  const part = (partName ?? spell(t.part)).toLowerCase();
-  const w = WORDS[t.treatment];
-  if (t.healer === me) {
-    const whose = t.patient === me ? "your" : "their";
-    switch (t.state) {
+export function treatmentNotice(msg: TreatmentMessage, me: string | null, partName?: string): string | null {
+  const part = (partName ?? spell(msg.part)).toLowerCase();
+  const treatment = msg.treatment;
+  if (msg.healer === me) {
+    const whose = msg.patient === me ? "self" : "other";
+    switch (msg.state) {
       case "started":
-        return `${w.doing[0].toUpperCase()}${w.doing.slice(1)} ${whose} ${part}${t.seconds ? ` (${Math.round(t.seconds)} s)` : ""}`;
+        return t("treatment.started", { treatment, whose, part, timed: msg.seconds ? "yes" : "no", seconds: Math.round(msg.seconds ?? 0) });
       case "done":
-        return `You ${w.did} ${whose} ${part}`;
+        return t("treatment.done", { treatment, whose, part });
       case "failed":
-        return `You failed to ${w.do} ${whose} ${part}`;
+        return t("treatment.failed", { treatment, whose, part });
       case "stopped":
-        return "Treatment stopped";
+        return t("treatment.stopped");
     }
   }
-  switch (t.state) {
+  switch (msg.state) {
     case "started":
-      return `Someone is ${w.doing} your ${part}`;
+      return t("treatment.startedOnYou", { treatment, part });
     case "done":
-      return `Your ${part} is treated`;
+      return t("treatment.doneOnYou", { part });
     case "failed":
-      return `Treating your ${part} failed`;
+      return t("treatment.failedOnYou", { part });
     case "stopped":
       return null;
   }

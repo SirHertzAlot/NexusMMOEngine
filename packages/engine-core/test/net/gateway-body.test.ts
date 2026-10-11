@@ -160,6 +160,8 @@ describe("gateway: skills (M4)", () => {
     assert.equal(joined.max, rules.skills.max);
     assert.deepEqual(joined.skills.map((k) => k.id), rules.skills.skills.map((k) => k.id));
     assert.deepEqual(joined.disciplines, []);
+    assert.deepEqual(joined.toward?.map((d) => d.id), rules.disciplines.disciplines.map((d) => d.id), "every discipline is a goal");
+    assert.deepEqual(joined.toward?.find((d) => d.id === "bladeMaster")?.requires, [{ skill: "cutting", level: 80 }, { skill: "parrying", level: 70 }]);
 
     const me = world.resolveWireId(BigInt(welcome.player_entity));
     const sheet = mastery.sheetOf(me);
@@ -175,6 +177,8 @@ describe("gateway: skills (M4)", () => {
     }
     const after = decodeControl<SkillsMessage>((await changed)[0]);
     assert.deepEqual(after.disciplines.map((d) => [d.id, d.active, d.unlocks]), [["bladeMaster", true, ["disarm"]]]);
+    assert.deepEqual(after.disciplines[0].requires, [{ skill: "cutting", level: 80 }, { skill: "parrying", level: 70 }]);
+    assert.equal(after.toward?.some((d) => d.id === "bladeMaster"), false, "no longer a goal");
     assert.deepEqual(after.familiarity, [{ family: "sword", value: rules.skills.familiarity.perUse }]);
     assert.equal(after.skills.find((k) => k.id === "cutting")!.value, 80);
     await client.close();

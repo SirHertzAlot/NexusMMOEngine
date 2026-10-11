@@ -9,7 +9,8 @@
       "pack": [2, 4],
       "weapons": ["dagger", "axe", "mace"],
       "chaseSpeed": 0.9,
-      "attackEverySeconds": 1.5
+      "attackEverySeconds": 1.5,
+      "drops": { "rolls": [1, 2], "chance": 0.8, "table": "goblin-spoils" }
     }
   }
 }

@@ -6,11 +6,11 @@
  * bit (and lands the avatar when revoked mid-air is left to gravity).
  *
  * Heal also makes the body whole (M2), and the gateway fills the mana pool
- * with it. God-mode waits for damage to exist (M2/M3), and time/weather for
- * a runtime clock design — both noted in the roadmap row rather than faked here.
+ * with it. God-mode (the God tag: combat, hunger, drowning and traps skip
+ * Health loss) rounds out the set.
  */
 
-import { hasComponent } from "bitecs";
+import { addComponent, hasComponent, removeComponent } from "bitecs";
 import { z } from "zod";
 import { Ability } from "@mmo-engine/protocol";
 import { restoreBody } from "../body.js";
@@ -64,6 +64,24 @@ export const FlyArgsSchema = z
 
 export type FlyArgs = z.infer<typeof FlyArgsSchema>;
 
+export const NoclipArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    on: z.boolean(),
+  })
+  .strict();
+
+export type NoclipArgs = z.infer<typeof NoclipArgsSchema>;
+
+export const GodArgsSchema = z
+  .object({
+    entity: z.string().min(1).max(32).default("me"),
+    on: z.boolean(),
+  })
+  .strict();
+
+export type GodArgs = z.infer<typeof GodArgsSchema>
+
 /** Move the entity to (x, z): ground snap + stilled velocity. Pure sim write. */
 export function applyTeleport(
   world: SimWorld,
@@ -107,4 +125,26 @@ export function applyFly(world: SimWorld, wireId: bigint, on: boolean): { ok: bo
   const abs = C.Locomotion.abilities[eid];
   C.Locomotion.abilities[eid] = on ? abs | Ability.Fly : abs & ~Ability.Fly;
   return { ok: true, message: `flight ${on ? "granted to" : "revoked from"} ${wireId}` };
+}
+
+/** Grant or revoke god-mode (the God tag: no Health loss anywhere). */
+export function applyGod(world: SimWorld, wireId: bigint, on: boolean): { ok: boolean; message: string } {
+  const eid = world.resolveWireId(wireId);
+  if (eid < 0 || !hasComponent(world.ecs, C.Health, eid)) {
+    return { ok: false, message: `entity ${wireId} has no Health` };
+  }
+  if (on) addComponent(world.ecs, C.God, eid);
+  else removeComponent(world.ecs, C.God, eid);
+  return { ok: true, message: `god-mode ${on ? "on for" : "off for"} ${wireId}` };
+}
+
+/** Grant or revoke no-clip (the Noclip tag: free flight, walls let go). */
+export function applyNoclip(world: SimWorld, wireId: bigint, on: boolean): { ok: boolean; message: string } {
+  const eid = world.resolveWireId(wireId);
+  if (eid < 0 || !hasComponent(world.ecs, C.Locomotion, eid)) {
+    return { ok: false, message: `entity ${wireId} has no Locomotion` };
+  }
+  if (on) addComponent(world.ecs, C.Noclip, eid);
+  else removeComponent(world.ecs, C.Noclip, eid);
+  return { ok: true, message: `no-clip ${on ? "on for" : "off for"} ${wireId}` };
 }

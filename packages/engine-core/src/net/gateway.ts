@@ -49,6 +49,7 @@
 import * as crypto from "node:crypto";
 import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
+import { TickTimings } from "../tick-timings.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
   decodeControl,
@@ -76,10 +77,15 @@ import {
   type SpellMessage,
   type HitMessage,
   type LifeMessage,
+  type AbilityMessage,
+  type TelegraphMessage,
+  type StatusMessage,
+  type DuelMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
   type DayClock,
+  type WeatherOverride,
   type WorldInfo,
   Ability,
   LocomotionMode,
@@ -89,7 +95,10 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
-import { applyFly, applyHeal, applyTeleport, FlyArgsSchema, HealArgsSchema, InjureArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { parseAppearanceArgs, applyAppearanceEdit } from "../admin/appearance.js";
+import { ensureAnimation } from "../animation.js";
+import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
+import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
@@ -133,6 +142,10 @@ import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
+import { AbilitySystem } from "../abilities.js";
+import { StatusSystem } from "../status.js";
+import { TelegraphSystem } from "../telegraph.js";
+import { DuelSystem } from "../duel.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -155,6 +168,19 @@ import {
   type CharacterRecord,
   type CharacterStore,
 } from "../characters/index.js";
+
+/**
+ * Cross-region presence (roadmap S2): the world directory behind friends
+ * lists elsewhere. The region reports its online character names and
+ * asks where names play; merges only ever add online rows, so a slow
+ * world delays presence but never flaps it.
+ */
+export interface PresenceAdapter {
+  /** Replace this region's online character names; fire-and-forget. */
+  report(names: string[]): void;
+  /** Region per name for characters online anywhere; null when nowhere. */
+  query(names: string[]): Promise<Record<string, string | null>>;
+}
 
 export interface GatewayOptions {
   /** Port to bind; 0 = ephemeral (listen() returns the actual port). */
@@ -199,6 +225,11 @@ export interface GatewayOptions {
   partyStore?: PartyStore;
   /** Friends and blocks persistence (S2c). Default: in memory; the production server passes a SqliteSocialStore. */
   socialStore?: SocialStore;
+  /**
+   * Cross-region presence (S2): the world directory behind friends lists
+   * elsewhere. Absent: presence stays local (unit tests, standalone dev).
+   */
+  presence?: PresenceAdapter;
   /**
    * The modular part catalog new characters' looks are checked against;
    * null/absent = structural checks only (a server without the art).
@@ -302,6 +333,12 @@ export interface GatewayOptions {
   };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
+  /**
+   * The spawn point was chosen for this run (the editor's Play menu
+   * "Start from"): characters enter there instead of where they were
+   * saved. Vitals and skills are still restored. Default false.
+   */
+  spawnOverridden?: boolean;
   /** A baked world's extent and coarse map, sent in every welcome. */
   worldInfo?: WorldInfo;
   /** The world's day clock, sent in every welcome (clients derive the time of day from the tick). */
@@ -368,6 +405,23 @@ const StanceSchema = z
   })
   .strict();
 
+/** 0x1d ability trigger (M5): the id is checked by AbilitySystem. */
+const AbilityTriggerSchema = z
+  .object({
+    kind: z.literal("trigger"),
+    id: z.string().min(1).max(64),
+  })
+  .strict();
+
+/** 0x20 duel actions (M5). */
+const DuelActionSchema = z
+  .object({
+    kind: z.literal("duel"),
+    action: z.enum(["challenge", "accept", "decline", "yield"]),
+    target: z.string().min(1).max(32).optional(),
+  })
+  .strict();
+
 /** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
 const TreatSchema = z
   .object({
@@ -424,8 +478,8 @@ export interface GatewayTick {
   tick: number;
   /** The FlatBuffers delta every client got this tick. */
   delta: Uint8Array;
-  /** This tick's gameplay events: hits (0x16) and deaths/respawns (0x17). */
-  events: Array<HitMessage | LifeMessage>;
+  /** This tick's gameplay events: hits (0x16), deaths/respawns (0x17), abilities (0x1d), telegraphs (0x1e), statuses (0x1f), duels (0x20). */
+  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage>;
   /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
   fullState(): Uint8Array;
 }
@@ -542,6 +596,11 @@ function parseHandoffState(state: unknown): z.infer<typeof HandoffStateSchema> |
   return r.success ? r.data : null;
 }
 
+/** A discipline's `requires` map as the wire's list (M4). */
+function requirements(requires: Readonly<Record<string, number>>): { skill: string; level: number }[] {
+  return Object.entries(requires).map(([skill, level]) => ({ skill, level }));
+}
+
 function parseAdminList(raw: string | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
@@ -571,6 +630,7 @@ export class Gateway {
       | "characterStore"
       | "guildStore"
       | "socialStore"
+      | "presence"
       | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
@@ -588,6 +648,7 @@ export class Gateway {
       | "magic"
       | "creatures"
       | "spawnPoint"
+      | "spawnOverridden"
       | "worldInfo"
       | "dayClock"
       | "playerAbilities"
@@ -636,12 +697,17 @@ export class Gateway {
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
+  private readonly spawnOverridden: boolean;
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
+  /** Forced weather (`weather` command); auto follows the sky. Resets on restart. */
+  private weatherOverride: WeatherOverride = "auto";
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
   private readonly blocks: BlockList;
   private readonly friends: FriendBook;
+  /** Cross-region presence adapter (S2); null: presence stays local. */
+  private readonly presence: PresenceAdapter | null;
   /** Parties, in memory (S3). */
   private readonly parties: PartyBook;
   private readonly guilds: GuildBook;
@@ -729,6 +795,7 @@ export class Gateway {
     this.parties = new PartyBook(() => this.clock(), opts.partyStore);
     this.blocks = new BlockList(opts.socialStore);
     this.friends = new FriendBook(opts.socialStore);
+    this.presence = opts.presence ?? null;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
@@ -741,6 +808,7 @@ export class Gateway {
     this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
+    this.spawnOverridden = opts.spawnOverridden ?? false;
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
     this.playerAbilities = opts.playerAbilities ?? Ability.Swim;
@@ -834,6 +902,9 @@ export class Gateway {
     return this.transport?.kind ?? null;
   }
 
+  /** Admin pause: the wall-clock driver skips ticks (step still runs one). */
+  private paused = false;
+
   /**
    * Begin the wall-clock tick driver (production). Tests skip this and
    * drive frame() manually with a synthetic clock instead.
@@ -841,7 +912,8 @@ export class Gateway {
   startTicking(): void {
     if (this.tickTimer) return;
     this.tickTimer = setInterval(() => {
-      this.loop.frame(this.clock());
+      if (this.paused) this.loop.rearm(this.clock());
+      else this.loop.frame(this.clock());
     }, STEP_MS / 2);
     this.tickTimer.unref();
   }
@@ -904,6 +976,14 @@ export class Gateway {
   }
 
   /**
+   * The current HTTP handler (null: none). Services that mount after
+   * construction (PCG, health) compose with it instead of replacing it.
+   */
+  getHttpHandler(): HttpHandler | null {
+    return this.httpHandler;
+  }
+
+  /**
    * The account behind a live session token (the welcome's
    * session_token), or null: how HTTP services authenticate callers.
    */
@@ -927,6 +1007,8 @@ export class Gateway {
   }
 
   private readonly tickTimeListeners: Array<(ms: number) => void> = [];
+  /** Per-tick durations and system costs, served to the editor's Debug workspace. */
+  private readonly tickTimings = new TickTimings();
 
   /** Called with each tick's wall time in ms, once the tick is done (E6). */
   addTickTimeListener(cb: (ms: number) => void): void {
@@ -976,6 +1058,12 @@ export class Gateway {
     const ms = performance.now() - t0;
     this.telemetry.tickMs(ms);
     for (const l of this.tickTimeListeners) l(ms);
+    this.tickTimings.endTick(ms);
+  }
+
+  /** Snapshot for the editor's Debug workspace (via the debug API). */
+  getTickTimings(): ReturnType<TickTimings["snapshot"]> {
+    return this.tickTimings.snapshot();
   }
 
   private runTick(tick: number): void {
@@ -983,11 +1071,21 @@ export class Gateway {
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
     const dt = STEP_MS / 1000;
-    for (const s of this.systems) s.step(sim, dt);
+    // Each system's cost feeds the editor's Debug workspace (tick timings).
+    const timings = this.tickTimings;
+    for (const s of this.systems) {
+      const t0 = performance.now();
+      s.step(sim, dt);
+      timings.recordSystem(s.name, performance.now() - t0);
+    }
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage> = [
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage> = [
       ...this.sendHits(sim, tick),
       ...this.sendLife(sim, tick),
+      ...this.sendAbilities(sim, tick),
+      ...this.sendTelegraphs(sim, tick),
+      ...this.sendStatuses(sim, tick),
+      ...this.sendDuels(sim, tick),
     ];
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
@@ -1079,6 +1177,105 @@ export class Gateway {
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
         for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out ability events this tick (catalog 0x1d, M5). */
+  private sendAbilities(sim: SimWorld, tick: number): AbilityMessage[] {
+    const all: AbilityMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof AbilitySystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs = events.map((e): AbilityMessage => ({
+        kind: "ability",
+        tick,
+        entity: String(sim.wireId(e.entity)),
+        id: e.id,
+        state: e.state,
+        ...(e.reason ? { reason: e.reason } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Ability, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out telegraph warnings, resolutions and cancellations (catalog 0x1e, M5). */
+  private sendTelegraphs(sim: SimWorld, tick: number): TelegraphMessage[] {
+    const all: TelegraphMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof TelegraphSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs = events.map((e): TelegraphMessage => ({
+        kind: "telegraph",
+        tick,
+        id: e.id,
+        source: String(sim.wireId(e.source)),
+        shape: e.shape,
+        state: e.state,
+        ...(e.ticksUntilHit !== undefined ? { ticksUntilHit: e.ticksUntilHit } : {}),
+        ...(e.hits ? { hits: e.hits.map((h) => ({ target: String(sim.wireId(h.target)), amount: h.amount })) } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out buff/debuff changes (catalog 0x1f, M5). */
+  private sendStatuses(sim: SimWorld, tick: number): StatusMessage[] {
+    const all: StatusMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof StatusSystem)) continue;
+      const changes = s.drainChanges();
+      if (changes.length === 0) continue;
+      const msgs = changes.map((c): StatusMessage => ({
+        kind: "status",
+        tick,
+        entity: String(sim.wireId(c.entity)),
+        id: c.id,
+        state: c.state,
+        ...(c.stacks !== undefined ? { stacks: c.stacks } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Status, encodeControl(m));
+      }
+      all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** Fan out duel events (catalog 0x20, M5). */
+  private sendDuels(sim: SimWorld, tick: number): DuelMessage[] {
+    const all: DuelMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof DuelSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      const msgs = events.map((e): DuelMessage => ({
+        kind: "duel",
+        tick,
+        state: e.state,
+        a: String(sim.wireId(e.a)),
+        b: String(sim.wireId(e.b)),
+        ...(e.reason ? { reason: e.reason } : {}),
+        ...(e.winner !== undefined ? { winner: String(sim.wireId(e.winner)) } : {}),
+      }));
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const m of msgs) this.sendEnvelope(r, MessageType.Duel, encodeControl(m));
       }
       all.push(...msgs);
     }
@@ -1374,6 +1571,8 @@ export class Gateway {
    * Put a freshly spawned avatar where its character last was, with the
    * health and stamina it had. A character saved dead (or never saved)
    * keeps the ordinary spawn: death and respawn are the rules' business.
+   * With spawnOverridden the position is not restored (the run asked for
+   * a spawn point), only the vitals.
    */
   private restoreCharacterState(eid: number, characterId: number): void {
     const saved = this.mastery && eid >= 0 ? this.characterStore.loadSkills?.(characterId) : null;
@@ -1384,10 +1583,12 @@ export class Gateway {
     }
     const st = eid >= 0 ? this.characterStore.loadState?.(characterId) : null;
     if (!st || !(st.health > 0)) return;
-    const T = C.Transform;
-    T.px[eid] = st.x;
-    T.pz[eid] = st.z;
-    T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+    if (!this.spawnOverridden) {
+      const T = C.Transform;
+      T.px[eid] = st.x;
+      T.pz[eid] = st.z;
+      T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+    }
     C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
     C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
   }
@@ -1519,7 +1720,11 @@ export class Gateway {
       max: rules.max,
       skills: rules.skills.map((k, i) => ({ id: k.id, name: k.name, value: tenth(sheet.value[i]), peak: tenth(sheet.peak[i]) })),
       familiarity: sheet.families().map(([family, value]) => ({ family, value: Math.round(value * 1000) / 1000 })),
-      disciplines: this.mastery.disciplinesOf(eid).map((d) => ({ id: d.id, name: d.name, active: d.active, unlocks: [...d.unlocks] })),
+      disciplines: this.mastery.disciplinesOf(eid).map((d) => {
+        const rule = this.mastery!.discipline(d.id);
+        return { id: d.id, name: d.name, active: d.active, unlocks: [...d.unlocks], ...(rule ? { requires: requirements(rule.requires) } : {}) };
+      }),
+      toward: this.mastery.goalsOf(eid).map((d) => ({ id: d.id, name: d.name, unlocks: [...d.unlocks], requires: requirements(d.requires) })),
     };
     const json = JSON.stringify(msg);
     if (!force && this.skillsSent.get(s) === json) return;
@@ -1806,6 +2011,12 @@ export class Gateway {
       case MessageType.Magic:
         this.onCast(s, payload);
         break;
+      case MessageType.Ability:
+        this.onAbility(s, payload);
+        break;
+      case MessageType.Duel:
+        this.onDuel(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -1857,6 +2068,16 @@ export class Gateway {
         query: "tiles",
         tiles: this.debugSource?.tiles() ?? [],
       };
+    } else if (q.query === "timings") {
+      const t = this.getTickTimings();
+      res = {
+        kind: "debug",
+        query: "timings",
+        ticks: t.ticks,
+        p50: t.p50,
+        p99: t.p99,
+        systems: t.systems,
+      };
     } else {
       this.sendError(s, 4003, "unknown debug query");
       return;
@@ -1897,7 +2118,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, items, give, drop, loot",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -1923,6 +2144,13 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "appearance") {
+      res = this.runAppearance(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else if (cmd.command === "spawnlist" || cmd.command === "spawn" || cmd.command === "despawn") {
       res = this.runSpawnCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
@@ -1943,6 +2171,73 @@ export class Gateway {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
         return;
+      }
+    } else if (cmd.command === "god") {
+      res = this.runGodCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "noclip") {
+      const parsed = NoclipArgsSchema.safeParse(cmd.args ?? {});
+      if (!parsed.success) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "usage: noclip {on, entity?}");
+        return;
+      }
+      const target = this.resolveTarget(s, parsed.data.entity);
+      if ("error" in target) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, target.error);
+        return;
+      }
+      res = { kind: "admin", command: cmd.command, ...applyNoclip(this.world, target.wireId, parsed.data.on) };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "time") {
+      const r = runTimeCommand(this.dayClock, this.serverTick, TICK_HZ, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+      if (r.changed && this.dayClock) {
+        const day = { seconds: this.dayClock.seconds, offset: this.dayClock.offset };
+        for (const other of this.sessions.values()) {
+          if (!other.welcomed || other.playerEntity === null) continue;
+          this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "time", day }));
+        }
+      }
+    } else if (cmd.command === "pause" || cmd.command === "resume") {
+      this.paused = cmd.command === "pause";
+      res = { kind: "admin", command: cmd.command, ok: true, message: this.paused ? "paused" : "running" };
+    } else if (cmd.command === "step") {
+      if (this.paused) this.loop.step();
+      res = {
+        kind: "admin",
+        command: cmd.command,
+        ok: this.paused,
+        message: this.paused ? `tick ${this.loop.stats().ticks}` : "step needs a paused server",
+      };
+    } else if (cmd.command === "weather") {
+      const r = parseWeatherCommand(this.weatherOverride, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+      if (r.weather !== undefined) {
+        this.weatherOverride = r.weather;
+        for (const other of this.sessions.values()) {
+          if (!other.welcomed || other.playerEntity === null) continue;
+          this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "weather", weather: r.weather }));
+        }
       }
     } else {
       this.logAdmin(s.username, cmd.command, false);
@@ -2011,6 +2306,36 @@ export class Gateway {
     const r = applySet(this.world, target.wireId, parsed.data.component, parsed.data.field, parsed.data.value);
     if (!r.ok) return { kind: "admin", command: "set", ok: false, message: r.message };
     return { kind: "admin", command: "set", ok: true, message: r.message };
+  }
+
+  /**
+   * `appearance` (roadmap A6): view and edit a character's look live.
+   * Args: {entity: "<u64>" | "me", args: string[]}. Parts and colours are
+   * validated against the character catalog; the change applies via
+   * sim.setLook and syncs like any appearance update.
+   */
+  private runAppearance(s: ClientSession, args: unknown): AdminResult {
+    const parsed = z.object({
+      entity: z.string().default("me"),
+      args: z.array(z.string()).default([]),
+    }).safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "appearance", ok: false, message: "usage: appearance {entity?: \"me\"|<id>, args?: string[]}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "appearance", ok: false, message: target.error };
+    }
+    const edit = parseAppearanceArgs(parsed.data.args);
+    if (!edit.ok) {
+      return { kind: "admin", command: "appearance", ok: false, message: edit.message };
+    }
+    const r = applyAppearanceEdit(this.world, target.wireId, edit.edit, this.characterCatalog ?? null);
+    if (!r.ok) return { kind: "admin", command: "appearance", ok: false, message: r.message ?? "appearance failed" };
+    // Equipment overlays (held models) still apply on top.
+    const eid = this.world.resolveWireId(target.wireId);
+    if (eid >= 0) this.refreshAvatarLook(eid, this.holderOf(s));
+    return { kind: "admin", command: "appearance", ok: true, message: r.message ?? "appearance updated" };
   }
 
   /**
@@ -2144,6 +2469,31 @@ export class Gateway {
     if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
     const r = applyFly(this.world, target.wireId, parsed.data.on);
     if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+    return { kind: "admin", command, ok: true, message: r.message };
+  }
+
+  private runGodCommand(s: ClientSession, command: string, args: unknown): AdminResult {
+    const parsed = GodArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command, ok: false, message: "usage: god {on, entity?}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
+    const r = applyGod(this.world, target.wireId, parsed.data.on);
+    if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
+    // Godhood peaks every skill (value and peak), like a lifetime of use
+    // at once; switching it off keeps what was learned.
+    if (parsed.data.on && this.mastery) {
+      const eid = this.world.resolveWireId(target.wireId);
+      if (eid >= 0) {
+        const sheet = this.mastery.sheetOf(eid);
+        const max = this.mastery.index.rules.max;
+        for (let i = 0; i < sheet.value.length; i++) {
+          sheet.value[i] = max;
+          sheet.peak[i] = max;
+        }
+      }
+    }
     return { kind: "admin", command, ok: true, message: r.message };
   }
 
@@ -2456,23 +2806,78 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
   }
 
+  /** Character names playing here (welcomed, connected): the presence report. */
+  private onlineNames(): string[] {
+    const out: string[] = [];
+    for (const s of this.sessions.values()) {
+      if (s.welcomed && s.socket) out.push(s.character?.name ?? s.username);
+    }
+    return out;
+  }
+
   /** Tell everyone who lists this character as a friend that its presence changed (S2b). */
   private friendPresence(s: ClientSession): void {
     if (!s.welcomed) return;
+    this.presence?.report(this.onlineNames());
     for (const w of this.friends.watchers(s.character?.name ?? s.username)) this.pushFriends(w);
+  }
+
+  /** Last friends list sent, per viewer: cross-region refreshes only re-push on change. */
+  private readonly lastFriendsPush = new Map<string, string>();
+
+  /** A viewer's friends with local presence (S2b). */
+  private friendRows(name: string, elsewhere: Record<string, string | null> = {}): { name: string; online: boolean }[] {
+    const r = this.findOnline(name);
+    return this.friends.list(name).map((f) => {
+      const o = this.findOnline(f);
+      if (o !== undefined) {
+        // A friend who blocks you looks offline, so presence never leaks past a block.
+        return { name: f, online: !this.blocks.isBlocked(o.username, r?.username ?? "") };
+      }
+      // Cross-region (S2): no username to check blocks against, so a
+      // blocked player elsewhere still shows online (documented gap).
+      return { name: f, online: elsewhere[f] != null };
+    });
   }
 
   /** Send a character their friends list with presence (S2b). */
   private pushFriends(name: string): void {
     const r = this.findOnline(name);
     if (!r) return;
-    const friends = this.friends.list(name).map((f) => {
-      const o = this.findOnline(f);
-      // A friend who blocks you looks offline, so presence never leaks past a block.
-      return { name: f, online: o !== undefined && !this.blocks.isBlocked(o.username, r.username) };
-    });
+    const friends = this.friendRows(name);
     const msg: FriendsState = { kind: "friends", friends };
     this.sendEnvelope(r, MessageType.Chat, encodeControl(msg));
+    this.lastFriendsPush.set(name.toLowerCase(), JSON.stringify(friends));
+  }
+
+  /**
+   * Refresh friends lists from the world directory (S2 cross-region
+   * presence): report our names, then ask where each online viewer's
+   * locally-offline friends play and re-push lists that gain rows.
+   * Called on a timer by the server; tests drive it directly.
+   */
+  async syncPresence(): Promise<void> {
+    const adapter = this.presence;
+    if (!adapter) return;
+    adapter.report(this.onlineNames());
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || !s.socket) continue;
+      const name = s.character?.name ?? s.username;
+      const missing = this.friends.list(name).filter((f) => !this.findOnline(f));
+      if (missing.length === 0) continue;
+      let elsewhere: Record<string, string | null>;
+      try {
+        elsewhere = await adapter.query(missing);
+      } catch {
+        continue;
+      }
+      if (this.findOnline(name) !== s) continue;
+      const friends = this.friendRows(name, elsewhere);
+      if (this.lastFriendsPush.get(name.toLowerCase()) === JSON.stringify(friends)) continue;
+      const msg: FriendsState = { kind: "friends", friends };
+      this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
+      this.lastFriendsPush.set(name.toLowerCase(), JSON.stringify(friends));
+    }
   }
 
   /** Add or remove a friend (S2b). Adding resolves only online characters, like blocking. */
@@ -3154,6 +3559,7 @@ export class Gateway {
       session_token: s.token,
       ...(this.worldInfo ? { world: this.worldInfo } : {}),
       ...(this.dayClock ? { day: this.dayClock } : {}),
+      weather: this.weatherOverride,
       ...(s.character ? { character: s.character } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
@@ -3240,6 +3646,103 @@ export class Gateway {
     if (avatar < 0) return;
     const err = combat.setStance(avatar, parsed.data.technique, parsed.data.aim);
     if (err) this.sendError(s, 4005, err);
+  }
+
+  /**
+   * Trigger an ability (catalog 0x1d, M5). The AbilitySystem decides
+   * whether it fires now, queues, or rejects; the outcome drains as an
+   * `ability` event next tick.
+   */
+  private onAbility(s: ClientSession, payload: Uint8Array): void {
+    const abilities = this.systems.find((x): x is AbilitySystem => x instanceof AbilitySystem);
+    if (!abilities || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "ability outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed ability");
+      return;
+    }
+    const parsed = AbilityTriggerSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed ability");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return;
+    abilities.trigger(avatar, parsed.data.id, this.tick);
+  }
+
+  /**
+   * Duel actions (catalog 0x20, M5): challenge/accept/decline/yield. The
+   * DuelSystem owns the flow; its events drain next tick.
+   */
+  private onDuel(s: ClientSession, payload: Uint8Array): void {
+    const duels = this.systems.find((x): x is DuelSystem => x instanceof DuelSystem);
+    if (!duels || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "duel outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed duel");
+      return;
+    }
+    const parsed = DuelActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed duel");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return;
+    const tick = this.tick;
+    switch (parsed.data.action) {
+      case "challenge": {
+        if (parsed.data.target === undefined) {
+          this.sendError(s, 4003, "challenge needs a target");
+          return;
+        }
+        let target: number;
+        try {
+          target = this.world.resolveWireId(BigInt(parsed.data.target));
+        } catch {
+          this.sendError(s, 4003, "bad target");
+          return;
+        }
+        if (target < 0) {
+          this.sendError(s, 4005, "no such target");
+          return;
+        }
+        if (!duels.challenge(avatar, target, tick)) this.sendError(s, 4005, "cannot challenge now");
+        break;
+      }
+      case "accept":
+        if (!duels.accept(avatar, tick)) this.sendError(s, 4005, "nothing to accept");
+        break;
+      case "decline":
+        if (!duels.decline(avatar, tick)) this.sendError(s, 4005, "nothing to decline");
+        break;
+      case "yield":
+        if (!duels.yield(avatar, tick)) this.sendError(s, 4005, "not dueling");
+        break;
+    }
   }
 
   /**
@@ -3384,7 +3887,7 @@ export class Gateway {
         ? { ok: false as const, error: "that hand can't hold anything" }
         : this.items.equip(holder, a.item);
     } else {
-      result = this.items.unequip(holder, a.hand);
+      result = this.items.unequip(holder, "hand" in a ? a.hand : a.slot);
     }
     if (!result.ok) {
       this.sendError(s, 4005, result.error);
@@ -3559,6 +4062,7 @@ export class Gateway {
     sim.setLook(eid, look);
     addComponent(sim.ecs, C.Action, eid);
     C.Action.move[eid] = 0;
+    ensureAnimation(sim, eid);
     if (characterId !== null) {
       addComponent(sim.ecs, C.CharacterRef, eid);
       C.CharacterRef.idHi[eid] = Math.floor(characterId / 4294967296);

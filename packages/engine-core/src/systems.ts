@@ -39,9 +39,11 @@ import { Ability, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import {
   AssetRef,
   BodyConfig,
+  God,
   Health,
   Locomotion,
   MotionType,
+  Noclip,
   PlayerIntent,
   ShapeKind,
   Transform,
@@ -315,6 +317,14 @@ export class CharacterSystem implements SimSystem {
     const py = Transform.py[e];
     const deepHere = canSwim && depth >= SWIM_DEPTH;
 
+    // No-clip: free flight on the intent's vertical axis, no ground clamp,
+    // no gravity, no landing or diving transitions. The breath still runs.
+    if (hasComponent(sim.ecs, Noclip, e)) {
+      L.mode[e] = LocomotionMode.Fly;
+      Velocity.ly[e] = my * FLY_VERTICAL_SPEED * moveSpeedFactor(sim, e);
+      return;
+    }
+
     let mode = L.mode[e];
     if (mode === LocomotionMode.Fly) {
       if (!canFly || flightPressed) {
@@ -362,7 +372,7 @@ export class CharacterSystem implements SimSystem {
     const under = surface !== null && Transform.py[e] + HEAD_HEIGHT < surface;
     const change = under ? -dt / BREATH_SECONDS : (BREATH_RECOVERY * dt) / BREATH_SECONDS;
     L.breath[e] = Math.min(1, Math.max(0, L.breath[e] + change));
-    if (under && L.breath[e] <= 0 && hasComponent(sim.ecs, Health, e)) {
+    if (under && L.breath[e] <= 0 && hasComponent(sim.ecs, Health, e) && !hasComponent(sim.ecs, God, e)) {
       Health.current[e] = Math.max(0, Health.current[e] - DROWN_DAMAGE_PER_SECOND * dt);
     }
   }

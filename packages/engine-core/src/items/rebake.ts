@@ -21,11 +21,11 @@ import { bakeLootPool, type PoolItem } from "@mmo-engine/compose";
 import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
 import { readPoolFile, type PoolItemLike } from "./item-defs.js";
 
-/** The pool entries held in bags and hands, each once, in pool order. */
+/** The pool entries held in bags, hands and armour slots, each once, in pool order. */
 export function heldFromLedger(rows: readonly ItemRow[], pool: readonly PoolItemLike[]): PoolItemLike[] {
   const defs = new Set<number>();
   for (const r of rows) {
-    if ((r.kind === LedgerKind.Bag || r.kind === LedgerKind.Hold) && r.def >= 0 && r.def < pool.length) defs.add(r.def);
+    if ((r.kind === LedgerKind.Bag || r.kind === LedgerKind.Hold || r.kind === LedgerKind.Wear) && r.def >= 0 && r.def < pool.length) defs.add(r.def);
   }
   return [...defs].sort((a, b) => a - b).map((d) => pool[d]);
 }

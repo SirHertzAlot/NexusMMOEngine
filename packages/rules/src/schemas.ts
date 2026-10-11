@@ -102,7 +102,7 @@ export const CombatSchema = z.strictObject({
     .strictObject({ novice: z.number().min(0).default(0.4), masterBonus: z.number().min(0).default(1.6), curve: positive.default(1.5) })
     .prefault({}),
   /** damage = base × mass^massPower × fit_eff × power × part multiplier × armour factor. */
-  damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5) }).prefault({}),
+  damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5), armourHalf: positive.default(10) }).prefault({}),
   /** Chance a blow lands on the aimed part: novice + masterBonus × m. */
   precision: z.strictObject({ novice: share.default(0.3), masterBonus: share.default(0.65) }).prefault({}),
   /**
@@ -346,6 +346,9 @@ export const StatsSchema = z.strictObject({
 /** Which hand an item is held in: one hand, the off hand, both, or not held (armour, jewels). */
 export const Hand = z.enum(["main", "off", "both", "none"]);
 
+/** Where worn armour sits: none for held items, a body slot for armour. */
+export const ArmourSlot = z.enum(["none", "head", "chest", "hands", "legs", "ring", "amulet"]);
+
 /**
  * An item base's physical properties (docs/MASTERY-AND-COMBAT.md §3.1):
  * what a blow with it does, not a damage number. A composed item (the loot
@@ -366,6 +369,8 @@ export const ItemBaseRulesSchema = z.strictObject({
   /** Uses before it breaks. */
   durability: z.number().int().positive().default(100),
   hand: Hand.default("none"),
+  /** Armour slot it is worn in (U10); "none" for held items. */
+  slot: ArmourSlot.default("none"),
   /** The technique a plain attack with it uses (a combat.json technique). */
   technique: id.default("bludgeon"),
   /**
@@ -389,8 +394,22 @@ export const ItemsSchema = z.strictObject({
 
 // ------------------------------------------------------------------ loot
 
+/** One line of a loot table: a named item base, how likely, how many. */
+export const LootEntrySchema = z.strictObject({
+  /** The item base dropped (an id in items.json). */
+  base: id,
+  /** Only this rank of the base (a rank id of the loot pool); absent: the lowest rank. */
+  rank: id.optional(),
+  /** Chance this line drops at all, 0..1. */
+  chance: share.default(1),
+  /** How many drop when it does (inclusive range). */
+  count: z.tuple([z.number().int().min(1), z.number().int().min(1)]).default([1, 1]),
+});
+
 /** Items on the ground and in bags (docs/ALPHA-PLAN.md, decisions D2 and D3). */
 export const LootSchema = z.strictObject({
+  /** Named loot tables: a creature's `drops.table` rolls every line of one. */
+  tables: z.record(id, z.strictObject({ entries: z.array(LootEntrySchema).min(1) })).optional(),
   /** Seconds a drop belongs to whoever earned it before anyone may take it. */
   ownershipSeconds: z.number().min(0).default(30),
   /** Seconds before an item left on the ground disappears. */
@@ -466,6 +485,8 @@ export const CreatureSchema = z.strictObject({
     .strictObject({
       rolls: z.tuple([z.number().int().min(0), z.number().int().min(0)]).default([1, 2]),
       chance: share.default(0.8),
+      /** A loot table (loot.json `tables`) whose lines also drop, each by its own chance. */
+      table: id.optional(),
     })
     .default({ rolls: [1, 2], chance: 0.8 }),
 });

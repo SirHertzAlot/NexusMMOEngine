@@ -191,6 +191,22 @@ describe("ItemService", () => {
     assert.equal(hasComponent(sim.ecs, C.WorldItem, eid), false);
   });
 
+  it("a scene-placed fixture never despawns on the timer, and discardGround removes it unless picked up", () => {
+    const { sim, avatar } = world();
+    const items = new ItemService({ defs, loot: loot({ despawnSeconds: 1 }), tickHz: 30 });
+    const fixed = items.placeFixture(sim, 0, 0, 0);
+    const taken = items.placeFixture(sim, 1, 0, 0);
+    sim.beginTick(30 * 60);
+    items.step(sim);
+    assert.equal(items.store.exists(fixed.item), true, "still lying there a minute on");
+    assert.equal(items.pickup(sim, 5, avatar(0, 0), sim.wireId(taken.eid)).ok, true);
+    assert.equal(items.discardGround(sim, taken.item), false, "in a bag now: left alone");
+    assert.equal(items.store.exists(taken.item), true);
+    assert.equal(items.discardGround(sim, fixed.item), true);
+    assert.equal(items.store.exists(fixed.item), false);
+    assert.equal(items.groundCount, 0);
+  });
+
   it("past the ground cap, the oldest drop goes", () => {
     const { sim } = world();
     const items = new ItemService({ defs, loot: loot({ maxGroundItems: 2 }), tickHz: 30 });
@@ -277,5 +293,36 @@ describe("ItemService held weapons (M3b)", () => {
     assert.deepEqual(items.heldModels(1), { main: "pack/SM_Wep_Sword_01" });
     assert.equal(items.mainHandDef(1), 0);
     assert.equal(items.mainHandDef(9), -1, "empty-handed");
+  });
+});
+
+describe("ItemService armour (U10)", () => {
+  const ARULES = (() => {
+    const r = engineDefaults();
+    r.items.bases.helm = { ...r.items.fallback, slot: "head", models: ["pack/SM_Prop_Helm_01"] };
+    return r;
+  })();
+  const APOOL: PoolItemLike[] = [poolItem("h", "helm", "common", "chest", 9, { armour: 5 })];
+
+  it("wears armour from the bag into its slot and back", () => {
+    const defs = new ItemDefs(APOOL, ARULES);
+    const items = new ItemService({ defs, loot: loot(), tickHz: 30 });
+    items.give(1, 0);
+    assert.ok(items.equip(1, 1).ok, "helm wears");
+    assert.deepEqual(items.inventoryOf(1).worn?.head?.id, 1);
+    assert.ok(items.unequip(1, "head").ok, "helm comes off");
+    assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "helm is back in the bag");
+    assert.equal(items.inventoryOf(1).worn?.head, null);
+  });
+
+  it("a new helm displaces the worn one back to the bag", () => {
+    const defs = new ItemDefs(APOOL, ARULES);
+    const items = new ItemService({ defs, loot: loot(), tickHz: 30 });
+    items.give(1, 0);
+    items.give(1, 0);
+    assert.ok(items.equip(1, 1).ok);
+    assert.ok(items.equip(1, 2).ok, "second helm displaces the first");
+    assert.deepEqual(items.inventoryOf(1).worn?.head?.id, 2);
+    assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "first helm is back in the bag");
   });
 });

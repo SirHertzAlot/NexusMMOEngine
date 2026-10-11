@@ -2,7 +2,6 @@
   "description": "Authoritative, data-oriented, ECS-capable procedural-generation MMO engine (slice 1.1 scaffolding)",
   "devDependencies": {
     "@types/node": "^25.0.0",
-    "@types/ws": "^8.18.1",
     "typescript": "^5.6.3"
   },
   "engines": {
@@ -13,13 +12,15 @@
   "scripts": {
     "bench": "npm run bench --workspace=@mmo-engine/bench",
     "bench:e5": "node scripts/bench-e5.mjs",
-    "build": "npm run build --workspaces --if-present",
+    "build": "node scripts/build.mjs",
     "client": "npm run dev --workspace=@mmo-engine/client",
-    "dev": "node scripts/dev.mjs",
-    "codegen": "bash scripts/codegen.sh",
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs --dev",
+    "codegen": "node scripts/codegen.mjs",
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",
     "editor:test": "npm test --workspace=@mmo-engine/editor",
+    "edge": "npm run server --workspace=@mmo-engine/edge",
     "server": "npm run server --workspace=@mmo-engine/engine-core",
     "bake:world": "npm run bake:world --workspace=@mmo-engine/engine-core",
     "convert:packs": "npm run build --workspace=@mmo-engine/art && npm run convert:packs --workspace=@mmo-engine/art --",
@@ -44,7 +45,11 @@
     "world": "npm run server --workspace=@mmo-engine/world-server",
     "world:db": "npm run db --workspace=@mmo-engine/world-server",
     "surfaces:fetch": "npm run surfaces:fetch --workspace=@mmo-engine/client --",
-    "stress:world": "node scripts/world-stress/run.mjs"
+    "stress:world": "node scripts/world-stress/run.mjs",
+    "package": "node scripts/package.mjs",
+    "deploy:local": "node scripts/deploy-local.mjs",
+    "playtest": "node scripts/playtest.mjs --all",
+    "build:native": "node scripts/build-native.mjs"
   },
   "version": "0.1.0",
   "workspaces": [
@@ -53,6 +58,8 @@
     "packages/mirror",
     "packages/art",
     "packages/rules",
+    "packages/scene",
+    "packages/modules",
     "packages/engine-core",
     "packages/bench",
     "packages/addons/template",
@@ -77,7 +84,9 @@
     "packages/addons/scatter",
     "packages/addons/picg",
     "packages/addons/geometry",
-    "packages/addons/perf-probe"
+    "packages/addons/perf-probe",
+    "packages/build",
+    "packages/playtest"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.0.3"

@@ -9,7 +9,7 @@ The design behind each item lives in the linked doc; this page is the
 index and the status board, not the spec.
 
 | Status | Meaning |
-|---|---|
+| --- | --- |
 | ✅ | Built and merged |
 | 🚧 | In progress: partly built and merged, or on a branch or open PR |
 | ⏭️ | Next up |
@@ -20,33 +20,38 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-03)
+## At a glance (2026-10-10)
 
-**55 items built, 20 in progress, 1 next, 16 planned.** The engine
-foundation is in: the 4 × 4 km world bake and chunk streaming, Jolt
-physics, navmesh and crowds, procedural generation (WFC, PICG, dungeon
-layouts and shells, loot and species bakes), the item ledger and
-character saves, and a first playable fight loop (damage, death and
-respawn, creature AI, drops, pickup, inventory and held weapons), with
-chat, parties, guilds and friends on top.
+**129 items built, 23 in progress, 10 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
+from the tables below). The game is playable end to end: `npm start`
+bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
+biomes and wild creatures), combat and the body (stances, defence
+contests, injuries, bleeding, dismemberment, Medicine, disciplines, mana
+and Mend), items and saves, quests and dialog, dungeon runs with the
+party, chat, parties, guilds, friends and blocks (all persisted) are in,
+with every player screen for them. The editor has play mode with the
+game view and debugger, selection cards, the PICG graph editor, the
+dungeon view and world-scale terrain editing. The edge/core split (E1 to
+E6) and the world server's migration and stress harness are built.
 
 What is left, by area:
 
-- **Editor**: the play-mode game view (E4, next) unblocks the debugger
-  (E5) and click-to-pick for the admin console; then PICG graph editing
-  (E6, E7), the dungeon view (E8) and world-scale editing (E9).
-- **Combat and body**: body parts, injuries and healing (M2), the rest of
-  melee (M3: fit and power, dismemberment), disciplines and Medicine (M4),
-  and mana with its first spender.
-- **Player interface**: hunger and thirst meters on the wire, skills and
-  injuries on the character sheet, the block list, chat reply, audio, and
-  the quest log (U11).
-- **Content**: quests and dialog (P1), dungeon instances (D4), the biome
-  registry.
-- **Scale**: the edge / core split (E2 to E6), region migration, the world
-  server's stress harness, terrain LOD rings.
-- **CI**: GitHub Actions jobs don't start (out of Actions credits), so
-  every change is checked locally with `npm test` and valgrind.
+- **Modular editor** (1c): the docking shell, workspace navigation,
+  persistent layouts, deep links, display-side data contracts, and a
+  UI-only flow graph are in progress. Scenes, executable game flow,
+  modules, the database editor, and production tools remain EA1 to EA26
+  follow-on work.
+- **Editor and admin**: the play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
+  mode, time and weather), and the appearance editor (A6).
+- **Gameplay**: armour and the rest of equipment (U10), recorded and
+  positional sounds (U4b), dungeon results ingested by the world server
+  (D4), ragdolls and character collision.
+- **Scale**: the client cutover to the edge (E3b), binary mirror frames
+  (E5a, E5b), the region↔world event stream (S2), accounts on the world
+  server (C1).
+- **Checks**: Helgrind on the threaded addons.
+- **CI**: GitHub Actions is out of credits, so every change is checked
+  locally with `npm test` and valgrind.
 
 ## Where things live
 
@@ -60,11 +65,10 @@ What is left, by area:
   inspection, navmesh and path overlays.
 
 `npm run client` starts the player's client, `npm run dev` the
-development environment (the server and the developer client), and
-`npm run editor` the editor.
+development environment (the server and editor), and `npm run editor`
+the editor alone.
 
-Debug views that are still in the client today move to the editor's play
-mode (E4, E5) and are then removed from the client.
+Developer tooling is mounted only in the editor's play mode.
 
 ---
 
@@ -73,17 +77,17 @@ mode (E4, E5) and are then removed from the client.
 Doc: [`EDITOR.md`](EDITOR.md)
 
 | # | Item | Status | Notes |
-|---|---|---|---|
-| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` is the development environment (until E4, the client with its developer panels; after, the editor's play mode) | ✅ | `scripts/dev.mjs`; the client's `dev:tools` script (Vite mode `devtools`) |
+| --- | --- | --- | --- |
+| E0 | **Separate commands**: `npm run client` is the player's client only; `npm run dev` starts the server and editor development environment | ✅ | `scripts/start.mjs` (`npm start -- --dev`) starts `@mmo-engine/editor`; `npm run editor` starts the editor alone |
 | E1 | ECS inspector (read-only, over the 0x0a debug queries) | ✅ | |
 | E2 | Play mode: start a local server, connect, path and navmesh-tile overlays | ✅ | |
 | E3 | Art asset pipeline: pack models to GLB, previews | ✅ | |
-| E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ⏭️ | Prerequisite for E5; shares the client's renderer (a shared package, not a copy) |
-| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | 🚧 | Interim: in the developer client (`npm run dev`), not the player's. Moves into the editor with E4 |
-| E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) §6 |
-| E7 | PICG slice 4: hierarchical graph editor | 📋 | [`PCG-SPEC.md`](PCG-SPEC.md) |
-| E8 | D3: dungeon view: pool browser, 3D view, edits as patches | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §3.5 |
-| E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | 📋 | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 4 |
+| E4 | **Play-mode game view**: the world renderer embedded in play mode, with the editor's panels around it | ✅ | Play-mode game view: the client's `WorldCanvas` in the Play Mode tab via `@mmo-engine/client/render`, stats row, lazy-loaded (#92). First-person view: V or the toggle button, own avatar hidden (#182). "New window" pops the live view into a popup via adoptNode, same GL context (#181) |
+| E5 | **Play-mode debugger**: dockable panels you move, resize, fade and hide; performance graphs (fps, frame time, draw calls and triangles over every pass, props by level of detail, GPU memory, network in/out, heap); wireframe and FX showcase toggles | ✅ | Debugger in the editor's play mode: the developer panels (DevHud, PerfHud, AdminConsole) over the game view, layout per browser, maximize (#111). The client no longer mounts developer panels. |
+| E6 | PICG slice 3: selection cards (an entity's components and graph parameters) | ✅ | Selection card in the play-mode debugger: click an entity, see every mirror component and, for a PICG asset, its graph, shape, seed and exposed parameters (#113) |
+| E7 | PICG slice 4: hierarchical graph editor | ✅ | PICG Graphs tab: graphs and linked parts on a canvas, enter and climb the hierarchy, node properties and parameter defaults, undo, saves validated by a cook preparation (#115) |
+| E8 | D3: dungeon view: pool browser, 3D view, edits as patches | ✅ | Dungeons tab: pool browser with map thumbnails and bake more, 3D view with picking, room role and archetype, spawn pin and rank, prop move, add and remove, saved as a validated patch over the bake (#118); applying patches at re-bake is next |
+| E9 | Editor at world scale: world map overview, streaming the area round the camera, regenerate one region | ✅ | Terrain tab at world scale: world map with click to jump, the area follows the camera, brushes to 256 m, regenerate a region or area from the world spec (#121); the "sculpt 3 km out, see it in game" check is open |
 | E10 | Character record view (read-only) | ✅ | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §6 |
 | E11 | Rules editor: every `content/rules/*.json` tunable listed, edited as a tree, validated on save | ✅ | Loopback `/api/editor/rules` routes (whitelisted names, path-confined, write only when valid; strict across files); Rules tab with tree editor and per-path errors. Opened from opencode's work; no screenshot yet |
 
@@ -97,13 +101,131 @@ server, and logs them. Source definitions (prefabs, species, rules files)
 stay read-only here; this edits the running game.
 
 | # | Item | Status | Needs |
-|---|---|---|---|
-| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands |
-| A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays |
+| --- | --- | --- | --- |
+| A1 | **Admin channel**: an admin command message, admin accounts (and every account on a development server), a command log | 🚧 | 0x10 `help`/`whoami` live; `MMO_ADMINS` + `MMO_DEV_SERVER=1`; A2+ adds world-editing commands; the admin console is also in the editor's play-mode debugger (#111) |
+| A2 | Inspect and edit any entity: pick or search it, every component and field, change any value | 🚧 | `inspect` + `set` live via the dev console (whitelisted numeric fields); click-to-pick UI awaits E4 overlays; click-to-pick in the editor's game view (E6) picks the entity |
 | A3 | Spawn anything at the cursor or the player: species, archetypes, props, PICG assets; despawn | 🚧 | `spawnlist`/`spawn` (table archetypes at avatar or x/z) + `despawn` (live avatars refused) live; creatures need a shared spawner; cursor targeting awaits E4 |
-| A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | 🚧 | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; god-mode needs damage (M2/M3), mana its spender, time/weather a runtime clock design |
+| A4 | The player: health, mana, stamina and any stat; teleport; fly and no-clip; invulnerable; time of day and weather | ✅ | `teleport` (ground snap), `heal`, `fly` bit live; stats via `set`; `god` toggles the God tag (no combat/hunger/drowning/trap Health loss) and peaks every skill, kept when switched off; `noclip` toggles the Noclip tag (free vertical flight, dungeon walls let go); `time` shows and sets the clock (newcomers via welcome, live clients by broadcast) and `weather` forces the sky (auto/clear/rain/snow/ash, same path); `injure {part, kind?, amount?}` (#99) and `skill {id, value}` (#112) live; `heal` also fills mana and makes the body whole |
 | A5 | Loot and inventory: browse the loot pools, put items in the inventory, grant gold | 🚧 | `items` (browse the pool), `give` (into the bag), `drop` (on the ground), `loot` (mob drops round you) live; gold awaits a currency |
-| A6 | Appearance and equipment editor, live on the character | 📋 | A1, M3 |
+| A6 | Appearance and equipment editor, live on the character | 🚧 | Merged (PR #191): `appearance` admin command (parts/colours per slot, validated against the catalog, live via sim.setLook). Equipment overlays re-apply. Open: the editor panel. |
+| A7 | **Bots in web workers**: an admin command spawns N simulated players (each its own socket, moving and fighting) in worker threads, to stress the server and feel play under load | 📋 | U14 (worker pool), A1; builds on `scripts/world-stress` |
+
+## 1c. Modular editor
+
+Doc: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) §10. A docking
+editor with workspaces for every engine feature, scenes and game flow,
+loadable modules, a database editor and production tools.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| EA0 | The plan: [`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md) | ✅ | (#91) |
+| EA1 | Docking shell, workspaces and toolbar | 🚧 | `feat/editor-backend-connector`: dockable/resizable persistent layout, workspace navigation, toolbar, and deep links are implemented; scene documents and viewport editing remain separate slices. Menus complete (2026-10-09, PRs #163–166): File/Edit/View act on the open document via DocActions/ViewportActions (no staged placeholders); Ctrl+K palette over commands/assets/settings with asset deep-linking; toolbar Play/F5 starts play with last setup; dock shows real server log/validation/bakes. Customizable toolbar (#185); the Details pane shows the real unsaved Gameplay edits (#177). |
+| EA2 | MVC contracts | 🚧 | `feat/editor-backend-connector`: view-side backend models and a per-view registry are implemented; application-side model/controller boundaries remain |
+| EA3 | Editor modules | ✅ | `feat/ea3-ea9-modules`: `packages/modules` (manifest schema collecting every problem, discovery, `content/modules.json` set, dependency order); host routes `/api/editor/modules` (list, validated save, apply); the shell imports enabled modules' editor entries dynamically and a Modules workspace enables and disables them; the header count is real; the Characters Records panel is now the `characters` module. Deferred: other panels as modules (EA13), commands and document kinds as contributions, Controller/EditorContext contracts (EA2) |
+| EA4 | Scene documents | ✅ | `feat/ea4-scene-documents`: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5. |
+| EA7 | Game flow | ✅ | `feat/ea7-ea8-game-flow`: `content/flow/game.flow.json` and the pure flow runner/validator in `packages/scene` (`flow.ts`); the client's `Screen` state is now a flow node (`apps/client/src/flow.ts`, `useFlow`) with login, loading, character select/creation and world as frontend scenes; no protocol change |
+| EA8 | Flow editor and play from a node | ✅ | `feat/ea7-ea8-game-flow`: Flow editor panel (`ui/flow-editor.tsx`) over the real document: add/delete/move nodes, add/rewire/retarget/delete transitions, set start, live validation (unreachable, missing start, dangling, unknown event/scene), validated `GET/PUT /api/editor/flow`; Play from login (plain client), character creation (serverless preview or `?start=` with a server) and world (`?start=` with a server). Not yet opened in a browser; open scene on double-click deferred |
+| EA5 | Scene viewport editing | ✅ | Viewport in the Scenes workspace: place by drag, gizmos, terrain snap, picking, delete, all undoable. |
+| EA6 | Play the scene | ✅ | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
+| EA9 | Server modules | ✅ | `feat/ea3-ea9-modules`: `server.ts`'s systems array is the `core` module's instances in the order `modules/core/module.json` fixes; `MMO_MODULES` (default `content/modules.json`) selects modules; order resolved from `after`/`before`, unknown ids and cycles stop the boot with every problem; `modules/sample-heartbeat` adds a system; "Apply modules" restarts the owned play server. Open: `valgrind:perf` not run (no host valgrind on the Windows dev machine; the tick-order test pins the order instead), play mode does not auto-reconnect after Apply, admin commands / rule hooks / persistence tables contributions |
+| EA10 | C++ modules | 🚧 | #238: `native` manifest field and validation merged, design doc. Open: the addon template as a module, Build/Check/Apply from the Modules window, memcheck run
+| EA11 | Sidecars | 🚧 | #239: `sidecar` manifest field, validation and the sidecar lifecycle merged (started before the server, health-checked, stopped with it). Open: wasm host, exec kind, restart supervision, the sample sidecar
+| EA12 | Edge modules | 🚧 | #240: `edge` manifest field, edge registry and discovery merged. Open: `local:<module>` routes merged into the edge routes at boot
+| EA13 | Existing tools as modules | 🚧 | #241 (open, conflicts with main): moves the flow, story and HUD panels into modules. Main has since replaced those panels with real ones (Quests, Playtests, HUD editor), so the move needs redoing on top of them
+| EA14 | The play menu | ✅ | #212: saved setups (one-key start). Port from `integration/editor`: setups live in `content/play/setups.json` (`GET/PUT /api/editor/play/setups`, validated, a refused save writes nothing; browser storage keeps a copy); Edge + core really starts the edge beside the core and waits for its `/health` (supersedes the core-only fallback); accounts are seeded into a scratch CSV (`MMO_USERS_CSV`, the saved world's users.csv is not touched); Start node lists the flow's own nodes, and a non-world node opens the player's client (started on demand) at that node, one window per account |
+| EA15 | Fill every workspace | ✅ | `feat/ea15-gameplay-authoring`: Gameplay data grids over creatures (with drops), item bases, skills, spells and species, and a Content browser with `GET /api/editor/content-catalog` (a scene-viewport drag source). Saves go through `/api/editor/gameplay`, validated by the server's own loaders, refused saves write nothing. Deferred: the other workspaces' fill-in, live values beside authored ones, crafting recipes, a prefab file format (combat moves are data since `port/animation`: `content/combat/moves.json`, validated, server-loaded) |
+| EA16 | Persistence core and the Database workspace | ✅ | `feat/ea16-database-workspace`: PersistenceCore (catalog, bounded read-only query, typed mutations, `admin_log` + undo) and the Database workspace are built for maintenance mode (server stopped, backup first). Open: live edits through the stores between ticks, ledger edits as events, webrpc admin methods |
+| EA17 | Database functions and caches | 🚧 | #242: stored SQL functions and read-through caches in PersistenceCore merged with tests. Open: the expression index plan check, `item_latest` cache wired into restore, performance panel, valgrind perf
+| EA18 | Version control | ✅ | `feat/ea18-version-control`: loopback `/api/editor/vcs` over the git CLI (status, semantic diff, log, stage, commit, confirm-gated pull/push, id-keyed three-way merge resolve, soft locks in `content/locks.json`, `assets/` refused) and a Changes workspace. Open: editors do not yet open locked documents read-only, no status-bar count, no presence |
+| EA19 | Build and deploy | ✅ | Backend merged (PR #187): `@mmo-engine/build` (zod profiles, sha256 input-hash stage cache, fail-fast runner, package manifest build+verify, local deploy with health-check and rollback), `GET /health` on the game server composed with the PCG handler, `npm run package` / `npm run deploy:local`. Pipeline view merged (PR #188): live PipelineView in the Release workspace (profiles, background runs, run history, local deploy), editor host routes, `content/build/profiles/*.json`. Profiles are tracked (a `build/` ignore rule had hidden `content/build`): `local` and `perf-check` ship, and the view edits them (validated save, delete, run with the cache ignored). Open: staging target (blocked on the container-platform decision) |
+| EA27 | Authorable down to the entity | 🚧 | `feat/data-driven-entities`: loot tables in `loot.json` (a creature's `drops.table` names item bases, rolled by the server's LootDropper); the server loads the species overlay (`content/species/species.json`, `MMO_SPECIES`) for scene `Spawner.species`, edited-species pack sizes in the wilds and biome-kind checks; crafting costs moved to `content/crafting/recipes.json` (validated at boot, drives `craft:report`); prefab files `content/prefabs/*.prefab.json` (bundle + per-field overrides + children) instantiated by the scene spawner; scenes place items (`ItemSpawn`), species, quests (`QuestGiver` moves the giver's post) and PICG assets from the catalog. Gameplay grids: Loot tables, Refining, Reagents, Prefabs, with inline checks and refused saves writing nothing. Open: no crafting actions use recipes yet; the viewport shows a prefab file as one node; wild/dungeon species use creature rules unless the overlay edits the species |
+| EA20 | Quest and dialog editor | ✅ | On branch `feat/ea20-quest-dialog-editor`: edits the four files the server loads (`content/quests`, no new format); validation with the server's own schemas plus rules references, prerequisite cycles and dead-end dialog loops; loopback routes `/api/editor/story`; Story workspace graph editor with undo and a dialog tester. Deferred: WFC slots, "Play from here", localized string ids (EA25), node positions. |
+| EA21 | Animation | 🚧 | Foundation merged (#194): `Animation` component, `AnimationSystem`, `ClipId` registry. Client and editor merged (#214): the component is replicated to the client, the clip map and playback logic live in `packages/art`, the client animator plays the server's clip with crossfades and an upper-body layer, and the editor Animation panel edits the clip map through host routes. Open: retargeting, foot IK, the client-side blending layer from the animouse spike ([§1e](#1e-tooling-and-asset-performance), TS1) |
+| EA22 | VFX and materials | ✅ | Materials foundation merged (#196): zod-validated toon and surface definitions in `packages/art` with samples in `content/materials/`. Particle tier budgets: `content/vfx/budgets.json` (zod-validated, monotonic across tiers), client respects the active tier's budget via `budgetMultiplierForTier`. NixieFX spike TS2: FAIL — runtime is MIT but the editor is hosted-only proprietary ("free to use", no license); not vendored or adopted as toolchain. Agnostic VFX format (#218): `VfxEffect`/`VfxEmitter`/`VfxSpawnShape`/`VfxForce`/`VfxCurve` zod schemas in `packages/art`, `vfxToQuarks()` converter for the client. Particle editor port: three.quarks-editor (MIT) bezier curve editor + property panels ported to the editor's Art & audio → VFX workspace; effects author/save as agnostic `VfxEffect` JSON in `content/vfx/effects/` (validated by `parseVfxEffect()` on the host), preview via `vfxToQuarks()`, tier budget warnings per active tier. |
+| EA23 | HUD layout editor | ✅ | Foundation merged (PR #190): `content/ui/hud.json` (anchor+offset+visibility), zod schema + loader, `<HudSlot>`, App.tsx migrated for 7 widgets. Drag editor merged (PR #193): move widgets on a 16:9 canvas, anchors, visibility, overlap warnings, save. Open: widget catalog, self-positioning widget migration |
+| EA24 | Audio | 🚧 | #213: event engine, game hooks (combat, surfaces, weather, scenes), and editor Audio panel. Open: footstep time events from the animouse spike (TS1), full mixer tuning |
+| EA25 | Localization | ✅ | #211: client strings behind `t()`, string tables in content/, Strings panel in the editor. Foundation was #195 |
+| EA26 | Automated playtests | ✅ | Core merged (PR #189): `@mmo-engine/playtest` (zod scenarios, headless SimWorld runner, assertions, sealed failure replays), `BotSystem` exported, `npm run playtest`, sample scenario. Pipeline stage merged (PR #192): a `playtest` stage after `test` in the default build profile, input-hash cached. Open: viewport replay scrubbing, headless screenshots/GIFs |
+| EA28 | Editor polish: the bottom dock and docks without mock content | ✅ | `port/polish`: Output is the owned server's log; Problems is `GET /api/editor/problems` (`problems-host.ts`: flow, HUD, strings, audio, VFX, animation clip map, rules, gameplay tables, scenes, modules, quests and story, build profiles and playtests, each its own collector; absent content adds nothing and a validator that cannot run is one warning), shown with the open document's unsaved problems, deep-linked to the owning view, counted on the tab and the status bar (which opens the tab); Bakes lists terrain and dungeon bakes and the pipeline's bake stages. Removed: the sample-data database, flow, HUD, animation, VFX, audio and pipeline previews, the World outliner's sample rows, the Compare tab, the Story and Release trees' sample rows, and stale Details text. Live ops, the Quest graph and Playtests stay previews until their real panels land |
+| EA29 | Editor menus and controls are real | ✅ | `port/polish`: File (Save All, Revert, Import and Export as `.json` with a shape check and the panel's own validation; flow, story, strings, rules, dungeon, audio and PICG panels), Edit and shortcuts (already live), View/toolbar viewport options (Grid, Gizmos, Wireframe, Screenshot) on the Scenes viewport and the play game view, "Pop panel into a window" (the current deep link in a new window), the account menu (local profiles, preferences, sign out; `ui/editor-prefs.ts`), content-tree rename, duplicate and delete for scenes, playtests and build profiles (`files-host.ts`, whitelisted, validated, no overwrite, a scene the flow uses is protected), the Story tree lists the real quests and renames a quest id across quests and dialogs. Controls nothing backed were removed |
+
+## 1d. Editor interaction repairs
+
+An audit of the modular editor shell found 23 interactions that are dead
+or contradict the design doc (toolbar tools not governing viewports,
+Save/Undo/Redo and Pause/Step/Stop without handlers, advertised shortcuts
+that reload the browser, play-menu choices that don't reach the server, no
+play tint or read-only gate, selections that never reach Details, panels
+with no retry). Fixing them as one wave, tracked here.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| R1 | Toolbar and play cluster do what they say (active tool governs every viewport; Save/Undo/Redo, Pause/Step/Stop, play-menu setup, play tint + read-only Details) | ✅ | `fix/ed-toolbar-play` + `fix/ed-panels` gating; Pause/Step render disabled with reasons (no server control exists); preview-only play dimensions badged |
+| R2 | Shortcuts and menus are honest (implemented with focus guards, or no hint) | ✅ | `fix/ed-keys-menus`: F5/Shift+F5/V/W/E/R wired; staged rows disabled with no kbd hint; drag-to-place removed until the scene viewport slice lands |
+| R3 | Panels behave (sculpt gated, background pan, retry, drag thresholds, validated prompts) | ✅ | `fix/ed-panels` |
+| R4 | Selection and deep links hold (publish picks, hash round-trip, scope Details, clean disconnect) | ✅ | `fix/ed-selection`; panel highlight restoration on reload deferred |
+| R5 | Pause and Step drive the owned server's tick loop | ✅ | `feat/editor-pause-step`: admin `pause`/`resume`/`step` on the gateway (`TickLoop.step`/`rearm`); the play cluster's Pause toggles Resume, Step runs one tick while paused. Server-side pause only. |
+
+## 1e. Tooling and asset performance
+
+Doc: [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) (findings, spike bars and
+the pinned-version appendix). Tools that shrink what we ship and load
+(compressed meshes and textures, generated components), speed up
+authoring, and give the client a locomotion-blending layer. Each phase
+ends with a gate and the next one does not start until it is green;
+numbers go in the manifest, because what isn't measured didn't happen.
+Permissive licenses only.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| TL0 | Phase 0: pin gltfpack, `@gltf-transform/cli`, `gltfjsx`, `leva`, `lil-gui`, `animouse`; check in 3 baseline assets (bytes, load ms, screenshot hash) | 🚧 | #216: versions pinned in `packages/art/README.md`, three generated baseline GLBs and a manifest checked in. Open: the KTX2 trial on Windows (verified on Linux only), load-time and screenshot-hash baselines |
+| TL1a | Client decoders first: `MeshoptDecoder` and `KTX2Loader` (Basis transcoder wasm) in the client's GLTF path, idle against uncompressed assets | ✅ | #220: `createGltfLoader()` used by every GLTF call site, Basis wasm in `apps/client/public/basis/`; zero behavior change, client tests unchanged |
+| TL1b | gltfpack `compress` step in `packages/art` (meshopt `-cc`), manifest gains `compression`, `rawBytes`, `compressedBytes` | ✅ | PR #222: `compressGlb()`, 3/3 tests green. |
+| TL1c | gltf-transform: `prune` + `dedup`, per-slot textures (baseColor WebP; normal, occlusion, metallicRoughness UASTC KTX2), per-tier resize caps | 🚧 | PR #224: prune/dedup done; per-slot texture conversion is a TODO. |
+| TL1d | Golden test: raw, then gltfpack, then gltf-transform, then client render | 🚧 | PR #225: 77.7% reduction on synthetic; client render + screenshot gate open. |
+| TL2 | gltfjsx component workflow: `npm run models:generate`, committed `generated/*.tsx`, one model wired into a dev scene | 🚧 | PR #226: scaffolded; strict-TS generation + committed model open. |
+| TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | ✅ | PR #227: Leva + lil-gui DEV-gated; automated prod-bundle check. |
+| TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | ✅ | PR #228: 3 characters, 7/7 tests, survive TL1. |
+| TL5 | ozz-animation (bake and native side) and acl clip compression at bake | ✅ | PR #229: interface + design doc; native vendoring is follow-up. |
+
+Spikes (evaluate first; each has a pass bar in the doc, and a fail means
+write the reason and park it):
+
+| # | Spike | Status | Pass bar |
+| --- | --- | --- | --- |
+| TS1 | animouse: state machine and blend trees over `AnimationMixer`; time events for footsteps and hit frames | ✅ | PR #230: ADOPT (MIT). 3/3 tests. |
+| TS2 | NixieFX visual VFX editor and runtime | ✅ | Verdict FAIL, parked (#217): the runtime is MIT but the editor is hosted-only and proprietary, so it can't be vendored. Pass bar was: editor license permissive, runtime CPU within 10% of hand-coded, authoring at least 2× faster. We built the agnostic format and editor instead (EA22) |
+| TS3 | EZ-Tree procedural trees into the impostor baker | ✅ | PR #231: ADOPT with bake-time constraint. |
+| TS4 | InstancedMesh2 BVH-culled scattering (50k trees) | ✅ | PR #232: ADOPT. 50k benchmark is follow-up. |
+| TS5 | GLB Delivery Desk batch QA | ➖ | PR #233: No adoption (existing validators cover >50%). |
+| TS6 | Meshamorphosis batch FBX to GLB and Mixamo | ⏸️ | PR #234: Deferred (no FBX in pipeline). |
+| TS7 | lygia GLSL functions | ❌ | PR #235: REJECTED (Prosperity License). Decision: build own shader library in-house. |
+
+Parked, with the condition to revisit: Theatre.js (AGPL editor), Needle
+Inspector and Three.js DevTools (license), TSL editors (WebGPU decision),
+GSAP 4 (no concrete tween need), AI 3D generators (license and style
+review). Bookmarked only: gltf.report, Kenney, Quaternius, Polyhaven,
+AmbientCG, Mixamo, the VAT Blender addon.
+
+## 1f. Editor maintainability (DRY audit)
+
+The editor's repeated code moved into shared generics so a change to
+one propagates to every panel: audit in the project library
+(`editor-dry-audit/DRY-AUDIT.md`).
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| M1 | One `NodeGraph<N, E>` canvas for the PICG, flow and story graphs (pan, zoom, fit, drag, select) | ✅ | #199 |
+| M2 | One HTTP layer (`requestJson`, `callEnvelope`, `IssuesError`, `refuseInvalid`) for every client and host route | ✅ | #200; `callEnvelope` reaches the graph, dungeon, HUD, pipeline and terrain panels with #207 |
+| M3 | `DocBar` and `useDocActions` for every document editor's Save, Undo, Redo, Revert | ✅ | #201 |
+| M4 | Shared form controls (`Select`, `Field`, `CheckField`), dead code removed, `createStore` / `createSlot` for the module-level stores | ✅ | #202, #203, #204 |
+| M5 | `useSaveTask` and `describeSaveFailure` for every document save | ✅ | #205 |
+| M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | ✅ | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
+| M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | ✅ | #207, in main with #209; flow gained Undo and Redo |
+| M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | ✅ | #210: `useTableDrafts` for the rules tables and gameplay grids, plus `sameValue` |
+| M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 📋 | Audit first, then a shared hook |
+| M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
+| M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
 
 ## 2. Game client: the player's interface
 
@@ -113,49 +235,53 @@ Everything here is React DOM over the world canvas, fed by the server
 [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md).
 
 | # | Item | Status | Needs |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
-| U2 | **Player frame**: health, mana and stamina bars | 🚧 | Health + stamina live (mirror rows; dodge/attack/jump/swim/run drain, cooldown regen); mana deferred to its first spender |
-| U3 | Hunger and thirst meters | 🚧 | Survival needs as rules on the server (`needs.json`, `Needs` component, `NeedsSystem`) done. Wire and HUD meters not built yet (no data on the wire; needs a flatc regen); meters aren't persisted; `restore()` waits for food and drink items |
-| U4 | Settings: graphics quality, controls, audio, UI scale | 🚧 | Controls remappable (persisted, steal-on-conflict, mouse fixed) + UI scale 90–125% live; audio deferred to an audio engine |
+| U2 | **Player frame**: health, mana and stamina bars | ✅ | Health, stamina and mana live; mana from 0x1c, plus a cast bar for the player's own casts (#123) |
+| U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); not persisted yet, and `restore()` waits for food and drink items |
+| U4 | Settings: graphics quality, controls, audio, UI scale | ✅ | Controls remappable + UI scale 90–125%; audio: Web Audio buses, synthesized first cues, master/combat/interface/ambience volumes and mute, persisted (#106) |
 | U5 | Nameplates (name, guild tag) | ✅ | Built with C3: sprite nameplates from the `names` fan-out, guild tags (S4), creature names (U12a) |
-| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | 🚧 | Say/yell/emote tabs + history + send live (two-client verified); whispers (S2) and party (S3) commands live (`/w /p /invite /kick /promote /accept /leave`); guild commands live (S4); reply awaits |
+| U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | ✅ | Say/yell/emote tabs, history, whispers, party and guild commands; `/r` and `/reply` answer the last whisper (#95) |
 | U7 | Party frames | ✅ | Member list (leader star, online dot, lead/kick for the leader), invite card with accept, leave. Per-member health and region are not on the wire yet, so rows show name and presence only (deferred with the party stats message) |
-| U8 | Social window: friends, presence, blocks, guild roster | 🚧 | Friends frame live (presence dot, whisper, remove; `/friend` `/unfriend`); block list UI awaits; guild roster ships in the guild frame (S4) |
-| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | 🚧 | Attributes + derived stats with modifier deltas live; skills exist on the server (M1) but aren't on the wire yet; injuries await M2 |
-| U10 | Inventory and equipment | 🚧 | First cut shipped (U10a: bag grid, drag to equip, comparison tooltip); armour slots and the rest of equipment await M3 |
-| U11 | Quest log and tracker, dialog | 📋 | P1 |
-| U12 | Injury display and hit feedback | 🚧 | Hit feedback and target frame shipped (U12a); injury display awaits M2 |
+| U8 | Social window: friends, presence, blocks, guild roster | ✅ | Friends frame (presence, whisper, remove), block list (`/block` `/unblock`, a block button per friend, unblock offline) (#105), guild roster in the guild frame |
+| U9 | Character sheet: attributes, stats, skills and their peaks, the body's injuries | ✅ | Attributes and derived stats; skills by family with peaks (#110); the body's injuries on a doll, click a part to treat it (#124); disciplines and familiarity (#127) |
+| U10 | Inventory and equipment | ✅ | First cut shipped (U10a: bag grid, drag to equip, comparison tooltip); armour wear server-side (U10b: slot per base, wear slots head/chest/hands/legs/ring/amulet, equip routing, unequip by slot on the wire, Wear ledger kind, worn in the inventory message); bag panel armour slots (U10c: wear row, drag to wear, double-click, tooltip compare, worn stat totals); blows scale by worn armour (U10d: armourHalf 10 halves, same in dungeons) |
+| U11 | Quest log and tracker, dialog | ✅ | Quest givers with ! and ? markers, E to talk, npc dialog with numbered replies, quest log (J) and tracker (#125) |
+| U12 | Injury display and hit feedback | ✅ | Hit feedback and target frame (U12a); injuries on a body doll in the player frame (#124) |
+| U13 | Follow the party into dungeon runs and back | ✅ | Entrances in the world, party enter, run HUD, result and return (#126) |
+| U4b | Recorded sounds and positional audio | 📋 | U4 |
+| U14 | Client web workers: terrain blocks, PCG decode and BVH build off the main thread | 🚧 | Built and wired: `WorkerPool` (least-busy of up to 4 workers), `TerrainRenderer` block meshes, `PcgMeshes` decode and `ensureBoundsTreeAsync`, all falling back to inline without workers. Unit-tested; the running client has not been checked in a browser yet |
 
 ## 3. Characters, combat and social
 
 | # | Item | Status | Doc |
-|---|---|---|---|
-| C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | 🚧 | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; moving them to the world server is open |
+| --- | --- | --- | --- |
+| C1 | Accounts and characters: name rules, create/list/load/save, per-account limits | ✅ | [`CHARACTERS-AND-SOCIAL.md`](CHARACTERS-AND-SOCIAL.md) §8. Built on the region's SQLite store; world hash store built (get/upsert, bearer auth, idempotent upsert on opId); gateway switch verified. |
 | C2 | Protocol v5 sign-in: account and character messages, select and create screens, entering the world | ✅ | 〃 |
 | C3 | Identity on screen: `CharacterRef`, `Appearance`, names, nameplates | ✅ | CharacterRef wired + `names` fan-out + sprite nameplates live; guild tags live (S4) |
 | M0 | Rules loader (`packages/rules`, `content/rules`) | ✅ | [`MASTERY-AND-COMBAT.md`](MASTERY-AND-COMBAT.md) §7 |
 | — | Stats as rules: attributes, derived stats, the moveSpeed drive, the stats message | ✅ | 〃 |
-| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; Exposure waits on weather; not on the wire yet |
+| M1 | Mastery core: use-based gain, deterioration, first skills (swimming, athletics, exposure) | ✅ | Swimming and Athletics train in `MasterySystem`; skills on the wire (#110); Exposure waits on weather |
 | M1b | Skills saved with the character | ✅ | `character_skills` table in the character store; the gateway saves a character's `SkillSheet` with its state and restores it on entering the world, applying deterioration for the time away |
-| M2 | Body parts, injuries, healing, death and respawn | 🚧 | Whole-body damage (M2a) and death and respawn (M2b) built; body parts, injuries and healing open |
-| M3 | Items and melee: combat phases, fit and power, defence, dismemberment | 🚧 | Attack combos, guard and dodge exist (`CombatSystem`); combat skills (M3c) feed damage and train from landed hits, blocks and dodges; the rest is open |
-| M4 | Disciplines, familiarity, disarms, Medicine | 📋 | 〃 |
+| M2 | Body parts, injuries, healing, death and respawn | ✅ | `BodySystem`: blows land on parts (harm, maim, dismember), wounds bleed and clot, parts heal, injuries slow, lame and weaken; a vital part or blood loss kills; respawn clears it (#93). Exposure waits on weather |
+| M3 | Items and melee: combat phases, fit and power, defence, dismemberment | ✅ | Stances (technique and aim, 0x19, R/T), fit and power per technique, precision and landing, defence contests (#94), damage kinds, dismemberment shown on every client (#99), dropped hands (#104). Armour waits for armour items |
+| M4 | Disciplines, familiarity, disarms, Medicine | ✅ | Medicine treats wounds, stumps and maimed parts (0x1a, #109); item familiarity, disciplines and the Blade Master disarm (0x1b, #112). Other unlocks (sweep, lunge, throwDown, reattach) are data only so far |
+| M5 | Combat abilities: GCD + queue, telegraphs, status effects, duels | 🚧 | `AbilitySystem` (global cooldown, per-ability cooldowns, one-deep queue, casts + interrupts); `TelegraphSystem` (server-authoritative circle/cone/rect danger zones: warn then resolve on the tick); `StatusSystem` (buffs/debuffs: stacking, refresh modes, stat modifiers, DoT/HoT, cleanse); `DuelSystem` (challenge/accept/decline/expiry, first blood, yield, ad-hoc hostility). `CombatSystem` gains `canHit` (consensual PvP: players only hurt players they duel; PvE unchanged) and `damageScale` (status) hooks. Gateway: 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel (protocol v22) — S→C event fan-out plus C→S ability triggers and duel actions. 31 tests green (27 unit + 4 gateway integration); 23 existing combat tests still green. Client UX (ability bar, telegraph rendering, status frame, duel UI) pending |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
-| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | Whispers, blocks and friends with presence live, persisted in `social.db` (S2c); the world-server event stream deferred |
-| S3 | Parties | ✅ | 〃 |
+| S2 | Region↔world event stream, presence, whispers, friends, blocks | 🚧 | Whispers, blocks and friends with presence live, persisted in `social.db` (S2c); cross-region presence via the world directory (regions report online names, friends lists merge world rows on a 30 s sync); unblocking no longer needs the target online (#105) |
+| S3 | Parties | ✅ | Persisted by `SqlitePartyStore` (`parties.db`); members return offline after a restart with the 5 min window (#102) |
 | S4 | Guilds | ✅ | `GuildBook` (500 members, ranks leader/officer/member/recruit, officer invites, MOTD, 200-entry officer log, 60 s invites), guild chat, `GuildState` pushes, tags on the names rows, guild frame + `/g /gcreate /ginvite /gkick /grank /gmotd /gaccept /gleave`. Persisted by `SqliteGuildStore` (`guilds.db`: guilds, members, 200-line log per guild); `purge` awaits a character-delete path |
-| P1 | Progression graphs: quests and dialog | 📋 | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
+| P1 | Progression graphs: quests and dialog | ✅ | `content/quests/` (stages, steps, templates, authored quests, npcs, dialog graphs), WFC board quests, `QuestService` with logs in `quests.db` (#103); client screens are U11 |
 
 ## 4. World, content and generation
 
 | # | Item | Status | Doc |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | — | World bake (4 × 4 km, climate-driven survey, glaciers, volcano) | ✅ | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 1 |
 | — | Server streaming of chunks round players | ✅ | 〃 Phase 2 |
 | — | Client terrain: streamed chunks near, the coarse map to the horizon, water, sky, weather | ✅ | 〃 Phase 3, [`CLIENT-FX.md`](CLIENT-FX.md) |
-| — | Client terrain LOD rings and fewer terrain draw calls | 📋 | 〃 Phase 3 |
-| — | Biome registry: scatter sets and creature tables per biome | 📋 | 〃 Phase 5 |
+| — | Client terrain LOD rings and fewer terrain draw calls | ✅ | 〃 Phase 3: 289 → 25 terrain draw calls for a 17×17 area (#114) |
+| — | Biome registry: scatter sets and creature tables per biome | ✅ | 〃 Phase 5: `content/biomes.json`; `MMO_WILD_CREATURES=1` spawns packs per chunk (#96) |
 | W1 | WFC solver (`packages/wfc`) | ✅ | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
 | W2 | Formations: WFC decides what, scatter and the raymarcher decide where | ✅ | 〃 |
 | D1 | Dungeon layouts, `dungeon:bake` | ✅ | 〃 |
@@ -165,14 +291,14 @@ Everything here is React DOM over the world canvas, fed by the server
 | R2 | Prefab builder | ✅ | 〃 |
 | L1 | Loot pool bake | ✅ | 〃 |
 | C1 (crafting) | Materials, recipes, tradability | ✅ | 〃 |
-| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | 📋 | 〃 §3.4. Shells are prebaked (`dungeon:bake`, `<id>.shell.pcgm`) ✅ |
+| D4 | Dungeon instances: a sandbox engine instance per run, started from a prebaked dungeon (layout plus its shell as one mesh buffer); players moved out of the world into it; results reported instance → region → world server | ✅ | First cut in process: runs from the baked pool, loot kept on report (#107); player side: entrances, party enter, run HUD, result and return (#126). Region side: `WorldClient.reportDungeonResults` sends the `instances.db` unreported batch over webrpc (`ReportDungeonResults`, validated), and the save timer flushes it with no overlapping requests, marking only what the world confirms. World side: `WorldCore.reportDungeonResults` records one `dungeon_run` row per run, idempotent on `instance`. Skill gains: commit trains the killer's weapon skill per kill. Chests: placed per run from the rules, opened in reach for chest-pool loot, HUD button. Traps: armed per run, sprung once under a member for the rules harm, named in the run state. Veins deferred to crafting actions (no material gathering exists yet) |
 | PCG1 | PICG native cook addon | ✅ | [`PCG-SPEC.md`](PCG-SPEC.md) |
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 
 ## 5. Engine, physics and native libraries
 
 | # | Item | Status | PR |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | — | Jolt physics; automatic colliders for every entity | ✅ | #38 |
 | — | uWebSockets.js transport (ws as fallback) | ✅ | #39 |
 | — | DetourCrowd steering | ✅ | #40 |
@@ -184,6 +310,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Valgrind dashboard (`npm run valgrind:dashboard`): memcheck, callgrind and history views with charts, run-from-page, run comparison, and a regression gate (`valgrind:check`); debug builds for file:line (`valgrind:build-debug`); Valgrind tab in the editor. Suppressions deliberately not added: Node/V8 noise stays visible as part of the engine's cost | ✅ | Leak locator / performance linter mapping stacks to code is next |
 | — | Valgrind Helgrind on the addons' threaded paths (Jolt jobs, PICG cooks off the tick thread) | 📋 | Suggested in [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md) |
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
+| — | **Prop blocking without CharacterVirtual**: kinematic walkers resolve against static prop bodies on the JS side (`PropCollisionSystem`, after integrate/character, before the physics sync), so players no longer walk through scatter-spawned trees and rocks; scene nodes carry validated per-node `Collider` data (box/sphere/none, edited in the Scenes workspace) | 🚧 | Merged via `integration/editor`; full CharacterVirtual stays 📋; `npm run valgrind:perf` still owes the new system a Linux baseline check |
 
 ## 5b. Edge / core split
 
@@ -191,19 +318,27 @@ Doc: [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md). Its E1–E6 are the
 split's slices, not the editor's E items.
 
 | # | Item | Status | Notes |
-|---|---|---|---|
-| E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | 🚧 | Core channel stubbed until E2: core-bound packets answer `core.unavailable` |
+| --- | --- | --- | --- |
+| E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | ✅ | (#83) |
+| E2 | Internal channel edge↔core (`packages/channel`): framed TCP, heartbeats, reconnect | ✅ | (#89) |
+| E3 | Core serves the edge channel; durable sessions; tick, delta and snapshot pushes | ✅ | Additive: players still connect to the core (#100) |
+| E3b | Client cutover: the edge serves the client protocol, the core drops its player listener | 📋 | |
+| E4 | Degraded mode and resync on the edge | ✅ | The edge holds players through a core outage (#101) |
+| E5 | Measure the split (`npm run bench:e5`, [`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md)) | ✅ | 0 hung requests through crash, restart and freeze; mirror encoding a little over budget (#108) |
+| E5a | Binary mirror frames on the channel | 📋 | |
+| E5b | Push encode off the tick (if E5a is not enough) | 📋 | |
+| E6 | Network health: `/metrics`, JSON network logs, Prometheus and Grafana configs | ✅ | (#117) |
 
 ## 6. World server
 
 Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 
 | # | Item | Status |
-|---|---|---|
+| --- | --- | --- |
 | A | Core and registry: `WorldCore`, SurrealDB schema, webrpc, region auth, heartbeats | ✅ |
-| B | Region migration (border hand-off) | 📋 |
+| B | Region migration (border hand-off) | ✅ (arbitration #119, live hand-off #122) |
 | C | Accounts on the world server | 📋 (folded into C1 above) |
-| D | Stress harness and the published number | 📋 |
+| D | Stress harness and the published number | ✅ (`npm run stress:world`, [`WORLD-STRESS-RESULTS.md`](WORLD-STRESS-RESULTS.md), #120) |
 
 ## 7. Alpha
 
@@ -211,7 +346,7 @@ Doc: [`ALPHA-PLAN.md`](ALPHA-PLAN.md): what alpha means, its exit
 criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 | # | Item | Status | Needs |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | M3a | Item instances: definitions from the loot pool, a runtime store, ground items, admin `give`/`drop` | ✅ | Pickup (E), bag (B), rank-coloured labels and beams; bags in memory until P2a |
 | M3b | Held weapons: `Held` on the wire, weapon on the hand bone, starter sword | ✅ | Held models ride the appearance JSON; equip/unequip on 0x13; starter sword once per character per run |
 | M2a | Damage: strike resolution at the hit frame, `computeDamage`, guard and dodge, hit events | ✅ | M3b |
@@ -226,7 +361,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
 | L3 | Pool rebake keeps held items | ✅ | `npm run loot:rebake`; merged in #81 |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
-| T2 | Play telemetry into the editor's graphs (server counters + `stats` admin command done; editor graphs wait on E5) | 🚧 | α1 |
+| T2 | Play telemetry in Live Ops (typed `stats` snapshots, 10 s bucket-aligned polling, tick and activity graphs) | ✅ | α1 |
 
 ---
 
@@ -234,6 +369,86 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-10 (evening)**: Merged #234, #235 (spike verdicts TS6, TS7), #238 to #240 (native, sidecar and edge manifest fields; sidecar lifecycle; edge registry) and #242 (SQL functions and caches); closed #236 as superseded by the per-PR rows already here. Open: #241 (tools as modules; conflicts with the real panels now on main), #243 and #244 (ports from the parallel integration branch; overlap what is already on main). Statuses corrected: EA10 to EA13 and EA17 are 🚧 (manifest fields and designs are in, the runtime parts are open), and EA1, EA2, EA21 and EA24 are 🚧 because their own notes list open items. Counts recounted from the tables.
+- **2026-10-10**: Playtests ported onto main (EA26/EA28): real Live ops (overview, console, telemetry), Network (edge routes, connections), Quests and Playtests views over the scratch-server runner (`playtest-host/exec/server`, `network-host`, `liveops-model`, `quest-summary`, `server-link`; `content/playtests/*.playtest.json`); server status also reports the loopback admin link. The Live ops mock tree and the release mock tree go away with the other sample-data previews.
+- **2026-10-10**: Editor polish ported onto main (EA28, EA29): real Problems, Bakes and bottom dock, live menus, viewport options, profiles and content-tree file operations; mock previews and inert controls removed. New `GET /api/editor/problems` and `/api/editor/files/*`. Also fixed the editor loading `@mmo-engine/art` (node:fs) in the browser from the Animation panel.
+- **2026-10-10 (port)**: EA14 and EA19 deltas from `integration/editor` on `port/build-play`: saved setups in `content/play/setups.json`, real Edge + core, scratch accounts (`MMO_USERS_CSV`), flow-node starts in the player's client; tracked build profiles with an editor in the pipeline view.
+- **2026-10-10 (night)**: Merged #209 to #219 (and #214 to #216, #220): editor DRY audit finished (`useTableDrafts`, #210), EA25 localization (#211), EA14 play menu (#212), EA24 audio engine and panel (#213), EA21 client animation and panel (#214), TL0 versions pinned and baselines (#216), TL1a client decoders (#220), EA22 particle budgets (#217), agnostic VFX format (#218) and the particle editor port (#219; NixieFX spike TS2 failed its license gate). #218's schema test moved to `node:test` (vitest isn't in the repo and broke the art build). Remaining on EA21 and TL0 listed in their rows.
+- **2026-10-10**: Roadmap caught up and extended. Merged since the last update: customizable toolbar (#185), Details shows unsaved Gameplay edits (#177), review fixes on the play stack (#198), the EA19 build and deploy pipeline (#187, #188), EA21, EA22, EA24 and EA25 foundations (#194, #196, #197, #195), the EA23 HUD drag editor (#190, #193), EA26 playtests and their pipeline stage (#189, #192), A6 appearance command (#191), and the editor DRY audit M1 to M5 (#199 to #205); M6 and M7 (#206, #207) went into their stack branches and reach main with #209. Added §1e (tooling and asset performance: compression, gltfjsx, dev overlays, spikes) from [`THREEJS-TOOLING.md`](THREEJS-TOOLING.md) and §1f (editor maintainability).
+- **2026-10-09**: Pause/Step (§1d, R5 ✅): admin `pause`, `resume`, `step` on the dev server; the editor's Pause toggles Resume and Step runs one tick while paused.
+- **2026-10-08**: Editor interaction repairs complete (§1d, R1–R4 ✅): shared tool store gates every viewport, Save/Undo/Redo + stop-while-starting + play tint wired, shortcuts/menus honest, panels fixed, selection/deep-links round-trip. Repaired three bad EA-merge conflict resolutions on the way (host route chain, startOwned bots+scene, server-control start, scenes-panel double-publish).
+- **2026-10-08**: Editor interaction repair wave opened (§1d, R1–R4): audit found 23 dead or contradictory interactions; fixing in four tracks (toolbar/play, shortcuts/menus, panels, selection/deep-links).
+- **2026-10-08**: Prop collision (merged via `integration/editor`): `PropCollisionSystem` blocks kinematic walkers on static prop bodies (box/sphere, slide along, noclip and fly-over pass, `none` stays walk-through), wired into the region tick; scene nodes gain a validated `Collider` component (shape + halves/radius, edited in the Scenes workspace, refused saves write nothing). Full CharacterVirtual stays planned; perf baseline needs a Linux check.
+- **2026-10-08**: EA18 version control built (branch): `/api/editor/vcs` runs git from fixed argument arrays on the repo only; semantic diffs keyed by node/step/guid ids (text diff otherwise); three-way JSON merge by stable ids resolves conflicted pulls, true conflicts list both values; pull and push need an explicit confirm; anything under `assets/` is refused at stage, diff and commit; advisory locks in `content/locks.json`; Changes workspace.
+- **2026-10-08**: EA15 first slice (in progress, branch): Gameplay data grids (search, filter, sort, inline per-cell checks, expandable rows, batch set/multiply/duplicate/delete) over `content/rules` creatures, item bases, skills and spells and a `content/species/species.json` overlay; saves validate with `parseRules`/`loadSpecies` plus a rule that a creature or item base scenes, quests or dungeons use can't be removed; `GET /api/editor/content-catalog` and a Content browser panel for the scene viewport to drag from.
+- **2026-10-08**: EA4 scene documents built: `@mmo-engine/scene`, `content/scenes/*.scene.json`, loopback `/api/editor/scenes` routes (a refused save writes nothing) and a Scenes workspace (Outliner, Details, undo/redo, save, reload). Viewport editing is EA5.
+- **2026-10-08**: EA7 and EA8 game flow: `content/flow/game.flow.json` drives the client's screens through a pure flow runner in `packages/scene`; the editor's Flow panel edits it as a graph (validated save, refused save writes nothing) and plays from login, character creation or world.
+- **2026-10-08**: EA5 scene viewport: three.js view of the open scene over the terrain, content browser (species, props, PICG), move/rotate/scale gizmo, terrain and grid snap, picking into the shared selection, delete; every edit is a History command.
+- **2026-10-08**: EA6 play the scene: server reads `MMO_SCENE` (`MMO_SCENES` dir) and spawns nodes via the creature and prop paths (restart-safe); Play sends the open (even unsaved) scene without touching content/scenes; "Keep" copies a live entity transform into a node as a command.
+- **2026-10-08**: EA3 editor modules: `packages/modules` (manifest validation, discovery, enabled set, dependency order), `/api/editor/modules` host routes, dynamic import of editor entries, Modules workspace (enable, disable, Apply), real module count in the header; Character records contributed by the `characters` module.
+- **2026-10-08**: EA9 server modules: engine-core assembles the tick's systems from the enabled module set (`assembleServerSystems`); core order unchanged and pinned by a test; `MMO_MODULES`; cycles and unknown system ids refuse the boot; sample module `sample-heartbeat`; "Apply modules" restarts the play server.
+- **2026-10-08**: EA16 first slice: `PersistenceCore` in engine-core (`persist/persistence-core.ts`) with catalog, SELECT-only query (child process, row limit, timeout kill), typed mutations with backup and `admin_log` undo; editor host routes `/api/editor/database/*` (loopback, JSON-only) and the Database workspace (schema tree, grid with pending edits, query, audit log). Mutations refuse while the game server runs; live-state edits deferred.
+- **2026-10-08**: EA20 quest and dialog editor (in progress, branch): Story workspace edits `content/quests/*.json` as the server loads them; saves validate the whole set (server schemas and checks, item and species references, prerequisite cycles, dialog loops with no exit) and write nothing when invalid; dialog tester walks a dialog against an editable mock quest state.
+
+- **2026-10-08**: U14 client web workers (in progress): `WorkerRuntime` (retry, transfer, concurrency cap), terrain, terrain-block, PCG and BVH handlers, `WorkerPool`, wired into the terrain renderer, `PcgMeshes` and BVH building; 221 client tests pass, production build bundles. Browser check pending.
+- **2026-10-07**: C1 world accounts (in progress): world hash store (get/upsert, bearer auth, idempotent on opId), region gateway switches to it on registration, seeds from local CSV, maxes skills on god-mode on. Gateway switch verified.
+- **2026-10-06**: D4 complete: veins deferred to crafting actions (no gathering, pouch, or crafting actions exist to yield into); runs, results, skill gains, chests and traps are all built.
+- **2026-10-06**: Edge run story: root `npm run edge`, booted beside the region by `npm start`, and a split-topology recipe (world, region, edge) in CLI.md with the honest note that players still connect to the region until E3b.
+- **2026-10-06**: S2 cross-region presence (in progress): the world keeps a name-to-region directory (report replaces, queries map, Memory + Surreal) served over webrpc with a region client; gateways report on login/logout and merge world rows into friends lists on a 30 s sync (local rows win, merges only add). Cross-region block filtering is a documented gap.
+- **2026-10-06**: U10 armour wear (in progress): bases carry a slot, the store wears one item per slot, equip routes armour there (displacing to the bag), unequip takes a slot over the wire, and worn items persist (Wear ledger kind), rebake, and show in the inventory message. Panel slots and mitigation next.
+- **2026-10-06**: U10 panel slots (in progress): the bag panel shows the six wear slots with unequip buttons, drags a bag item onto its slot to wear it (worn onto the bag to take off), double-click wears, the tooltip compares against the worn piece, and the stat totals include worn gear. Mitigation next.
+- **2026-10-06**: U10 mitigation: blows scale by the defender's worn armour through the existing armourFactor hook (H/(H+total), armourHalf 10 in combat.json), wired in the region and mirrored into dungeon runs. U10 is built.
+- **2026-10-06**: A4 no-clip (and A4 complete): `noclip` toggles the Noclip tag (id 16, never replicated): free vertical flight, no ground clamp or gravity, dungeon walls let go. Every A4 player item is now built.
+- **2026-10-06**: A4 god-mode (in progress): `god` toggles the God tag (id 15, never replicated) that skips every Health-loss path, and peaks every skill value and peak (kept when switched off); gear stays with U10, resistances and buffs have no systems to max.
+- **2026-10-06**: A4 time and weather (in progress): `time` shows the clock and sets it by the hour (shared offset math, live broadcast on the control envelope, mirror updates its day); `weather` shows and forces the sky override the same way (welcome carries it, `weatherAt` honors it). God-mode, no-clip and invulnerable remain.
+- **2026-10-06**: D4 chests (in progress): runs place `chestsPerRun` chests in the lowest-id non-entrance rooms; members open the nearest in reach (`{op:"open"}`, 3 m) for 1–2 rolls from the chest pool into the result loot; the run state names each chest and the HUD shows an open button. Depleted nodes and traps remain.
+- **2026-10-06**: D4 traps (in progress): runs arm `trapsPerRun` traps in the lowest-id non-entrance rooms; a member inside the trigger radius springs one for `trapHarm` Health, once, and the party hears it. Only depleted nodes remain.
+- **2026-10-06**: Editor scope tree (in progress): shared data-driven outliner (`ScopeNode` + `flattenVisible`/`breadcrumb`/`toggleOpen`, `ScopeTree` over `TreeItem`), proven on the World tree with identical rows; LiveOps/story/release/database trees follow instead of reimplementing open/selected/expand.
+- **2026-10-06**: E5 complete: developer panels no longer mount in the player client. `npm run dev` now starts the server and editor; debugger controls remain exclusively in the editor's Play Mode.
+- **2026-10-06**: D4 region report (in progress): `WorldClient.reportDungeonResults` sends the region's unreported dungeon runs to the world with the bearer token and returns the ingested instance ids; the world's `ReportDungeonResults` ingest is the next slice.
+- **2026-10-06**: D4 world ingest (in progress): `WorldCore.reportDungeonResults` records one `dungeon_run` row per run (Memory + Surreal stores), idempotent on `instance`, 403 on region mismatch, 404 on unknown region. Next: the webrpc route/Zod/RIDL and the region flush marking `instances.db` rows reported.
+- **2026-10-06**: D4 results end to end: the webrpc `ReportDungeonResults` route (strict Zod bounds, bearer auth, RIDL updated) ingests idempotently, and the region's save timer flushes `instances.db` unreported rows through it with no overlapping in-flight POSTs, marking only confirmed ids. A slow or dead world never stalls the tick and never stacks requests.
+- **2026-10-06**: T2 Live Ops telemetry: the editor reads the protected `stats` admin snapshot through `BackendClient`, refreshes once per server bucket without overlapping requests, and renders tick p50/p99/max plus kills, pickups and damage series. Connection and refresh failures remain visible; player, region and audit data stay staged.
+- **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
+- **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
+- **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.
+- **2026-10-04**: M4 client: the character sheet shows disciplines (active, lapsed, progress toward the rest) and familiarity. (#127)
+- **2026-10-04**: D4 player side: entrances in the world, party enter, a run HUD, the result and the return (U13). (#126)
+- **2026-10-04**: World server B2: players handed across region borders live (`bye` redirect with a migration ticket, hello with the ticket). (#122)
+- **2026-10-04**: U11 quest UI: quest givers drawn with ! / ? markers, E to talk, npc dialog with numbered replies, quest log (J), tracker and quest notices. (#125)
+- **2026-10-04**: U12/U9 injury display: a body doll on the player frame while hurt, and a body section on the character sheet (blood, injuries worst first, click to treat). (#124)
+- **2026-10-04**: U2 mana bar on the player frame and a cast bar while casting (0x1c mana and spell messages). (#123)
+- **2026-10-04**: E9 world-scale terrain editing: world map, the area follows the camera, brushes to 256 m, regenerate a region or area. (#121)
+- **2026-10-04**: E8 the editor dungeon view: pool browser, 3D view with picking, edits saved as validated patches. (#118)
+- **2026-10-04**: E7 the hierarchical PICG graph editor. (#115)
+- **2026-10-04**: E6 selection cards in the editor's play mode. (#113)
+- **2026-10-04**: E5 the developer panels move into the editor's play-mode debugger. (#111)
+- **2026-10-04**: E4 the editor's play mode embeds the client's renderer (game view). (#92)
+- **2026-10-04**: U3 + U9: hunger, thirst and skills on the stats message (0x0f `needs`, `skills`, `skillMax`); the player frame shows hunger and thirst; the character sheet lists skills by family with peaks. (#110)
+- **2026-10-04**: U4 audio: `AudioEngine` (Web Audio buses, unlocks on first gesture, pauses with the tab), synthesized cues and an audio section in settings (master, combat, interface, ambience, mute; persisted). (#106)
+- **2026-10-04**: U8 block list: `BlocksState` on 0x11, names kept with blocks (`social.db`), unblock offline; client `/block` `/unblock`, a block button per friend and a folded blocked list. (#105)
+- **2026-10-04**: U8 fix: the friends list stacks above the player frame instead of covering the health and stamina bars. (#98)
+- **2026-10-04**: U6 chat reply: `/r` and `/reply` whisper the last character who whispered you; whispers read from/to and are tinted. (#95)
+- **2026-10-04**: D4 dungeon instances, first cut: runs from the baked pool, loot kept on report (`MMO_DUNGEONS`, `MMO_INSTANCE_HOST`). (#107)
+- **2026-10-04**: P1 quests and dialog: `content/quests/`, WFC board quests, `QuestService` with logs in `quests.db`; additive on 0x11 (`kind:"quest"`). (#103)
+- **2026-10-04**: Biome registry: `content/biomes.json` holds each biome's ecology multipliers and creature table; `MMO_WILD_CREATURES=1` spawns each chunk's packs as it loads. (#96)
+- **2026-10-04**: Mana and Mend, its first spender (`spells.json`, protocol v21 0x1c). (#116)
+- **2026-10-04**: M4b: item familiarity, disciplines and disarms; 0x1b skills (protocol v20); admin `skill`. (#112)
+- **2026-10-04**: M4a: Medicine treats wounds, stumps and maimed parts (protocol v19, 0x1a). (#109)
+- **2026-10-04**: M3 stances: protocol v18 0x19 `stance`; R/T pick the technique and the aim. (#104)
+- **2026-10-04**: M3 lost parts shown: a severed part's slots ride the replicated look as `lost`, every client hides them until respawn or heal. Admin `injure`. (#99)
+- **2026-10-04**: M3 defence contests: a facing guard is a skill contest (`resolveDefence`); a maimed or severed hand drops its item and can't equip again. (#94)
+- **2026-10-04**: M2 body parts and injuries: `BodySystem` (harm, maim, dismember, bleeding, healing, death by a vital part or blood loss). Protocol v17: 0x18 `body`. (#93)
+- **2026-10-04**: World server D: the stress harness (`npm run stress:world`) and the regions-per-box number ([`WORLD-STRESS-RESULTS.md`](WORLD-STRESS-RESULTS.md)). (#120)
+- **2026-10-04**: World server B1: migration arbitration (begin, get, commit, abort, expiry, CAS) and the region `MigrationCoordinator`; 5.4 ms median hand-off. (#119)
+- **2026-10-04**: Terrain LOD rings + 4×4 block batching: 289 → 25 terrain draw calls for a 17×17 streamed area. (#114)
+- **2026-10-04**: Edge/core E6: `/metrics` (edge, channel and core), JSON network logs, Prometheus config, Grafana dashboard, k6 soak. (#117)
+- **2026-10-04**: Edge/core E5: the split measured (`npm run bench:e5`): 0 hung requests through crash, restart and freeze; 60k+ req/s channel; mirror encoding a little over budget (follow-up E5a). (#108)
+- **2026-10-04**: Edge/core E4: the edge holds players through a core outage and resyncs sessions when it returns. (#101)
+- **2026-10-04**: Edge/core E3 (additive): engine-core serves the edge's channel beside the gateway; sessions persist in world.db. (#100)
+- **2026-10-04**: Edge/core E2: `packages/channel` links the edge to the core: framed TCP, heartbeats, reconnect. (#89)
+- **2026-10-04**: Modular editor plan ([`EDITOR-ARCHITECTURE.md`](EDITOR-ARCHITECTURE.md)): docking shell, workspaces, scenes and game flow, modules, a database editor and production tools, slices EA0 to EA26. (#91)
+- **2026-10-04**: S3b party persistence: `SqlitePartyStore` (`parties.db`); a restart no longer disbands parties. (#102)
 - **2026-10-03**: S2c friends and blocks persistence: `SqliteSocialStore` (`social.db`) behind `GatewayOptions.socialStore`, write-through from `FriendBook` and `BlockList`. Friends lists and blocks now survive restarts.
 - **2026-10-03**: Roadmap brought up to date: an "At a glance" summary; U3, U10, U12 and M2 marked in progress, U5, C3 and L3 built; the update log put back in date order under its heading. README layout lists the editor, edge and every package.
 - **2026-10-03**: Valgrind without Docker: `npm run valgrind:memcheck` and `valgrind:perf` call `memcheck.mjs` and `perf.mjs` directly again on the host's valgrind; the Docker launcher (`launch.mjs`, `Dockerfile`, `docker-run.sh`) is gone, replacing the container repair below. On Windows, run them from WSL.
@@ -302,7 +517,6 @@ Newest first. One line per merged PR or decision.
 - **2026-09-30**: U6 chat panel: say/yell/emote tabs, 50-line history,
   send-on-Enter over MirrorClient.chat()/onChat; verified with two live
   clients. Whispers/party/guild/reply await S2–S4.
-
 
 - **2026-09-30**: A4 first slice: `teleport` (ground snap, stilled
   velocity), `heal` (fill from max), `fly` (ability bit) admin commands.

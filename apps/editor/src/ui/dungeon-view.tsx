@@ -6,7 +6,7 @@
  *   rooms, rank, boss and edit count; "bake more" adds to the pool with
  *   the same CLI as `npm run dungeon:bake`.
  * - 3D view (dungeon-scene.ts): orbit with the mouse; click a room's floor,
- *   a spawn or a prop to select it; drag a selected prop to move it.
+ *   a spawn or a prop to select it; drag a prop to move it.
  * - Details: a room's role and archetype; a spawn's pin and rank; a prop's
  *   position, remove, or add one where you click with "place prop".
  *
@@ -15,6 +15,7 @@
  */
 
 import * as React from "react";
+import { callEnvelope } from "../api.js";
 import {
   dungeonView,
   editPatch,
@@ -28,34 +29,46 @@ import {
 } from "../inspectors/dungeon-view.js";
 import type { PoolEntry } from "../dungeon-host.js";
 import { DungeonScene, type Pick } from "./dungeon-scene.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle } from "./components.js";
-
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || body.ok === false) throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { body });
-  return body;
-}
+import { getTool } from "./tool-store.js";
+import { canDragDungeonProp } from "./viewport-tools.js";
+import { useDocActions } from "./doc-actions.js";
+import { DocBar } from "./doc-bar.js";
+import { useDocument } from "./use-document.js";
+import { pushBake } from "../dock-feed.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, SectionTitle, Select, Field, CheckField } from "./components.js";
+import { editorSelection } from "./editor-selection.js";
 
 export function DungeonPanel(): React.JSX.Element {
   const [pool, setPool] = React.useState<PoolEntry[]>([]);
   const [archetypes, setArchetypes] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [dungeon, setDungeon] = React.useState<DungeonFileView | null>(null);
-  const [patch, setPatch] = React.useState<DungeonPatch | null>(null);
-  const [saved, setSaved] = React.useState<string>("");
-  const [undo, setUndo] = React.useState<DungeonPatch[]>([]);
-  const [redo, setRedo] = React.useState<DungeonPatch[]>([]);
+  const doc = useDocument<DungeonPatch>();
+  const patch = doc.value;
   const [selected, setSelected] = React.useState<Pick>(null);
-  const [placing, setPlacing] = React.useState(false);
-  const [issues, setIssues] = React.useState<PatchIssue[]>([]);
+  const pick = (p: Pick): void => {
+    setSelected(p);
+    if (!p) {
+      const cur = editorSelection.get();
+      if (cur && (cur.kind === "dungeon-room" || cur.kind === "dungeon-spawn" || cur.kind === "dungeon-prop")) editorSelection.clear();
+      return;
+    }
+    if (p.kind === "room") {
+      editorSelection.select({ source: "outliner", kind: "dungeon-room", id: String(p.id), label: `Room ${p.id}`, components: [{ name: "Dungeon room", fields: [{ key: "id", value: String(p.id) }] }] });
+    } else if (p.kind === "spawn") {
+      editorSelection.select({ source: "outliner", kind: "dungeon-spawn", id: String(p.index), label: `Spawn ${p.index}`, components: [{ name: "Dungeon spawn", fields: [{ key: "index", value: String(p.index) }] }] });
+    } else {
+      editorSelection.select({ source: "outliner", kind: "dungeon-prop", id: p.key, label: `Prop ${p.key}`, components: [{ name: "Dungeon prop", fields: [{ key: "key", value: p.key }] }] });
+    }
+  };
+  const [placing, setPlacing] = React.useState(false);  const [issues, setIssues] = React.useState<PatchIssue[]>([]);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [bake, setBake] = React.useState({ count: 3, seed: "random", rank: "" });
   const [baking, setBaking] = React.useState(false);
 
   const refreshPool = React.useCallback(async () => {
     try {
-      const r = await getJson<{ dungeons: PoolEntry[]; archetypes: string[] }>("/api/editor/dungeons");
+      const r = await callEnvelope<{ dungeons: PoolEntry[]; archetypes: string[] }>("/api/editor/dungeons", "GET");
       setPool(r.dungeons);
       setArchetypes(r.archetypes);
     } catch (e) {
@@ -69,15 +82,12 @@ export function DungeonPanel(): React.JSX.Element {
     setIssues([]);
     setNotice(null);
     try {
-      const r = await getJson<{ dungeon: DungeonFileView; patch: DungeonPatch | null }>(`/api/editor/dungeons/${id}`);
+      const r = await callEnvelope<{ dungeon: DungeonFileView; patch: DungeonPatch | null }>(`/api/editor/dungeons/${id}`, "GET");
       const p = r.patch && r.patch.hash === r.dungeon.hash ? r.patch : emptyPatch(r.dungeon);
       if (r.patch && r.patch.hash !== r.dungeon.hash) setNotice("Its saved patch is stale (made for another layout) and was not loaded.");
       setDungeon(r.dungeon);
-      setPatch(p);
-      setSaved(JSON.stringify(p));
-      setUndo([]);
-      setRedo([]);
-      setSelected(null);
+      doc.load(p);
+      pick(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -88,9 +98,7 @@ export function DungeonPanel(): React.JSX.Element {
     if (!dungeon || !patch) return;
     try {
       const next = editPatch(dungeon, patch, e);
-      if (!merge) setUndo((u) => [...u.slice(-199), patch]);
-      setRedo([]);
-      setPatch(next);
+      doc.edit(next, { merge });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -100,12 +108,8 @@ export function DungeonPanel(): React.JSX.Element {
     if (!dungeon || !patch) return;
     setIssues([]);
     try {
-      const r = await getJson<{ edits: number }>(`/api/editor/dungeons/${dungeon.id}/patch`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patch }),
-      });
-      setSaved(JSON.stringify(patch));
+      const r = await callEnvelope<{ edits: number }>(`/api/editor/dungeons/${dungeon.id}/patch`, "PUT", { patch });
+      doc.markSaved(patch);
       setNotice(r.edits ? `Saved ${r.edits} edit${r.edits === 1 ? "" : "s"} to ${dungeon.id}.patch.json.` : "No edits: the patch file was removed.");
       void refreshPool();
     } catch (e) {
@@ -120,18 +124,40 @@ export function DungeonPanel(): React.JSX.Element {
       const body: Record<string, unknown> = { count: Number(bake.count) };
       if (bake.seed.trim()) body.seed = bake.seed.trim() === "random" ? "random" : Number(bake.seed);
       if (bake.rank.trim()) body.rank = Number(bake.rank);
-      const r = await getJson<{ log: string }>("/api/editor/dungeons/bake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      setNotice(r.log.split("\n").pop() ?? "baked");
+      const r = await callEnvelope<{ log: string }>("/api/editor/dungeons/bake", "POST", body);
+      const last = r.log.split("\n").pop() ?? "baked";
+      setNotice(last);
+      pushBake("dungeons", last || "baked");
       await refreshPool();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      pushBake("dungeons", `bake failed: ${e instanceof Error ? e.message : String(e)}`, false);
     } finally {
       setBaking(false);
     }
   };
 
   const view = React.useMemo(() => (dungeon && patch ? dungeonView(dungeon, patch) : null), [dungeon, patch]);
-  const dirty = patch !== null && JSON.stringify(patch) !== saved;
+  const dirty = doc.dirty;
+
+  // Toolbar Save/Undo/Redo target while a dungeon is open.
+  useDocActions(() => {
+    if (!dungeon || !patch) return null;
+    return {
+      label: `dungeon "${dungeon.id}"`,
+      canSave: dirty,
+      ...doc.history,
+      save: () => void save(),
+      canRevert: dirty,
+      revert: () => void open(dungeon.id),
+      exportDoc: () => ({ name: `${dungeon.id}.patch`, data: patch }),
+      importDoc: (incoming: unknown) => {
+        const p = incoming as typeof patch;
+        if (p.hash !== dungeon.hash) throw new Error(`this patch was made for another layout of ${dungeon.id}`);
+        doc.edit(p);
+      },
+    };
+  });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr_300px]" data-testid="dungeon-panel">
@@ -171,18 +197,15 @@ export function DungeonPanel(): React.JSX.Element {
           <div className="border-t border-border pt-2">
             <SectionTitle>Bake more</SectionTitle>
             <div className="mt-1 grid grid-cols-[1fr_1.6fr_1fr] gap-1.5">
-              <label>
-                <Label>count</Label>
+              <Field label="count">
                 <Input value={String(bake.count)} onChange={(e) => setBake({ ...bake, count: Number(e.target.value) || 1 })} />
-              </label>
-              <label>
-                <Label>seed</Label>
+              </Field>
+              <Field label="seed">
                 <Input value={bake.seed} onChange={(e) => setBake({ ...bake, seed: e.target.value })} />
-              </label>
-              <label>
-                <Label>rank</Label>
+              </Field>
+              <Field label="rank">
                 <Input value={bake.rank} placeholder="1-5" onChange={(e) => setBake({ ...bake, rank: e.target.value })} />
-              </label>
+              </Field>
             </div>
             <Button size="sm" className="mt-2 w-full" onClick={() => void runBake()} disabled={baking}>
               {baking ? "Baking…" : "Bake into the pool"}
@@ -203,33 +226,7 @@ export function DungeonPanel(): React.JSX.Element {
                 <Button size="sm" variant={placing ? "default" : "outline"} onClick={() => setPlacing((p) => !p)}>
                   {placing ? "Click the floor…" : "Place prop"}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={undo.length === 0}
-                  onClick={() => {
-                    setRedo((r) => [...r, patch!]);
-                    setPatch(undo[undo.length - 1]);
-                    setUndo((u) => u.slice(0, -1));
-                  }}
-                >
-                  Undo
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={redo.length === 0}
-                  onClick={() => {
-                    setUndo((u) => [...u, patch!]);
-                    setPatch(redo[redo.length - 1]);
-                    setRedo((r) => r.slice(0, -1));
-                  }}
-                >
-                  Redo
-                </Button>
-                <Button size="sm" onClick={() => void save()} disabled={!dirty}>
-                  Save patch
-                </Button>
+                <DocBar dirty={dirty} history={doc.history} saveLabel="Save patch" onSave={() => void save()} />
               </div>
             )}
           </div>
@@ -240,12 +237,12 @@ export function DungeonPanel(): React.JSX.Element {
               view={view}
               selected={selected}
               placing={placing}
-              onPick={setSelected}
+              onPick={pick}
               onMove={(key, x, y, first) => edit({ kind: "moveProp", key, x, y }, !first)}
               onPlace={(x, y) => {
                 setPlacing(false);
                 edit({ kind: "addProp", prop: { kind: "crate", x, y, rot: 0 } });
-                setSelected({ kind: "prop", key: `a${patch!.added.length}` });
+                pick({ kind: "prop", key: `a${patch!.added.length}` });
               }}
             />
           ) : (
@@ -256,7 +253,7 @@ export function DungeonPanel(): React.JSX.Element {
               Floor tints: <span className="text-emerald-400">entrance</span> · <span className="text-slate-400">combat</span> ·{" "}
               <span className="text-amber-400">elite</span> · <span className="text-yellow-300">treasure</span> · <span className="text-violet-400">shrine</span> ·{" "}
               <span className="text-red-400">boss</span>. Spheres: spawns by tier (green 1, amber 2, red 3). Blocks: props (grey layout, lilac dressing, cyan
-              edited or added). Drag to orbit, wheel to zoom, right-drag to pan.
+              edited or added). Move tool: drag the selected prop to move it. Select: drag to orbit, wheel to zoom, right-drag to pan.
             </p>
           )}
           {notice && <p className="mt-2 text-xs text-emerald-300">{notice}</p>}
@@ -280,7 +277,7 @@ export function DungeonPanel(): React.JSX.Element {
           <CardTitle>Details</CardTitle>
         </CardHeader>
         <CardContent className="text-xs" data-testid="dungeon-details">
-          {view && <Details view={view} selected={selected} archetypes={archetypes} edit={edit} onSelect={setSelected} />}
+          {view && <Details view={view} selected={selected} archetypes={archetypes} edit={edit} onSelect={pick} />}
           {!view && <p className="text-muted-foreground">No dungeon open.</p>}
         </CardContent>
       </Card>
@@ -324,22 +321,18 @@ function Details({
           {r.w}×{r.h} · depth {r.depth} · difficulty {r.difficulty.toFixed(2)}
           {r.species ? ` · ${r.species}` : ""}
         </p>
-        <label>
-          <Label>role (baked: {r.baked})</Label>
-          <select
-            className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1"
+        <Field label={`role (baked: ${r.baked})`}>
+          <Select size="xs" className="mt-0.5 w-full"
             value={r.type}
             onChange={(e) => edit({ kind: "roomType", room: r.id, type: e.target.value as RoomType })}
           >
             {ROOM_TYPES.map((t) => (
               <option key={t}>{t}</option>
             ))}
-          </select>
-        </label>
-        <label>
-          <Label>archetype</Label>
-          <select
-            className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1"
+          </Select>
+        </Field>
+        <Field label="archetype">
+          <Select size="xs" className="mt-0.5 w-full"
             value={r.archetype}
             onChange={(e) => edit({ kind: "roomArchetype", room: r.id, archetype: e.target.value })}
           >
@@ -347,8 +340,8 @@ function Details({
             {archetypes.map((a) => (
               <option key={a}>{a}</option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
         {r.edited && (
           <Button size="sm" variant="outline" onClick={() => edit({ kind: "resetRoom", room: r.id })}>
             Back to the bake
@@ -368,14 +361,9 @@ function Details({
         <p className="text-muted-foreground">
           tier {s.tier} · room {s.room} · ({s.x}, {s.y}){s.species ? ` · ${s.species}` : ""}
         </p>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={s.pinned} onChange={(e) => edit({ kind: "spawn", index: s.index, pinned: e.target.checked })} />
-          <span>Pinned (a re-dress keeps who stands here)</span>
-        </label>
-        <label>
-          <Label>rank</Label>
-          <select
-            className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1"
+        <CheckField checked={s.pinned} onChange={(pinned) => edit({ kind: "spawn", index: s.index, pinned })} label="Pinned (a re-dress keeps who stands here)" />
+        <Field label="rank">
+          <Select size="xs" className="mt-0.5 w-full"
             value={s.rank}
             onChange={(e) => edit({ kind: "spawn", index: s.index, rank: Number(e.target.value) })}
           >
@@ -384,8 +372,8 @@ function Details({
                 {n}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
         <Button size="sm" variant="outline" onClick={() => onSelect({ kind: "room", id: s.room })}>
           Its room
         </Button>
@@ -472,10 +460,13 @@ function DungeonCanvas({
           return;
         }
         const hit = s.pick(e.clientX, e.clientY);
-        if (hit?.kind === "prop" && selected?.kind === "prop" && selected.key === hit.key) {
-          // Dragging the selected prop: the camera holds still.
+        // Dragging any prop with the move tool: the camera holds still for
+        // this gesture. Otherwise the gesture orbits (select stays the
+        // camera/pick default). A press without a move still just selects.
+        if (hit?.kind === "prop" && canDragDungeonProp(getTool())) {
           s.setOrbit(false);
           drag.current = { key: hit.key, moved: false };
+          onPick(hit);
           (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
         }
         (e.currentTarget as HTMLCanvasElement).dataset.downX = String(e.clientX);

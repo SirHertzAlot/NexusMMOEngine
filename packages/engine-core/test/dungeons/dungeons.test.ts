@@ -23,6 +23,7 @@ import { loadDungeonContent, parseDungeonContent, type DungeonContent } from "..
 import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/pool.js";
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
 import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
+import type { Weapon } from "../../src/combat.js";
 import { InstanceManager } from "../../src/dungeons/manager.js";
 import { MemoryInstanceResultStore, SqliteInstanceResultStore } from "../../src/dungeons/results.js";
 import { HeadlessClient } from "../net/headless-client.js";
@@ -120,6 +121,20 @@ describe("dungeon content and pool", () => {
     walls.step(sim);
     assert.deepEqual([C.Transform.px[e], C.Transform.pz[e]], [3, 5]);
   });
+
+  it("a noclip body passes through walls", () => {
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    const e = sim.spawn();
+    addComponent(sim.ecs, C.Transform, e);
+    addComponent(sim.ecs, C.Velocity, e);
+    addComponent(sim.ecs, C.Noclip, e);
+    const walls = new DungeonWallSystem(readLayout(fixture()));
+    C.Transform.px[e] = -1; // straight into the outer wall
+    C.Transform.pz[e] = 5;
+    walls.step(sim);
+    assert.deepEqual([C.Transform.px[e], C.Transform.pz[e]], [-1, 5]);
+  });
 });
 
 describe("dungeon instance", () => {
@@ -170,6 +185,138 @@ describe("dungeon instance", () => {
     assert.equal(results.length, 1, "reported once");
   });
 
+  it("places chests per run and opens the nearest one into the result loot", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    const now = 2_000_000;
+    const inst = new DungeonInstance({
+      id: "run-chest", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [7, 8, 9], chestPool: [11, 12], onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    // One chest per non-entrance room (the fixture's room 1), closed.
+    assert.deepEqual(inst.chests.map((c) => [c.id, c.opened]), [["chest-0", false]]);
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    // Stand on the chest and open it: its rolls join the result loot.
+    C.Transform.px[avatar] = inst.chests[0].x;
+    C.Transform.pz[avatar] = inst.chests[0].z;
+    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    await until(() => inst.chests[0].opened);
+    // Opening again finds it empty: still one opened chest, no run yet.
+    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    await sleep(100);
+    assert.equal(inst.chests.filter((ch) => ch.opened).length, 1);
+    assert.equal(results.length, 0);
+    inst.end("abandoned");
+    assert.equal(results.length, 1);
+    const loot = results[0].loot.filter((l) => l.characterId === rec.id).map((l) => l.def);
+    assert.ok(loot.length >= 1 && loot.length <= 2, `1-2 chest rolls, got ${loot.length}`);
+    assert.ok(loot.every((d) => [11, 12].includes(d)), "chest rolls come from the chest pool");
+  });
+
+  it("the run state names each chest and whether it is opened", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-chest-state", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], chestPool: [11], onEnd: (r) => results.push(r), now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    await until(() => ctl(c).some((m) => m.op === "state"));
+    assert.deepEqual(
+      ctl(c).find((m) => m.op === "state")!.chests,
+      [{ id: "chest-0", opened: false }],
+    );
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    C.Transform.px[avatar] = inst.chests[0].x;
+    C.Transform.pz[avatar] = inst.chests[0].z;
+    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
+    assert.deepEqual(
+      ctl(c).filter((m) => m.op === "state").at(-1)!.chests,
+      [{ id: "chest-0", opened: true }],
+    );
+  });
+
+  it("springs a trap under a member for the rules harm, once", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-trap", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], onEnd: (r) => results.push(r), now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    // Traps in the lowest-id non-entrance rooms, unsprung.
+    assert.deepEqual(inst.traps.map((t) => [t.id, t.sprung]), [["trap-0", false]]);
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    C.Transform.px[avatar] = inst.traps[0].x;
+    C.Transform.pz[avatar] = inst.traps[0].z;
+    const before = C.Health.current[avatar];
+    await until(() => inst.traps[0].sprung);
+    assert.equal(before - C.Health.current[avatar], content.rules.trapHarm);
+    // A spent trap never fires again.
+    await sleep(200);
+    assert.equal(before - C.Health.current[avatar], content.rules.trapHarm);
+  });
+
+  it("the run state names each trap and whether it is sprung", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const inst = new DungeonInstance({
+      id: "run-trap-state", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const token = inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" });
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const w = await c.hello("t", { token });
+    await until(() => ctl(c).some((m) => m.op === "state"));
+    assert.deepEqual(
+      ctl(c).find((m) => m.op === "state")!.traps,
+      [{ id: "trap-0", sprung: false }],
+    );
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    C.Transform.px[avatar] = inst.traps[0].x;
+    C.Transform.pz[avatar] = inst.traps[0].z;
+    await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
+    assert.deepEqual(
+      ctl(c).filter((m) => m.op === "state").at(-1)!.traps,
+      [{ id: "trap-0", sprung: true }],
+    );
+  });
+
   it("times out, and an empty run is abandoned", async () => {
     for (const [advance, want] of [[46 * 60_000, "timeout"], [121_000, "abandoned"]] as const) {
       SimWorld.resetEntityCursorForTesting();
@@ -190,7 +337,14 @@ describe("dungeon instance", () => {
 });
 
 describe("instance manager", () => {
-  async function region(dungeons: DungeonContent, partySizes?: [number, number]) {
+  async function region(
+    dungeons: DungeonContent,
+    partySizes?: [number, number],
+    extra?: {
+      weaponOf?: (characterId: number) => Weapon | null;
+      train?: (characterId: number, skill: string, difficulty: number, key: number) => void;
+    },
+  ) {
     SimWorld.resetEntityCursorForTesting();
     const dir = poolDir([fixture()]);
     dirs.push(dir);
@@ -205,6 +359,8 @@ describe("instance manager", () => {
       credentialStore, characterStore: characters, partyOf: (n) => gw.partyOf(n),
       lootPool: () => [42], grant: (c, d) => (granted.push([c, d]), true),
       endpoint: (p) => `ws://127.0.0.1:${p}`, results, transport: "ws",
+      ...(extra?.weaponOf ? { weaponOf: extra.weaponOf } : {}),
+      ...(extra?.train ? { train: extra.train } : {}),
     });
     const gate = content.entrances["barrow-gate"];
     gw = new Gateway({ credentialStore, characterStore: characters, extensions: [mgr], spawnPoint: { x: gate.x + 14, z: gate.z + 14 } /* the first avatar stands 14 m off it, on the gate */, transport: "ws" });
@@ -236,6 +392,11 @@ describe("instance manager", () => {
   it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
     const r = await region(content);
     const a = await r.join("alice", "Alice");
+    // Entering the world tells the client where the entrances are.
+    await until(() => ctl(a).some((m) => m.op === "entrances"));
+    const listed = ctl(a).find((m) => m.op === "entrances")!.entrances as { id: string; x: number; radius: number }[];
+    assert.deepEqual(listed.map((e) => e.id), ["barrow-gate"]);
+    assert.equal(listed[0].x, content.entrances["barrow-gate"].x);
     ask(a, "nowhere");
     await until(() => ctl(a).some((m) => m.text === "there is no dungeon entrance here"));
     ask(a);
@@ -268,6 +429,38 @@ describe("instance manager", () => {
     assert.equal(r.results.unreported()[0].kills[0].count, 1);
     assert.ok(r.granted.every(([, d]) => d === 42));
     assert.equal(r.mgr.count, 0);
+  });
+
+  it("commit trains the killer's weapon skill, one use per kill", async () => {
+    const trained: Array<[number, string, number, number]> = [];
+    const r = await region(content, undefined, {
+      weaponOf: () => ({ technique: "cut", item: { mass: 1, edge: 1, point: 0, hardness: 1 }, reach: 1 }),
+      train: (c, s, d, k) => void trained.push([c, s, d, k]),
+    });
+    const a = await r.join("alice", "Alice");
+    await until(() => ctl(a).some((m) => m.op === "entrances"));
+    ask(a);
+    await until(() => ctl(a).some((m) => m.op === "transfer"));
+    const t = ctl(a).find((m) => m.op === "transfer")!;
+    const inside = new HeadlessClient();
+    closers.push(() => inside.close());
+    await inside.connect(t.endpoint as string);
+    const w = await inside.hello("t", { token: t.token as string });
+    const inst = r.mgr.instances()[0];
+    const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    for (const e of [...inst.creatures.entities()]) {
+      C.Health.current[e] = 0;
+      onDeath(inst.world, { tick: 1, target: e, state: "dead", killer: avatar });
+    }
+    inst.end("cleared");
+    assert.equal(trained.length, 3);
+    for (const [c, s, d, k] of trained) {
+      assert.equal(c, trained[0][0]);
+      assert.equal(s, "cutting");
+      assert.equal(d, 0.5);
+      assert.equal(k, trained[0][3]);
+    }
   });
 
   it("refuses a party outside its size", async () => {

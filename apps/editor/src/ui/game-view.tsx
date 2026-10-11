@@ -12,10 +12,15 @@
  * samples) come back once a second through onHud; children draw over the
  * view (the debugger's panels, play-debugger.tsx), inside `containerRef`.
  * Maximized, the view covers the editor window.
+ *
+ * Toolbar tools: select is the camera/pick default here — the follow
+ * camera owns orbit in every tool and a left click picks the target, so
+ * the tool intentionally changes nothing in this view.
  */
 
 import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
+import { getAllMedia } from "../media-client.js";
 import {
   CombatFeedback,
   DEFAULT_BINDINGS,
@@ -23,6 +28,7 @@ import {
   PcgRpcClient,
   PlaceholderAssets,
   WorldCanvas,
+  applyGameContent,
   type GpuInfo,
   type HudData,
   type QualityTier,
@@ -47,6 +53,10 @@ export interface GameViewProps {
   /** The view's frame, for what draws over it. */
   containerRef?: React.Ref<HTMLDivElement>;
   children?: React.ReactNode;
+  /** Camera view: "third" (follow) or "first" (eye-level). Uncontrolled by default (V toggles). */
+  view?: "third" | "first";
+  /** Fires when the view changes. */
+  onViewChange?: (view: "third" | "first") => void;
 }
 
 export function GameView({
@@ -63,10 +73,20 @@ export function GameView({
   combat: givenCombat,
   containerRef,
   children,
+  view,
+  onViewChange,
 }: GameViewProps): React.JSX.Element {
   const [assets] = React.useState(() => new PlaceholderAssets());
   const [ownCombat] = React.useState(() => new CombatFeedback());
   const combat = givenCombat ?? ownCombat;
+  // The animation-side content (combat moves, locomotion graph, materials) is applied before the world is built.
+  const [contentReady, setContentReady] = React.useState(false);
+  React.useEffect(() => {
+    getAllMedia()
+      .then((c) => void applyGameContent(c))
+      .catch((e: unknown) => console.warn(`[editor] game content: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => setContentReady(true));
+  }, []);
   const pcg = React.useMemo(
     () => new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken),
     [client, url],
@@ -81,12 +101,13 @@ export function GameView({
       }
       data-testid="game-view"
     >
-      <WorldCanvas
+      {contentReady && <WorldCanvas
         client={client}
         assets={assets}
         pcg={pcg}
         lastStateAt={lastStateAt}
         wireframe={wireframe}
+        captureFrames
         showcase={showcase}
         bindings={DEFAULT_BINDINGS}
         quality={quality}
@@ -94,7 +115,9 @@ export function GameView({
         onHud={onHud}
         onGpu={onGpu}
         onQuality={onQuality}
-      />
+        view={view}
+        onViewChange={onViewChange}
+      />}
       {children}
     </div>
   );

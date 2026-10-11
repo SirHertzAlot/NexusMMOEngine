@@ -17,7 +17,7 @@
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
 import { Surreal } from "surrealdb";
-import type { MigrationRecord, MigrationState, RegionRecord, WorldStore } from "./types.js";
+import type { MigrationRecord, MigrationState, RegionRecord, StoredDungeonRun, WorldStore } from "./types.js";
 
 export interface SurrealStoreOptions {
   url: string;
@@ -54,6 +54,13 @@ DEFINE TABLE IF NOT EXISTS migration SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_migration_id ON migration FIELDS migrationId UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_migration_entity ON migration FIELDS entityId, state;
 DEFINE INDEX IF NOT EXISTS idx_migration_state ON migration FIELDS state, createdAt;
+-- Slice D4: committed dungeon runs, one row per run (idempotent on instance).
+DEFINE TABLE IF NOT EXISTS dungeon_run SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_dungeon_run_instance ON dungeon_run FIELDS instance UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_dungeon_run_region ON dungeon_run FIELDS regionId;
+-- Slice S2: online character names per region (replaced on every report).
+DEFINE TABLE IF NOT EXISTS presence SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_presence_region ON presence FIELDS regionId UNIQUE;
 `;
 
 /** First (only) statement's result. */
@@ -84,6 +91,11 @@ function strip(record: Record<string, unknown>): RegionRecord {
 function migration(record: Record<string, unknown>): MigrationRecord {
   const { id, ...rest } = record;
   return { ...(rest as unknown as MigrationRecord), entityState: rest["entityState"] ?? null };
+}
+
+function dungeonRun(record: Record<string, unknown>): StoredDungeonRun {
+  const { id, ...rest } = record;
+  return rest as unknown as StoredDungeonRun;
 }
 
 export class SurrealWorldStore implements WorldStore {
@@ -287,5 +299,41 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("DELETE migration WHERE state != 'begun' AND updatedAt < $cutoff RETURN BEFORE", { cutoff: cutoffMs }),
     );
     return rows.length;
+  }
+
+  async recordDungeonRun(run: StoredDungeonRun): Promise<boolean> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY dungeon_run WHERE instance = $id LIMIT 1", { id: run.instance }),
+    );
+    if (existing !== null) return false;
+    await this.db.query("CREATE ONLY dungeon_run CONTENT $data", { data: { ...run } });
+    return true;
+  }
+
+  async listDungeonRuns(regionId?: string): Promise<StoredDungeonRun[]> {
+    const rows =
+      regionId === undefined
+        ? rowList<Record<string, unknown>>(await this.db.query("SELECT * FROM dungeon_run"))
+        : rowList<Record<string, unknown>>(await this.db.query("SELECT * FROM dungeon_run WHERE regionId = $r", { r: regionId }));
+    return rows.map(dungeonRun);
+  }
+
+  async setPresence(regionId: string, names: string[]): Promise<void> {
+    await this.db.query("DELETE presence WHERE regionId = $r", { r: regionId });
+    if (names.length > 0) {
+      await this.db.query("CREATE ONLY presence CONTENT $data", { data: { regionId, names } });
+    }
+  }
+
+  async queryPresence(names: string[]): Promise<Map<string, string | null>> {
+    const rows = rowList<Record<string, unknown>>(await this.db.query("SELECT regionId, names FROM presence"));
+    const found = new Map<string, string>();
+    for (const row of rows) {
+      const regionId = row["regionId"] as string;
+      for (const n of (row["names"] as string[]).filter((x) => names.includes(x))) {
+        if (!found.has(n)) found.set(n, regionId);
+      }
+    }
+    return new Map(names.map((n) => [n, found.get(n) ?? null]));
   }
 }

@@ -1,6 +1,7 @@
 /** Chat-box slash commands (U6/U7): party ops, `/p`, `/w`, `/r`. Pure, so the box and tests share it. */
 
 import type { ChatBroadcast, ChatChannel, GuildMessage, GuildRank, PartyMessage } from "@mmo-engine/protocol";
+import { t } from "../i18n.js";
 
 export type ChatCommand =
   | { kind: "say"; text: string }
@@ -19,17 +20,17 @@ function parseGuildOp(op: string, words: string[], arg: string): ChatCommand | n
     case "gcreate": {
       const tag = words.length >= 2 ? words[words.length - 1] : undefined;
       const name = words.slice(0, -1).join(" ");
-      return tag && name ? { kind: "guild", op: "create", name, tag } : { kind: "error", text: "/gcreate needs a name and a tag" };
+      return tag && name ? { kind: "guild", op: "create", name, tag } : { kind: "error", text: t("chat.error.gcreate") };
     }
     case "ginvite":
     case "gkick":
-      return arg ? { kind: "guild", op: op === "ginvite" ? "invite" : "kick", name: arg } : { kind: "error", text: `/${op} needs a name` };
+      return arg ? { kind: "guild", op: op === "ginvite" ? "invite" : "kick", name: arg } : { kind: "error", text: t("chat.error.needsName", { op }) };
     case "grank": {
       const [name, rank] = words;
       const r = rank?.toLowerCase();
       return name && r && RANKS.has(r)
         ? { kind: "guild", op: "setRank", name, rank: r as GuildRank }
-        : { kind: "error", text: "/grank needs a name and a rank (recruit, member, officer, leader)" };
+        : { kind: "error", text: t("chat.error.grank") };
     }
     case "gmotd":
       return { kind: "guild", op: "motd", text: arg };
@@ -66,26 +67,26 @@ export function parseChatCommand(line: string, channel: ChatChannel, replyTo: st
   const arg = rest.join(" ");
   const op = cmd.toLowerCase();
   if (NAMED_OPS.has(op)) {
-    return arg ? { kind: "party", op: op as PartyMessage["op"], name: arg } : { kind: "error", text: `/${op} needs a name` };
+    return arg ? { kind: "party", op: op as PartyMessage["op"], name: arg } : { kind: "error", text: t("chat.error.needsName", { op }) };
   }
   if (PLAIN_OPS.has(op)) return { kind: "party", op: op as PartyMessage["op"] };
   if (op === "friend" || op === "unfriend") {
-    return arg ? { kind: "friend", name: arg, on: op === "friend" } : { kind: "error", text: `/${op} needs a name` };
+    return arg ? { kind: "friend", name: arg, on: op === "friend" } : { kind: "error", text: t("chat.error.needsName", { op }) };
   }
   if (op === "block" || op === "unblock") {
-    return arg ? { kind: "block", name: arg, on: op === "block" } : { kind: "error", text: `/${op} needs a name` };
+    return arg ? { kind: "block", name: arg, on: op === "block" } : { kind: "error", text: t("chat.error.needsName", { op }) };
   }
   const guild = parseGuildOp(op, rest, arg);
   if (guild) return guild;
-  if (op === "g" || op === "guild") return arg ? { kind: "chat", channel: "guild", text: arg } : { kind: "error", text: "/g needs a message" };
-  if (op === "p" || op === "party") return arg ? { kind: "chat", channel: "party", text: arg } : { kind: "error", text: "/p needs a message" };
+  if (op === "g" || op === "guild") return arg ? { kind: "chat", channel: "guild", text: arg } : { kind: "error", text: t("chat.error.needsMessage", { op: "g" }) };
+  if (op === "p" || op === "party") return arg ? { kind: "chat", channel: "party", text: arg } : { kind: "error", text: t("chat.error.needsMessage", { op: "p" }) };
   if (op === "w" || op === "whisper") {
     const [to = "", ...msg] = rest;
-    return to && msg.length ? { kind: "chat", channel: "whisper", text: msg.join(" "), to } : { kind: "error", text: "/w needs a name and a message" };
+    return to && msg.length ? { kind: "chat", channel: "whisper", text: msg.join(" "), to } : { kind: "error", text: t("chat.error.whisper") };
   }
   if (op === "r" || op === "reply") {
-    if (replyTo === null) return { kind: "error", text: "no whisper to reply to" };
-    return arg ? { kind: "chat", channel: "whisper", text: arg, to: replyTo } : { kind: "error", text: "/r needs a message" };
+    if (replyTo === null) return { kind: "error", text: t("chat.error.noReply") };
+    return arg ? { kind: "chat", channel: "whisper", text: arg, to: replyTo } : { kind: "error", text: t("chat.error.needsMessage", { op: "r" }) };
   }
-  return { kind: "error", text: `unknown command /${cmd}` };
+  return { kind: "error", text: t("chat.error.unknown", { cmd }) };
 }

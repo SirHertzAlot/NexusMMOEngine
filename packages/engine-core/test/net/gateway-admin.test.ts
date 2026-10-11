@@ -13,10 +13,13 @@ import {
   MessageType,
   type AdminResult,
   type ErrorMessage,
+  type SkillsMessage,
 } from "@mmo-engine/protocol";
 import { Gateway, type GatewayOptions } from "../../src/net/gateway.js";
 import { HeadlessClient, type HelloAuth } from "./headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
+import { MasterySystem } from "../../src/stats/mastery-system.js";
+import { loadGameRules } from "../../src/rules/boot.js";
 
 let now = 0;
 let gw: Gateway | null = null;
@@ -214,6 +217,103 @@ describe("gateway: admin console", () => {
     assert.match(flying.message, /Locomotion: mode 0 abilities 3 breath/);
     const grounded = await admin(client, "fly", { on: false });
     assert.equal(grounded.ok, true);
+    await client.close();
+  });
+
+  it("time shows the clock and sets it by the hour", async () => {
+    const url = await startGateway({ admins: ["alice"], dayClock: { seconds: 600, offset: 0 } });
+    const client = await joinClient(url, "alice");
+    const show = await admin(client, "time", {});
+    assert.equal(show.ok, true);
+    assert.match(show.message, /([01]\d|2[0-3]):[0-5]\d/);
+    const set = await admin(client, "time", { hour: 6, minute: 30 });
+    assert.equal(set.ok, true);
+    const again = await admin(client, "time", {});
+    assert.match(again.message, /06:30/);
+    await client.close();
+  });
+
+  it("setting the time tells every live client the new day", async () => {
+    const url = await startGateway({ admins: ["alice"], dayClock: { seconds: 600, offset: 0 } });
+    const alice = await joinClient(url, "alice");
+    const other = await joinClient(url, "user-a");
+    const gotP = other.waitFor(MessageType.Chat, 1);
+    const set = await admin(alice, "time", { hour: 12 });
+    assert.equal(set.ok, true);
+    const [payload] = await gotP;
+    const msg = decodeControl<{ kind: string; day: { seconds: number; offset: number } }>(payload);
+    assert.equal(msg.kind, "time");
+    assert.equal(msg.day.seconds, 600);
+    assert.ok(msg.day.offset >= 0 && msg.day.offset < 1);
+    await alice.close();
+    await other.close();
+  });
+
+  it("weather shows the override and forcing one tells every live client", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const alice = await joinClient(url, "alice");
+    const other = await joinClient(url, "user-a");
+    const show = await admin(alice, "weather", {});
+    assert.equal(show.ok, true);
+    assert.match(show.message, /auto/);
+    const gotP = other.waitFor(MessageType.Chat, 1);
+    const set = await admin(alice, "weather", { weather: "rain" });
+    assert.equal(set.ok, true);
+    const [payload] = await gotP;
+    const msg = decodeControl<{ kind: string; weather: string }>(payload);
+    assert.deepEqual(msg, { kind: "weather", weather: "rain" });
+    const again = await admin(alice, "weather", {});
+    assert.match(again.message, /rain/);
+    const errP = alice.waitFor(MessageType.Error, 1);
+    alice.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "weather", args: { weather: "storm" } }));
+    const [err] = await errP;
+    assert.equal(decodeControl<ErrorMessage>(err).code, 4003);
+    await alice.close();
+    await other.close();
+  });
+
+  it("god toggles invulnerability on the avatar", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const client = await joinClient(url, "alice");
+    const on = await admin(client, "god", { on: true });
+    assert.equal(on.ok, true);
+    assert.match(on.message, /god-mode on for/);
+    const off = await admin(client, "god", { on: false });
+    assert.equal(off.ok, true);
+    assert.match(off.message, /god-mode off for/);
+    await client.close();
+  });
+
+  it("noclip toggles free flight on the avatar", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const client = await joinClient(url, "alice");
+    const on = await admin(client, "noclip", { on: true });
+    assert.equal(on.ok, true);
+    assert.match(on.message, /no-clip on for/);
+    const off = await admin(client, "noclip", { on: false });
+    assert.equal(off.ok, true);
+    assert.match(off.message, /no-clip off for/);
+    await client.close();
+  });
+
+  it("god on maxes every skill; god off keeps them", async () => {
+    const { rules } = loadGameRules();
+    const mastery = new MasterySystem(rules.skills, () => 1000, rules.disciplines.disciplines);
+    const url = await startGateway({ admins: ["alice"], mastery, systems: [mastery] });
+    const client = await joinClient(url, "alice");
+    const on = await admin(client, "god", { on: true });
+    assert.equal(on.ok, true);
+    const skillsP = client.waitFor(MessageType.Skills, 1);
+    for (let i = 0; i < 30; i++) gw!.frame((now += 100));
+    const [payload] = await skillsP;
+    const msg = decodeControl<SkillsMessage>(payload);
+    assert.ok(msg.skills.length > 0);
+    for (const s of msg.skills) {
+      assert.equal(s.value, msg.max);
+      assert.equal(s.peak, msg.max);
+    }
+    const off = await admin(client, "god", { on: false });
+    assert.equal(off.ok, true);
     await client.close();
   });
 

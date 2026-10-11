@@ -24,9 +24,12 @@ import {
   BeginMigrationSchema,
   CommitMigrationSchema,
   DeregisterSchema,
+  DungeonResultsReportSchema,
   GetMigrationSchema,
   HeartbeatSchema,
+  QueryPresenceSchema,
   RegisterRegionSchema,
+  SetPresenceSchema,
   SnapshotReportSchema,
 } from "../schema.js";
 import { WorldError } from "../types.js";
@@ -171,6 +174,42 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
     authed(req, res, async (regionId) => {
       const { migrationId } = GetMigrationSchema.parse(req.body ?? {});
       return { migration: await core.getMigration(regionId, migrationId) };
+    }),
+  );
+
+  // -- Slice D4: the region's committed dungeon runs ----------------------
+  // Idempotent on `instance`: the region replays its `instances.db`
+  // unreported rows until the world confirms them ingested.
+
+  r.post("/rpc/World/ReportDungeonResults", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = DungeonResultsReportSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.reportDungeonResults(regionId, input);
+    }),
+  );
+
+  // -- Slice S2: cross-region presence ------------------------------------
+  // State, not events: regions replace their online names; queries map
+  // names to regions for friends lists.
+
+  r.post("/rpc/World/SetPresence", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = SetPresenceSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      await core.setPresence(regionId, input);
+      return {};
+    }),
+  );
+
+  r.post("/rpc/World/QueryPresence", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = QueryPresenceSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.queryPresence(regionId, input);
     }),
   );
 

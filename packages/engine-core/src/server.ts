@@ -4,7 +4,7 @@
  * Wires the full authoritative stack in one Node process:
  *   SimWorld + ChunkStreamer (chunks, scatter, and navmesh tiles load
  *   around players and unload behind them) + IntentSystem +
- *   IntegrateSystem + Jolt PhysicsSystem + Recast NavigationSystem,
+ *   IntegrateSystem + PropCollisionSystem + Jolt PhysicsSystem + Recast NavigationSystem,
  *   SQLite persistence (save every 300 ticks + on SIGTERM/SIGINT), CSV
  *   auth, and the WebSocket gateway.
  *
@@ -28,6 +28,7 @@
  *   MMO_PCG_ASSETS PCG asset library dir (default: the repo's content/pcg)
  *   MMO_RULES      game rules dir (default: the repo's content/rules); a
  *                  bad rules file stops the server with every problem named
+ *   MMO_COMBAT     combat moves file (default: the repo's content/combat/moves.json)
  *   MMO_SCATTER    what grows on new chunks: "ecology" (natural placement of
  *                  the Synty nature set, content/ecology/wilds.ecology.json)
  *                  or "pcg" (the PCG forest graph with PICG trees). Default:
@@ -41,17 +42,33 @@
  *                  <data>/instances.db
  *   MMO_INSTANCE_HOST host clients reach instances at (default localhost;
  *                  each instance listens on its own free port)
+ *   MMO_MODULES    the enabled module set document (default: content/modules.json;
+ *                  modules/<name>/module.json). `core` is always on. The tick's
+ *                  systems are core's plus those the enabled modules add, ordered
+ *                  by their after/before; a bad set stops the server with every
+ *                  problem named (EA9)
  *   MMO_BIOMES     the biome registry: per-biome scatter multipliers and
  *                  creature tables (default: content/biomes.json)
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
  *                  baked world with biomes; default off). Only kinds with
  *                  creature rules spawn.
+ *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
+ *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
+ *                  overrides the scenes dir, MMO_PREFABS the prefab files (content/prefabs)
+ *   MMO_SPECIES    the species overlay file (default content/species/species.json),
+ *                  merged over the built-in roster; a bad file stops the boot
+ *   MMO_CRAFTING   the crafting rules (default content/crafting/recipes.json); a bad file
+ *                  stops the boot
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
  *   MMO_BOTS_RADIUS how far from home they roam, metres (default 18)
+ *   MMO_SPAWN_OVERRIDE "x,z" player spawn point, overriding the world's stored
+ *                  spawn_point (the editor's Play menu "Start from")
  *   MMO_PLAYER_ABILITIES what new players can do: "swim" (default), or
  *                  "swim,fly" (flight is for expansions; "none" = walk only)
+ *   MMO_USERS_CSV  accounts file (default $MMO_DATA_DIR/users.csv); the editor
+ *                  points play sessions at a scratch file
  *   MMO_ADMINS     comma-separated admin usernames for the admin console
  *                  (protocol 0x10, roadmap A1; default empty = nobody)
  *   MMO_DEV_SERVER=1 makes every account an admin (development servers
@@ -95,6 +112,7 @@ import {
   IntentSystem,
   CharacterSystem,
   IntegrateSystem,
+  PropCollisionSystem,
   PhysicsSystem,
   ColliderSystem,
   createJoltBackend,
@@ -119,39 +137,53 @@ import {
   MigrationCoordinator,
   waterSurfaceFromMaps,
   type ChunkBounds,
+  SqlitePartyStore,
+  SqliteSocialStore,
 } from "./index.js";
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
-import { RulesError } from "@mmo-engine/rules";
+import { healthHttpHandler } from "./net/health.js";
+import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
+import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
+import { assembleServerSystems } from "./modules.js";
+const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { CombatSystem, type CombatSkills, type Weapon } from "./combat.js";
+import { CombatSystem, type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
+import { AbilitySystem } from "./abilities.js";
+import { StatusSystem } from "./status.js";
+import { TelegraphSystem } from "./telegraph.js";
+import { DuelSystem } from "./duel.js";
 import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
-import { CharacterRef } from "./components.js";
+import { CharacterRef, God, Health } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
+import { SkillSheet } from "./stats/mastery.js";
 import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
+import { AnimationSystem } from "./animation.js";
 import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { QuestService } from "./quests/quest-service.js";
 import { SqliteQuestStore } from "./quests/quest-store.js";
 import { loadDungeonContent, DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { DungeonPool } from "./dungeons/pool.js";
 import { InstanceManager } from "./dungeons/manager.js";
-import { SqliteInstanceResultStore } from "./dungeons/results.js";
+import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
+import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
+import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
+import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
-import { SqliteSocialStore } from "./social-store.js";
-import { SqlitePartyStore } from "./party-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
@@ -160,9 +192,10 @@ import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
-import { ItemService, LootDropper, loadItemDefs } from "./items/index.js";
+import { ItemService, LootDropper, lineDef, loadItemDefs } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
+import { loadCombatContent } from "./combat-content.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -219,6 +252,21 @@ async function main(): Promise<void> {
     throw err;
   }
   console.log(`[server] ${game.summary}`);
+  // Authored data beyond the rules: the species roster and the crafting rules.
+  let speciesRoster: ServerRoster;
+  let crafting: CraftingRules;
+  try {
+    speciesRoster = loadServerRoster();
+    crafting = loadCraftingRules(process.env.MMO_CRAFTING || undefined);
+  } catch (err) {
+    console.error(`[server] ${(err as Error).message}`);
+    process.exit(1);
+  }
+  console.log(`[${speciesRoster.summary}]`);
+  console.log(`[crafting: ${Object.keys(crafting.refining).length} refining recipe(s), ${Object.keys(crafting.reagents).length} element reagent(s)]`);
+  // The combat moves (content/combat/moves.json, MMO_COMBAT): timing, chaining and travel the fight runs on.
+  const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
+  if (combatLine) console.log(`[server] ${combatLine}`);
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -299,17 +347,27 @@ async function main(): Promise<void> {
   // A baked world records its chunk range and spawn point. A legacy world
   // is just the spawn area around the origin.
   const spawnMeta = store.getMeta("spawn_point");
-  const spawn = spawnMeta ? (JSON.parse(spawnMeta) as { x: number; z: number }) : { x: 0, z: 0 };
+  const storedSpawn = spawnMeta ? (JSON.parse(spawnMeta) as { x: number; z: number }) : { x: 0, z: 0 };
+  // The editor's play mode overrides the spawn via MMO_SPAWN_OVERRIDE="x,z"
+  // (Play menu "Start from"). Malformed values fall back to the stored point.
+  // Clamped into a baked world's chunk range, so it cannot land off the world.
+  const spawnOverride = parseSpawnOverride(process.env.MMO_SPAWN_OVERRIDE);
+  const boundsMeta = store.getMeta("world_bounds");
+  const bakedRange = boundsMeta ? (JSON.parse(boundsMeta) as { minChunk: number; maxChunk: number }) : null;
+  const spawn = spawnOverride
+    ? bakedRange
+      ? clampSpawn(spawnOverride, bakedRange.minChunk, bakedRange.maxChunk, CHUNK_SIZE)
+      : spawnOverride
+    : storedSpawn;
   const scx = Math.floor(spawn.x / CHUNK_SIZE);
   const scz = Math.floor(spawn.z / CHUNK_SIZE);
   const area: Array<[number, number]> = [];
   for (let dz = -WORLD_RADIUS; dz <= WORLD_RADIUS; dz++) {
     for (let dx = -WORLD_RADIUS; dx <= WORLD_RADIUS; dx++) area.push([scx + dx, scz + dz]);
   }
-  const boundsMeta = store.getMeta("world_bounds");
   let bounds: ChunkBounds;
-  if (boundsMeta) {
-    const { minChunk, maxChunk } = JSON.parse(boundsMeta) as { minChunk: number; maxChunk: number };
+  if (bakedRange) {
+    const { minChunk, maxChunk } = bakedRange;
     bounds = { minCx: minChunk, minCz: minChunk, maxCx: maxChunk, maxCz: maxChunk };
   } else {
     bounds = { minCx: scx - WORLD_RADIUS, minCz: scz - WORLD_RADIUS, maxCx: scx + WORLD_RADIUS, maxCz: scz + WORLD_RADIUS };
@@ -375,7 +433,8 @@ async function main(): Promise<void> {
   const biomeAt = biomeLookup(store, tiles);
   const worldBiomes = store.getMeta("world_biomes");
   if (worldBiomes) {
-    for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[] })) console.warn(`[biomes] ${p} (${biomesFile})`);
+    const kinds = [...Object.keys(game.rules.creatures.creatures), ...Object.keys(speciesRoster.roster)];
+    for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[], kinds })) console.warn(`[biomes] ${p} (${biomesFile})`);
   }
   // What grows on new chunks (see world-populator: ecology or PCG).
   const populator = makeWorldPopulator({
@@ -413,7 +472,7 @@ async function main(): Promise<void> {
 
   // ---- auth + gateway ----------------------------------------------------
   const credentialStore = new CsvCredentialStore(
-    path.join(DATA_DIR, "users.csv"),
+    process.env.MMO_USERS_CSV ?? path.join(DATA_DIR, "users.csv"),
   );
   const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
   const guildStore = new SqliteGuildStore(path.join(DATA_DIR, "guilds.db"));
@@ -486,7 +545,12 @@ async function main(): Promise<void> {
     } else {
       const wild = new WildCreatures({
         registry: biomes,
-        spawner: creatures,
+        // A species the overlay edits sets its pack size where the biome table doesn't.
+        spawner: {
+          has: (k) => creatures.has(k),
+          isCreature: (e) => creatures.isCreature(e),
+          spawnPack: (sim, k, x, z, size) => creatures.spawnPack(sim, k, x, z, size ?? editedPack(speciesRoster, k)),
+        },
         seed: ecologySeed32(worldSeed),
         chunkWorldSize: CHUNK_SIZE,
         biomeAt,
@@ -526,6 +590,11 @@ async function main(): Promise<void> {
   const restored = items.restore(sim, itemLedger.load());
   items.attachLedger(itemLedger);
   if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
+  // What a blow gets through: worn armour per the rules' armourHalf;
+  // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
+  // beside the formula it feeds. Dungeon runs ask through the same
+  // function, by character id.
+  const wornFactor = (id: number): number => armourFactor(game.rules, items.armourTotal(id));
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   const weaponOf = (e: number): Weapon | null => {
@@ -541,7 +610,7 @@ async function main(): Promise<void> {
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
-  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, kindOf: (e) => creatures.kindOf(e) });
+  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, tables: game.rules.loot.tables ?? {}, kindOf: (e) => creatures.kindOf(e) });
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -551,6 +620,7 @@ async function main(): Promise<void> {
     hooks.current = g.hooks;
     creatures.setRules(g.rules.creatures.creatures, g.rules.items.bases);
     dropper.setCreatures(g.rules.creatures.creatures);
+    dropper.setTables(g.rules.loot.tables ?? {});
     items.setLoot(g.rules.loot);
     itemDefs.defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
@@ -584,11 +654,52 @@ async function main(): Promise<void> {
     `[quests] ${Object.keys(questContent.quests).length} quest(s), ${Object.keys(questContent.templates).length} template(s), ` +
       `${Object.keys(questContent.npcs).length} npc(s) (${questDir})`,
   );
+  // A scene's nodes spawn through the creature, prop, item and quest paths (EA6, data-driven entities).
+  // After items and quests exist, so item and quest nodes have somewhere to go.
+  if (process.env.MMO_SCENE) {
+    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+    const r = spawnSceneOnBoot(
+      scene,
+      {
+        sim,
+        creatures,
+        table: () => loadScatterContent().table,
+        groundHeightAt: (x, z) => character.groundHeight(x, z),
+        prefabs,
+        species: (id) => speciesRoster.roster[id],
+        items: {
+          place: (base, rank, x, z) => {
+            const def = lineDef(itemDefs.defs, { base, rank }, rankOrder);
+            return def < 0 ? null : items.placeFixture(sim, def, x, z);
+          },
+          discard: (ids) => ids.forEach((i) => items.discardGround(sim, i)),
+        },
+        quests: {
+          place: (quest, x, z) => {
+            const giver = questContent.quests[quest]?.giver;
+            const npc = giver === undefined ? undefined : questContent.npcs[giver];
+            if (!npc) return `no quest "${quest}" with a giver`;
+            npc.x = x;
+            npc.z = z;
+            return null;
+          },
+        },
+      },
+      store,
+    );
+    console.log(
+      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
+        (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
+    );
+  }
   // Dungeon instances (D4): the gateway's "dungeon" extension starts a
   // sandbox gateway per run from the prebaked pool and commits its result.
   const dungeonDir = process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT;
   const dungeonPool = new DungeonPool(path.join(DATA_DIR, "dungeons"));
   const instanceHost = process.env.MMO_INSTANCE_HOST || "localhost";
+  // Committed runs wait here until the world confirms them ingested.
+  const instanceResults = new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db"));
   const dungeons = new InstanceManager({
     content: loadDungeonContent(dungeonDir),
     pool: dungeonPool,
@@ -602,10 +713,25 @@ async function main(): Promise<void> {
       const d = itemDefs.defs;
       return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def] };
     },
+    armourOf: (character) => wornFactor(character),
     lootPool: () => itemDefs.defs.ofSource("mob"),
+    chestPool: () => itemDefs.defs.ofSource("chest"),
     grant: (character, def) => items.give(character, def).ok,
+    // Dungeon skill gains: the region holds no live sheet for members
+    // away in an instance (the gateway forgets sheets on leave and
+    // reloads them on return), so training round-trips the character's
+    // saved sheet instead of racing the sim.
+    train: (character, skill, difficulty, key) => {
+      const i = mastery.index.of(skill);
+      if (i < 0) return;
+      const sheet = new SkillSheet(mastery.index);
+      const saved = characterStore.loadSkills?.(character);
+      if (saved) sheet.load(saved);
+      sheet.train(i, difficulty, key, Date.now());
+      characterStore.saveSkills?.(character, sheet.save());
+    },
     endpoint: (p) => `ws://${instanceHost}:${p}`,
-    results: new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db")),
+    results: instanceResults,
     log: (l) => console.log(l),
   });
   console.log(`[dungeons] ${dungeonPool.entries.length} layout(s) in the pool (${path.join(DATA_DIR, "dungeons")})`);
@@ -625,18 +751,111 @@ async function main(): Promise<void> {
   bodyRef = body;
   // Mana and spells: casting heals (Mend) spends it.
   const magic = new MagicSystem(game.rules.spells);
-  const combat = new CombatSystem(30, stamina, { hooks, weaponOf, skills: combatSkills, body, techniques: () => Object.keys(game.rules.combat.techniques) });
+  // What a blow gets through: worn armour per the rules' armourHalf;
+  // bots and props wear nothing.
+  const armourOf = (e: number): number => {
+    if (!hasComponent(sim.ecs, CharacterRef, e)) return 1;
+    return wornFactor(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
+  };
+  const combatDamage: CombatDamage = {
+    hooks,
+    weaponOf,
+    armourOf,
+    skills: combatSkills,
+    body,
+    techniques: () => Object.keys(game.rules.combat.techniques),
+  };
+  // Combat abilities (M5): the ability trigger layer, buffs/debuffs,
+  // server-authoritative telegraphs, and consensual PvP.
+  const abilities = new AbilitySystem(30);
+  const status = new StatusSystem(
+    30,
+    (t, amount) => {
+      if (hasComponent(sim.ecs, Health, t) && !hasComponent(sim.ecs, God, t))
+        Health.current[t] = Math.max(0, Health.current[t] - amount);
+    },
+    (t, amount) => {
+      if (hasComponent(sim.ecs, Health, t)) Health.current[t] = Math.min(Health.max[t], Health.current[t] + amount);
+    },
+  );
+  const telegraphs = new TelegraphSystem(30);
+  const duels = new DuelSystem(30);
+  // Consensual PvP: players may only hurt players they are dueling (or
+  // marked hostile); player-vs-creature blows are unchanged. Status
+  // effects: the attacker's power buffs and the defender's armour buffs
+  // scale the landed blow.
+  combatDamage.canHit = (a, b) =>
+    hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true;
+  combatDamage.damageScale = (a, b) => status.modifier(a, "power").mul * status.modifier(b, "armour").mul;
+  const combat = new CombatSystem(30, stamina, combatDamage);
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
     dropper.onDeath(s, ev);
     quests.onDeath(s, ev, (e) => creatures.kindOf(e));
   }, body);
+  // The tick's systems (roadmap EA9): the core module's instances in the order
+  // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
+  // set (unknown id, cycle) stops the boot with every problem listed.
+  const assembled = await assembleServerSystems({
+    modulesDir: path.join(REPO_ROOT, "modules"),
+    setFile: process.env.MMO_MODULES || path.join(REPO_ROOT, "content", "modules.json"),
+    provided: {
+      core: {
+        reloader,
+        stats: new StatsSystem(),
+        streamer,
+        bots: bots[0],
+        creatures,
+        crowd: crowd[0],
+        intent: new IntentSystem(),
+        combat,
+        magic,
+        body,
+        death,
+        abilities,
+        status,
+        telegraphs,
+        duels,
+        stamina,
+        needs,
+        mastery,
+        integrate: new IntegrateSystem(),
+        character,
+        animation: new AnimationSystem(),
+        "prop-collision": new PropCollisionSystem(),
+        collider: new ColliderSystem(),
+        obstacles,
+        physics,
+        navigation,
+        items,
+        quests,
+      },
+    },
+    ctx: { sim, log: (m) => console.log(m) },
+  }).catch((err: Error) => {
+    console.error(`[server] ${err.message}`);
+    process.exit(1);
+  });
+  console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
+  // Cross-region presence (S2): the gateway reports online names and asks
+  // where friends play; without a world client both are inert. `worldClient`
+  // is declared below and assigned when WORLD_URL is set; these closures
+  // only run once players are around, long after.
   const gw: Gateway = new Gateway({
     port: PORT,
     sessionStore,
+    // GET /health for deploy health checks (EA19); PCG's handler composes with it.
+    http: healthHttpHandler,
+    presence: {
+      report: (names) => void worldClient?.reportPresence(names),
+      query: (names) => {
+        if (!worldClient) return Promise.reject(new Error("no world client"));
+        return worldClient.queryPresence(names);
+      },
+    },
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
     body,
@@ -646,7 +865,7 @@ async function main(): Promise<void> {
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
-    systems: [reloader, new StatsSystem(), streamer, ...bots, creatures, ...crowd, new IntentSystem(), combat, magic, body, death, stamina, needs, mastery, new IntegrateSystem(), character, new ColliderSystem(), obstacles, physics, navigation, items, quests],
+    systems: assembled.systems,
     extensions: [quests, dungeons],
     items,
     // Players spawn standing on the terrain (a baked world's ground is
@@ -659,6 +878,8 @@ async function main(): Promise<void> {
       entities: () => creatures.entities(),
     },
     spawnPoint: spawn,
+    // "Start from": characters enter at the chosen point, not where they were saved.
+    spawnOverridden: spawnOverride !== null,
     // Baked worlds: extent + coarse map for the client's far horizon.
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
@@ -697,6 +918,7 @@ async function main(): Promise<void> {
   const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
   let worldClient: WorldClient | null = null;
   let migrationTimer: NodeJS.Timeout | null = null;
+  let presenceTimer: NodeJS.Timeout | null = null;
   if (WORLD_URL) {
     const parts = (process.env.REGION_CHUNK_RANGE ?? "0,0,4096,4096")
       .split(",")
@@ -747,11 +969,24 @@ async function main(): Promise<void> {
           console.warn(`[server] migration observe: ${(err as Error).message}`));
       }, 250);
       migrationTimer.unref();
+      // Cross-region presence (S2): refresh friends lists from the world
+      // directory on a slow timer, off the tick loop like everything here.
+      presenceTimer = setInterval(() => {
+        if (worldClient?.registered) {
+          void gw.syncPresence().catch((err: unknown) =>
+            console.warn(`[server] presence sync: ${(err as Error).message}`));
+        }
+      }, 30_000);
+      presenceTimer.unref();
     } else {
       console.warn(`[server] world registration failed; running standalone`);
     }
   }
 
+  // A slow or dead world server must never stall the region: dungeon
+  // reports never overlap (no pile-up of in-flight POSTs) and never
+  // touch the tick loop (this timer only).
+  let dungeonFlushInFlight = false;
   const saveTimer = setInterval(() => {
     itemLedger.flush();
     gw.saveCharacters();
@@ -772,6 +1007,23 @@ async function main(): Promise<void> {
           sim.liveEntityCount,
           digest,
         );
+        // Dungeon runs (D4): fold the committed batch into the next world
+        // report. Rows stay unreported until the world confirms them
+        // ingested, so a failed flush retries on the next save. Skipped
+        // while one is in flight: a hung world must not stack up POSTs.
+        if (!dungeonFlushInFlight) {
+          dungeonFlushInFlight = true;
+          void flushInstanceResults(instanceResults, (results) => worldClient.reportDungeonResults(results)).then(
+            ({ reported }) => {
+              dungeonFlushInFlight = false;
+              if (reported > 0) console.log(`[server] reported ${reported} dungeon run(s) to the world`);
+            },
+            (err: unknown) => {
+              dungeonFlushInFlight = false;
+              console.warn(`[server] dungeon report: ${(err as Error).message}`);
+            },
+          );
+        }
       }
       nextSaveTick += SAVE_EVERY_TICKS;
     }
@@ -791,6 +1043,7 @@ async function main(): Promise<void> {
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       if (migrationTimer) clearInterval(migrationTimer);
+      if (presenceTimer) clearInterval(presenceTimer);
       void worldClient?.stop();
       reloader.close();
     },

@@ -54,7 +54,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
 import type { DamageInput, PartState, RuleHooks } from "@mmo-engine/rules";
-import { Action, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
+import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
 import { ATTACK_COST, DODGE_COST, type StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
@@ -117,12 +117,24 @@ export interface CombatDamage {
   hooks: RuleHooks;
   /** The weapon an entity holds; null or absent means fists. */
   weaponOf?: (e: number) => Weapon | null;
+  /** The share of a blow the target's worn armour lets through (0..1); absent means 1. */
+  armourOf?: (target: number) => number;
   /** Skills behind power and defence; absent means skill 0 and no training. */
   skills?: CombatSkills;
   /** Body parts (M2): blows land on parts; absent means whole-body Health. */
   body?: BodySystem;
   /** The rules' technique ids (a stance may name only these); absent: no stances. */
   techniques?: () => readonly string[];
+  /**
+   * PvP gate (duel.ts): whether `source` may hurt `target`. Absent means
+   * everyone may hit everyone (the historical behaviour).
+   */
+  canHit?: (source: number, target: number) => boolean;
+  /**
+   * Damage scaler (status.ts): multiplies the final amount, e.g. from
+   * buffs/debuffs. Absent means 1.
+   */
+  damageScale?: (source: number, target: number) => number;
 }
 
 /** How an entity strikes (M3, catalog 0x19): its own technique and aim, or the defaults. */
@@ -274,6 +286,7 @@ export class CombatSystem implements SimSystem {
     for (let i = 0; i < ids.length; i++) {
       const t = ids[i] as number;
       if (t === e || Health.current[t] <= 0) continue;
+      if (dmg.canHit && !dmg.canHit(e, t)) continue; // PvP gate: duels and hostile pairs only
       const dx = Transform.px[t] - Transform.px[e];
       const dz = Transform.pz[t] - Transform.pz[e];
       const d = Math.hypot(dx, dz);
@@ -300,7 +313,8 @@ export class CombatSystem implements SimSystem {
           ? dmg.hooks.resolveLanding({ aim: stance?.aim ?? body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
         const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
-        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, familiarity });
+        const armourFactor = dmg.armourOf?.(t) ?? 1;
+        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, armourFactor, familiarity });
         if (w.family) sk?.useFamily?.(e, w.family);
         amount = blow.amount * arm;
         // The guard holds only against what it faces; a landed block trains Blocking.
@@ -322,13 +336,15 @@ export class CombatSystem implements SimSystem {
           }
         }
         if (weaponSkill) sk!.train(e, weaponSkill, FIGHT_DIFFICULTY, t);
+        // Status effects (status.ts): buffs/debuffs scale the landed blow.
+        amount *= dmg.damageScale?.(e, t) ?? 1;
         if (body && amount > 0) {
           const r = body.applyBlow(sim, t, part, blow.kind, amount);
           part = r.part;
           state = r.state;
           if (r.lost.length > 0) lost = r.lost;
         } else if (!body) {
-          Health.current[t] = Math.max(0, Health.current[t] - amount);
+          if (!hasComponent(sim.ecs, God, t)) Health.current[t] = Math.max(0, Health.current[t] - amount);
         }
         this.attackers.set(t, e);
       }

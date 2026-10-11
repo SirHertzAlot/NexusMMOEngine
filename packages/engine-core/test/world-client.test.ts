@@ -118,6 +118,39 @@ test("stop deregisters best-effort and never throws", async () => {
   assert.equal(errors.length, 1);
 });
 
+test("reportDungeonResults sends unreported runs with the bearer token", async () => {
+  const t = new StubTransport();
+  const token = "b".repeat(64);
+  t.handlers.set("RegisterRegion", () => ({
+    lease: { regionId: "r1", heartbeatIntervalMs: 1000, registryVersion: 1, token },
+  }));
+  t.handlers.set("ReportDungeonResults", () => ({ ingested: ["run-abc"] }));
+  const c = makeClient(t);
+  await c.start();
+  const run = {
+    instance: "run-abc",
+    dungeon: "grim-1",
+    entrance: "barrow-gate",
+    outcome: "cleared",
+    startedAt: 1000,
+    endedAt: 2000,
+    members: [7],
+    kills: [{ characterId: 7, kind: "goblin", count: 2 }],
+    deaths: [],
+    loot: [{ characterId: 7, def: 11 }],
+  };
+  const client = c as unknown as { reportDungeonResults: (r: unknown[]) => Promise<string[]> };
+  const ingested = await client.reportDungeonResults([run]);
+  assert.deepEqual(ingested, ["run-abc"]);
+  const call = t.calls.find((x) => x.method === "ReportDungeonResults")!;
+  assert.equal(call.token, token);
+  const input = call.args["input"] as { regionId: string; results: unknown[] };
+  assert.equal(input.regionId, "r1");
+  assert.equal(input.results.length, 1);
+  assert.deepEqual((input.results[0] as { instance: string }).instance, "run-abc");
+  await c.stop();
+});
+
 test("start failure keeps the client unregistered but alive", async () => {
   const t = new StubTransport();
   t.handlers.set("RegisterRegion", () => {

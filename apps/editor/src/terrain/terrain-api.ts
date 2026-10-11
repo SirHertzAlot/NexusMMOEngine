@@ -3,6 +3,7 @@
  * plain number arrays; float32 values round-trip exactly through JSON.
  */
 
+import { callEnvelope } from "../api.js";
 import { decodeWorldMap, type TerrainTile, type WorldInfo, type WorldMap } from "@mmo-engine/protocol";
 import type { WorldRegion } from "../inspectors/world-map.js";
 
@@ -45,14 +46,7 @@ interface WireTile {
   heights: number[];
 }
 
-async function call<T>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, body === undefined
-    ? undefined
-    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const json = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || json.ok === false) throw new Error(json.error ?? `${url} failed (${res.status})`);
-  return json;
-}
+const call = <T>(url: string, body?: unknown): Promise<T> => callEnvelope<T>(url, body === undefined ? "GET" : "POST", body);
 
 const fromWire = (t: WireTile): TerrainTile => ({ cx: t.cx, cz: t.cz, heights: Float32Array.from(t.heights) });
 const toWire = (t: TerrainTile): WireTile => ({ cx: t.cx, cz: t.cz, heights: Array.from(t.heights) });

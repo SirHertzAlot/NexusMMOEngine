@@ -202,6 +202,49 @@ test("migration over webrpc: list, begin, read, commit; wrong party 403; bad inp
   assert.equal((await rpc(base, "CommitMigration", { migrationId: "mig-nope", opId: "op-c2" }, b)).status, 400);
 });
 
+test("dungeon results over webrpc: ingest, idempotent replay, bad input 400", async () => {
+  const { base } = await boot();
+  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
+  const token = (reg.json["lease"] as Record<string, unknown>)["token"] as string;
+  const results = [{
+    instance: "run-abc",
+    dungeon: "grim-1",
+    entrance: "barrow-gate",
+    outcome: "cleared",
+    startedAt: 1000,
+    endedAt: 2000,
+    members: [7],
+    kills: [{ characterId: 7, kind: "goblin", count: 2 }],
+    deaths: [],
+    loot: [{ characterId: 7, def: 11 }],
+  }];
+  const first = await rpc(base, "ReportDungeonResults", { input: { regionId: "r1", results } }, token);
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.json["ingested"], ["run-abc"]);
+  const replay = await rpc(base, "ReportDungeonResults", { input: { regionId: "r1", results } }, token);
+  assert.equal(replay.status, 200);
+  assert.deepEqual(replay.json["ingested"], ["run-abc"]);
+  const bad = await rpc(base, "ReportDungeonResults", { input: { regionId: "r1", results: [{ ...results[0], outcome: "exploded" }] } }, token);
+  assert.equal(bad.status, 400);
+  const noToken = await rpc(base, "ReportDungeonResults", { input: { regionId: "r1", results } });
+  assert.equal(noToken.status, 401);
+});
+
+test("presence over webrpc: report, query, bad input 400", async () => {
+  const { base } = await boot();
+  const reg = await rpc(base, "RegisterRegion", { input: REG_INPUT });
+  const token = (reg.json["lease"] as Record<string, unknown>)["token"] as string;
+  const set = await rpc(base, "SetPresence", { input: { regionId: "r1", names: ["Aria"] } }, token);
+  assert.equal(set.status, 200);
+  const got = await rpc(base, "QueryPresence", { input: { regionId: "r1", names: ["Aria", "Nobody"] } }, token);
+  assert.equal(got.status, 200);
+  assert.deepEqual(got.json["online"], { Aria: "r1", Nobody: null });
+  const bad = await rpc(base, "SetPresence", { input: { regionId: "r1", names: [""] } }, token);
+  assert.equal(bad.status, 400);
+  const noToken = await rpc(base, "QueryPresence", { input: { regionId: "r1", names: ["Aria"] } });
+  assert.equal(noToken.status, 401);
+});
+
 test("non-JSON content-type is rejected with 415", async () => {
   const { base } = await boot();
   const res = await fetch(`${base}/rpc/World/RegisterRegion`, {

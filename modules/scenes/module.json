@@ -1,0 +1,11 @@
+{
+  "name": "scenes",
+  "version": "0.1.0",
+  "description": "Editor module: the Scenes workspace's Scene document panel. Disable it and the panel leaves the workspace without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

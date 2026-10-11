@@ -87,6 +87,18 @@ export class TickLoop {
     return steps;
   }
 
+  /** Run exactly one tick now, outside the clock (admin single-step while paused). */
+  step(): void {
+    this.onTick(this.tickCount);
+    this.tickCount += 1;
+  }
+
+  /** Re-arm the clock at `nowMs` and drop the backlog, so a resume does not catch up. */
+  rearm(nowMs: number): void {
+    this.lastMs = nowMs;
+    this.accMs = 0;
+  }
+
   stats(): TickLoopStats {
     return {
       ticks: this.tickCount,

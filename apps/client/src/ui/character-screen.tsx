@@ -27,6 +27,7 @@ import {
 } from "@mmo-engine/art/browser";
 import { CharacterStage } from "../render/character/character-stage.js";
 import { Button, Input, Label } from "./components.js";
+import { t } from "../i18n.js";
 
 export interface CharacterScreenProps {
   characters: CharacterEntry[];
@@ -41,11 +42,14 @@ export interface CharacterScreenProps {
   previewClip?: string | null;
   /** Dev preview: also load the raw reference takes (long mocap). */
   referenceClips?: boolean;
+  /** Which half to open on (the flow's node); default: the list when there are characters. */
+  initialMode?: "list" | "create";
+  /** The flow hears about the switch: "create" is ui.create, "list" is ui.select. */
+  onModeChange?: (mode: "list" | "create") => void;
 }
 
 interface Category {
   slot: Slot;
-  label: string;
   /** May be left empty. */
   optional: boolean;
   /** Offered to this gender only. */
@@ -54,16 +58,15 @@ interface Category {
 
 // Eyes, nose and mouth come with the face (the pack's heads).
 const CATEGORIES: Category[] = [
-  { slot: "head", label: "Face", optional: false },
-  { slot: "hair", label: "Hair", optional: true },
-  { slot: "eyebrows", label: "Eyebrows", optional: true },
-  { slot: "facialHair", label: "Facial hair", optional: true, gender: "male" },
-  { slot: "ears", label: "Ears", optional: true },
+  { slot: "head", optional: false },
+  { slot: "hair", optional: true },
+  { slot: "eyebrows", optional: true },
+  { slot: "facialHair", optional: true, gender: "male" },
+  { slot: "ears", optional: true },
 ];
 
 interface ColourRow {
   slot: ColourSlot;
-  label: string;
   swatches: readonly string[];
   /** May be left unset (the region follows the skin). */
   optional: boolean;
@@ -74,11 +77,11 @@ const BODY_ART = ["#2b4c8c", "#4566a9", "#6b2f8f", "#8c2b2b", "#2f6b3a", "#1c1c1
 const SCARS = ["#e6b8a2", "#c98f7a", "#a86d5c", "#7a4a3c"] as const;
 
 const COLOUR_ROWS: ColourRow[] = [
-  { slot: "skin", label: "Skin", swatches: SKIN_TONES, optional: false },
-  { slot: "hair", label: "Hair", swatches: HAIR_COLOURS, optional: false },
-  { slot: "stubble", label: "Stubble", swatches: HAIR_COLOURS, optional: true, gender: "male" },
-  { slot: "scar", label: "Scars", swatches: SCARS, optional: true },
-  { slot: "bodyArt", label: "Body art", swatches: BODY_ART, optional: true },
+  { slot: "skin", swatches: SKIN_TONES, optional: false },
+  { slot: "hair", swatches: HAIR_COLOURS, optional: false },
+  { slot: "stubble", swatches: HAIR_COLOURS, optional: true, gender: "male" },
+  { slot: "scar", swatches: SCARS, optional: true },
+  { slot: "bodyArt", swatches: BODY_ART, optional: true },
 ];
 
 /** The options a category offers (mask heads are for helmets, not faces). */
@@ -89,7 +92,7 @@ function optionsFor(catalog: ModularCatalog, c: Category, gender: Gender): Catal
 /** A starting look for `gender`: the first face, first eyebrows, and the gender's usual colours. */
 function startingLook(catalog: ModularCatalog | null, gender: Gender): CharacterLook {
   const first = (slot: Slot): string | undefined =>
-    catalog ? optionsFor(catalog, { slot, label: "", optional: false }, gender)[0]?.name : undefined;
+    catalog ? optionsFor(catalog, { slot, optional: false }, gender)[0]?.name : undefined;
   return {
     gender,
     parts: { head: first("head"), hair: first("hair"), eyebrows: first("eyebrows") },
@@ -126,13 +129,13 @@ function Picker({
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="w-24 text-sm text-muted-foreground">{label}</span>
-      <Button size="sm" variant="secondary" aria-label={`previous ${label}`} onClick={() => step(-1)}>
+      <Button size="sm" variant="secondary" aria-label={t("character.previous", { part: label })} onClick={() => step(-1)}>
         ‹
       </Button>
       <span className="w-16 text-center text-sm tabular-nums">
-        {at < 0 ? "none" : `${at + 1} / ${options.length}`}
+        {at < 0 ? t("character.none") : t("character.position", { at: at + 1, count: options.length })}
       </span>
-      <Button size="sm" variant="secondary" aria-label={`next ${label}`} onClick={() => step(1)}>
+      <Button size="sm" variant="secondary" aria-label={t("character.next", { part: label })} onClick={() => step(1)}>
         ›
       </Button>
     </div>
@@ -148,13 +151,14 @@ function Swatches({
   value: string | undefined;
   onChange(colour: string | undefined): void;
 }): React.ReactElement {
+  const label = t(`character.colour.${row.slot}`);
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{row.label}</span>
+        <span className="text-sm text-muted-foreground">{label}</span>
         <input
           type="color"
-          aria-label={`${row.label} colour`}
+          aria-label={t("character.colourOf", { part: label })}
           className="h-5 w-8 cursor-pointer rounded border border-input bg-transparent"
           value={value ?? "#000000"}
           onChange={(e) => onChange(e.target.value)}
@@ -163,8 +167,8 @@ function Swatches({
       <div className="flex flex-wrap gap-1">
         {row.optional && (
           <button
-            title="none"
-            aria-label={`no ${row.label}`}
+            title={t("character.none")}
+            aria-label={t("character.noColour", { part: label })}
             className={`h-5 w-5 rounded-sm border text-[10px] leading-none text-muted-foreground ${value === undefined ? "border-foreground" : "border-input"}`}
             onClick={() => onChange(undefined)}
           >
@@ -175,7 +179,7 @@ function Swatches({
           <button
             key={c}
             title={c}
-            aria-label={`${row.label} ${c}`}
+            aria-label={t("character.colourValue", { part: label, colour: c })}
             className={`h-5 w-5 rounded-sm border ${value?.toLowerCase() === c ? "border-foreground ring-1 ring-foreground" : "border-black/40"}`}
             style={{ background: c }}
             onClick={() => onChange(c)}
@@ -191,7 +195,11 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [stage, setStage] = useState<CharacterStage | null>(null);
   const [artError, setArtError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"list" | "create">(characters.length > 0 ? "list" : "create");
+  const [mode, setModeState] = useState<"list" | "create">(props.initialMode ?? (characters.length > 0 ? "list" : "create"));
+  const setMode = (m: "list" | "create"): void => {
+    setModeState(m);
+    props.onModeChange?.(m);
+  };
   const [selected, setSelected] = useState<number | null>(characters[0]?.id ?? null);
   const [look, setLook] = useState<CharacterLook>(() => startingLook(null, "male"));
   const [name, setName] = useState("");
@@ -278,7 +286,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
       <div className="flex h-full w-80 shrink-0 flex-col gap-3 overflow-y-auto border-r border-input bg-slate-950 p-4">
         {mode === "list" ? (
           <>
-            <div className="font-semibold">Your characters</div>
+            <div className="font-semibold">{t("character.yours")}</div>
             <div className="space-y-1">
               {characters.map((c) => (
                 <button
@@ -288,31 +296,31 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                   onDoubleClick={() => void run(() => props.onEnter(c.id))}
                 >
                   {c.name}
-                  <span className="ml-2 text-xs text-muted-foreground">{c.look.gender}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{t(`character.gender.${c.look.gender}`)}</span>
                 </button>
               ))}
             </div>
             <Button disabled={busy || selected === null} onClick={() => selected !== null && void run(() => props.onEnter(selected))}>
-              {busy ? "entering…" : "Enter world"}
+              {busy ? t("character.entering") : t("character.enter")}
             </Button>
             <Button variant="secondary" disabled={busy || full} onClick={() => setMode("create")}>
-              {full ? `all ${maxCharacters} character slots used` : "Create a new character"}
+              {full ? t("character.slotsUsed", { count: maxCharacters }) : t("character.createNew")}
             </Button>
           </>
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Create a character</div>
+              <div className="font-semibold">{t("character.create")}</div>
               {characters.length > 0 && (
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => setMode("list")}>
-                  back
+                  {t("character.back")}
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
               {(["male", "female"] as const).map((g) => (
                 <Button key={g} className="flex-1" variant={look.gender === g ? "default" : "outline"} onClick={() => setGender(g)}>
-                  {g === "male" ? "Male" : "Female"}
+                  {t(`character.gender.${g}`)}
                 </Button>
               ))}
             </div>
@@ -321,7 +329,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                 {CATEGORIES.filter((c) => !c.gender || c.gender === look.gender).map((c) => (
                   <Picker
                     key={c.slot}
-                    label={c.label}
+                    label={t(`character.part.${c.slot}`)}
                     options={optionsFor(catalog, c, look.gender)}
                     value={look.parts[c.slot]}
                     onStep={(d) => stepCategory(c, d)}
@@ -329,7 +337,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">{artError ? "Character art unavailable: appearance can't be chosen." : "loading character art…"}</div>
+              <div className="text-sm text-muted-foreground">{artError ? t("character.artUnavailable") : t("character.artLoading")}</div>
             )}
             <div className="space-y-2">
               {COLOUR_ROWS.filter((r) => !r.gender || r.gender === look.gender).map((r) => (
@@ -338,14 +346,14 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
             </div>
             <div className="flex gap-2">
               <Button variant="secondary" className="flex-1" disabled={!catalog} onClick={() => catalog && setLook(randomLook(catalog, look.gender))}>
-                Randomise
+                {t("character.randomise")}
               </Button>
               <Button variant="secondary" className="flex-1" onClick={() => setFraming(framing === "body" ? "head" : "body")}>
-                {framing === "body" ? "Face" : "Full body"}
+                {framing === "body" ? t("character.face") : t("character.fullBody")}
               </Button>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="character-name">Name</Label>
+              <Label htmlFor="character-name">{t("character.name")}</Label>
               <Input
                 id="character-name"
                 value={name}
@@ -355,17 +363,17 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
                   if (e.key === "Enter" && nameOk && !busy) void run(() => props.onCreate(name, look));
                 }}
               />
-              <p className="text-xs text-muted-foreground">3–16 letters; ' and - allowed</p>
+              <p className="text-xs text-muted-foreground">{t("character.nameHint")}</p>
             </div>
             <Button disabled={busy || !nameOk} onClick={() => void run(() => props.onCreate(name, look))}>
-              {busy ? "creating…" : "Create & enter world"}
+              {busy ? t("character.creating") : t("character.createAndEnter")}
             </Button>
           </>
         )}
         {error && <div className="rounded-md border border-input bg-secondary/50 px-3 py-2 text-sm">{error}</div>}
         {artError && <div className="text-xs text-muted-foreground">{artError}</div>}
         <Button size="sm" variant="outline" disabled={busy} onClick={props.onLeave}>
-          log out
+          {t("character.logOut")}
         </Button>
       </div>
       <canvas ref={canvasRef} className="block h-full min-w-0 flex-1" />

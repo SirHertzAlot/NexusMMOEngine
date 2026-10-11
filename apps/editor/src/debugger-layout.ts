@@ -3,7 +3,7 @@
  * "reset layout" puts them back: status and performance down the left of
  * the game view, tools top right with the selection card (E6) under them,
  * controls (closed) bottom right. The
- * shapes are the developer client's (ui/dev-layout.ts); kept apart from
+ * shapes are shared with the client package (ui/dev-layout.ts); kept apart from
  * the panels so it tests without a browser.
  */
 

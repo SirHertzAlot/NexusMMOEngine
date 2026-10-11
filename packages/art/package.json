@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@dgreenheck/ez-tree": "^1.1.0",
     "@mmo-engine/protocol": "^0.1.0",
     "@mmo-engine/schema": "0.1.0",
     "three": "^0.186.1",

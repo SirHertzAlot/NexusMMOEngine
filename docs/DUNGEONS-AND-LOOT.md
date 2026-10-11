@@ -222,8 +222,21 @@ pool. The region commits it then, items into bags and the batch into
 it up once that endpoint exists. The run rules are data
 (`content/dungeons/instances.json`), the proposed answers to §10.2: parties of
 1 to 5, 45 minutes, re-entry while the run lasts, abandoned after 2 minutes
-empty, at most 8 runs per region, nothing kept until the run reports. Not yet:
-depleted nodes, chests and traps, skill gains, the client's transfer.
+empty, at most 8 runs per region, nothing kept until the run reports. Skill
+gains: the region's commit trains one use of each killer's weapon skill per
+kill, at the open-world hit difficulty and keyed by victim kind, through the
+character's saved sheet (no live sheet exists while its owner is away in the
+instance). The client's transfer (hop in and back out, run HUD, result) rides
+the `transfer`/`ended` messages. Chests: each run places `chestsPerRun`
+chests in the lowest-id non-entrance rooms; a member opens the nearest one
+in reach (`{op:"open"}`, 3 m) for 1–2 rolls from the chest pool into the
+run's loot, and the run state names each chest for the HUD's open button.
+Traps: each run arms `trapsPerRun` traps in the lowest-id non-entrance
+rooms; a member inside the trigger radius springs one for `trapHarm`
+Health, once, and the run state names each trap and whether it is sprung.
+Resource veins are deferred to crafting actions: no material gathering,
+pouch, or crafting actions exist yet, so veins have nothing to yield
+into. When those land, veins place like chests and harvest into them.
 
 ### 3.5 Editor (D3)
 

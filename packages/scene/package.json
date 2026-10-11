@@ -1,0 +1,17 @@
+{
+  "description": "Scene documents: the versioned scene schema, the node and component registry, validation with per-path errors, and pure edit operations with an undo/redo history",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/scene",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "type": "module",
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0"
+}

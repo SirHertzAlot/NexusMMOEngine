@@ -27,6 +27,7 @@
  * welcome's day clock, so every client sees the same hour.
  */
 
+import type { Listener } from "../audio/sound-logic.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -38,11 +39,13 @@ import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
+import { DungeonEntrances } from "./dungeon-entrances.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import type { CombatFeedback } from "./combat-feedback.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
+import { EYE_HEIGHT, firstPersonCamera } from "./first-person-camera.js";
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
@@ -50,10 +53,13 @@ import { installBvh } from "./bvh.js";
 import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
 import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
-import { ParticleFx, WEATHER_RULES } from "./fx/particle-fx.js";
+import { ParticleFx, WEATHER_RULES, budgetMultiplierForTier } from "./fx/particle-fx.js";
 import { biomeAt, weatherAt } from "./fx/weather.js";
+import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
+import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 import { PerfSampler, type PerfSample } from "./perf-stats.js";
@@ -96,6 +102,8 @@ export interface HudData {
   perf: PerfSample[];
 }
 
+const earDir = new THREE.Vector3();
+
 export interface WorldCanvasProps {
   /** A joined mirror client (welcome received). */
   client: MirrorClient;
@@ -105,6 +113,8 @@ export interface WorldCanvasProps {
   /** performance.now() of the last snapshot or delta (interpolation alpha). */
   lastStateAt: () => number;
   wireframe: boolean;
+  /** Keep the last frame readable so a screenshot of the canvas is not blank (set at creation; costs a little fill rate). */
+  captureFrames?: boolean;
   showcase: boolean;
   /** Remappable keyboard bindings (input.ts reads them live). */
   bindings: Bindings;
@@ -114,6 +124,10 @@ export interface WorldCanvasProps {
   /** The preset running now, and the one detected for the GPU (null until known). */
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
+  /** Written every frame with where the camera hears from (audio panning and distance, EA24). */
+  listener?: Listener;
+  /** A footstep fell: the audio event for the surface under the feet (content/materials) and where. Absent: silent. */
+  onFootstep?: (event: string, at: { x: number; y: number; z: number }) => void;
   /** The bag key was pressed (M3a). */
   onBag?: () => void;
   /** The technique or aim key (M3): turn to the next one. */
@@ -128,8 +142,16 @@ export interface WorldCanvasProps {
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
   onNearNpc?: (npc: string | null) => void;
+  /** Inside a dungeon instance (D4): draw a stand-in floor, since the walls aren't on the wire yet. Read on mount. */
+  instance?: boolean;
+  /** The dungeon entrance the player stands in changed (an entrance id; null: none). */
+  onNearEntrance?: (entrance: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
   combat?: CombatFeedback;
+  /** Camera view: "third" (follow) or "first" (eye-level). Uncontrolled by default (V toggles). */
+  view?: "third" | "first";
+  /** Fires when the view changes (V key or the controlled prop). */
+  onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
 }
@@ -191,7 +213,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       // Plain three.js colour output (no tone mapping), as before R3F.
       flat
       dpr={dpr}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: props.captureFrames === true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
       onCreated={({ gl }) => {
         const gpu = detectGpu(gl);
@@ -264,6 +286,7 @@ interface Runtime {
   input: InputState;
   drops: DropLabels;
   npcs: NpcMarkers;
+  entrances: DungeonEntrances;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -276,6 +299,8 @@ function MirrorWorld({
   showcase,
   bindings,
   onHud,
+  listener,
+  onFootstep,
   onBag,
   onStance,
   onTreat,
@@ -283,8 +308,12 @@ function MirrorWorld({
   onNearDrop,
   onQuests,
   onNearNpc,
+  onNearEntrance,
+  instance,
   combat,
   onCombat,
+  view: viewProp,
+  onViewChange,
   settings,
   screen,
   physicalSky,
@@ -294,14 +323,22 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, combat, onCombat, lastStateAt, settings });
-  latest.current = { wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
+  // Camera view: third-person follow or first-person. Controlled by the
+  // `view` prop when given; otherwise the V key toggles it internally.
+  const [viewState, setViewState] = useState<"third" | "first">("third");
+  const view = viewProp ?? viewState;
+  const viewRef = useRef(view);
+  viewRef.current = view;
   // Last values sent: nearDrop, and the combat view's numbers (onCombat fires only when one moves).
   const loop = useRef({
     pointerMoved: false,
     nearDrop: null as bigint | null,
     nearNpc: null as string | null,
+    nearEntrance: null as string | null,
     hp: NaN,
     maxHp: NaN,
     target: null as bigint | null,
@@ -311,6 +348,8 @@ function MirrorWorld({
   });
   const perf = useRef(new PerfSampler(performance.now()));
   const pointer = useRef(new THREE.Vector2());
+  // Scratch eye position for first-person mode (no per-frame allocation).
+  const eyePos = useRef(new THREE.Vector3());
   // Nearest hit only: with BVHs (bvh.ts) a ray stops at its first triangle.
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
   // For CombatFeedback.prune, made once per client rather than every frame.
@@ -321,10 +360,18 @@ function MirrorWorld({
   useEffect(() => {
     const sky = new DaySky();
     const particles = new ParticleFx(camera);
-    const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16);
+    // Terrain blocks, PCG meshes and BVHs build in workers (src/workers); without Worker (tests, SSR) they build inline.
+    const workers =
+      typeof Worker === "undefined"
+        ? undefined
+        : new WorkerPool(
+            () => new Worker(new URL("../workers/index.ts", import.meta.url), { type: "module" }) as never,
+            Math.min(4, Math.max(1, (navigator.hardwareConcurrency ?? 2) - 1)),
+          );
+    const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16, workers);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
-    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg });
+    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers });
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -333,7 +380,12 @@ function MirrorWorld({
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
     const npcs = new NpcMarkers();
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group);
+    const entrances = new DungeonEntrances();
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group);
+    // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
+    // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
+    const floor = instance ? makeFloor() : null;
+    if (floor) scene.add(floor);
 
     // Draw calls and triangles summed over every pass of a frame (the screen
     // effects render several); the frame loop reads and resets them.
@@ -342,7 +394,7 @@ function MirrorWorld({
     const canvas = gl.domElement;
     const input = new InputState();
     const unbind = bindInput(canvas, input, {
-      // Interface keys (M3a): pick up the drop in range (else talk to the npc in range), open the bag.
+      // Interface keys (M3a): pick up the drop in range (else talk to the npc in range, else ask at the dungeon entrance), open the bag.
       onAction: (action) => {
         if (action === "bag") latest.current.onBag?.();
         else if (action === "technique" || action === "aim") latest.current.onStance?.(action);
@@ -351,6 +403,7 @@ function MirrorWorld({
         else if (action === "quests") latest.current.onQuests?.();
         else if (drops.nearest !== null) client.pickup(drops.nearest);
         else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
+        else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
       },
     });
     const onWheel = (e: WheelEvent): void => {
@@ -388,8 +441,8 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs };
-    particles.setBudget(latest.current.settings.particles);
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances };
+    particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
@@ -409,16 +462,27 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
-      scene.remove(drops.group, npcs.group);
+      scene.remove(drops.group, npcs.group, entrances.group);
+      if (floor) {
+        scene.remove(floor);
+        floor.traverse((o) => {
+          if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) {
+            o.geometry.dispose();
+            (o.material as THREE.Material).dispose();
+          }
+        });
+      }
       drops.dispose();
       npcs.dispose();
+      entrances.dispose();
       terrain.dispose();
+      workers?.dispose();
       water.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
   useEffect(() => {
-    rt.current?.particles.setBudget(settings.particles);
+    rt.current?.particles.setBudget(budgetMultiplierForTier(settings.tier));
     rt.current?.layer.setQuality(settings);
   }, [settings]);
 
@@ -431,6 +495,24 @@ function MirrorWorld({
     rt.current?.input.setBindings(bindings);
   }, [bindings]);
 
+  // V toggles first/third person (uncontrolled mode only; a controlled
+  // `view` prop owns the state instead).
+  useEffect(() => {
+    if (viewProp !== undefined) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.code !== "KeyV" || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      setViewState((v) => {
+        const next = v === "third" ? "first" : "third";
+        onViewChange?.(next);
+        return next;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewProp, onViewChange]);
+
   useEffect(() => {
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);
   }, [showcase, camera]);
@@ -440,6 +522,16 @@ function MirrorWorld({
     if (!r) return;
     const now = performance.now();
     const l = loop.current;
+    const ear = latest.current.listener;
+    if (ear) {
+      const dir = camera.getWorldDirection(earDir);
+      const h = Math.hypot(dir.x, dir.z) || 1;
+      ear.x = camera.position.x;
+      ear.y = camera.position.y;
+      ear.z = camera.position.z;
+      ear.fx = dir.x / h;
+      ear.fz = dir.z / h;
+    }
     // What the last frame drew (every pass), before this one starts counting.
     perf.current.frame(delta * 1000, gl.info.render.calls, gl.info.render.triangles);
     gl.info.reset();
@@ -468,6 +560,12 @@ function MirrorWorld({
     if (r.npcs.nearest !== l.nearNpc) {
       l.nearNpc = r.npcs.nearest;
       latest.current.onNearNpc?.(l.nearNpc);
+    }
+    // Dungeon entrances: rings, gates, and which one the interact key would ask at.
+    r.entrances.sync(client.entrances, (x, z) => r.terrain.heightAt(x, z), camera, r.layer.player, now);
+    if (r.entrances.nearest !== l.nearEntrance) {
+      l.nearEntrance = r.entrances.nearest;
+      latest.current.onNearEntrance?.(l.nearEntrance);
     }
     // The player and target frames, told only when a number moves (hits land between HUD samples).
     if (combat && latest.current.onCombat) {
@@ -501,7 +599,16 @@ function MirrorWorld({
       raycaster.current.setFromCamera(pointer.current, camera);
       r.layer.hover(raycaster.current);
     }
-    followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    if (viewRef.current === "first" && r.layer.player) {
+      // First person: camera at the avatar's eye, own avatar hidden.
+      r.layer.setPlayerHidden(true);
+      eyePos.current.copy(r.layer.player);
+      eyePos.current.y += EYE_HEIGHT;
+      firstPersonCamera(camera, eyePos.current, r.input.lookYaw, r.input.lookPitch);
+    } else {
+      r.layer.setPlayerHidden(false);
+      followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    }
     const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
@@ -518,11 +625,12 @@ function MirrorWorld({
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
-    // Weather where the camera is, the same on every client (biome + tick).
+    // Weather where the camera is, the same on every client (biome + tick),
+    // unless the server forces the sky (`weather`).
     const tick = client.serverTick;
     const hz = client.tickHz || 30;
     const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
-    const weather = weatherAt(WEATHER_RULES, biome, tick, hz);
+    const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
     // Splashes where the player swims and moves.
     const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
@@ -532,6 +640,17 @@ function MirrorWorld({
       if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
     }
     r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+
+    // A step sounds each stride on the ground, on the surface of the biome underfoot (content/materials).
+    const onStep = latest.current.onFootstep;
+    if (onStep && me?.transform) {
+      const grounded = me.locomotion?.mode === LocomotionMode.Ground && Math.abs(v?.ly ?? 0) < 1.5;
+      const materials = gameContent().materials;
+      if (footsteps.current.step(delta, v ? Math.hypot(v.lx, v.lz) : 0, grounded, footstepStride(materials))) {
+        const under = r.map ? biomeAt(r.map, me.transform.px, me.transform.pz) : null;
+        onStep(footstepEvent(under, materials), { x: me.transform.px, y: me.transform.py, z: me.transform.pz });
+      }
+    }
 
     const seconds = now / 1000;
     r.terrain.update(camera.position);
@@ -580,4 +699,16 @@ function MirrorWorld({
   });
 
   return null;
+}
+
+/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across. */
+function makeFloor(): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "instance-floor";
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 }));
+  plane.rotation.x = -Math.PI / 2;
+  const grid = new THREE.GridHelper(400, 200, 0x4a4038, 0x3a332c);
+  grid.position.y = 0.01;
+  g.add(plane, grid);
+  return g;
 }
