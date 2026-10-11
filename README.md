@@ -100,6 +100,8 @@ npm start                  # everything: setup, the server and the player's clie
 npm start -- --dev         # the server and editor development environment
                            # → http://localhost:5174; same as npm run dev
 npm start -- --server      # the server only
+npm start -- --build       # run the full build first, then start
+npm run build              # build everything: packages, client and editor bundles, native addons and modules
 npm run editor             # the editor (inspectors, play mode, art pipeline)
 ```
 
