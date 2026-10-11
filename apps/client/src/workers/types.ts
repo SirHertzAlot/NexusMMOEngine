@@ -1,6 +1,8 @@
 /**
  * Worker task types and payloads — shared between main thread and worker.
  */
+import type { TerrainTile } from '@mmo-engine/protocol';
+
 export interface WorkerTask<T = unknown> {
   id: number;
   type: string;
@@ -20,6 +22,7 @@ export interface TaskPayloadMap {
   pcg: PcgTaskPayload;
   bvh: BvhTaskPayload;
   terrainBlock: TerrainBlockTaskPayload;
+  chunkDecompose: ChunkDecomposePayload;
   // Extend this interface to add new task types
 }
 
@@ -43,6 +46,17 @@ export interface TerrainBlockTaskPayload {
   chunkWorldSize: number;
   originX: number;
   originZ: number;
+}
+
+/** Decompose a larger heightmap region into protocol tiles. */
+export interface ChunkDecomposePayload {
+  /** Row-major heights, X inner: heights[z * width + x]. */
+  heights: Float32Array;
+  width: number;
+  depth: number;
+  /** Grid coordinate of heights[0]. */
+  originGX: number;
+  originGZ: number;
 }
 
 export type TaskPayload = TaskPayloadMap[keyof TaskPayloadMap];
@@ -92,6 +106,7 @@ export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPaylo
     T extends 'pcg' ? PcgResultPayload :
     T extends 'bvh' ? BvhResultPayload :
     T extends 'terrainBlock' ? TerrainBlockResultPayload :
+    T extends 'chunkDecompose' ? TerrainTile[] :
     never;
   error?: string;
 }
