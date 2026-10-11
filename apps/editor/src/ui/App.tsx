@@ -21,6 +21,7 @@ import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
 import { StringsPanel } from "./strings-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
+import { MaterialsPanel } from "./materials-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -57,6 +58,7 @@ import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network
 import { PlaytestDetails, PlaytestsPanel } from "./playtests-live.js";
 import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
+import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
 
 // ---------------------------------------------------------------- config
@@ -177,6 +179,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
       { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
+      { id: "materials", label: "Materials", icon: "texture", kind: "panel", panel: <MaterialsPanel /> },
     ], // VFX and audio panels contributed by the vfx/audio modules
     leftTitle: "Library",
   },
@@ -1840,9 +1843,10 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   if (props.workspace === "flow") return <FlowScreens />;
   if (props.workspace === "story") return props.view === "quests" ? <QuestsTree onView={props.onView} /> : <StoryTree onOpen={() => props.onGo("story", "story-editor")} />;
   if (props.workspace === "artaudio") {
-    return props.view === "assets"
-      ? <AssetLibraryTree />
-      : <ViewListTree {...props} hint="Each editor lists its own content in its panel." />;
+    if (props.view === "assets") return <AssetLibraryTree />;
+    if (props.view === "animation") return <ClipList />;
+    if (props.view === "materials") return <p className="px-2 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>The toon look and the terrain surfaces live in content/materials/materials.json; edit them in the panel.</p>;
+    return <ViewListTree {...props} hint="Each editor lists its own content in its panel." />;
   }
   if (props.workspace === "release") return <ReleaseProfiles />;
   if (props.workspace === "liveops") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Every control sends one of the running server's admin commands." />;
@@ -2128,6 +2132,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "release") return view === "playtests" ? <PlaytestDetails /> : <ReleaseNote />;
   if (workspace === "flow") return <FlowNote />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
+  if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {

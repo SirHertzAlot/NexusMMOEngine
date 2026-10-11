@@ -17,7 +17,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = dirname(fileURLToPath(import.meta.url));
-const fixtureDir = join(dir, "fixtures", "gobkit");
+// The CC0 GLBs are checked in under test/ (tsc does not copy them into dist/test).
+const fixtureDir = join(dir, "..", "..", "test", "fixtures", "gobkit");
 
 const CHARACTERS = [
   { file: "minion-a01.glb", clips: ["idle", "attack", "dead"] },

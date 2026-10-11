@@ -126,6 +126,7 @@ import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleAudioRoute } from "./audio-host.js";
 import { handleVfxRoute } from "./vfx-host.js";
 import { handleAnimationRoute } from "./animation-host.js";
+import { handleMediaRoute } from "./media-host.js";
 import { handleModulesRoute, parseTickOrder, setFilePath } from "./modules-host.js";
 import { discoverModules, readEnabledSet, resolveModuleSet } from "@mmo-engine/modules";
 import { SidecarManager, type SidecarReport } from "./sidecar-manager.js";
@@ -1462,6 +1463,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const filesReply = await handleFilesRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "POST" ? await readBody(req) : undefined);
           if (filesReply) {
             sendJson(res, filesReply.status, filesReply.body);
+            return;
+          }
+          // Combat moves, locomotion graph and materials (EA21/EA22, media-host.ts).
+          const mediaReply = await handleMediaRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.headers["content-type"], () => readBody(req));
+          if (mediaReply) {
+            sendJson(res, mediaReply.status, mediaReply.body);
             return;
           }
           const scenesReply = handleScenesRoute(
