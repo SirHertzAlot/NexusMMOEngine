@@ -25,9 +25,9 @@ import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
 import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
-import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, ScopeTree, SnackbarHost, StatusChip, TreeItem, notify, staged, useLocalStorage } from "./components.js";
+import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, useLocalStorage } from "./components.js";
 import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
-import { getViewportActions, subscribeViewportActions } from "./viewport-actions.js";
+import { flagBlocked, getViewportActions, screenshotBlocked, subscribeViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
 import { getTool, setTool, subscribeTool } from "./tool-store.js";
 import { getDocActions, subscribeDocActions } from "./doc-actions.js";
 import { TOOLBAR_GROUPS, isShown, loadToolbar, saveToolbar, toggleGroup, DEFAULT_TOOLBAR, type ToolbarConfig } from "../toolbar-config.js";
@@ -35,45 +35,31 @@ import { usePendingChanges } from "./pending-changes.js";
 import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.js";
 import { requestOpenAsset } from "./open-asset.js";
 import { loadCatalog } from "../gameplay-client.js";
-import { BakesPane, OutputPane, ProblemsPane, useDocProblems, useServerOutput, type ServerOutput } from "./dock-panes.js";
+import { BakesPane, OutputPane, ProblemsPane, problemCount, useDiskProblems, useDocProblems, useServerOutput, type DiskProblems, type ServerOutput } from "./dock-panes.js";
+import { DatabaseNote, FlowNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
+import { OwnedFiles } from "./owned-files.js";
+import { StoryTree } from "./story-tree.js";
+import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
+import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPanel, revertActive, screenshotViewport } from "./shell-actions.js";
+import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import { requestNewScene } from "../open-scene.js";
 import { loadLastSetup, saveLastSetup, setupSummary, type PlaySetup } from "./play-setup.js";
 import { PlayMenu } from "./play-menu.js";
 import { savedSetupsStore } from "./play-setups-store.js";
 import { resolveSetupShortcut } from "./play-shortcuts.js";
-import type { MenuItem } from "./components.js";
-import type { ScopeNode } from "./scope-tree.js";
-import { editorSelection, isSelectionVisible, useEditorSelection } from "./editor-selection.js";
+import { isSelectionVisible, useEditorSelection } from "./editor-selection.js";
 import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut } from "./shortcuts.js";
 import { useDrag } from "./use-drag.js";
 import { SelectableList } from "./selectable-list.js";
-import type { LiveOpsScope } from "./previews.js";
+import { ViewList } from "./view-list.js";
+import { LiveOpsDetailsLive, LiveOpsViews } from "./liveops-live.js";
+import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network-live.js";
+import { PlaytestsPanel } from "./playtests-live.js";
+import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
 import {
-  AnimDetails,
-  ArtAudioTree,
-  HudPreview,
-  LiveOpsDetails,
-  DatabaseRowDetails,
-  FlowDetails,
-  HudDetails,
-  LiveOpsPreview,
-  PlaytestPreview,
-  QuestPreview,
-  ReleaseDeployDetails,
-  SchemaTree,
-  StoryDetails,
-  WidgetList,
-  PLAYERS,
+  AssetLibraryTree,
   applyDeepSelection,
-  liveOpsStore,
   readDeepSelection,
-  selectLiveOpsPlayer,
-  selectLiveOpsScope,
-  liveOpsScopeLabel,
-  LIVEOPS_ACCOUNTS,
-  LIVEOPS_GUILDS,
-  LIVEOPS_PARTIES,
-  storyStore,
   subscribeDeepSelection,
 } from "./previews.js";
 
@@ -154,13 +140,16 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "liveops", label: "Live ops", icon: "groups",
-    views: [{ id: "overview", label: "Overview", icon: "groups", kind: "panel", panel: <LiveOpsPreview /> }],
-    leftTitle: "Scopes",
+    views: LiveOpsViews(),
+    leftTitle: "Live ops",
   },
   {
     id: "network", label: "Network", icon: "lan",
-    views: [{ id: "network", label: "Routes", icon: "lan", kind: "soon", soon: { icon: "lan", title: "Edge routes arrive with the edge split", body: "Core vs local module routes, channel health and /metrics links (§7c)." } }],
-    leftTitle: "Routes",
+    views: [
+      { id: "routes", label: "Edge routes", icon: "lan", kind: "panel", panel: <EdgeRoutesPanel /> },
+      { id: "connections", label: "Connections", icon: "network_check", kind: "panel", panel: <ConnectionsPanel /> },
+    ],
+    leftTitle: "Network",
   },
   {
     id: "debug", label: "Debug", icon: "monitoring",
@@ -184,7 +173,8 @@ const WORKSPACES: Workspace[] = [
   {
     id: "story", label: "Story", icon: "auto_stories",
     views: [
-      { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestPreview /> },
+      { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
+      { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
       { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
     ], // quest & dialog editor contributed by the story module (modules/story/editor)
     leftTitle: "Stories",
@@ -201,8 +191,9 @@ const WORKSPACES: Workspace[] = [
     id: "release", label: "Release", icon: "rocket_launch",
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
-      { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestPreview /> },
-    ], // HUD layout editor contributed by the hud module (modules/hud/editor)
+      { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
+      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudEditor /> },
+    ],
     leftTitle: "Profiles",
   },
   {
@@ -250,9 +241,9 @@ const VIEW_KEYWORDS: Record<string, string> = {
   modules: "modules enable disable apply",
 };
 
-const SOON_WS: ReadonlySet<WorkspaceId> = new Set(["network"]);
-/** Workspaces showing mockup-faithful previews over sample data. */
-const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set(["flow", "liveops", "story", "artaudio", "release"]);
+const SOON_WS: ReadonlySet<WorkspaceId> = new Set([]);
+/** Workspaces whose whole content is still a preview over sample data (none: Live ops and Network went real with the playtests port). */
+const PREVIEW_WS: ReadonlySet<WorkspaceId> = new Set([]);
 
 // ---------------------------------------------------------------- shell
 
@@ -285,6 +276,9 @@ export function App(): React.JSX.Element {
   const { pmState } = playUiStore.use();
   const output = useServerOutput();
   const problems = useDocProblems();
+  const diskProblems = useDiskProblems();
+  const problemTotal = problemCount(diskProblems, problems);
+  const [dialog, setDialog] = React.useState<"prefs" | "profile" | null>(null);
   const playing = pmState === "running" || pmState === "starting";
 
   // Dock layout: visibility + sizes persist locally; named layouts snapshot all of it.
@@ -458,7 +452,19 @@ export function App(): React.JSX.Element {
     const sel = readDeepSelection(workspace, view);
     const h = `#/${workspace}/${view}${sel ? `/${encodeURIComponent(sel)}` : ""}`;
     if (window.location.hash !== h) window.history.replaceState(null, "", h);
+    rememberView(browserStorage(), workspace, view);
   });
+  // Preference: the browser confirms closing the tab while the open document has unsaved edits.
+  React.useEffect(() => {
+    if (!loadPrefs(browserStorage()).warnUnsaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      if (!anyUnsaved()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   function parseHash(): void {
     const loc = parseHashString(window.location.hash);
@@ -640,6 +646,7 @@ export function App(): React.JSX.Element {
         onToggleDock={toggleDock}
         onResetLayout={() => applyLayout(defaultLayout())}
         onGo={go}
+        onDialog={setDialog}
       />
       <Toolbar
         playMenu={playMenu}
@@ -704,8 +711,8 @@ export function App(): React.JSX.Element {
                 label="Left dock options"
                 size={36}
                 items={[
-                  { label: "Save layout as…", kbd: "Ctrl Shift S", run: () => notify("Use the layout menu (top right) to save this arrangement by name") },
-                  { label: "Pop panel into a window", stagedFor: "EA · layout" },
+                  { label: "Save layout as…", kbd: "Ctrl Shift S", run: () => setLayoutMenu(true) },
+                  { label: "Pop panel into a window", run: popOutPanel },
                   { label: "Hide left dock", run: () => toggleDock("left") },
                 ]}
               />
@@ -756,17 +763,7 @@ export function App(): React.JSX.Element {
               {workspaceLabel(workspace)} · {activeView.label.toLowerCase()}
             </span>
             <span className="ml-auto flex items-center gap-0.5">
-              <OverflowMenu
-                label="Viewport options"
-                size={36}
-                items={[
-                  { label: "Grid", stagedFor: "EA · viewport tools" },
-                  { label: "Gizmos", stagedFor: "EA · viewport tools" },
-                  { label: "Wireframe", stagedFor: "EA · viewport tools" },
-                  "sep",
-                  { label: "Screenshot viewport", stagedFor: "core" },
-                ]}
-              />
+              <ViewportOptions />
             </span>
           </div>
 
@@ -795,7 +792,7 @@ export function App(): React.JSX.Element {
             <DockPanel
               tabs={[
                 { id: "output", label: "Output", icon: "terminal" },
-                { id: "problems", label: problems.problems.length > 0 ? `Problems · ${problems.problems.length}` : "Problems", icon: "error" },
+                { id: "problems", label: problemTotal > 0 ? `Problems · ${problemTotal}` : "Problems", icon: "error" },
                 { id: "bakes", label: "Bakes", icon: "history" },
               ]}
               active={bottomTab}
@@ -806,13 +803,14 @@ export function App(): React.JSX.Element {
                   size={36}
                   items={[
                     { label: "Clear output", run: output.clear },
-                    { label: "Pop panel into a window", stagedFor: "EA · layout" },
+                    { label: "Check problems again", run: diskProblems.refresh },
+                    { label: "Pop panel into a window", run: popOutPanel },
                     { label: "Hide bottom dock", run: () => toggleDock("bottom") },
                   ]}
                 />
               }
             >
-              <BottomPane tab={bottomTab} output={output} problems={problems} />
+              <BottomPane tab={bottomTab} output={output} problems={problems} disk={diskProblems} />
             </DockPanel>
           </div>
         </div>
@@ -833,10 +831,7 @@ export function App(): React.JSX.Element {
           style={{ width: rightW }}
         >
           <DockPanel
-            tabs={[
-              { id: "compare", label: "Compare", icon: "compare_arrows" },
-              { id: "details", label: "Details", icon: "tune" },
-            ]}
+            tabs={[{ id: "details", label: "Details", icon: "tune" }]}
             active={rightTab}
             onTab={setRightTab}
             actions={
@@ -844,13 +839,13 @@ export function App(): React.JSX.Element {
                 label="Right dock options"
                 size={36}
                 items={[
-                  { label: "Pop panel into a window", stagedFor: "EA · layout" },
+                  { label: "Pop panel into a window", run: popOutPanel },
                   { label: "Hide right dock", run: () => toggleDock("right") },
                 ]}
               />
             }
           >
-            {rightTab === "compare" ? <ComparePane /> : playing ? (
+            {playing ? (
               <div className="flex flex-col gap-2">
                 <p
                   className="rounded-xl px-3 py-2 text-xs font-medium"
@@ -869,7 +864,9 @@ export function App(): React.JSX.Element {
         </div>
       </div>
 
-      <StatusBar problems={problems.problems.length} />
+      <StatusBar problems={problemTotal} onOpenProblems={() => { setBottomTab("problems"); setDocks((d) => ({ ...d, bottom: true })); }} />
+      {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}
+      {dialog === "profile" && <ProfileDialog onClose={() => setDialog(null)} />}
       <SnackbarHost />
     </div>
   );
@@ -928,7 +925,13 @@ let hashClaimed: string | null = null;
 
 function initialHashLocation(): { workspace: WorkspaceId; view: string } {
   if (typeof window === "undefined") return { workspace: "gameplay", view: "tables" };
-  const loc = parseHashString(window.location.hash) ?? { workspace: "gameplay", view: "tables", sel: null };
+  const fromHash = parseHashString(window.location.hash);
+  if (!fromHash && loadPrefs(browserStorage()).restoreLastView) {
+    const last = recallView(browserStorage());
+    const w = last ? WORKSPACES.find((x) => x.id === last.workspace) : undefined;
+    if (last && w?.views.some((v) => v.id === last.view)) return { workspace: w.id as WorkspaceId, view: last.view };
+  }
+  const loc = fromHash ?? { workspace: "gameplay", view: "tables", sel: null };
   // Claim the selection synchronously (not in an effect) so the first
   // hash write already reflects it — idempotent across StrictMode retries.
   if (loc.sel !== null && hashClaimed !== window.location.hash) {
@@ -938,9 +941,37 @@ function initialHashLocation(): { workspace: WorkspaceId; view: string } {
   return loc;
 }
 
+// ---------------------------------------------------------------- viewport options
+
+/** The center header's viewport menu: Grid / Gizmos / Wireframe act on the active 3D viewport, Screenshot saves a PNG of it. */
+function ViewportOptions(): React.JSX.Element {
+  const vp = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
+  const flags = viewportFlags.use();
+  const toggle = (label: string, key: "grid" | "gizmos" | "wireframe"): { label: string; checked: boolean; disabled?: string; run: () => void } => ({
+    label,
+    checked: flags[key],
+    ...(flagBlocked(key) !== null ? { disabled: flagBlocked(key) as string } : {}),
+    run: () => toggleViewportFlag(key),
+  });
+  void vp; // re-render when the active viewport changes
+  return (
+    <OverflowMenu
+      label="Viewport options"
+      size={36}
+      items={[
+        toggle("Grid", "grid"),
+        toggle("Gizmos", "gizmos"),
+        toggle("Wireframe", "wireframe"),
+        "sep",
+        { label: "Screenshot viewport", run: () => void screenshotViewport(), ...(screenshotBlocked() !== null ? { disabled: screenshotBlocked() as string } : {}) },
+      ]}
+    />
+  );
+}
+
 // ---------------------------------------------------------------- menu bar
 
-function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayout, onGo }: {
+function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayout, onGo, onDialog }: {
   workspace: WorkspaceId;
   onPick: (id: WorkspaceId) => void;
   onSearch: () => void;
@@ -948,9 +979,11 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   onToggleDock: (d: "left" | "right" | "bottom") => void;
   onResetLayout: () => void;
   onGo: (ws: WorkspaceId, view?: string) => void;
+  onDialog: (d: "prefs" | "profile") => void;
 }): React.JSX.Element {
   const [open, setOpen] = React.useState<string | null>(null);
   const [dialog, setDialog] = React.useState<"shortcuts" | "about" | null>(null);
+  const profile = currentProfile(browserStorage());
 
   function fullscreen(): void {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
@@ -986,17 +1019,18 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
     if (!can || !run) return { label, kbd, disabled: true, disabledReason: `${viewport.label} doesn't support ${label.toLowerCase()}` };
     return { label, kbd, run };
   };
-  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; stagedFor?: string; disabled?: boolean; disabledReason?: string } | "sep">> = {
+  const menus: Record<string, Array<{ label: string; kbd?: string; run?: () => void; disabled?: boolean; disabledReason?: string } | "sep">> = {
     File: [
       { label: "New Scene…", run: () => { requestNewScene(); onGo("scenes"); } },
       { label: "Open Scene…", run: () => onGo("scenes") },
       "sep",
       { label: doc ? `Save ${doc.label}` : "Save", kbd: "Ctrl S", disabled: !doc?.canSave, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.save() },
-      docItem("Save All", undefined, doc?.canSaveAll, doc?.saveAll),
-      docItem("Revert", undefined, doc?.canRevert, doc?.revert),
+      // Save All saves the open document (panels hold one document at a time) unless the panel has its own.
+      docItem("Save All", undefined, doc?.canSaveAll ?? doc?.canSave, doc?.saveAll ?? doc?.save),
+      docItem("Revert", undefined, doc?.canRevert ?? (!!doc?.revert && doc.canSave), () => void revertActive()),
       "sep",
-      docItem("Import…", undefined, doc?.canImport, doc?.importFile),
-      docItem("Export…", undefined, doc?.canExport, doc?.exportFile),
+      docItem("Import…", undefined, canImport(doc), () => void importActive()),
+      docItem("Export…", undefined, canExport(doc), exportActive),
     ],
     Edit: [
       { label: "Undo", kbd: "Ctrl Z", disabled: !doc?.canUndo, disabledReason: !doc ? "no open document to act on" : undefined, run: () => doc?.undo() },
@@ -1019,19 +1053,17 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       viewportItem("Zoom Out", "Ctrl -", viewport?.canZoomOut, viewport?.zoomOut),
       viewportItem("Reset Viewport", "Ctrl 0", viewport?.canReset, viewport?.reset),
       "sep",
+      { label: "Screenshot Viewport", run: () => void screenshotViewport(), disabled: screenshotBlocked() !== null, disabledReason: screenshotBlocked() ?? undefined },
       { label: "Fullscreen", kbd: "F11", run: fullscreen },
     ],
     Window: [
       ...WORKSPACES.map((w) => ({ label: `Workspace: ${w.label}`, run: () => onGo(w.id) })),
       "sep",
-      { label: "Pop panel into a window", run: staged("Pop panel into a window", "EA · layout"), stagedFor: "EA · layout" },
+      { label: "Pop panel into a window", run: popOutPanel },
       { label: "Reset layout", run: onResetLayout },
     ],
     Help: [
       { label: "Keyboard Shortcuts", kbd: "?", run: () => setDialog("shortcuts") },
-      { label: "Editor Guide (docs/EDITOR.md)", run: () => notify("docs/EDITOR.md — open it in your code editor") },
-      { label: "Architecture (EDITOR-ARCHITECTURE.md)", run: () => notify("docs/EDITOR-ARCHITECTURE.md — open it in your code editor") },
-      "sep",
       { label: "About MMO Engine Editor", run: () => setDialog("about") },
     ],
   };
@@ -1084,14 +1116,9 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                   if (it === "sep") {
                     return <li key={`sep-${i}`} className="list-none" style={{ borderTop: "1px solid var(--m3-outline-variant)", margin: "4px 2px" }} />;
                   }
-                  const run = it.run ?? (it.stagedFor ? staged(it.label, it.stagedFor) : () => undefined);
-                  const stagedRow = it.stagedFor !== undefined;
-                  const off = stagedRow || it.disabled === true;
-                  const tip = stagedRow
-                    ? `${it.label} — soon (${it.stagedFor})`
-                    : it.disabled
-                      ? `${it.label} — ${it.disabledReason ?? "not available"}`
-                      : undefined;
+                  const run = it.run ?? (() => undefined);
+                  const off = it.disabled === true;
+                  const tip = it.disabled ? `${it.label} — ${it.disabledReason ?? "not available"}` : undefined;
                   return (
                     <li key={it.label} className="list-none">
                       <button
@@ -1105,10 +1132,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
                         style={{ color: "var(--m3-on-surface)", opacity: off ? 0.55 : undefined }}
                       >
                         {it.label}
-                        {stagedRow && (
-                          <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>soon</span>
-                        )}
-                        {!stagedRow && it.kbd && (
+                        {it.kbd && (
                           <kbd className="ml-auto rounded border px-1 font-mono text-[11px]" style={{ borderColor: "var(--m3-outline-variant)", color: "var(--m3-on-surface-variant)" }}>
                             {it.kbd}
                           </kbd>
@@ -1142,12 +1166,12 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
           onClick={() => setOpen((v) => (v === "profile" ? null : "profile"))}
           aria-expanded={open === "profile"}
           aria-haspopup="menu"
-          aria-label="Profile: signed in as editor (dev)"
-          title="Signed in as editor (dev) — seeded admin"
+          aria-label={`Profile: ${profile}`}
+          title={`Profile ${profile} — preferences are kept per profile`}
           className="m3-focus grid h-9 w-9 place-items-center rounded-full text-sm font-semibold"
           style={{ background: "var(--m3-primary-container)", color: "var(--m3-on-primary-container)" }}
         >
-          P
+          {profile.slice(0, 1).toUpperCase()}
         </button>
         {open === "profile" && (
           <>
@@ -1158,27 +1182,34 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
               aria-label="Profile menu"
             >
               <li className="list-none px-2.5 py-2">
-                <p className="text-sm font-medium" style={{ color: "var(--m3-on-surface)" }}>editor (dev)</p>
+                <p className="text-sm font-medium" style={{ color: "var(--m3-on-surface)" }}>{profile}</p>
                 <p className="font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-                  seeded admin · one-session login via the host
+                  local profile · play sessions log in through the host
                 </p>
               </li>
               {[
-                { label: "Switch profile", stagedFor: "EA · auth (A1)" },
-                { label: "Preferences", stagedFor: "EA · project settings" },
-                { label: "Sign out", stagedFor: "EA · auth (A1)" },
+                { label: "Switch profile", run: () => onDialog("profile") },
+                { label: "Preferences", run: () => onDialog("prefs") },
+                {
+                  label: "Sign out",
+                  run: () => {
+                    // Forget the stored session (profile, last view, last play setup) and start fresh.
+                    signOut(browserStorage());
+                    window.history.replaceState(null, "", window.location.pathname);
+                    window.location.reload();
+                  },
+                },
               ].map((it) => (
                 <li key={it.label} className="list-none">
                   <button
                     onClick={() => {
                       setOpen(null);
-                      staged(it.label, it.stagedFor)();
+                      it.run();
                     }}
                     className="m3-focus flex w-full items-center rounded-lg px-2.5 py-2 text-left text-[13px]"
                     style={{ color: "var(--m3-on-surface)" }}
                   >
                     {it.label}
-                    <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
                   </button>
                 </li>
               ))}
@@ -1248,34 +1279,6 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
         })}
       </nav>
     </div>
-    </>
-  );
-}
-
-function ShellDialog({ title, onClose, children }: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <>
-      <span className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" style={{ background: "rgba(0,0,0,.4)" }} />
-      <div
-        className="fixed left-1/2 top-1/3 z-50 w-[26rem] max-w-[90vw] -translate-x-1/2 -translate-y-1/3 rounded-2xl p-5"
-        role="dialog"
-        aria-label={title}
-        style={{ background: "var(--m3-surface-3)", boxShadow: "0 6px 16px rgba(0,0,0,.5)" }}
-      >
-        <div className="mb-3 flex items-center">
-          <p className="text-base font-medium">{title}</p>
-          <span className="ml-auto">
-            <IconButton label={`Close ${title}`} size={36} onClick={onClose}>
-              <MIcon name="close" size={19} />
-            </IconButton>
-          </span>
-        </div>
-        {children}
-      </div>
     </>
   );
 }
@@ -1609,7 +1612,7 @@ function Toolbar(props: {
 // ---------------------------------------------------------------- layout menu
 // Named dock arrangements, persisted in this browser (§3.4). Applying one
 // restores workspace, views, tabs, dock sizes and visibility for real;
-// popping a panel into its own window waits on the docking engine.
+// "Pop panel into a window" opens the current deep link in a new window.
 
 function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: {
   saved: Record<string, {
@@ -1695,9 +1698,8 @@ function LayoutMenuBody({ saved, onApply, onSave, onDelete, onReset, onClose }: 
               <MIcon name="save" size={16} /> Save layout as…
               <kbd className="ml-auto font-mono text-[11px]">Ctrl Shift S</kbd>
             </button>
-            <button onClick={() => staged("Pop panel into a window", "EA · layout")()} className="m3-focus flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
+            <button onClick={popOutPanel} className="m3-focus flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
               <MIcon name="open_in_new" size={16} /> Pop panel into a window
-              <span className="ml-auto font-mono text-[10px]" style={{ color: "var(--m3-outline)" }}>staged</span>
             </button>
             <button onClick={onReset} className="m3-focus flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm" style={{ color: "var(--m3-on-surface-variant)" }}>
               <MIcon name="restart_alt" size={16} /> Reset to default
@@ -1840,349 +1842,61 @@ function useTree(): {
   };
 }
 
-function crudMenu(label: string, slice: string, onInspect?: () => void): Array<MenuItem | "sep"> {
-  return [
-    { label: `Inspect ${label}`, icon: "search", run: onInspect ?? (() => {
-      editorSelection.select({
-        source: "outliner",
-        kind: "inspect",
-        id: label,
-        label,
-        components: [{ name: "Inspect", fields: [{ key: "item", value: label }, { key: "slice", value: slice }] }],
-      });
-    }) },
-    "sep",
-    { label: "Rename…", icon: "edit", stagedFor: slice },
-    { label: "Duplicate", icon: "content_copy", stagedFor: slice },
-    { label: "Delete", icon: "delete", danger: true, stagedFor: slice },
-  ];
-}
-
 function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: string) => void; views: Workspace["views"]; onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
   if (props.workspace === "world") return <WorldTree />;
-  if (props.workspace === "database") return <SchemaTree />;
-  if (props.workspace === "flow") return <WidgetList />;
-  if (props.workspace === "story") return <StoryTree />;
-  if (props.workspace === "artaudio") return <ArtAudioTree view={props.view} onView={props.onView} />;
-  if (props.workspace === "release") return <ReleaseTree />;
-  if (props.workspace === "liveops") return <LiveOpsTree />;
+  if (props.workspace === "database") return <ViewListTree {...props} hint="Tables are listed in the grid; edits apply with the game server stopped." />;
+  if (props.workspace === "flow") return <FlowScreens />;
+  if (props.workspace === "story") return props.view === "quests" ? <QuestsTree onView={props.onView} /> : <StoryTree onOpen={() => props.onGo("story", "story-editor")} />;
+  if (props.workspace === "artaudio") {
+    return props.view === "assets"
+      ? <AssetLibraryTree />
+      : <ViewListTree {...props} hint="Each editor lists its own content in its panel." />;
+  }
+  if (props.workspace === "release") return <ReleaseProfiles />;
+  if (props.workspace === "liveops") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Every control sends one of the running server's admin commands." />;
+  if (props.workspace === "network") return <ViewList views={props.views} view={props.view} onView={props.onView} hint="Routes are content/edge/routes.json; connections are the running server's." />;
   if (props.workspace === "gameplay" || props.workspace === "dungeons") {
-    return (
-      <div>
-        <SelectableList
-          navigation
-          size="lg"
-          items={props.views}
-          itemKey={(v) => v.id}
-          label={(v) => v.label}
-          icon={(v) => v.icon}
-          selected={props.view}
-          onPick={(v) => props.onView(v.id)}
-        />
-        <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-          Row-level tables (items, creatures, loot…) live inside the Tables panel.
-        </p>
-      </div>
-    );
+    return <ViewListTree {...props} hint="Row-level tables (items, creatures, loot…) live inside the Tables panel." />;
   }
   if (props.workspace === "debug") {
     return <DebugTree />;
   }
-  return (
-    <EmptyState
-      icon="draft"
-      title="Nothing pinned here yet"
-      body="Layouts save per workspace (Ctrl Shift S). Panels you open will dock here."
-    />
-  );
-}
-
-/** World outliner rows as data; the shared ScopeTree renders them. */
-interface WorldNode extends ScopeNode {
-  kind: string;
-  children?: WorldNode[];
-}
-
-const WORLD_NODES: WorldNode[] = [
-  {
-    id: "world", label: "default.world", icon: "public", trailing: "4 × 4 km", kind: "world",
-    children: [
-      {
-        id: "regions", label: "Regions", icon: "grid_view", trailing: "4", kind: "collection",
-        children: ["Region 0,0", "Region 1,0"].map((r) => ({
-          id: r, label: r, icon: "terrain", trailing: r === "Region 0,0" ? "loaded" : undefined, kind: "region",
-          children: [
-            { id: `${r}-chunks`, label: "chunks 8 × 8", icon: "grid_on", trailing: "1,024", kind: "world item" },
-            { id: `${r}-cache`, label: "tile cache", icon: "cached", trailing: "212 tiles", kind: "world item" },
-          ],
-        })),
-      },
-      {
-        id: "eco", label: "Ecology: wilds", icon: "forest", kind: "ecology",
-        children: ["oak", "birch", "pine"].map((s) => (
-          { id: `eco-${s}`, label: s, icon: "park", trailing: "pcg", kind: "world item" }
-        )),
-      },
-      { id: "formations", label: "Formations", icon: "grid_on", trailing: "WFC", kind: "world item" },
-      { id: "coast", label: "Coast and sea", icon: "waves", kind: "world item" },
-      { id: "sky", label: "Sky, day and weather", icon: "wb_sunny", kind: "world item" },
-      { id: "nav", label: "Navmesh tiles", icon: "account_tree", trailing: "212", kind: "world item" },
-    ],
-  },
-];
-
-function WorldTree(): React.JSX.Element {
-  const t = useTree();
-  return (
-    <div className="flex flex-col gap-0.5">
-      <ScopeTree
-        nodes={WORLD_NODES}
-        open={t.open}
-        selected={t.sel}
-        onToggle={(id) => t.toggle(id)}
-        onPick={(n) => {
-          t.pick(n.id);
-          editorSelection.select({
-            source: "outliner",
-            kind: n.kind,
-            id: n.id,
-            label: n.label,
-            components: [{
-              name: "Outliner node",
-              fields: [
-                { key: "workspace", value: "World" },
-                { key: "kind", value: n.kind },
-                ...(n.trailing ? [{ key: "status", value: n.trailing }] : []),
-              ],
-            }],
-          });
-        }}
-        menuFor={(n) => crudMenu(n.label, "EA · world (E9)")}
-      />
-      <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Region editing, bakes and the tile cache arrive with world-scale editing (E9).
-      </p>
-    </div>
-  );
-}
-
-/** Live ops scopes (ux-08). Players bind to the admin console selection;
- *  account/guild/party leaves scope the preview table, telemetry/chat/
- *  ledger leaves swap in their section. */
-function LiveOpsTree(): React.JSX.Element {
-  const t = useTree();
-  const { scope } = liveOpsStore.use();
-  const group = (id: string, icon: string, label: string, trailing: string, kids: React.ReactNode): React.JSX.Element => (
-    <div key={id}>
-      <TreeItem
-        icon={icon} label={label} trailing={trailing}
-        hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={false} onPick={() => t.toggle(id)}
-        menu={crudMenu(label, "EA · live ops")}
-      />
-      {t.open.includes(id) && kids}
-    </div>
-  );
-  const scopeLeaf = (id: string, label: string, s: LiveOpsScope, depth = 1): React.JSX.Element => (
-    <TreeItem
-      key={id} icon="chevron_right" label={label} depth={depth} mono
-      selected={scope.kind !== "all" && liveOpsScopeLabel(scope) === liveOpsScopeLabel(s)}
-      onPick={() => selectLiveOpsScope(s)}
-      menu={crudMenu(label, "EA · live ops")}
-    />
-  );
-  const playerLeaf = (n: string): React.JSX.Element => (
-    <TreeItem
-      key={n} icon="person" label={n} depth={1}
-      selected={false}
-      onPick={() => selectLiveOpsPlayer(n)}
-      menu={crudMenu(n, "EA · live ops")}
-    />
-  );
-  return (
-    <div className="flex flex-col gap-0.5">
-      {group("players", "groups", "Players", "214", <>{PLAYERS.map(([c]) => playerLeaf(c))}</>)}
-      {group("accounts", "badge", "Accounts", String(Object.keys(LIVEOPS_ACCOUNTS).length), (
-        <>
-          {Object.entries(LIVEOPS_ACCOUNTS).map(([a, members]) => (
-            <div key={a}>
-              <TreeItem
-                icon="chevron_right" label={a} depth={1} mono
-                hasKids expanded={t.open.includes(`account:${a}`)} onToggle={() => t.toggle(`account:${a}`)}
-                selected={false}
-                onPick={() => selectLiveOpsScope({ kind: "account", name: a })}
-                menu={crudMenu(a, "EA · live ops")}
-              />
-              {t.open.includes(`account:${a}`) && members.map((m) => (
-                <TreeItem
-                  key={m} icon="person" label={m} depth={2}
-                  selected={false}
-                  onPick={() => selectLiveOpsPlayer(m)}
-                  menu={crudMenu(m, "EA · live ops")}
-                />
-              ))}
-            </div>
-          ))}
-        </>
-      ))}
-      {group("guilds", "diversity_3", "Guilds", String(Object.keys(LIVEOPS_GUILDS).length), (
-        <>
-          {Object.entries(LIVEOPS_GUILDS).map(([g, members]) => (
-            <div key={g}>
-              <TreeItem
-                icon="chevron_right" label={g} depth={1}
-                hasKids expanded={t.open.includes(`guild:${g}`)} onToggle={() => t.toggle(`guild:${g}`)}
-                selected={false}
-                onPick={() => selectLiveOpsScope({ kind: "guild", name: g })}
-                menu={crudMenu(g, "EA · live ops")}
-              />
-              {t.open.includes(`guild:${g}`) && members.map((m) => (
-                <TreeItem
-                  key={m} icon="person" label={m} depth={2}
-                  selected={false}
-                  onPick={() => selectLiveOpsPlayer(m)}
-                  menu={crudMenu(m, "EA · live ops")}
-                />
-              ))}
-            </div>
-          ))}
-        </>
-      ))}
-      {group("parties", "group", "Parties", String(Object.keys(LIVEOPS_PARTIES).length), (
-        <>
-          {Object.entries(LIVEOPS_PARTIES).map(([p, members]) => (
-            <div key={p}>
-              <TreeItem
-                icon="chevron_right" label={p} depth={1} mono
-                hasKids expanded={t.open.includes(`party:${p}`)} onToggle={() => t.toggle(`party:${p}`)}
-                selected={false}
-                onPick={() => selectLiveOpsScope({ kind: "party", name: p })}
-                menu={crudMenu(p, "EA · live ops")}
-              />
-              {t.open.includes(`party:${p}`) && members.map((m) => (
-                <TreeItem
-                  key={m} icon="person" label={m} depth={2}
-                  selected={false}
-                  onPick={() => selectLiveOpsPlayer(m)}
-                  menu={crudMenu(m, "EA · live ops")}
-                />
-              ))}
-            </div>
-          ))}
-        </>
-      ))}
-      {group("chat", "forum", "Chat & events", "5", <>{scopeLeaf("chat", "All channels", { kind: "chat" })}</>)}
-      {group("ledger", "receipt_long", "Item ledger", "128k", <>{scopeLeaf("ledger", "Recent events", { kind: "ledger" })}</>)}
-      {group("telemetry", "monitoring", "Telemetry", "p99", <>{scopeLeaf("telemetry", "Tick budget", { kind: "telemetry" })}</>)}
-    </div>
-  );
-}
-
-/** Story quests and dialogs (ux-13). Quest steps bind to the graph selection. */
-function StoryTree(): React.JSX.Element {
-  const t = useTree();
-  const steps: Record<string, Array<[string, string]>> = {
-    "warden-hale": [["talk", "Talk"], ["clear", "Clear"], ["return", "Return"], ["reward", "Reward"], ["refused", "Refused"]],
-    "lost-pelts": [["track", "Track"], ["trap", "Trap"], ["return", "Return"]],
-    "tower-key": [["knock", "Knock"], ["riddle", "Riddle"], ["fetch", "Fetch"], ["craft", "Craft"], ["climb", "Climb"], ["unlock", "Unlock"], ["claim", "Claim"]],
-  };
-  const quests: Array<[string, string, string]> = [
-    ["warden-hale", "5 steps", "flag"],
-    ["lost-pelts", "3 steps", "flag"],
-    ["tower-key", "7 steps", "flag"],
-    ["hale.intro", "12 beats", "forum"],
-    ["hale.return", "4 beats", "forum"],
-    ["smith.shop", "6 beats", "forum"],
-    ["camp-errands", "generated", "auto_awesome"],
-  ];
-  return (
-    <div className="flex flex-col gap-0.5">
-      {quests.map(([q, trailing, icon]) => {
-        const kids = steps[q];
-        const open = t.open.includes(q);
-        return (
-          <div key={q}>
-            <TreeItem
-              icon={icon}
-              label={q}
-              trailing={trailing}
-              mono
-              hasKids={kids !== undefined}
-              expanded={open}
-              onToggle={kids ? () => t.toggle(q) : undefined}
-              selected={t.sel === q}
-              onPick={() => t.pick(q)}
-              menu={crudMenu(q, "EA · story")}
-            />
-            {kids && open && kids.map(([id, label]) => (
-              <TreeItem
-                key={id}
-                icon="chevron_right"
-                label={label}
-                depth={1}
-                mono
-                selected={false}
-                onPick={() => {
-                  if (q === "warden-hale") storyStore.set((p) => ({ ...p, node: id }));
-                  else notify(`${q} · ${label} — staged for EA · story`);
-                }}
-                menu={crudMenu(`${q} · ${label}`, "EA · story")}
-              />
-            ))}
-          </div>
-        );
-      })}
-      <p className="px-3 pt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-        content/quests · validated as a set at boot
-      </p>
-    </div>
-  );
-}
-
-/** Release profiles and the staging settings (ux-12). */
-function ReleaseTree(): React.JSX.Element {
-  const t = useTree();
-  const profiles: Array<[string, string, string[]]> = [
-    ["local-dev", "local", ["npm run editor", "MMO_PORT 7777"]],
-    ["staging", "ssh", ["0.14.2 · up 22 h", "MMO_BOTS 40"]],
-    ["public-alpha", "ssh", ["0.14.0 · 31 players"]],
-    ["perf-check", "local", ["valgrind:perf baseline"]],
-  ];
-  return (
-    <div className="flex flex-col gap-0.5">
-      {profiles.map(([p, target, kids]) => {
-        const open = t.open.includes(p);
-        return (
-          <div key={p}>
-            <TreeItem
-              icon={p === "staging" ? "dns" : p === "public-alpha" ? "public" : p === "perf-check" ? "speed" : "computer"}
-              label={p}
-              trailing={target}
-              mono
-              hasKids
-              expanded={open}
-              onToggle={() => t.toggle(p)}
-              selected={t.sel === p}
-              onPick={() => t.pick(p)}
-              menu={crudMenu(p, "EA · release")}
-            />
-            {open && kids.map((k) => (
-              <TreeItem key={k} icon="chevron_right" label={k} depth={1} mono menu={crudMenu(k, "EA · release")} />
-            ))}
-          </div>
-        );
-      })}
-      <p className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Staging · settings
-      </p>
-      <div className="px-3 font-mono text-[11px] leading-[1.9]" style={{ color: "var(--m3-on-surface-variant)" }}>
-        {[["MMO_PORT", "7777"], ["MMO_DATA_DIR", "/srv/nexus/data"], ["MMO_WORLD_SEED", "1337"], ["MMO_ALLOW_REGISTER", "0"], ["MMO_BOTS", "40"], ["MMO_MODULES", "core, goblin-ai"]].map(([k, v]) => (
-          <p key={k} className="flex"><span>{k}</span><span className="ml-auto" style={{ color: "var(--m3-on-surface)" }}>{v}</span></p>
-        ))}
+  if (props.workspace === "scenes") {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <OwnedFiles
+          kind="scene"
+          onOpen={(name) => {
+            props.onGo("scenes", "scene");
+            requestOpenAsset("scene", name);
+          }}
+        />
+        <p className="px-3 pt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>content/scenes · the ⋯ menu on a row renames, duplicates or deletes</p>
       </div>
+    );
+  }
+  return <ViewListTree {...props} hint="This workspace's content is in its panel; the Content tab browses every file." />;
+}
+
+/** The workspace's views as a list, with a line on where its content lives. */
+function ViewListTree(props: { view: string; onView: (v: string) => void; views: Workspace["views"]; hint: string }): React.JSX.Element {
+  return (
+    <div>
+      <SelectableList
+        navigation
+        size="lg"
+        items={props.views}
+        itemKey={(v) => v.id}
+        label={(v) => v.label}
+        icon={(v) => v.icon}
+        selected={props.view}
+        onPick={(v) => props.onView(v.id)}
+      />
+      <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>{props.hint}</p>
     </div>
   );
 }
+
 /** Debug sessions dock: live server state plus the overlay controls the
  *  Play mode panel itself uses — same store, both directions. */
 function DebugTree(): React.JSX.Element {
@@ -2303,24 +2017,23 @@ function TickTimingsPanel(): React.JSX.Element {
  *  Clicking a document navigates to the workspace that owns it today. */
 function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
   useModuleRegistry();
+  const openScene = (name: string): void => {
+    onGo("scenes", "scene");
+    requestOpenAsset("scene", name);
+  };
   const t = useTree();
   const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
-  const folder = (id: string, label: string, icon: string, kids: React.ReactNode, slice = "EA · content browser"): React.JSX.Element => (
+  const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id}>
       <TreeItem
         icon={icon} label={label} mono
         hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
-        selected={t.sel === id} onPick={() => t.pick(id)}
-        menu={[
-          { label: "New file…", icon: "note_add", stagedFor: slice },
-          { label: "New folder…", icon: "create_new_folder", stagedFor: slice },
-          "sep",
-          { label: "Reveal in file browser", icon: "folder_open", stagedFor: slice },
-        ]}
+        selected={t.sel === id} onPick={() => { t.pick(id); t.toggle(id); }}
       />
       {t.open.includes(id) && kids}
     </div>
   );
+  // Files the editor does not own open in their workspace; rename / duplicate / delete are for owned files (OwnedFiles).
   const file = (path: string, name: string, go?: [WorkspaceId, string?], depth = 1): React.JSX.Element => (
     <TreeItem
       key={path}
@@ -2329,13 +2042,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         t.pick(path);
         if (go) onGo(go[0], go[1]);
       }}
-      menu={[
-        { label: `Open ${name}`, icon: "open_in_new", run: go ? () => onGo(go[0], go[1]) : staged(`Open ${name}`, "EA · content browser") },
-        "sep",
-        { label: "Rename…", icon: "edit", stagedFor: "EA · content browser" },
-        { label: "Duplicate", icon: "content_copy", stagedFor: "EA · content browser" },
-        { label: "Delete", icon: "delete", danger: true, stagedFor: "EA · content browser" },
-      ]}
+      menu={go ? [{ label: `Open ${name}`, icon: "open_in_new", run: () => onGo(go[0], go[1]) }] : undefined}
     />
   );
   return (
@@ -2365,16 +2072,13 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         <>{file("content/edge/routes.json", "routes.json", ["network"])}</>
       ))}
       {folder("scenes", "content/scenes", "folder", (
-        <p className="px-3 py-1 pl-12 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-          No scenes yet — the scenes slice owns this folder (§5).
-        </p>
+        <OwnedFiles kind="scene" onOpen={openScene} />
       ))}
-      {folder("art", "art pack · scanned", "image", (
-        <>
-          {["models · 38", "textures · 112", "audio · 24 clips"].map((f) => (
-            <TreeItem key={f} icon="chevron_right" label={f} depth={1} mono menu={crudMenu(f, "EA · art & audio")} />
-          ))}
-        </>
+      {folder("playtests", "content/playtests", "folder", (
+        <OwnedFiles kind="playtest" onOpen={() => onGo("release", "playtests")} />
+      ))}
+      {folder("build", "content/build/profiles", "folder", (
+        <OwnedFiles kind="build" onOpen={() => onGo("release", "pipeline")} />
       ))}
       {folder("modules", `modules · ${moduleRegistry.state?.enabled.length ?? "?"} enabled`, "extension", (
         <>
@@ -2382,7 +2086,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         </>
       ))}
       <p className="px-3 pt-1 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Files open in the workspace that owns them — drag-to-place arrives with the scene viewport slice.
+        Files open in the workspace that owns them. Scenes, playtests and build profiles can be renamed, duplicated and deleted here.
       </p>
     </div>
   );
@@ -2426,13 +2130,12 @@ function GameplayDetails(): React.JSX.Element {
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
-  if (workspace === "liveops") return <LiveOpsDetails />;
-  if (workspace === "database") return <DatabaseRowDetails />;
-  if (workspace === "release") return <ReleaseDeployDetails />;
-  if (workspace === "flow" && view === "hud") return <HudDetails />;
-  if (workspace === "flow" && view === "flow") return <FlowDetails />;
-  if (workspace === "story" && view === "quests") return <StoryDetails />;
-  if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
+  if (workspace === "liveops") return <LiveOpsDetailsLive />;
+  if (workspace === "network") return <NetworkDetailsLive />;
+  if (workspace === "database") return <DatabaseNote />;
+  if (workspace === "release") return <ReleaseNote />;
+  if (workspace === "flow") return <FlowNote />;
+  if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
@@ -2476,55 +2179,17 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   );
 }
 
-function ComparePane(): React.JSX.Element {
-  const rows: Array<[string, number, number]> = [
-    ["Health", 0.62, 0.78],
-    ["Aggro", 0.55, 0.9],
-    ["Leash", 0.6, 0.95],
-    ["Pack max", 0.35, 0.5],
-    ["Respawn", 0.85, 0.6],
-  ];
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">Goblin vs Wolf</p>
-      <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>Compare · 2 rows</p>
-      {rows.map(([label, a, b]) => (
-        <div key={label}>
-          <p className="mb-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{label}</p>
-          <div className="h-2 rounded" style={{ width: `${a * 100}%`, background: "var(--m3-secondary)" }} />
-          <div className="mt-0.5 h-2 rounded" style={{ width: `${b * 100}%`, background: "var(--m3-tertiary)" }} />
-        </div>
-      ))}
-      <p className="mt-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
-        <span style={{ color: "var(--m3-secondary)" }}>●</span> goblin&nbsp;&nbsp;
-        <span style={{ color: "var(--m3-tertiary)" }}>●</span> wolf
-      </p>
-      <div className="mt-1 flex gap-6">
-        {[["142", "kills"], ["31", "player deaths"], ["8.4 s", "avg fight"]].map(([n, l]) => (
-          <div key={l}>
-            <p className="text-lg font-medium">{n}</p>
-            <p className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{l}</p>
-          </div>
-        ))}
-      </div>
-      <p className="text-[11px] uppercase tracking-wider" style={{ color: "var(--m3-on-surface-variant)" }}>
-        Live in play (last 10 min)
-      </p>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- bottom dock
 
-function BottomPane({ tab, output, problems }: { tab: string; output: ServerOutput; problems: ReturnType<typeof useDocProblems> }): React.JSX.Element {
-  if (tab === "problems") return <ProblemsPane label={problems.label} problems={problems.problems} />;
-  if (tab === "bakes") return <BakesPane />;
+function BottomPane({ tab, output, problems, disk }: { tab: string; output: ServerOutput; problems: ReturnType<typeof useDocProblems>; disk: DiskProblems }): React.JSX.Element {
+  if (tab === "problems") return <ProblemsPane doc={problems} disk={disk} />;
+  if (tab === "bakes") return <BakesPane visible={tab === "bakes"} />;
   return <OutputPane output={output} />;
 }
 
 // ---------------------------------------------------------------- status bar
 
-function StatusBar({ problems }: { problems: number }): React.JSX.Element {
+function StatusBar({ problems, onOpenProblems }: { problems: number; onOpenProblems: () => void }): React.JSX.Element {
   return (
     <footer
       className="flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
@@ -2533,7 +2198,13 @@ function StatusBar({ problems }: { problems: number }): React.JSX.Element {
       <span className="hidden sm:inline">Server stays authoritative — the editor inspects live state, never a running simulation.</span>
       <span className="sm:hidden">Authoritative server · read-only inspect</span>
       <span className="ml-auto font-mono">docs/EDITOR.md</span>
-      <span className="font-mono">{problems === 0 ? "no problems" : `${problems} problem${problems === 1 ? "" : "s"}`}</span>
+      <button
+        className="m3-focus rounded px-1 font-mono hover:underline"
+        title="Open the Problems tab"
+        onClick={onOpenProblems}
+      >
+        {problems === 0 ? "no problems" : `${problems} problem${problems === 1 ? "" : "s"}`}
+      </button>
     </footer>
   );
 }

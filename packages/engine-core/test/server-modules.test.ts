@@ -101,3 +101,72 @@ describe("server modules: refusals", () => {
     await assert.rejects(assembleServerSystems({ modulesDir: MODULES, setFile: join(dir, "modules.json"), provided: { core: coreProvided() }, ctx }), /not valid JSON/);
   });
 });
+
+describe("server modules: native entries (EA10)", () => {
+  const nativeTemp = (manifest: Record<string, unknown>, createNodeFile: boolean): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-nmod-"));
+    const coreManifest = { name: "core", version: "0.1.0", server: { systems: LEGACY_ORDER.map((name) => ({ name })) } };
+    mkdirSync(join(root, "core", "server"), { recursive: true });
+    writeFileSync(join(root, "core", "module.json"), JSON.stringify(coreManifest));
+    mkdirSync(join(root, "n", "build", "Release"), { recursive: true });
+    writeFileSync(join(root, "n", "module.json"), JSON.stringify({ name: "n", version: "0.1.0", ...manifest }));
+    if (createNodeFile) writeFileSync(join(root, "n", "build", "Release", "fake.node"), "stub");
+    return root;
+  };
+  const nativeManifest = { native: { entry: "build/Release/fake.node", systems: ["nat1"] } };
+  const stubRequire = (systems: Record<string, SimSystem>) => (_p: string) => ({ createSystems: () => systems });
+
+  it("loads native systems into the tick order via injected require", async () => {
+    const root = nativeTemp(nativeManifest, true);
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["n"]),
+      provided: { core: coreProvided() },
+      ctx,
+      nativeRequire: stubRequire({ nat1: fake("nat1") }),
+    });
+    const names = r.systems.map((s) => s.name);
+    assert.deepEqual(names, [...LEGACY_ORDER, "nat1"]);
+    assert.deepEqual(r.modules, ["core", "n"]);
+  });
+  it("a missing .node file disables the module with a clear error, boot continues", async () => {
+    const root = nativeTemp(nativeManifest, false);
+    const logs: string[] = [];
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["n"]),
+      provided: { core: coreProvided() },
+      ctx: { sim: {} as never, log: (m: string) => logs.push(m) },
+      nativeRequire: stubRequire({ nat1: fake("nat1") }),
+    });
+    assert.deepEqual(r.systems.map((s) => s.name), LEGACY_ORDER);
+    assert.ok(!r.modules.includes("n"));
+    assert.ok(logs.some((m) => /not found.*build:native/.test(m)), JSON.stringify(logs));
+  });
+  it("a native entry without createSystems is refused", async () => {
+    const root = nativeTemp(nativeManifest, true);
+    await assert.rejects(
+      assembleServerSystems({
+        modulesDir: root,
+        setFile: setFile(["n"]),
+        provided: { core: coreProvided() },
+        ctx,
+        nativeRequire: (_p: string) => ({}),
+      }),
+      /must export createSystems/,
+    );
+  });
+  it("a native entry that does not provide its declared system is refused", async () => {
+    const root = nativeTemp(nativeManifest, true);
+    await assert.rejects(
+      assembleServerSystems({
+        modulesDir: root,
+        setFile: setFile(["n"]),
+        provided: { core: coreProvided() },
+        ctx,
+        nativeRequire: stubRequire({}),
+      }),
+      /does not provide "nat1"/,
+    );
+  });
+});

@@ -2,8 +2,8 @@
  * The Play menu (EA14, §3.5): every way to run the game. The setup is owned
  * by the shell and persisted on every change; Play hands off to the Play
  * mode panel, which owns start/stop. Saved setups live in
- * play-setups-store and can carry a key that starts them. Choices the start
- * path cannot honor yet are badged "preview" (ui/play-setup.ts).
+ * play-setups-store (the repo document content/play/setups.json) and can
+ * carry a key that starts them. Every choice here reaches the start path.
  */
 
 import * as React from "react";
@@ -14,16 +14,16 @@ import {
   PLAY_FROM,
   PLAY_LATENCY,
   PLAY_NET,
-  PLAY_PREVIEW_NOTES,
   loadLastSetup,
-  netPlan,
   playSetupSchema,
   setupDetail,
   setupSummary,
   type PlaySetup,
   type SavedPlaySetup,
 } from "./play-setup.js";
-import { bindSetupKey, deleteSetup, saveSetupAs, savedSetupsStore } from "./play-setups-store.js";
+import { bindSetupKey, deleteSetup, saveSetupAs, savedSetupsStore, setupsSaveError } from "./play-setups-store.js";
+import { startChoices } from "./play-launch.js";
+import { getFlow } from "../flow-client.js";
 import { shortcutFromEvent } from "./play-shortcuts.js";
 
 const WHERE_CARDS: Array<[PlaySetup["where"], string, string, string]> = [
@@ -32,7 +32,6 @@ const WHERE_CARDS: Array<[PlaySetup["where"], string, string, string]> = [
   ["simulate", "visibility", "Simulate", "World only, no player"],
 ];
 
-const PREVIEW_FROM = new Set<string>(["Login", "Character creation"]);
 const CLIENT_COUNTS = Array.from({ length: MAX_PLAY_CLIENTS }, (_, i) => String(i + 1));
 
 export function PlayMenu({ setup, onChange, onPlay, onClose }: {
@@ -42,11 +41,15 @@ export function PlayMenu({ setup, onChange, onPlay, onClose }: {
   onClose: () => void;
 }): React.JSX.Element {
   const saved = savedSetupsStore.use();
+  const saveError = setupsSaveError.use();
+  const [flow, setFlow] = React.useState<Awaited<ReturnType<typeof getFlow>>["content"] | null>(null);
+  React.useEffect(() => {
+    void getFlow().then((b) => setFlow(b.content), () => setFlow(null));
+  }, []);
   const [name, setName] = React.useState("");
   const set = (patch: Partial<PlaySetup>): void => onChange({ ...setup, ...patch });
   const whereLabel = setup.where === "viewport" ? "in viewport" : setup.where === "window" ? "in a new window" : "simulate";
   const botsOk = playSetupSchema.shape.bots.safeParse(setup.bots).success;
-  const net = netPlan(setup);
   const playNow = (): void => {
     onClose();
     onPlay();
@@ -54,7 +57,7 @@ export function PlayMenu({ setup, onChange, onPlay, onClose }: {
   const saveCurrent = (): void => {
     if (name.trim() === "") return;
     saveSetupAs(name, setup);
-    notify(`Setup “${name.trim()}” saved in this browser`);
+    notify(`Setup “${name.trim()}” saved to content/play/setups.json`);
     setName("");
   };
 
@@ -86,10 +89,10 @@ export function PlayMenu({ setup, onChange, onPlay, onClose }: {
 
       <MenuLabel>Test setup</MenuLabel>
       <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2">
-        <Field label="Start node" error={PREVIEW_FROM.has(setup.from) ? `Preview: ${PLAY_PREVIEW_NOTES.from}` : null}>
-          <Select aria-label="Start node" value={setup.from} onChange={(e) => set({ from: e.target.value as PlaySetup["from"] })}>
-            {PLAY_FROM.map((o) => (
-              <option key={o} value={o}>{PREVIEW_FROM.has(o) ? `${o} (preview)` : o}</option>
+        <Field label="Start node">
+          <Select aria-label="Start node" value={setup.from} onChange={(e) => set({ from: e.target.value })}>
+            {[...startChoices(flow, PLAY_FROM), ...(startChoices(flow, PLAY_FROM).some((c) => c.value === setup.from) ? [] : [{ value: setup.from, label: setup.from }])].map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
         </Field>
@@ -110,10 +113,10 @@ export function PlayMenu({ setup, onChange, onPlay, onClose }: {
             ))}
           </Select>
         </Field>
-        <Field label="Network" error={net.honored ? null : `Preview: ${net.note ?? ""}`}>
+        <Field label="Network">
           <Select aria-label="Network" value={setup.net} onChange={(e) => set({ net: e.target.value as PlaySetup["net"] })}>
             {PLAY_NET.map((o) => (
-              <option key={o} value={o}>{o === "Edge + core" ? `${o} (preview)` : o}</option>
+              <option key={o} value={o}>{o}</option>
             ))}
           </Select>
         </Field>
@@ -141,6 +144,7 @@ export function PlayMenu({ setup, onChange, onPlay, onClose }: {
             notify(`Setup “${s.name}” applied — Play runs it`);
           }} />
         ))}
+        {saveError && <p className="px-2 text-[11px]" style={{ color: "var(--m3-error)" }} role="alert">Saved setups not written to the repo: {saveError}</p>}
         <div className="flex items-center gap-1.5 px-2">
           <Input
             value={name}

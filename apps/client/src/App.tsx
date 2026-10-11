@@ -34,6 +34,7 @@ import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./ren
 import { CombatFeedback } from "./render/combat-feedback.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
+import { setMoveSound } from "./render/entity-layer.js";
 import { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 import gameFlow from "virtual:game-flow";
 import { t } from "./i18n.js";
@@ -143,6 +144,14 @@ export function App(): React.ReactElement {
     audio.setListener(listener);
   }, [audio, listener]);
   const bagCount = useRef<number | null>(null);
+  // Combat move sounds (content/combat/moves.json `sound`): the entity
+  // layer plays them at the mover's position through this engine.
+  useEffect(() => {
+    setMoveSound((event, x, y, z) => {
+      audio.playEvent(event, { x, y, z });
+    });
+    return () => setMoveSound(null);
+  }, [audio]);
   useEffect(() => {
     const unlock = (e: Event): void => {
       audio.unlock();

@@ -95,6 +95,7 @@ export const ITEMS_FIELDS: FieldSpec[] = [{ key: "powerScale", label: "Power sca
 /** One creature kind's fields (creatures.json creatures.<id>). */
 export const CREATURE_FIELDS: FieldSpec[] = [
   { key: "name", label: "Name", kind: "text" },
+  { key: "model", label: "Model (asset ID)", kind: "text", def: "" },
   { key: "health", label: "Health", kind: "number", min: 0 },
   { key: "aggroRadius", label: "Aggro radius (m)", kind: "number", min: 0 },
   { key: "leashRadius", label: "Leash radius (m)", kind: "number", min: 0 },

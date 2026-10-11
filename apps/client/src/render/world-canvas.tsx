@@ -111,6 +111,8 @@ export interface WorldCanvasProps {
   /** performance.now() of the last snapshot or delta (interpolation alpha). */
   lastStateAt: () => number;
   wireframe: boolean;
+  /** Keep the last frame readable so a screenshot of the canvas is not blank (set at creation; costs a little fill rate). */
+  captureFrames?: boolean;
   showcase: boolean;
   /** Remappable keyboard bindings (input.ts reads them live). */
   bindings: Bindings;
@@ -207,7 +209,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       // Plain three.js colour output (no tone mapping), as before R3F.
       flat
       dpr={dpr}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: props.captureFrames === true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
       onCreated={({ gl }) => {
         const gpu = detectGpu(gl);

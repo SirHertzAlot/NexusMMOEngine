@@ -20,6 +20,21 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fork } from "node:child_process";
+import {
+  CACHES_DIR,
+  CACHE_META_TABLE,
+  FUNCTIONS_DIR,
+  cacheTableName,
+  checkParams,
+  loadDbCaches,
+  loadDbFunctions,
+  writeFunctionFile,
+  type DbCacheDef,
+  type DbCacheSummary,
+  type DbFileProblem,
+  type DbFunctionDef,
+  type DbFunctionSummary,
+} from "./db-functions.js";
 
 export type SqlValue = string | number | null;
 
@@ -108,6 +123,12 @@ export function checkSelect(sql: string): string {
 
 export interface PersistenceCoreOptions {
   dataDir: string;
+  /**
+   * Repo content dir. When set, EA17 database functions and caches load from
+   * `<contentDir>/db/functions` and `<contentDir>/db/caches`; when absent the
+   * registries are empty and creating functions is refused.
+   */
+  contentDir?: string;
   /** True while a game server is using the data dir. Default: never. */
   isServerRunning?: () => boolean;
   clock?: () => number;
@@ -116,10 +137,17 @@ export interface PersistenceCoreOptions {
 export class PersistenceCore {
   private readonly adminDb: Database.Database;
   private readonly now: () => number;
+  private readonly contentDir?: string;
+  private dbFunctions: DbFunctionDef[] = [];
+  private dbFunctionProblems: DbFileProblem[] = [];
+  private dbCaches: DbCacheDef[] = [];
+  private dbCacheProblems: DbFileProblem[] = [];
 
   constructor(private readonly opts: PersistenceCoreOptions) {
     fs.mkdirSync(opts.dataDir, { recursive: true });
     this.now = opts.clock ?? Date.now;
+    this.contentDir = opts.contentDir;
+    this.reloadDbRegistry();
     this.adminDb = new Database(path.join(opts.dataDir, "admin.db"));
     this.adminDb.pragma("journal_mode = WAL");
     this.adminDb.exec(`CREATE TABLE IF NOT EXISTS admin_log (
@@ -131,6 +159,17 @@ export class PersistenceCore {
 
   close(): void {
     this.adminDb.close();
+  }
+
+  /** (Re)load the EA17 function/cache registries from the content dir. */
+  private reloadDbRegistry(): void {
+    if (!this.contentDir) return;
+    const fns = loadDbFunctions(path.join(this.contentDir, FUNCTIONS_DIR));
+    this.dbFunctions = fns.functions;
+    this.dbFunctionProblems = fns.problems;
+    const caches = loadDbCaches(path.join(this.contentDir, CACHES_DIR));
+    this.dbCaches = caches.caches;
+    this.dbCacheProblems = caches.problems;
   }
 
   /** name → file for every game database (admin.db excluded). */
@@ -196,13 +235,17 @@ export class PersistenceCore {
     });
   }
 
-  async query(db: string, sql: string, opts: { limit?: number; timeoutMs?: number } = {}): Promise<QueryResult> {
+  async query(
+    db: string,
+    sql: string,
+    opts: { limit?: number; timeoutMs?: number; params?: Record<string, SqlValue> } = {},
+  ): Promise<QueryResult> {
     const text = checkSelect(sql);
     const file = this.file(db);
     const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? QUERY_DEFAULT_ROWS)), QUERY_MAX_ROWS);
     const timeoutMs = opts.timeoutMs ?? QUERY_DEFAULT_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
-      const child = fork(fileURLToPath(new URL("./query-worker.js", import.meta.url)), [JSON.stringify({ file, sql: text, limit })], {
+      const child = fork(fileURLToPath(new URL("./query-worker.js", import.meta.url)), [JSON.stringify({ file, sql: text, limit, params: opts.params ?? null })], {
         stdio: ["ignore", "ignore", "ignore", "ipc"],
       });
       const timer = setTimeout(() => {
@@ -220,6 +263,115 @@ export class PersistenceCore {
       });
     });
   }
+
+  // ---------------------------------------------------------------- EA17: functions and caches
+
+  /** Stored read-only functions, with any load problems alongside. */
+  listDbFunctions(): { functions: DbFunctionSummary[]; problems: DbFileProblem[] } {
+    return {
+      functions: this.dbFunctions.map((f) => ({
+        name: f.name,
+        db: f.db,
+        ...(f.description ? { description: f.description } : {}),
+        params: f.params,
+      })),
+      problems: this.dbFunctionProblems,
+    };
+  }
+
+  /**
+   * Run a stored function: parameters are bound, never interpolated, and the
+   * statement runs through the same read-only child process as query(), so a
+   * function can never mutate the database and a heavy one is still killed
+   * on timeout.
+   */
+  async runDbFunction(name: string, params: Record<string, SqlValue> = {}): Promise<QueryResult> {
+    const def = this.dbFunctions.find((f) => f.name === name);
+    if (!def) throw new PersistenceError("bad-request", `unknown function "${name}"`);
+    checkParams(def, params);
+    return this.query(def.db, def.sql, { params });
+  }
+
+  /**
+   * Validate and store a new function file under `<contentDir>/db/functions`.
+   * The target database must already exist, so a typo in `db:` fails fast.
+   */
+  async createDbFunction(input: { name: string; db: string; sql: string; description?: string }): Promise<DbFunctionSummary> {
+    if (!this.contentDir) throw new PersistenceError("bad-request", "database functions are not configured (no content dir)");
+    this.file(input.db); // throws bad-request for an unknown database
+    const def = writeFunctionFile(path.join(this.contentDir, FUNCTIONS_DIR), input);
+    this.reloadDbRegistry();
+    return { name: def.name, db: def.db, ...(def.description ? { description: def.description } : {}), params: def.params };
+  }
+
+  /** Snapshot caches, each with its freshness from `_cache_meta` (null when never refreshed). */
+  listDbCaches(): { caches: DbCacheSummary[]; problems: DbFileProblem[] } {
+    return {
+      caches: this.dbCaches.map((c) => ({
+        name: c.name,
+        db: c.db,
+        ...(c.description ? { description: c.description } : {}),
+        ...this.cacheMeta(c),
+      })),
+      problems: this.dbCacheProblems,
+    };
+  }
+
+  private cacheMeta(c: DbCacheDef): { lastRefreshed: number | null; rowCount: number | null } {
+    try {
+      return this.withRo(c.db, (d) => {
+        const has = d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(CACHE_META_TABLE);
+        if (!has) return { lastRefreshed: null, rowCount: null };
+        const row = d
+          .prepare(`SELECT refreshed_at AS r, row_count AS n FROM ${quote(CACHE_META_TABLE)} WHERE name = ?`)
+          .get(c.name) as { r: number; n: number } | undefined;
+        return row ? { lastRefreshed: row.r, rowCount: row.n } : { lastRefreshed: null, rowCount: null };
+      });
+    } catch {
+      return { lastRefreshed: null, rowCount: null };
+    }
+  }
+
+  /**
+   * Refresh one snapshot cache: first build is CREATE TABLE AS, later ones
+   * are DELETE + re-INSERT, all inside one transaction so readers never see
+   * a half-built snapshot. Like apply(), this writes a game database, so it
+   * runs in maintenance mode only.
+   */
+  async refreshDbCache(name: string): Promise<{ name: string; db: string; rows: number; refreshedAt: number }> {
+    const def = this.dbCaches.find((c) => c.name === name);
+    if (!def) throw new PersistenceError("bad-request", `unknown cache "${name}"`);
+    this.assertOffline();
+    const sql = checkSelect(def.sql); // re-validate: the file may have changed since load
+    const table = cacheTableName(def.name);
+    const d = new Database(this.file(def.db), { fileMustExist: true });
+    try {
+      const refreshedAt = this.now();
+      let rows = 0;
+      d.transaction(() => {
+        d.exec(
+          `CREATE TABLE IF NOT EXISTS ${quote(CACHE_META_TABLE)} (` +
+            "name TEXT PRIMARY KEY, source_sql TEXT NOT NULL, refreshed_at INTEGER NOT NULL, row_count INTEGER NOT NULL)",
+        );
+        const exists = d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+        if (!exists) d.exec(`CREATE TABLE ${quote(table)} AS ${sql}`);
+        else {
+          d.exec(`DELETE FROM ${quote(table)}`);
+          d.exec(`INSERT INTO ${quote(table)} ${sql}`);
+        }
+        rows = (d.prepare(`SELECT COUNT(*) AS n FROM ${quote(table)}`).get() as { n: number }).n;
+        d.prepare(
+          `INSERT INTO ${quote(CACHE_META_TABLE)} (name, source_sql, refreshed_at, row_count) VALUES (?, ?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET source_sql = excluded.source_sql, refreshed_at = excluded.refreshed_at, row_count = excluded.row_count`,
+        ).run(def.name, sql, refreshedAt, rows);
+      })();
+      return { name: def.name, db: def.db, rows, refreshedAt };
+    } finally {
+      d.close();
+    }
+  }
+
+  // ------------------------------------------------------------- mutations
 
   /** Validate a mutation against the live schema; returns the table. */
   private validate(m: Mutation, d: Database.Database): TableInfo {

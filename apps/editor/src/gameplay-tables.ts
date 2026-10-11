@@ -10,8 +10,9 @@
 
 import { CREATURE_FIELDS, ITEM_BASE_FIELDS, newEntry, type FieldSpec } from "./rules-control.js";
 import type { GridColumn, GridContext, GridRow } from "./gameplay-grid.js";
+import { checkLootEntries, checkPrefabPart, checkRawInputs } from "./gameplay-checks.js";
 
-export const GAMEPLAY_TABLES = ["creatures", "items", "skills", "spells", "species"] as const;
+export const GAMEPLAY_TABLES = ["creatures", "loot", "items", "skills", "spells", "species", "refining", "reagents", "prefabs"] as const;
 export type GameplayTable = (typeof GAMEPLAY_TABLES)[number];
 
 export const isGameplayTable = (v: unknown): v is GameplayTable => typeof v === "string" && (GAMEPLAY_TABLES as readonly string[]).includes(v);
@@ -49,11 +50,23 @@ export const TABLE_DEFS: Record<GameplayTable, TableDef> = {
     shape: "record",
     idPattern: RULES_ID,
     columns: [
-      ...CREATURE_FIELDS.map((f) => col(f, { nested: creatureNested.has(f.key), ...(f.key === "weapons" ? { ref: "items" } : {}) })),
+      ...CREATURE_FIELDS.map((f) => col(f, { nested: creatureNested.has(f.key), ...(f.key === "weapons" ? { ref: "items" } : {}), ...(f.key === "model" ? { assetKind: "model" } : {}) })),
       { key: "drops.rolls", label: "Drop rolls", kind: "pair", def: [1, 2], nested: true },
       { key: "drops.chance", label: "Drop chance", ...share, def: 0.8, nested: true },
+      { key: "drops.table", label: "Loot table (named drops)", kind: "enum", options: [], optionsFrom: "lootTables", nested: true },
     ],
     newData: (ctx) => newEntry("creatures", [...(ctx.refs.items ?? [])]),
+  },
+  loot: {
+    id: "loot",
+    label: "Loot tables",
+    noun: "loot table",
+    file: "content/rules/loot.json",
+    under: "tables",
+    shape: "record",
+    idPattern: RULES_ID,
+    columns: [{ key: "entries", label: "Drops (base, rank, chance, count)", kind: "json", check: checkLootEntries }],
+    newData: (ctx) => ({ entries: [{ base: ctx.refs.items?.[0] ?? "dagger", chance: 0.5, count: [1, 1] }] }),
   },
   items: {
     id: "items",
@@ -63,7 +76,7 @@ export const TABLE_DEFS: Record<GameplayTable, TableDef> = {
     under: "bases",
     shape: "record",
     idPattern: RULES_ID,
-    columns: ITEM_BASE_FIELDS.map((f) => col(f, { nested: itemNested.has(f.key) })),
+    columns: ITEM_BASE_FIELDS.map((f) => col(f, { nested: itemNested.has(f.key), ...(f.key === "models" ? { assetKind: "model" } : {}) })),
     newData: () => newEntry("items", []),
   },
   skills: {
@@ -122,6 +135,46 @@ export const TABLE_DEFS: Record<GameplayTable, TableDef> = {
       { key: "drawnTo", label: "Drawn to (room archetypes)", kind: "json", nested: true },
     ],
     newData: () => ({ name: "New species", kind: "organic", sustenance: ["food"] }),
+  },
+  refining: {
+    id: "refining",
+    label: "Refining",
+    noun: "refining recipe",
+    file: "content/crafting/recipes.json (refining)",
+    under: "refining",
+    shape: "record",
+    idPattern: /^[a-z][a-z0-9-]*$/,
+    columns: [{ key: "inputs", label: "Raw inputs per unit (material: amount)", kind: "json", check: checkRawInputs }],
+    newData: (ctx) => ({ inputs: { [ctx.refs.materials?.[0] ?? "iron-ore"]: 1 } }),
+  },
+  reagents: {
+    id: "reagents",
+    label: "Reagents",
+    noun: "element",
+    file: "content/crafting/recipes.json (reagents)",
+    under: "reagents",
+    shape: "record",
+    idPattern: /^[a-z][a-z0-9-]*$/,
+    columns: [
+      { key: "reagent", label: "Reagent", kind: "enum", options: [], optionsFrom: "materials" },
+      { key: "extra", label: "Also for abilities", kind: "enum", options: [], optionsFrom: "materials" },
+    ],
+    newData: (ctx) => ({ reagent: ctx.options.materials?.[0] ?? "arcane-dust" }),
+  },
+  prefabs: {
+    id: "prefabs",
+    label: "Prefabs",
+    noun: "prefab",
+    file: "content/prefabs/<name>.prefab.json",
+    under: "prefabs",
+    shape: "record",
+    idPattern: /^[a-z0-9][a-z0-9-]*$/,
+    columns: [
+      { key: "kind", label: "Node kind", kind: "enum", options: [], optionsFrom: "nodeKinds", def: "group" },
+      { key: "components", label: "Components (name: fields)", kind: "json", check: checkPrefabPart("components") },
+      { key: "children", label: "Child nodes", kind: "json", nested: true, check: checkPrefabPart("children") },
+    ],
+    newData: () => ({ kind: "group", components: { Spawner: { creature: "", species: "", respawnSeconds: 60 } } }),
   },
 };
 

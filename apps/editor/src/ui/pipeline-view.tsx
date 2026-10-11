@@ -79,10 +79,42 @@ export function PipelineView(): React.JSX.Element {
     [refresh],
   );
 
-  const startRun = async (): Promise<void> => {
+  // Profile editor: the selected profile as JSON; Save validates on the host and writes content/build/profiles/<name>.json.
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const [draftIssues, setDraftIssues] = React.useState<string[]>([]);
+  const selected = profiles.find((p) => p.name === profile);
+  const builtin = profile === "default";
+  const saveDraft = async (): Promise<void> => {
+    setDraftIssues([]);
+    try {
+      const parsed = JSON.parse(draft ?? "null") as unknown;
+      const { profile: saved } = await callEnvelope<{ profile: BuildProfile }>("/api/editor/build/profiles", "PUT", { profile: parsed });
+      setDraft(null);
+      setProfile(saved.name);
+      await refresh();
+    } catch (err) {
+      const b = (err as { body?: { issues?: string[] } }).body;
+      setDraftIssues(b?.issues ?? [err instanceof Error ? err.message : String(err)]);
+    }
+  };
+  const deleteProfile = async (): Promise<void> => {
     setError(null);
     try {
-      const { run: rec } = await callEnvelope<{ run: RunRecord }>("/api/editor/build/run", "POST", { profile });
+      const res = await fetch(`/api/editor/build/profiles/${profile}`, { method: "DELETE" });
+      const b = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || b.ok === false) throw new Error(b.error ?? `HTTP ${res.status}`);
+      setProfile("default");
+      setDraft(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const startRun = async (fresh = false): Promise<void> => {
+    setError(null);
+    try {
+      const { run: rec } = await callEnvelope<{ run: RunRecord }>("/api/editor/build/run", "POST", { profile, fresh });
       setRun(rec);
       pollRun(rec.id);
     } catch (err) {
@@ -143,6 +175,43 @@ export function PipelineView(): React.JSX.Element {
           {profiles.find((p) => p.name === profile)?.description ?? ""}
         </span>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <button onClick={() => void startRun(true)} disabled={running || !profile} className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "var(--m3-surface-2)" }} title="Ignore the stage cache: every stage runs">Run all (no cache)</button>
+        <button
+          onClick={() => { setDraftIssues([]); setDraft(JSON.stringify(builtin ? { ...selected, name: "my-pipeline" } : selected, null, 2)); }}
+          disabled={!selected}
+          className="rounded-full px-3 py-1 text-xs font-semibold"
+          style={{ background: "var(--m3-surface-2)" }}
+          title={builtin ? "The built-in pipeline is code: edit a copy" : "Edit this profile"}
+        >{builtin ? "Copy to new profile" : "Edit profile"}</button>
+        <button onClick={() => void deleteProfile()} disabled={builtin || !selected || running} className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "var(--m3-surface-2)" }}>Delete profile</button>
+      </div>
+      {draft !== null && (
+        <div className="rounded-xl p-3" style={{ background: "var(--m3-surface-2)" }}>
+          <textarea
+            aria-label="Profile JSON"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            spellCheck={false}
+            rows={14}
+            className="w-full rounded-lg border p-2 font-mono text-xs"
+            style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-0)" }}
+          />
+          {draftIssues.length > 0 && (
+            <ul className="mt-1 font-mono text-xs" style={{ color: "var(--m3-error)" }} role="alert">
+              {draftIssues.map((i) => <li key={i}>{i}</li>)}
+            </ul>
+          )}
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => void saveDraft()} className="rounded-full px-4 py-1 text-sm font-semibold" style={{ background: "var(--m3-primary)", color: "var(--m3-on-primary)" }}>Save profile</button>
+            <button onClick={() => { setDraft(null); setDraftIssues([]); }} className="rounded-full px-4 py-1 text-sm" style={{ background: "var(--m3-surface-0)" }}>Cancel</button>
+          </div>
+          <p className="mt-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
+            Stages run in order from the repo root; a stage whose inputs (files or folders) are unchanged is skipped. Saved to content/build/profiles/&lt;name&gt;.json.
+          </p>
+        </div>
+      )}
 
       {run && (
         <div>

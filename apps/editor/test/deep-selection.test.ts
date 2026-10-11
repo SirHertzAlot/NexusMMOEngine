@@ -4,23 +4,21 @@ import { applyDeepSelection, readDeepSelection } from "../src/ui/previews.js";
 import { editorSelection } from "../src/ui/editor-selection.js";
 
 describe("deep links stay backward compatible", () => {
-  it("old preview keys still parse to their workspaces", () => {
-    assert.deepEqual(applyDeepSelection("row:character_state/17"), { workspace: "database", view: "grid" });
+  it("preview keys still parse to their workspaces", () => {
     assert.deepEqual(applyDeepSelection("node:clear"), { workspace: "story", view: "quests" });
     assert.deepEqual(applyDeepSelection("player:Bram"), { workspace: "liveops", view: "overview" });
-    assert.deepEqual(applyDeepSelection("clip:Jog_Fwd"), { workspace: "artaudio", view: "animation" });
-    assert.deepEqual(applyDeepSelection("effect:campfire.embers"), { workspace: "artaudio", view: "vfx" });
-    assert.deepEqual(applyDeepSelection("event:hit.sword"), { workspace: "artaudio", view: "audio" });
-    assert.deepEqual(applyDeepSelection("widget:Quest tracker"), { workspace: "flow", view: "hud" });
-    assert.deepEqual(applyDeepSelection("screen:world"), { workspace: "flow", view: "flow" });
     assert.deepEqual(applyDeepSelection("scenario:camp-loop"), { workspace: "release", view: "playtests" });
+  });
+
+  it("keys of removed sample-data previews are ignored, not errors", () => {
+    for (const key of ["row:character_state/17", "clip:Jog_Fwd", "effect:campfire.embers", "event:hit.sword", "widget:Quest tracker", "screen:world"]) {
+      assert.equal(applyDeepSelection(key), null, key);
+    }
   });
 
   it("rejects garbage without crashing", () => {
     assert.equal(applyDeepSelection("nope"), null);
-    assert.equal(applyDeepSelection("row:missing/999"), null);
     assert.equal(applyDeepSelection("node:missing"), null);
-    assert.equal(applyDeepSelection("clip:missing"), null);
   });
 });
 

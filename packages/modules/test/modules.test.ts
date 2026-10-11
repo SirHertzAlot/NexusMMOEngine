@@ -138,3 +138,153 @@ describe("resolveModuleSet", () => {
     assert.ok(!r.ok && /cycle/.test(r.problems[0].message));
   });
 });
+
+describe("validateManifest: native (EA10)", () => {
+  const good = { name: "n", version: "1.0.0", native: { entry: "build/Release/physics.node", systems: ["physics"] } };
+  it("accepts a native contribution", () => {
+    const { manifest, problems } = validateManifest(good, "n");
+    assert.deepEqual(problems, []);
+    assert.deepEqual(manifest!.native, { entry: "build/Release/physics.node", systems: ["physics"] });
+  });
+  it("refuses a non-.node entry, bad systems and unknown keys", () => {
+    const { problems } = validateManifest(
+      { name: "n", version: "1.0.0", native: { entry: "server/index.js", systems: [], wat: 1 } },
+      "n",
+    );
+    const paths = problems.map((p) => p.path);
+    assert.ok(paths.includes("native.entry"), JSON.stringify(paths));
+    assert.ok(paths.includes("native.systems"), JSON.stringify(paths));
+    assert.ok(paths.includes("native.wat"), JSON.stringify(paths));
+  });
+  it("refuses duplicate and malformed system names", () => {
+    const { problems } = validateManifest(
+      { name: "n", version: "1.0.0", native: { entry: "a.node", systems: ["ok", "ok", "Bad Name"] } },
+      "n",
+    );
+    assert.equal(problems.length, 2);
+  });
+  it("requires entry and systems", () => {
+    const { problems } = validateManifest({ name: "n", version: "1.0.0", native: {} }, "n");
+    const paths = problems.map((p) => p.path);
+    assert.ok(paths.includes("native.entry"));
+    assert.ok(paths.includes("native.systems"));
+  });
+});
+
+describe("resolveModuleSet: native systems (EA10)", () => {
+  const core = mod("core", { server: { systems: [{ name: "a" }, { name: "b" }] } });
+  it("orders native systems after the module's JS systems", () => {
+    const n = mod("n", {
+      server: { entry: "s.js", systems: [{ name: "js1" }] },
+      native: { entry: "b.node", systems: ["nat1", "nat2"] },
+    });
+    const r = resolveModuleSet([core, n], ["n"]);
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.problems));
+    assert.deepEqual(r.systems.map((s) => s.name), ["a", "b", "js1", "nat1", "nat2"]);
+    assert.deepEqual(r.systems.filter((s) => s.module === "n").map((s) => s.name), ["js1", "nat1", "nat2"]);
+  });
+  it("a JS system can order itself after a native system", () => {
+    const n = mod("n", { native: { entry: "b.node", systems: ["nat1"] } });
+    const m = mod("m", { server: { systems: [{ name: "js1", after: "nat1" }] } });
+    const r = resolveModuleSet([core, n, m], ["n", "m"]);
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.problems));
+    const names = r.systems.map((s) => s.name);
+    assert.ok(names.indexOf("nat1") < names.indexOf("js1"));
+  });
+  it("refuses a native system id that collides with a JS one", () => {
+    const n = mod("n", {
+      server: { systems: [{ name: "x" }] },
+      native: { entry: "b.node", systems: ["x"] },
+    });
+    const r = resolveModuleSet([core, n], ["n"]);
+    assert.ok(!r.ok && /already exists/.test(r.problems[0].message));
+  });
+});
+
+describe("validateManifest sidecar (EA11)", () => {
+  const good = { command: "node ./brain-server.js", port: 8787, health: "/health" };
+  it("accepts a valid sidecar declaration", () => {
+    const r = validateManifest({ name: "npc-brain", version: "1.0.0", sidecar: good }, "npc-brain");
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.sidecar, good);
+  });
+  it("rejects a bad command", () => {
+    for (const command of ["", "   ", 42, null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, command } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.command"), `command ${JSON.stringify(command)}`);
+    }
+  });
+  it("rejects a bad port", () => {
+    for (const port of [0, -1, 65536, 87.5, "8787", null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, port } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.port"), `port ${JSON.stringify(port)}`);
+    }
+  });
+  it("rejects a bad health path", () => {
+    for (const health of ["health", "", 42, null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, health } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.health"), `health ${JSON.stringify(health)}`);
+    }
+  });
+  it("refuses a non-object sidecar and unknown sidecar keys", () => {
+    const r1 = validateManifest({ name: "m", version: "1.0.0", sidecar: "node x.js" }, "m");
+    assert.ok(r1.problems.some((p) => p.path === "sidecar"));
+    const r2 = validateManifest({ name: "m", version: "1.0.0", sidecar: { ...good, wat: 1 } }, "m");
+    assert.ok(r2.problems.some((p) => p.path === "sidecar.wat"));
+  });
+  it("lists every sidecar problem at once", () => {
+    const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { command: "", port: 0, health: "x" } }, "m");
+    const paths = r.problems.map((p) => p.path);
+    assert.deepEqual(paths.sort(), ["sidecar.command", "sidecar.health", "sidecar.port"]);
+    assert.equal(r.manifest, undefined);
+  });
+});
+
+
+describe("validateManifest edge (EA12)", () => {
+  const good = {
+    name: "voice-us-east",
+    version: "1.0.0",
+    edge: { regions: ["us-east"], endpoint: "wss://voice-us-east.example.com", capabilities: ["voice", "video"] },
+  };
+  it("accepts a valid edge declaration", () => {
+    const r = validateManifest(good, "voice-us-east");
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.edge, good.edge);
+  });
+  it("accepts http/https endpoints too", () => {
+    for (const endpoint of ["http://cdn.example.com/assets", "https://lobby.example.com:8443/match"]) {
+      const r = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["eu"], endpoint, capabilities: ["cdn"] } }, "e");
+      assert.deepEqual(r.problems, [], endpoint);
+    }
+  });
+  it("rejects bad regions", () => {
+    const badRegions: unknown[] = [[], ["US-EAST"], ["us east"], [42], "us-east", undefined];
+    for (const regions of badRegions) {
+      const raw: Record<string, unknown> = { name: "e", version: "1.0.0", edge: { regions, endpoint: "wss://x.example.com", capabilities: ["voice"] } };
+      const r = validateManifest(raw, "e");
+      assert.ok(r.problems.some((p) => p.path === "edge.regions"), `regions=${JSON.stringify(regions)}`);
+    }
+  });
+  it("rejects bad endpoints", () => {
+    for (const endpoint of ["voice-us-east.example.com", "ftp://x.example.com", "", 42, "wss://"]) {
+      const r = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint, capabilities: ["voice"] } }, "e");
+      assert.ok(r.problems.some((p) => p.path === "edge.endpoint"), `endpoint=${JSON.stringify(endpoint)}`);
+    }
+  });
+  it("rejects bad capabilities and unknown edge keys", () => {
+    const r1 = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint: "wss://x.example.com", capabilities: ["voice", ""] } }, "e");
+    assert.ok(r1.problems.some((p) => p.path === "edge.capabilities"));
+    const r2 = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint: "wss://x.example.com", capabilities: [], bogus: 1 } }, "e");
+    assert.ok(r2.problems.some((p) => p.path === "edge.bogus"));
+    // empty capabilities list is fine (a module may declare regions first)
+    const r3 = validateManifest({ name: "e", version: "1.0.0", edge: { regions: ["us-east"], endpoint: "wss://x.example.com", capabilities: [] } }, "e");
+    assert.deepEqual(r3.problems, []);
+  });
+  it("lists every edge problem at once", () => {
+    const r = validateManifest({ name: "e", version: "1.0.0", edge: { regions: [], endpoint: "nope", capabilities: [7] } }, "e");
+    assert.equal(r.manifest, undefined);
+    const paths = r.problems.map((p) => p.path);
+    assert.deepEqual(paths.sort(), ["edge.capabilities", "edge.endpoint", "edge.regions"]);
+  });
+});
