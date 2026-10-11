@@ -37,4 +37,6 @@ export declare function copyPositions(
   oz: Float32Array,
 ): void;
 
+export declare function deleteWorld(handle: WorldHandle): void;
+
 export declare function worldSize(handle: WorldHandle): number;

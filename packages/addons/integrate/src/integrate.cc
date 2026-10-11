@@ -112,9 +112,10 @@ Napi::Value Noop(const Napi::CallbackInfo& info) {
 struct World {
   size_t n;
   std::vector<float> px, py, pz, vx, vy, vz;
+  ~World() = default;
 };
 
-void DeleteWorld(Napi::Env /*env*/, World* world) { delete world; }
+void DestroyWorld(Napi::Env /*env*/, World* world) { delete world; }
 
 // createWorld(px, py, pz, vx, vy, vz) -> External<World>
 // Copies the six SoA arrays into C++ storage ONCE at setup. Per-tick
@@ -156,7 +157,7 @@ Napi::Value CreateWorld(const Napi::CallbackInfo& info) {
   world->vy.assign(src[4], src[4] + world->n);
   world->vz.assign(src[5], src[5] + world->n);
   // Finalizer-owned: the world is freed when the External is GC'd.
-  return Napi::External<World>::New(env, world, DeleteWorld);
+  return Napi::External<World>::New(env, world, DestroyWorld);
 }
 
 World* CheckedWorld(Napi::Env env, Napi::Value value) {
@@ -217,6 +218,18 @@ Napi::Value CopyPositions(const Napi::CallbackInfo& info) {
 }
 
 // worldSize(handle) -> number.
+Napi::Value DeleteWorld(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() != 1) {
+    Napi::TypeError::New(env, "deleteWorld(handle) expected").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  World* world = CheckedWorld(env, info[0]);
+  if (world == nullptr) return env.Undefined();
+  delete world;
+  return env.Undefined();
+}
+
 Napi::Value WorldSize(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   if (info.Length() != 1) {
@@ -236,6 +249,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("stepWorld", Napi::Function::New(env, StepWorld));
   exports.Set("copyPositions", Napi::Function::New(env, CopyPositions));
   exports.Set("worldSize", Napi::Function::New(env, WorldSize));
+  exports.Set("deleteWorld", Napi::Function::New(env, DeleteWorld));
   return exports;
 }
 
