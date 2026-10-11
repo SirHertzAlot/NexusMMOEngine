@@ -81,6 +81,8 @@ export class ServerLink {
   private connectedTo: string | null = null;
   private ticks: Array<{ at: number; tick: number }> = [];
   private busy = false;
+  /** The mirror client answers one admin command at a time; every call to it goes through here in order. */
+  private queue: Promise<unknown> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly deps: LinkDeps) {}
@@ -131,15 +133,23 @@ export class ServerLink {
     }
   }
 
+  private serial<T>(f: () => Promise<T>): Promise<T> {
+    const p = this.queue.then(f, f);
+    this.queue = p.catch(() => undefined);
+    return p;
+  }
+
   /** Ping and telemetry, once; called by refresh() while connected. */
   private async sample(): Promise<void> {
     const c = this.client;
     if (!c) return;
     try {
-      const t0 = this.deps.now();
-      await c.adminRaw("whoami");
-      const rttMs = this.deps.now() - t0;
-      const telemetry = await c.statsSnapshot();
+      const { rttMs, telemetry } = await this.serial(async () => {
+        const t0 = this.deps.now();
+        await c.adminRaw("whoami");
+        const rtt = this.deps.now() - t0;
+        return { rttMs: rtt, telemetry: await c.statsSnapshot() };
+      });
       this.set({ rttMs, telemetry, phase: "live", error: null });
     } catch (e) {
       this.set({ error: e instanceof Error ? e.message : String(e) });
@@ -181,7 +191,8 @@ export class ServerLink {
   async admin(command: string, args?: unknown): Promise<{ ok: boolean; message: string }> {
     if (!this.client) return { ok: false, message: "server not running" };
     try {
-      return await this.client.adminRaw(command, args);
+      const c = this.client;
+      return await this.serial(() => c.adminRaw(command, args));
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }

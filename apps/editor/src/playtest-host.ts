@@ -35,6 +35,13 @@ const scenarioDir = (repo: string): string => resolve(repo, "content", "playtest
 const scenarioFile = (repo: string, name: string): string => join(scenarioDir(repo), `${name}.playtest.json`);
 const outDir = (dataDir: string): string => resolve(dataDir, "playtests");
 const historyFile = (dataDir: string, name: string): string => join(outDir(dataDir), `${name}.history.json`);
+let lastStamp = 0;
+/** A base-36 timestamp that never repeats in this process, so two runs in the same millisecond keep separate ids. */
+function uniqueStamp(): string {
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return lastStamp.toString(36);
+}
+
 const replayFile = (dataDir: string, id: string): string => join(outDir(dataDir), "replays", `${id}.replay.json`);
 
 function writeJson(file: string, value: unknown): void {
@@ -123,7 +130,7 @@ export async function handlePlaytestRoute(
         const { run, trace } = await runOnce(
           runner,
           { seed: replay.seed, bots: replay.bots, durationTicks: replay.durationTicks, inputs: replay.inputs, assertions: replay.assertions },
-          { id: `${id}-r${Date.now().toString(36)}`, scenario: replay.scenario, mode: "replay" },
+          { id: `${id}-r${uniqueStamp()}`, scenario: replay.scenario, mode: "replay" },
         );
         const done: PlaytestRun = { ...run, replay: id, divergedAtTick: trace.length === 0 ? null : firstDivergence(replay.trace, trace) };
         record(dataDir, done);
@@ -174,7 +181,7 @@ export async function handlePlaytestRoute(
       if (issues.length > 0) return bad(400, "the scenario on disk is invalid", { issues });
       const sc = doc as PlaytestScenario;
       const inputs = expandScript(sc.script);
-      const stamp = Date.now().toString(36);
+      const stamp = uniqueStamp();
       const { run, trace } = await runOnce(
         runner,
         { seed: sc.seed, bots: sc.bots, durationTicks: sc.durationTicks, inputs, assertions: sc.assertions },

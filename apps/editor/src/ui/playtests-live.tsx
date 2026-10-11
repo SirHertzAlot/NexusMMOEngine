@@ -15,15 +15,45 @@ import {
 } from "../playtest-model.js";
 import { Badge, Button, Input, notify } from "./components.js";
 import { Chart, StatTile } from "./charts.js";
+import { createSlot } from "../store.js";
+import { selectedScenario } from "./live-selection.js";
 
 const dim = { color: "var(--m3-on-surface-variant)" } as const;
 const card = { background: "var(--m3-surface-2)" } as const;
 const pill = (ok: boolean): React.JSX.Element => <Badge tone={ok ? "ok" : "bad"}>{ok ? "passed" : "failed"}</Badge>;
 
+/** The scenario the panel is showing, for the right-dock Details. */
+const shownScenario = createSlot<ScenarioEntry>();
+
+/** Right-dock Details for the Playtests view: the selected scenario's real numbers. */
+export function PlaytestDetails(): React.JSX.Element {
+  const e = shownScenario.use();
+  if (!e?.content) return <p className="text-xs" style={dim}>Select a scenario.</p>;
+  const { content: c, history } = e;
+  const last = history[0];
+  const rate = passRate(history);
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <p className="font-mono text-sm font-semibold">{e.name}</p>
+      <p style={dim}>{c.description || "No description."}</p>
+      <p style={dim}>{c.bots} bots · {c.durationTicks} ticks · seed {c.seed} · {c.assertions.length} assertions · {c.script.length} scripted inputs</p>
+      <p>{rate === null ? "Never run." : `Pass rate ${rate}% over the last ${Math.min(10, history.length)} runs.`}</p>
+      {last && (
+        <p style={dim}>
+          Last: {last.ok ? "passed" : "failed"} {new Date(last.at).toLocaleString()}
+          {last.mode === "replay" ? (last.divergedAtTick == null ? " · replay matched" : ` · replay diverged at tick ${last.divergedAtTick}`) : ""}
+        </p>
+      )}
+      <p style={dim}>CLI: node scripts/playtest.mjs content/playtests/{e.name}.playtest.json</p>
+    </div>
+  );
+}
+
 export function PlaytestsPanel(): React.JSX.Element {
   const [list, setList] = React.useState<ScenarioEntry[] | null>(null);
   const [error, setError] = React.useState("");
-  const [sel, setSel] = React.useState<string | null>(null);
+  const sel = selectedScenario.use();
+  const setSel = selectedScenario.set;
   const [newName, setNewName] = React.useState("");
 
   const reload = React.useCallback(async (select?: string) => {
@@ -37,6 +67,10 @@ export function PlaytestsPanel(): React.JSX.Element {
     }
   }, []);
   React.useEffect(() => void reload(), [reload]);
+  React.useEffect(() => {
+    const e = list?.find((x) => x.name === sel);
+    return e ? shownScenario.claim(e) : undefined;
+  }, [list, sel]);
 
   async function create(): Promise<void> {
     if (!PLAYTEST_NAME.test(newName)) return void notify("Name: lowercase letters, digits and dashes, starting with a letter.");

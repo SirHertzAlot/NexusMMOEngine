@@ -94,6 +94,20 @@ describe("ServerLink", () => {
     assert.deepEqual(await r.link.admin("boom"), { ok: false, message: "admin only" });
     assert.equal((await r.link.admin("heal")).ok, true);
   });
+  it("admin calls never overlap: the client allows one in flight", async () => {
+    const r = rig();
+    await r.link.start();
+    let inFlight = 0;
+    let worst = 0;
+    r.client.adminRaw = async () => {
+      worst = Math.max(worst, ++inFlight);
+      await new Promise((res) => setTimeout(res, 5));
+      inFlight--;
+      return { ok: true, message: "ok" };
+    };
+    await Promise.all([r.link.admin("a"), r.link.admin("b"), r.link.refresh(), r.link.admin("c")]);
+    assert.equal(worst, 1);
+  });
   it("a failed start is an error state with the host's message", async () => {
     const r = rig();
     const link = new ServerLink({ ...{ fetchStatus: () => Promise.resolve({ running: false }), connect: () => Promise.reject(new Error("x")), now: () => 0 }, startServer: () => Promise.reject(new Error("port busy")) });

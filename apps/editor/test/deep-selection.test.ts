@@ -1,24 +1,26 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { applyDeepSelection, readDeepSelection } from "../src/ui/previews.js";
+import { applyDeepSelection, readDeepSelection } from "../src/ui/deep-selection.js";
 import { editorSelection } from "../src/ui/editor-selection.js";
 
 describe("deep links stay backward compatible", () => {
   it("preview keys still parse to their workspaces", () => {
-    assert.deepEqual(applyDeepSelection("node:clear"), { workspace: "story", view: "quests" });
-    assert.deepEqual(applyDeepSelection("player:Bram"), { workspace: "liveops", view: "overview" });
-    assert.deepEqual(applyDeepSelection("scenario:camp-loop"), { workspace: "release", view: "playtests" });
+    assert.deepEqual(applyDeepSelection("quest:wolf-hunt"), { workspace: "story", view: "quests" });
+    assert.equal(readDeepSelection("story", "quests"), "quest:wolf-hunt");
+    assert.deepEqual(applyDeepSelection("scenario:smoke"), { workspace: "release", view: "playtests" });
+    assert.equal(readDeepSelection("release", "playtests"), "scenario:smoke");
   });
 
   it("keys of removed sample-data previews are ignored, not errors", () => {
-    for (const key of ["row:character_state/17", "clip:Jog_Fwd", "effect:campfire.embers", "event:hit.sword", "widget:Quest tracker", "screen:world"]) {
+    for (const key of ["row:character_state/17", "clip:Jog_Fwd", "effect:campfire.embers", "event:hit.sword", "widget:Quest tracker", "screen:world", "node:clear", "player:Bram"]) {
       assert.equal(applyDeepSelection(key), null, key);
     }
   });
 
   it("rejects garbage without crashing", () => {
     assert.equal(applyDeepSelection("nope"), null);
-    assert.equal(applyDeepSelection("node:missing"), null);
+    assert.equal(applyDeepSelection("quest:"), null);
+    assert.equal(applyDeepSelection("scenario:"), null);
   });
 });
 

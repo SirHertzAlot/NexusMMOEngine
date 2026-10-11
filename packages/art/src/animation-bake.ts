@@ -30,7 +30,7 @@ export interface CompressStats {
   maxError: number;
 }
 
-export interface CompressResult {
+export interface ClipCompressResult {
   data: ArrayBuffer;
   stats: CompressStats;
 }
@@ -65,7 +65,7 @@ export function retargetClip(
 export function compressClip(
   _clip: ArrayBuffer,
   _errorThreshold: number
-): CompressResult {
+): ClipCompressResult {
   throw new Error(
     "compressClip: native acl addon not implemented (see docs/ANIMATION-BAKE-PIPELINE.md)"
   );

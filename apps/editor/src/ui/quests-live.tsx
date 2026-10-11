@@ -6,32 +6,24 @@
 import * as React from "react";
 import { loadStory } from "../story-client.js";
 import { summarizeQuests, type QuestRow } from "../quest-summary.js";
-import { Badge, Button } from "./components.js";
+import { Badge, Button, TreeItem } from "./components.js";
+import { createStore } from "../store.js";
+import { selectedQuest } from "./live-selection.js";
+import { renameQuestPrompt } from "./quest-rename.js";
 
-let selected: string | null = null;
-let rowsCache: QuestRow[] | null = null;
-const subs = new Set<() => void>();
-const emit = (): void => subs.forEach((f) => f());
-const subscribe = (fn: () => void): (() => void) => {
-  subs.add(fn);
-  return () => subs.delete(fn);
-};
+const questRows = createStore<QuestRow[] | null>(null);
 
-export function selectQuest(id: string | null): void {
-  selected = id;
-  emit();
-}
+export const selectQuest = selectedQuest.set;
 
 /** Quest rows from the files on disk; reloads when asked (after a Story editor save, say). */
 export function useQuests(): { rows: QuestRow[] | null; error: string; reload(): void } {
-  const rows = React.useSyncExternalStore(subscribe, () => rowsCache);
+  const rows = questRows.use();
   const [error, setError] = React.useState("");
   const reload = React.useCallback(() => {
     loadStory()
       .then(({ files }) => {
-        rowsCache = summarizeQuests(files.quests, files.npcs);
+        questRows.set(summarizeQuests(files.quests, files.npcs));
         setError("");
-        emit();
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -46,7 +38,7 @@ export const openStoryEditor = (): void => {
 
 export function QuestsPanel(): React.JSX.Element {
   const { rows, error, reload } = useQuests();
-  const sel = React.useSyncExternalStore(subscribe, () => selected);
+  const sel = selectedQuest.use();
   if (error) return <p className="p-3 text-sm text-red-400">Could not read content/quests: {error}</p>;
   if (rows === null) return <p className="p-3 text-sm" style={dim}>Reading content/quests…</p>;
   const q = rows.find((r) => r.id === sel) ?? rows[0];
@@ -104,24 +96,29 @@ export function QuestsPanel(): React.JSX.Element {
 
 /** Left tree of the Story workspace: the real quests; picking one shows it in the Quests view. */
 export function QuestsTree({ onView }: { onView: (v: string) => void }): React.JSX.Element {
-  const { rows } = useQuests();
-  const sel = React.useSyncExternalStore(subscribe, () => selected);
+  const { rows, reload } = useQuests();
+  const sel = selectedQuest.use();
+  const open = (id: string): void => {
+    selectQuest(id);
+    onView("quests");
+  };
   return (
     <div className="flex flex-col gap-0.5">
       {(rows ?? []).map((r) => (
-        <button
+        <TreeItem
           key={r.id}
-          onClick={() => {
-            selectQuest(r.id);
-            onView("quests");
-          }}
-          aria-current={sel === r.id ? "true" : undefined}
-          className="m3-focus flex items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[13px]"
-          style={sel === r.id ? { background: "var(--m3-secondary-container)" } : undefined}
-        >
-          <span className="font-mono">{r.id}</span>
-          <span className="ml-auto text-[11px]" style={dim}>{r.steps.length} steps</span>
-        </button>
+          icon="flag"
+          label={r.id}
+          trailing={`${r.steps.length} steps`}
+          mono
+          selected={sel === r.id}
+          onPick={() => open(r.id)}
+          menu={[
+            { label: "Show in the Quests view", icon: "open_in_new", run: () => open(r.id) },
+            "sep",
+            { label: "Rename id…", icon: "edit", run: () => void renameQuestPrompt(r.id).then((changed) => { if (changed) { if (sel === r.id) selectQuest(null); reload(); } }) },
+          ]}
+        />
       ))}
       <p className="px-3 pt-1 font-mono text-[11px]" style={dim}>content/quests · validated as a set at boot</p>
     </div>
@@ -130,7 +127,7 @@ export function QuestsTree({ onView }: { onView: (v: string) => void }): React.J
 
 export function QuestDetailsLive(): React.JSX.Element {
   const { rows } = useQuests();
-  const sel = React.useSyncExternalStore(subscribe, () => selected);
+  const sel = selectedQuest.use();
   const q = (rows ?? []).find((r) => r.id === sel) ?? rows?.[0];
   if (!q) return <p className="text-xs" style={dim}>No quest selected.</p>;
   return (
