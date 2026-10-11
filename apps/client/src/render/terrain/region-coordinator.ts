@@ -19,6 +19,8 @@ import type { ChunkSource } from './chunk-stream.js';
 export interface RegionInfo {
   regionId: string;
   range: ChunkRange;
+  /** Gateway URL (matches the mirror client's onRegionChange argument). */
+  endpoint: string;
   /** Connection to that region's server, as a tile source. */
   source: ChunkSource;
 }
@@ -126,6 +128,20 @@ export class RegionCoordinator {
   /** For tests / diagnostics. */
   get regionCount(): number { return this.regions.size; }
   get pendingHandoffs(): number { return this.handoffs.size; }
+
+  /** All registered region ids. */
+  regionIds(): string[] { return [...this.regions.keys()]; }
+
+  /** Look up a region by id. */
+  getRegion(regionId: string): RegionInfo | undefined { return this.regions.get(regionId); }
+
+  /** Find the region serving an endpoint (mirror onRegionChange gives a URL). */
+  findByEndpoint(endpoint: string): RegionInfo | null {
+    for (const info of this.regions.values()) {
+      if (info.endpoint === endpoint) return info;
+    }
+    return null;
+  }
 }
 
 function rangesOverlap(a: ChunkRange, b: ChunkRange): boolean {

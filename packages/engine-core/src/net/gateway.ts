@@ -92,8 +92,11 @@ import {
   type DayClock,
   type WeatherOverride,
   type WorldInfo,
+  type TileRequestMessage,
+  type TileResponseMessage,
   Ability,
   LocomotionMode,
+  encodeTileHeights,
 } from "@mmo-engine/protocol";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
@@ -308,6 +311,11 @@ export interface GatewayOptions {
    * Never used on the persistence path.
    */
   chunkSource?: ChunkDataSource;
+  /**
+   * World seed for on-demand tile generation (protocol 0x21). Required
+   * when chunkSource is present; tiles are generateChunk(seed, cx, cz, 0).
+   */
+  worldSeed?: bigint;
   /**
    * Ground height at world (x, z): new players spawn standing on it.
    * Default: y = 0 (flat test worlds).
@@ -711,6 +719,7 @@ export class Gateway {
       | "textFilter"
       | "debugSource"
       | "chunkSource"
+      | "worldSeed"
       | "maxClientPayloadBytes"
       | "ingress"
       | "groundHeightAt"
@@ -756,6 +765,8 @@ export class Gateway {
    * then carry chunk metadata without heights, as before.
    */
   private readonly chunkSource: ChunkDataSource | null;
+  /** World seed for on-demand tile generation (0x21). */
+  private readonly worldSeed: bigint | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
   private readonly body: BodySystem | null;
@@ -873,6 +884,7 @@ export class Gateway {
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
+    this.worldSeed = opts.worldSeed ?? null;
     this.groundHeightAt = opts.groundHeightAt ?? null;
     this.mastery = opts.mastery ?? null;
     this.body = opts.body ?? null;
@@ -2188,6 +2200,9 @@ export class Gateway {
         break;
       case MessageType.Trade:
         this.onTradeOrVendor(s, payload);
+        break;
+      case MessageType.TileRequest:
+        this.onTileRequest(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -4241,6 +4256,69 @@ export class Gateway {
         break;
       }
     }
+  }
+
+  /**
+   * On-demand chunk tiles (protocol 0x21/0x22, chunk streaming). The client
+   * asks for "cx,cz" tiles; the gateway generates each from the
+   * authoritative ChunkDataSource and answers with base64 heights.
+   * Rate-limited per session (10/s); at most 64 keys per request; keys
+   * outside the region's range are omitted. Tiles are always LOD 0 —
+   * the client derives coarser LODs locally.
+   */
+  private onTileRequest(s: ClientSession, payload: Uint8Array): void {
+    if (!s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "tiles outside the world");
+      return;
+    }
+    if (this.chunkSource === null || this.worldSeed === null) {
+      this.sendError(s, 4003, "tile streaming unavailable");
+      return;
+    }
+    // Simple per-session rate limit: 10 tile requests per second.
+    const now = this.clock();
+    const last = (s as { lastTileReq?: number }).lastTileReq ?? 0;
+    if (now - last < 100) {
+      this.sendError(s, 4003, "tiles too frequent");
+      return;
+    }
+    (s as { lastTileReq?: number }).lastTileReq = now;
+
+    let msg: TileRequestMessage;
+    try {
+      msg = decodeControl<TileRequestMessage>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed tile request");
+      return;
+    }
+    if (!Array.isArray(msg.keys) || msg.keys.length === 0 || msg.keys.length > 64) {
+      this.sendError(s, 4003, "tile request wants 1..64 keys");
+      return;
+    }
+    if (!Number.isSafeInteger(msg.reqId)) {
+      this.sendError(s, 4003, "tile request needs an integer reqId");
+      return;
+    }
+    const tiles: TileResponseMessage["tiles"] = [];
+    const seen = new Set<string>();
+    for (const key of msg.keys) {
+      if (typeof key !== "string" || seen.has(key)) continue;
+      seen.add(key);
+      const m = /^(-?\d+),(-?\d+)$/.exec(key);
+      if (!m) continue;
+      const cx = Number(m[1]), cz = Number(m[2]);
+      if (!Number.isSafeInteger(cx) || !Number.isSafeInteger(cz)) continue;
+      if (Math.abs(cx) > 1e6 || Math.abs(cz) > 1e6) continue;
+      const out = new Float32Array(this.chunkSource.chunkSamples);
+      try {
+        this.chunkSource.generateChunk(this.worldSeed, cx, cz, 0, out);
+      } catch {
+        continue; // generation failed: omit the tile (lossy-OK)
+      }
+      tiles.push({ cx, cz, heights: encodeTileHeights(out) });
+    }
+    const res: TileResponseMessage = { reqId: msg.reqId, tiles };
+    this.sendEnvelope(s, MessageType.TileResponse, encodeControl(res));
   }
 
   /**

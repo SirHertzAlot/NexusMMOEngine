@@ -127,6 +127,7 @@ describe("RegionCoordinator", () => {
   const region = (id: string, minCx: number, maxCx: number, tiles: TerrainTile[]): RegionInfo => ({
     regionId: id,
     range: { minCx, minCz: 0, maxCx, maxCz: 0 },
+    endpoint: `wss://${id}.example`,
     source: source(tiles),
   });
 
@@ -171,5 +172,57 @@ describe("RegionCoordinator", () => {
 
   it("keysInRange enumerates the range", () => {
     assert.deepEqual(keysInRange({ minCx: 0, minCz: 0, maxCx: 1, maxCz: 1 }).sort(), ["0,0", "0,1", "1,0", "1,1"]);
+  });
+});
+
+describe("StreamingCoordinator", () => {
+  it("feeds streamed tiles into the renderer and predicts handoffs", async () => {
+    const { StreamingCoordinator } = await import("../src/render/terrain/streaming-coordinator.js");
+    const ensured: Array<{ cx: number; cz: number }> = [];
+    const removed: string[] = [];
+    const renderer = {
+      ensureChunk: (_wireId: bigint, chunk: { chunkId: bigint; heights: Float32Array | null }) => {
+        const { chunkCoords } = { chunkCoords: (id: bigint) => ({ cx: Number(id >> 32n), cz: Number(id & 0xffffffffn) }) };
+        const { cx, cz } = chunkCoords(chunk.chunkId);
+        ensured.push({ cx, cz });
+      },
+      removeChunk: (wireId: bigint) => { removed.push(wireId.toString()); },
+    } as unknown as import("../src/render/terrain/terrain-renderer.js").TerrainRenderer;
+
+    const tilesA = [tile(0, 0), tile(1, 0)];
+    const tilesB = [tile(5, 0), tile(6, 0)];
+    const sc = new StreamingCoordinator(renderer, { radius: 1, handoffMargin: 3 });
+    sc.addRegion("a", { minCx: -2, minCz: -2, maxCx: 2, maxCz: 2 }, "wss://a.example", source(tilesA));
+    sc.addRegion("b", { minCx: 3, minCz: -2, maxCx: 8, maxCz: 2 }, "wss://b.example", source(tilesB));
+
+    // Player at chunk (0,0), standing still: radius-1 disc streams from region a.
+    sc.trackPlayer(8, 8, 0, 0, 16);
+    await flush();
+    assert.ok(ensured.some((e) => e.cx === 0 && e.cz === 0), "tile (0,0) streamed");
+    assert.ok(ensured.some((e) => e.cx === 1 && e.cz === 0), "tile (1,0) streamed");
+    assert.ok(!ensured.some((e) => e.cx === 5), "region b tiles not streamed yet");
+
+    // Player moving +x toward region b: predictive prefetch warms b's border.
+    const before = ensured.length;
+    sc.trackPlayer(2 * 16 + 8, 8, 4, 0, 16); // chunk (2,0), moving east at 4 chunks/s
+    await flush();
+    assert.ok(ensured.length > before, "prefetch pulled new tiles");
+
+    // Bye-redirect commits: region b becomes primary.
+    sc.onRegionChange("wss://b.example");
+    assert.equal(sc.regionCoordinator.findByEndpoint("wss://b.example")?.regionId, "b");
+  });
+
+  it("findByEndpoint locates regions", () => {
+    const c = new RegionCoordinator(() => {});
+    const mk = (id: string): RegionInfo => ({
+      regionId: id, range: { minCx: 0, minCz: 0, maxCx: 1, maxCz: 1 },
+      endpoint: `wss://${id}.example`, source: source([]),
+    });
+    c.setRegion(mk("a"));
+    c.setRegion(mk("b"));
+    assert.equal(c.findByEndpoint("wss://b.example")?.regionId, "b");
+    assert.equal(c.findByEndpoint("wss://nope.example"), null);
+    assert.deepEqual(c.regionIds().sort(), ["a", "b"]);
   });
 });
