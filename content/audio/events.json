@@ -5,6 +5,8 @@
     "interface": { "gain": 1, "maxVoices": 4 }
   },
   "events": [
+    { "bus": "ambience", "file": "step-grass.ogg", "maxDistance": 25, "name": "footstep-grass", "pitchRange": [0.9, 1.1], "positional": true, "priority": 0, "volume": 0.5 },
+    { "bus": "ambience", "file": "step-stone.ogg", "maxDistance": 25, "name": "footstep-stone", "pitchRange": [0.9, 1.1], "positional": true, "priority": 0, "volume": 0.5 },
     { "bus": "ambience", "maxDistance": 25, "name": "footstep", "pitchRange": [0.9, 1.1], "positional": true, "priority": 0, "variations": [{ "file": "step-grass.ogg", "weight": 3 }, { "file": "step-stone.ogg", "weight": 2 }, { "file": "step-wood.ogg", "weight": 1 }], "volume": 0.5 },
     { "bus": "combat", "file": "sword-hit.ogg", "maxDistance": 40, "name": "hit", "pitchRange": [0.92, 1.08], "positional": true, "priority": 5, "volume": 0.8 },
     { "bus": "combat", "file": "metal-block.ogg", "maxDistance": 40, "name": "block", "pitchRange": [0.95, 1.05], "positional": true, "priority": 5, "volume": 0.7 },
@@ -12,6 +14,7 @@
     { "bus": "interface", "file": "item-pickup.ogg", "name": "pickup", "positional": false, "priority": 4, "volume": 0.7 },
     { "bus": "interface", "file": "ui-click.ogg", "name": "ui-click", "positional": false, "volume": 0.7 },
     { "bus": "interface", "file": "ui-notice.ogg", "name": "ui-notice", "positional": false, "priority": 2, "volume": 0.7 },
-    { "bus": "interface", "file": "ui-whisper.ogg", "name": "ui-whisper", "positional": false, "priority": 3, "volume": 0.7 }
+    { "bus": "interface", "file": "ui-whisper.ogg", "name": "ui-whisper", "positional": false, "priority": 3, "volume": 0.7 },
+    { "bus": "combat", "file": "sword-swing.ogg", "maxDistance": 30, "name": "sword-swing", "pitchRange": [0.9, 1.1], "positional": true, "priority": 3, "volume": 0.6 }
   ]
 }

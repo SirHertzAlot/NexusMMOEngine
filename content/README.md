@@ -30,6 +30,22 @@ Game content the engine generates from, committed with the code:
   the animation library each server clip id plays, and whether it loops and
   how long it crossfades (format: `@mmo-engine/art` `clip-map.ts`). The
   client reads it on load; the editor's Animation panel edits it.
+  `animations.json` is a v3 animation manifest carrying only the locomotion
+  state machine (which base clip plays at which speed, crossfades, the
+  airborne rule); v2 manifests (the converter's) still load with the
+  defaults. The client animator runs it (`pickLocomotion`).
+
+- `combat/moves.json` — the combat moves' timing, chaining, travel and hit
+  frame (roadmap EA21). The server loads it at boot (`MMO_COMBAT`
+  overrides; a bad file stops the boot with every problem named), the client
+  reads it for clips and for each move's `sound.start` / `sound.hit` audio
+  events. Edited on the Animation panel's combat timeline; restart the play
+  server to apply.
+
+- `materials/materials.json` — the toon look, terrain surface tints and the
+  footstep sound per surface (roadmap EA22); the client applies it at start.
+  Not to be confused with the single material definitions beside it
+  (`materials/<name>.json`). Edited in the Materials view of Art & audio.
 
 - `crafting/recipes.json` — crafting costs (refining, element reagents, fittings, units, skills); checked at server boot (`MMO_CRAFTING` overrides) and read by `npm run craft:report`.
 

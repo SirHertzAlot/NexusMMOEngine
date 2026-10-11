@@ -22,7 +22,7 @@
       "moveScale": 0,
       "hitAt": 0.2,
       "sound": {
-        "start": "swing"
+        "start": "sword-swing"
       }
     },
     {
@@ -41,7 +41,7 @@
       "moveScale": 0,
       "hitAt": 0.25,
       "sound": {
-        "start": "swing"
+        "start": "sword-swing"
       }
     },
     {
@@ -58,7 +58,7 @@
       "moveScale": 0,
       "hitAt": 0.5,
       "sound": {
-        "start": "swing"
+        "start": "sword-swing"
       }
     },
     {
@@ -133,7 +133,7 @@
       "duration": 0.8333,
       "moveScale": 0,
       "sound": {
-        "start": "swing"
+        "start": "sword-swing"
       }
     }
   ]

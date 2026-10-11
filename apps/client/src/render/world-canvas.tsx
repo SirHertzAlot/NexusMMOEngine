@@ -55,6 +55,8 @@ import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
 import { ParticleFx, WEATHER_RULES, budgetMultiplierForTier } from "./fx/particle-fx.js";
 import { biomeAt, weatherAt } from "./fx/weather.js";
+import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
+import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { WorkerPool } from "../workers/pool.js";
@@ -124,6 +126,8 @@ export interface WorldCanvasProps {
   onHud?: (hud: HudData) => void;
   /** Written every frame with where the camera hears from (audio panning and distance, EA24). */
   listener?: Listener;
+  /** A footstep fell: the audio event for the surface under the feet (content/materials) and where. Absent: silent. */
+  onFootstep?: (event: string, at: { x: number; y: number; z: number }) => void;
   /** The bag key was pressed (M3a). */
   onBag?: () => void;
   /** The technique or aim key (M3): turn to the next one. */
@@ -296,6 +300,7 @@ function MirrorWorld({
   bindings,
   onHud,
   listener,
+  onFootstep,
   onBag,
   onStance,
   onTreat,
@@ -318,8 +323,9 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
   // `view` prop when given; otherwise the V key toggles it internally.
@@ -634,6 +640,17 @@ function MirrorWorld({
       if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
     }
     r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+
+    // A step sounds each stride on the ground, on the surface of the biome underfoot (content/materials).
+    const onStep = latest.current.onFootstep;
+    if (onStep && me?.transform) {
+      const grounded = me.locomotion?.mode === LocomotionMode.Ground && Math.abs(v?.ly ?? 0) < 1.5;
+      const materials = gameContent().materials;
+      if (footsteps.current.step(delta, v ? Math.hypot(v.lx, v.lz) : 0, grounded, footstepStride(materials))) {
+        const under = r.map ? biomeAt(r.map, me.transform.px, me.transform.pz) : null;
+        onStep(footstepEvent(under, materials), { x: me.transform.px, y: me.transform.py, z: me.transform.pz });
+      }
+    }
 
     const seconds = now / 1000;
     r.terrain.update(camera.position);

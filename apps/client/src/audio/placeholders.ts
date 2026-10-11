@@ -14,6 +14,7 @@ const RECIPES: [string, (ctx: BaseAudioContext, out: AudioNode, r: number) => nu
   ["grass", (c, o, r) => (noise(c, o, "bandpass", 700 * r, 0.5, 0.11), 0.13)],
   ["stone", (c, o, r) => (noise(c, o, "highpass", 1800 * r, 0.45, 0.07), tone(c, o, 300 * r, "square", 0.08, 0.05), 0.1)],
   ["wood", (c, o, r) => (tone(c, o, 190 * r, "triangle", 0.5, 0.1, 0, 120 * r), noise(c, o, "bandpass", 500 * r, 0.25, 0.06), 0.13)],
+  ["swing", (c, o, r) => (noise(c, o, "bandpass", 900 * r, 0.7, 0.18, 3000 * r), 0.2)],
   ["hit", (c, o, r) => (tone(c, o, 140 * r, "sine", 0.7, 0.22, 0, 55 * r), noise(c, o, "lowpass", 900 * r, 0.45, 0.14), 0.25)],
   ["block", (c, o, r) => (tone(c, o, 1240 * r, "triangle", 0.22, 0.4), tone(c, o, 1710 * r, "triangle", 0.15, 0.3), noise(c, o, "highpass", 3000, 0.2, 0.06), 0.45)],
   ["dodge", (c, o, r) => (noise(c, o, "bandpass", 500 * r, 1.2, 0.25, 2400 * r), 0.3)],
