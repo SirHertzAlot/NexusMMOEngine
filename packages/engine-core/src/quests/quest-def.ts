@@ -27,7 +27,7 @@ export interface QuestDef {
   giver: string;
   summary: string;
   steps: QuestStep[];
-  rewards: { base: string; count: number }[];
+  rewards: { base: string; count: number; gold?: number }[];
   repeatable: boolean;
   /** Quests that must be done first. */
   after: string[];
@@ -43,7 +43,7 @@ export function authoredQuest(content: QuestContent, id: string): QuestDef {
     giver: q.giver,
     summary: q.summary,
     steps: q.steps.map((s) => ({ id: s.id, text: s.text, objective: concrete(s.objective, content, content.npcs[q.giver], () => 0) })),
-    rewards: q.rewards.map((r: RewardSpec) => ({ base: r.base, count: r.count })),
+    rewards: q.rewards.map((r: RewardSpec) => ({ base: r.base, count: r.count, ...(r.gold !== undefined ? { gold: r.gold } : {}) })),
     repeatable: q.repeatable,
     after: q.after,
   };

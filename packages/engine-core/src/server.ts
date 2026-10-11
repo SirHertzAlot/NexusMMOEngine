@@ -156,6 +156,11 @@ import { AbilitySystem } from "./abilities.js";
 import { StatusSystem } from "./status.js";
 import { TelegraphSystem } from "./telegraph.js";
 import { DuelSystem } from "./duel.js";
+import { WalletSystem } from "./economy/wallet.js";
+import { SqliteWalletStore } from "./economy/wallet-store.js";
+import { TradeSystem } from "./economy/trade.js";
+import { VendorSystem } from "./economy/vendor.js";
+import { AuctionSystem } from "./economy/auction.js";
 import { BodySystem } from "./body.js";
 import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
@@ -590,6 +595,49 @@ async function main(): Promise<void> {
   const restored = items.restore(sim, itemLedger.load());
   items.attachLedger(itemLedger);
   if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
+  // Economy (EC1): gold wallets (SQLite-backed) and player-to-player
+  // trades. Items move bag-to-bag through the ItemStore; held/worn gear
+  // stays out of trades in v1.
+  const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
+  const wallet = new WalletSystem(walletStore);
+  const trade = new TradeSystem(wallet, {
+    owns: (c, item) => items.store.inBagOf(c, item),
+    freeSlots: (c) => items.store.emptySlots(c),
+    move: (item, from, to) => {
+      if (!items.store.inBagOf(from, item)) return false;
+      return items.store.putInBag(to, item) >= 0;
+    },
+  });
+  // Vendors (EC1): NPC shops. Templates are defined here; attaching them
+  // to NPC entities is content work (the `vendor` admin command attaches).
+  const vendor = new VendorSystem(wallet, {
+    give: (c, def) => items.give(c, def).ok,
+    take: (c, item) => {
+      if (!items.store.inBagOf(c, item)) return false;
+      items.store.destroy(item);
+      return true;
+    },
+    defOf: (item) => {
+      const slot = items.store.slot(item);
+      return slot < 0 ? -1 : items.store.defs[slot];
+    },
+    nameOf: (def) => items.defs.names[def] ?? `item ${def}`,
+  });
+  // Auction house (EC1): listings keep the item in the seller's bag (no
+  // escrow limbo on restart); settlement moves it bag-to-bag.
+  const auction = new AuctionSystem(wallet, {
+    owns: (c, item) => items.store.inBagOf(c, item),
+    freeSlots: (c) => items.store.emptySlots(c),
+    defOf: (item) => {
+      const slot = items.store.slot(item);
+      return slot < 0 ? -1 : items.store.defs[slot];
+    },
+    move: (item, from, to) => {
+      if (!items.store.inBagOf(from, item)) return false;
+      return items.store.putInBag(to, item) >= 0;
+    },
+    nameOf: (def) => items.defs.names[def] ?? `item ${def}`,
+  });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
@@ -610,7 +658,7 @@ async function main(): Promise<void> {
     };
   };
   // Creature drops (L2): rolled when DeathSystem records a creature's death.
-  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, tables: game.rules.loot.tables ?? {}, kindOf: (e) => creatures.kindOf(e) });
+  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, tables: game.rules.loot.tables ?? {}, kindOf: (e) => creatures.kindOf(e), wallet });
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -648,6 +696,9 @@ async function main(): Promise<void> {
     grant: (character, base) => {
       const def = itemDefs.defs.starter(base, rankOrder);
       return def >= 0 && items.give(character, def).ok;
+    },
+    grantGold: (character, amount) => {
+      wallet.grant(character, amount, sim.currentTick);
     },
   });
   console.log(

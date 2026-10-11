@@ -81,6 +81,11 @@ import {
   type TelegraphMessage,
   type StatusMessage,
   type DuelMessage,
+  type TradeMessage,
+  type WalletMessage,
+  type VendorAction,
+  type VendorMessage,
+  type AuctionMessage,
   type NamesMessage,
   type StatsMessage,
   type WelcomeMessage,
@@ -100,6 +105,7 @@ import { ensureAnimation } from "../animation.js";
 import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
 import { parseWeatherCommand, runTimeCommand } from "../admin/world.js";
 import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../admin/spawn.js";
+import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
@@ -146,6 +152,10 @@ import { AbilitySystem } from "../abilities.js";
 import { StatusSystem } from "../status.js";
 import { TelegraphSystem } from "../telegraph.js";
 import { DuelSystem } from "../duel.js";
+import { WalletSystem } from "../economy/wallet.js";
+import { TradeSystem } from "../economy/trade.js";
+import { VendorSystem } from "../economy/vendor.js";
+import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -422,6 +432,67 @@ const DuelActionSchema = z
   })
   .strict();
 
+/** 0x21 trade actions (EC1). */
+const TradeActionSchema = z
+  .object({
+    kind: z.literal("trade"),
+    action: z.enum(["open", "offer", "accept", "cancel"]),
+    target: z.string().min(1).max(32).optional(),
+    id: z.number().int().positive().optional(),
+    gold: z.number().int().min(0).max(999999999).optional(),
+    addItem: z.number().int().positive().optional(),
+    removeItem: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/** 0x21 vendor actions (EC1). */
+const VendorActionSchema = z
+  .object({
+    kind: z.literal("vendor"),
+    action: z.enum(["list", "buy", "sell"]),
+    vendor: z.string().min(1).max(32).optional(),
+    def: z.number().int().min(0).optional(),
+    item: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/** 0x21 auction actions (EC1). */
+const AuctionActionSchema = z
+  .object({
+    kind: z.literal("auction"),
+    action: z.enum(["list", "bid", "buyout", "cancel", "browse"]),
+    listing: z.number().int().positive().optional(),
+    item: z.number().int().positive().optional(),
+    amount: z.number().int().positive().max(999999999).optional(),
+    startBid: z.number().int().positive().max(999999999).optional(),
+    buyout: z.number().int().min(0).max(999999999).optional(),
+    durationMs: z.number().int().positive().max(48 * 3600 * 1000).optional(),
+  })
+  .strict();
+
+/** Admin `gold` args (A5/EC1). */
+const GoldArgsSchema = z
+  .object({
+    amount: z.number().int().positive().max(999999999),
+  })
+  .strict();
+
+/** Admin `vendor` args (EC1). */
+const VendorArgsSchema = z
+  .object({
+    sub: z.enum(["define", "stock", "attach", "detach", "spawn", "disable", "enable", "remove", "list"]),
+    id: z.string().min(1).max(32).optional(),
+    name: z.string().min(1).max(64).optional(),
+    buyback: z.number().min(0).max(1).optional(),
+    def: z.number().int().min(0).optional(),
+    price: z.number().int().positive().optional(),
+    qty: z.number().int().optional(),
+    target: z.string().min(1).max(32).optional(),
+    x: z.number().optional(),
+    z: z.number().optional(),
+  })
+  .strict();
+
 /** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
 const TreatSchema = z
   .object({
@@ -479,7 +550,7 @@ export interface GatewayTick {
   /** The FlatBuffers delta every client got this tick. */
   delta: Uint8Array;
   /** This tick's gameplay events: hits (0x16), deaths/respawns (0x17), abilities (0x1d), telegraphs (0x1e), statuses (0x1f), duels (0x20). */
-  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage>;
+  events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage>;
   /** Encodes a full snapshot of this tick on demand (costly: call on snapshot ticks only). */
   fullState(): Uint8Array;
 }
@@ -1079,13 +1150,16 @@ export class Gateway {
       timings.recordSystem(s.name, performance.now() - t0);
     }
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage> = [
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage> = [
       ...this.sendHits(sim, tick),
       ...this.sendLife(sim, tick),
       ...this.sendAbilities(sim, tick),
       ...this.sendTelegraphs(sim, tick),
       ...this.sendStatuses(sim, tick),
       ...this.sendDuels(sim, tick),
+      ...this.sendTrades(sim, tick),
+      ...this.sendWallets(sim, tick),
+      ...this.sendAuctions(sim, tick),
     ];
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
@@ -1140,6 +1214,101 @@ export class Gateway {
         for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
       }
       all.push(...msgs);
+    }
+    return all;
+  }
+
+  /** The session belonging to `charId`, if they're online. */
+  private sessionOf(charId: number): ClientSession | undefined {
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || s.playerEntity === null) continue;
+      if (this.holderOf(s) === charId) return s;
+    }
+    return undefined;
+  }
+
+  /** Wire id string for a character, "0" when they're not in the world. */
+  private wireIdOf(charId: number): string {
+    const session = this.sessionOf(charId);
+    return session?.playerEntity != null ? session.playerEntity.toString() : "0";
+  }
+
+  /**
+   * Fan out trade state changes (catalog 0x21, EC1). Trades are private:
+   * only the two parties hear them.
+   */
+  private sendTrades(_sim: SimWorld, tick: number): TradeMessage[] {
+    const all: TradeMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof TradeSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      for (const e of events) {
+        const m: TradeMessage = {
+          kind: "trade",
+          tick,
+          id: e.id,
+          state: e.state,
+          a: this.wireIdOf(e.a),
+          b: this.wireIdOf(e.b),
+          aGold: e.aGold,
+          bGold: e.bGold,
+          aItems: e.aItems,
+          bItems: e.bItems,
+          aAccepted: e.aAccepted,
+          bAccepted: e.bAccepted,
+        };
+        for (const charId of [e.a, e.b]) {
+          const session = this.sessionOf(charId);
+          if (session) this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        }
+        all.push(m);
+      }
+    }
+    return all;
+  }
+
+  /** Tell a character their gold balance changed (catalog 0x21, EC1). */
+  private sendWallets(_sim: SimWorld, tick: number): WalletMessage[] {
+    const all: WalletMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof WalletSystem)) continue;
+      const changes = s.drainChanges();
+      if (changes.length === 0) continue;
+      for (const c of changes) {
+        const session = this.sessionOf(c.charId);
+        if (!session) continue;
+        const m: WalletMessage = { kind: "wallet", tick, balance: c.balance };
+        this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        all.push(m);
+      }
+    }
+    return all;
+  }
+
+  /**
+   * Fan out auction events (catalog 0x21, EC1): expiry, sales, and bids go
+   * to the parties involved only.
+   */
+  private sendAuctions(_sim: SimWorld, tick: number): AuctionMessage[] {
+    const all: AuctionMessage[] = [];
+    for (const s of this.systems) {
+      if (!(s instanceof AuctionSystem)) continue;
+      const events = s.drainEvents();
+      if (events.length === 0) continue;
+      for (const e of events) {
+        const m: AuctionMessage = {
+          kind: "auction",
+          tick,
+          state: e.state,
+          ...(e.view ? { listing: e.view } : {}),
+        };
+        for (const charId of e.parties) {
+          const session = this.sessionOf(charId);
+          if (session) this.sendEnvelope(session, MessageType.Trade, encodeControl(m));
+        }
+        all.push(m);
+      }
     }
     return all;
   }
@@ -2017,6 +2186,9 @@ export class Gateway {
       case MessageType.Duel:
         this.onDuel(s, payload);
         break;
+      case MessageType.Trade:
+        this.onTradeOrVendor(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -2118,7 +2290,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2158,8 +2330,15 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
-    } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot") {
+    } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot" || cmd.command === "gold") {
       res = this.runItemCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "vendor") {
+      res = this.runVendorCommand(s, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -2379,21 +2558,9 @@ export class Gateway {
     if (!parsed.success) {
       return { kind: "admin", command, ok: false, message: "usage: spawn {asset, x?, z?, yaw?}" };
     }
-    let x = parsed.data.x;
-    let z = parsed.data.z;
-    let y: number;
-    if (x === undefined || z === undefined) {
-      if (s.playerEntity === null) {
-        return { kind: "admin", command, ok: false, message: "no player entity (not in the world)" };
-      }
-      const eid = this.world.resolveWireId(s.playerEntity);
-      if (eid < 0) return { kind: "admin", command, ok: false, message: "avatar is gone" };
-      x = C.Transform.px[eid];
-      z = C.Transform.pz[eid];
-      y = C.Transform.py[eid];
-    } else {
-      y = this.groundHeightAt?.(x, z) ?? 0;
-    }
+    const point = resolveSpawnPoint(this.world, s, this.groundHeightAt, parsed.data.x, parsed.data.z);
+    if ("error" in point) return { kind: "admin", command, ok: false, message: point.error };
+    const { x, y, z } = point;
     if (this.creatures?.has(parsed.data.asset)) {
       const ids = this.creatures.spawnPack(this.world, parsed.data.asset, x, z);
       return { kind: "admin", command, ok: true, message: `spawned a pack of ${ids.length} ${parsed.data.asset}` };
@@ -3745,6 +3912,337 @@ export class Gateway {
     }
   }
 
+  /** The session whose avatar has this wire id, if they're online. */
+  private sessionByEntity(wireId: string): ClientSession | undefined {
+    let entity: bigint;
+    try {
+      entity = BigInt(wireId);
+    } catch {
+      return undefined;
+    }
+    for (const r of this.sessions.values()) {
+      if (r.welcomed && r.playerEntity === entity) return r;
+    }
+    return undefined;
+  }
+
+  /**
+   * Trade with another player (catalog 0x21, EC1): open, offer gold or
+   * bag items, accept, cancel. In-world sessions only; shares the pickup
+   * rate-limit bucket. A bad shape is 4003, a refusal 4005; trade state
+   * comes back as `trade` events, gold as `wallet`.
+   */
+  private onTrade(s: ClientSession, payload: Uint8Array): void {
+    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    if (!trade || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "trade outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    const parsed = TradeActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    switch (parsed.data.action) {
+      case "open": {
+        if (parsed.data.target === undefined) {
+          this.sendError(s, 4003, "trade needs a target");
+          return;
+        }
+        const targetSession = this.sessionByEntity(parsed.data.target);
+        if (!targetSession) {
+          this.sendError(s, 4005, "no such target");
+          return;
+        }
+        const other = this.holderOf(targetSession);
+        if (other === me) {
+          this.sendError(s, 4005, "cannot trade with that");
+          return;
+        }
+        if (trade.open(me, other, tick) === null) this.sendError(s, 4005, "cannot trade now");
+        break;
+      }
+      case "offer": {
+        if (parsed.data.id === undefined) {
+          this.sendError(s, 4003, "offer needs a trade id");
+          return;
+        }
+        const id = parsed.data.id;
+        let ok = true;
+        if (parsed.data.gold !== undefined) ok = trade.offerGold(id, me, parsed.data.gold, tick) && ok;
+        if (parsed.data.addItem !== undefined) ok = trade.offerItem(id, me, parsed.data.addItem, tick) && ok;
+        if (parsed.data.removeItem !== undefined) ok = trade.removeItem(id, me, parsed.data.removeItem, tick) && ok;
+        if (!ok) this.sendError(s, 4005, "offer refused");
+        break;
+      }
+      case "accept":
+        if (parsed.data.id === undefined || !trade.accept(parsed.data.id, me, tick)) {
+          this.sendError(s, 4005, "nothing to accept");
+        }
+        break;
+      case "cancel":
+        if (parsed.data.id === undefined || !trade.cancel(parsed.data.id, me, tick)) {
+          this.sendError(s, 4005, "nothing to cancel");
+        }
+        break;
+    }
+  }
+
+  /** 0x21 carries trade, vendor, and auction actions; route by kind. */
+  private onTradeOrVendor(s: ClientSession, payload: Uint8Array): void {
+    let kind: unknown;
+    try {
+      kind = (decodeControl<{ kind?: unknown }>(payload)).kind;
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    if (kind === "vendor") this.onVendor(s, payload);
+    else if (kind === "auction") this.onAuction(s, payload);
+    else this.onTrade(s, payload);
+  }
+
+  /**
+   * Buy from and sell to an NPC vendor (catalog 0x21, EC1). In-world
+   * sessions only; shares the pickup rate-limit bucket. A bad shape is
+   * 4003, a refusal (not a vendor, too far, broke, full bag) 4005;
+   * results come back as `vendor` events, gold as `wallet`.
+   */
+  private onVendor(s: ClientSession, payload: Uint8Array): void {
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "vendor outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    const parsed = VendorActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const me = sim.resolveWireId(s.playerEntity);
+    if (me < 0) return;
+    const meChar = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.vendor === undefined) {
+      this.sendError(s, 4003, "vendor action needs a vendor");
+      return;
+    }
+    // The vendor is any world entity (usually an NPC), not a session.
+    let vEntity = -1;
+    try {
+      vEntity = sim.resolveWireId(BigInt(parsed.data.vendor));
+    } catch {
+      vEntity = -1;
+    }
+    if (vEntity < 0) {
+      this.sendError(s, 4005, "no such vendor");
+      return;
+    }
+    const wire = parsed.data.vendor;
+    switch (parsed.data.action) {
+      case "list": {
+        const view = vendor.list(vEntity);
+        if (!view) {
+          this.sendError(s, 4005, "not a vendor");
+          return;
+        }
+        const m: VendorMessage = {
+          kind: "vendor",
+          tick,
+          vendor: wire,
+          state: "listed",
+          name: view.name,
+          stock: view.stock.map((l) => ({ ...l, name: l.name ?? "" })),
+          buybackRate: view.buybackRate,
+        };
+        this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        break;
+      }
+      case "buy": {
+        if (parsed.data.def === undefined) {
+          this.sendError(s, 4003, "buy needs a def");
+          return;
+        }
+        const err = vendor.buy(sim, meChar, me, vEntity, parsed.data.def, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        const view = vendor.list(vEntity)!;
+        const line = view.stock.find((l) => l.def === parsed.data.def);
+        const m: VendorMessage = {
+          kind: "vendor",
+          tick,
+          vendor: wire,
+          state: "bought",
+          def: parsed.data.def,
+          price: line?.price ?? 0,
+        };
+        this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        this.sendInventory(s);
+        break;
+      }
+      case "sell": {
+        if (parsed.data.item === undefined) {
+          this.sendError(s, 4003, "sell needs an item");
+          return;
+        }
+        const err = vendor.sell(sim, meChar, me, vEntity, parsed.data.item, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        const m: VendorMessage = {
+          kind: "vendor",
+          tick,
+          vendor: wire,
+          state: "sold",
+          item: parsed.data.item,
+        };
+        this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+        this.sendInventory(s);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Auction house (catalog 0x21, EC1): list, bid, buy out, cancel, browse.
+   * In-world sessions only; shares the pickup rate-limit bucket. A bad
+   * shape is 4003, a refusal 4005; results come back as `auction` events,
+   * gold as `wallet`. Expiry and outbid refunds are announced to the
+   * parties involved.
+   */
+  private onAuction(s: ClientSession, payload: Uint8Array): void {
+    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    if (!auction || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "auction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    const parsed = AuctionActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    const tell = (m: AuctionMessage): void => {
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    };
+    switch (parsed.data.action) {
+      case "browse": {
+        tell({ kind: "auction", tick, state: "browse", listings: auction.browse() });
+        break;
+      }
+      case "list": {
+        if (parsed.data.item === undefined || parsed.data.startBid === undefined) {
+          this.sendError(s, 4003, "list needs an item and a starting bid");
+          return;
+        }
+        const id = auction.list(
+          me,
+          parsed.data.item,
+          parsed.data.startBid,
+          parsed.data.buyout ?? 0,
+          parsed.data.durationMs ?? 24 * 3600 * 1000,
+          tick,
+        );
+        if (id === null) {
+          this.sendError(s, 4005, "can't list that item");
+          return;
+        }
+        const view = auction.browse().find((l) => l.id === id);
+        tell({ kind: "auction", tick, state: "listed", listing: view });
+        this.sendInventory(s);
+        break;
+      }
+      case "bid": {
+        if (parsed.data.listing === undefined || parsed.data.amount === undefined) {
+          this.sendError(s, 4003, "bid needs a listing and an amount");
+          return;
+        }
+        const err = auction.bid(me, parsed.data.listing, parsed.data.amount, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        const view = auction.browse().find((l) => l.id === parsed.data.listing);
+        tell({ kind: "auction", tick, state: "bid", listing: view });
+        break;
+      }
+      case "buyout": {
+        if (parsed.data.listing === undefined) {
+          this.sendError(s, 4003, "buyout needs a listing");
+          return;
+        }
+        const err = auction.buyout(me, parsed.data.listing, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        tell({ kind: "auction", tick, state: "sold", listing: undefined });
+        this.sendInventory(s);
+        break;
+      }
+      case "cancel": {
+        if (parsed.data.listing === undefined) {
+          this.sendError(s, 4003, "cancel needs a listing");
+          return;
+        }
+        const err = auction.cancel(me, parsed.data.listing, tick);
+        if (err) {
+          this.sendError(s, 4005, err);
+          return;
+        }
+        tell({ kind: "auction", tick, state: "cancelled", listing: undefined });
+        this.sendInventory(s);
+        break;
+      }
+    }
+  }
+
   /**
    * Treat a body part (catalog 0x1a, M4): yourself or a character in reach.
    * In-world sessions only; shares the pickup bucket. A bad shape is 4003,
@@ -3950,6 +4448,14 @@ export class Gateway {
     const x = C.Transform.px[avatar];
     const z = C.Transform.pz[avatar];
     const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
+    if (command === "gold") {
+      const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+      if (!wallet) return fail("no economy on this server");
+      const a = GoldArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail("usage: gold {amount}");
+      if (!wallet.grant(this.holderOf(s), a.data.amount, this.tick)) return fail("bad amount");
+      return { kind: "admin", command, ok: true, message: `granted ${a.data.amount} gold (balance ${wallet.balanceOf(this.holderOf(s))})` };
+    }
     if (command === "loot") {
       const a = LootArgsSchema.safeParse(args ?? {});
       if (!a.success) return fail("usage: loot {count?}");
@@ -3980,6 +4486,140 @@ export class Gateway {
     }
     const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
     return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
+  }
+
+  /**
+   * Vendor admin commands (roadmap EC1): define a vendor template, stock
+   * it, attach it to a world entity, or list templates. Failures read as
+   * errors, never throw.
+   *
+   *   vendor {sub: "define", id, name?, buyback?}
+   *   vendor {sub: "stock", id, def|name, price, qty?}   (qty -1: infinite; name looks the def up)
+   *   vendor {sub: "attach", id, target}            (target: wire id)
+   *   vendor {sub: "detach", target}                (target: wire id)
+   *   vendor {sub: "spawn", id, asset?, x?, z?}     (spawns the NPC and attaches in one step)
+   *   vendor {sub: "disable", id} / {sub: "enable", id}
+   *   vendor {sub: "remove", id}                    (deletes the template, detaches everywhere)
+   *   vendor {sub: "list"}
+   */
+  private runVendorCommand(s: ClientSession, args: unknown): AdminResult {
+    const fail = (message: string): AdminResult => ({ kind: "admin", command: "vendor", ok: false, message });
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor) return fail("no vendors on this server");
+    const a = VendorArgsSchema.safeParse(args ?? {});
+    if (!a.success) return fail('usage: vendor {sub: "define"|"stock"|"attach"|"detach"|"spawn"|"disable"|"enable"|"remove"|"list", ...}');
+    const d = a.data;
+    switch (d.sub) {
+      case "define": {
+        if (!d.id) return fail('define needs {id, name?}');
+        if (!vendor.create(d.id, d.name ?? d.id, d.buyback ?? 0.3)) return fail("bad id or already defined");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" defined` };
+      }
+      case "stock": {
+        if (!d.id || !d.price) return fail('stock needs {id, def|name, price, qty?}');
+        let def: number | undefined = d.def;
+        if (def === undefined && d.name) {
+          const found = this.lookupItemDef(d.name);
+          if (found === null) return fail(`no item named "${d.name}" (try: admin items {base?})`);
+          def = found;
+        }
+        if (def === undefined) return fail('stock needs {id, def|name, price, qty?}');
+        if (!vendor.setStock(d.id, def, d.price, d.qty ?? -1)) return fail("unknown vendor or bad price");
+        const label = this.items?.defs.names[def] ?? `def ${def}`;
+        return { kind: "admin", command: "vendor", ok: true, message: `stocked ${label} at ${d.price}g` };
+      }
+      case "attach": {
+        if (!d.id || !d.target) return fail('attach needs {id, target}');
+        const entity = resolveEntityTarget(this.world, d.target);
+        if (entity < 0) return fail("no such target");
+        if (!vendor.attach(entity, d.id)) return fail("unknown vendor template");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" attached to ${d.target}` };
+      }
+      case "detach": {
+        if (!d.target) return fail('detach needs {target}');
+        const entity = resolveEntityTarget(this.world, d.target);
+        if (entity < 0) return fail("no such target");
+        if (!vendor.detach(entity)) return fail("that entity is not a vendor");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor detached from ${d.target}` };
+      }
+      case "spawn": {
+        if (!d.id) return fail('spawn needs {id, x?, z?}');
+        if (!vendor.templateIds().includes(d.id)) return fail("unknown vendor template (define it first)");
+        const spawned = this.spawnVendorNpc(s, d.x, d.z);
+        if ("error" in spawned) return fail(spawned.error);
+        vendor.attach(spawned.entity, d.id);
+        return {
+          kind: "admin",
+          command: "vendor",
+          ok: true,
+          message: `vendor "${d.id}" spawned as ${spawned.wireId} at (${Math.round(spawned.x)}, ${Math.round(spawned.z)})`,
+        };
+      }
+      case "disable": {
+        if (!d.id) return fail('disable needs {id}');
+        if (!vendor.setEnabled(d.id, false)) return fail("unknown vendor template");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" closed` };
+      }
+      case "enable": {
+        if (!d.id) return fail('enable needs {id}');
+        if (!vendor.setEnabled(d.id, true)) return fail("unknown vendor template");
+        return { kind: "admin", command: "vendor", ok: true, message: `vendor "${d.id}" open` };
+      }
+      case "remove": {
+        if (!d.id) return fail('remove needs {id}');
+        const n = vendor.attachedTo(d.id).length;
+        if (!vendor.remove(d.id)) return fail("unknown vendor template");
+        return {
+          kind: "admin",
+          command: "vendor",
+          ok: true,
+          message: `vendor "${d.id}" removed${n > 0 ? ` (detached from ${n} entit${n === 1 ? "y" : "ies"})` : ""}`,
+        };
+      }
+      case "list": {
+        const ids = vendor.templateIds();
+        return {
+          kind: "admin",
+          command: "vendor",
+          ok: true,
+          message: ids.length > 0 ? `vendors: ${ids.join(", ")}` : "no vendors defined",
+        };
+      }
+    }
+  }
+
+  /**
+   * Find an item def by (case-insensitive) name; null when there's no
+   * single match. Used by `vendor stock {name}`.
+   */
+  private lookupItemDef(name: string): number | null {
+    const defs = this.items?.defs;
+    if (!defs) return null;
+    const want = name.toLowerCase();
+    let found = -1;
+    for (let i = 0; i < defs.count; i++) {
+      if (defs.names[i]?.toLowerCase() === want) {
+        if (found >= 0) return null; // ambiguous
+        found = i;
+      }
+    }
+    return found >= 0 ? found : null;
+  }
+
+  /**
+   * Spawn a vendor NPC: a minimal world entity at (x, z) or at the
+   * admin's feet, ready for the vendor template to attach. Returns the
+   * entity and wire id, or an error.
+   */
+  private spawnVendorNpc(
+    s: ClientSession,
+    x: number | undefined,
+    z: number | undefined,
+  ): { entity: number; wireId: string; x: number; z: number } | { error: string } {
+    const point = resolveSpawnPoint(this.world, s, this.groundHeightAt, x, z);
+    if ("error" in point) return { error: point.error };
+    const entity = spawnBasicEntity(this.world, point.x, point.y, point.z);
+    return { entity, wireId: this.world.wireId(entity).toString(), x: point.x, z: point.z };
   }
 
   /**

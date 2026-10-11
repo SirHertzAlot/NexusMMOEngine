@@ -334,3 +334,127 @@ export interface DuelMessage {
   reason?: "blood" | "yield" | "timeout" | "declined" | "expired" | "cancelled";
   winner?: string;
 }
+
+/**
+ * C->S (catalog 0x21, EC1): trade actions. `open` names the target's wire
+ * id; the rest carry the trade id. `offer` sets offered gold and/or adds
+ * or removes one bag item (any offer change resets both accepts).
+ */
+export interface TradeAction {
+  kind: "trade";
+  action: "open" | "offer" | "accept" | "cancel";
+  target?: string;
+  id?: number;
+  gold?: number;
+  addItem?: number;
+  removeItem?: number;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): the full trade state, on every change. Sent
+ * to the two parties only. The client renders its trade window from the
+ * latest event. Character ids are wire ids; item ids are item ids.
+ */
+export interface TradeMessage {
+  kind: "trade";
+  tick: number;
+  id: number;
+  state: "open" | "offer" | "accepted" | "settled" | "cancelled" | "expired";
+  a: string;
+  b: string;
+  aGold: number;
+  bGold: number;
+  aItems: number[];
+  bItems: number[];
+  aAccepted: boolean;
+  bAccepted: boolean;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): the owner's gold balance, whenever it
+ * changes. To the owner only — gold is private.
+ */
+export interface WalletMessage {
+  kind: "wallet";
+  tick: number;
+  balance: number;
+}
+
+/**
+ * C->S (catalog 0x21, EC1): vendor actions. `vendor` is the vendor
+ * entity's wire id. `list` reads the price list; `buy` names an item def;
+ * `sell` names a bag item instance.
+ */
+export interface VendorAction {
+  kind: "vendor";
+  action: "list" | "buy" | "sell";
+  vendor?: string;
+  def?: number;
+  item?: number;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): vendor results, to the acting player only.
+ * `listed` carries the price list; `bought`/`sold` confirm the trade and
+ * its price.
+ */
+export interface VendorMessage {
+  kind: "vendor";
+  tick: number;
+  vendor: string;
+  state: "listed" | "bought" | "sold";
+  name?: string;
+  stock?: Array<{ def: number; name: string; price: number; quantity: number }>;
+  buybackRate?: number;
+  def?: number;
+  item?: number;
+  price?: number;
+}
+
+/**
+ * C->S (catalog 0x21, EC1): auction house actions. `list` puts a bag item
+ * up with a starting bid, an optional buyout, and a duration; `bid` and
+ * `buyout` name a listing; `cancel` reclaims an unbid listing; `browse`
+ * reads the order book.
+ */
+export interface AuctionAction {
+  kind: "auction";
+  action: "list" | "bid" | "buyout" | "cancel" | "browse";
+  listing?: number;
+  item?: number;
+  amount?: number;
+  startBid?: number;
+  buyout?: number;
+  durationMs?: number;
+}
+
+/**
+ * S->C (catalog 0x21, EC1): auction results. `browse` carries the order
+ * book; the rest name one listing. `bid`/`sold`/`expired`/`cancelled`
+ * go to the parties involved; `listed` goes to the seller.
+ */
+export interface AuctionMessage {
+  kind: "auction";
+  tick: number;
+  state: "listed" | "bid" | "sold" | "expired" | "cancelled" | "browse";
+  listing?: {
+    id: number;
+    def: number;
+    name: string;
+    startBid: number;
+    buyout: number;
+    topBid: number;
+    topBidder: number;
+    expiresAt: number;
+  };
+  listings?: Array<{
+    id: number;
+    def: number;
+    name: string;
+    startBid: number;
+    buyout: number;
+    topBid: number;
+    topBidder: number;
+    expiresAt: number;
+  }>;
+}

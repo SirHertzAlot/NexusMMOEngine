@@ -50,6 +50,18 @@
         "name": "duels"
       },
       {
+        "name": "wallet"
+      },
+      {
+        "name": "trade"
+      },
+      {
+        "name": "vendor"
+      },
+      {
+        "name": "auction"
+      },
+      {
         "name": "stamina"
       },
       {

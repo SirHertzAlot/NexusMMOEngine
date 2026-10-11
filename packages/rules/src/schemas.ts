@@ -487,6 +487,8 @@ export const CreatureSchema = z.strictObject({
       chance: share.default(0.8),
       /** A loot table (loot.json `tables`) whose lines also drop, each by its own chance. */
       table: id.optional(),
+      /** Gold the killer pockets: rolled uniformly in [min, max]. Absent: none. */
+      gold: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
     })
     .default({ rolls: [1, 2], chance: 0.8 }),
 });

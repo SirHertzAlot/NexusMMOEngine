@@ -45,6 +45,8 @@ const RewardSchema = z.strictObject({
   /** An item base (sword, dagger, …) or `$item`; the server picks a definition of it. */
   base: z.string(),
   count: z.number().int().min(1).max(10).default(1),
+  /** Gold paid alongside (or instead of) the item; absent: none. */
+  gold: z.number().int().positive().max(999999).optional(),
 });
 
 const StepTypeSchema = z.strictObject({

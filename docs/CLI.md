@@ -191,6 +191,13 @@ arguments as JSON (`teleport {"x":10,"z":-4}`), or `me` for yourself
 | `give` | `{def? \| base?, rank?}` | A new item into your bag |
 | `drop` | `{def? \| base?, rank?}` | A new item on the ground at you |
 | `loot` | `{count?}` | Mob drops scattered round you |
+| `gold` | `{amount}` | Gold into your wallet |
+| `vendor` | `{sub, ...}` | Shops: `define {id, name?, buyback?}`, `stock {id, def\|name, price, qty?}`, `spawn {id, x?, z?}`, `attach {id, target}`, `detach {target}`, `disable\|enable {id}`, `remove {id}`, `list` |
+| `time` | `{scale?}` / `{hour?}` | Time controls (see `help`) |
+| `weather` | `{kind?}` | Weather controls (see `help`) |
+
+Worked examples for placing and managing everything in-game:
+[ADMIN-COOKBOOK.md](ADMIN-COOKBOOK.md).
 
 ## In game: chat commands
 

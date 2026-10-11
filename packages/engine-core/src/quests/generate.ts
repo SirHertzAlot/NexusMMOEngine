@@ -117,7 +117,7 @@ export function generateQuest(content: QuestContent, templateId: string, binding
     giver: bindings.giver,
     summary: steps[0].text,
     steps,
-    rewards: template.rewards.map((r) => ({ base: r.base === "$item" ? (item ?? r.base) : r.base, count: r.count })),
+    rewards: template.rewards.map((r) => ({ base: r.base === "$item" ? (item ?? r.base) : r.base, count: r.count, ...(r.gold !== undefined ? { gold: r.gold } : {}) })),
     repeatable: false,
     after: [],
   };
