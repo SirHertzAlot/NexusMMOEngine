@@ -50,7 +50,7 @@
     "pretest": "npm run build:deps",
     "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",
     "surfaces:fetch": "node scripts/fetch-surfaces.mjs",
-    "models:generate": "gltfjsx --types public/models --output src/render/generated --transform"
+    "models:generate": "gltfjsx --types --output src/render/generated --transform"
   },
   "type": "module",
   "version": "0.1.0"
