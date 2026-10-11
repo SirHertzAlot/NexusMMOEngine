@@ -18,15 +18,9 @@ import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel
 import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { PipelineView } from "./pipeline-view.js";
-import { HudEditor } from "./hud-editor.js";
-import { StoryEditorPanel } from "./story-editor.js";
 import { RulesPanel } from "./rules-editor.js";
-import { ScenesPanel } from "./scenes-panel.js";
-import { FlowEditor } from "./flow-editor.js";
 import { StringsPanel } from "./strings-panel.js";
-import { AudioPanel } from "./audio-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
-import { ParticlePanel } from "./particle-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -111,13 +105,15 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "scenes", label: "Scenes", icon: "account_tree",
-    views: [{ id: "scene", label: "Scene document", icon: "account_tree", kind: "panel", panel: <ScenesPanel /> }],
+    views: [], // contributed by the scenes module (modules/scenes/editor)
     leftTitle: "Scenes",
   },
   {
     id: "flow", label: "Flow & UI", icon: "account_tree",
-    views: [{ id: "flow", label: "Flow graph", icon: "account_tree", kind: "panel", panel: <FlowEditor /> }],
-    leftTitle: "Screens",
+    views: [
+      { id: "hud", label: "HUD layout", icon: "dashboard", kind: "panel", panel: <HudPreview /> },
+    ], // flow graph contributed by the flow module (modules/flow/editor)
+    leftTitle: "Widgets",
   },
   {
     id: "characters", label: "Characters", icon: "person",
@@ -180,7 +176,7 @@ const WORKSPACES: Workspace[] = [
       { id: "story-editor", label: "Quest & dialog", icon: "account_tree", kind: "panel", panel: <StoryEditorPanel /> },
       { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
       { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
-    ],
+    ], // quest & dialog editor contributed by the story module (modules/story/editor)
     leftTitle: "Stories",
   },
   {
@@ -188,9 +184,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
       { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
-      { id: "vfx", label: "VFX", icon: "auto_awesome", kind: "panel", panel: <ParticlePanel /> },
-      { id: "audio", label: "Audio", icon: "graphic_eq", kind: "panel", panel: <AudioPanel /> },
-    ],
+    ], // VFX and audio panels contributed by the vfx/audio modules
     leftTitle: "Library",
   },
   {
