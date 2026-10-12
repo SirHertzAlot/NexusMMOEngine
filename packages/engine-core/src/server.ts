@@ -104,7 +104,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -150,6 +150,23 @@ import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { assembleServerSystems } from "./modules.js";
 const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+
+/**
+ * Load the chat module's rule bundle (complete-modularity slice 1).
+ * Returns undefined when the module is absent/disabled — the gateway
+ * falls back to its built-in rules.
+ */
+async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | undefined> {
+  try {
+    const entry = path.join(REPO_ROOT, "modules", "chat", "server.js");
+    if (!fs.existsSync(entry)) return undefined;
+    const mod = await import(pathToFileURL(entry).href);
+    return mod as import("./net/gateway.js").ChatRules;
+  } catch (err) {
+    console.warn(`[modules] chat module failed to load, using built-in rules: ${(err as Error).message}`);
+    return undefined;
+  }
+}
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { CombatSystem, type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { AbilitySystem } from "./abilities.js";
@@ -898,6 +915,9 @@ async function main(): Promise<void> {
   const gw: Gateway = new Gateway({
     port: PORT,
     sessionStore,
+    // Chat rules from the chat module (slice 1: the gateway no longer imports
+    // chat rules directly). Falls back to built-ins if the module is absent.
+    chatRules: await loadChatRules(),
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {

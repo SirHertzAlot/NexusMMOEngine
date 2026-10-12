@@ -134,7 +134,7 @@ describe("gateway: region chat", () => {
   });
 
   it("rejects a custom text filter and out-of-world senders", async () => {
-    const url = await startGateway({ textFilter: (t) => !t.includes("banned") });
+    const url = await startGateway({ textFilter: (t: string) => !t.includes("banned") });
     const { client } = await join(url, "alice");
     const errP = client.waitFor(MessageType.Error, 1);
     client.sendRaw(MessageType.Chat, encodeControl({ kind: "chat", channel: "say", text: "this is banned talk" }));

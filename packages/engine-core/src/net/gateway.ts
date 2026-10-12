@@ -147,7 +147,8 @@ import { PartyBook, PartyOpSchema, type PartyResult, type PartyStore } from "../
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
 import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
-import { allowAllText, BlockList, BlockSchema, CHAT_COOLDOWN_MS, ChatSchema, NOT_ONLINE, SAY_RANGE_M, type TextFilter } from "../chat.js";
+// Fallback during migration; removed once all bootstraps inject chatRules.
+import * as builtInChat from "../chat.js";
 import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
@@ -195,9 +196,33 @@ export interface PresenceAdapter {
   query(names: string[]): Promise<Record<string, string | null>>;
 }
 
+/**
+ * Chat rule bundle (complete-modularity slice 1). Everything the gateway
+ * needs from the chat module, as an injectable interface. The built-in
+ * implementation lives in ../chat.js; modules/chat/server.js re-exports it.
+ */
+export interface ChatRules {
+  ChatSchema: typeof builtInChat.ChatSchema;
+  CHAT_COOLDOWN_MS: typeof builtInChat.CHAT_COOLDOWN_MS;
+  SAY_RANGE_M: typeof builtInChat.SAY_RANGE_M;
+  NOT_ONLINE: typeof builtInChat.NOT_ONLINE;
+  BlockList: typeof builtInChat.BlockList;
+  BlockSchema: typeof builtInChat.BlockSchema;
+  allowAllText: typeof builtInChat.allowAllText;
+  TextFilter: builtInChat.TextFilter;
+}
+
 export interface GatewayOptions {
   /** Port to bind; 0 = ephemeral (listen() returns the actual port). */
   port?: number;
+  /**
+   * Chat rules bundle (complete-modularity slice 1). The gateway no longer
+   * imports the chat module directly — the server bootstrap loads
+   * modules/chat/server.js and injects its exports here. A third-party
+   * chat module replaces those exports with its own rules.
+   * Default: the built-in rules (backward compat during migration).
+   */
+  chatRules?: ChatRules;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
   /** Missed heartbeats before the client is dropped. Default 3. */
@@ -288,7 +313,7 @@ export interface GatewayOptions {
    * Default allows everything that passes shape limits; a profanity or
    * abuse service plugs in here without gateway changes.
    */
-  textFilter?: TextFilter;
+  textFilter?: builtInChat.TextFilter;
   /**
    * Items in the world (roadmap M3a): pickups and drops (0x13), bags
    * (0x14), what lies on the ground (0x15), and the item admin commands.
@@ -720,6 +745,7 @@ export class Gateway {
       | "debugSource"
       | "chunkSource"
       | "worldSeed"
+      | "chatRules"
       | "maxClientPayloadBytes"
       | "ingress"
       | "groundHeightAt"
@@ -786,7 +812,7 @@ export class Gateway {
   private weatherOverride: WeatherOverride = "auto";
   private readonly playerAbilities: number;
   /** Who blocks whom, by account (S2). */
-  private readonly blocks: BlockList;
+  private readonly blocks: InstanceType<ChatRules["BlockList"]>;
   private readonly friends: FriendBook;
   /** Cross-region presence adapter (S2); null: presence stays local. */
   private readonly presence: PresenceAdapter | null;
@@ -794,7 +820,9 @@ export class Gateway {
   private readonly parties: PartyBook;
   private readonly guilds: GuildBook;
   /** Region chat text filter (GatewayOptions.textFilter). */
-  private readonly textFilter: TextFilter;
+  private readonly textFilter: builtInChat.TextFilter;
+  /** Chat rules bundle (GatewayOptions.chatRules; slice 1: injectable module). */
+  private readonly chatRules: ChatRules;
   private readonly extensions = new Map<string, GatewayExtension>();
   /** Items (see GatewayOptions.items); shared with the systems list. */
   private readonly items: ItemService | null;
@@ -875,7 +903,8 @@ export class Gateway {
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
     this.parties = new PartyBook(() => this.clock(), opts.partyStore);
-    this.blocks = new BlockList(opts.socialStore);
+    this.chatRules = opts.chatRules ?? (builtInChat as unknown as ChatRules);
+    this.blocks = new this.chatRules.BlockList(opts.socialStore);
     this.friends = new FriendBook(opts.socialStore);
     this.presence = opts.presence ?? null;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
@@ -898,7 +927,7 @@ export class Gateway {
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
-    this.textFilter = opts.textFilter ?? allowAllText;
+    this.textFilter = opts.textFilter ?? this.chatRules.allowAllText;
     for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
@@ -2731,7 +2760,7 @@ export class Gateway {
         this.onGuild(s, raw);
         return;
       }
-      const parsed = ChatSchema.safeParse(raw);
+      const parsed = this.chatRules.ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
       text = parsed.data.text;
       channel = parsed.data.channel;
@@ -2745,8 +2774,8 @@ export class Gateway {
       return;
     }
     const now = this.clock();
-    const last = s.lastChatMs[channel] ?? -CHAT_COOLDOWN_MS[channel] - 1;
-    if (now - last < CHAT_COOLDOWN_MS[channel]) {
+    const last = s.lastChatMs[channel] ?? -this.chatRules.CHAT_COOLDOWN_MS[channel] - 1;
+    if (now - last < this.chatRules.CHAT_COOLDOWN_MS[channel]) {
       this.sendError(s, 4003, "chat too fast");
       return;
     }
@@ -2772,7 +2801,7 @@ export class Gateway {
       }
       // Unknown, offline and blocking all get the same answer.
       if (!target || this.blocks.isBlocked(target.username, s.username)) {
-        this.sendSystem(s, NOT_ONLINE);
+        this.sendSystem(s, this.chatRules.NOT_ONLINE);
         return;
       }
       msg.to = target.character?.name ?? target.username;
@@ -2822,7 +2851,7 @@ export class Gateway {
     }
     const sx = C.Transform.px[eid];
     const sz = C.Transform.pz[eid];
-    const range2 = SAY_RANGE_M * SAY_RANGE_M;
+    const range2 = this.chatRules.SAY_RANGE_M * this.chatRules.SAY_RANGE_M;
     for (const r of this.sessions.values()) {
       if (!r.welcomed || r.playerEntity === null) continue;
       const reid = this.world.resolveWireId(r.playerEntity);
@@ -2877,7 +2906,7 @@ export class Gateway {
     if (op === "invite") {
       const target = this.findOnline(name as string);
       if (!target || target === s || this.blocks.isBlocked(target.username, s.username)) {
-        this.sendSystem(s, target === s ? "cannot invite yourself" : NOT_ONLINE);
+        this.sendSystem(s, target === s ? "cannot invite yourself" : this.chatRules.NOT_ONLINE);
         return;
       }
       result = this.parties.invite(me, target.character?.name ?? target.username);
@@ -2958,7 +2987,7 @@ export class Gateway {
     } else if (op === "invite") {
       const target = this.findOnline(name as string);
       if (!target || target === s || this.blocks.isBlocked(target.username, s.username)) {
-        this.sendSystem(s, target === s ? "cannot invite yourself" : NOT_ONLINE);
+        this.sendSystem(s, target === s ? "cannot invite yourself" : this.chatRules.NOT_ONLINE);
         return;
       }
       result = this.guilds.invite(me, target.character?.name ?? target.username);
@@ -3078,7 +3107,7 @@ export class Gateway {
     }
     const target = this.findOnline(parsed.data.name);
     if (!target || this.blocks.isBlocked(target.username, s.username)) {
-      this.sendSystem(s, NOT_ONLINE);
+      this.sendSystem(s, this.chatRules.NOT_ONLINE);
       return;
     }
     const res = this.friends.add(me, target.character?.name ?? target.username);
@@ -3094,7 +3123,7 @@ export class Gateway {
    * silent to the blocked side; the blocker gets a notice.
    */
   private onBlock(s: ClientSession, raw: unknown): void {
-    const parsed = BlockSchema.safeParse(raw);
+    const parsed = this.chatRules.BlockSchema.safeParse(raw);
     if (!parsed.success) {
       this.sendError(s, 4003, "malformed block");
       return;
@@ -3116,7 +3145,7 @@ export class Gateway {
     }
     // Blocking resolves only online characters until the character store is asked by name.
     if (target === undefined) {
-      this.sendSystem(s, NOT_ONLINE);
+      this.sendSystem(s, this.chatRules.NOT_ONLINE);
       return;
     }
     const account = target.username;

@@ -1,0 +1,1 @@
+{"description":"Region chat (S1): shape validation, per-channel range and rate limits, text-filter hook. The gateway owns fan-out; this module owns the rules.","name":"chat","server":{"entry":"server.js","systems":[]},"version":"0.1.0"}
