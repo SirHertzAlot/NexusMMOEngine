@@ -190,9 +190,7 @@ import { MagicSystem } from "./magic.js";
 import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { AnimationSystem } from "./animation.js";
-import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
-import { QuestService } from "./quests/quest-service.js";
-import { SqliteQuestStore } from "./quests/quest-store.js";
+import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
@@ -702,33 +700,33 @@ async function main(): Promise<void> {
   });
   // Quests and dialog (P1): the gateway's "quest" extension and a system
   // checking places and bags; kills come through the death hook below.
-  const questDir = process.env.MMO_QUESTS || DEFAULT_QUEST_DIR;
-  const questContent = loadQuestContent(questDir);
   const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);
-  const quests = new QuestService({
-    content: questContent,
-    store: new SqliteQuestStore(path.join(DATA_DIR, "quests.db")),
-    speciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
-    itemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemsOf().defs.ofBase(b).length > 0),
-    countInBag: (character, base) => {
+  // Quests and dialog (P1, slice 4): the quests module builds the service
+  // from this config during assembly. See modules/quests/server.js.
+  const questsConfig = {
+    questDir: process.env.MMO_QUESTS || DEFAULT_QUEST_DIR,
+    dataDir: DATA_DIR,
+    getSpeciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
+    getItemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemsOf().defs.ofBase(b).length > 0),
+    countInBag: (character: number, base: string) => {
       let n = 0;
       for (const item of itemsOf().store.bag(character)) {
         if (item !== 0 && itemsOf().defs.bases[itemsOf().store.defs[itemsOf().store.slot(item)]] === base) n++;
       }
       return n;
     },
-    grant: (character, base) => {
+    grantItem: (character: number, base: string) => {
       const def = itemsOf().defs.starter(base, rankOrder);
       return def >= 0 && itemsOf().give(character, def).ok;
     },
-    grantGold: (character, amount) => {
+    grantItem: (character: number, base: string) => {
+      const def = itemsOf().defs.starter(base, rankOrder);
+      return def >= 0 && itemsOf().give(character, def).ok;
+    },
+    grantGold: (character: number, amount: number) => {
       wallet.grant(character, amount, sim.currentTick);
     },
-  });
-  console.log(
-    `[quests] ${Object.keys(questContent.quests).length} quest(s), ${Object.keys(questContent.templates).length} template(s), ` +
-      `${Object.keys(questContent.npcs).length} npc(s) (${questDir})`,
-  );
+  };
   // A scene's nodes spawn through the creature, prop, item and quest paths (EA6, data-driven entities).
   // After items and quests exist, so item and quest nodes have somewhere to go.
   if (process.env.MMO_SCENE) {
@@ -752,8 +750,10 @@ async function main(): Promise<void> {
         },
         quests: {
           place: (quest, x, z) => {
-            const giver = questContent.quests[quest]?.giver;
-            const npc = giver === undefined ? undefined : questContent.npcs[giver];
+            const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
+            if (!content) return "quests not yet assembled";
+            const giver = content.quests[quest]?.giver;
+            const npc = giver === undefined ? undefined : content.npcs[giver];
             if (!npc) return `no quest "${quest}" with a giver`;
             npc.x = x;
             npc.z = z;
@@ -864,9 +864,11 @@ async function main(): Promise<void> {
     setCreatures(c: unknown): void;
     setTables(t: unknown): void;
   } | null = null;
+  // Slice 4: quests comes from the quests module; lazy ref for the death callback.
+  let questsRef: { onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void } | null = null;
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
     dropperRef?.onDeath(s, ev);
-    quests.onDeath(s, ev, (e) => creatures.kindOf(e));
+    questsRef?.onDeath(s, ev, (e) => creatures.kindOf(e));
   }, body);
   // The tick's systems (roadmap EA9): the core module's instances in the order
   // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
@@ -906,20 +908,19 @@ async function main(): Promise<void> {
         obstacles,
         physics,
         navigation,
-        quests,
       },
     },
     ctx: {
       sim,
       log: (m) => console.log(m),
-      // Slices 2-3: modules read their bootstrap config from here.
-      config: { items: itemsConfig, dungeons: dungeonsConfig },
+      // Slices 2-4: modules read their bootstrap config from here.
+      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig },
     },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
     process.exit(1);
   });
-  // Slices 2-3: items, dropper, and dungeons come from their modules.
+  // Slices 2-4: items, dropper, dungeons, and quests come from their modules.
   itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
   dropperRef = assembled.byName["dropper"] as unknown as {
     onDeath(s: unknown, ev: unknown): void;
@@ -927,6 +928,10 @@ async function main(): Promise<void> {
     setTables(t: unknown): void;
   };
   const dungeons = assembled.byName["dungeons"] as unknown as import("./dungeons/manager.js").InstanceManager;
+  questsRef = assembled.byName["quests"] as unknown as {
+    onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void;
+  };
+  const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));

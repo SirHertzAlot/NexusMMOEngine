@@ -10,6 +10,7 @@
     "hud",
     "chat",
     "items",
-    "dungeons"
+    "dungeons",
+    "quests"
   ]
 }

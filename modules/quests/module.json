@@ -1,0 +1,1 @@
+{"description":"Quests and dialogue (P1): the gateway's quest extension and a system checking places and bags. Kills come through the death hook.","name":"quests","server":{"entry":"server.js","extensions":["quests"],"systems":[]},"version":"0.1.0"}
