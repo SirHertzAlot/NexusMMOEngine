@@ -214,7 +214,7 @@ import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
-import { ItemService, LootDropper, lineDef, loadItemDefs } from "./items/index.js";
+import { lineDef } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { loadCombatContent } from "./combat-content.js";
@@ -593,80 +593,89 @@ async function main(): Promise<void> {
   const stamina = new StaminaSystem();
   const needs = new NeedsSystem(game.rules.needs);
   const mastery = new MasterySystem(game.rules.skills, Date.now, game.rules.disciplines.disciplines);
-  // Items (roadmap M3a): definitions from the baked loot pool joined with
-  // the rules' physics. One instance: the gateway routes item messages to
-  // it, and it is in the systems list (it expires ground items).
-  const itemDefs = loadItemDefs(DATA_DIR, game.rules);
-  console.log(`[${itemDefs.summary}]`);
-  const items = new ItemService({
-    defs: itemDefs.defs,
-    loot: game.rules.loot,
-    tickHz: 30,
-    groundHeightAt: (x, z) => character.groundHeight(x, z),
-    rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
-  });
-  // The ledger owns items: ground entities a restored snapshot left are
-  // dropped, then every item comes back from the ledger (bags, hands, ground).
-  const strays = items.clearStrayGroundItems(sim);
-  if (strays > 0) console.log(`[items] cleared ${strays} ground item(s) left from before the restart`);
-  const restored = items.restore(sim, itemLedger.load());
-  items.attachLedger(itemLedger);
-  if (restored > 0) console.log(`[items] restored ${restored} item(s) from the ledger`);
-  // Economy (EC1): gold wallets (SQLite-backed) and player-to-player
-  // trades. Items move bag-to-bag through the ItemStore; held/worn gear
-  // stays out of trades in v1.
+  // Economy (EC1): gold wallets (SQLite-backed). The wallet is built here
+  // (before assembly) and handed to the items module via itemsConfig so
+  // the module-built LootDropper can drop gold.
   const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
   const wallet = new WalletSystem(walletStore);
+  // Items (roadmap M3a, slice 2): the items module builds the service from
+  // this config during assembly. No inline construction — see
+  // modules/items/server.js.
+  const itemsConfig = {
+    dataDir: DATA_DIR,
+    rules: game.rules,
+    tickHz: 30,
+    groundHeightAt: (x: number, z: number) => character.groundHeight(x, z),
+    rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
+    ledger: itemLedger,
+    kindOf: (e: number) => creatures.kindOf(e),
+    wallet,
+  };
+  // Economy (EC1): player-to-player trades, NPC vendors, auction house.
+  // Items move bag-to-bag through the ItemStore; held/worn gear stays out
+  // of trades in v1. Trade/vendor/auction resolve items lazily via
+  // itemsOf() since the items service comes from the items module during
+  // assembly; they join the tick via provided.core below (the core
+  // manifest lists them), so the gateway finds them in assembled.systems.
+  // The ledger startup sequence (clear strays, restore, attach) moved into
+  // the items module — see modules/items/server.js.
   const trade = new TradeSystem(wallet, {
-    owns: (c, item) => items.store.inBagOf(c, item),
-    freeSlots: (c) => items.store.emptySlots(c),
+    owns: (c, item) => itemsOf().store.inBagOf(c, item),
+    freeSlots: (c) => itemsOf().store.emptySlots(c),
     move: (item, from, to) => {
-      if (!items.store.inBagOf(from, item)) return false;
-      return items.store.putInBag(to, item) >= 0;
+      if (!itemsOf().store.inBagOf(from, item)) return false;
+      return itemsOf().store.putInBag(to, item) >= 0;
     },
   });
   // Vendors (EC1): NPC shops. Templates are defined here; attaching them
   // to NPC entities is content work (the `vendor` admin command attaches).
   const vendor = new VendorSystem(wallet, {
-    give: (c, def) => items.give(c, def).ok,
+    give: (c, def) => itemsOf().give(c, def).ok,
     take: (c, item) => {
-      if (!items.store.inBagOf(c, item)) return false;
-      items.store.destroy(item);
+      if (!itemsOf().store.inBagOf(c, item)) return false;
+      itemsOf().store.destroy(item);
       return true;
     },
     defOf: (item) => {
-      const slot = items.store.slot(item);
-      return slot < 0 ? -1 : items.store.defs[slot];
+      const slot = itemsOf().store.slot(item);
+      return slot < 0 ? -1 : itemsOf().store.defs[slot];
     },
-    nameOf: (def) => items.defs.names[def] ?? `item ${def}`,
+    nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
   });
   // Auction house (EC1): listings keep the item in the seller's bag (no
   // escrow limbo on restart); settlement moves it bag-to-bag.
   const auction = new AuctionSystem(wallet, {
-    owns: (c, item) => items.store.inBagOf(c, item),
-    freeSlots: (c) => items.store.emptySlots(c),
+    owns: (c, item) => itemsOf().store.inBagOf(c, item),
+    freeSlots: (c) => itemsOf().store.emptySlots(c),
     defOf: (item) => {
-      const slot = items.store.slot(item);
-      return slot < 0 ? -1 : items.store.defs[slot];
+      const slot = itemsOf().store.slot(item);
+      return slot < 0 ? -1 : itemsOf().store.defs[slot];
     },
     move: (item, from, to) => {
-      if (!items.store.inBagOf(from, item)) return false;
-      return items.store.putInBag(to, item) >= 0;
+      if (!itemsOf().store.inBagOf(from, item)) return false;
+      return itemsOf().store.putInBag(to, item) >= 0;
     },
-    nameOf: (def) => items.defs.names[def] ?? `item ${def}`,
+    nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
   });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
   // function, by character id.
-  const wornFactor = (id: number): number => armourFactor(game.rules, items.armourTotal(id));
+  const wornFactor = (id: number): number => armourFactor(game.rules, itemsOf().armourTotal(id));
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
+  // Slice 2: items/itemDefs come from the items module during assembly.
+  // Closures defined before assembly resolve them lazily via these refs.
+  let itemsRef: import("./items/index.js").ItemService | null = null;
+  const itemsOf = (): import("./items/index.js").ItemService => {
+    if (!itemsRef) throw new Error("items not yet assembled");
+    return itemsRef;
+  };
   const weaponOf = (e: number): Weapon | null => {
     if (!hasComponent(sim.ecs, CharacterRef, e)) return creatures.weaponOf(e);
-    const def = items.mainHandDef(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
+    const def = itemsOf().mainHandDef(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
     if (def < 0) return null;
-    const d = itemDefs.defs;
+    const d = itemsOf().defs;
     return {
       technique: d.technique[def],
       item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] },
@@ -674,8 +683,8 @@ async function main(): Promise<void> {
       family: d.bases[def],
     };
   };
-  // Creature drops (L2): rolled when DeathSystem records a creature's death.
-  const dropper = new LootDropper({ items, defs: itemDefs.defs, creatures: game.rules.creatures.creatures, tables: game.rules.loot.tables ?? {}, kindOf: (e) => creatures.kindOf(e), wallet });
+  // Creature drops (L2): the items module builds the dropper during assembly.
+  // It receives the wallet via itemsConfig so creature kills can drop gold (EC1).
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -684,10 +693,10 @@ async function main(): Promise<void> {
     game = g;
     hooks.current = g.hooks;
     creatures.setRules(g.rules.creatures.creatures, g.rules.items.bases);
-    dropper.setCreatures(g.rules.creatures.creatures);
-    dropper.setTables(g.rules.loot.tables ?? {});
-    items.setLoot(g.rules.loot);
-    itemDefs.defs.applyRules(g.rules);
+    dropperRef?.setCreatures(g.rules.creatures.creatures);
+    dropperRef?.setTables(g.rules.loot.tables ?? {});
+    itemsOf().setLoot(g.rules.loot);
+    itemsOf().defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
     mastery.setDisciplines(g.rules.disciplines.disciplines);
     magic.setRules(g.rules.spells);
@@ -702,17 +711,17 @@ async function main(): Promise<void> {
     content: questContent,
     store: new SqliteQuestStore(path.join(DATA_DIR, "quests.db")),
     speciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
-    itemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemDefs.defs.ofBase(b).length > 0),
+    itemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemsOf().defs.ofBase(b).length > 0),
     countInBag: (character, base) => {
       let n = 0;
-      for (const item of items.store.bag(character)) {
-        if (item !== 0 && itemDefs.defs.bases[items.store.defs[items.store.slot(item)]] === base) n++;
+      for (const item of itemsOf().store.bag(character)) {
+        if (item !== 0 && itemsOf().defs.bases[itemsOf().store.defs[itemsOf().store.slot(item)]] === base) n++;
       }
       return n;
     },
     grant: (character, base) => {
-      const def = itemDefs.defs.starter(base, rankOrder);
-      return def >= 0 && items.give(character, def).ok;
+      const def = itemsOf().defs.starter(base, rankOrder);
+      return def >= 0 && itemsOf().give(character, def).ok;
     },
     grantGold: (character, amount) => {
       wallet.grant(character, amount, sim.currentTick);
@@ -738,10 +747,10 @@ async function main(): Promise<void> {
         species: (id) => speciesRoster.roster[id],
         items: {
           place: (base, rank, x, z) => {
-            const def = lineDef(itemDefs.defs, { base, rank }, rankOrder);
-            return def < 0 ? null : items.placeFixture(sim, def, x, z);
+            const def = lineDef(itemsOf().defs, { base, rank }, rankOrder);
+            return def < 0 ? null : itemsOf().placeFixture(sim, def, x, z);
           },
-          discard: (ids) => ids.forEach((i) => items.discardGround(sim, i)),
+          discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
         quests: {
           place: (quest, x, z) => {
@@ -776,15 +785,15 @@ async function main(): Promise<void> {
     characterStore,
     partyOf: (name) => gw.partyOf(name),
     weaponOf: (character) => {
-      const def = items.mainHandDef(character);
+      const def = itemsOf().mainHandDef(character);
       if (def < 0) return null;
-      const d = itemDefs.defs;
+      const d = itemsOf().defs;
       return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def] };
     },
     armourOf: (character) => wornFactor(character),
-    lootPool: () => itemDefs.defs.ofSource("mob"),
-    chestPool: () => itemDefs.defs.ofSource("chest"),
-    grant: (character, def) => items.give(character, def).ok,
+    lootPool: () => itemsOf().defs.ofSource("mob"),
+    chestPool: () => itemsOf().defs.ofSource("chest"),
+    grant: (character, def) => itemsOf().give(character, def).ok,
     // Dungeon skill gains: the region holds no live sheet for members
     // away in an instance (the gateway forgets sheets on leave and
     // reloads them on return), so training round-trips the character's
@@ -858,8 +867,15 @@ async function main(): Promise<void> {
   const combat = new CombatSystem(30, stamina, combatDamage);
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
+  // The dropper comes from the items module (slice 2); the death callback
+  // resolves it lazily via the mutable ref assigned after assembly.
+  let dropperRef: {
+    onDeath(s: unknown, ev: unknown): void;
+    setCreatures(c: unknown): void;
+    setTables(t: unknown): void;
+  } | null = null;
   const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
-    dropper.onDeath(s, ev);
+    dropperRef?.onDeath(s, ev);
     quests.onDeath(s, ev, (e) => creatures.kindOf(e));
   }, body);
   // The tick's systems (roadmap EA9): the core module's instances in the order
@@ -885,6 +901,10 @@ async function main(): Promise<void> {
         status,
         telegraphs,
         duels,
+        wallet,
+        trade,
+        vendor,
+        auction,
         stamina,
         needs,
         mastery,
@@ -896,15 +916,26 @@ async function main(): Promise<void> {
         obstacles,
         physics,
         navigation,
-        items,
         quests,
       },
     },
-    ctx: { sim, log: (m) => console.log(m) },
+    ctx: {
+      sim,
+      log: (m) => console.log(m),
+      // Slice 2: the items module reads its bootstrap config from here.
+      config: { items: itemsConfig },
+    },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
     process.exit(1);
   });
+  // Slice 2: items and dropper now come from the items module.
+  itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
+  dropperRef = assembled.byName["dropper"] as unknown as {
+    onDeath(s: unknown, ev: unknown): void;
+    setCreatures(c: unknown): void;
+    setTables(t: unknown): void;
+  };
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
@@ -938,7 +969,7 @@ async function main(): Promise<void> {
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: assembled.systems,
     extensions: [quests, dungeons],
-    items,
+    items: itemsOf(),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => character.groundHeight(x, z),

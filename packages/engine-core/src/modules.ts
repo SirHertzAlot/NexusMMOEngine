@@ -25,6 +25,12 @@ import type { SimWorld } from "./world.js";
 export interface ServerModuleContext {
   sim: SimWorld;
   log(message: string): void;
+  /**
+   * Per-module configuration (slice 2). server.ts populates config[name]
+   * for modules that need bootstrap data (game rules, data dirs, callbacks).
+   * Modules must tolerate absence (sensible defaults or a clear error).
+   */
+  config?: Record<string, Record<string, unknown>>;
 }
 
 export interface AssembleOptions {
@@ -93,7 +99,7 @@ const ENGINE_VERSION = (JSON.parse(readFileSync(new URL("../../package.json", im
 
 export async function assembleServerSystems(
   o: AssembleOptions,
-): Promise<{ systems: SimSystem[]; order: ResolvedSystem[]; modules: string[] }> {
+): Promise<{ systems: SimSystem[]; order: ResolvedSystem[]; modules: string[]; byName: Record<string, SimSystem> }> {
   const set = readEnabledSet(o.setFile);
   const found = discoverModules(o.modulesDir, ENGINE_VERSION);
   const lines = [...set.problems, ...found.problems.filter((p) => set.modules.includes(p.module) || p.module === "core")].map(
@@ -150,5 +156,7 @@ export async function assembleServerSystems(
   }
   if (problems.length > 0) throw new Error(`modules: ${problems.length} problem${problems.length === 1 ? "" : "s"}:\n  ${problems.join("\n  ")}`);
   const order = r.systems.filter((s) => instances.get(s.name) !== undefined);
-  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name) };
+  const systemsByName: Record<string, SimSystem> = {};
+  for (const [k, v] of instances) if (v !== undefined) systemsByName[k] = v;
+  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name), byName: systemsByName };
 }

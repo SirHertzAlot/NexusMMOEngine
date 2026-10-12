@@ -7,6 +7,8 @@
     "story",
     "vfx",
     "audio",
-    "hud"
+    "hud",
+    "chat",
+    "items"
   ]
 }
