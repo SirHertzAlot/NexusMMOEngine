@@ -35,7 +35,13 @@ export interface ModuleManifest {
    * builds the instances; without one the host process provides them (the
    * `core` module, whose systems server.ts constructs).
    */
-  server?: { entry?: string; systems: SystemSpec[] };
+  server?: { entry?: string; systems: SystemSpec[]; extensions?: string[] };
+  /**
+   * Gateway extensions (slice 3). A module providing gateway extensions
+   * (e.g. dungeons as a quest-extension) lists their names here. The
+   * server entry's createSystems returns them alongside systems, and
+   * server.ts passes them to the Gateway.
+   */
   /**
    * Native contribution (EA10). `entry` is a compiled N-API `.node` file
    * exporting `createSystems`. The host loads it via require().
@@ -133,9 +139,17 @@ export function validateManifest(
   if (raw.server !== undefined) {
     if (!isObj(raw.server)) bad("server", "must be an object");
     else {
-      only(raw.server, ["entry", "systems"], "server");
+      only(raw.server, ["entry", "systems", "extensions"], "server");
       const e = entry(raw.server, "server");
       const systems: SystemSpec[] = [];
+      const extensions: string[] = [];
+      if (raw.server.extensions !== undefined) {
+        if (!Array.isArray(raw.server.extensions)) bad("server.extensions", "must be a list");
+        else for (const x of raw.server.extensions) {
+          if (typeof x !== "string" || !NAME_RE.test(x)) bad("server.extensions", "must be lowercase letters, digits and dashes");
+          else extensions.push(x);
+        }
+      }
       if (!Array.isArray(raw.server.systems)) bad("server.systems", "must be a list");
       else {
         const seen = new Set<string>();
@@ -164,7 +178,7 @@ export function validateManifest(
           systems.push(spec);
         });
       }
-      server = { ...(e ? { entry: e } : {}), systems };
+      server = { ...(e ? { entry: e } : {}), systems, ...(extensions.length > 0 ? { extensions } : {}) };
     }
   }
   let native: ModuleManifest["native"];

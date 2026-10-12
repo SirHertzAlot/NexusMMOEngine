@@ -193,9 +193,7 @@ import { AnimationSystem } from "./animation.js";
 import { loadQuestContent, DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { QuestService } from "./quests/quest-service.js";
 import { SqliteQuestStore } from "./quests/quest-store.js";
-import { loadDungeonContent, DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
-import { DungeonPool } from "./dungeons/pool.js";
-import { InstanceManager } from "./dungeons/manager.js";
+import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
 import { CrowdSystem } from "./navigation/crowd-system.js";
 import { CreatureSystem } from "./creatures.js";
@@ -772,33 +770,29 @@ async function main(): Promise<void> {
   }
   // Dungeon instances (D4): the gateway's "dungeon" extension starts a
   // sandbox gateway per run from the prebaked pool and commits its result.
-  const dungeonDir = process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT;
-  const dungeonPool = new DungeonPool(path.join(DATA_DIR, "dungeons"));
-  const instanceHost = process.env.MMO_INSTANCE_HOST || "localhost";
-  // Committed runs wait here until the world confirms them ingested.
+  // Slice 3: the dungeons module builds the pool and InstanceManager from
+  // this config during assembly. See modules/dungeons/server.js.
   const instanceResults = new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db"));
-  const dungeons = new InstanceManager({
-    content: loadDungeonContent(dungeonDir),
-    pool: dungeonPool,
-    game: () => game,
+  const dungeonsConfig = {
+    dungeonDir: process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT,
+    dataDir: DATA_DIR,
+    instanceHost: process.env.MMO_INSTANCE_HOST || "localhost",
+    instanceResults,
+    getGame: () => game,
     credentialStore,
     characterStore,
-    partyOf: (name) => gw.partyOf(name),
-    weaponOf: (character) => {
+    getGateway: () => gw,
+    getWeaponOf: (character: number) => {
       const def = itemsOf().mainHandDef(character);
       if (def < 0) return null;
       const d = itemsOf().defs;
-      return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def] };
+      return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def], family: d.bases[def] };
     },
-    armourOf: (character) => wornFactor(character),
-    lootPool: () => itemsOf().defs.ofSource("mob"),
-    chestPool: () => itemsOf().defs.ofSource("chest"),
-    grant: (character, def) => itemsOf().give(character, def).ok,
-    // Dungeon skill gains: the region holds no live sheet for members
-    // away in an instance (the gateway forgets sheets on leave and
-    // reloads them on return), so training round-trips the character's
-    // saved sheet instead of racing the sim.
-    train: (character, skill, difficulty, key) => {
+    getArmourOf: (character: number) => wornFactor(character),
+    getLootPool: () => itemsOf().defs.ofSource("mob"),
+    getChestPool: () => itemsOf().defs.ofSource("chest"),
+    grantItem: (character: number, def: number) => itemsOf().give(character, def).ok,
+    train: (character: number, skill: string, difficulty: number, key: number) => {
       const i = mastery.index.of(skill);
       if (i < 0) return;
       const sheet = new SkillSheet(mastery.index);
@@ -807,11 +801,7 @@ async function main(): Promise<void> {
       sheet.train(i, difficulty, key, Date.now());
       characterStore.saveSkills?.(character, sheet.save());
     },
-    endpoint: (p) => `ws://${instanceHost}:${p}`,
-    results: instanceResults,
-    log: (l) => console.log(l),
-  });
-  console.log(`[dungeons] ${dungeonPool.entries.length} layout(s) in the pool (${path.join(DATA_DIR, "dungeons")})`);
+  };
   const combatSkills: CombatSkills = {
     get: (e, id) => mastery.sheetOf(e).get(id),
     train: (e, id, difficulty, key) => {
@@ -922,20 +912,21 @@ async function main(): Promise<void> {
     ctx: {
       sim,
       log: (m) => console.log(m),
-      // Slice 2: the items module reads its bootstrap config from here.
-      config: { items: itemsConfig },
+      // Slices 2-3: modules read their bootstrap config from here.
+      config: { items: itemsConfig, dungeons: dungeonsConfig },
     },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
     process.exit(1);
   });
-  // Slice 2: items and dropper now come from the items module.
+  // Slices 2-3: items, dropper, and dungeons come from their modules.
   itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
   dropperRef = assembled.byName["dropper"] as unknown as {
     onDeath(s: unknown, ev: unknown): void;
     setCreatures(c: unknown): void;
     setTables(t: unknown): void;
   };
+  const dungeons = assembled.byName["dungeons"] as unknown as import("./dungeons/manager.js").InstanceManager;
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
