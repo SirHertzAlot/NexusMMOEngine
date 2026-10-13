@@ -1,0 +1,1 @@
+{"description":"Player intent: per-session intent/pickup budgets and the frame cap (T1). Translates player input into sim actions.","name":"intent","server":{"entry":"server.js","systems":[{"name":"intent"}]},"version":"0.1.0"}

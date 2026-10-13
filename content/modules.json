@@ -15,6 +15,7 @@
     "combat",
     "creatures",
     "character",
-    "physics"
+    "physics",
+    "intent"
   ]
 }

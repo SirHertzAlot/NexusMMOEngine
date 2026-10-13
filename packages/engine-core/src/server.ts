@@ -858,7 +858,6 @@ async function main(): Promise<void> {
       core: {
         reloader,
         streamer,
-        intent: new IntentSystem(),
         wallet,
         trade,
         vendor,
