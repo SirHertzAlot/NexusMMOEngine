@@ -297,25 +297,29 @@ async function main(): Promise<void> {
     if (ghosts > 0) console.log(`[server] despawned ${ghosts} sessionless avatar(s) from the snapshot`);
   }
 
-  // ---- native systems ----------------------------------------------------
-  const physics = new PhysicsSystem(createJoltBackend());
-  const navBackend = createNavigationBackend({
-    originX: 0,
-    originZ: 0,
-    tileWorldSize: CHUNK_SIZE,
-    profiles: [{ id: 0, agentHeight: 2, agentRadius: 0.6, agentMaxClimb: 0.9 }],
-    // One tile per loaded chunk (up to ~441 per player while streaming).
-    // Poly refs are 32-bit: tile bits + poly bits must stay <= 22. A 16 m
-    // terrain tile holds a few dozen polys, more round the obstacles cut
-    // into it: 8192 tiles (13 bits) x 512 polys (9 bits).
-    maxTiles: 8192,
-    maxPolys: 512,
-    // Tiles are built from layers plus obstacles: every static body cuts
-    // the navmesh (NavObstacleSystem), so walkers go round trees and rocks.
-    tileCache: TILE_CACHE_SETTINGS,
-  });
-  const obstacles = new NavObstacleSystem(navBackend.tileCache!, { chunkWorldSize: CHUNK_SIZE, agentRadius: TILE_CACHE_SETTINGS.agentRadius });
-  const navigation = new NavigationSystem({ backend: navBackend });
+  // Physics domain (slice 8): the physics module builds Jolt, navmesh,
+  // obstacles, and the collision/integration systems from this config.
+  // See modules/physics/server.js. The nav backend is shared with the
+  // creatures module via ctx.shared (creatures depends on physics).
+  const physicsConfig = {
+    chunkSize: CHUNK_SIZE,
+    tileCacheSettings: TILE_CACHE_SETTINGS,
+    createChunkNavmesh: (navBackend: any, obstacles: any) => new ChunkNavmesh({
+      backend: navBackend,
+      registry,
+      registryDir: navmeshDir,
+      source: procgen,
+      seed: worldSeed,
+      chunkWorldSize: CHUNK_SIZE,
+      worker: true,
+      onLoaded: (cx, cz) => obstacles.tileLoaded(cx, cz),
+    }),
+    onNavBackend: (navBackend: any, obstacles: any, chunkNavmesh: any) => {
+      navBackendRef = navBackend;
+      obstaclesRef = obstacles;
+      chunkNavmeshRef = chunkNavmesh;
+    },
+  };
 
   // ---- terrain ---------------------------------------------------------------
   const terrain = makeProcgenChunkSource(terrainOptionsFromEnv());
@@ -406,17 +410,12 @@ async function main(): Promise<void> {
   // and unload behind them; unloaded chunks' entities live in world.db
   // (ChunkEntityStore) and come back exactly as they were left. The spawn
   // area stays loaded. Restored chunks are adopted, never loaded twice.
-  const chunkNavmesh = new ChunkNavmesh({
-    backend: navBackend,
-    registry,
-    registryDir: navmeshDir,
-    source: procgen,
-    seed: worldSeed,
-    chunkWorldSize: CHUNK_SIZE,
-    // New tiles bake off the tick thread (5-40 ms each on first visit).
-    worker: true,
-    onLoaded: (cx, cz) => obstacles.tileLoaded(cx, cz),
-  });
+  // Chunk navmesh (slice 8): created by the physics module via
+  // physicsConfig.createChunkNavmesh; see onNavBackend below.
+  let navBackendRef: any = null;
+  let obstaclesRef: any = null;
+  let chunkNavmeshRef: any = null;
+  let physicsRef: { terrainColliders(s: number): (...a: unknown[]) => unknown } | null = null;
   // Unload passes write rows on the tick thread. The snapshot store's
   // background worker already checkpoints world.db after every save, so
   // this connection leaves checkpoints (and their fsync) to it.
@@ -460,9 +459,18 @@ async function main(): Promise<void> {
     chunkWorldSize: CHUNK_SIZE,
     store: chunkStore,
     populator,
-    navmesh: chunkNavmesh,
+    navmesh: chunkNavmeshRef,
     // Each loaded chunk is static ground for physics bodies.
-    colliders: physics.terrainColliders(CHUNK_SIZE),
+    colliders: ((() => {
+      let hook: ((...a: unknown[]) => unknown) | null = null;
+      return (...args: unknown[]) => {
+        if (!hook) {
+          if (!physicsRef) throw new Error("physics not yet assembled");
+          hook = physicsRef.terrainColliders(CHUNK_SIZE);
+        }
+        return hook(...args);
+      };
+    })() as unknown as import("./streaming/chunk-streamer.js").ChunkColliderHook),
     bounds,
     pinned: area,
     loadRadius: STREAM_RADIUS,
@@ -555,8 +563,7 @@ async function main(): Promise<void> {
     characterCatalog,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     playerAbilities,
-    hasCrowd: navBackend.crowd !== undefined,
-    crowdBackend: navBackend.crowd,
+    // hasCrowd/crowdBackend now come from ctx.shared.navBackend (physics module)
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
   if (process.env.MMO_WILD_CREATURES === "1") {
@@ -856,19 +863,13 @@ async function main(): Promise<void> {
         trade,
         vendor,
         auction,
-        integrate: new IntegrateSystem(),
-        "prop-collision": new PropCollisionSystem(),
-        collider: new ColliderSystem(),
-        obstacles,
-        physics,
-        navigation,
       },
     },
     ctx: {
       sim,
       log: (m) => console.log(m),
       // Slices 2-6: modules read their bootstrap config from here.
-      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig },
+      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig },
     },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
@@ -897,6 +898,8 @@ async function main(): Promise<void> {
     bots: (assembled.byName["bots"] as unknown as import("./bots.js").BotSystem) ?? null,
     crowd: (assembled.byName["crowd"] as unknown as import("./navigation/crowd-system.js").CrowdSystem) ?? null,
   };
+  // Physics domain (slice 8).
+  physicsRef = assembled.byName["physics"] as unknown as { terrainColliders(s: number): (...a: unknown[]) => unknown };
   // Character domain (slice 7).
   characterRef = {
     character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
@@ -969,8 +972,8 @@ async function main(): Promise<void> {
     // The overlay draws what pathfinding can use: the tiles loaded now.
     debugSource: makeDebugSource({
       world: sim,
-      navigation,
-      loadedTileBounds: () => chunkNavmesh.bounds(),
+      navigation: assembled.byName["navigation"] as unknown as import("./navigation/system.js").NavigationSystem,
+      loadedTileBounds: () => chunkNavmeshRef!.bounds(),
     }),
   });
 
@@ -1063,7 +1066,7 @@ async function main(): Promise<void> {
       const st = streamer.stats;
       console.log(
         `[server] saved tick ${result.tick} (${result.entityCount} entities, ${result.bytes} B, ${result.ms.toFixed(1)} ms) | ` +
-          `chunks ${st.loaded} loaded, ${st.queued} queued, ${st.loads} loads / ${st.unloads} unloads, navmesh ${chunkNavmesh.size} tile(s)`,
+          `chunks ${st.loaded} loaded, ${st.queued} queued, ${st.loads} loads / ${st.unloads} unloads, navmesh ${chunkNavmeshRef!.size} tile(s)`,
       );
       if (worldClient?.registered) {
         const digest = crypto
@@ -1149,7 +1152,7 @@ async function main(): Promise<void> {
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +
       `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +
       `terrain ${storedTiles > 0 ? `${storedTiles} stored tile(s)` : `amp ${terrain.amplitude} freq ${terrain.frequency} (v${terrainVersion})`} | ` +
-      `spawn (${spawn.x}, ${spawn.z}) | navmesh ${chunkNavmesh.size} tile(s) | ` +
+      `spawn (${spawn.x}, ${spawn.z}) | navmesh ${chunkNavmeshRef!.size} tile(s) | ` +
       `water ${water ? "from the bake" : "none"} | players can ${abilityNames(playerAbilities)} | ${dayClock ? `a day lasts ${dayClock.seconds} s` : "no day cycle"} | data ${DATA_DIR}`,
   );
   console.log(

@@ -24,24 +24,6 @@
       },
       {
         "name": "auction"
-      },
-      {
-        "name": "integrate"
-      },
-      {
-        "name": "prop-collision"
-      },
-      {
-        "name": "collider"
-      },
-      {
-        "name": "obstacles"
-      },
-      {
-        "name": "physics"
-      },
-      {
-        "name": "navigation"
       }
     ]
   }
