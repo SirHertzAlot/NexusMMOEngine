@@ -179,16 +179,12 @@ import { AuctionSystem } from "./economy/auction.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
-import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
 import { SkillSheet } from "./stats/mastery.js";
-import { BotSystem } from "./bots.js";
 import { AnimationSystem } from "./animation.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
-import { CrowdSystem } from "./navigation/crowd-system.js";
-import { CreatureSystem } from "./creatures.js";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
@@ -509,6 +505,16 @@ async function main(): Promise<void> {
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
+  // Slice 6: creatures domain comes from the creatures module.
+  let creaturesRef: {
+    creatures: import("./creatures.js").CreatureSystem;
+    bots: import("./bots.js").BotSystem | null;
+    crowd: import("./navigation/crowd-system.js").CrowdSystem | null;
+  } | null = null;
+  const creaturesOf = () => {
+    if (!creaturesRef) throw new Error("creatures not yet assembled");
+    return creaturesRef.creatures;
+  };
   const character = new CharacterSystem({
     onLand: (e, speed) => void bodyRef?.applyFall(sim, e, speed),
     chunkSource: procgen,
@@ -522,35 +528,22 @@ async function main(): Promise<void> {
     },
     water: water ?? undefined,
   });
-  // Bots: they live in the world through the same systems as players.
+  // Creatures domain (AI1, slice 6): the creatures module builds bots, crowd,
+  // creatures, and needs from this config during assembly.
+  // See modules/creatures/server.js.
   const botCount = Number(process.env.MMO_BOTS ?? 0);
   const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number);
-  const bots =
-    botCount > 0
-      ? [
-          new BotSystem({
-            count: botCount,
-            home: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
-            radius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
-            catalog: characterCatalog,
-            groundHeightAt: (x, z) => character.groundHeight(x, z),
-            abilities: playerAbilities,
-            // Wanderers walk the navmesh with the crowd (below).
-            steer: navBackend.crowd !== undefined,
-          }),
-        ]
-      : [];
-  // Crowd steering: every character is an agent; bots with targets are steered round walls and each other.
-  const crowd = navBackend.crowd ? [new CrowdSystem(navBackend.crowd)] : [];
-  // Creatures (AI1): one instance, shared by the tick list, combat, death and
-  // the gateway's admin spawn.
-  const creatures = new CreatureSystem({
-    creatures: game.rules.creatures.creatures,
-    bases: game.rules.items.bases,
-    groundHeightAt: (x, z) => character.groundHeight(x, z),
-    steer: navBackend.crowd !== undefined,
-  });
-  if (botCount > 0) console.log(`[bots] ${botCount} bots (sparring pairs and wanderers)`);
+  const creaturesConfig = {
+    rules: game.rules,
+    botCount,
+    botHome: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
+    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
+    characterCatalog,
+    groundHeightAt: (x: number, z: number) => character.groundHeight(x, z),
+    playerAbilities,
+    hasCrowd: navBackend.crowd !== undefined,
+    crowdBackend: navBackend.crowd,
+  };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
   if (process.env.MMO_WILD_CREATURES === "1") {
     if (!biomeAt) {
@@ -560,9 +553,9 @@ async function main(): Promise<void> {
         registry: biomes,
         // A species the overlay edits sets its pack size where the biome table doesn't.
         spawner: {
-          has: (k) => creatures.has(k),
-          isCreature: (e) => creatures.isCreature(e),
-          spawnPack: (sim, k, x, z, size) => creatures.spawnPack(sim, k, x, z, size ?? editedPack(speciesRoster, k)),
+          has: (k) => creaturesOf().has(k),
+          isCreature: (e) => creaturesOf().isCreature(e),
+          spawnPack: (sim, k, x, z, size) => creaturesOf().spawnPack(sim, k, x, z, size ?? editedPack(speciesRoster, k)),
         },
         seed: ecologySeed32(worldSeed),
         chunkWorldSize: CHUNK_SIZE,
@@ -572,7 +565,7 @@ async function main(): Promise<void> {
       });
       streamer.attachContents(sim, wild);
       const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
-      const waiting = [...kinds].filter((k) => !creatures.has(k));
+      const waiting = [...kinds].filter((k) => !creaturesOf().has(k));
       console.log(
         `[biomes] wild packs on: ${wild.stats().packs} pack(s) round the spawn area` +
           (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
@@ -580,7 +573,7 @@ async function main(): Promise<void> {
     }
   }
   // Stamina gating (slice 5): the combat module builds it; see combatConfig below.
-  const needs = new NeedsSystem(game.rules.needs);
+  // (needs now comes from the creatures module; see creaturesConfig above)
   const mastery = new MasterySystem(game.rules.skills, Date.now, game.rules.disciplines.disciplines);
   // Economy (EC1): gold wallets (SQLite-backed). The wallet is built here
   // (before assembly) and handed to the items module via itemsConfig so
@@ -597,7 +590,7 @@ async function main(): Promise<void> {
     groundHeightAt: (x: number, z: number) => character.groundHeight(x, z),
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
     ledger: itemLedger,
-    kindOf: (e: number) => creatures.kindOf(e),
+    kindOf: (e: number) => creaturesOf().kindOf(e),
     wallet,
   };
   // Economy (EC1): player-to-player trades, NPC vendors, auction house.
@@ -661,7 +654,7 @@ async function main(): Promise<void> {
     return itemsRef;
   };
   const weaponOf = (e: number): Weapon | null => {
-    if (!hasComponent(sim.ecs, CharacterRef, e)) return creatures.weaponOf(e);
+    if (!hasComponent(sim.ecs, CharacterRef, e)) return creaturesOf().weaponOf(e);
     const def = itemsOf().mainHandDef(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
     if (def < 0) return null;
     const d = itemsOf().defs;
@@ -681,7 +674,7 @@ async function main(): Promise<void> {
   const reloader = new RulesReloader(game.dir, (g) => {
     game = g;
     hooks.current = g.hooks;
-    creatures.setRules(g.rules.creatures.creatures, g.rules.items.bases);
+    creaturesOf().setRules(g.rules.creatures.creatures, g.rules.items.bases);
     dropperRef?.setCreatures(g.rules.creatures.creatures);
     dropperRef?.setTables(g.rules.loot.tables ?? {});
     itemsOf().setLoot(g.rules.loot);
@@ -729,7 +722,7 @@ async function main(): Promise<void> {
       scene,
       {
         sim,
-        creatures,
+        creatures: creaturesOf(),
         table: () => loadScatterContent().table,
         groundHeightAt: (x, z) => character.groundHeight(x, z),
         prefabs,
@@ -814,12 +807,12 @@ async function main(): Promise<void> {
     combatSkills,
     getWeaponOf: weaponOf,
     getWornFactor: wornFactor,
-    getCreaturesPlace: (s: unknown, e: number) => creatures.place(sim, e),
+    getCreaturesPlace: (s: unknown, e: number) => creaturesOf().place(sim, e),
     getGateway: () => gw,
-    getRespawnSeconds: (e: number) => creatures.respawnSeconds(e),
+    getRespawnSeconds: (e: number) => creaturesOf().respawnSeconds(e),
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
-    getKindOf: (e: number) => creatures.kindOf(e),
+    getKindOf: (e: number) => creaturesOf().kindOf(e),
   };
   // What a blow gets through: worn armour per the rules' armourHalf;
   // (armourOf and combatDamage now live in the combat module; see combatConfig above)
@@ -845,15 +838,11 @@ async function main(): Promise<void> {
         reloader,
         stats: new StatsSystem(),
         streamer,
-        bots: bots[0],
-        creatures,
-        crowd: crowd[0],
         intent: new IntentSystem(),
         wallet,
         trade,
         vendor,
         auction,
-        needs,
         mastery,
         integrate: new IntegrateSystem(),
         character,
@@ -868,8 +857,8 @@ async function main(): Promise<void> {
     ctx: {
       sim,
       log: (m) => console.log(m),
-      // Slices 2-5: modules read their bootstrap config from here.
-      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig },
+      // Slices 2-6: modules read their bootstrap config from here.
+      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig },
     },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
@@ -892,6 +881,12 @@ async function main(): Promise<void> {
   // magicRef for the rules reloader.
   bodyRef = assembled.byName["body"] as unknown as import("./body.js").BodySystem;
   magicRef = assembled.byName["magic"] as unknown as import("./magic.js").MagicSystem;
+  // Creatures domain (slice 6).
+  creaturesRef = {
+    creatures: assembled.byName["creatures"] as unknown as import("./creatures.js").CreatureSystem,
+    bots: (assembled.byName["bots"] as unknown as import("./bots.js").BotSystem) ?? null,
+    crowd: (assembled.byName["crowd"] as unknown as import("./navigation/crowd-system.js").CrowdSystem) ?? null,
+  };
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
@@ -931,9 +926,9 @@ async function main(): Promise<void> {
     groundHeightAt: (x, z) => character.groundHeight(x, z),
     creatures: {
       has: (k) => k in game.rules.creatures.creatures,
-      spawnPack: (w, k, x, z) => creatures.spawnPack(w, k, x, z),
-      nameOf: (e) => creatures.nameOf(e),
-      entities: () => creatures.entities(),
+      spawnPack: (w, k, x, z) => creaturesOf().spawnPack(w, k, x, z),
+      nameOf: (e) => creaturesOf().nameOf(e),
+      entities: () => creaturesOf().entities(),
     },
     spawnPoint: spawn,
     // "Start from": characters enter at the chosen point, not where they were saved.

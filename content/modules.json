@@ -12,6 +12,7 @@
     "items",
     "dungeons",
     "quests",
-    "combat"
+    "combat",
+    "creatures"
   ]
 }

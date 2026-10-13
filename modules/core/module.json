@@ -14,15 +14,6 @@
         "name": "streamer"
       },
       {
-        "name": "bots"
-      },
-      {
-        "name": "creatures"
-      },
-      {
-        "name": "crowd"
-      },
-      {
         "name": "intent"
       },
       {
@@ -36,9 +27,6 @@
       },
       {
         "name": "auction"
-      },
-      {
-        "name": "needs"
       },
       {
         "name": "mastery"
