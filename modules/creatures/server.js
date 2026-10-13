@@ -18,6 +18,9 @@ import { NeedsSystem } from "../../packages/engine-core/dist/src/stats/needs-sys
 export function createSystems(ctx) {
   const config = ctx.config?.creatures ?? {};
   const rules = config.rules;
+  // Nav backend is shared by the physics module (creatures depends on physics).
+  const navBackend = ctx.shared?.navBackend;
+  const hasCrowd = navBackend?.crowd !== undefined;
 
   const bots = config.botCount > 0
     ? [
@@ -28,19 +31,19 @@ export function createSystems(ctx) {
           catalog: config.characterCatalog,
           groundHeightAt: config.groundHeightAt,
           abilities: config.playerAbilities,
-          steer: config.hasCrowd,
+          steer: hasCrowd,
         }),
       ]
     : [];
   if (config.botCount > 0) ctx.log(`[bots] ${config.botCount} bots (sparring pairs and wanderers)`);
 
-  const crowd = config.hasCrowd ? [new CrowdSystem(config.crowdBackend)] : [];
+  const crowd = hasCrowd ? [new CrowdSystem(navBackend.crowd)] : [];
 
   const creatures = new CreatureSystem({
     creatures: rules.creatures.creatures,
     bases: rules.items.bases,
     groundHeightAt: config.groundHeightAt,
-    steer: config.hasCrowd,
+    steer: hasCrowd,
   });
 
   const needs = new NeedsSystem(rules.needs);
