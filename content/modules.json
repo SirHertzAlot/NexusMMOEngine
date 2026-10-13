@@ -13,6 +13,7 @@
     "dungeons",
     "quests",
     "combat",
-    "creatures"
+    "creatures",
+    "character"
   ]
 }

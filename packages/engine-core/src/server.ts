@@ -178,10 +178,7 @@ import { VendorSystem } from "./economy/vendor.js";
 import { AuctionSystem } from "./economy/auction.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
-import { StatsSystem } from "./stats/stats-system.js";
-import { MasterySystem } from "./stats/mastery-system.js";
 import { SkillSheet } from "./stats/mastery.js";
-import { AnimationSystem } from "./animation.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
@@ -515,8 +512,23 @@ async function main(): Promise<void> {
     if (!creaturesRef) throw new Error("creatures not yet assembled");
     return creaturesRef.creatures;
   };
-  const character = new CharacterSystem({
-    onLand: (e, speed) => void bodyRef?.applyFall(sim, e, speed),
+  // Slice 7: character domain comes from the character module.
+  let characterRef: {
+    character: import("./index.js").CharacterSystem;
+    mastery: import("./stats/mastery-system.js").MasterySystem;
+  } | null = null;
+  const characterOf = () => {
+    if (!characterRef) throw new Error("character not yet assembled");
+    return characterRef.character;
+  };
+  const masteryOf = () => {
+    if (!characterRef) throw new Error("character not yet assembled");
+    return characterRef.mastery;
+  };
+  // Character domain (slice 7): the character module builds character,
+  // animation, mastery, and stats from this config during assembly.
+  // See modules/character/server.js.
+  const characterConfig = {
     chunkSource: procgen,
     worldSeed,
     chunkSize: CHUNK_SIZE,
@@ -527,7 +539,9 @@ async function main(): Promise<void> {
       maxZ: (bounds.maxCz + 1) * CHUNK_SIZE,
     },
     water: water ?? undefined,
-  });
+    rules: game.rules,
+    getBodyRef: () => bodyRef,
+  };
   // Creatures domain (AI1, slice 6): the creatures module builds bots, crowd,
   // creatures, and needs from this config during assembly.
   // See modules/creatures/server.js.
@@ -539,7 +553,7 @@ async function main(): Promise<void> {
     botHome: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
     botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
     characterCatalog,
-    groundHeightAt: (x: number, z: number) => character.groundHeight(x, z),
+    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     playerAbilities,
     hasCrowd: navBackend.crowd !== undefined,
     crowdBackend: navBackend.crowd,
@@ -561,7 +575,7 @@ async function main(): Promise<void> {
         chunkWorldSize: CHUNK_SIZE,
         biomeAt,
         // No packs in the water.
-        blocked: water ? (x, z) => (water(x, z) ?? -Infinity) > character.groundHeight(x, z) : undefined,
+        blocked: water ? (x, z) => (water(x, z) ?? -Infinity) > characterOf().groundHeight(x, z) : undefined,
       });
       streamer.attachContents(sim, wild);
       const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
@@ -574,7 +588,7 @@ async function main(): Promise<void> {
   }
   // Stamina gating (slice 5): the combat module builds it; see combatConfig below.
   // (needs now comes from the creatures module; see creaturesConfig above)
-  const mastery = new MasterySystem(game.rules.skills, Date.now, game.rules.disciplines.disciplines);
+  // (mastery now comes from the character module; see characterConfig above)
   // Economy (EC1): gold wallets (SQLite-backed). The wallet is built here
   // (before assembly) and handed to the items module via itemsConfig so
   // the module-built LootDropper can drop gold.
@@ -587,7 +601,7 @@ async function main(): Promise<void> {
     dataDir: DATA_DIR,
     rules: game.rules,
     tickHz: 30,
-    groundHeightAt: (x: number, z: number) => character.groundHeight(x, z),
+    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
     ledger: itemLedger,
     kindOf: (e: number) => creaturesOf().kindOf(e),
@@ -680,7 +694,7 @@ async function main(): Promise<void> {
     itemsOf().setLoot(g.rules.loot);
     itemsOf().defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
-    mastery.setDisciplines(g.rules.disciplines.disciplines);
+    masteryOf().setDisciplines(g.rules.disciplines.disciplines);
     magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
@@ -724,7 +738,7 @@ async function main(): Promise<void> {
         sim,
         creatures: creaturesOf(),
         table: () => loadScatterContent().table,
-        groundHeightAt: (x, z) => character.groundHeight(x, z),
+        groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
         prefabs,
         species: (id) => speciesRoster.roster[id],
         items: {
@@ -779,9 +793,9 @@ async function main(): Promise<void> {
     getChestPool: () => itemsOf().defs.ofSource("chest"),
     grantItem: (character: number, def: number) => itemsOf().give(character, def).ok,
     train: (character: number, skill: string, difficulty: number, key: number) => {
-      const i = mastery.index.of(skill);
+      const i = masteryOf().index.of(skill);
       if (i < 0) return;
-      const sheet = new SkillSheet(mastery.index);
+      const sheet = new SkillSheet(masteryOf().index);
       const saved = characterStore.loadSkills?.(character);
       if (saved) sheet.load(saved);
       sheet.train(i, difficulty, key, Date.now());
@@ -789,15 +803,15 @@ async function main(): Promise<void> {
     },
   };
   const combatSkills: CombatSkills = {
-    get: (e, id) => mastery.sheetOf(e).get(id),
+    get: (e, id) => masteryOf().sheetOf(e).get(id),
     train: (e, id, difficulty, key) => {
-      const i = mastery.index.of(id);
-      if (i >= 0) mastery.sheetOf(e).train(i, difficulty, key, Date.now());
+      const i = masteryOf().index.of(id);
+      if (i >= 0) masteryOf().sheetOf(e).train(i, difficulty, key, Date.now());
     },
     techniqueSkill: (t) => game.rules.combat.techniques[t]?.skill,
-    familiarity: (e, family) => mastery.sheetOf(e).familiarity(family),
-    useFamily: (e, family) => void mastery.sheetOf(e).useFamily(family, Date.now()),
-    knows: (e, technique) => mastery.knows(e, technique),
+    familiarity: (e, family) => masteryOf().sheetOf(e).familiarity(family),
+    useFamily: (e, family) => void masteryOf().sheetOf(e).useFamily(family, Date.now()),
+    knows: (e, technique) => masteryOf().knows(e, technique),
   };
   // Combat domain (M2/M5, slice 5): the combat module builds the full cluster
   // from this config during assembly. See modules/combat/server.js.
@@ -836,17 +850,13 @@ async function main(): Promise<void> {
     provided: {
       core: {
         reloader,
-        stats: new StatsSystem(),
         streamer,
         intent: new IntentSystem(),
         wallet,
         trade,
         vendor,
         auction,
-        mastery,
         integrate: new IntegrateSystem(),
-        character,
-        animation: new AnimationSystem(),
         "prop-collision": new PropCollisionSystem(),
         collider: new ColliderSystem(),
         obstacles,
@@ -858,7 +868,7 @@ async function main(): Promise<void> {
       sim,
       log: (m) => console.log(m),
       // Slices 2-6: modules read their bootstrap config from here.
-      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig },
+      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig },
     },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
@@ -887,6 +897,11 @@ async function main(): Promise<void> {
     bots: (assembled.byName["bots"] as unknown as import("./bots.js").BotSystem) ?? null,
     crowd: (assembled.byName["crowd"] as unknown as import("./navigation/crowd-system.js").CrowdSystem) ?? null,
   };
+  // Character domain (slice 7).
+  characterRef = {
+    character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
+    mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
+  };
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
@@ -910,7 +925,7 @@ async function main(): Promise<void> {
       },
     },
     // The same instance as in the systems list below: its sheets are what get saved.
-    mastery,
+    mastery: masteryOf(),
     body: bodyRef!,
     magic: magicRef!,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
@@ -923,7 +938,7 @@ async function main(): Promise<void> {
     items: itemsOf(),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
-    groundHeightAt: (x, z) => character.groundHeight(x, z),
+    groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
     creatures: {
       has: (k) => k in game.rules.creatures.creatures,
       spawnPack: (w, k, x, z) => creaturesOf().spawnPack(w, k, x, z),

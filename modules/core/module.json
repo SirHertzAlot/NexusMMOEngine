@@ -8,9 +8,6 @@
         "name": "reloader"
       },
       {
-        "name": "stats"
-      },
-      {
         "name": "streamer"
       },
       {
@@ -29,16 +26,7 @@
         "name": "auction"
       },
       {
-        "name": "mastery"
-      },
-      {
         "name": "integrate"
-      },
-      {
-        "name": "character"
-      },
-      {
-        "name": "animation"
       },
       {
         "name": "prop-collision"
