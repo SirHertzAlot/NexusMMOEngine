@@ -168,26 +168,20 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
   }
 }
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { CombatSystem, type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
-import { AbilitySystem } from "./abilities.js";
-import { StatusSystem } from "./status.js";
-import { TelegraphSystem } from "./telegraph.js";
-import { DuelSystem } from "./duel.js";
+import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
+import { type BodySystem } from "./body.js";
+import { type MagicSystem } from "./magic.js";
 import { WalletSystem } from "./economy/wallet.js";
 import { SqliteWalletStore } from "./economy/wallet-store.js";
 import { TradeSystem } from "./economy/trade.js";
 import { VendorSystem } from "./economy/vendor.js";
 import { AuctionSystem } from "./economy/auction.js";
-import { BodySystem } from "./body.js";
-import { DeathSystem } from "./death.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { StatsSystem } from "./stats/stats-system.js";
 import { NeedsSystem } from "./stats/needs-system.js";
 import { MasterySystem } from "./stats/mastery-system.js";
 import { SkillSheet } from "./stats/mastery.js";
-import { MagicSystem } from "./magic.js";
-import { StaminaSystem } from "./stats/stamina-system.js";
 import { BotSystem } from "./bots.js";
 import { AnimationSystem } from "./animation.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
@@ -514,6 +508,7 @@ async function main(): Promise<void> {
   const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
+  let magicRef: import("./magic.js").MagicSystem | null = null;
   const character = new CharacterSystem({
     onLand: (e, speed) => void bodyRef?.applyFall(sim, e, speed),
     chunkSource: procgen,
@@ -584,9 +579,7 @@ async function main(): Promise<void> {
       );
     }
   }
-  // Stamina gating: CombatSystem spends move costs through it; the pool
-  // itself drains and regens the tick after combat ran.
-  const stamina = new StaminaSystem();
+  // Stamina gating (slice 5): the combat module builds it; see combatConfig below.
   const needs = new NeedsSystem(game.rules.needs);
   const mastery = new MasterySystem(game.rules.skills, Date.now, game.rules.disciplines.disciplines);
   // Economy (EC1): gold wallets (SQLite-backed). The wallet is built here
@@ -695,7 +688,7 @@ async function main(): Promise<void> {
     itemsOf().defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
     mastery.setDisciplines(g.rules.disciplines.disciplines);
-    magic.setRules(g.rules.spells);
+    magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
   // Quests and dialog (P1): the gateway's "quest" extension and a system
@@ -813,48 +806,23 @@ async function main(): Promise<void> {
     useFamily: (e, family) => void mastery.sheetOf(e).useFamily(family, Date.now()),
     knows: (e, technique) => mastery.knows(e, technique),
   };
-  // Body parts (M2): blows land on parts, wounds bleed, injuries slow and weaken.
-  const body = new BodySystem(game.rules.body, hooks, game.rules.appearance, combatSkills);
-  bodyRef = body;
-  // Mana and spells: casting heals (Mend) spends it.
-  const magic = new MagicSystem(game.rules.spells);
-  // What a blow gets through: worn armour per the rules' armourHalf;
-  // bots and props wear nothing.
-  const armourOf = (e: number): number => {
-    if (!hasComponent(sim.ecs, CharacterRef, e)) return 1;
-    return wornFactor(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
-  };
-  const combatDamage: CombatDamage = {
+  // Combat domain (M2/M5, slice 5): the combat module builds the full cluster
+  // from this config during assembly. See modules/combat/server.js.
+  const combatConfig = {
+    rules: game.rules,
     hooks,
-    weaponOf,
-    armourOf,
-    skills: combatSkills,
-    body,
-    techniques: () => Object.keys(game.rules.combat.techniques),
+    combatSkills,
+    getWeaponOf: weaponOf,
+    getWornFactor: wornFactor,
+    getCreaturesPlace: (s: unknown, e: number) => creatures.place(sim, e),
+    getGateway: () => gw,
+    getRespawnSeconds: (e: number) => creatures.respawnSeconds(e),
+    getDropper: () => dropperRef,
+    getQuests: () => questsRef,
+    getKindOf: (e: number) => creatures.kindOf(e),
   };
-  // Combat abilities (M5): the ability trigger layer, buffs/debuffs,
-  // server-authoritative telegraphs, and consensual PvP.
-  const abilities = new AbilitySystem(30);
-  const status = new StatusSystem(
-    30,
-    (t, amount) => {
-      if (hasComponent(sim.ecs, Health, t) && !hasComponent(sim.ecs, God, t))
-        Health.current[t] = Math.max(0, Health.current[t] - amount);
-    },
-    (t, amount) => {
-      if (hasComponent(sim.ecs, Health, t)) Health.current[t] = Math.min(Health.max[t], Health.current[t] + amount);
-    },
-  );
-  const telegraphs = new TelegraphSystem(30);
-  const duels = new DuelSystem(30);
-  // Consensual PvP: players may only hurt players they are dueling (or
-  // marked hostile); player-vs-creature blows are unchanged. Status
-  // effects: the attacker's power buffs and the defender's armour buffs
-  // scale the landed blow.
-  combatDamage.canHit = (a, b) =>
-    hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true;
-  combatDamage.damageScale = (a, b) => status.modifier(a, "power").mul * status.modifier(b, "armour").mul;
-  const combat = new CombatSystem(30, stamina, combatDamage);
+  // What a blow gets through: worn armour per the rules' armourHalf;
+  // (armourOf and combatDamage now live in the combat module; see combatConfig above)
   // Players come back at the spawn point (placement lives in the gateway,
   // which owns the spawn grid); bots rise where they fell.
   // The dropper comes from the items module (slice 2); the death callback
@@ -866,10 +834,6 @@ async function main(): Promise<void> {
   } | null = null;
   // Slice 4: quests comes from the quests module; lazy ref for the death callback.
   let questsRef: { onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void } | null = null;
-  const death: DeathSystem = new DeathSystem(hooks, 30, (e) => combat.lastAttacker(e), (s, e): boolean => creatures.place(s, e) || (gw as Gateway).respawnPlayer(s, e), (e) => creatures.respawnSeconds(e), (s, ev) => {
-    dropperRef?.onDeath(s, ev);
-    questsRef?.onDeath(s, ev, (e) => creatures.kindOf(e));
-  }, body);
   // The tick's systems (roadmap EA9): the core module's instances in the order
   // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
   // set (unknown id, cycle) stops the boot with every problem listed.
@@ -885,19 +849,10 @@ async function main(): Promise<void> {
         creatures,
         crowd: crowd[0],
         intent: new IntentSystem(),
-        combat,
-        magic,
-        body,
-        death,
-        abilities,
-        status,
-        telegraphs,
-        duels,
         wallet,
         trade,
         vendor,
         auction,
-        stamina,
         needs,
         mastery,
         integrate: new IntegrateSystem(),
@@ -913,14 +868,15 @@ async function main(): Promise<void> {
     ctx: {
       sim,
       log: (m) => console.log(m),
-      // Slices 2-4: modules read their bootstrap config from here.
-      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig },
+      // Slices 2-5: modules read their bootstrap config from here.
+      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig },
     },
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
     process.exit(1);
   });
-  // Slices 2-4: items, dropper, dungeons, and quests come from their modules.
+  // Slices 2-5: items, dropper, dungeons, quests, and the combat cluster
+  // come from their modules.
   itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
   dropperRef = assembled.byName["dropper"] as unknown as {
     onDeath(s: unknown, ev: unknown): void;
@@ -932,6 +888,10 @@ async function main(): Promise<void> {
     onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void;
   };
   const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;
+  // Combat cluster (slice 5): assign bodyRef for the physics fall callback,
+  // magicRef for the rules reloader.
+  bodyRef = assembled.byName["body"] as unknown as import("./body.js").BodySystem;
+  magicRef = assembled.byName["magic"] as unknown as import("./magic.js").MagicSystem;
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
@@ -956,8 +916,8 @@ async function main(): Promise<void> {
     },
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery,
-    body,
-    magic,
+    body: bodyRef!,
+    magic: magicRef!,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
     world: sim,

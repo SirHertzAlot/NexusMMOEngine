@@ -11,6 +11,7 @@
     "chat",
     "items",
     "dungeons",
-    "quests"
+    "quests",
+    "combat"
   ]
 }

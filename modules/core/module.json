@@ -26,30 +26,6 @@
         "name": "intent"
       },
       {
-        "name": "combat"
-      },
-      {
-        "name": "magic"
-      },
-      {
-        "name": "body"
-      },
-      {
-        "name": "death"
-      },
-      {
-        "name": "abilities"
-      },
-      {
-        "name": "status"
-      },
-      {
-        "name": "telegraphs"
-      },
-      {
-        "name": "duels"
-      },
-      {
         "name": "wallet"
       },
       {
@@ -60,9 +36,6 @@
       },
       {
         "name": "auction"
-      },
-      {
-        "name": "stamina"
       },
       {
         "name": "needs"
