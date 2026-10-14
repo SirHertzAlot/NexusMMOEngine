@@ -92,6 +92,36 @@ const uint8_t *CheckedU8(Napi::Env env, Napi::Value value, const char *name,
   return arr.Data();
 }
 
+// Phase 2 (zero-copy): bitECS entity indices for the component arrays.
+const int32_t *CheckedI32(Napi::Env env, Napi::Value value, const char *name,
+                          size_t min_len) {
+  if (!value.IsTypedArray() ||
+      value.As<Napi::TypedArray>().TypedArrayType() != napi_int32_array) {
+    Napi::TypeError::New(env, std::string(name) + " must be an Int32Array")
+        .ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::Int32Array arr = value.As<Napi::Int32Array>();
+  if (arr.ElementLength() < min_len) {
+    Napi::RangeError::New(env,
+                          std::string(name) + " is shorter than required")
+        .ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  return arr.Data();
+}
+
+// Max eid in the first n entries (for component-array bounds checks).
+// Returns -1 when n == 0. Negative eids are rejected by the caller.
+int32_t MaxEid(const int32_t *eids, size_t n) {
+  int32_t m = -1;
+  for (size_t i = 0; i < n; ++i) {
+    if (eids[i] > m)
+      m = eids[i];
+  }
+  return m;
+}
+
 bool CheckedCount(Napi::Env env, Napi::Value value, int *out) {
   if (!value.IsNumber()) {
     Napi::TypeError::New(env, "count must be a number")
@@ -239,7 +269,12 @@ private:
     mj_physics_remove_bodies(mWorld, static_cast<int>(len), entity_ids);
   }
 
-  // syncBodies(count, entityIds, pos, quat, linVel, angVel, flags, dt)
+  // Phase 2 (zero-copy):
+  // syncBodies(count, entityIds, eids, px, py, pz, qx, qy, qz, qw, flags, dt)
+  // px..qw are the SAB-backed bitECS Transform component arrays, indexed
+  // by eids[i]. Component arrays must cover max(eids) or the call throws
+  // (an out-of-range eid would otherwise write outside the caller's
+  // intent — the arrays are shared, so bounds matter).
   void SyncBodies(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!requireLive(env))
@@ -251,29 +286,48 @@ private:
     const uint64_t *entity_ids = CheckedU64(env, info[1], "entityIds", un);
     if (!entity_ids)
       return;
-    const float *pos = CheckedF32(env, info[2], "pos", 3 * un);
-    if (!pos)
+    const int32_t *eids = CheckedI32(env, info[2], "eids", un);
+    if (!eids)
       return;
-    const float *quat = CheckedF32(env, info[3], "quat", 4 * un);
-    if (!quat)
+    const int32_t max_eid = MaxEid(eids, un);
+    if (max_eid < 0) {
+      Napi::RangeError::New(env, "eids must be non-negative")
+          .ThrowAsJavaScriptException();
       return;
-    const float *lin_vel = CheckedF32(env, info[4], "linVel", 3 * un);
-    if (!lin_vel)
+    }
+    const size_t need = static_cast<size_t>(max_eid) + 1;
+    const float *px = CheckedF32(env, info[3], "px", need);
+    if (!px)
       return;
-    const float *ang_vel = CheckedF32(env, info[5], "angVel", 3 * un);
-    if (!ang_vel)
+    const float *py = CheckedF32(env, info[4], "py", need);
+    if (!py)
       return;
-    const uint8_t *flags = CheckedU8(env, info[6], "flags", un);
+    const float *pz = CheckedF32(env, info[5], "pz", need);
+    if (!pz)
+      return;
+    const float *qx = CheckedF32(env, info[6], "qx", need);
+    if (!qx)
+      return;
+    const float *qy = CheckedF32(env, info[7], "qy", need);
+    if (!qy)
+      return;
+    const float *qz = CheckedF32(env, info[8], "qz", need);
+    if (!qz)
+      return;
+    const float *qw = CheckedF32(env, info[9], "qw", need);
+    if (!qw)
+      return;
+    const uint8_t *flags = CheckedU8(env, info[10], "flags", un);
     if (!flags)
       return;
-    if (!info[7].IsNumber()) {
+    if (!info[11].IsNumber()) {
       Napi::TypeError::New(env, "dt must be a number")
           .ThrowAsJavaScriptException();
       return;
     }
-    const float dt = info[7].As<Napi::Number>().FloatValue();
-    mj_physics_sync_bodies(mWorld, n, entity_ids, pos, quat, lin_vel,
-                           ang_vel, flags, dt);
+    const float dt = info[11].As<Napi::Number>().FloatValue();
+    mj_physics_sync_bodies(mWorld, n, entity_ids, eids, px, py, pz, qx, qy,
+                           qz, qw, flags, dt);
   }
 
   void Step(const Napi::CallbackInfo &info) {
@@ -295,7 +349,12 @@ private:
     mj_physics_step(mWorld, dt, sub_steps);
   }
 
-  // copyResults(count, entityIds, pos, quat, linVel, angVel)
+  // Phase 2 (zero-copy):
+  // copyResults(count, entityIds, eids,
+  //             px, py, pz, qx, qy, qz, qw, lx, ly, lz, ax, ay, az)
+  // px..az are the SAB-backed bitECS Transform + Velocity component
+  // arrays, indexed by eids[i]. C++ writes results directly into them;
+  // there is no dense scratch array and no JS copy-back loop.
   void CopyResults(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!requireLive(env))
@@ -307,20 +366,57 @@ private:
     const uint64_t *entity_ids = CheckedU64(env, info[1], "entityIds", un);
     if (!entity_ids)
       return;
-    float *pos = CheckedF32Mut(env, info[2], "pos", 3 * un);
-    if (!pos)
+    const int32_t *eids = CheckedI32(env, info[2], "eids", un);
+    if (!eids)
       return;
-    float *quat = CheckedF32Mut(env, info[3], "quat", 4 * un);
-    if (!quat)
+    const int32_t max_eid = MaxEid(eids, un);
+    if (max_eid < 0) {
+      Napi::RangeError::New(env, "eids must be non-negative")
+          .ThrowAsJavaScriptException();
       return;
-    float *lin_vel = CheckedF32Mut(env, info[4], "linVel", 3 * un);
-    if (!lin_vel)
+    }
+    const size_t need = static_cast<size_t>(max_eid) + 1;
+    float *px = CheckedF32Mut(env, info[3], "px", need);
+    if (!px)
       return;
-    float *ang_vel = CheckedF32Mut(env, info[5], "angVel", 3 * un);
-    if (!ang_vel)
+    float *py = CheckedF32Mut(env, info[4], "py", need);
+    if (!py)
       return;
-    mj_physics_copy_results(mWorld, n, entity_ids, pos, quat, lin_vel,
-                            ang_vel);
+    float *pz = CheckedF32Mut(env, info[5], "pz", need);
+    if (!pz)
+      return;
+    float *qx = CheckedF32Mut(env, info[6], "qx", need);
+    if (!qx)
+      return;
+    float *qy = CheckedF32Mut(env, info[7], "qy", need);
+    if (!qy)
+      return;
+    float *qz = CheckedF32Mut(env, info[8], "qz", need);
+    if (!qz)
+      return;
+    float *qw = CheckedF32Mut(env, info[9], "qw", need);
+    if (!qw)
+      return;
+    float *lx = CheckedF32Mut(env, info[10], "lx", need);
+    if (!lx)
+      return;
+    float *ly = CheckedF32Mut(env, info[11], "ly", need);
+    if (!ly)
+      return;
+    float *lz = CheckedF32Mut(env, info[12], "lz", need);
+    if (!lz)
+      return;
+    float *ax = CheckedF32Mut(env, info[13], "ax", need);
+    if (!ax)
+      return;
+    float *ay = CheckedF32Mut(env, info[14], "ay", need);
+    if (!ay)
+      return;
+    float *az = CheckedF32Mut(env, info[15], "az", need);
+    if (!az)
+      return;
+    mj_physics_copy_results(mWorld, n, entity_ids, eids, px, py, pz, qx, qy,
+                            qz, qw, lx, ly, lz, ax, ay, az);
   }
 
   Napi::Value BodyCount(const Napi::CallbackInfo &info) {
