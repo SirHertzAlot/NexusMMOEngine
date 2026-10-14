@@ -34,6 +34,9 @@ export type {
   StatsMessage,
   NeedsLine,
   SkillLineMessage,
+  TileRequestMessage,
+  TileResponseMessage,
+  TileWire,
   WelcomeMessage,
   WireLook,
 } from "./types.js";
@@ -71,6 +74,8 @@ export {
   tileHeightAt,
   TILE_CELLS,
   TILE_SAMPLES,
+  encodeTileHeights,
+  decodeTileHeights,
 } from "./terrain-grid.js";
 export type { BrushStroke, BrushTool, TerrainTile } from "./terrain-grid.js";
 export { decodeWorldMap, encodeWorldMap } from "./world-info.js";

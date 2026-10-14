@@ -1,0 +1,27 @@
+{
+  "description": "Creatures domain (AI1): creature AI, bots, crowd steering, and needs. The creature system is shared by combat, death, and the gateway's admin spawn.",
+  "name": "creatures",
+  "server": {
+    "entry": "server.js",
+    "systems": [
+      {
+        "name": "creatures"
+      },
+      {
+        "name": "bots",
+        "optional": true
+      },
+      {
+        "name": "crowd",
+        "optional": true
+      },
+      {
+        "name": "needs"
+      }
+    ]
+  },
+  "version": "0.1.0",
+  "dependsOn": [
+    "physics"
+  ]
+}

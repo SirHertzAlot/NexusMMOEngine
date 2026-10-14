@@ -8,46 +8,7 @@
         "name": "reloader"
       },
       {
-        "name": "stats"
-      },
-      {
         "name": "streamer"
-      },
-      {
-        "name": "bots"
-      },
-      {
-        "name": "creatures"
-      },
-      {
-        "name": "crowd"
-      },
-      {
-        "name": "intent"
-      },
-      {
-        "name": "combat"
-      },
-      {
-        "name": "magic"
-      },
-      {
-        "name": "body"
-      },
-      {
-        "name": "death"
-      },
-      {
-        "name": "abilities"
-      },
-      {
-        "name": "status"
-      },
-      {
-        "name": "telegraphs"
-      },
-      {
-        "name": "duels"
       },
       {
         "name": "wallet"
@@ -60,45 +21,6 @@
       },
       {
         "name": "auction"
-      },
-      {
-        "name": "stamina"
-      },
-      {
-        "name": "needs"
-      },
-      {
-        "name": "mastery"
-      },
-      {
-        "name": "integrate"
-      },
-      {
-        "name": "character"
-      },
-      {
-        "name": "animation"
-      },
-      {
-        "name": "prop-collision"
-      },
-      {
-        "name": "collider"
-      },
-      {
-        "name": "obstacles"
-      },
-      {
-        "name": "physics"
-      },
-      {
-        "name": "navigation"
-      },
-      {
-        "name": "items"
-      },
-      {
-        "name": "quests"
       }
     ]
   }

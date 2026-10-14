@@ -1,0 +1,1 @@
+{"description":"Physics domain: Jolt physics, navigation mesh, obstacle cutting, collision, and integration. The nav backend is shared by creatures (crowd steering).","name":"physics","server":{"entry":"server.js","systems":[{"name":"physics"},{"name":"navigation"},{"name":"obstacles"},{"name":"integrate"},{"name":"prop-collision"},{"name":"collider"}]},"version":"0.1.0"}

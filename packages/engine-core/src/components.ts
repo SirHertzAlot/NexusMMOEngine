@@ -26,8 +26,9 @@
  */
 
 import { defineComponent, Types } from "bitecs";
+import { defineSABComponent } from "./sab-store.js";
 
-export const Transform = defineComponent({
+export const Transform = defineSABComponent({
   px: Types.f32,
   py: Types.f32,
   pz: Types.f32,
@@ -40,7 +41,7 @@ export const Transform = defineComponent({
   sz: Types.f32,
 });
 
-export const Velocity = defineComponent({
+export const Velocity = defineSABComponent({
   lx: Types.f32,
   ly: Types.f32,
   lz: Types.f32,
@@ -49,7 +50,7 @@ export const Velocity = defineComponent({
   az: Types.f32,
 });
 
-export const PlayerIntent = defineComponent({
+export const PlayerIntent = defineSABComponent({
   mx: Types.f32,
   my: Types.f32,
   mz: Types.f32,
@@ -59,7 +60,7 @@ export const PlayerIntent = defineComponent({
   buttons: Types.ui8,
 });
 
-export const Chunk = defineComponent({
+export const Chunk = defineSABComponent({
   chunkIdHi: Types.ui32,
   chunkIdLo: Types.ui32,
   seedHi: Types.ui32,
@@ -67,7 +68,7 @@ export const Chunk = defineComponent({
   lod: Types.ui8,
 });
 
-export const Health = defineComponent({
+export const Health = defineSABComponent({
   current: Types.f32,
   max: Types.f32,
 });
@@ -78,7 +79,7 @@ export const Health = defineComponent({
  * wire like Health so the client bar is live; max comes from the
  * `maxStamina` drive (StatsSystem), regen from the `staminaRegen` stat.
  */
-export const Stamina = defineComponent({
+export const Stamina = defineSABComponent({
   current: Types.f32,
   max: Types.f32,
 });
@@ -88,7 +89,7 @@ export const Stamina = defineComponent({
  * NeedsSystem from the `needs` rules; an empty one hurts Health. Server
  * only for now: no wire field yet, so no HUD (roadmap U3).
  */
-export const Needs = defineComponent({
+export const Needs = defineSABComponent({
   hunger: Types.f32,
   hungerMax: Types.f32,
   thirst: Types.f32,
@@ -100,6 +101,7 @@ export const Needs = defineComponent({
  * (combat blows, hunger, drowning, traps) skips a carrier; the `god`
  * admin command adds and removes it.
  */
+// Tag: no data, so no SAB backing — plain defineComponent().
 export const God = defineComponent();
 
 /**
@@ -107,6 +109,7 @@ export const God = defineComponent();
  * intent, no ground clamp, no gravity) and dungeon walls let them pass;
  * the `noclip` admin command adds and removes it.
  */
+// Tag: no data, so no SAB backing — plain defineComponent().
 export const Noclip = defineComponent();
 
 /**
@@ -123,7 +126,7 @@ export const Noclip = defineComponent();
  * - motionType: 0 = static, 1 = kinematic, 2 = dynamic
  * - layer: 0 = NON_MOVING (static geometry), anything else = MOVING
  */
-export const BodyConfig = defineComponent({
+export const BodyConfig = defineSABComponent({
   shapeKind: Types.ui8,
   halfX: Types.f32,
   halfY: Types.f32,
@@ -219,14 +222,14 @@ export const PathRequestStatus = {
   Failed: 3,
 } as const;
 
-export const PathRequest = defineComponent({
+export const PathRequest = defineSABComponent({
   x: Types.f32,
   z: Types.f32,
   profile: Types.ui8,
   token: Types.ui32,
 });
 
-export const PathState = defineComponent({
+export const PathState = defineSABComponent({
   status: Types.i8,
   token: Types.ui32,
   waypointOffset: Types.ui32,
@@ -255,7 +258,7 @@ export const NavAgentState = {
   NoPath: 4,
 } as const;
 
-export const NavAgent = defineComponent({
+export const NavAgent = defineSABComponent({
   tx: Types.f32,
   ty: Types.f32,
   tz: Types.f32,
@@ -279,7 +282,7 @@ export const NavAgent = defineComponent({
 // ---------------------------------------------------------------------------
 
 /** PCG scatter asset reference — ComponentId 8. */
-export const AssetRef = defineComponent({
+export const AssetRef = defineSABComponent({
   assetHash: Types.ui32,
   variant: Types.ui16,
 });
@@ -291,7 +294,7 @@ export const AssetRef = defineComponent({
 // 0 = drowning). Owned by CharacterSystem; replicated to clients.
 // ---------------------------------------------------------------------------
 
-export const Locomotion = defineComponent({
+export const Locomotion = defineSABComponent({
   mode: Types.ui8,
   abilities: Types.ui8,
   breath: Types.f32,
@@ -305,7 +308,7 @@ export const Locomotion = defineComponent({
 // Set at spawn (players: their character; enemy humans: a generated look).
 // ---------------------------------------------------------------------------
 
-export const Appearance = defineComponent({
+export const Appearance = defineSABComponent({
   look: Types.ui32,
 });
 
@@ -316,7 +319,7 @@ export const Appearance = defineComponent({
 // CombatSystem; clients play the move's clip from its start tick.
 // ---------------------------------------------------------------------------
 
-export const Action = defineComponent({
+export const Action = defineSABComponent({
   move: Types.ui16,
   started: Types.ui32,
   seq: Types.ui8,
@@ -330,7 +333,7 @@ export const Action = defineComponent({
 // client can tie entities to names (the `names` control message).
 // ---------------------------------------------------------------------------
 
-export const CharacterRef = defineComponent({
+export const CharacterRef = defineSABComponent({
   idHi: Types.ui32,
   idLo: Types.ui32,
 });
@@ -343,7 +346,7 @@ export const CharacterRef = defineComponent({
 // anyone) until tick `ownedUntil`; it disappears at tick `despawnAt`.
 // ---------------------------------------------------------------------------
 
-export const WorldItem = defineComponent({
+export const WorldItem = defineSABComponent({
   item: Types.ui32,
   owner: Types.f64,
   ownedUntil: Types.ui32,
@@ -358,7 +361,7 @@ export const WorldItem = defineComponent({
 // 2 = upper body only.
 // ---------------------------------------------------------------------------
 
-export const Animation = defineComponent({
+export const Animation = defineSABComponent({
   clipId: Types.ui16,
   startTick: Types.ui32,
   rate: Types.f32,

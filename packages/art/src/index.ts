@@ -12,7 +12,15 @@
 export * from "./manifest.js";
 export * from "./scan.js";
 export * from "./provider.js";
-export * from "./compress-gltfpack.js";
+export * from "./animation-bake.js";
+// compress-gltfpack's CompressResult collides with animation-bake's;
+// re-export explicitly with a distinguishing alias.
+export {
+  compressGlb,
+  hasGltfpack,
+  type CompressOptions,
+  type CompressResult as GltfpackCompressResult,
+} from "./compress-gltfpack.js";
 export * from "./transform-gltf.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";

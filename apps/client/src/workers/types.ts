@@ -1,6 +1,10 @@
+import type { SabDecodeResult } from "../assets/glb-meshopt.js";
+
 /**
  * Worker task types and payloads — shared between main thread and worker.
  */
+import type { TerrainTile } from '@mmo-engine/protocol';
+
 export interface WorkerTask<T = unknown> {
   id: number;
   type: string;
@@ -20,6 +24,9 @@ export interface TaskPayloadMap {
   pcg: PcgTaskPayload;
   bvh: BvhTaskPayload;
   terrainBlock: TerrainBlockTaskPayload;
+  chunkDecompose: ChunkDecomposePayload;
+  /** SAB Phase 6: decode a GLB into a SharedArrayBuffer arena. */
+  assetDecode: AssetDecodeTaskPayload;
   // Extend this interface to add new task types
 }
 
@@ -43,6 +50,17 @@ export interface TerrainBlockTaskPayload {
   chunkWorldSize: number;
   originX: number;
   originZ: number;
+}
+
+/** Decompose a larger heightmap region into protocol tiles. */
+export interface ChunkDecomposePayload {
+  /** Row-major heights, X inner: heights[z * width + x]. */
+  heights: Float32Array;
+  width: number;
+  depth: number;
+  /** Grid coordinate of heights[0]. */
+  originGX: number;
+  originGZ: number;
 }
 
 export type TaskPayload = TaskPayloadMap[keyof TaskPayloadMap];
@@ -77,7 +95,16 @@ export interface TerrainBlockResultPayload {
   index: Uint16Array | Uint32Array;
 }
 
-export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload;
+export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload | TerrainBlockResultPayload | AssetDecodeResultPayload;
+
+/** SAB Phase 6: GLB bytes (transferred to the worker) + the arena it decodes into. */
+export interface AssetDecodeTaskPayload {
+  glb: ArrayBuffer;
+  sab: SharedArrayBuffer;
+}
+
+/** Worker decode result, or an overflow report (retry with a bigger arena). */
+export type AssetDecodeResultPayload = SabDecodeResult | { overflow: true; neededBytes: number };
 
 export interface WorkerRequest<T extends keyof TaskPayloadMap = keyof TaskPayloadMap> {
   id: number;
@@ -92,6 +119,8 @@ export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPaylo
     T extends 'pcg' ? PcgResultPayload :
     T extends 'bvh' ? BvhResultPayload :
     T extends 'terrainBlock' ? TerrainBlockResultPayload :
+    T extends 'chunkDecompose' ? TerrainTile[] :
+    T extends 'assetDecode' ? AssetDecodeResultPayload :
     never;
   error?: string;
 }

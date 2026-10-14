@@ -286,3 +286,37 @@ export function sampleNearest(grid: HeightGrid, x: number, z: number, chunkWorld
 
 const NEIGHBOURS: ReadonlyArray<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** Base64 helpers (browser- and Node-safe). */
+function tileToB64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  // btoa exists in browsers; Node 16+ has it globally too.
+  return btoa(s);
+}
+
+function tileFromB64(b64: string): Uint8Array {
+  const s = atob(b64);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+/** Encode a tile's heights as base64 little-endian float32 (the 0x23 wire form). */
+export function encodeTileHeights(heights: Float32Array): string {
+  if (heights.length !== TILE_SAMPLES * TILE_SAMPLES) {
+    throw new Error(`encodeTileHeights: want ${TILE_SAMPLES * TILE_SAMPLES} heights, got ${heights.length}`);
+  }
+  return tileToB64(new Uint8Array(heights.buffer, heights.byteOffset, heights.byteLength));
+}
+
+/** Decode base64 little-endian float32 into a 256-sample tile. */
+export function decodeTileHeights(b64: string): Float32Array {
+  const bytes = tileFromB64(b64);
+  if (bytes.length !== TILE_SAMPLES * TILE_SAMPLES * 4) {
+    throw new Error(`decodeTileHeights: want ${TILE_SAMPLES * TILE_SAMPLES * 4} bytes, got ${bytes.length}`);
+  }
+  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+}

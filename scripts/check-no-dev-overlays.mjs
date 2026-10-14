@@ -2,16 +2,20 @@
 /**
  * TL3 gate: verify production bundles contain zero leva/lil-gui bytes.
  *
- * Scans the built output for leva/lil-gui identifiers. Fails if found.
- * Run after `npm run build` in CI.
+ * Scans the Vite production output (dist-app) for leva/lil-gui identifiers.
+ * Uses word-boundary matching so substrings like "sunElevation" don't
+ * trigger false positives. Fails if found. Run after `npm run build` in CI.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const FORBIDDEN = ["leva", "lil-gui", "lil_gui"];
+// Word-boundary regexes: match "leva" / "lil-gui" as standalone identifiers,
+// not substrings (e.g. the "leva" inside "sunElevation").
+const FORBIDDEN = [/\bleva\b/, /\blil-gui\b/, /\blil_gui\b/];
+// Vite production bundles (not the tsc lib output in dist/).
 const BUILD_DIRS = [
-  "apps/client/dist",
-  "apps/editor/dist",
+  "apps/client/dist-app",
+  "apps/editor/dist-app",
 ];
 
 let found = false;
@@ -30,9 +34,9 @@ function scanDir(dir) {
       scanDir(p);
     } else if (e.name.endsWith(".js") || e.name.endsWith(".mjs")) {
       const content = readFileSync(p, "utf8");
-      for (const term of FORBIDDEN) {
-        if (content.includes(term)) {
-          console.error(`FAIL: ${p} contains "${term}"`);
+      for (const pattern of FORBIDDEN) {
+        if (pattern.test(content)) {
+          console.error(`FAIL: ${p} matches ${pattern}`);
           found = true;
         }
       }

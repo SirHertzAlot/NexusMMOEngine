@@ -6,6 +6,8 @@ import { terrainHandler } from './handlers/terrain.js';
 import { pcgHandler } from './handlers/pcg.js';
 import { bvhHandler } from './handlers/bvh.js';
 import { terrainBlockHandler } from './handlers/terrain-block.js';
+import { chunkDecomposeHandler } from './handlers/chunk-decompose.js';
+import { assetDecodeHandler } from './handlers/asset-decode.js';
 
 const runtime = new WorkerRuntime({
   maxRetries: 3,
@@ -18,5 +20,7 @@ runtime.registerHandler('terrain', terrainHandler);
 runtime.registerHandler('pcg', pcgHandler);
 runtime.registerHandler('bvh', bvhHandler);
 runtime.registerHandler('terrainBlock', terrainBlockHandler);
+runtime.registerHandler('chunkDecompose', chunkDecomposeHandler);
+runtime.registerHandler('assetDecode', assetDecodeHandler);
 
-console.log('[Worker] Terrain/PCG/BVH worker ready');
+console.log('[Worker] Terrain/PCG/BVH/AssetDecode worker ready');
