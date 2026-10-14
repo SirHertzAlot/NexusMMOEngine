@@ -73,6 +73,10 @@ import {
   type DayClock,
   type WireLook,
   type WorldInfo,
+  type TerrainTile,
+  type TileRequestMessage,
+  type TileResponseMessage,
+  decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
 import { MirrorState } from "./state.js";
@@ -219,6 +223,12 @@ export class MirrorClient {
   private debugReject: ((e: Error) => void) | null = null;
   private adminResolve: ((r: AdminResult) => void) | null = null;
   private adminReject: ((e: Error) => void) | null = null;
+  /** Outstanding tile requests (0x22/0x23), correlated by reqId. */
+  private tileReqId = 0;
+  private readonly tileRequests = new Map<number, {
+    resolve: (tiles: TerrainTile[]) => void;
+    reject: (e: Error) => void;
+  }>();
 
   constructor(
     private readonly createSocket: (url: string) => SocketLike,
@@ -373,6 +383,28 @@ export class MirrorClient {
     if (!this.socket || this.closed) return;
     const m = to === undefined ? { kind: "chat", channel, text } : { kind: "chat", channel, text, to };
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(m)));
+  }
+
+  /**
+   * On-demand chunk tiles (protocol 0x22/0x23). Resolves with the tiles
+   * the server returned (keys outside the region's range are omitted).
+   * Concurrent calls are correlated by reqId; a 5s timeout rejects.
+   */
+  requestTiles(keys: string[]): Promise<TerrainTile[]> {
+    if (!this.socket || this.closed) return Promise.reject(new Error("mirror-client: not connected"));
+    const reqId = ++this.tileReqId;
+    const msg: TileRequestMessage = { reqId, keys };
+    return new Promise<TerrainTile[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.tileRequests.delete(reqId);
+        reject(new Error("mirror-client: tile request timeout"));
+      }, 5000);
+      this.tileRequests.set(reqId, {
+        resolve: (tiles) => { clearTimeout(timer); resolve(tiles); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      this.send(this.socket!, encodeEnvelope(MessageType.TileRequest, encodeControl(msg)));
+    });
   }
 
   /** A party op (S3): invite, kick and promote name a character. */
@@ -584,6 +616,8 @@ export class MirrorClient {
     this.adminReject?.(new Error("mirror-client: disconnected"));
     this.adminResolve = null;
     this.adminReject = null;
+    for (const [, p] of this.tileRequests) p.reject(new Error("mirror-client: disconnected"));
+    this.tileRequests.clear();
   }
 
   /**
@@ -794,6 +828,23 @@ export class MirrorClient {
         const bye = decodeControl<ByeMessage>(payload);
         if (bye.redirect) void this.followRedirect(bye.redirect);
         else this.disconnect();
+        break;
+      }
+      case MessageType.TileResponse: {
+        const res = decodeControl<TileResponseMessage>(payload);
+        const pending = this.tileRequests.get(res.reqId);
+        if (pending) {
+          this.tileRequests.delete(res.reqId);
+          try {
+            pending.resolve(res.tiles.map((t) => ({
+              cx: t.cx,
+              cz: t.cz,
+              heights: decodeTileHeights(t.heights),
+            })));
+          } catch (e) {
+            pending.reject(e instanceof Error ? e : new Error("mirror-client: bad tile payload"));
+          }
+        }
         break;
       }
       default:

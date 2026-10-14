@@ -73,6 +73,11 @@ export class QuestService implements SimSystem, GatewayExtension {
     this.now = opts.now ?? Date.now;
   }
 
+  /** Quest content (slice 4): exposed for server bootstrap (scene spawn). */
+  get content(): QuestContent {
+    return this.opts.content;
+  }
+
   // ---------------------------------------------------------- the gateway
 
   onEnter(player: ExtensionPlayer): void {

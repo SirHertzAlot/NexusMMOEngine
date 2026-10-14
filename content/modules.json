@@ -7,6 +7,15 @@
     "story",
     "vfx",
     "audio",
-    "hud"
+    "hud",
+    "chat",
+    "items",
+    "dungeons",
+    "quests",
+    "combat",
+    "creatures",
+    "character",
+    "physics",
+    "intent"
   ]
 }

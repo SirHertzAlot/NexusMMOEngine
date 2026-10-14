@@ -1,0 +1,1 @@
+{"description":"Character domain: player characters, animation, mastery (skills), and stats. The character system owns the ground-height query used by items and creatures.","name":"character","server":{"entry":"server.js","systems":[{"name":"character"},{"name":"animation"},{"name":"mastery"},{"name":"stats"}]},"version":"0.1.0"}

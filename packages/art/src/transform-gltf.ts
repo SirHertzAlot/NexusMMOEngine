@@ -77,10 +77,44 @@ export async function transformGlb(
   await execFileAsync(bin, ["prune", input, pruned]);
   await execFileAsync(bin, ["dedup", pruned, pruned]);
 
-  // Step 2: copy to final output (texture conversion happens here in the
-  // full TL1c; for now this is a structural pass)
+  // Step 2: texture conversion per slot config (unless skipped).
+  // Each conversion reads from the previous step's output.
+  let current = pruned;
+  const textureBytes: Record<string, number> = {};
+  if (!options.skipTextures) {
+    const webpSlots = textures.filter((t) => t.format === "webp").map((t) => t.slot);
+    const uastcSlots = textures.filter((t) => t.format === "ktx2-uastc").map((t) => t.slot);
+
+    if (webpSlots.length > 0) {
+      const webpOut = input.replace(/\.glb$/, ".webp.glb");
+      await execFileAsync(bin, ["webp", "--slots", webpSlots.join(","), current, webpOut]);
+      current = webpOut;
+    }
+    if (uastcSlots.length > 0) {
+      const uastcOut = input.replace(/\.glb$/, ".uastc.glb");
+      await execFileAsync(bin, ["uastc", "--slots", uastcSlots.join(","), current, uastcOut]);
+      current = uastcOut;
+    }
+
+    // Step 3: resize caps per slot (use the smallest maxSize as global cap
+    // to keep it simple; per-slot resize would need texture splitting).
+    const minSize = Math.min(...textures.map((t) => t.maxSize));
+    const resizedOut = input.replace(/\.glb$/, ".resized.glb");
+    await execFileAsync(bin, ["resize", "--width", String(minSize), "--height", String(minSize), current, resizedOut]);
+    current = resizedOut;
+
+    // Record per-slot output sizes (approximate: total divided by slot count,
+    // since the CLI doesn't report per-texture bytes).
+    const totalTexBytes = statSync(current).size;
+    const slotCount = textures.length;
+    for (const t of textures) {
+      textureBytes[t.slot] = Math.round(totalTexBytes / slotCount);
+    }
+  }
+
+  // Step 4: copy to final output.
   const finalOutput = output;
-  await execFileAsync(bin, ["copy", pruned, finalOutput]);
+  await execFileAsync(bin, ["copy", current, finalOutput]);
 
   const transformedBytes = statSync(finalOutput).size;
 
@@ -93,7 +127,7 @@ export async function transformGlb(
     rawBytes,
     transformedBytes,
     cleanupRemoved: Math.max(0, cleanupRemoved),
-    textureBytes: {},
+    textureBytes,
   };
 }
 
