@@ -16,7 +16,8 @@
     "bake:world": "npm run build && node dist/src/bake-world.js",
     "bake:world:force": "npm run build && node dist/src/bake-world.js --force",
     "preview:world": "npm run build && node dist/src/preview-world.js",
-    "bench:transport": "node dist/src/net/transport-bench.js"
+    "bench:transport": "node dist/src/net/transport-bench.js",
+    "bench:contention": "npm run build && node dist/src/sab-contention-bench.js"
   },
   "types": "dist/src/index.d.ts",
   "version": "0.1.0",
