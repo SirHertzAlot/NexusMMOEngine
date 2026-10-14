@@ -460,28 +460,33 @@ async function main(): Promise<void> {
     store: chunkStore,
     populator,
     navmesh: chunkNavmeshRef,
-    // Each loaded chunk is static ground for physics bodies.
+    // Each loaded chunk is static ground for physics bodies. The hook is
+    // lazy (physics assembles after the streamer is built) but must be
+    // the ChunkColliderHook object shape ({add, remove}) — an earlier
+    // revision wrapped it as a bare function, which crashed warm() with
+    // "colliders?.add is not a function".
     colliders: ((() => {
-      let hook: ((...a: unknown[]) => unknown) | null = null;
-      return (...args: unknown[]) => {
-        if (!hook) {
-          if (!physicsRef) throw new Error("physics not yet assembled");
-          hook = physicsRef.terrainColliders(CHUNK_SIZE);
-        }
-        return hook(...args);
+      type Hook = { add(cx: number, cz: number, heights: Float32Array): void; remove(cx: number, cz: number): void };
+      let hook: Hook | null = null;
+      const get = (): Hook => {
+        if (hook) return hook;
+        if (!physicsRef) throw new Error("physics not yet assembled");
+        // physicsRef is loosely typed (see its declaration); the runtime
+        // value is the {add, remove} hook from PhysicsSystem.terrainColliders.
+        hook = physicsRef.terrainColliders(CHUNK_SIZE) as unknown as Hook;
+        return hook;
       };
-    })() as unknown as import("./streaming/chunk-streamer.js").ChunkColliderHook),
+      return {
+        add: (cx: number, cz: number, heights: Float32Array) => get().add(cx, cz, heights),
+        remove: (cx: number, cz: number) => get().remove(cx, cz),
+      };
+    })() as import("./streaming/chunk-streamer.js").ChunkColliderHook),
     bounds,
     pinned: area,
     loadRadius: STREAM_RADIUS,
   });
-  const adopted = streamer.adopt(sim);
-  const warmed = streamer.warm(sim);
-  console.log(
-    `[stream] ${adopted} chunk(s) restored, ${warmed} loaded for the spawn area; ` +
-      `radius ${STREAM_RADIUS} around players, world chunks ${bounds.minCx}..${bounds.maxCx} x ${bounds.minCz}..${bounds.maxCz} ` +
-      `(scatter plan ${populator.planHash.slice(0, 12)}…)`,
-  );
+  // Streamer warm/adopt runs after assembly (below): it registers terrain
+  // colliders, which need the physics module's terrainColliders hook.
 
   // ---- auth + gateway ----------------------------------------------------
   const credentialStore = new CsvCredentialStore(
@@ -900,6 +905,17 @@ async function main(): Promise<void> {
     character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
     mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
   };
+  // Streamer warm/adopt (deferred from before assembly): loading pinned
+  // chunks registers terrain colliders, which need physicsRef (assigned
+  // above). Contents attached earlier (attachContents) still reach these
+  // chunks — ChunkStreamer.load() calls contents.load per chunk.
+  const adopted = streamer.adopt(sim);
+  const warmed = streamer.warm(sim);
+  console.log(
+    `[stream] ${adopted} chunk(s) restored, ${warmed} loaded for the spawn area; ` +
+      `radius ${STREAM_RADIUS} around players, world chunks ${bounds.minCx}..${bounds.maxCx} x ${bounds.minCz}..${bounds.maxCz} ` +
+      `(scatter plan ${populator.planHash.slice(0, 12)}…)`,
+  );
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
