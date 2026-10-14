@@ -88,7 +88,7 @@ export async function loadNativeModule(
     else systems[d] = made[d]!;
   }
   for (const k of Object.keys(made ?? {})) {
-    if (!native.systems.includes(k) && !(m.manifest.server?.systems.some((s) => s.name === k) ?? false)) {
+    if (!native.systems.includes(k) && !(m.manifest.server?.systems.some((s) => s.name === k) ?? false) && !(m.manifest.server?.extensions?.includes(k) ?? false)) {
       problems.push(`${name}: provides "${k}", which its manifest does not list`);
     }
   }
@@ -99,7 +99,18 @@ const ENGINE_VERSION = (JSON.parse(readFileSync(new URL("../../package.json", im
 
 export async function assembleServerSystems(
   o: AssembleOptions,
-): Promise<{ systems: SimSystem[]; order: ResolvedSystem[]; modules: string[]; byName: Record<string, SimSystem> }> {
+): Promise<{
+  systems: SimSystem[];
+  order: ResolvedSystem[];
+  modules: string[];
+  byName: Record<string, SimSystem>;
+  /**
+   * Gateway extensions (manifest `server.extensions`), keyed by extension
+   * name. Extensions are NOT tick systems — the gateway consumes them
+   * directly (e.g. quests, dungeons). They never enter `systems`/`byName`.
+   */
+  extensions: Record<string, unknown>;
+}> {
   const set = readEnabledSet(o.setFile);
   const found = discoverModules(o.modulesDir, ENGINE_VERSION);
   const lines = [...set.problems, ...found.problems.filter((p) => set.modules.includes(p.module) || p.module === "core")].map(
@@ -123,11 +134,14 @@ export async function assembleServerSystems(
     throw new Error(`modules: ${all.length} problem${all.length === 1 ? "" : "s"}:\n  ${all.join("\n  ")}`);
   }
   const instances = new Map<string, SimSystem | undefined>();
+  const extensionInstances = new Map<string, unknown>();
   const problems: string[] = [];
   const requireFn = o.nativeRequire ?? createRequire(import.meta.url);
   for (const m of r.modules) {
     const name = m.manifest.name;
     const declared = (m.manifest.server?.systems ?? []).map((s) => s.name);
+    const optionalSystems = new Set((m.manifest.server?.systems ?? []).filter((s) => s.optional).map((s) => s.name));
+    const declaredExtensions = m.manifest.server?.extensions ?? [];
     const declaredNative = m.manifest.native?.systems ?? [];
     let made: Record<string, SimSystem | undefined> | undefined;
     if (m.manifest.server?.entry) {
@@ -137,7 +151,8 @@ export async function assembleServerSystems(
       if (typeof mod.createSystems !== "function") problems.push(`${name}: ${m.manifest.server.entry} must export createSystems(ctx)`);
       else {
         made = await mod.createSystems(o.ctx);
-        for (const d of declared) if (!made?.[d]) problems.push(`${name}: ${m.manifest.server.entry} does not provide "${d}"`);
+        for (const d of declared) if (!made?.[d] && !optionalSystems.has(d)) problems.push(`${name}: ${m.manifest.server.entry} does not provide "${d}"`);
+        for (const d of declaredExtensions) if (!made?.[d]) problems.push(`${name}: ${m.manifest.server.entry} does not provide extension "${d}"`);
       }
     } else if (declared.length > 0) {
       made = o.provided[name];
@@ -149,14 +164,18 @@ export async function assembleServerSystems(
       made = { ...(made ?? {}), ...native.systems };
     }
     for (const k of Object.keys(made ?? {})) {
-      if (!declared.includes(k) && !declaredNative.includes(k)) problems.push(`${name}: provides "${k}", which its manifest does not list`);
+      if (!declared.includes(k) && !declaredNative.includes(k) && !declaredExtensions.includes(k))
+        problems.push(`${name}: provides "${k}", which its manifest does not list`);
     }
     for (const d of declared) instances.set(d, made?.[d]);
     for (const d of declaredNative) instances.set(d, made?.[d]);
+    for (const d of declaredExtensions) extensionInstances.set(d, made?.[d]);
   }
   if (problems.length > 0) throw new Error(`modules: ${problems.length} problem${problems.length === 1 ? "" : "s"}:\n  ${problems.join("\n  ")}`);
   const order = r.systems.filter((s) => instances.get(s.name) !== undefined);
   const systemsByName: Record<string, SimSystem> = {};
   for (const [k, v] of instances) if (v !== undefined) systemsByName[k] = v;
-  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name), byName: systemsByName };
+  const extensions: Record<string, unknown> = {};
+  for (const [k, v] of extensionInstances) if (v !== undefined) extensions[k] = v;
+  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name), byName: systemsByName, extensions };
 }

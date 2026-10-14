@@ -877,13 +877,13 @@ async function main(): Promise<void> {
   // Slices 2-5: items, dropper, dungeons, quests, and the combat cluster
   // come from their modules.
   itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
-  dropperRef = assembled.byName["dropper"] as unknown as {
+  dropperRef = assembled.extensions["dropper"] as unknown as {
     onDeath(s: unknown, ev: unknown): void;
     setCreatures(c: unknown): void;
     setTables(t: unknown): void;
   };
-  const dungeons = assembled.byName["dungeons"] as unknown as import("./dungeons/manager.js").InstanceManager;
-  questsRef = assembled.byName["quests"] as unknown as {
+  const dungeons = assembled.extensions["dungeons"] as unknown as import("./dungeons/manager.js").InstanceManager;
+  questsRef = assembled.extensions["quests"] as unknown as {
     onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void;
   };
   const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;

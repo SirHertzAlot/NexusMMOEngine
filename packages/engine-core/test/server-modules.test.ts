@@ -170,3 +170,84 @@ describe("server modules: native entries (EA10)", () => {
     );
   });
 });
+
+describe("server modules: gateway extensions (slice 3/4 contract)", () => {
+  const temp = (mods: Record<string, unknown>, entries: Record<string, string> = {}): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-mods-"));
+    for (const [n, m] of Object.entries({ core: JSON.parse(JSON.stringify({ name: "core", version: "0.1.0", server: { systems: LEGACY_ORDER.map((name) => ({ name })) } })), ...mods })) {
+      mkdirSync(join(root, n, "server"), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+      if (entries[n]) writeFileSync(join(root, n, "server", "index.js"), entries[n]);
+    }
+    return root;
+  };
+
+  it("a declared extension lands in extensions, never in the tick systems or byName", async () => {
+    const root = temp(
+      { m: { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [], extensions: ["ext1"] } } },
+      { m: `export function createSystems(){ return { ext1: { hello: "world" } }; }` },
+    );
+    const r = await assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx });
+    assert.deepEqual(r.extensions["ext1"], { hello: "world" });
+    assert.ok(!r.systems.some((s) => s.name === "ext1"));
+    assert.equal(r.byName["ext1"], undefined);
+  });
+
+  it("an entry that does not provide its declared extension is refused", async () => {
+    const root = temp(
+      { m: { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [], extensions: ["ext1"] } } },
+      { m: `export function createSystems(){ return {}; }` },
+    );
+    await assert.rejects(
+      assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }),
+      /does not provide extension "ext1"/,
+    );
+  });
+
+  it("a returned key in neither systems nor extensions is still refused", async () => {
+    const root = temp(
+      { m: { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [], extensions: ["ext1"] } } },
+      { m: `export function createSystems(){ return { ext1: {}, rogue: {} }; }` },
+    );
+    await assert.rejects(
+      assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }),
+      /provides "rogue"/,
+    );
+  });
+});
+
+describe("server modules: optional systems", () => {
+  const temp = (mods: Record<string, unknown>, entries: Record<string, string> = {}): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-mods-"));
+    for (const [n, m] of Object.entries({ core: JSON.parse(JSON.stringify({ name: "core", version: "0.1.0", server: { systems: LEGACY_ORDER.map((name) => ({ name })) } })), ...mods })) {
+      mkdirSync(join(root, n, "server"), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+      if (entries[n]) writeFileSync(join(root, n, "server", "index.js"), entries[n]);
+    }
+    return root;
+  };
+
+  it("an omitted optional system assembles fine and stays out of the tick systems and byName", async () => {
+    const root = temp(
+      { m: { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x" }, { name: "opt", optional: true }] } } },
+      { m: `export function createSystems(){ return { x: { name: "x", step(){} } }; }` },
+    );
+    const r = await assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx });
+    const names = r.systems.map((s) => s.name);
+    assert.ok(names.includes("x"));
+    assert.ok(!names.includes("opt"));
+    assert.deepEqual(names.filter((n) => n !== "x"), LEGACY_ORDER);
+    assert.equal(r.byName["opt"], undefined);
+  });
+
+  it("an omitted required system is still refused", async () => {
+    const root = temp(
+      { m: { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x" }, { name: "opt", optional: true }] } } },
+      { m: `export function createSystems(){ return { opt: { name: "opt", step(){} } }; }` },
+    );
+    await assert.rejects(
+      assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }),
+      /does not provide "x"/,
+    );
+  });
+});

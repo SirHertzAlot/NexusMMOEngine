@@ -8,10 +8,12 @@
         "name": "creatures"
       },
       {
-        "name": "bots"
+        "name": "bots",
+        "optional": true
       },
       {
-        "name": "crowd"
+        "name": "crowd",
+        "optional": true
       },
       {
         "name": "needs"

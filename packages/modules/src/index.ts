@@ -20,6 +20,13 @@ export interface SystemSpec {
   name: string;
   after?: string[];
   before?: string[];
+  /**
+   * Conditional system: the entry may omit it (e.g. bots when botCount is
+   * 0, crowd when no nav backend provides one). The assembler tolerates its
+   * absence; the tick order drops it like any unbuilt system. Without this,
+   * a declared system the entry doesn't return is a boot-stopping problem.
+   */
+  optional?: boolean;
 }
 export interface ModuleManifest {
   name: string;
@@ -156,7 +163,7 @@ export function validateManifest(
         raw.server.systems.forEach((s: unknown, i: number) => {
           const at = `server.systems[${i}]`;
           if (!isObj(s)) return bad(at, "must be an object");
-          only(s, ["name", "after", "before"], at);
+          only(s, ["name", "after", "before", "optional"], at);
           if (typeof s.name !== "string" || !NAME_RE.test(s.name)) bad(`${at}.name`, "must be lowercase letters, digits and dashes");
           else if (seen.has(s.name)) bad(`${at}.name`, `"${s.name}" is listed twice`);
           else seen.add(s.name);
@@ -175,6 +182,10 @@ export function validateManifest(
           const before = refs("before");
           if (after) spec.after = after;
           if (before) spec.before = before;
+          if (s.optional !== undefined) {
+            if (typeof s.optional !== "boolean") bad(`${at}.optional`, "must be a boolean");
+            else if (s.optional) spec.optional = true;
+          }
           systems.push(spec);
         });
       }

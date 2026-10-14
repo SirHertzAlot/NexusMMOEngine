@@ -13,7 +13,7 @@ export function createSystems(ctx) {
   const { defs, summary } = loadItemDefs(config.dataDir, config.rules);
   ctx.log(`[${summary}]`);
   const items = new ItemService({
-    defs: defs.defs,
+    defs,
     loot: config.rules.loot,
     tickHz: config.tickHz ?? 30,
     groundHeightAt: config.groundHeightAt,
@@ -29,7 +29,7 @@ export function createSystems(ctx) {
 
   const dropper = new LootDropper({
     items,
-    defs: defs.defs,
+    defs,
     creatures: config.rules.creatures.creatures,
     tables: config.rules.loot.tables ?? {},
     kindOf: config.kindOf,
