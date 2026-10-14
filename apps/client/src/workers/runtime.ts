@@ -155,10 +155,13 @@ export class WorkerRuntime {
     const seen = new Set<ArrayBufferLike>();
 
     function add(buf: ArrayBufferLike | null | undefined) {
-      if (buf && !seen.has(buf)) {
-        seen.add(buf);
-        buffers.push(buf as ArrayBuffer);
-      }
+      if (!buf || seen.has(buf)) return;
+      // SharedArrayBuffers are shared by structured clone, never
+      // transferred — putting one in the transfer list throws
+      // DataCloneError and would break the SAB asset path.
+      if (typeof SharedArrayBuffer !== "undefined" && buf instanceof SharedArrayBuffer) return;
+      seen.add(buf);
+      buffers.push(buf as ArrayBuffer);
     }
 
     function walk(obj: any) {
