@@ -304,7 +304,7 @@ function tileFromB64(b64: string): Uint8Array {
   return out;
 }
 
-/** Encode a tile's heights as base64 little-endian float32 (the 0x22 wire form). */
+/** Encode a tile's heights as base64 little-endian float32 (the 0x23 wire form). */
 export function encodeTileHeights(heights: Float32Array): string {
   if (heights.length !== TILE_SAMPLES * TILE_SAMPLES) {
     throw new Error(`encodeTileHeights: want ${TILE_SAMPLES * TILE_SAMPLES} heights, got ${heights.length}`);

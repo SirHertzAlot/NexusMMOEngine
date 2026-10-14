@@ -1,5 +1,5 @@
 /**
- * On-demand chunk tiles (protocol 0x21/0x22): real Gateway + WebSocket
+ * On-demand chunk tiles (protocol 0x22/0x23): real Gateway + WebSocket
  * client. Tile requests are answered from the ChunkDataSource; malformed,
  * too-frequent, and oversized requests are answered 4003.
  */
@@ -66,7 +66,7 @@ afterEach(async () => {
   }
 });
 
-describe("gateway: tile streaming (0x21/0x22)", () => {
+describe("gateway: tile streaming (0x22/0x23)", () => {
   it("answers tile requests from the chunk source", async () => {
     const url = await startGateway();
     const client = await join(url, "alice");

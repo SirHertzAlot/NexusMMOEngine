@@ -337,7 +337,7 @@ export interface GatewayOptions {
    */
   chunkSource?: ChunkDataSource;
   /**
-   * World seed for on-demand tile generation (protocol 0x21). Required
+   * World seed for on-demand tile generation (protocol 0x22). Required
    * when chunkSource is present; tiles are generateChunk(seed, cx, cz, 0).
    */
   worldSeed?: bigint;
@@ -791,7 +791,7 @@ export class Gateway {
    * then carry chunk metadata without heights, as before.
    */
   private readonly chunkSource: ChunkDataSource | null;
-  /** World seed for on-demand tile generation (0x21). */
+  /** World seed for on-demand tile generation (0x22). */
   private readonly worldSeed: bigint | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
@@ -4288,7 +4288,7 @@ export class Gateway {
   }
 
   /**
-   * On-demand chunk tiles (protocol 0x21/0x22, chunk streaming). The client
+   * On-demand chunk tiles (protocol 0x22/0x23, chunk streaming). The client
    * asks for "cx,cz" tiles; the gateway generates each from the
    * authoritative ChunkDataSource and answers with base64 heights.
    * Rate-limited per session (10/s); at most 64 keys per request; keys

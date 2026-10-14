@@ -223,7 +223,7 @@ export class MirrorClient {
   private debugReject: ((e: Error) => void) | null = null;
   private adminResolve: ((r: AdminResult) => void) | null = null;
   private adminReject: ((e: Error) => void) | null = null;
-  /** Outstanding tile requests (0x21/0x22), correlated by reqId. */
+  /** Outstanding tile requests (0x22/0x23), correlated by reqId. */
   private tileReqId = 0;
   private readonly tileRequests = new Map<number, {
     resolve: (tiles: TerrainTile[]) => void;
@@ -386,7 +386,7 @@ export class MirrorClient {
   }
 
   /**
-   * On-demand chunk tiles (protocol 0x21/0x22). Resolves with the tiles
+   * On-demand chunk tiles (protocol 0x22/0x23). Resolves with the tiles
    * the server returned (keys outside the region's range are omitted).
    * Concurrent calls are correlated by reqId; a 5s timeout rejects.
    */
