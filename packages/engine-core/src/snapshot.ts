@@ -37,6 +37,7 @@ import {
 } from "./procgen/chunk-source.js";
 import {
   encodeDeltaSoA,
+  encodeFastDeltaFromSoA,
   encodeSnapshotSoA,
   type CollectedStateSoA,
 } from "@mmo-engine/protocol";
@@ -499,14 +500,27 @@ export function collectDeltaState(
 // engine-core imports keep working.
 export {
   decodeDelta,
+  decodeFastDelta,
   decodeSnapshot,
   encodeDelta,
   encodeDeltaSoA,
+  encodeFastDelta,
+  encodeFastDeltaFromSoA,
   encodeSnapshot,
   encodeSnapshotSoA,
+  tryDecodeFastDelta,
+  FAST_PATH_HEADER_BYTES,
+  FAST_PATH_MAGIC,
+  FAST_PATH_RECORD_BYTES,
+  FAST_PATH_VERSION,
+  FastPathError,
 } from "@mmo-engine/protocol";
 export type {
   CollectedStateSoA,
+  FastPathDecodeResult,
+  FastPathEntry,
+  FastPathTransformColumns,
+  FastPathVelocityColumns,
   TransformSoA,
   VelocitySoA,
   IntentSoA,
@@ -718,5 +732,45 @@ export function encodeDeltaFromSim(
   const d = tracker.diff(sim, spawnedSlotsOf(sim));
   return encodeDeltaSoA(
     soaState(sim, tick, baseTick, d, chunkSource ?? null),
+  );
+}
+
+/**
+ * Phase 5, Part B: encode the tick's position + linear-velocity changes
+ * as a fast-path v1 payload, directly from the SAB-backed stores.
+ * Same diff as encodeDeltaFromSim (the tracker's changed-transform /
+ * changed-velocity slot lists), intersected to entities with both.
+ *
+ * Returns null when the fast path doesn't apply (no entity changed
+ * both position and linear velocity): the caller sends the FlatBuffers
+ * Delta. Read-only w.r.t. the tracker, like encodeDeltaFromSim — the
+ * caller still owns commit(). Not wired into the live broadcast yet:
+ * the mirror has no fast-path decoder, so the gateway still sends
+ * FlatBuffers Deltas; this is the encoder the broadcast will call
+ * once the client can decode it.
+ */
+export function encodeFastDeltaFromSim(
+  sim: SimWorld,
+  tick: number,
+  tracker: DeltaTracker,
+): Uint8Array | null {
+  const d = tracker.diff(sim, spawnedSlotsOf(sim));
+  const wireIdOf = (eid: number): bigint => sim.wireId(eid);
+  return encodeFastDeltaFromSoA(
+    tick,
+    {
+      eids: d.transforms,
+      wireIdOf,
+      px: C.Transform.px,
+      py: C.Transform.py,
+      pz: C.Transform.pz,
+    },
+    {
+      eids: d.velocities,
+      wireIdOf,
+      lx: C.Velocity.lx,
+      ly: C.Velocity.ly,
+      lz: C.Velocity.lz,
+    },
   );
 }
