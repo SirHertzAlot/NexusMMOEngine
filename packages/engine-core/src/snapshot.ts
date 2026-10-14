@@ -35,6 +35,11 @@ import {
   chunkCoordsFor,
   type ChunkDataSource,
 } from "./procgen/chunk-source.js";
+import {
+  encodeDeltaSoA,
+  encodeSnapshotSoA,
+  type CollectedStateSoA,
+} from "@mmo-engine/protocol";
 
 // ---------------------------------------------------------------- rows
 
@@ -462,9 +467,7 @@ export function collectDeltaState(
   baseTick: number,
   tracker: DeltaTracker,
 ): CollectedState {
-  const spawnedSlots = new Set(
-    [...sim.spawnedWireIds()].map((w) => parseWireEntityId(w).slot),
-  );
+  const spawnedSlots = spawnedSlotsOf(sim);
   const d = tracker.diff(sim, spawnedSlots);
   return {
     tick,
@@ -498,5 +501,222 @@ export {
   decodeDelta,
   decodeSnapshot,
   encodeDelta,
+  encodeDeltaSoA,
   encodeSnapshot,
+  encodeSnapshotSoA,
 } from "@mmo-engine/protocol";
+export type {
+  CollectedStateSoA,
+  TransformSoA,
+  VelocitySoA,
+  IntentSoA,
+  ChunkSoA,
+  HealthSoA,
+  StaminaSoA,
+  CharacterRefSoA,
+  BodySoA,
+  AssetSoA,
+  LocomotionSoA,
+  AppearanceSoA,
+  ActionSoA,
+  AnimationSoA,
+} from "@mmo-engine/protocol";
+
+// ------------------------------------------- SoA encode from the sim
+//
+// Phase 3 (SAB wire encoding): Snapshot/Delta bytes built directly
+// from the SAB-backed component stores, with NO intermediate
+// CollectedState row-object copy. The per-block `eids` arrays come
+// from the same bitECS queries (full state) or the same DeltaTracker
+// diff (deltas) the row path uses, and the field stores are the live
+// component arrays — the FlatBuffers encoder reads `store[eid]`
+// in place. Output is byte-identical to the collect + row-encode
+// path for the same world state (snapshot-soa.test.ts).
+//
+// The row path (collect* + encode*) stays for persistence, chunk
+// streaming, and tooling that needs CollectedState rows. The gateway
+// hot path (per-tick deltas, welcome snapshots) uses these SoA
+// entry points.
+
+/** Slots spawned this tick, for the tracker's spawned fast path. */
+function spawnedSlotsOf(sim: SimWorld): Set<number> {
+  return new Set(
+    [...sim.spawnedWireIds()].map((w) => parseWireEntityId(w).slot),
+  );
+}
+
+interface SoAEidLists {
+  transforms: ArrayLike<number>;
+  velocities: ArrayLike<number>;
+  intents: ArrayLike<number>;
+  chunks: ArrayLike<number>;
+  healths: ArrayLike<number>;
+  staminas: ArrayLike<number>;
+  characterRefs: ArrayLike<number>;
+  bodies: ArrayLike<number>;
+  assets: ArrayLike<number>;
+  locomotions: ArrayLike<number>;
+  appearances: ArrayLike<number>;
+  actions: ArrayLike<number>;
+  animations: ArrayLike<number>;
+}
+
+/** Heights resolver for chunk rows, mirroring attachChunkHeights. */
+function heightsOfFor(
+  sim: SimWorld,
+  chunkSource: ChunkDataSource | null,
+): ((eid: number) => Float32Array | null) | undefined {
+  if (chunkSource === null) return undefined;
+  return (eid: number) => {
+    const K = C.Chunk;
+    const chunkId = joinU64(K.chunkIdHi[eid], K.chunkIdLo[eid]);
+    const seed = joinU64(K.seedHi[eid], K.seedLo[eid]);
+    const { cx, cz } = chunkCoordsFor(chunkId);
+    const out = new Float32Array(chunkSource.chunkSamples);
+    chunkSource.generateChunk(seed, cx, cz, K.lod[eid], out);
+    return out;
+  };
+}
+
+/**
+ * Assemble the columnar view for one encode: live SAB-backed stores
+ * + the caller's eid lists. No component data is copied — the view
+ * only references the stores and the eid arrays. Field lists are
+ * explicit (no component spread): bitECS component objects carry
+ * symbol-keyed metadata, and the wire field set is the contract.
+ */
+function soaState(
+  sim: SimWorld,
+  tick: number,
+  baseTick: number,
+  eids: SoAEidLists,
+  chunkSource: ChunkDataSource | null,
+): CollectedStateSoA {
+  const wireIdOf = (eid: number): bigint => sim.wireId(eid);
+  const heightsOf = heightsOfFor(sim, chunkSource);
+  const T = C.Transform;
+  const V = C.Velocity;
+  const I = C.PlayerIntent;
+  const K = C.Chunk;
+  const H = C.Health;
+  const S = C.Stamina;
+  const R = C.CharacterRef;
+  const B = C.BodyConfig;
+  const A = C.AssetRef;
+  const L = C.Locomotion;
+  const AC = C.Action;
+  const AN = C.Animation;
+  return {
+    tick,
+    baseTick,
+    transforms: {
+      eids: eids.transforms, wireIdOf,
+      px: T.px, py: T.py, pz: T.pz,
+      qx: T.qx, qy: T.qy, qz: T.qz, qw: T.qw,
+      sx: T.sx, sy: T.sy, sz: T.sz,
+    },
+    velocities: {
+      eids: eids.velocities, wireIdOf,
+      lx: V.lx, ly: V.ly, lz: V.lz, ax: V.ax, ay: V.ay, az: V.az,
+    },
+    intents: {
+      eids: eids.intents, wireIdOf,
+      mx: I.mx, my: I.my, mz: I.mz,
+      lookYaw: I.lookYaw, lookPitch: I.lookPitch,
+      jump: I.jump, buttons: I.buttons,
+    },
+    chunks: {
+      eids: eids.chunks, wireIdOf,
+      chunkIdHi: K.chunkIdHi, chunkIdLo: K.chunkIdLo,
+      seedHi: K.seedHi, seedLo: K.seedLo, lod: K.lod,
+      ...(heightsOf !== undefined ? { heightsOf } : {}),
+    },
+    healths: { eids: eids.healths, wireIdOf, current: H.current, max: H.max },
+    staminas: { eids: eids.staminas, wireIdOf, current: S.current, max: S.max },
+    characterRefs: { eids: eids.characterRefs, wireIdOf, idHi: R.idHi, idLo: R.idLo },
+    bodies: {
+      eids: eids.bodies, wireIdOf,
+      shapeKind: B.shapeKind,
+      halfX: B.halfX, halfY: B.halfY, halfZ: B.halfZ,
+      radius: B.radius, mass: B.mass, motionType: B.motionType,
+      layer: B.layer, friction: B.friction, restitution: B.restitution,
+    },
+    assets: { eids: eids.assets, wireIdOf, assetHash: A.assetHash, variant: A.variant },
+    locomotions: {
+      eids: eids.locomotions, wireIdOf,
+      mode: L.mode, abilities: L.abilities, breath: L.breath,
+    },
+    appearances: {
+      eids: eids.appearances, wireIdOf,
+      lookOf: (eid: number) => sim.lookJson(C.Appearance.look[eid]),
+    },
+    actions: {
+      eids: eids.actions, wireIdOf,
+      move: AC.move, started: AC.started, seq: AC.seq, yaw: AC.yaw,
+    },
+    animations: {
+      eids: eids.animations, wireIdOf,
+      clipId: AN.clipId, startTick: AN.startTick, rate: AN.rate, layerMask: AN.layerMask,
+    },
+    spawned: sim.spawnedWireIds(),
+    despawned: sim.despawnedWireIds(),
+  };
+}
+
+/**
+ * Encode a full Snapshot directly from the sim's SAB-backed stores.
+ * Byte-identical to `encodeSnapshot(collectFullState(sim, tick))`.
+ *
+ * `opts.builder` reuses a FlatBuffers builder (same contract as
+ * `encodeSnapshot`); `opts.chunkSource` attaches authoritative chunk
+ * heights on the network path (same role as `attachChunkHeights`
+ * on the row path). Never pass a chunk source on the persistence path.
+ */
+export function encodeSnapshotFromSim(
+  sim: SimWorld,
+  tick: number,
+  opts?: {
+    builder?: Parameters<typeof encodeSnapshotSoA>[1];
+    chunkSource?: ChunkDataSource | null;
+  },
+): Uint8Array {
+  const eids: SoAEidLists = {
+    transforms: qTransform(sim.ecs),
+    velocities: qVelocity(sim.ecs),
+    intents: qIntent(sim.ecs),
+    chunks: qChunk(sim.ecs),
+    healths: qHealth(sim.ecs),
+    staminas: qStamina(sim.ecs),
+    characterRefs: qCharacterRef(sim.ecs),
+    bodies: qBody(sim.ecs),
+    assets: qAssets(sim.ecs),
+    locomotions: qLocomotion(sim.ecs),
+    appearances: qAppearance(sim.ecs),
+    actions: qAction(sim.ecs),
+    animations: qAnimation(sim.ecs),
+  };
+  return encodeSnapshotSoA(
+    soaState(sim, tick, 0, eids, opts?.chunkSource ?? null),
+    opts?.builder,
+  );
+}
+
+/**
+ * Encode a changed-only Delta directly from the sim's SAB-backed
+ * stores. Byte-identical to
+ * `encodeDelta(collectDeltaState(sim, tick, baseTick, tracker))`.
+ * Read-only w.r.t. the tracker: the caller still owns `commit()`,
+ * exactly as on the row path (gateway: encode -> commit -> endTick).
+ */
+export function encodeDeltaFromSim(
+  sim: SimWorld,
+  tick: number,
+  baseTick: number,
+  tracker: DeltaTracker,
+  chunkSource?: ChunkDataSource | null,
+): Uint8Array {
+  const d = tracker.diff(sim, spawnedSlotsOf(sim));
+  return encodeDeltaSoA(
+    soaState(sim, tick, baseTick, d, chunkSource ?? null),
+  );
+}
