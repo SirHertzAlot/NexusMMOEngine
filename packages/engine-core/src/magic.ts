@@ -24,14 +24,15 @@
  * before BodySystem (which spreads a heal over the parts that tick).
  */
 
-import { addComponent, defineComponent, defineQuery, hasComponent, Types } from "bitecs";
+import { addComponent, defineQuery, hasComponent, Types } from "bitecs";
+import { defineSABComponent } from "./sab-store.js";
 import type { Spell, SpellsRules } from "@mmo-engine/rules";
 import { Action, Health, PlayerIntent, Transform } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 
 /** The mana pool, server only (the owner hears it as the 0x1c `mana` message). */
-export const Mana = defineComponent({
+export const Mana = defineSABComponent({
   current: Types.f32,
   max: Types.f32,
 });

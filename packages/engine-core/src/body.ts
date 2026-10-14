@@ -46,7 +46,8 @@
  * the same tick.
  */
 
-import { addComponent, defineComponent, defineQuery, hasComponent, Types } from "bitecs";
+import { addComponent, defineQuery, hasComponent, Types } from "bitecs";
+import { defineSABComponent } from "./sab-store.js";
 import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks, type TreatmentKind } from "@mmo-engine/rules";
 import { Action, God, Health, PlayerIntent, Transform } from "./components.js";
 import type { SimSystem } from "./systems.js";
@@ -75,7 +76,7 @@ export const NO_JUMP = 1;
  * `seen` is the Health.current BodySystem last wrote: anything else is a
  * change from outside, spread over the parts.
  */
-export const Body = defineComponent({
+export const Body = defineSABComponent({
   hp: [Types.f32, MAX_BODY_PARTS],
   wound: [Types.ui8, MAX_BODY_PARTS],
   clot: [Types.f32, MAX_BODY_PARTS],
@@ -91,7 +92,7 @@ export const Body = defineComponent({
  * bit 2i) and BLEEDING_BIT; `move` multiplies every speed the entity moves
  * at; `stamina` its stamina recovery; `flags` NO_JUMP.
  */
-export const Injury = defineComponent({
+export const Injury = defineSABComponent({
   bits: Types.ui32,
   move: Types.f32,
   stamina: Types.f32,
