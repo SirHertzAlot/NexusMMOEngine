@@ -1,3 +1,5 @@
+import type { SabDecodeResult } from "../assets/glb-meshopt.js";
+
 /**
  * Worker task types and payloads — shared between main thread and worker.
  */
@@ -23,6 +25,8 @@ export interface TaskPayloadMap {
   bvh: BvhTaskPayload;
   terrainBlock: TerrainBlockTaskPayload;
   chunkDecompose: ChunkDecomposePayload;
+  /** SAB Phase 6: decode a GLB into a SharedArrayBuffer arena. */
+  assetDecode: AssetDecodeTaskPayload;
   // Extend this interface to add new task types
 }
 
@@ -91,7 +95,16 @@ export interface TerrainBlockResultPayload {
   index: Uint16Array | Uint32Array;
 }
 
-export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload;
+export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload | TerrainBlockResultPayload | AssetDecodeResultPayload;
+
+/** SAB Phase 6: GLB bytes (transferred to the worker) + the arena it decodes into. */
+export interface AssetDecodeTaskPayload {
+  glb: ArrayBuffer;
+  sab: SharedArrayBuffer;
+}
+
+/** Worker decode result, or an overflow report (retry with a bigger arena). */
+export type AssetDecodeResultPayload = SabDecodeResult | { overflow: true; neededBytes: number };
 
 export interface WorkerRequest<T extends keyof TaskPayloadMap = keyof TaskPayloadMap> {
   id: number;
@@ -107,6 +120,7 @@ export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPaylo
     T extends 'bvh' ? BvhResultPayload :
     T extends 'terrainBlock' ? TerrainBlockResultPayload :
     T extends 'chunkDecompose' ? TerrainTile[] :
+    T extends 'assetDecode' ? AssetDecodeResultPayload :
     never;
   error?: string;
 }
