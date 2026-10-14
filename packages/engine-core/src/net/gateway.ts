@@ -133,13 +133,9 @@ import {
   type SessionStore,
 } from "../auth/index.js";
 import {
-  attachChunkHeights,
-  collectDeltaState,
-  collectFullState,
   DeltaTracker,
-  encodeDelta,
-  encodeSnapshot,
-  type CollectedState,
+  encodeDeltaFromSim,
+  encodeSnapshotFromSim,
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
@@ -950,18 +946,6 @@ export class Gateway {
     this.tracker.commit(this.world); // baseline: empty world
   }
 
-  /**
-   * Terrain-height channel: fill authoritative heights on chunk rows
-   * when a chunk source is configured. Identity when absent (tests,
-   * addon-less environments) — snapshots then carry metadata only.
-   */
-  private withHeights(state: CollectedState): CollectedState {
-    if (this.chunkSource !== null) {
-      attachChunkHeights(state, this.chunkSource);
-    }
-    return state;
-  }
-
   /** Last completed server tick. */
   get serverTick(): number {
     return this.tick;
@@ -1207,18 +1191,21 @@ export class Gateway {
     this.sendTreatments(sim);
     this.sendSpells(sim);
 
-    const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
     // that first shows them (catalog §0x12).
-    const namesEnv = this.namesFor(state.spawned);
-    const dropsEnv = this.dropsFor(state.spawned);
-    const deltaBytes = encodeDelta(state);
+    const spawned = sim.spawnedWireIds();
+    const namesEnv = this.namesFor(spawned);
+    const dropsEnv = this.dropsFor(spawned);
+    // Phase 3: the delta encodes directly from the SAB-backed stores —
+    // no intermediate CollectedState row copy. Read-only w.r.t. the
+    // tracker: commit() still runs below, as on the row path.
+    const deltaBytes = encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource);
     this.tracker.commit(sim);
     sim.endTick();
 
     this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
     for (const l of this.tickListeners) {
-      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshot(this.withHeights(collectFullState(this.world, tick))) });
+      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }) });
     }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
@@ -1830,7 +1817,7 @@ export class Gateway {
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(
         MessageType.Snapshot,
-        encodeSnapshot(this.withHeights(collectFullState(this.world, tick))),
+        encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }),
       ));
 
     for (const s of this.sessions.values()) {
@@ -3816,9 +3803,7 @@ export class Gateway {
       s,
       encodeEnvelope(
         MessageType.Snapshot,
-        encodeSnapshot(
-          this.withHeights(collectFullState(this.world, this.tick)),
-        ),
+        encodeSnapshotFromSim(this.world, this.tick, { chunkSource: this.chunkSource }),
       ),
       this.tick,
     );
