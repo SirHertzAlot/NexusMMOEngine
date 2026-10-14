@@ -726,10 +726,6 @@ async function main(): Promise<void> {
       const def = itemsOf().defs.starter(base, rankOrder);
       return def >= 0 && itemsOf().give(character, def).ok;
     },
-    grantItem: (character: number, base: string) => {
-      const def = itemsOf().defs.starter(base, rankOrder);
-      return def >= 0 && itemsOf().give(character, def).ok;
-    },
     grantGold: (character: number, amount: number) => {
       wallet.grant(character, amount, sim.currentTick);
     },
