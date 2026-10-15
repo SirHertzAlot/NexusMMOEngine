@@ -13,7 +13,8 @@
  * over it, plus its children.
  *
  * Node resolution: an `ItemSpawn` component puts an item on the ground, a
- * `QuestGiver` moves the quest giver's post; otherwise a `Spawner` component's
+ * `QuestGiver` moves the quest giver's post, a `Structure` becomes a static box on the
+ * ground carrying the kind's asset hash (settlement buildings); otherwise a `Spawner` component's
  * `creature`, else the node's `prefab` (the whole string, then its last path
  * segment, so "camps/goblin" finds the goblin), else the `Spawner`'s `species`
  * (the roster's pack size). `spawn-point` and unknown prefabs are
@@ -140,6 +141,23 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       const refused = str(quest.quest) ? (deps.quests ? deps.quests.place(str(quest.quest), x, z) : "this server has no quests") : "Quest giver has no quest";
       if (refused === null) out.spawned.push({ id: node.id, what: `quest ${str(quest.quest)}`, entities: [] });
       else out.skipped.push({ id: node.id, reason: refused });
+      continue;
+    }
+    // A building (a settlement structure): a static box on the ground that carries the kind's asset hash.
+    const structure = node.components?.Structure;
+    if (structure) {
+      const kind = str(structure.kind);
+      if (!kind) out.skipped.push({ id: node.id, reason: "Structure has no kind" });
+      else {
+        const half: [number, number, number] = [Number(structure.width) / 2, Number(structure.height) / 2, Number(structure.depth) / 2];
+        const asset = `structure:${kind}`;
+        const archetype = { asset, collision: { shape: "box" as const, halfExtents: half, motion: "static" as const } };
+        const entity = spawnScatterEntity(deps.sim, {
+          x, y: ground + y + half[1], z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
+          assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(node.id) >>> 0) || 1, archetype,
+        });
+        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [entity] });
+      }
       continue;
     }
     const creature = node.components?.Spawner?.creature;

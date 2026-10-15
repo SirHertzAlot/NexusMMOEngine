@@ -53,6 +53,8 @@ Game content the engine generates from, committed with the code:
 
 - `prefabs/*.prefab.json` — component bundles a scene node places by name (`prefab`), with the node's components overriding field by field (`MMO_PREFABS` overrides). Scenes also place items (`ItemSpawn`), species (`Spawner.species`) and quest posts (`QuestGiver`).
 
+- `settlements/*.settlement.json` — baked towns (`npm run settlement:bake`, roadmap SG1): a canonical manifest with a content hash, read back with `readSettlement`. `--scene` also writes `scenes/settlement-<id>.scene.json`, whose `Structure` nodes the scene spawner turns into buildings (`MMO_SCENE=settlement-<id>`).
+
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.
 

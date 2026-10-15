@@ -10,6 +10,9 @@
  *   --id <name>        the settlement's id (default 0001)
  *   --rules <file>     replace the built-in rules (same shape as BUILTIN_RULES)
  *   --out <dir>        output folder
+ *   --scene            also write content/scenes/settlement-<id>.scene.json, which
+ *                      the server spawns with MMO_SCENE=settlement-<id>
+ *   --origin <x,z>     where the town's centre goes in the world, metres (default 0,0)
  *   --verbosity <v>    silent | summary | normal | verbose | debug (default summary)
  */
 
@@ -22,15 +25,18 @@ import { BUILTIN_RULES, loadRules } from "./rules.js";
 
 function main(): void {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
   const here = dirname(fileURLToPath(import.meta.url));
   const out = o.out ? resolve(o.out) : resolve(here, "../../../content/settlements");
+  const origin = (o.origin ?? "0,0").split(",").map(Number);
+  if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   const r = bakeSettlement(
     { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(resolve(o.rules)) : BUILTIN_RULES, verbosity },
     out,
+    o.scene ? { scene: { dir: resolve(here, "../../../content/scenes"), origin: [origin[0]!, origin[1]!] } } : {},
   );
   for (const e of r.events) console.log(`  [${e.stage}] ${e.event} ${JSON.stringify(e.data)}`);
   if (!r.ok) throw new Error(`${r.error.stage}: ${r.error.message}`);
