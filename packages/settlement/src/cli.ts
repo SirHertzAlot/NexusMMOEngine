@@ -21,7 +21,8 @@
  *                      names a matching model; the scene stays a box where none matches.
  *                      The names go into the scene file, so keep it out of git (the
  *                      default scenes folder holds only what you commit)
- *   --verbosity <v>    silent | summary | normal | verbose | debug (default summary)
+ *   --scale <file>     a scale doc (content/scale.json): parcels and streets are baked at its building factor
+ *   --verbosity <v>   silent | summary | normal | verbose | debug (default summary)
  */
 
 import { dirname, resolve } from "node:path";
@@ -32,11 +33,12 @@ import { buildArtMap, DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
 import { BUILTIN_RULES, loadRules } from "./rules.js";
+import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
@@ -56,8 +58,16 @@ async function main(): Promise<void> {
     art = buildArtMap(models, DEFAULT_ART_PATTERNS);
     console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
   }
+  let scale = 1;
+  if (o.scale) {
+    const doc = JSON.parse(readFileSync(resolve(o.scale), "utf8")) as unknown;
+    const issues = validateScale(doc);
+    if (issues.length) throw new Error(`--scale: ${issues.map((i) => `${i.path} ${i.message}`).join("; ")}`);
+    scale = resolveScale(doc as ScaleDoc, "building");
+    console.log(`  [scale] building factor ${scale}`);
+  }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(resolve(o.rules)) : BUILTIN_RULES, verbosity },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(resolve(o.rules)) : BUILTIN_RULES, scale, verbosity },
     out,
     o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );

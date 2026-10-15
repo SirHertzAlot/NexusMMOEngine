@@ -55,6 +55,8 @@ Game content the engine generates from, committed with the code:
 
 - `settlements/*.settlement.json` — baked towns (`npm run settlement:bake`, roadmap SG1): a canonical manifest with a content hash, read back with `readSettlement`. `--scene` also writes `scenes/settlement-<id>.scene.json`, whose `Structure` nodes the scene spawner turns into buildings (`MMO_SCENE=settlement-<id>`).
 
+- `scale.json` — the global scale document (`@mmo-engine/scene` `ScaleDoc`): a factor for the whole world, one per kind of object (building, tree, rock, plant, prop) and per-asset corrections (an id, or a prefix ending in `*`), multiplied. The server applies it where baked objects spawn (Transform scale and collision together; `MMO_SCALE` overrides the file), so a building that arrives 13 m tall from the art pack can stand 8 m for a 1.8 m character without re-baking.
+
 Licensed third-party art is NOT content: it lives in the git-ignored
 `/assets/` directory and must never be committed.
 
