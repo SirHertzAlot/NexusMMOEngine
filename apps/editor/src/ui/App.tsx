@@ -82,19 +82,6 @@ type WorkspaceId =
   | "release"
   | "modules";
 
-type Tab = "ecs" | "play" | "terrain" | "graphs" | "dungeons" | "assets" | "tables" | "rules" | "characters" | "valgrind";
-
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "ecs", label: "ECS Inspector" },
-  { id: "play", label: "Play Mode" },
-  { id: "terrain", label: "Terrain" },
-  { id: "graphs", label: "PICG Graphs" },
-  { id: "dungeons", label: "Dungeons" },
-  { id: "tables", label: "Gameplay Tables" },
-  { id: "assets", label: "Art Assets" },
-  { id: "rules", label: "Rules" },
-  { id: "characters", label: "Characters" },
-  { id: "valgrind", label: "Valgrind" },
 interface Workspace {
   id: WorkspaceId;
   label: string;
@@ -202,6 +189,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
+      { id: "valgrind", label: "Valgrind", icon: "memory", kind: "panel", panel: <ValgrindPanel /> },
     ], // HUD layout editor contributed by the hud module (modules/hud/editor)
     leftTitle: "Profiles",
   },
@@ -1802,27 +1790,6 @@ function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
             Ctrl K
           </kbd>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        {tab === "ecs" && <EcsInspectorPanel />}
-        {tab === "play" && <PlayModePanel />}
-        {tab === "terrain" && <TerrainEditorPanel />}
-        {tab === "graphs" && <GraphEditorPanel />}
-        {tab === "dungeons" && <DungeonPanel />}
-        {tab === "tables" && <TablesPanel />}
-        {tab === "assets" && <AssetInspectorPanel />}
-        {tab === "rules" && <RulesPanel />}
-        {tab === "characters" && <CharacterRecordPanel />}
-        {tab === "valgrind" && <ValgrindPanel />}
-      </main>
-
-      <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-muted-foreground">
-        Server stays authoritative — the editor inspects live state and never
-        edits a running simulation; terrain edits apply to the stored world, and
-        saved gameplay tables are validated first, then picked up by a running server. Docs:{" "}
-        <span className="font-mono">docs/EDITOR.md</span>
-      </footer>
         <ul className="m3-scroll max-h-80 overflow-y-auto p-2">
           {hits.map((h, i) => (
             <li key={h.id}>
