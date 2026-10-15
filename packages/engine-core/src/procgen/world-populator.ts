@@ -15,6 +15,7 @@
  */
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEcologyPlan } from "./ecology.js";
 import { applyBiomeScatter, checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, ecologyGroups, loadBiomeRegistry, type BiomeRegistry } from "./biome-registry.js";
@@ -42,12 +43,13 @@ export interface WorldPopulator {
   ): { tiles: number; solved: number };
 }
 
-/** The art packs' manifest in this checkout (present only where the art is). */
-export const ART_MANIFEST = fileURLToPath(new URL("../../../../../assets/manifest.json", import.meta.url));
+/** The art packs' manifest in this checkout, or in MMO_ASSETS_DIR (present only where the art is). */
+const ASSETS = process.env.MMO_ASSETS_DIR ? path.resolve(process.env.MMO_ASSETS_DIR) : fileURLToPath(new URL("../../../../../assets", import.meta.url));
+export const ART_MANIFEST = path.join(ASSETS, "manifest.json");
 export const DEFAULT_ECOLOGY_PLAN = fileURLToPath(new URL("../../../content/ecology/wilds.ecology.json", import.meta.url));
 
 /** The art catalog next to the manifest: model sizes for the ecology's colliders (null where the art isn't). */
-export const ART_CATALOG = fileURLToPath(new URL("../../../../../assets/catalog.json", import.meta.url));
+export const ART_CATALOG = process.env.MMO_CATALOG ? path.resolve(process.env.MMO_CATALOG) : path.join(ASSETS, "catalog.json");
 
 /** The PICG trees' sizes from their cooked meshes (undefined without the native cook or the library). */
 async function loadPcgBounds(): Promise<ModelBounds | undefined> {

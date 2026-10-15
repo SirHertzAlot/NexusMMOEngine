@@ -195,6 +195,10 @@ Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0
 the client logged in and walking among 288 buildings (12 kinds, all mapped),
 and the same town as stand-in boxes.
 
+## Baking towns with the rest of the world
+
+`npm run bake:all` runs the world bake, site selection, `settlement:bake --world --site k --scene` for each town (`--sites N`, `--auto-size` for 600/300/100 when a size has no site) and `settlement:scale-fit`, into the folders the `MMO_*` path variables name (`MMO_CONTENT_DIR`, `MMO_SETTLEMENT_OUT`, `MMO_SCENES_DIR`, `MMO_CATALOG`, `MMO_SCALE_OUT`); the three settlement CLIs read the same variables and `settlement:bake` takes `--scenes <dir>`. See the README, "Baking everything".
+
 ## Building scale
 
 The global scale document (`content/scale.json`, `resolveScale(doc, "building")`)

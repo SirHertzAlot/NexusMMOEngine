@@ -59,7 +59,8 @@
  *                  not fed in yet, so livestock waits.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
  *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
- *                  overrides the scenes dir, MMO_PREFABS the prefab files (content/prefabs)
+ *                  overrides the scenes dir (alias MMO_SCENES_DIR, as bake:all names it),
+ *                  MMO_PREFABS the prefab files (content/prefabs)
  *   MMO_SPECIES    the species overlay file (default content/species/species.json),
  *                  merged over the built-in roster; a bad file stops the boot
  *   MMO_CRAFTING   the crafting rules (default content/crafting/recipes.json); a bad file
@@ -760,7 +761,7 @@ async function main(): Promise<void> {
   // After items and quests exist, so item and quest nodes have somewhere to go: this runs once the systems are assembled.
   const spawnBootScene = (): void => {
   if (process.env.MMO_SCENE) {
-    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const scene = loadSceneFile(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
     const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
     const r = spawnSceneOnBoot(
       scene,

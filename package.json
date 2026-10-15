@@ -31,7 +31,8 @@
     "bake:world:force": "npm run bake:world:force --workspace=@mmo-engine/engine-core",
     "preview:world": "npm run preview:world --workspace=@mmo-engine/engine-core --",
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:scripts",
+    "test:scripts": "node --test \"scripts/test/*.test.mjs\"",
     "test:addon-geometry": "npm run test --workspace=@mmo-engine/addon-geometry",
     "test:addon-navigation": "npm run test --workspace=@mmo-engine/addon-navigation",
     "valgrind:memcheck": "node scripts/valgrind/memcheck.mjs",
@@ -51,6 +52,7 @@
     "deploy:local": "node scripts/deploy-local.mjs",
     "playtest": "node scripts/playtest.mjs --all",
     "build:native": "node scripts/build-native.mjs",
+    "bake:all": "node scripts/bake-all.mjs",
     "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --"
   },
   "version": "0.1.0",
