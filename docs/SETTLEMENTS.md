@@ -89,3 +89,23 @@ and props, not a settlement-specific loader.
   in the world needs a generic simulated-agent path in the engine, which is its own
   slice (the server has creatures and quest givers, not hundreds of idle villagers).
 
+## Choosing where a town stands (SG2a)
+
+`selectSites(terrain, rules.sites, count)` reads the world bake's coarse
+fields and returns the best places, best first. A cell's *pressure* (0 to 1000)
+is its slope factor, its distance from water (near enough to drink and mill,
+not on the bank, which floods) and the fertility of the biome around it,
+multiplied; sites keep `minSpacingM` apart. The input is structural, so
+`surveyWorld(spec)` from engine-core passes in as it is (with the biome ids);
+the settlement package does not depend on the engine.
+
+    npm run settlement:bake -- --world packages/engine-core/worlds/default.world.json --site 1 --scene
+
+surveys the world (several seconds), places the town at its best site and
+writes the scene there. On the shipped 4 x 4 km world that finds two sites
+with the default 1.5 km spacing; `rules.sites` is data like the rest.
+
+What is still a plain grid: the roads (SG2b brings engineered alignments,
+profiles and drainage, spec §28) and the layout does not yet bend to a river
+or a slope; each building does follow the ground under it at spawn.
+

@@ -13,30 +13,41 @@
  *   --scene            also write content/scenes/settlement-<id>.scene.json, which
  *                      the server spawns with MMO_SCENE=settlement-<id>
  *   --origin <x,z>     where the town's centre goes in the world, metres (default 0,0)
+ *   --world <file>     a world spec (engine-core/worlds/default.world.json): survey it
+ *                      and place the town at its best site (the engine must be built;
+ *                      the survey takes several seconds)
+ *   --site <rank>      with --world, which site, best first (default 1)
  *   --verbosity <v>    silent | summary | normal | verbose | debug (default summary)
  */
 
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
 import { BUILTIN_RULES, loadRules } from "./rules.js";
+import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
-function main(): void {
+async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
   const here = dirname(fileURLToPath(import.meta.url));
-  const out = o.out ? resolve(o.out) : resolve(here, "../../../content/settlements");
-  const origin = (o.origin ?? "0,0").split(",").map(Number);
+  const out = o.out ? resolve(o.out) : resolve(here, "../../../../content/settlements");
+  let origin = (o.origin ?? "0,0").split(",").map(Number);
+  if (o.world) {
+    const site = (await findSites(resolve(o.world), here))[Number(o.site ?? 1) - 1];
+    if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
+    origin = [site.x, site.z];
+    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, ${site.biome}`);
+  }
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   const r = bakeSettlement(
     { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(resolve(o.rules)) : BUILTIN_RULES, verbosity },
     out,
-    o.scene ? { scene: { dir: resolve(here, "../../../content/scenes"), origin: [origin[0]!, origin[1]!] } } : {},
+    o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!] } } : {},
   );
   for (const e of r.events) console.log(`  [${e.stage}] ${e.event} ${JSON.stringify(e.data)}`);
   if (!r.ok) throw new Error(`${r.error.stage}: ${r.error.message}`);
@@ -44,11 +55,19 @@ function main(): void {
   console.log(`[settlement:bake] ${m.settlementId}: ${m.demographics.population} people, ${m.parcels.length} parcels, ${m.structures.length} structures, hash ${m.hash.slice(0, 12)} -> ${r.file}`);
 }
 
+/** The world's sites, best first: the survey from the built engine-core, read by selectSites. */
+async function findSites(worldFile: string, here: string): Promise<Site[]> {
+  const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
+  const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
+  const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { biomes: { id: string }[] } };
+  const spec = loadWorldSpec(worldFile);
+  const survey = surveyWorld(spec);
+  return selectSites({ ...survey, biomeIds: spec.biomes.map((b) => b.id) }, BUILTIN_RULES.sites, 20);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (e) {
-    console.error(`[settlement:bake] ${(e as Error).message}`);
+  main().catch((e: Error) => {
+    console.error(`[settlement:bake] ${e.message}`);
     process.exit(1);
-  }
+  });
 }

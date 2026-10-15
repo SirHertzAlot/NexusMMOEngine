@@ -13,3 +13,4 @@ export * from "./generate.js";
 export * from "./bake.js";
 export * from "./scene.js";
 export * from "./occupancy.js";
+export * from "./sites.js";

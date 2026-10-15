@@ -71,6 +71,19 @@ export const SettlementRulesSchema = z.strictObject({
   required: z.record(z.string(), RequiredSchema),
   /** Pairs that may never stand on neighbouring parcels. */
   forbiddenAdjacent: z.array(z.tuple([z.string(), z.string()])),
+  /** Where a settlement may stand (site selection). */
+  sites: z.strictObject({
+    /** The steepest ground it will build on, rise over run in permille. */
+    maxSlopePermille: z.number().int().positive(),
+    /** How good a biome's land is for living off, 0 to 1000 (a biome not listed is 0). */
+    fertilityPermille: z.record(z.string(), z.number().int().min(0).max(1000)),
+    /** The nearest and farthest water it wants, metres: nearer floods, farther is a walk. */
+    waterRangeM: z.tuple([z.number().positive(), z.number().positive()]),
+    /** Sites are at least this far apart, metres. */
+    minSpacingM: z.number().positive(),
+    /** Below this pressure (0 to 1000) a place is not a site. */
+    minPressurePermille: z.number().int().min(0).max(1000),
+  }),
 });
 
 export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
@@ -116,6 +129,13 @@ export const BUILTIN_RULES: SettlementRules = {
     ["smithy", "chapel"],
     ["smithy", "bakery"],
   ],
+  sites: {
+    maxSlopePermille: 150,
+    fertilityPermille: { plains: 1000, forest: 450, rainforest: 350, swamp: 150, beach: 100, desert: 60, tundra: 80 },
+    waterRangeM: [200, 800],
+    minSpacingM: 1500,
+    minPressurePermille: 150,
+  },
 };
 
 export function loadRules(file: string): SettlementRules {
