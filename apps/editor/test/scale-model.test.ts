@@ -92,3 +92,18 @@ describe("gaugeLayout", () => {
     assert.ok(l.top >= CHARACTER_HEIGHT);
   });
 });
+
+describe("categorize: whole buildings only", () => {
+  it("skips doors, walls, windows and roofs in the mixed building categories", () => {
+    for (const cat of ["Buildings", "Castle"]) {
+      for (const name of ["Door_01", "Wall_Stone_2", "Window_Glass", "Roof_Tile", "Stairs_A", "Fence_03", "Crate_01"]) {
+        assert.equal(categorize({ id: `p/${name}`, category: cat, name, size: [1, 1, 1] }), null, `${cat}/${name}`);
+      }
+    }
+  });
+  it("keeps whole buildings", () => {
+    for (const name of ["Preset_Tavern_01_Optimized", "House_04", "Chapel", "Windmill_1", "Castle_Keep"]) {
+      assert.equal(categorize({ id: `p/${name}`, category: "Buildings", name, size: [1, 1, 1] }), "building", name);
+    }
+  });
+});

@@ -55,3 +55,6 @@ apps/client/public/surfaces/
 
 # settlement scenes name licensed art models: bake locally, never commit
 /content/scenes/settlement-*.scene.json
+
+# per-model scale fit: names licensed models (settlement:scale-fit), never commit
+content/scale.local.json

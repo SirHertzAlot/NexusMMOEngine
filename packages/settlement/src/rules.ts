@@ -32,13 +32,28 @@ export const ArchetypeSchema = z.strictObject({
   workers: z.number().int().min(0),
   /** People it feeds. */
   feeds: z.number().int().min(0),
-  /** How tall it stands, metres (its scene footprint's height). */
-  heightM: z.number().positive(),
+  /** Storeys it has; its height is `buildingHeightM` (the rules' architecture), not a flat number. */
+  floors: z.number().int().min(1),
+  /** Floor-to-floor height of every storey, metres, for halls taller than a dwelling (ground floor included); defaults to the architecture's. */
+  storeyM: z.number().positive().optional(),
   /** What its workers are called ("blacksmith"). */
   role: z.string(),
   /** Whether it trades: a shop is kept here, owned by one of its workers. */
   shop: z.boolean(),
 });
+
+/** Real-world building proportions: a storey is 1.5x the human, the ground ceiling is 8 ft. */
+export const ArchitectureSchema = z.strictObject({
+  /** Floor to floor of a normal storey, metres. */
+  storeyM: z.number().positive(),
+  /** Ground-floor ceiling height, metres (8 ft). */
+  groundCeilingM: z.number().positive(),
+  /** Roof above the top storey, metres. */
+  roofM: z.number().min(0),
+  /** The human every proportion is measured against, metres. */
+  characterM: z.number().positive(),
+});
+export type Architecture = z.infer<typeof ArchitectureSchema>;
 
 export const RequiredSchema = z.strictObject({
   /** One per this many people (rounded up). */
@@ -67,6 +82,7 @@ export const SettlementRulesSchema = z.strictObject({
     /** Parcels the town has per household (permille, rounded up), for housing and everything else. */
     parcelsPerHouseholdPermille: z.number().int().min(1000),
   }),
+  architecture: ArchitectureSchema,
   archetypes: z.record(z.string(), ArchetypeSchema),
   required: z.record(z.string(), RequiredSchema),
   /** Pairs that may never stand on neighbouring parcels. */
@@ -90,7 +106,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/1",
+  version: "settlement-rules/2",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -99,19 +115,20 @@ export const BUILTIN_RULES: SettlementRules = {
   },
   districtShares: { housing: 560, agriculture: 165, shopping: 110, manufacturing: 165 },
   layout: { block: [4, 2], parcelSizeMm: [12000, 20000], streetWidthMm: 6000, parcelsPerHouseholdPermille: 1550 },
+  architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },
   archetypes: {
-    house: { kinds: ["housing"], weight: 10, households: 1, workers: 0, feeds: 0, heightM: 5, role: "", shop: false },
-    artisan_house: { kinds: ["housing", "manufacturing"], weight: 3, households: 1, workers: 1, feeds: 0, heightM: 5, role: "artisan", shop: false },
-    farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, heightM: 5, role: "farmer", shop: false },
-    granary: { kinds: ["agriculture", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 6, role: "granary keeper", shop: false },
-    mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 8, role: "miller", shop: false },
-    bakery: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 5, role: "baker", shop: true },
-    smithy: { kinds: ["manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 5, role: "blacksmith", shop: true },
-    workshop: { kinds: ["manufacturing"], weight: 4, households: 0, workers: 2, feeds: 0, heightM: 5, role: "craftsman", shop: true },
-    market: { kinds: ["shopping"], weight: 6, households: 0, workers: 1, feeds: 0, heightM: 3, role: "trader", shop: true },
-    tavern: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 2, feeds: 0, heightM: 7, role: "innkeeper", shop: true },
-    chapel: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 1, feeds: 0, heightM: 10, role: "priest", shop: false },
-    warehouse: { kinds: ["manufacturing", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 6, role: "porter", shop: false },
+    house: { kinds: ["housing"], weight: 10, households: 1, workers: 0, feeds: 0, floors: 2, role: "", shop: false },
+    artisan_house: { kinds: ["housing", "manufacturing"], weight: 3, households: 1, workers: 1, feeds: 0, floors: 2, role: "artisan", shop: false },
+    farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, floors: 2, role: "farmer", shop: false },
+    granary: { kinds: ["agriculture", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 6, role: "granary keeper", shop: false },
+    mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 3, storeyM: 3.5, role: "miller", shop: false },
+    bakery: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 2, role: "baker", shop: true },
+    smithy: { kinds: ["manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 4, role: "blacksmith", shop: true },
+    workshop: { kinds: ["manufacturing"], weight: 4, households: 0, workers: 2, feeds: 0, floors: 2, role: "craftsman", shop: true },
+    market: { kinds: ["shopping"], weight: 6, households: 0, workers: 1, feeds: 0, floors: 1, role: "trader", shop: true },
+    tavern: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 2, feeds: 0, floors: 3, role: "innkeeper", shop: true },
+    chapel: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 8, role: "priest", shop: false },
+    warehouse: { kinds: ["manufacturing", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 5, role: "porter", shop: false },
   },
   required: {
     market: { min: 1, perPopulation: 400 },
@@ -137,6 +154,12 @@ export const BUILTIN_RULES: SettlementRules = {
     minPressurePermille: 150,
   },
 };
+
+/** How tall a building stands, metres: ground storey, one more per further floor, then the roof. */
+export function buildingHeightM(a: Pick<Archetype, "floors" | "storeyM">, arch: Architecture): number {
+  const ground = a.storeyM ?? arch.groundCeilingM;
+  return ground + (a.floors - 1) * (a.storeyM ?? arch.storeyM) + arch.roofM;
+}
 
 export function loadRules(file: string): SettlementRules {
   return SettlementRulesSchema.parse(JSON.parse(readFileSync(file, "utf8")));

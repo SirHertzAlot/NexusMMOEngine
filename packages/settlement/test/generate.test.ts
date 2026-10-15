@@ -79,4 +79,5 @@ describe("generateSettlement", () => {
   });
 });
 
-const GOLDEN = "e97e09bd68ce07c442cbbe7190f0c0a8a39835e463c4ef8cfe19c24befed474a";
+// Re-pinned on purpose: rules version settlement-rules/1 -> /2 (floors + architecture replace heightM); the layout and placement are unchanged, only the recorded rulesVersion moved.
+const GOLDEN = "fae20507defe25f0049f817c9aefdeadb8dd3c43deb50934aef141a9d4c67806";

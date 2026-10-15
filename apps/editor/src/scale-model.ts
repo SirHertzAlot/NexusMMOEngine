@@ -53,12 +53,17 @@ export interface GaugeModel {
   size: readonly number[];
 }
 
-const BUILDING_CATEGORIES = new Set(["buildings", "house", "preset_houses", "castle"]);
+const BUILDING_CATEGORIES = new Set(["house", "preset_houses"]);
+/** Mixed categories that also hold parts and props: only models named like a whole building count. */
+const MIXED_BUILDING_CATEGORIES = new Set(["buildings", "castle"]);
+const WHOLE_BUILDING = /house|hut|cabin|cottage|tavern|inn\b|church|chapel|cathedral|mill|barn|stable|shelter|granary|bakery|smith|workshop|warehouse|hall|manor|castle|keep|tower|farm/;
+const BUILDING_PART = /wall|door|window|glass|roof|stair|fence|gate|floor|pillar|beam|chimney|crate|barrel|prop/;
 /** Which scale category a catalog model belongs to, or null when it has none (weapons, characters...). */
 export function categorize(m: GaugeModel): ScaleCategory | null {
   const cat = m.category.toLowerCase();
   const name = m.name.toLowerCase();
   if (BUILDING_CATEGORIES.has(cat)) return "building";
+  if (MIXED_BUILDING_CATEGORIES.has(cat)) return WHOLE_BUILDING.test(name) && !BUILDING_PART.test(name) ? "building" : null;
   if (/(^|[_\s-])(tree|pine|oak|birch|spruce)/.test(name)) return "tree";
   if (cat === "rocks" || /rock|boulder|stone/.test(name)) return "rock";
   if (/bush|shrub|grass|flower|fern|plant|mushroom/.test(name)) return "plant";
