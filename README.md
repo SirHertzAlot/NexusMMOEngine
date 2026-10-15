@@ -71,7 +71,7 @@ packages/addons/        # C++ N-API addons: physics (Jolt), navigation (Recast/D
                         # geometry (manifold + Clipper2), scatter, perf-probe,
                         # integrate (bench), template
 packages/wfc/ placement/ scatter/ picg/   # procedural generation (bake time)
-packages/dungeon/ species/ compose/ crafting/   # dungeons, creatures, ranks and
+packages/dungeon/ species/ compose/ crafting/ settlement/   # dungeons, creatures, settlements, ranks and
                         # loot, materials and recipes (bake time)
 packages/art/           # art asset pipeline: manifests, packs, three.js provider
 packages/world-server/  # world server: region registry, SurrealDB system of record
