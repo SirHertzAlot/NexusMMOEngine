@@ -190,6 +190,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
+      { id: "valgrind", label: "Valgrind", icon: "memory", kind: "panel", panel: <ValgrindPanel /> },
     ], // HUD layout editor contributed by the hud module (modules/hud/editor)
     leftTitle: "Profiles",
   },

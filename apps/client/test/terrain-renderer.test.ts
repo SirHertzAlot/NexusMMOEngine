@@ -58,6 +58,18 @@ describe("TerrainRenderer", () => {
     r.dispose();
   });
 
+  it("rebuilds a chunk whose wire id outlived it (a newer entity took the cell, then went)", () => {
+    const r = new TerrainRenderer(16);
+    r.setWorld(world());
+    r.ensureChunk(20n, chunk(0, 0, new Float32Array(256).fill(1)));
+    r.ensureChunk(21n, chunk(0, 0, new Float32Array(256).fill(2)));
+    r.removeChunk(21n);
+    assert.equal(r.chunkCount, 0);
+    assert.doesNotThrow(() => r.ensureChunk(20n, chunk(0, 0, new Float32Array(256).fill(3))));
+    assert.equal(r.chunkCount, 1);
+    r.dispose();
+  });
+
   it("builds the far mesh with one vertex per map cell, facing up", () => {
     const { map } = world();
     const g = farGeometry(map);
