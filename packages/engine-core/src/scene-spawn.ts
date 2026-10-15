@@ -31,11 +31,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
-import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type WorldNode } from "@mmo-engine/scene";
+import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
 import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
+import type { ModelBounds } from "./procgen/prop-shape.js";
+import type { ScaleResolver } from "./scale.js";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 /** The repo's content/scenes (this file is dist/src/scene-spawn.js). */
@@ -51,6 +53,10 @@ export interface SceneSpawnDeps {
   /** The prop table (lazy: loading it cooks the scatter plan). */
   table: () => SpawnTable | null;
   groundHeightAt?: (x: number, z: number) => number;
+  /** The global scale: the factor per (category, asset), multiplied into every spawned prop and building. */
+  scale?: ScaleResolver;
+  /** Model sizes (the local art catalog): a Structure naming a model takes its body from them. */
+  bounds?: ModelBounds;
   /** Prefab files (content/prefabs) by name: nodes naming one become its bundle. */
   prefabs?: PrefabLookup;
   /** The species roster: a Spawner's `species` spawns its creature at the species' pack size. */
@@ -125,12 +131,12 @@ function colliderOf(c: Record<string, unknown> | undefined): Collision | undefin
 }
 
 /** One static body at the node's world pose (y above the ground), carrying `asset`'s hash, through the scatter spawn path. */
-function spawnBody(sim: SimWorld, id: string, w: WorldNode, ground: number, asset: string, collision: Collision): number {
+function spawnBody(deps: SceneSpawnDeps, id: string, w: WorldNode, ground: number, asset: string, collision: Collision, category: ScaleCategory = "prop"): number {
   const [x, y, z] = w.position;
-  return spawnScatterEntity(sim, {
+  return spawnScatterEntity(deps.sim, {
     x, y: ground + y, z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
-    assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(id) >>> 0) || 1, archetype: { asset, collision },
-  });
+    assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(id) >>> 0) || 1, archetype: { asset, collision, category },
+  }, deps.bounds, deps.scale);
 }
 
 export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnResult {
@@ -174,8 +180,10 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       else {
         const half: [number, number, number] = [Number(structure.width) / 2, Number(structure.height), Number(structure.depth) / 2];
         const asset = str(structure.asset) || `structure:${kind}`;
-        const collision = { shape: "box" as const, halfExtents: half, motion: "static" as const };
-        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [spawnBody(deps.sim, node.id, w, ground, asset, collision)] });
+        // A named model that the catalog knows sizes the body (bounds x scale); otherwise the authored footprint.
+        const modelSized = str(structure.asset) !== "" && deps.bounds?.(asset) !== undefined;
+        const collision = { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
+        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [spawnBody(deps, node.id, w, ground, asset, collision, "building")] });
       }
       continue;
     }
@@ -207,12 +215,12 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         built.sz = w.scale[2];
         built.seed = (fnv1a32(node.id) >>> 0) || 1;
         if (collision) built.archetype = { ...built.archetype, collision };
-        out.spawned.push({ id: node.id, what: `prop ${asset}`, entities: [spawnScatterEntity(deps.sim, built)] });
+        out.spawned.push({ id: node.id, what: `prop ${asset}`, entities: [spawnScatterEntity(deps.sim, built, deps.bounds, deps.scale)] });
         continue;
       }
     }
     if (collision && collision.shape !== "none") {
-      out.spawned.push({ id: node.id, what: `collider ${collision.shape}`, entities: [spawnBody(deps.sim, node.id, w, ground, names[0] || `collider:${node.id}`, collision)] });
+      out.spawned.push({ id: node.id, what: `collider ${collision.shape}`, entities: [spawnBody(deps, node.id, w, ground, names[0] || `collider:${node.id}`, collision)] });
       continue;
     }
     out.skipped.push({ id: node.id, reason: names.length > 0 ? `nothing spawns "${names[0]}"` : "no prefab or Spawner creature" });

@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { loadEcologyPlan } from "./ecology.js";
 import { applyBiomeScatter, checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, ecologyGroups, loadBiomeRegistry, type BiomeRegistry } from "./biome-registry.js";
 import { makeEcologyPopulator, makeScatterPopulator } from "./scatter-spawn.js";
+import { loadScale, type ScaleResolver } from "../scale.js";
 import { catalogBounds, pcgBounds, type ModelBounds } from "./prop-shape.js";
 import { DEFAULT_PCG_ASSETS, loadNativeCooker } from "../pcg/boot.js";
 import { PcgAssetLibrary } from "../pcg/asset-library.js";
@@ -68,13 +69,16 @@ export async function makeWorldPopulator(opts: {
   formationTiles?: { store: FormationTileStore; terrainVersion: string };
   /** Per-biome scatter multipliers (default: loaded from MMO_BIOMES or content/biomes.json). */
   biomes?: BiomeRegistry;
+  /** The global scale (default: content/scale.json or MMO_SCALE; a bad file throws). */
+  scale?: ScaleResolver;
   log?: (line: string) => void;
 }): Promise<WorldPopulator> {
+  const scale = opts.scale ?? loadScale();
   const kind = process.env.MMO_SCATTER || (fs.existsSync(ART_MANIFEST) ? "ecology" : "pcg");
   if (kind !== "ecology" && kind !== "pcg") throw new Error(`MMO_SCATTER=${kind}: want ecology or pcg`);
   if (kind === "pcg") {
     const bounds = await loadPcgBounds();
-    const p = makeScatterPopulator(opts.worldSeed, opts.chunkWorldSize, { bounds, ...(opts.seaLevel === undefined ? {} : { seaLevel: opts.seaLevel }) });
+    const p = makeScatterPopulator(opts.worldSeed, opts.chunkWorldSize, { bounds, scale, ...(opts.seaLevel === undefined ? {} : { seaLevel: opts.seaLevel }) });
     opts.log?.(`[scatter] PCG forest graph (PICG trees, colliders ${bounds ? "from the cooked meshes" : "default boxes: no native cook"})`);
     return { ...p, planHash: p.planHash, kind };
   }
@@ -93,6 +97,7 @@ export async function makeWorldPopulator(opts: {
   const p = makeEcologyPopulator(opts.worldSeed, opts.chunkWorldSize, {
     plan,
     bounds,
+    scale,
     planHash: hash,
     biomeAt: opts.biomeAt,
     waterAt: opts.waterAt,
