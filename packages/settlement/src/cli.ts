@@ -94,7 +94,6 @@ async function findSites(worldFile: string, here: string, rules: SettlementRules
   const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { biomes: { id: string }[] } };
   const spec = loadWorldSpec(worldFile);
   const survey = surveyWorld(spec);
-<<<<<<< HEAD
   const { spawnPoint } = (await import(`${terrain}/world-bake.js`)) as { spawnPoint(spec: unknown, survey: unknown): { x: number; z: number } };
   // Sites must be walkable from where players spawn.
   const fields = { ...survey, biomeIds: spec.biomes.map((b) => b.id), spawn: spawnPoint(spec, survey) };
