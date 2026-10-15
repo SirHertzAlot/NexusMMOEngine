@@ -1,0 +1,28 @@
+{
+  "note": "Natural weapons: the item base (content/rules/items.json: bite, claw, tusk, horn, crush, tailslam) a species fights with. A species not named takes its role's.",
+  "byRole": {
+    "apex_predator": "claw",
+    "mesopredator": "bite",
+    "large_herbivore": "horn",
+    "small_prey": "bite",
+    "scavenger": "bite",
+    "livestock": "horn",
+    "aquatic": "bite"
+  },
+  "species": {
+    "boar": "tusk",
+    "pig": "tusk",
+    "bear": "claw",
+    "cougar": "claw",
+    "bobcat": "claw",
+    "porcupine": "tailslam",
+    "horse": "crush",
+    "orca": "crush",
+    "octopus": "crush",
+    "jellyfish": "tailslam",
+    "squirrel": "claw",
+    "raccoon": "claw",
+    "monkey": "claw",
+    "fox": "bite"
+  }
+}
