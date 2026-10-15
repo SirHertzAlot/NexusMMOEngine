@@ -23,6 +23,8 @@ export const ContentSchema = z.strictObject({
   mount: z.boolean().default(false),
   /** Only in dungeons of at least this rank. */
   minRank: z.number().int().min(1).default(1),
+  /** Whether bodies are blocked by it: "solid" (a round collider of its radius) or "none" (walk-through). Default: solid, none when mounted. */
+  collision: z.enum(["solid", "none"]).optional(),
 });
 
 export const ArchetypeSchema = z.strictObject({
@@ -74,8 +76,9 @@ export type Vein = z.infer<typeof VeinSchema>;
 export type Dressing = z.infer<typeof DressingSchema>;
 
 const c = (kind: string, where: (typeof WHERE)[number], radius: number, count: [number, number], extra: Partial<Content> = {}): Content => ({
-  kind, where, radius, count, mount: false, minRank: 1, ...extra,
+  kind, where, radius, count, mount: false, minRank: 1, ...extra, collision: extra.collision ?? (extra.mount ? "none" : "solid"),
 });
+const flat: Partial<Content> = { collision: "none" };
 const a = (roles: Archetype["roles"], contents: Content[], extra: Partial<Archetype> = {}): Archetype => ({
   roles, weight: 1, minSize: 0, repeatable: false, avoid: [], near: [], contents, ...extra,
 });
@@ -85,10 +88,10 @@ export const BUILTIN_DRESSING: Dressing = {
   archetypes: {
     gatehall: a(["entrance"], [c("statue", "wall", 0.7, [1, 2]), c("brazier", "corner", 0.5, [1, 2])]),
     throne: a(["boss"], [c("throne", "wall", 1.0, [1, 1]), c("statue", "wall", 0.7, [0, 2]), c("brazier", "corner", 0.5, [2, 4])]),
-    vault: a(["treasure"], [c("chest", "wall", 0.6, [1, 2]), c("coin-pile", "floor", 0.5, [1, 3]), c("gilded-chest", "wall", 0.6, [0, 1], { minRank: 3 })], {
+    vault: a(["treasure"], [c("chest", "wall", 0.6, [1, 2]), c("coin-pile", "floor", 0.5, [1, 3], flat), c("gilded-chest", "wall", 0.6, [0, 1], { minRank: 3 })], {
       repeatable: true,
     }),
-    chapel: a(["shrine"], [c("candles", "corner", 0.35, [2, 4]), c("pew", "floor", 0.6, [0, 3]), c("reliquary", "wall", 0.5, [0, 1], { minRank: 2 })], {
+    chapel: a(["shrine"], [c("candles", "corner", 0.35, [2, 4], flat), c("pew", "floor", 0.6, [0, 3]), c("reliquary", "wall", 0.5, [0, 1], { minRank: 2 })], {
       repeatable: true,
     }),
     crypt: a(["combat", "elite"], [c("sarcophagus", "centre", 1.2, [1, 1]), c("coffin", "wall", 0.6, [1, 3]), c("urn", "corner", 0.35, [1, 4])], {
@@ -97,24 +100,24 @@ export const BUILTIN_DRESSING: Dressing = {
     armoury: a(["combat", "elite"], [c("weapon-rack", "wall", 0.6, [1, 3]), c("armour-stand", "wall", 0.5, [0, 2]), c("crate", "corner", 0.45, [1, 3])], {
       max: 2, minSize: 6,
     }),
-    barracks: a(["combat"], [c("bedroll", "floor", 0.6, [2, 5]), c("table", "centre", 0.9, [0, 1]), c("barrel", "corner", 0.4, [0, 2])], {
+    barracks: a(["combat"], [c("bedroll", "floor", 0.6, [2, 5], flat), c("table", "centre", 0.9, [0, 1]), c("barrel", "corner", 0.4, [0, 2])], {
       minSize: 7, repeatable: true,
     }),
-    storeroom: a(["combat"], [c("crate", "floor", 0.45, [2, 5]), c("barrel", "corner", 0.4, [1, 3]), c("sack", "floor", 0.35, [0, 3])], {
+    storeroom: a(["combat"], [c("crate", "floor", 0.45, [2, 5]), c("barrel", "corner", 0.4, [1, 3]), c("sack", "floor", 0.35, [0, 3], flat)], {
       near: ["barracks", "armoury"], weight: 1.5,
     }),
-    library: a(["combat", "elite"], [c("bookshelf", "wall", 0.6, [2, 5]), c("desk", "centre", 0.8, [1, 1]), c("candles", "corner", 0.35, [1, 2])], {
+    library: a(["combat", "elite"], [c("bookshelf", "wall", 0.6, [2, 5]), c("desk", "centre", 0.8, [1, 1]), c("candles", "corner", 0.35, [1, 2], flat)], {
       themes: ["ancient", "verdant", "frost"], max: 1, minSize: 8, avoid: ["forge", "ritual"],
     }),
-    ritual: a(["elite", "combat"], [c("ritual-circle", "centre", 1.4, [1, 1]), c("candles", "corner", 0.35, [2, 4]), c("cage", "wall", 0.6, [0, 2])], {
+    ritual: a(["elite", "combat"], [c("ritual-circle", "centre", 1.4, [1, 1]), c("candles", "corner", 0.35, [2, 4], flat), c("cage", "wall", 0.6, [0, 2])], {
       themes: ["grim", "molten", "ancient"], max: 2, minSize: 8, avoid: ["library", "chapel"],
     }),
     forge: a(["combat", "elite"], [c("anvil", "centre", 0.7, [1, 1]), c("smelter", "wall", 0.9, [1, 1]), c("crate", "corner", 0.45, [0, 2])], {
       themes: ["molten"], max: 2, minSize: 7, weight: 2,
     }),
-    grotto: a(["combat"], [c("mushrooms", "floor", 0.4, [2, 6]), c("root-knot", "wall", 0.6, [0, 2])], { themes: ["verdant"], repeatable: true, weight: 2 }),
-    icehall: a(["combat", "elite"], [c("ice-pillar", "floor", 0.6, [1, 3]), c("frozen-body", "wall", 0.6, [0, 2])], { themes: ["frost"], repeatable: true }),
-    hall: a(["combat", "elite"], [c("rubble", "floor", 0.5, [1, 3]), c("statue", "wall", 0.7, [0, 2])], { repeatable: true, weight: 0.4 }),
+    grotto: a(["combat"], [c("mushrooms", "floor", 0.4, [2, 6], flat), c("root-knot", "wall", 0.6, [0, 2])], { themes: ["verdant"], repeatable: true, weight: 2 }),
+    icehall: a(["combat", "elite"], [c("ice-pillar", "floor", 0.6, [1, 3]), c("frozen-body", "wall", 0.6, [0, 2], flat)], { themes: ["frost"], repeatable: true }),
+    hall: a(["combat", "elite"], [c("rubble", "floor", 0.5, [1, 3], flat), c("statue", "wall", 0.7, [0, 2])], { repeatable: true, weight: 0.4 }),
   },
   veins: {
     "iron-seam": { weight: 3, tier: 1, minRank: 1, minDepth: 0, themes: [], themeBoost: 3 },
