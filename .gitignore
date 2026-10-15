@@ -61,3 +61,4 @@ content/scale.local.json
 
 # wildlife ecology plan: lists licensed models by id (wildlife:plan), never commit
 packages/engine-core/content/ecology/*.local.ecology.json
+packages/engine-core/content/wildlife/*.local.json

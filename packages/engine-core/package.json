@@ -13,6 +13,7 @@
     "test:gateway": "npm run build && node --test \"dist/test/net/**/*.test.js\"",
     "seed:user": "node dist/src/auth/seed-user.js",
     "loot:rebake": "npm run build && node dist/src/items/rebake.js",
+    "wildlife:models": "npm run build && node dist/src/procgen/wildlife-table.js",
     "wildlife:plan": "npm run build && node dist/src/procgen/wildlife-plan.js",
     "bake:world": "npm run build && node dist/src/bake-world.js",
     "bake:world:force": "npm run build && node dist/src/bake-world.js --force",

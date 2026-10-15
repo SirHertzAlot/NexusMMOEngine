@@ -36,6 +36,8 @@ export interface WildCreaturesOptions {
   biomeAt: (x: number, z: number) => string | null;
   /** Packs whose centre is here are skipped: in water, or anywhere else creatures can't stand. Default: none. */
   blocked?: (x: number, z: number) => boolean;
+  /** More packs from another planner (the wildlife table, wildlife-table.ts), added to the registry's. */
+  extraPlan?: (cx: number, cz: number) => PlannedPack[];
 }
 
 export interface WildCreaturesStats {
@@ -55,14 +57,14 @@ export class WildCreatures implements ChunkContentsHook {
 
   /** The packs chunk (cx, cz) holds, whether or not their kinds can spawn yet. */
   plan(cx: number, cz: number): PlannedPack[] {
-    return planChunkPacks(this.opts.registry, {
+    return [...planChunkPacks(this.opts.registry, {
       seed: this.opts.seed,
       cx,
       cz,
       chunkWorldSize: this.opts.chunkWorldSize,
       biomeAt: this.opts.biomeAt,
       spawnable: (k) => this.opts.spawner.has(k),
-    });
+    }), ...(this.opts.extraPlan?.(cx, cz) ?? [])];
   }
 
   load(sim: SimWorld, cx: number, cz: number): void {
