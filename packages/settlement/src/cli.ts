@@ -26,7 +26,7 @@
  */
 
 import { dirname, resolve } from "node:path";
-import { fromUser } from "./paths.js";
+import { fromUser, settlementPaths } from "./paths.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -40,12 +40,13 @@ import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
   const here = dirname(fileURLToPath(import.meta.url));
-  const out = o.out ? fromUser(o.out) : resolve(here, "../../../../content/settlements");
+  const paths = settlementPaths();
+  const out = o.out ? fromUser(o.out) : paths.settlements;
   let origin = (o.origin ?? "0,0").split(",").map(Number);
   /** The world's dryness test at a point (with --world): parcels that are not dry are dropped from the town. */
   let dry: ((x: number, z: number) => boolean) | undefined;
@@ -79,7 +80,7 @@ async function main(): Promise<void> {
   const r = bakeSettlement(
     { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
     out,
-    o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
+    o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
   for (const e of r.events) console.log(`  [${e.stage}] ${e.event} ${JSON.stringify(e.data)}`);
   if (!r.ok) throw new Error(`${r.error.stage}: ${r.error.message}`);
