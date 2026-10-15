@@ -8,6 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { dungeonColliders, type Collider } from "./collision.js";
 import type { Dungeon } from "./generate.js";
 import type { DungeonDressing } from "./dress.js";
 import type { Population } from "./populate.js";
@@ -23,6 +24,8 @@ export type DungeonFile = Omit<Dungeon, GridName> & {
   /** sha256 of the layout (grids, rooms, corridors, props, spawns, torches). */
   hash: string;
   grids: Record<GridName, string>;
+  /** Round props that block bodies (pillars, statues, chests), grid cells. */
+  colliders: Collider[];
   /** The dressing pass (rank, room archetypes, props, resource veins), when the bake dressed it. */
   dressing?: DungeonDressing;
   /** Who lives there (species per room, and at each spawn point), when the bake populated it. */
@@ -58,6 +61,7 @@ export function encodeDungeon(d: Dungeon, dressing?: DungeonDressing, population
     hash,
     ...rest,
     grids: { grid: b64(grid), roomId: b64(roomId), corridor: b64(corridor), doorway: b64(doorway), lake: b64(lake), distance: b64(distance) },
+    colliders: dungeonColliders(d, dressing),
     ...(dressing ? { dressing } : {}),
     ...(population ? { population } : {}),
   };
@@ -65,7 +69,7 @@ export function encodeDungeon(d: Dungeon, dressing?: DungeonDressing, population
 
 export function decodeDungeon(f: DungeonFile): Dungeon {
   if (f.format !== DUNGEON_FORMAT) throw new Error(`not a ${DUNGEON_FORMAT} file (format: ${String(f.format)})`);
-  const { grids, format: _format, id: _id, hash: _hash, dressing: _dressing, population: _population, ...rest } = f;
+  const { grids, format: _format, id: _id, hash: _hash, colliders: _colliders, dressing: _dressing, population: _population, ...rest } = f;
   const d: Dungeon = {
     ...rest,
     grid: fromB64U8(grids.grid),
