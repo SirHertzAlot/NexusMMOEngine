@@ -219,6 +219,77 @@ node rogue-packages/sirhertzalot/mmo-editor/src/import-art-pack.mjs \
 Models land in `Assets/Models/mmo/` and textures in `Assets/Textures/mmo/`,
 with an index manifest for `RE.Model.fetch()`.
 
+## Animals: procedural movement for static meshes
+
+The imported animals (woodland fauna, farm animals) are static meshes with no
+skeleton and no clips. They move through `apps/client/src/render/animal/`:
+the client cuts the mesh into parts, adds a seven-bone skeleton to a copy of
+its geometry and poses it from the server's velocity. No clip files are made
+or needed, so every static quadruped moves the day it is imported.
+
+**Decision.** The idea came from
+[threejs-procedural-animals](https://github.com/majidmanzarpour/threejs-procedural-animals)
+(MIT, Majid Manzarpour). We took option C of three:
+
+- **A, use the library for its species:** rejected. It builds its own SDF
+  animals (24 species) and cannot move another mesh; using it would replace
+  our animals, and the project decision is to use our own.
+- **B, drive our meshes with its gait/IK solver:** rejected. Its locomotion
+  (`src/core/motion/quadruped.js`, about 180 KB, plus `rig/` and
+  `render/dqs.js`) is welded to its own generated rig: it reads joint chains,
+  paw/hoof bones and dual-quaternion skin from `data.joints`, which our meshes
+  do not have. Faking that rig for 480 arbitrary meshes costs more than the
+  motion is worth.
+- **C, our own small rig and gait inspired by its concepts:** chosen. We took
+  the ideas (a gait is a table of per-leg touchdown phase offsets and a duty
+  factor, rows blended by speed, speeds compared by Froude number so a wolf
+  and a bear change gait at the same effort, one-shots layered over
+  locomotion) and wrote them for a seven-bone rig. **No code from the library
+  is vendored**, so there is no licence text to carry and no
+  `content/credits.json` entry; the concept credit is this paragraph. If you
+  vendor any of its files later, copy its `LICENSE` and copyright notice next
+  to them and add a credits entry (project, author, MIT, repository URL,
+  `confirmed: false`).
+
+**How it works.**
+
+- `segment.ts` (pure, no three.js): the longest horizontal axis is the spine;
+  the head end is the one held higher off the ground (the rear reaches down
+  with hind legs; right on the seven tried: deer, bear, fox, cougar, wolf, pig, goat; vertex count is only the
+  tiebreak); the belly is where a height slice's footprint fills in; smooth
+  region weights give head, tail, four legs and body, four influences per
+  vertex. A mesh that is not four-legged (length under 0.7 of height, snakes,
+  birds, upright shapes) returns null and stays a static prop.
+- `gait.ts` (pure): walk, trot, gallop rows blended by speed (Froude), duty
+  factor, stride, swing lift, bob, the attack windup/strike pose and the
+  death fall. A leg's hip angle is chosen so its stance foot moves at body
+  speed (no sliding), up to a cap.
+- `animal-rig.ts`: `AnimalTemplate` (one per model: skinned geometry copy) and
+  `AnimalRig` (one per animal: `SkinnedMesh`, bones, state). `update` allocates
+  nothing. The material is the model cache's, shared with the scenery, and is
+  never disposed or tinted per animal.
+- `EntityLayer` gives a moving entity with an `AssetRef` to a loaded art model
+  the rig (`dressAsAnimal`), then feeds it the mirrored velocity, the Action
+  row (`combatMove`: windup until `hitAt` is the telegraph, strike after) and
+  health (zero: lies down). Animals farther than `ANIMAL_LOD_RADIUS` (45 m)
+  hold the rest pose and cost no CPU.
+
+**Add a species.** Import the GLB (`npm run import:glb`), give the creature
+rules an entity with that model's `AssetRef`; it rigs itself. If the head is
+picked wrong or the belly height is off, pass `SegmentHints`
+(`headSign`, `legTop`) where the template is built. Megafauna (giant
+predators) rig the same way; their stride scales with leg length (Froude).
+Sea giants, birds and snakes need their own cut (fin and tail wave, wings,
+spine wave): not built.
+
+**Known artifacts.** Legs are rigid pieces blended over the belly, so a leg
+shows some stretch at the hip, and there is no knee or hoof bend: feet slide
+a little at gallop (hip swing is capped) and paws do not roll. Wide antlers or
+tusks clip the ground when the body lies down. Only a dozen models were tried;
+the head and belly heuristics may need a hint for others. A far animal is posed at
+rest, not drawn from the instanced prop batch. Developer views of the rig
+(bone layout, weights) belong in the editor and are not built.
+
 ## Licensing and attribution
 
 Two different licences are in play and they must not be confused:

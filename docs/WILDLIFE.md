@@ -24,7 +24,8 @@ below); a table that breaks a rule does not load.
      territorial warning with `telegraphS`, pack `flank` and `ambush` tactics, activity by time of day
      (`MMO_DAY_SECONDS` gives the engine a day clock; nothing reads `activity` yet);
   3. a look for non-humanoid creatures (`lookOf` returns a character Look; animal GLBs are static props, and the
-     imported ones are not skinned or animated);
+     imported ones are not skinned or animated; the client already rigs and animates a moving entity that carries
+     such a model's `AssetRef`, see [`ART-PIPELINE.md`](ART-PIPELINE.md) "Animals");
   4. aquatic creatures: the wild-pack path skips water (`blocked`) and creatures walk, they do not swim;
   5. settlement centres are not fed to the planner yet (only the spawn), so livestock waits;
   6. the editor (below).
