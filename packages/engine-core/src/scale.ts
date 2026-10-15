@@ -6,6 +6,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_SCALE, resolveScale, validateScale, type ScaleCategory, type ScaleDoc } from "@mmo-engine/scene";
 
@@ -23,7 +24,8 @@ export const scaleResolver = (doc: ScaleDoc): ScaleResolver => (category, asset)
  */
 export function loadScale(file?: string, mustExist = true): ScaleResolver {
   const named = file ?? process.env.MMO_SCALE;
-  const path = named || DEFAULT_SCALE_FILE;
+  // A typed path is relative to where npm was run; the server itself runs in the package folder.
+  const path = named ? resolve(process.env.INIT_CWD ?? process.cwd(), named) : DEFAULT_SCALE_FILE;
   if (!existsSync(path)) {
     if (named && mustExist) throw new Error(`MMO_SCALE: no scale file ${path}`);
     return scaleResolver(DEFAULT_SCALE);

@@ -36,6 +36,11 @@ describe("loadScale", () => {
     process.env.MMO_SCALE = f;
     try { near(loadScale()("building"), 2); } finally { delete process.env.MMO_SCALE; }
   });
+  it("a relative MMO_SCALE is read from where npm was run (INIT_CWD), not the package folder", () => {
+    write("rel.json", JSON.stringify(doc({ global: 4 })));
+    process.env.INIT_CWD = dir;
+    try { near(loadScale("rel.json")("building"), 4); } finally { delete process.env.INIT_CWD; }
+  });
   it("a missing default file means no scaling; a missing named file is refused", () => {
     near(loadScale(join(dir, "none.json"), false)("building"), 1);
     assert.throws(() => loadScale(join(dir, "none.json")), /none\.json/);
