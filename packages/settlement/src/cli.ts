@@ -33,7 +33,8 @@ import { parseArgs } from "node:util";
 import { buildArtMap, DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
-import { BUILTIN_RULES, loadRules } from "./rules.js";
+import { BUILTIN_RULES, loadRules, type SettlementRules } from "./rules.js";
+import { townHalfExtentM } from "./layout.js";
 import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
@@ -47,10 +48,15 @@ async function main(): Promise<void> {
   const out = o.out ? fromUser(o.out) : resolve(here, "../../../../content/settlements");
   let origin = (o.origin ?? "0,0").split(",").map(Number);
   if (o.world) {
-    const site = (await findSites(fromUser(o.world), here))[Number(o.site ?? 1) - 1];
+    const rules = o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES;
+    const households = Math.round((Number(o.population ?? 600) * 10) / rules.demographics.householdSizeX10);
+    const buildingScale = o.scale ? resolveScale(JSON.parse(readFileSync(fromUser(o.scale), "utf8")) as ScaleDoc, "building") : 1;
+    const extent = townHalfExtentM(households, rules, buildingScale);
+    const sites = await findSites(fromUser(o.world), here, rules, extent);
+    const site = sites[Number(o.site ?? 1) - 1];
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
     origin = [site.x, site.z];
-    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, ${site.biome}`);
+    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, elevation ${site.elevationM} m, relief ${site.reliefM} m over a ${Math.round(2 * extent)} m town, ${site.biome}`);
   }
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   let art: Record<string, string[]> | undefined;
@@ -79,13 +85,13 @@ async function main(): Promise<void> {
 }
 
 /** The world's sites, best first: the survey from the built engine-core, read by selectSites. */
-async function findSites(worldFile: string, here: string): Promise<Site[]> {
+async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<Site[]> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
   const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
   const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { biomes: { id: string }[] } };
   const spec = loadWorldSpec(worldFile);
   const survey = surveyWorld(spec);
-  return selectSites({ ...survey, biomeIds: spec.biomes.map((b) => b.id) }, BUILTIN_RULES.sites, 20);
+  return selectSites({ ...survey, biomeIds: spec.biomes.map((b) => b.id) }, rules.sites, 20, extentM);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

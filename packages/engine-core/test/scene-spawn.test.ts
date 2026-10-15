@@ -250,4 +250,50 @@ describe("structures in a scene", () => {
     const r = spawnScene(doc([node("smithy-2", { kind: "smithy", asset: "pack/Smithy_01", width: 10, depth: 18, height: 4 })]) as never, deps);
     assert.equal(C.AssetRef.assetHash[r.spawned[0].entities[0]], fnv1a32("pack/Smithy_01"));
   });
+
+  // The footprint of `node` (10 x 18, yaw 90 at (10, 20)): the local x axis lies along world z, the local z axis along world -x... so 18 m along x, 10 m along z.
+  const footprint = (): Array<[number, number]> => {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i <= 36; i++) for (let j = 0; j <= 20; j++) pts.push([10 - 9 + i * 0.5, 20 - 5 + j * 0.5]);
+    return pts;
+  };
+
+  it("stands a building on the highest ground under its footprint, so no side sinks into a slope", () => {
+    const { deps } = setup();
+    const ground = (x: number, _z: number): number => 0.1 * x; // a 10 percent slope along x: 1.8 m across the 18 m footprint
+    const r = spawnScene(doc([node("smithy-3", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, { ...deps, groundHeightAt: ground });
+    const e = r.spawned[0].entities[0];
+    const highest = Math.max(...footprint().map(([x, z]) => ground(x, z)));
+    assert.ok(C.Transform.py[e] >= highest && C.Transform.py[e] - highest < 0.06, `floor at ${C.Transform.py[e]}, highest ground ${highest} (plus a plinth of a few cm)`);
+    for (const [x, z] of footprint()) assert.ok(ground(x, z) <= C.Transform.py[e] + 1e-5, `ground ${ground(x, z)} at ${x},${z} is above the floor`);
+    const lowest = Math.min(...footprint().map(([x, z]) => ground(x, z)));
+    assert.ok(C.Transform.py[e] - C.BodyConfig.halfY[e] <= lowest + 1e-5, "the body reaches the lowest ground");
+  });
+
+  it("fills the gap under the high side with a foundation slab from the lowest ground up to the floor", () => {
+    const { deps } = setup();
+    const ground = (x: number, _z: number): number => 0.1 * x;
+    const r = spawnScene(doc([node("smithy-4", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, { ...deps, groundHeightAt: ground });
+    const [building, slab] = r.spawned[0].entities;
+    assert.equal(r.spawned[0].entities.length, 2);
+    const drop = C.Transform.py[building] - Math.min(...footprint().map(([x, z]) => ground(x, z)));
+    assert.ok(Math.abs(C.Transform.py[slab] + C.BodyConfig.halfY[slab] - C.Transform.py[building]) < 1e-5, "the slab's top is the floor");
+    assert.ok(Math.abs(C.Transform.py[slab] - C.BodyConfig.halfY[slab] - (C.Transform.py[building] - drop)) < 1e-5, "the slab's underside is the lowest ground");
+    assert.deepEqual([C.BodyConfig.halfX[slab], C.BodyConfig.halfZ[slab]], [C.BodyConfig.halfX[building], C.BodyConfig.halfZ[building]], "as wide as the building");
+    assert.equal(C.BodyConfig.motionType[slab], C.MotionType.Static);
+  });
+
+  it("reaches the lowest ground even when the drop is taller than the building", () => {
+    const { deps } = setup();
+    const ground = (x: number, _z: number): number => 1 * x; // 100 percent: 18 m across the footprint, the building is 4 m tall
+    const r = spawnScene(doc([node("smithy-5", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, { ...deps, groundHeightAt: ground });
+    const e = r.spawned[0].entities[0];
+    assert.ok(C.Transform.py[e] - C.BodyConfig.halfY[e] <= 1 + 1e-5, "the body's underside is at or below the lowest ground (x = 1)");
+  });
+
+  it("adds no foundation on flat ground", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([node("smithy-6", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, deps);
+    assert.equal(r.spawned[0].entities.length, 1);
+  });
 });
