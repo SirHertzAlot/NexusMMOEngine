@@ -30,10 +30,10 @@
         "third_party/meshoptimizer/src",
         "generated"
       ],
-      "cflags_cc": ["-std=c++17", "-O2", "-fexceptions", "-w"],
+      "cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-mavx2", "-mfma", "-fexceptions", "-w"],
       "cflags_cc!": ["-fno-exceptions", "-fno-rtti"],
       "xcode_settings": {
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O2", "-w"],
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-mavx2", "-mfma", "-w"],
         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
         "GCC_ENABLE_CPP_RTTI": "YES",
         "MACOSX_DEPLOYMENT_TARGET": "10.15"
@@ -41,7 +41,7 @@
       "msvs_settings": {
         "VCCLCompilerTool": {
           "MultiProcessorCompilation": "true",
-          "AdditionalOptions": ["/std:c++17", "/EHsc", "/O2", "/bigobj", "/utf-8"],
+          "AdditionalOptions": ["/std:c++17", "/EHsc", "/O2", "/fp:fast", "/arch:AVX2", "/bigobj", "/utf-8"],
           "ExceptionHandling": 1,
           "RuntimeTypeInfo": "true"
         }

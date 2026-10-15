@@ -188,16 +188,16 @@
         "native"
       ],
       "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
-      "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3"],
+      "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-mavx2", "-mfma"],
       "xcode_settings": {
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3"]
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-mavx2", "-mfma"]
       },
       "msvs_settings": {
         "VCCLCompilerTool": {
           # /MP: parallelize TU compilation across cores (Windows-only;
           # msvs_settings is ignored by the make generator elsewhere).
           "MultiProcessorCompilation": "true",
-          "AdditionalOptions": ["/std:c++17", "/EHsc-", "/O2"]
+          "AdditionalOptions": ["/std:c++17", "/EHsc-", "/O2", "/fp:fast", "/arch:AVX2"]
         }
       },
     }
