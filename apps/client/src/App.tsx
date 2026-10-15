@@ -229,6 +229,7 @@ export function App(): React.ReactElement {
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
+  const streamingRef = useRef<{ onRegionChange: (endpoint: string) => void } | null>(null);
   // The last skills message (M4): a discipline new since it is announced.
   const skillsRef = useRef<SkillsMessage | null>(null);
   const [mastery, setMastery] = useState<SkillsMessage | null>(null);
@@ -271,7 +272,10 @@ export function App(): React.ReactElement {
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
       // asset requests go to the server that has the player now.
-      onRegionChange: setUrl,
+      onRegionChange: (endpoint: string) => {
+        setUrl(endpoint);
+        streamingRef.current?.onRegionChange(endpoint);
+      },
       onChat: (c) => {
         setChatLines((prev) => [...prev.slice(-49), c]);
         setReplyTo((prev) => replyTarget(prev, c, characterNameRef.current));
@@ -621,6 +625,7 @@ export function App(): React.ReactElement {
           instance={run !== null}
           combat={combat}
           onCombat={setCombatView}
+          streamingRef={streamingRef}
         />
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
