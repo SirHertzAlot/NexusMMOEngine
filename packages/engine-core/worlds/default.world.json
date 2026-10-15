@@ -2,7 +2,7 @@
   "name": "default",
   "seed": 1234,
   "sizeChunks": 250,
-  "chunkWorldSize": 16,
+  "chunkWorldSize": 32,
   "coarseCell": 8,
   "blendWidth": 150,
   "detailAmplitude": 1.5,

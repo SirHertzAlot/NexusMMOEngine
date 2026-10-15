@@ -32,15 +32,26 @@ seed that list.
 
 ## 1. Where we start
 
-What the plan builds on, as the code stands on 2026-10-03.
+What the plan built on, as the code stood on 2026-10-03. **Status
+2026-10-13:** most of this plan is now built (roadmap EA1–EA29); the
+sections below keep their original plan language, with dated **Built**
+notes where the code has landed. Read the plan text as history and the
+**Built** notes as current.
 
 **The editor** (`apps/editor`, Vite + React + Tailwind, port 5174) is a
 standalone companion app ([`EDITOR.md`](EDITOR.md),
 [`DECISIONS.md`](DECISIONS.md) 2026-09-27). `src/ui/App.tsx` switches
 between seven hard-coded tabs: ECS Inspector, Play Mode, Terrain, Gameplay
-Tables, Art Assets, Rules, Characters. Everything privileged goes through
-`src/host.ts`, a dev-only Vite plugin serving loopback `/api/editor/*`
-routes: start and stop the owned server, terrain export and import, rules
+Tables, Art Assets, Rules, Characters. **Built since:** the shell now has
+workspaces (a workspace with no panel yet renders an `EmptyState` naming
+it), a panel registry fed by `packages/modules` (manifest schema,
+discovery, validation, `content/modules.json`, the Modules window), and
+ten tabs (`ecs`, `play`, `terrain`, `graphs`, `dungeons`, `assets`,
+`tables`, `rules`, `characters`, `valgrind`); `modules/<name>/editor/index.tsx`
+contributions load by dynamic import (roadmap EA1–EA3). Everything
+privileged goes through `src/host.ts`, a dev-only Vite plugin serving
+loopback `/api/editor/*` routes: start and stop the owned server
+(1,627 lines), terrain export and import, rules
 and tables read and validated write, asset scan, character records.
 
 The editor is already halfway to MVC, just without the names:
@@ -63,7 +74,12 @@ Systems implement `SimSystem { name; step(sim, dt) }` and are listed in one
 hard-coded array in `server.ts` (reloader, stats, streamer, bots,
 creatures, crowd, intent, combat, death, stamina, needs, mastery,
 integrate, character, collider, obstacles, physics, navigation, items).
-Heavy systems are C++ N-API addons (`packages/addons/*`: physics, navigation,
+**Built since (EA9):** the tick order is now the `core` module's
+contribution (`modules/core/module.json`, 32 systems — the list above plus
+abilities, status, telegraphs, duels, wallet, trade, vendor, auction,
+magic, animation, prop-collision and more); `server.ts` builds the
+instances, `MMO_MODULES` selects the set, and `modules/sample-heartbeat`
+proves a third-party system. Heavy systems are C++ N-API addons (`packages/addons/*`: physics, navigation,
 procgen, picg, geometry, scatter, perf-probe) behind narrow injected
 backends with bulk SoA calls. Game rules are data plus hooks
 (`packages/rules`, `content/rules/*.json`, hot reloaded by `RulesReloader`).
@@ -73,23 +89,29 @@ The server is configured through `MMO_*` environment variables.
 **The edge** (`apps/edge`, [`EDGE-CORE-SPLIT.md`](EDGE-CORE-SPLIT.md))
 already has a module idea: `content/edge/routes.json` maps a packet type to
 `core` or `local:<module>`, a handler registered on the edge. E2 (PR #89)
-adds a length-prefixed JSON channel between processes with request,
-response, push and heartbeat.
+added a length-prefixed JSON channel between processes with request,
+response, push and heartbeat, carried by `packages/channel`.
 
 **The client** (`apps/client`) hard-codes the game flow in `App.tsx`:
 `type Screen = "login" | "connecting" | "characters" | "world"`, switched by
 protocol events (welcome, account, join reply). Character creation is
 `ui/character-screen.tsx`, which already runs without a server
-(`?preview=character`). The world is a React Three Fiber canvas
+(`?preview=character`). **Built since (EA7):** the `Screen` state is now
+driven by `content/flow/game.flow.json` through `apps/client/src/flow.ts`
+(`useFlow`), with login, loading, character select/creation and world as
+frontend scenes and no protocol change. The world is a React Three Fiber canvas
 (`render/world-canvas.tsx`).
 
-**In flight** (the Editor thread, roadmap E4 to E9): E4 embeds the client's
-world renderer in play mode through a shared package, E5 brings the
-dockable debugger panels (today `apps/client/src/ui/dev-panels.tsx` and
-`dev-layout.ts`) into the editor, then PICG graph editing (E6, E7), the
-dungeon view (E8) and world-scale editing (E9). This plan assumes those
-land first and builds on them rather than around them; see
-[§11](#11-coordination-with-work-in-flight).
+**In flight** (the Editor thread, roadmap E4 to E9): **landed, except
+PICG.** E4, E5, E8 and E9 are in main — the shared renderer in the
+viewport, dockable debugger panels (`ui/play-debugger.tsx`, with the admin
+console), the dungeon view (`ui/dungeon-view.tsx`) and world-scale editing
+(`ui/terrain-editor.tsx`, `ui/world-map.tsx`) — plus a shared graph
+component (`ui/graph-editor.tsx`, `ui/node-graph.tsx`) used by the flow
+and story editors; there is no PICG graph editor file and no `picg`
+module, so E6/E7 stay planned. EA13 registers seven of
+the panels as module contributions (see §4). The coordination notes in
+[§11](#11-coordination-with-work-in-flight) are closed accordingly.
 
 ## 2. Principles
 
@@ -545,6 +567,17 @@ The engine's own addons stay in `packages/addons` and are wrapped by the
 
 ### 4.5 WebAssembly and other sidecars
 
+**Built in part (EA11, roadmap 🟡).** The supervisor is real:
+`apps/editor/src/sidecar-manager.ts` (health-checked start, graceful
+stop, tree-kill, per-module reports) with
+`apps/editor/test/sidecar-manager.test.ts`, wired into `host.ts` so
+play mode starts module sidecars before the game server and stops them
+with it; the manifest schema in `packages/modules/src/index.ts` validates
+a `sidecar: { command, port, health }` declaration. **Open:** no manifest
+declares a sidecar, there is no sample sidecar and no wasm host program —
+the `kind: "wasm"` Node host below is still plan, and there is no
+`packages/sidecar`.
+
 A sidecar is a separate process next to the engine, supervised by it and
 spoken to over a channel. It suits code that is not ours to put in the
 tick: a WebAssembly app compiled from Rust or C, a tool in another
@@ -773,6 +806,12 @@ database for writing. It sends requests to a **persistence core**:
   `POST /rpc/Persistence/Mutate`. Only admin accounts (A1) may call them.
   The editor's host proxies them for the play server; after the edge split
   they ride the edge-core channel like any other core packet.
+  **Built scope (EA16, roadmap 🟡):** the shipped path is maintenance mode
+  and offline — the editor's host loads the built engine-core
+  `PersistenceCore` by file (`database-host.ts`), server stopped, backup
+  first — plus the Database workspace grid, query tab, audit log and undo.
+  **Open:** live edits through the stores between ticks, ledger edits as
+  events, and the webrpc Persistence admin methods themselves.
 - **Reads never touch the tick.** `query` runs on a separate read-only
   connection (`readonly: true`, `PRAGMA query_only`) in a worker thread,
   with a row limit and a cancel, so a heavy query cannot stall the 30 Hz
@@ -807,23 +846,33 @@ The core also owns the functions that make reads cheap and writes batch:
   them (p50, p99), and the editor lists them with their query plans, so a
   slow statement shows up before it hurts a tick.
 - **Application-defined SQL functions**, registered on every connection
-  with `db.function(name, { deterministic: true }, fn)`: `wire_id(gen,
-  slot)`, `chunk_of(x, z)`, `dist2(x, z, x0, z0)`, `item_def(def)` (the
-  definition's name), and `fb_field(blob, path)` to read one field out of
-  a FlatBuffers blob. Being deterministic, they can back **expression
-  indexes and generated columns**, e.g. an index on
-  `item_events(chunk_of(x, z))` for "what lies in this chunk" without a
-  scan. They also make the editor's read queries readable.
+  with `db.function(name, { deterministic: true }, fn)`. **Shipped
+  (EA17, roadmap 🟡):** one function and one cache —
+  `content/db/functions/character_power.sql`,
+  `content/db/caches/leaderboard.sql` materialising a
+  `_cache_leaderboard` snapshot — through `PersistenceCore.createDbFunction`
+  / `runDbFunction` / `listDbCaches` / `refreshDbCache`, covered by
+  `packages/engine-core/test/persist/db-functions.test.ts`. **Not built,
+  despite the earlier revision of this section naming them:** `wire_id`,
+  `chunk_of`, `dist2`, `item_def`, `fb_field`, an `item_latest` cache
+  table, a named statement registry with timings, and an expression-index
+  plan check — none occurs anywhere in `packages/`, `apps/` or `content/`.
+  They were the PostgreSQL-shaped design, adapted away to SQLite.
 - **Cache tables kept by the core.** `item_latest` (each item's newest
   ledger row) is maintained at each flush, so a restart and the editor
   read one row per item instead of scanning history; it can always be
   rebuilt from the ledger. Other derived tables (a character's equipped
   items, a guild's online count) follow the same rule: derived, rebuilt on
-  demand, never the source of truth.
+  demand, never the source of truth. **Scope correction 2026-10-13:** the
+  shipped cache is `_cache_leaderboard` (see above); `item_latest` and the
+  other derived tables named here do not exist in code.
 - **Read-through memory caches** for hot lookups (a character by id, a
   guild roster, an item definition) with explicit invalidation: because
   every write goes through the core, the core knows exactly which keys a
   mutation touched. Hit rate, size and evictions show in the editor.
+  **Scope correction 2026-10-13:** the shipped caches are the SQL
+  `content/db/caches/*.sql` kind with `refreshDbCache`; the in-memory
+  read-through layer described here is not in code.
 - **Batched writes**, the pattern the ledger and the character saves
   already use: mutations and game writes queue in preallocated buffers and
   flush in one transaction on the save timer, off the tick. The editor
@@ -836,6 +885,9 @@ The core also owns the functions that make reads cheap and writes batch:
 - **Modules contribute** functions, statements, cache tables and their
   migrations through a `persistence` key in their manifest (§4), so a
   module's tables appear in the Database workspace with no editor code.
+  **Scope correction 2026-10-13:** the manifest schema
+  (`packages/modules/src/index.ts`) has no `persistence` key and no
+  manifest declares one — this contribution kind is plan, not code.
 
 Any of these that run on the tick thread (cache lookups, statement calls
 from systems) fall under the valgrind perf rule: the slice that adds them
@@ -866,9 +918,18 @@ workspace has it.
 
 ### 7c.1 Version control and collaboration
 
-**Today.** The editor saves through its host: `rules-store.ts` and
+**Built (EA18, roadmap 🟡).** The loopback `/api/editor/vcs` route
+(`apps/editor/src/vcs-host.ts`, with `vcs-client.ts` and
+`apps/editor/test/vcs-host.test.ts`) runs git from fixed argument arrays:
+status, semantic diff, log, stage, commit, confirm-gated pull/push, and an
+id-keyed three-way JSON merge; soft locks live in `content/locks.json`;
+anything under `/assets/` is refused at staging. The Changes workspace
+(`ui/vcs-panel.tsx`) sits in the left dock. Open: locked documents do not
+yet open read-only, no status-bar lock count, no presence.
+
+**Was.** The editor saved through its host: `rules-store.ts` and
 `rules-host.ts` write `content/rules` atomically and only when valid, and
-`RulesReloader` hot-reloads the running server. There is no git
+`RulesReloader` hot-reloads the running server. There was no git
 integration, no locking, and nothing for two people editing at once.
 
 **Plan.** Git stays the source of truth; the editor makes it visible and
@@ -900,13 +961,22 @@ safe instead of replacing it.
 
 ### 7c.2 Build and deploy
 
-**Today.** Root scripts build every workspace (`npm run build`), bake
+**Built (EA19, roadmap 🟡).** `@mmo-engine/build` (zod profiles, sha256
+input-hash stage cache, fail-fast runner, package manifest build+verify,
+local deploy with health-check and rollback), `content/build/profiles/`
+(`local`, `perf-check`), `npm run package` / `npm run deploy:local`, and
+the Pipeline view (`ui/pipeline-view.tsx`) in the Release workspace with
+live runs, history and validated profile editing. Open: the staging target
+(blocked on the container-platform decision, §12 Q7). Still true from the
+old Today: there is no Dockerfile or deploy config. No longer true: CI —
+`.github/workflows/ci.yml` exists.
+
+**Was.** Root scripts build every workspace (`npm run build`), bake
 the world (`bake:world`), dungeons (`dungeon:bake`), loot (`loot:bake`)
 and art packs (`convert:packs`), and generate FlatBuffers (`codegen`).
 The client builds with `vite build`; nothing serves it in production.
 The server runs as `node dist/src/server.js`, configured by `MMO_*`
-environment variables. There is no Dockerfile or deploy config, and CI
-(`ci.yml`) is out of credits.
+environment variables.
 
 **Plan: a Release workspace** that runs the same scripts the terminal
 does, in order, with their output.
@@ -968,7 +1038,15 @@ graph editor (E7).
 
 ### 7c.4 Animation
 
-**Today.** `character-animator.ts` loads `animations.json` (manifest v2)
+**Built (EA21, roadmap 🟡).** The `Animation` component, `AnimationSystem`
+and `ClipId` registry (`packages/art`), client playback (crossfade,
+upper-body layer), and the editor Animation panel, clip library and store
+(`ui/animation-views.tsx`, `ui/animation-panel.tsx`,
+`ui/animation-library.tsx`, `ui/animation-store.ts`, `host` routes).
+Open: the TS1 animouse blend layer, retargeting/foot-IK, and the v3
+manifest state-machine editor below — the panel edits against v2.
+
+**Was.** `character-animator.ts` loads `animations.json` (manifest v2)
 and one GLB per source; a base locomotion layer (idle, walk, jog, sprint,
 swim, air) crossfades on server speed, and an action layer (full or upper
 body) starts combat moves at the server's tick. `convert-animations.ts`
@@ -998,7 +1076,14 @@ terrain, entity and element FX, water, sky and time of day,
 `particles.json` (three-nebula) and `quarks-fx.ts` (three.quarks
 signals and weapon trails), the toon material (`toon-material.ts`, ramp
 textures) and outlines, postprocessing, and quality tiers
-(`quality.ts`: low to ultra). Effects are tuned in code.
+   (`quality.ts`: low to ultra). **Built since (EA22, roadmap ✅):** the
+   particle editor (`ui/particle-panel.tsx`) with per-tier budgets
+   (`content/vfx/budgets.json`, zod-validated, monotonic), the material
+   editor (`ui/materials-panel.tsx`) over zod-validated toon and surface
+   definitions (`content/materials/`), the agnostic `VfxEffect` format with
+   `vfxToQuarks()` preview, and authored effects in
+   `content/vfx/effects/` — so effects are no longer tuned only in code.
+   (NixieFX was evaluated and rejected, roadmap TS2.)
 
 **Plan: VFX and Material panels** in Art & audio.
 
@@ -1017,10 +1102,16 @@ textures) and outlines, postprocessing, and quality tiers
 
 ### 7c.6 HUD layout editor
 
-**Today.** The player HUD is React DOM over the canvas (frames, chat,
+**Built (EA23, roadmap 🟡).** `content/ui/hud.json` (anchor+offset+
+visibility) with a zod schema and loader, `<HudSlot>`, seven migrated
+widgets, and the drag editor (`ui/hud-editor.tsx`,
+`ui/hud-editor-logic.tsx`): move widgets on a 16:9 canvas, anchors,
+visibility, overlap warnings, validated save. Open: the widget catalog
+and self-positioning widget migration.
+
+**Was.** The player HUD is React DOM over the canvas (frames, chat,
 bag, character sheet, settings) with a UI scale setting (90 to 125%).
-Only the dev HUD has layout data (`dev-layout.ts`, in localStorage). The
-plan so far only previews the HUD (§3.3).
+Only the dev HUD had layout data (`dev-layout.ts`, in localStorage).
 
 **Plan: a HUD panel** in Flow & UI.
 
@@ -1039,7 +1130,12 @@ plan so far only previews the HUD (§3.3).
 
 ### 7c.7 Audio
 
-**Today.** None. U4 defers audio "to an audio engine".
+**Built (EA24, roadmap 🟡).** The client `AudioEngine` (Web Audio buses,
+synthesized cues, mixer, persisted settings) and the editor Audio panel
+(`ui/audio-panel.tsx`, `host` routes). Open: the TS1 footstep time
+events and full mixer tuning.
+
+**Was.** None. U4 deferred audio "to an audio engine".
 
 **Plan.** The client gets a small audio engine on the Web Audio API
 (mixer buses: master, music, effects, voice, ambience, UI; 3D panning
@@ -1093,10 +1189,15 @@ translation was made from).
 **Today.** `npm run sim` runs 1,000 entities for 300 ticks and checks
 snapshot and delta replay; `BotSystem` (`MMO_BOTS`) spawns bots; P2c
 replays the item ledger after crashes; `packages/bench`, the latency
-budget test and the valgrind perf baseline measure cost. There is no
-gameplay replay and no headless client in tests. `ALPHA-PLAN` plans
-recorded playtests (X1) and a bots-versus-creatures stress harness (X2,
-X3).
+budget test and the valgrind perf baseline measure cost. **Built since
+(EA26, roadmap 🟡):** `@mmo-engine/playtest` (zod scenarios, headless
+SimWorld runner, assertions, sealed failure replays), `npm run playtest`
+(`scripts/playtest.mjs --all`), a sample scenario, and
+`ui/playtests-live.tsx`. Open: viewport replay scrubbing and headless
+screenshots/GIFs; neither shipped build profile (`local`: build, bake,
+test, package; `perf-check`: build, memcheck, perf) has a playtest stage.
+`ALPHA-PLAN` plans recorded playtests (X1) and a bots-versus-creatures
+stress harness (X2, X3).
 
 **Plan: Playtests** in Release and Debug.
 
@@ -1151,68 +1252,78 @@ in the new structure. This is the seed for the tool implementation list.
 | Play mode, server control | editor tab (E2) | `core`: toolbar Play / Stop / Play from here |
 | Navmesh tile and waypoint overlays | play-mode panel (E2) | `core`: viewport overlays, toggled per layer |
 | Art asset pipeline | editor tab (E3) | `core`: content browser importer and pack validator |
-| Play-mode game view | in progress (E4) | the Viewport |
-| Debugger: perf graphs, wireframe, FX showcase | client dev panels (E5) | `debugger` module: bottom-dock panels and viewport toggles |
-| Terrain sculpting | editor tab | `world` module: a tool in the world scene's viewport |
-| Gameplay tables | editor tab (ED1) | `core`: document panels over `content/rules` |
-| Rules editor | editor tab (E11) | `core`: document panel |
-| Character records | editor tab (E10) | `characters` module: panel |
-| Admin console | client (A1 to A4) | `core`: Output log console in play mode; click-to-pick from the viewport |
-| Play telemetry graphs | Live Ops reads typed `stats` snapshots at the server's bucket cadence (T2) | `liveops` workspace |
-| PICG selection cards, graph editor | planned (E6, E7) | `picg` module: Details cards and a graph panel |
-| Dungeon view | planned (E8) | `dungeon` module: `instance` scene tools |
-| World-scale editing | planned (E9) | `world` module: `world` scene tools |
-| Appearance and equipment editor | planned (A6) | `characters` module |
-| Scene editor, Flow editor, Modules window | this plan | `core` (EA4 to EA8) |
-| Module build and valgrind check | `npm` scripts | `core`: Modules window actions |
-| Sidecar supervisor and logs | this plan | `core`: Modules window and Output log |
-| Database editor, statement and cache panels | this plan (§7b) | `persistence` module: Database workspace |
-| Version control: Changes panel, merge, locks | this plan (§7c.1) | `core`: every workspace |
-| Build pipeline, packages, deploy | `npm` scripts | `release` module: Release workspace |
-| Quest and dialog editor | planned (P1, U11) | `story` module: Story workspace |
-| Animation clips, state machine, combat timeline | code and `convert:animations` | `animation` module: Art & audio |
-| Particle, material and post editors | code and `particles.json` | `vfx` module: Art & audio |
-| HUD layout editor | none (HUD hard-coded) | `ui` module: Flow & UI |
-| Audio events and mixer | none (U4 deferred) | `audio` module: Art & audio |
-| Localization strings | none | `story` module: Story workspace |
-| Playtest scenarios, replays, client capture | `sim`, bots, P2c | `release` module: Release and Debug |
+| Play-mode game view | built: the Viewport + `ui/play-mode.tsx` + `ui/game-view.tsx` (E4) | the Viewport |
+| Debugger: perf graphs, wireframe, FX showcase | `ui/play-debugger.tsx` with the admin console (E5); no `debugger` module — EA13 registered 7 panels only | `debugger` module: bottom-dock panels and viewport toggles |
+| Terrain sculpting | built: `ui/terrain-editor.tsx` + `ui/world-map.tsx` + region-regen | `world` module: a tool in the world scene's viewport |
+| Gameplay tables | built: `ui/gameplay-grids.tsx` over creatures, item bases, skills, spells, species (ED1, EA15) | `core`: document panels over `content/rules` |
+| Rules editor | built: `ui/rules-editor.tsx` + `ui/rules-panel.tsx` (E11) | `core`: document panel |
+| Character records | built: the `characters` module panel (E10, EA3 proof) | `characters` module: panel |
+| Admin console | built: `AdminConsole` in `ui/play-debugger.tsx` (protocol 0x10); click-to-pick from the viewport is open (roadmap A2 🟡) | `core`: Output log console in play mode; click-to-pick from the viewport |
+| Play telemetry graphs | built: `ui/liveops-live.tsx` + `ui/liveops-telemetry.tsx` (T2) | `liveops` workspace |
+| PICG selection cards, graph editor | still planned (E6, E7): no `picg` panel file and no `picg` module on main; the shared `ui/graph-editor.tsx` exists but nothing PICG-specific uses it | `picg` module: Details cards and a graph panel |
+| Dungeon view | built: `ui/dungeon-view.tsx` (E8); pool browser, 3D pick, patch edits | `dungeon` module: `instance` scene tools |
+| World-scale editing | built: `ui/terrain-editor.tsx` + `ui/world-map.tsx` (E9); the "sculpt 3 km, see it in game" check is open (roadmap E9 🟡) | `world` module: `world` scene tools |
+| Appearance and equipment editor | built: `ui/character-view.tsx` + the `appearance` admin command (A6, roadmap 🟡; editor panel deferred) | `characters` module |
+| Scene editor, Flow editor, Modules window | built: Scenes workspace, `ui/flow-editor.tsx`, `ui/modules-panel.tsx` (EA4–EA8) | `core` (EA4 to EA8) |
+| Module build and valgrind check | built: the EA10 Build/Check/Apply framework + `packages/addons/template` (memcheck clean); `valgrind:perf` not run on the Windows dev machine (EA9 open) | `core`: Modules window actions |
+| Sidecar supervisor and logs | built: `apps/editor/src/sidecar-manager.ts` + tests, owned by play mode; no sample sidecar (EA11 🟡) | `core`: Modules window and Output log |
+| Database editor, statement and cache panels | built: `ui/database-workspace.tsx` (schema tree, grid, query tab, audit log) for maintenance mode; live edits and the registry/plan-check panels are open (EA16–EA17 🟡) | `persistence` module: Database workspace |
+| Version control: Changes panel, merge, locks | built: `ui/vcs-panel.tsx` + `/api/editor/vcs` (EA18 🟡; read-only locks, status-bar count, presence open) | `core`: every workspace |
+| Build pipeline, packages, deploy | built: `ui/pipeline-view.tsx` + `content/build/profiles` (EA19 🟡; staging target open) | `release` module: Release workspace |
+| Quest and dialog editor | built: `ui/story-editor.tsx` + dialog tester over `content/quests/*.json` (EA20 🟡; WFC slots, play-from-here, string ids open) | `story` module: Story workspace |
+| Animation clips, state machine, combat timeline | built: `ui/animation-views.tsx` + panel + library + store (EA21 🟡; retargeting, foot-IK, TS1 blend open) | `animation` module: Art & audio |
+| Particle, material and post editors | built: `ui/particle-panel.tsx` + `ui/materials-panel.tsx` + budgets (EA22) | `vfx` module: Art & audio |
+| HUD layout editor | built: `ui/hud-editor.tsx` + `content/ui/hud.json` (EA23 🟡; widget catalog, migration open) | `ui` module: Flow & UI |
+| Audio events and mixer | built: `ui/audio-panel.tsx` + `AudioEngine` (EA24 🟡; footstep events, mixer tuning open) | `audio` module: Art & audio |
+| Localization strings | built: `ui/strings-panel.tsx` + `strings-host.ts` + shared `t()`/pseudo-locale (EA25; rules/dialog names still JSON) | `story` module: Story workspace |
+| Playtest scenarios, replays, client capture | built: `packages/playtest` + `ui/playtests-live.tsx` + `npm run playtest` (EA26 🟡; scrubbing, screenshots/GIFs open) | `release` module: Release and Debug |
+
+**Module reality 2026-10-13.** The workspace holds nine modules —
+`audio`, `characters`, `core` (server systems only), `flow`, `hud`,
+`sample-heartbeat` (server only), `scenes`, `story`, `vfx` — each editor
+entry a ~14-line wrapper importing its panel from
+`apps/editor/src/ui/`. The `picg`, `dungeon`, `world`, `persistence`,
+`release`, `debugger`, `liveops`, `ui` and `animation` module names in
+the Becomes column above were the plan's, not what shipped; panels for
+those areas live in `apps/editor/src/ui/`. No manifest declares
+`sidecar`, `native` or `edge` yet, though the schema validates all three.
 
 ## 10. Slices
 
 One PR each, in order; each leaves the editor working. Names use **EA**
 (editor architecture) so they do not collide with the editor's E rows or
-the edge split's E slices. They go on the roadmap when this phase starts;
-the roadmap thread adds them.
+the edge split's E slices. They are all on the roadmap (EA0?EA29); the roadmap's status rules.
+**Status 2026-10-13:** each slice notes its landing state inline ? ? built and complete, ?? built with follow-ups open, ?? in progress.
 
 | # | Slice | Depends on | Done when |
 |---|---|---|---|
-| EA0 | **This document** | | merged |
-| EA1 | **Docking shell, workspaces and toolbar.** `App.tsx`'s tabs become panels in a dockable layout (drag a tab, dock targets, resizable dividers, pop out to a window); named layouts saved per workspace with reset and export; the top bar (menus, workspace tabs, command search) and the toolbar with the play cluster (Play, Pause, Step, Stop); Material 3 tokens (§3.2 to §3.5); the frontend redesign onto React Three Fiber for every viewport (§3.6), built against the mockups. Panels registered in code, not imported by the shell. Reuses E5's docking code rather than a second one | E4, E5 | every existing tab opens as a panel in a workspace; a saved layout survives reload; Pause and Step hold and advance the owned server; screenshots and a GIF of docking |
-| EA2 | **MVC contracts.** `Model`, `Controller`, `PanelContribution`, `EditorContext`; shared selection and an undo stack. Port ECS, play mode, rules, tables and terrain behind them | EA1 | existing editor tests pass unchanged; new controller tests with fakes |
-| EA3 | **Editor modules.** `packages/modules` (manifest schema, discovery, validation); the host's `/api/editor/modules`; the shell loads editor entries by dynamic import; Modules window to enable and disable. `modules/core` holds today's panels; Character records moves to its own module as the proof | EA2 | disabling the characters module removes its panel without a restart; a bad manifest lists every problem |
-| EA4 | **Scene documents.** `packages/scene` (schema, node and component registry); `content/scenes`; Outliner and Details over an open scene; validated save through `/api/editor/scenes`; undo | EA2 | open, edit, save and reload a scene; a refused save writes nothing |
-| EA5 | **Scene viewport editing.** The shared renderer draws the open scene; drag prefabs from the content browser; gizmos; terrain snapping; picking sets the shared selection | EA4, E4 | place, move and delete nodes in the viewport; GIF |
-| EA6 | **Play the scene.** Server reads `MMO_SCENE` and spawns a world scene's nodes through the existing spawn paths; Play uses the open scene; "Keep" copies a live entity back as a command | EA4 | play a test arena scene, see its nodes live, stop, document unchanged |
-| EA7 | **Game flow.** `content/flow/game.flow.json`; the flow runner in `packages/scene`; the client's `Screen` state replaced by it with today's screens as frontend scenes; no protocol change | EA4 | login → character select → creation → world works exactly as before, driven by the flow document |
-| EA8 | **Flow editor and play from a node.** Flow panel (graph, validation, open scene); Play from login, character creation or world | EA7 | play from each node; an unreachable node is flagged |
-| EA9 | **Server modules.** `server.ts`'s systems array becomes the `core` module's contribution; `MMO_MODULES`; system order resolved from `after` / `before`; "Apply modules" restarts the play server with the new set | EA3 | core order identical (valgrind perf unchanged); a sample module adds a system; a cycle is refused |
-| EA10 | **C++ modules.** The addon template as a module; Build, Check (memcheck) and Apply from the Modules window, output in the log | EA9 | edit the sample addon, rebuild, apply, see the change in play; memcheck clean |
-| EA11 | **Sidecars.** `packages/sidecar` on E2's channel; supervisor owned by play mode; `kind: "wasm"` Node host with WASI and no default file access; `kind: "exec"`; results applied between ticks; a sample wasm module | EA9, edge E2 | the sample wasm sidecar answers from a system; killing it restarts it and the tick never stalls; reload while playing |
-| EA12 | **Edge modules.** Manifests contribute `local:<module>` routes and handlers, merged into the edge's routes at boot with the same strict validation | EA9, edge E3 | a module's packet reaches its edge handler |
-| EA13 | **Existing tools as modules.** Debugger, PICG, dungeon and world tools (E5 to E9) move to their own modules | EA3 and each tool | each can be disabled on its own |
-| EA14 | **The play menu.** Where (viewport, new window, simulate), start node, 1 to 8 clients with seeded accounts, bots, network (core or edge + core), simulated latency, fresh or saved state; saved play setups with shortcuts; play-mode tint | EA8 | each option works from the menu; a saved "8 clients, 50 bots" setup starts with one key |
-| EA15 | **Fill every workspace.** Each workspace in §3.3 gets its default layout and panels: the Gameplay data grids (Carbon density, batch actions, inline validation, live values), the Live ops and Network dashboards, the Characters panels; a workspace whose feature is not built yet shows what it will hold and which roadmap item brings it | EA3, EA13 | every engine feature in §3.3 is reachable from a workspace; screenshots of each |
-| EA16 | **Persistence core and the Database workspace.** `PersistenceCore` with catalog, query (read-only worker connection), typed mutations applied between ticks through the stores, ledger edits as events, `admin_log` with undo; admin-only webrpc methods; offline read-only and maintenance mode with backup; schema tree, grid with pending mutations, query tab, audit log | A1, EA15 | edit a character's health from the grid and see it in play on the stated tick; an item edit lands as a ledger event; a heavy query does not move tick time |
-| EA17 | **Database functions and caches.** Named statement registry with timings; deterministic SQL functions and an expression index; `item_latest` cache table; read-through caches with invalidation; pragmas as a rules file; module `persistence` contributions; performance panel | EA16 | restore reads `item_latest`; the chunk lookup uses the expression index (plan shows no scan); valgrind perf states what moved |
-| EA18 | **Version control.** `/api/editor/vcs`; Changes panel with semantic diffs per document; commit, pull and push; three-way JSON merge by stable ids; soft locks in `content/locks.json`; `/assets/` refused at staging | EA2 | two branches editing different creatures merge with no conflict; staging anything under `/assets/` is refused |
-| EA19 | **Build and deploy.** Build profiles; pipeline view (codegen, build, bakes, tests, valgrind, package) cached by input hash; package manifest; local and staging targets with health check and rollback | EA15 | a profile builds a package that starts locally and passes its health check; an unchanged bake is skipped |
-| EA20 | **Quest and dialog editor.** Quest and dialog documents and schemas; Story workspace graph editor (shared graph component); dialog tester; validation; WFC slots resolved with a seed (with P1) | EA8, P1 | author a quest with a dialog, test it in the panel, play from its first step |
-| EA21 | **Animation.** Clip browser; locomotion state machine editor writing a v3 `animations.json` that keeps v2 loading; combat timeline over `COMBAT_MOVES`; retarget panel | EA15 | change a crossfade and a hit frame in the editor and see both in play; v2 manifests still load |
-| EA22 | **VFX and materials.** Particle editor with tier budgets; toon and surface materials as `content/materials` data; post and tier presets as data with a side-by-side compare | EA15 | tune an effect and a material without code and see them in play at each tier |
-| EA23 | **HUD layout editor.** `content/ui/hud.json` read by the client; drag-and-anchor editing over a live preview; overlap checks at every UI scale and common resolutions; widget catalog; player theme tokens | EA7 | move a frame in the editor and see it in the client; overlaps flagged at 125% |
-| EA24 | **Audio.** Client audio engine on Web Audio (buses, 3D panning, voice limits) driven by U4's sliders; `content/audio/events.json`; hooks to combat, surfaces, weather and scenes; Audio panel with preview and mixer | EA21 | footsteps change with the surface, hits sound on the hit frame, music changes with the scene |
-| EA25 | **Localization.** `content/strings/<lang>.json` with ICU messages; extraction of client strings behind `t()`; rules and dialog by string id; Strings panel with status and a pseudo-locale | EA20 | the client runs fully in the pseudo-locale with no hard-coded string left |
-| EA26 | **Automated playtests.** Scenario documents with bot scripts and assertions, run headless; input-and-seed replays scrubbable in the viewport; headless client capture for screenshots and GIFs; results in the pipeline with history (with X1 to X3) | EA19 | a failing scenario saves a replay that reproduces the failure tick for tick |
+| EA0 | **This document** | | merged **Status 2026-10-13: ?.** |
+| EA1 | **Docking shell, workspaces and toolbar.** `App.tsx`'s tabs become panels in a dockable layout (drag a tab, dock targets, resizable dividers, pop out to a window); named layouts saved per workspace with reset and export; the top bar (menus, workspace tabs, command search) and the toolbar with the play cluster (Play, Pause, Step, Stop); Material 3 tokens (§3.2 to §3.5); the frontend redesign onto React Three Fiber for every viewport (§3.6), built against the mockups. Panels registered in code, not imported by the shell. Reuses E5's docking code rather than a second one | E4, E5 | every existing tab opens as a panel in a workspace; a saved layout survives reload; Pause and Step hold and advance the owned server; screenshots and a GIF of docking **Status 2026-10-13: ??.** Docking, workspaces, toolbar, menus, palette and play cluster are in; panel registry, pop-out windows, saved/exported layouts and command search are open. |
+| EA2 | **MVC contracts.** `Model`, `Controller`, `PanelContribution`, `EditorContext`; shared selection and an undo stack. Port ECS, play mode, rules, tables and terrain behind them | EA1 | existing editor tests pass unchanged; new controller tests with fakes **Status 2026-10-13: ??.** Contracts defined and applied to EcsInspector, PlayModeController and the grids; Controller/EditorContext contracts open. |
+| EA3 | **Editor modules.** `packages/modules` (manifest schema, discovery, validation); the host's `/api/editor/modules`; the shell loads editor entries by dynamic import; Modules window to enable and disable. `modules/core` holds today's panels; Character records moves to its own module as the proof | EA2 | disabling the characters module removes its panel without a restart; a bad manifest lists every problem **Status 2026-10-13: ??.** Schema, discovery, routes, dynamic import, Modules window and the characters proof are in; other panels as modules, commands and document kinds open. |
+| EA4 | **Scene documents.** `packages/scene` (schema, node and component registry); `content/scenes`; Outliner and Details over an open scene; validated save through `/api/editor/scenes`; undo | EA2 | open, edit, save and reload a scene; a refused save writes nothing **Status 2026-10-13: ?.** |
+| EA5 | **Scene viewport editing.** The shared renderer draws the open scene; drag prefabs from the content browser; gizmos; terrain snapping; picking sets the shared selection | EA4, E4 | place, move and delete nodes in the viewport; GIF **Status 2026-10-13: ?.** |
+| EA6 | **Play the scene.** Server reads `MMO_SCENE` and spawns a world scene's nodes through the existing spawn paths; Play uses the open scene; "Keep" copies a live entity back as a command | EA4 | play a test arena scene, see its nodes live, stop, document unchanged **Status 2026-10-13: ??.** Spawn, Play with open scene and Keep are in; host Play round trip not run to completion. |
+| EA7 | **Game flow.** `content/flow/game.flow.json`; the flow runner in `packages/scene`; the client's `Screen` state replaced by it with today's screens as frontend scenes; no protocol change | EA4 | login → character select → creation → world works exactly as before, driven by the flow document **Status 2026-10-13: ?.** |
+| EA8 | **Flow editor and play from a node.** Flow panel (graph, validation, open scene); Play from login, character creation or world | EA7 | play from each node; an unreachable node is flagged **Status 2026-10-13: ??.** Editor, validation, routes and Play-from-node are in; opening in a browser and double-click-open-scene deferred. |
+| EA9 | **Server modules.** `server.ts`'s systems array becomes the `core` module's contribution; `MMO_MODULES`; system order resolved from `after` / `before`; "Apply modules" restarts the play server with the new set | EA3 | core order identical (valgrind perf unchanged); a sample module adds a system; a cycle is refused **Status 2026-10-13: ??.** Systems array, MMO_MODULES, order resolution and Apply-restart are in; valgrind:perf not run on Windows, no auto-reconnect after Apply, no admin/rule/table contributions. |
+| EA10 | **C++ modules.** The addon template as a module; Build, Check (memcheck) and Apply from the Modules window, output in the log | EA9 | edit the sample addon, rebuild, apply, see the change in play; memcheck clean **Status 2026-10-13: ??.** Manifest field, template, Build/Check/Apply framework and memcheck are in; the 2026-10-10 log's runtime-parts note stands. |
+| EA11 | **Sidecars.** Sidecars on E2's channel (there is no `packages/sidecar`; the supervisor lives in `apps/editor/src/`); supervisor owned by play mode; `kind: "wasm"` Node host with WASI and no default file access; `kind: "exec"`; results applied between ticks; a sample wasm module | EA9, edge E2 | the sample wasm sidecar answers from a system; killing it restarts it and the tick never stalls; reload while playing **Status 2026-10-13: ??.** Supervisor, lifecycle and health checks are in (no `packages/sidecar` ? it lives in `apps/editor/src/sidecar-manager.ts`); no sample sidecar, no wasm host, no declaring module. |
+| EA12 | **Edge modules.** Manifests contribute `local:<module>` routes and handlers, merged into the edge's routes at boot with the same strict validation | EA9, edge E3 | a module's packet reaches its edge handler **Status 2026-10-13: ??.** Manifest field, registry, discovery and `local:<module>` boot routes are in; edge never simulates. |
+| EA13 | **Existing tools as modules.** Debugger, PICG, dungeon and world tools (E5 to E9) move to their own modules | EA3 and each tool | each can be disabled on its own **Status 2026-10-13: ??.** Seven panels registered as wrappers in `modules/*/editor/index.tsx`; the panel code stays in `apps/editor/src/ui/`, and commands/document kinds are not contributions. |
+| EA14 | **The play menu.** Where (viewport, new window, simulate), start node, 1 to 8 clients with seeded accounts, bots, network (core or edge + core), simulated latency, fresh or saved state; saved play setups with shortcuts; play-mode tint | EA8 | each option works from the menu; a saved "8 clients, 50 bots" setup starts with one key **Status 2026-10-13: ?.** |
+| EA15 | **Fill every workspace.** Each workspace in §3.3 gets its default layout and panels: the Gameplay data grids (Carbon density, batch actions, inline validation, live values), the Live ops and Network dashboards, the Characters panels; a workspace whose feature is not built yet shows what it will hold and which roadmap item brings it | EA3, EA13 | every engine feature in §3.3 is reachable from a workspace; screenshots of each **Status 2026-10-13: ??.** Gameplay grids, content browser and validated saves are in; other workspaces' fill-in, live values, recipes and prefab format open. |
+| EA16 | **Persistence core and the Database workspace.** `PersistenceCore` with catalog, query (read-only worker connection), typed mutations applied between ticks through the stores, ledger edits as events, `admin_log` with undo; admin-only webrpc methods; offline read-only and maintenance mode with backup; schema tree, grid with pending mutations, query tab, audit log | A1, EA15 | edit a character's health from the grid and see it in play on the stated tick; an item edit lands as a ledger event; a heavy query does not move tick time **Status 2026-10-13: ??.** Shipped for maintenance mode (server stopped, backup first) via `database-host.ts`; live between-tick writes, ledger-as-events and webrpc admin methods open. |
+| EA17 | **Database functions and caches.** Named statement registry with timings; deterministic SQL functions and an expression index; `item_latest` cache table; read-through caches with invalidation; pragmas as a rules file; module `persistence` contributions; performance panel | EA16 | restore reads `item_latest`; the chunk lookup uses the expression index (plan shows no scan); valgrind perf states what moved **Status 2026-10-13: ??.** Shipped: `character_power.sql` + `leaderboard.sql` + `_cache_leaderboard` via create/run/list/refresh; `item_latest`, the statement registry and the expression-index plan check named in the old Done-when do not exist. |
+| EA18 | **Version control.** `/api/editor/vcs`; Changes panel with semantic diffs per document; commit, pull and push; three-way JSON merge by stable ids; soft locks in `content/locks.json`; `/assets/` refused at staging | EA2 | two branches editing different creatures merge with no conflict; staging anything under `/assets/` is refused **Status 2026-10-13: ??.** Routes, Changes workspace, merge, locks and the `/assets/` refusal are in; read-only locked docs, status-bar count and presence open. |
+| EA19 | **Build and deploy.** Build profiles; pipeline view (codegen, build, bakes, tests, valgrind, package) cached by input hash; package manifest; local and staging targets with health check and rollback | EA15 | a profile builds a package that starts locally and passes its health check; an unchanged bake is skipped **Status 2026-10-13: ??.** Builder, profiles, package, local deploy/rollback and Pipeline view are in; staging target open; still no Dockerfile. |
+| EA20 | **Quest and dialog editor.** Quest and dialog documents and schemas; Story workspace graph editor (shared graph component); dialog tester; validation; WFC slots resolved with a seed (with P1) | EA8, P1 | author a quest with a dialog, test it in the panel, play from its first step **Status 2026-10-13: ??.** Server-JSON editing, validation, routes, graph editor and dialog tester are in ? but the Done-when's 'play from its first step' needs Play-from-here, which is open with WFC slots and string ids. |
+| EA21 | **Animation.** Clip browser; locomotion state machine editor writing a v3 `animations.json` that keeps v2 loading; combat timeline over `COMBAT_MOVES`; retarget panel | EA15 | change a crossfade and a hit frame in the editor and see both in play; v2 manifests still load **Status 2026-10-13: ??.** Component, system, registry, playback, panel, library and store are in; TS1 blend, retargeting/foot-IK and the v3 state-machine editor open. |
+| EA22 | **VFX and materials.** Particle editor with tier budgets; toon and surface materials as `content/materials` data; post and tier presets as data with a side-by-side compare | EA15 | tune an effect and a material without code and see them in play at each tier **Status 2026-10-13: ?.** |
+| EA23 | **HUD layout editor.** `content/ui/hud.json` read by the client; drag-and-anchor editing over a live preview; overlap checks at every UI scale and common resolutions; widget catalog; player theme tokens | EA7 | move a frame in the editor and see it in the client; overlaps flagged at 125% **Status 2026-10-13: ??.** hud.json, schema/loader, HudSlot, migrated widgets and the drag editor are in; widget catalog and migration open. |
+| EA24 | **Audio.** Client audio engine on Web Audio (buses, 3D panning, voice limits) driven by U4's sliders; `content/audio/events.json`; hooks to combat, surfaces, weather and scenes; Audio panel with preview and mixer | EA21 | footsteps change with the surface, hits sound on the hit frame, music changes with the scene **Status 2026-10-13: ??.** AudioEngine, Audio panel and host routes are in; TS1 footstep events and mixer tuning open. |
+| EA25 | **Localization.** `content/strings/<lang>.json` with ICU messages; extraction of client strings behind `t()`; rules and dialog by string id; Strings panel with status and a pseudo-locale | EA20 | the client runs fully in the pseudo-locale with no hard-coded string left **Status 2026-10-13: ?.** Tables, extraction, Strings panel and pseudo-locale shipped; rules/dialog names still come from JSON (roadmap tracks EA25 complete). |
+| EA26 | **Automated playtests.** Scenario documents with bot scripts and assertions, run headless; input-and-seed replays scrubbable in the viewport; headless client capture for screenshots and GIFs; results in the pipeline with history (with X1 to X3) | EA19 | a failing scenario saves a replay that reproduces the failure tick for tick **Status 2026-10-13: ??.** Package, headless runner, assertions, sealed replays, `npm run playtest` and the live panel are in; viewport scrubbing, headless screenshots/GIFs and a profile stage open. |
 
 EA1 to EA3 are the frame; EA4 to EA8 are scenes and the flow; EA9 to EA12
 are engine modules; EA14 and EA15 finish the play menu and the workspaces; EA16 and EA17 add the database editor and its functions; EA18 to EA26 add the production tools (§7c). The scene track and the module track only meet at EA9,
@@ -1220,43 +1331,59 @@ so they can run in parallel after EA3.
 
 ## 11. Coordination with work in flight
 
-- **E4 and E5 first.** EA1 needs E4's shared renderer and E5's dockable
+**Status 2026-10-13: all four notes below are closed.**
+
+- **E4 and E5 landed.** ~~EA1 needs E4's shared renderer and E5's dockable
   panels. EA1 adopts what E5 builds; it does not build a second docking
-  system.
-- **E6 to E9 keep going as they are.** They land as tabs or panels in the
+  system.~~ The shared renderer is in the viewport and the dockable
+  debugger panels are in the editor; EA1 reused them.
+- **E6 to E9: dungeon and world tools landed as panels; EA13 registered
+  seven panels as module contributions** (flow, story, hud, vfx, scenes,
+  characters, audio — each a wrapper importing from
+  `apps/editor/src/ui/`). ~~They land as tabs or panels in the
   current shell; EA13 moves them into modules later, which is a move, not a
-  rewrite, once EA2's contracts exist. New editor panels written from now
+  rewrite, once EA2's contracts exist.~~ PICG (E6, E7) is still planned:
+  no `picg` file or module exists. New editor panels written from now
   on can make that move cheaper by keeping a pure-TS view-model beside the
   React panel, as `inspectors/ecs.ts` does.
-- **Edge E2 and E3.** EA11 reuses E2's channel and EA12 extends E3's edge;
-  both wait for those slices to merge.
+- **Edge E2 and E3 merged** (`packages/channel` carries the framing;
+  `content/edge/routes.json` maps packet types). ~~EA11 reuses E2's channel and EA12 extends E3's edge;
+  both wait for those slices to merge.~~
 - **Valgrind.** EA9 changes how the tick's systems are assembled, so it runs
   `npm run valgrind:perf` and must show no movement; EA10 adds memcheck to
-  module builds.
+  module builds. **Open:** `valgrind:perf` has not been run for EA9 on the
+  Windows dev machine (the tick-order test pins the order instead).
 
 ## 12. Open questions
 
-Decisions for the owner before the slices they block:
+Decisions for the owner before the slices they block — with answers
+where the code has settled them (**Answered 2026-10-13**):
 
 1. **Rogue Engine bridge**: keep maintaining
    `rogue-packages/sirhertzalot/mmo-editor`, or retire it once EA5 lands?
-   (Blocks nothing; affects EA13.)
+   (Blocks nothing; affects EA13.) — still open.
 2. **Where modules live**: a top-level `modules/` workspace (proposed), or
-   under `packages/`? (Blocks EA3.)
+   under `packages/`? (Blocks EA3.) — **Answered: top-level `modules/`
+   workspace** (nine modules; loader schema in `packages/modules`).
 3. **wasm host**: a Node host using Node's own WebAssembly and WASI
    (proposed, keeps runtime services Node-only), or a dedicated runtime
-   such as wasmtime as a binary sidecar? (Blocks EA11.)
+   such as wasmtime as a binary sidecar? (Blocks EA11.) — still open: no
+   wasm host program and no declaring module exist.
 4. **Shipping modules**: are modules only source folders in this repo, or
    do they also need a packaged form (an archive with a built addon) to
-   share between projects? (Not needed until after EA13.)
+   share between projects? (Not needed until after EA13.) — still open.
 5. **Edits during play**: throw away on stop with an explicit "Keep"
-   (proposed, Unreal-style), or keep by default? (Blocks EA6.)
+   (proposed, Unreal-style), or keep by default? (Blocks EA6.) —
+   **Answered: Keep shipped** (EA6; "Keep" copies a live entity back as a
+   command).
 6. **Version control host**: plain git with soft locks in the repo
    (proposed), or git LFS and its locking for terrain and navmesh data?
-   (Blocks EA18.)
+   (Blocks EA18.) — **Answered: plain git with soft locks**
+   (`vcs-host.ts`, `content/locks.json`).
 7. **Staging target**: one VPS reached over SSH (proposed), or a
-   container platform? (Blocks EA19's staging target.)
+   container platform? (Blocks EA19's staging target.) — still open.
 8. **Audio**: a small engine on the Web Audio API (proposed), or a
-   middleware such as FMOD's web build? (Blocks EA24.)
+   middleware such as FMOD's web build? (Blocks EA24.) — **Answered: Web
+   Audio** (`AudioEngine`, buses, synthesized cues).
 9. **Languages**: which languages after English, and when? (Blocks
-   nothing; EA25 builds the tables and a pseudo-locale.)
+   nothing; EA25 builds the tables and a pseudo-locale.) — still open.

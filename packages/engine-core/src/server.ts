@@ -1,17 +1,12 @@
 /**
- * Production server entry (Phase 3): `npm run server`.
+ * Production core entry (edge/core split): `npm run server`.
  *
- * Wires the full authoritative stack in one Node process:
- *   SimWorld + ChunkStreamer (chunks, scatter, and navmesh tiles load
- *   around players and unload behind them) + IntentSystem +
- *   IntegrateSystem + PropCollisionSystem + Jolt PhysicsSystem + Recast NavigationSystem,
- *   SQLite persistence (save every 300 ticks + on SIGTERM/SIGINT), CSV
- *   auth, and the WebSocket gateway.
- *
- * The browser mirror client (apps/client) connects to this.
+ * Runs the pure simulation core: tick loop, ECS world, C++ addons, SQLite persistence.
+ * Does NOT accept player connections — the edge (apps/edge) handles all client
+ * WebSocket and HTTP traffic and forwards simulation-bound packets over the
+ * internal channel (packages/channel, default port 4000).
  *
  * Environment:
- *   MMO_PORT       WebSocket listen port (default 7777)
  *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
  *                  characters.db (default ./data, relative to the process cwd)
  *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
@@ -93,12 +88,12 @@
  *   REGION_ID          this region's id (default "region-1")
  *   REGION_CHUNK_RANGE "x0,z0,x1,z1" owned chunk bounds (default "0,0,4096,4096";
  *                      when set, the streamer loads only inside it)
- *   REGION_ENDPOINT    advertised gateway URL (default ws://localhost:<MMO_PORT>)
+ *   REGION_ENDPOINT    advertised gateway URL (default ws://localhost:3001)
  *   REGION_CAPACITY    max entities for load reporting (default 1000)
  *
  * First run: create a login with `npm run seed:user` (MMO_DEV_PASSWORD=...
  * npm run seed:user -- <username>), then point the client at
- * ws://localhost:7777.
+ * ws://localhost:3001 (the edge).
  */
 
 import * as fs from "node:fs";
@@ -142,8 +137,6 @@ import {
 } from "./index.js";
 import { Ability, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
-import { startPcgService } from "./pcg/boot.js";
-import { healthHttpHandler } from "./net/health.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
@@ -228,7 +221,6 @@ function abilityNames(bits: number): string {
   return names.length > 0 ? names.join(", ") : "only walk";
 }
 
-const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
@@ -924,13 +916,13 @@ async function main(): Promise<void> {
   // is declared below and assigned when WORLD_URL is set; these closures
   // only run once players are around, long after.
   const gw: Gateway = new Gateway({
-    port: PORT,
+    port: 0,
     sessionStore,
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),
-    // GET /health for deploy health checks (EA19); PCG's handler composes with it.
-    http: healthHttpHandler,
+    // HTTP handler not used (core doesn't listen for player connections).
+    // The edge handles all client-facing HTTP.
     presence: {
       report: (names) => void worldClient?.reportPresence(names),
       query: (names) => {
@@ -1012,7 +1004,7 @@ async function main(): Promise<void> {
       regionId: REGION_ID,
       chunkRange,
       endpoint:
-        process.env.REGION_ENDPOINT ?? `ws://localhost:${PORT}`,
+        process.env.REGION_ENDPOINT ?? "ws://localhost:3001",
       capacity: REGION_CAPACITY,
       apiKey: process.env.WORLD_API_KEY ?? "",
       getStats: () => ({
@@ -1131,11 +1123,8 @@ async function main(): Promise<void> {
     },
   });
 
-  // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
-  const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
-  const port = await gw.listen();
-  // The edge's channel (E3), beside the player port. A core that cannot
-  // bind it still serves players directly.
+  // The core no longer serves player connections (edge/core split).
+  // It only runs the simulation tick loop and serves the internal channel on CORE_CHANNEL_PORT.
   const channelPort = coreChannelPort();
   const coreChannel = await startCoreChannel(gw, channelPort).catch((err: Error) => {
     console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
@@ -1143,6 +1132,7 @@ async function main(): Promise<void> {
   });
   if (coreChannel) console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
   gw.startTicking();
+  console.log(`[server] core simulation running (no player listener; edge handles connections)`);
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse
   // to edit world.db under a running server, whose next periodic save
@@ -1157,8 +1147,6 @@ async function main(): Promise<void> {
       /* already gone */
     }
   });
-  console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
-  console.log(`[server] ${pcg ? pcg.summary : "no PCG asset library (MMO_PCG_ASSETS)"}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +
       `seed ${worldSeed} | chunk ${CHUNK_SIZE}u | ` +

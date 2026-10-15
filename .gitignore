@@ -52,3 +52,7 @@ apps/client/public/surfaces/
 
 # Codebase snapshot dumps (copies of the repo itself; regenerate, never commit)
 /docs/kb/
+
+# graphify knowledge graph (regenerable via /graphify; also written as
+# stat-index sidecars into each scanned subfolder) — never commit
+graphify-out/
