@@ -6,6 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { hasComponent } from "bitecs";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -191,6 +192,39 @@ describe("loadSceneFile", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Collider nodes in a scene", () => {
+  const collider = (id: string, c: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ id, transform: { position: [3, 1, 4] }, components: { Collider: c }, ...extra });
+
+  it("spawns a bare node as a static box or sphere, with defaults for missing fields, on the ground", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([collider("wall", { shape: "box", hx: 2, hy: 3, hz: 0.25 }), collider("rock", { shape: "sphere", radius: 1.5 }), collider("def", {})]) as never, deps);
+    const [wall, rock, def] = r.spawned.map((s) => s.entities[0]);
+    assert.equal(C.BodyConfig.shapeKind[wall], C.ShapeKind.Box);
+    assert.deepEqual([C.BodyConfig.halfX[wall], C.BodyConfig.halfY[wall], C.BodyConfig.halfZ[wall]], [2, 3, 0.25]);
+    assert.equal(C.BodyConfig.motionType[wall], C.MotionType.Static);
+    assert.equal(C.Transform.py[wall], 3, "node height sits on the ground height");
+    assert.equal(C.BodyConfig.shapeKind[rock], C.ShapeKind.Sphere);
+    assert.equal(C.BodyConfig.radius[rock], 1.5);
+    assert.deepEqual([C.BodyConfig.halfX[def], C.BodyConfig.halfY[def], C.BodyConfig.halfZ[def]], [0.5, 0.5, 0.5]);
+  });
+
+  it('shape "none" is walk-through: no body, and a bare one spawns nothing', () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([collider("ghost", { shape: "none" }), collider("tree", { shape: "none" }, { prefab: "oak" })]) as never, deps);
+    assert.deepEqual(r.skipped.map((s) => s.id), ["ghost"]);
+    const tree = r.spawned[0].entities[0];
+    assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, tree), "a prop's own collision is switched off");
+  });
+
+  it("overrides the collision of a prop prefab", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([collider("tree", { shape: "box", hx: 1, hy: 5, hz: 1 }, { prefab: "oak" })]) as never, deps);
+    const e = r.spawned[0].entities[0];
+    assert.equal(C.AssetRef.assetHash[e], fnv1a32("oak"));
+    assert.deepEqual([C.BodyConfig.halfX[e], C.BodyConfig.halfY[e], C.BodyConfig.halfZ[e]], [1, 5, 1]);
   });
 });
 
