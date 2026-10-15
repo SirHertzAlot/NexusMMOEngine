@@ -135,3 +135,31 @@ Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0
 the client logged in and walking among 288 buildings (12 kinds, all mapped),
 and the same town as stand-in boxes.
 
+## Building scale
+
+The global scale document (`content/scale.json`, `resolveScale(doc, "building")`)
+makes houses bigger or smaller, so the town they stand in must follow.
+
+- **Rules stay authored at scale 1.** `generateSettlement({ scale })` (and
+  `layOut`'s last argument) multiplies the parcel size and street width by the
+  factor (`scaledLayout`). A street never gets narrower than 2 m
+  (`MIN_STREET_MM`), so a 0.7 m capsule always passes.
+- **The manifest records it** (`scale`, default 1), so it is inside the hash: a
+  different scale is a different town. The golden hash was re-pinned for the new
+  field. `settlement:bake --scale <file>` reads a scale doc and bakes at its
+  building factor.
+- **The scene stays authored at scale 1.** A `Structure` node means "this size at
+  scale 1"; the server's spawner applies the factor at spawn. Footprints are sized
+  `(scaled parcel - 2 m margin) / factor`, so once the spawner multiplies them they
+  leave 1 m to the scaled parcel's edge. Heights are the rules' `heightM`, unscaled.
+  Node positions come from the scaled parcels.
+- **Per-asset factors** (an `assets` entry for one model) are applied by the
+  spawner on top and do not move parcels; use the report to see which overflow.
+
+    npm run settlement:scale-report -- [--catalog assets/catalog.json] [--scale content/scale.json]
+
+Per kind, every mapped model's size before and after its factor, the parcel
+(width x depth) it must fit, and `OVERFLOW` where the scaled footprint exceeds the
+parcel minus the margin; the exit code is 1 if any overflow. It reads the licensed
+catalog locally and prints model ids to the terminal only.
+

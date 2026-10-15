@@ -62,10 +62,24 @@ export interface Layout {
   parcels: Parcel[];
 }
 
-export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams): Layout {
-  const { block, parcelSizeMm, streetWidthMm, parcelsPerHouseholdPermille } = rules.layout;
+/** The narrowest a street may be, mm: a 0.7 m character capsule always passes, however small the buildings are scaled. */
+export const MIN_STREET_MM = 2000;
+
+/**
+ * Parcel and street sizes at a building `scale` (a ScaleDoc's `building` factor).
+ * The rules are authored for scale 1; parcels follow the factor, streets too but
+ * never narrower than MIN_STREET_MM. Integer millimetres.
+ */
+export function scaledLayout(rules: SettlementRules, scale = 1): { parcelMm: [number, number]; streetMm: number } {
+  const { parcelSizeMm, streetWidthMm } = rules.layout;
+  return { parcelMm: [Math.round(parcelSizeMm[0] * scale), Math.round(parcelSizeMm[1] * scale)], streetMm: Math.max(MIN_STREET_MM, Math.round(streetWidthMm * scale)) };
+}
+
+export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams, scale = 1): Layout {
+  const { block, parcelsPerHouseholdPermille } = rules.layout;
   const [bw, bd] = block;
-  const [pw, pd] = parcelSizeMm;
+  const { parcelMm, streetMm: streetWidthMm } = scaledLayout(rules, scale);
+  const [pw, pd] = parcelMm;
   const parcelsWanted = Math.ceil((households * parcelsPerHouseholdPermille) / 1000);
   const n = Math.max(2, Math.ceil(Math.sqrt(Math.ceil(parcelsWanted / (bw * bd)))));
   const pitchX = bw * pw + streetWidthMm;
