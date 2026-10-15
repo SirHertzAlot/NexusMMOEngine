@@ -129,3 +129,28 @@ describe("ecology placement", () => {
     assert.throws(() => plan([{ id: "a", place: { kind: "field", spacing: 4 }, density: [{ field: "nope", ramp: [0, 1] }], assets: A("x"), scale: [1, 1] }]), /unknown field/);
   });
 });
+
+describe("ecology categories (global scale)", () => {
+  it("a layer's category rides on its spawns' archetype; none means the archetype has none (prop)", () => {
+    const p = plan([
+      { id: "trees", category: "tree", place: { kind: "field", spacing: 4 }, chance: 1, assets: A("t"), scale: [1, 1] },
+      { id: "misc", place: { kind: "field", spacing: 4 }, chance: 1, assets: A("m"), scale: [1, 1] },
+    ]);
+    const pts = planChunk(p, ctx(0, 0));
+    assert.ok(pts.some((x) => x.assetId === "t") && pts.some((x) => x.assetId === "m"));
+    for (const pt of pts) assert.equal(pt.archetype.category, pt.assetId === "t" ? "tree" : undefined);
+  });
+
+  it("the shipped plan's trees, rocks and plants are categorised", () => {
+    const file = fileURLToPath(new URL("../../../content/ecology/wilds.ecology.json", import.meta.url));
+    const { plan: wilds } = loadEcologyPlan(file);
+    const cat = (id: string) => wilds.layers.find((l) => l.id === id)?.category;
+    assert.equal(cat("trees"), "tree");
+    assert.equal(cat("outcrops"), "rock");
+    assert.equal(cat("grass"), "plant");
+  });
+
+  it("an unknown category is refused", () => {
+    assert.throws(() => plan([{ id: "x", category: "boulder", place: { kind: "field", spacing: 4 }, chance: 1, assets: A("x"), scale: [1, 1] }]), /category/);
+  });
+});

@@ -190,7 +190,9 @@ import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
-import { makeWorldPopulator } from "./procgen/world-populator.js";
+import { ART_CATALOG, makeWorldPopulator } from "./procgen/world-populator.js";
+import { catalogBounds } from "./procgen/prop-shape.js";
+import { loadScale } from "./scale.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
@@ -440,8 +442,11 @@ async function main(): Promise<void> {
     const kinds = [...Object.keys(game.rules.creatures.creatures), ...Object.keys(speciesRoster.roster)];
     for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[], kinds })) console.warn(`[biomes] ${p} (${biomesFile})`);
   }
+  // The global scale (content/scale.json, MMO_SCALE): a bad file refuses to boot.
+  const scale = loadScale();
   // What grows on new chunks (see world-populator: ecology or PCG).
   const populator = await makeWorldPopulator({
+    scale,
     worldSeed,
     chunkWorldSize: CHUNK_SIZE,
     seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
@@ -746,6 +751,8 @@ async function main(): Promise<void> {
         sim,
         creatures: creaturesOf(),
         table: () => loadScatterContent().table,
+        scale,
+        bounds: fs.existsSync(ART_CATALOG) ? catalogBounds(ART_CATALOG) : undefined,
         groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
         prefabs,
         species: (id) => speciesRoster.roster[id],
@@ -925,6 +932,7 @@ async function main(): Promise<void> {
   // only run once players are around, long after.
   const gw: Gateway = new Gateway({
     port: PORT,
+    scale,
     sessionStore,
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.

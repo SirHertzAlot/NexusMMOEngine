@@ -10,6 +10,8 @@ export interface CatalogModel {
   id: string;
   name: string;
   skinned: boolean;
+  /** Width, height, depth in metres (the catalog's `size`). */
+  size?: [number, number, number];
 }
 
 /** Name patterns per structure kind, for the packs' whole-building presets. A game replaces them with `--art-patterns`. */

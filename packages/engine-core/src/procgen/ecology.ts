@@ -35,6 +35,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fnv1a32, type EntitySpawn, type SpawnArchetype } from "@mmo-engine/scatter";
+import { SCALE_CATEGORIES } from "@mmo-engine/scene";
 import { terrainHeightAt } from "../systems.js";
 import { checkFormation, FormationCache, formationExtent, formationPieces, formationTile, pickAsset, tileOfChunk, type FormationSpec } from "./formation.js";
 
@@ -117,6 +118,8 @@ export interface EcologyLayer {
   /** Not spawned: only a parent for other layers (a patch centre). */
   hidden?: boolean;
   collision?: SpawnArchetype["collision"];
+  /** Kind of object for the global scale (default prop). */
+  category?: SpawnArchetype["category"];
   /** A formation layer's options and constraints (place.kind "formation"). */
   formation?: FormationSpec;
 }
@@ -136,6 +139,7 @@ export function parseEcologyPlan(json: unknown): EcologyPlan {
   if (!plan || plan.version !== 1 || !Array.isArray(plan.layers)) throw new Error("ecology plan: want { version: 1, layers: [...] }");
   const seen = new Set<string>();
   for (const l of plan.layers) {
+    if (l.category !== undefined && !(SCALE_CATEGORIES as readonly string[]).includes(l.category)) throw new Error(`ecology plan: layer "${l.id}" has unknown category "${l.category}" (have ${SCALE_CATEGORIES.join(", ")})`);
     if (seen.has(l.id)) throw new Error(`ecology plan: layer "${l.id}" twice`);
     if (l.place.kind === "around" && !seen.has(l.place.parent)) {
       throw new Error(`ecology plan: layer "${l.id}" grows around "${l.place.parent}", which must come before it`);
@@ -329,7 +333,7 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
       const [s0, s1] = chosen.scale ?? layer.scale;
       const scale = s0 + (s1 - s0) * r(2);
       const y = layer.onWater && w !== null ? w : g;
-      const archetype: SpawnArchetype = { asset, ...(layer.collision ? { collision: layer.collision } : {}) };
+      const archetype: SpawnArchetype = { asset, ...(layer.collision ? { collision: layer.collision } : {}), ...(layer.category ? { category: layer.category } : {}) };
       return {
         layer: layer.id,
         x,
@@ -394,7 +398,7 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
           assetHash: fnv1a32(asset),
           variant: 0,
           seed: hash(layerSeed, fp.i, fp.j),
-          archetype: { asset, ...(layer.collision ? { collision: layer.collision } : {}) },
+          archetype: { asset, ...(layer.collision ? { collision: layer.collision } : {}), ...(layer.category ? { category: layer.category } : {}) },
         };
         // Every point is there for later layers to avoid; only this chunk's, with art, are spawned.
         if (own) mine.push(pt);

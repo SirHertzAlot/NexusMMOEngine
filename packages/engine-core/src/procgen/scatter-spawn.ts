@@ -56,6 +56,7 @@ import {
 import type { SimWorld } from "../world.js";
 import { attachDefaultCollider } from "../systems.js";
 import { propShape, type ModelBounds } from "./prop-shape.js";
+import type { ScaleResolver } from "../scale.js";
 import {
   cook,
   hashU32,
@@ -162,6 +163,8 @@ export interface ScatterChunkOptions {
   minHeight?: number;
   /** Model sizes, for colliders that fit the prop (see prop-shape.ts). */
   bounds?: ModelBounds;
+  /** The global scale's factor per (category, asset). */
+  scale?: ScaleResolver;
 }
 
 /**
@@ -184,7 +187,13 @@ function yawToQuat(yaw: number): { qx: number; qy: number; qz: number; qw: numbe
  * Spawn one resolved scatter record as ECS entities. Returns the eid.
  * Exported for tests.
  */
-export function spawnScatterEntity(world: SimWorld, s: EntitySpawn, bounds?: ModelBounds): number {
+export function spawnScatterEntity(world: SimWorld, s: EntitySpawn, bounds?: ModelBounds, scale?: ScaleResolver): number {
+  // The global scale (content/scale.json) multiplies the instance scale here, before the
+  // Transform and the collision are derived from it, so what is drawn and what blocks agree.
+  if (scale) {
+    const f = scale(s.archetype.category ?? "prop", s.assetId);
+    if (f !== 1) s = { ...s, sx: s.sx * f, sy: s.sy * f, sz: s.sz * f };
+  }
   const eid = world.spawn();
   const T = Transform;
   addComponent(world.ecs, T, eid);
@@ -277,7 +286,7 @@ export function scatterChunkToECS(
 
   const minHeight = opts.minHeight ?? -Infinity;
   const spawns = resolveSpawns(records, content.table).filter((s) => s.y >= minHeight);
-  return spawns.map((s) => spawnScatterEntity(world, s, opts.bounds));
+  return spawns.map((s) => spawnScatterEntity(world, s, opts.bounds, opts.scale));
 }
 
 /**
@@ -290,7 +299,7 @@ const SHORE_CLEARANCE_M = 0.2;
 export function makeScatterPopulator(
   worldSeed: bigint,
   chunkWorldSize: number,
-  opts: { seaLevel?: number; bounds?: ModelBounds } = {},
+  opts: { seaLevel?: number; bounds?: ModelBounds; scale?: ScaleResolver } = {},
 ): {
   populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
   readonly planHash: string;
@@ -308,6 +317,7 @@ export function makeScatterPopulator(
         chunkWorldSize,
         minHeight: opts.seaLevel === undefined ? undefined : opts.seaLevel + SHORE_CLEARANCE_M,
         bounds: opts.bounds,
+        scale: opts.scale,
       });
     },
   };
@@ -329,6 +339,8 @@ export function makeEcologyPopulator(
     seaLevel?: number;
     /** Model sizes, for colliders that fit the prop (see prop-shape.ts). */
     bounds?: ModelBounds;
+    /** The global scale's factor per (category, asset). */
+    scale?: ScaleResolver;
     /** The terrain, for formation layers (their tiles span and border other chunks). */
     terrain?: ChunkDataSource;
     /** Where solved formation tiles persist (world.db): the bake fills it, the server reads it. */
@@ -380,7 +392,7 @@ export function makeEcologyPopulator(
         heightsOf,
         formations,
       });
-      for (const p of points) spawnScatterEntity(world, p, opts.bounds);
+      for (const p of points) spawnScatterEntity(world, p, opts.bounds, opts.scale);
     },
   };
 }

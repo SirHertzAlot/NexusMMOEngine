@@ -42,6 +42,8 @@ export const SpawnArchetypeSchema = z.object({
   asset: z.string().min(1),
   /** Optional rigid-body config → BodyConfig component at spawn. */
   collision: CollisionSchema.optional(),
+  /** Kind of object for the global scale (content/scale.json); none means "prop". */
+  category: z.enum(["building", "tree", "rock", "plant", "prop"]).optional(),
   /** Optional health → Health component at spawn. */
   health: z.object({ max: z.number().positive() }).optional(),
 });
