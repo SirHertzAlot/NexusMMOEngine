@@ -26,6 +26,7 @@
  */
 
 import { dirname, resolve } from "node:path";
+import { fromUser } from "./paths.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -43,10 +44,10 @@ async function main(): Promise<void> {
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
   const here = dirname(fileURLToPath(import.meta.url));
-  const out = o.out ? resolve(o.out) : resolve(here, "../../../../content/settlements");
+  const out = o.out ? fromUser(o.out) : resolve(here, "../../../../content/settlements");
   let origin = (o.origin ?? "0,0").split(",").map(Number);
   if (o.world) {
-    const site = (await findSites(resolve(o.world), here))[Number(o.site ?? 1) - 1];
+    const site = (await findSites(fromUser(o.world), here))[Number(o.site ?? 1) - 1];
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
     origin = [site.x, site.z];
     console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, ${site.biome}`);
@@ -54,20 +55,20 @@ async function main(): Promise<void> {
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   let art: Record<string, string[]> | undefined;
   if (o.catalog) {
-    const models = (JSON.parse(readFileSync(resolve(o.catalog), "utf8")) as { models: CatalogModel[] }).models;
+    const models = (JSON.parse(readFileSync(fromUser(o.catalog), "utf8")) as { models: CatalogModel[] }).models;
     art = buildArtMap(models, DEFAULT_ART_PATTERNS);
     console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
   }
   let scale = 1;
   if (o.scale) {
-    const doc = JSON.parse(readFileSync(resolve(o.scale), "utf8")) as unknown;
+    const doc = JSON.parse(readFileSync(fromUser(o.scale), "utf8")) as unknown;
     const issues = validateScale(doc);
     if (issues.length) throw new Error(`--scale: ${issues.map((i) => `${i.path} ${i.message}`).join("; ")}`);
     scale = resolveScale(doc as ScaleDoc, "building");
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(resolve(o.rules)) : BUILTIN_RULES, scale, verbosity },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity },
     out,
     o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
