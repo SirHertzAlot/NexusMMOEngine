@@ -42,3 +42,13 @@ export class Streams {
 }
 
 export const streams = (seed: number): Streams => new Streams(seed);
+
+/** A seeded Fisher-Yates shuffle (a copy; `list` is left alone). */
+export function shuffle<T>(list: readonly T[], rng: Rng): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.raw() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}

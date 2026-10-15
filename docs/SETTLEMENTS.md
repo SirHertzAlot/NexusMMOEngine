@@ -27,7 +27,8 @@ and the result names it (no exceptions across the API).
 | demand | what must be fed, housed and staffed, and how many of each structure the size needs | §15 |
 | layout | a street grid (sparse, connected graph), blocks split between housing, agriculture, shopping and manufacturing by distance and side, a parcel on every plot | §16–17 |
 | structures | WFC over the parcel graph (`@mmo-engine/wfc`): domains from the district, forbidden neighbours as edge rules, required counts and ceilings, housing and food as minimum budgets, jobs as a ceiling on the labour pool | §18 |
-| validation | seven gates re-derived from the finished tables (demographics, housing, food, labour, road connectivity, structure coverage, zoning) | §22 |
+| occupancy | households dealt into homes (an adult heads each), people dealt in with the demographic cohorts and classes, working-age people into jobs, a shop kept by one worker in each shop structure | §19–20 |
+| validation | ten gates re-derived from the finished tables (demographics, housing, food, labour, road connectivity, structure coverage, zoning) | §22 |
 
 The conventions are the engine's: stages are small and pure over typed data,
 every collection is sorted by id, geometry is integer millimetres, each
@@ -83,6 +84,8 @@ and props, not a settlement-specific loader.
   model in the art manifest; nothing on the server changes.
 - Entities are remembered per boot like every scene's, so a restart does not
   duplicate the town.
-- Not spawned yet: roads (SG2 brings engineered roads), residents and shops
-  (SG3b).
+- Not spawned yet: roads (SG2 brings engineered roads) and the residents. The
+  occupancy (households, npcs, shops) is in the manifest as data; putting people
+  in the world needs a generic simulated-agent path in the engine, which is its own
+  slice (the server has creatures and quest givers, not hundreds of idle villagers).
 

@@ -298,7 +298,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | SG1 | Settlement generator, first slice (`packages/settlement`, `npm run settlement:bake`): demographics, economic demand, street grid, four districts, parcels, WFC structure placement, validation gates, canonical hashed manifest | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-engine-s1` |
 | SG2 | Settlements: terrain-aware site selection, hydrology and resource fields read from the world bake; civil-engineered roads (alignment, profile, drainage) | 📋 | 〃 §28 |
 | SG3 | Spawn settlements into the world: `settlementScene` turns a manifest into a world scene of `Structure` nodes (kind and footprint), the scene spawner makes each a static box carrying the kind's asset hash; `npm run settlement:bake -- --scene --origin x,z` then `MMO_SCENE=settlement-<id>` | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-engine-s1` |
-| SG3b | Settlements: occupancy, households and NPCs, shops, carts and props | 📋 | 〃 §19–20 |
+| SG3b | Settlements: occupancy (households, npcs with cohort, class, home, workplace and role, shops with owners) in the manifest, three more gates; spawning residents needs a simulated-agent path and is next | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-occupancy` |
 | SG4 | Settlements in the editor: pick archetypes and districts, preview and bake; the art manifest maps archetypes to models | 📋 | 〃 |
 
 ## 5. Engine, physics and native libraries
@@ -375,6 +375,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-15**: SG3b settlement occupancy (🚧): the occupancy baker deals a 600-person town into 136 households and homes, 283 jobs and 86 shops, with the demographic cohorts and classes exact; three new gates (population, homes, jobs); the golden hash is re-pinned for the new manifest section. Residents are data only for now; spawning them needs a simulated-agent path.
 - **2026-10-15**: SG3 settlements spawn through the scene spawner (🚧): a `Structure` scene component (kind and footprint), a spawner branch that makes it a static box with the kind's asset hash (art mapping comes later), `settlementScene` and `settlement:bake --scene --origin`. A baked 600-person town spawned as 288 entities of 12 kinds around the chosen origin. Occupancy and NPCs split out as SG3b.
 - **2026-10-15**: SG1 settlement generator first slice (🚧) on `feat/settlement-engine-s1`: `@mmo-engine/settlement` bakes one deterministic town (demographics, demand, street grid, four districts, parcels, WFC-placed structures from 12 archetypes) to `<id>.settlement.json` with seven validation gates, a verbosity-filtered event log and a content hash pinned by a golden test; `npm run settlement:bake`. Rules are data (`SettlementRulesSchema`). Roadmap rows SG2 to SG4 added for what follows.
 - **2026-10-11**: TL2 milestone complete (✅): `npm run models:generate` works (`prop-crate.glb` → `PropCrate.tsx` with `// @generated` header + transformed GLB); `public/models/` and `src/render/generated/` committed; `dev-model-scene.tsx` + `dev-overlay-inner.tsx` wire the model into a dev scene; `package.json` script corrected (`--types` flag only); client build and 278 tests green; docs updated.

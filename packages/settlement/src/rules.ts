@@ -34,6 +34,10 @@ export const ArchetypeSchema = z.strictObject({
   feeds: z.number().int().min(0),
   /** How tall it stands, metres (its scene footprint's height). */
   heightM: z.number().positive(),
+  /** What its workers are called ("blacksmith"). */
+  role: z.string(),
+  /** Whether it trades: a shop is kept here, owned by one of its workers. */
+  shop: z.boolean(),
 });
 
 export const RequiredSchema = z.strictObject({
@@ -83,18 +87,18 @@ export const BUILTIN_RULES: SettlementRules = {
   districtShares: { housing: 560, agriculture: 165, shopping: 110, manufacturing: 165 },
   layout: { block: [4, 2], parcelSizeMm: [12000, 20000], streetWidthMm: 6000, parcelsPerHouseholdPermille: 1550 },
   archetypes: {
-    house: { kinds: ["housing"], weight: 10, households: 1, workers: 0, feeds: 0, heightM: 5 },
-    artisan_house: { kinds: ["housing", "manufacturing"], weight: 3, households: 1, workers: 1, feeds: 0, heightM: 5 },
-    farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, heightM: 5 },
-    granary: { kinds: ["agriculture", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 6 },
-    mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 8 },
-    bakery: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 5 },
-    smithy: { kinds: ["manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 5 },
-    workshop: { kinds: ["manufacturing"], weight: 4, households: 0, workers: 2, feeds: 0, heightM: 5 },
-    market: { kinds: ["shopping"], weight: 6, households: 0, workers: 1, feeds: 0, heightM: 3 },
-    tavern: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 2, feeds: 0, heightM: 7 },
-    chapel: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 1, feeds: 0, heightM: 10 },
-    warehouse: { kinds: ["manufacturing", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 6 },
+    house: { kinds: ["housing"], weight: 10, households: 1, workers: 0, feeds: 0, heightM: 5, role: "", shop: false },
+    artisan_house: { kinds: ["housing", "manufacturing"], weight: 3, households: 1, workers: 1, feeds: 0, heightM: 5, role: "artisan", shop: false },
+    farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, heightM: 5, role: "farmer", shop: false },
+    granary: { kinds: ["agriculture", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 6, role: "granary keeper", shop: false },
+    mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 8, role: "miller", shop: false },
+    bakery: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 5, role: "baker", shop: true },
+    smithy: { kinds: ["manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 5, role: "blacksmith", shop: true },
+    workshop: { kinds: ["manufacturing"], weight: 4, households: 0, workers: 2, feeds: 0, heightM: 5, role: "craftsman", shop: true },
+    market: { kinds: ["shopping"], weight: 6, households: 0, workers: 1, feeds: 0, heightM: 3, role: "trader", shop: true },
+    tavern: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 2, feeds: 0, heightM: 7, role: "innkeeper", shop: true },
+    chapel: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 1, feeds: 0, heightM: 10, role: "priest", shop: false },
+    warehouse: { kinds: ["manufacturing", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, heightM: 6, role: "porter", shop: false },
   },
   required: {
     market: { min: 1, perPopulation: 400 },

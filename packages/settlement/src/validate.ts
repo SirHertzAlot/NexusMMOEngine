@@ -8,6 +8,7 @@
 import type { Demand } from "./demand.js";
 import type { Demographics } from "./demographics.js";
 import type { Layout } from "./layout.js";
+import type { Occupancy } from "./occupancy.js";
 import type { SettlementRules } from "./rules.js";
 import type { Structure } from "./structures.js";
 
@@ -22,6 +23,7 @@ export interface Town {
   demand: Demand;
   layout: Layout;
   structures: Structure[];
+  occupancy: Occupancy;
 }
 
 const gate = (name: string, ok: boolean, detail: string): Gate => ({ gate: name, ok, detail });
@@ -35,6 +37,7 @@ export function validateTown(t: Town, rules: SettlementRules): Gate[] {
   const kindOf = new Map(t.layout.parcels.map((p) => [p.id, p.kind]));
   const misplaced = t.structures.filter((s) => !rules.archetypes[s.archetype]!.kinds.includes(kindOf.get(s.parcel)!));
   const built = new Set(t.structures.map((s) => s.parcel));
+  const kindById = new Map(t.structures.map((s) => [s.id, s.archetype]));
   const count = (id: string): number => t.structures.filter((s) => s.archetype === id).length;
   const short = Object.entries(t.demand.required).filter(([id, n]) => count(id) < n);
   const total = (o: Record<string, number>): number => Object.values(o).reduce((a, b) => a + b, 0);
@@ -51,6 +54,14 @@ export function validateTown(t: Town, rules: SettlementRules): Gate[] {
     }
   }
 
+  const o = t.occupancy;
+  const perHome = new Map<string, number>();
+  for (const h of o.households) perHome.set(h.home, (perHome.get(h.home) ?? 0) + 1);
+  const overHome = [...perHome].filter(([id, n]) => n > rules.archetypes[kindById.get(id)!]!.households);
+  const perJob = new Map<string, number>();
+  for (const n of o.npcs) if (n.workplace) perJob.set(n.workplace, (perJob.get(n.workplace) ?? 0) + 1);
+  const overJob = [...perJob].filter(([id, n]) => n > rules.archetypes[kindById.get(id)!]!.workers);
+
   return [
     gate("demographic_validity", total(d.ageCohorts) === d.population && total(d.socialClasses) === d.population, `${d.population} people in ${d.households} households`),
     gate("housing_capacity", housing >= d.households, `${housing} homes for ${d.households} households`),
@@ -58,6 +69,9 @@ export function validateTown(t: Town, rules: SettlementRules): Gate[] {
     gate("labor_balance", workers <= d.laborPool, `${workers} jobs for ${d.laborPool} workers`),
     gate("road_connectivity", reached.size === t.layout.roads.nodes.length && t.layout.parcels.every((p) => p.roadFrontage), `${reached.size} of ${t.layout.roads.nodes.length} junctions reachable`),
     gate("structure_coverage", t.layout.parcels.every((p) => built.has(p.id)) && short.length === 0, short.length ? `short of ${short.map(([id]) => id).join(", ")}` : `${t.structures.length} structures on ${t.layout.parcels.length} parcels`),
+    gate("occupancy_population", o.npcs.length === d.population && o.households.reduce((a, h) => a + h.size, 0) === d.population, `${o.npcs.length} people in ${o.households.length} households`),
+    gate("occupancy_homes", overHome.length === 0 && o.households.length === d.households, overHome.length ? `${overHome.length} homes over capacity` : `${o.households.length} households, each in a home with room`),
+    gate("occupancy_jobs", overJob.length === 0, overJob.length ? `${overJob.length} workplaces over their jobs` : `${perJob.size} workplaces staffed within their jobs`),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

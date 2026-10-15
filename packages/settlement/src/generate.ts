@@ -12,6 +12,7 @@ import { solveDemand } from "./demand.js";
 import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
 import { layOut } from "./layout.js";
+import { occupy } from "./occupancy.js";
 import { streams, type Streams } from "./rng.js";
 import { BUILTIN_RULES, type SettlementRules } from "./rules.js";
 import { placeStructures } from "./structures.js";
@@ -42,6 +43,7 @@ export interface SettlementManifest {
   districts: Town["layout"]["districts"];
   parcels: Town["layout"]["parcels"];
   structures: Town["structures"];
+  occupancy: Town["occupancy"];
   validation: Gate[];
 }
 
@@ -109,6 +111,16 @@ const STAGES: Stage[] = [
     },
   },
   {
+    name: "occupancy",
+    run(ctx) {
+      const { demographics, structures } = ctx.town;
+      const o = occupy(ctx.request.settlementId, demographics!, structures!, ctx.rules, ctx.rng);
+      ctx.town.occupancy = o;
+      const employed = o.npcs.filter((n) => n.workplace).length;
+      ctx.events.emit("summary", "occupancy", "settled", { households: o.households.length, npcs: o.npcs.length, employed, shops: o.shops.length });
+    },
+  },
+  {
     name: "validation",
     run(ctx) {
       ctx.validation = validateTown(ctx.town as Town, ctx.rules);
@@ -136,7 +148,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { demographics, demand, layout, structures } = ctx.town as Town;
+  const { demographics, demand, layout, structures, occupancy } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -150,9 +162,10 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     districts: layout.districts,
     parcels: layout.parcels,
     structures,
+    occupancy,
     validation: ctx.validation,
   };
   const byId = <T extends { id: string }>(rows: T[]): T[] => [...rows].sort((a, b) => (a.id < b.id ? -1 : 1));
-  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), structures: byId(body.structures) };
+  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), structures: byId(body.structures), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
   return { ok: true, manifest: { ...sorted, hash: contentHash(sorted) }, events: events.events(verbosity) };
 }
