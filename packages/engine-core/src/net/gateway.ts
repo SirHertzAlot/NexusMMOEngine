@@ -149,7 +149,9 @@ import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
 // Fallback during migration; removed once all bootstraps inject chatRules.
 import * as builtInChat from "../chat.js";
-import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { clearOfStatics } from "../prop-collision.js";
+import type { ScaleResolver } from "../scale.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
 import { AbilitySystem } from "../abilities.js";
@@ -308,6 +310,8 @@ export interface GatewayOptions {
    * table in tests.
    */
   spawnTable?: SpawnTable;
+  /** The global scale for admin-spawned props (default: none). */
+  scale?: ScaleResolver;
   /**
    * Region chat text filter (roadmap S1): return false to reject a line.
    * Default allows everything that passes shape limits; a profanity or
@@ -761,6 +765,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "scale"
       | "extensions"
       | "items"
     >
@@ -858,6 +863,7 @@ export class Gateway {
    * first use so addon-less boots never pay for it.
    */
   private spawnTable: SpawnTable | null = null;
+  private readonly scale: ScaleResolver | undefined;
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
@@ -927,6 +933,7 @@ export class Gateway {
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
+    this.scale = opts.scale;
     this.textFilter = opts.textFilter ?? this.chatRules.allowAllText;
     for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
@@ -1795,9 +1802,10 @@ export class Gateway {
     if (!st || !(st.health > 0)) return;
     if (!this.spawnOverridden) {
       const T = C.Transform;
-      T.px[eid] = st.x;
-      T.pz[eid] = st.z;
-      T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+      const at = clearOfStatics(this.world, st.x, st.z, CHARACTER_CAPSULE.radius);
+      T.px[eid] = at.x;
+      T.pz[eid] = at.z;
+      T.py[eid] = this.groundHeightAt?.(at.x, at.z) ?? st.y;
     }
     C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
     C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
@@ -1818,7 +1826,7 @@ export class Gateway {
     if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
     const x = this.spawnPoint.x;
     const z = this.spawnPoint.z;
-    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ? this.groundHeightAt(x, z) : null);
+    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ?? null);
     return r.ok;
   }
 
@@ -2611,7 +2619,7 @@ export class Gateway {
     }
     const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
-    const eid = spawnScatterEntity(this.world, built);
+    const eid = spawnScatterEntity(this.world, built, undefined, this.scale);
     return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
   }
 
@@ -2628,8 +2636,7 @@ export class Gateway {
       }
       const target = this.resolveTarget(s, parsed.data.entity);
       if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
-      const ground = this.groundHeightAt ? this.groundHeightAt(parsed.data.x, parsed.data.z) : null;
-      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, ground);
+      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, this.groundHeightAt ?? null);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
       return { kind: "admin", command, ok: true, message: r.message };
     }
@@ -4794,8 +4801,10 @@ export class Gateway {
     C.Locomotion.breath[eid] = 1;
     const T = C.Transform;
     const i = this.playerSeq++;
-    T.px[eid] = this.spawnPoint.x + (i % 8) * 4 - 14;
-    T.pz[eid] = this.spawnPoint.z + Math.floor(i / 8) * 4 - 14;
+    // Clear of baked buildings: the spawn point can sit inside a generated town.
+    const at = clearOfStatics(sim, this.spawnPoint.x + (i % 8) * 4 - 14, this.spawnPoint.z + Math.floor(i / 8) * 4 - 14, CHARACTER_CAPSULE.radius);
+    T.px[eid] = at.x;
+    T.pz[eid] = at.z;
     T.py[eid] = this.groundHeightAt?.(T.px[eid], T.pz[eid]) ?? 0;
     T.qx[eid] = 0; T.qy[eid] = 0; T.qz[eid] = 0; T.qw[eid] = 1;
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;

@@ -62,14 +62,45 @@ export interface Layout {
   parcels: Parcel[];
 }
 
-export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams): Layout {
-  const { block, parcelSizeMm, streetWidthMm, parcelsPerHouseholdPermille } = rules.layout;
+/** The middle of the road network's bounding box, mm: the town's centre, which a scene puts on its origin. */
+export function townCentreMm(nodes: readonly { x: number; z: number }[]): { x: number; z: number } {
+  return { x: (Math.min(...nodes.map((n) => n.x)) + Math.max(...nodes.map((n) => n.x))) / 2, z: (Math.min(...nodes.map((n) => n.z)) + Math.max(...nodes.map((n) => n.z))) / 2 };
+}
+
+/** The narrowest a street may be, mm: a 0.7 m character capsule always passes, however small the buildings are scaled. */
+export const MIN_STREET_MM = 2000;
+
+/**
+ * Parcel and street sizes at a building `scale` (a ScaleDoc's `building` factor).
+ * The rules are authored for scale 1; parcels follow the factor, streets too but
+ * never narrower than MIN_STREET_MM. Integer millimetres.
+ */
+export function scaledLayout(rules: SettlementRules, scale = 1): { parcelMm: [number, number]; streetMm: number } {
+  const { parcelSizeMm, streetWidthMm } = rules.layout;
+  return { parcelMm: [Math.round(parcelSizeMm[0] * scale), Math.round(parcelSizeMm[1] * scale)], streetMm: Math.max(MIN_STREET_MM, Math.round(streetWidthMm * scale)) };
+}
+
+/** The block grid of a town of `households`: blocks per side and the pitch (block plus street) each way, mm. */
+function blockGrid(households: number, rules: SettlementRules, scale: number, extraBlocks = 0): { n: number; pitchX: number; pitchZ: number; streetWidthMm: number; pw: number; pd: number } {
+  const { block, parcelsPerHouseholdPermille } = rules.layout;
   const [bw, bd] = block;
-  const [pw, pd] = parcelSizeMm;
+  const { parcelMm, streetMm: streetWidthMm } = scaledLayout(rules, scale);
+  const [pw, pd] = parcelMm;
   const parcelsWanted = Math.ceil((households * parcelsPerHouseholdPermille) / 1000);
-  const n = Math.max(2, Math.ceil(Math.sqrt(Math.ceil(parcelsWanted / (bw * bd)))));
-  const pitchX = bw * pw + streetWidthMm;
-  const pitchZ = bd * pd + streetWidthMm;
+  const n = Math.max(2, Math.ceil(Math.sqrt(Math.ceil(parcelsWanted / (bw * bd))))) + extraBlocks;
+  return { n, pitchX: bw * pw + streetWidthMm, pitchZ: bd * pd + streetWidthMm, streetWidthMm, pw, pd };
+}
+
+/** Half the town's footprint, metres (the larger side, so a square window of this reach holds the whole town). Site selection measures relief over it. */
+export function townHalfExtentM(households: number, rules: SettlementRules, scale = 1): number {
+  const { n, pitchX, pitchZ } = blockGrid(households, rules, scale);
+  return Math.ceil((n * Math.max(pitchX, pitchZ)) / 2000);
+}
+
+export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams, scale = 1, extraBlocks = 0): Layout {
+  const { block } = rules.layout;
+  const [bw, bd] = block;
+  const { n, pitchX, pitchZ, streetWidthMm, pw, pd } = blockGrid(households, rules, scale, extraBlocks);
 
   // Streets: a node at each crossing, an edge per segment.
   const nodeId = (i: number, j: number): string => entityId("junction", settlement, i, j);

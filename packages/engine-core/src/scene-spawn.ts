@@ -13,8 +13,10 @@
  * over it, plus its children.
  *
  * Node resolution: an `ItemSpawn` component puts an item on the ground, a
- * `QuestGiver` moves the quest giver's post; otherwise a `Spawner` component's
- * `creature`, else the node's `prefab` (the whole string, then its last path
+ * `QuestGiver` moves the quest giver's post, a `Structure` becomes a static box on the
+ * ground carrying the kind's asset hash (settlement buildings); otherwise a `Spawner` component's
+ * `creature`, else the node's `prefab`; a `Collider` replaces a prop's collision (shape `none`
+ * makes it walk-through) or, on a node nothing else spawns, is a static box/sphere body (the whole string, then its last path
  * segment, so "camps/goblin" finds the goblin), else the `Spawner`'s `species`
  * (the roster's pack size). `spawn-point` and unknown prefabs are
  * reported as skipped, never an error. Heights: a node's y is added to the
@@ -28,17 +30,23 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fnv1a32, type SpawnTable } from "@mmo-engine/scatter";
-import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc } from "@mmo-engine/scene";
+import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
+import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
+import { BodyConfig, ShapeKind } from "./components.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
 import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
+import { archetypeOk, landDry, LAND_MARGIN_M, STRUCTURE_MARGIN_M, surfaceAt } from "./procgen/habitat.js";
+import type { ModelBounds } from "./procgen/prop-shape.js";
+import type { ScaleResolver } from "./scale.js";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 /** The repo's content/scenes (this file is dist/src/scene-spawn.js). */
 export const DEFAULT_SCENES_DIR = fileURLToPath(new URL("../../../../content/scenes", import.meta.url));
-const META_KEY = "scene_entities";
+/** A building on a slope stands this far above its footprint's highest ground sample, metres. */
+const PLINTH_M = 0.05;
+const META_KEY ="scene_entities";
 const ITEMS_KEY = "scene_items";
 /** The repo's content/prefabs (this file is dist/src/scene-spawn.js). */
 export const DEFAULT_PREFABS_DIR = fileURLToPath(new URL("../../../../content/prefabs", import.meta.url));
@@ -49,6 +57,18 @@ export interface SceneSpawnDeps {
   /** The prop table (lazy: loading it cooks the scatter plan). */
   table: () => SpawnTable | null;
   groundHeightAt?: (x: number, z: number) => number;
+  /**
+   * The world's water (habitat.ts): the sea level, the water surface lookup (sea and lakes) and the river cells.
+   * With any of them, a building or prop standing in or at the water is refused (and reported), never drowned;
+   * aquatic archetypes (habitat water) are the only ones placed below it. Without them nothing is checked.
+   */
+  seaLevel?: number;
+  waterAt?: (x: number, z: number) => number | null;
+  riverAt?: (x: number, z: number) => boolean;
+  /** The global scale: the factor per (category, asset), multiplied into every spawned prop and building. */
+  scale?: ScaleResolver;
+  /** Model sizes (the local art catalog): a Structure naming a model takes its body from them. */
+  bounds?: ModelBounds;
   /** Prefab files (content/prefabs) by name: nodes naming one become its bundle. */
   prefabs?: PrefabLookup;
   /** The species roster: a Spawner's `species` spawns its creature at the species' pack size. */
@@ -112,6 +132,25 @@ export function loadSceneFile(dir: string, name: string): SceneDoc {
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+type Collision = NonNullable<SpawnArchetype["collision"]>;
+
+/** A scene `Collider` as a static collision (scene defaults: a 0.5 box, a 0.5 sphere); none when the node has no Collider. */
+function colliderOf(c: Record<string, unknown> | undefined): Collision | undefined {
+  if (!c) return undefined;
+  const n = (v: unknown, d: number): number => (typeof v === "number" ? v : d);
+  const shape = c.shape === "sphere" || c.shape === "none" ? c.shape : "box";
+  return { shape, halfExtents: [n(c.hx, 0.5), n(c.hy, 0.5), n(c.hz, 0.5)], radius: n(c.radius, 0.5), motion: "static" };
+}
+
+/** One static body at the node's world pose (y above the ground), carrying `asset`'s hash, through the scatter spawn path. */
+function spawnBody(deps: SceneSpawnDeps, id: string, w: WorldNode, ground: number, asset: string, collision: Collision, category: ScaleCategory = "prop"): number {
+  const [x, y, z] = w.position;
+  return spawnScatterEntity(deps.sim, {
+    x, y: ground + y, z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
+    assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(id) >>> 0) || 1, archetype: { asset, collision, category },
+  }, deps.bounds, deps.scale);
+}
+
 export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnResult {
   const out: SceneSpawnResult = { spawned: [], skipped: [] };
   // Prefab files become their bundle (components, children) before anything spawns.
@@ -142,6 +181,72 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       else out.skipped.push({ id: node.id, reason: refused });
       continue;
     }
+    // A building (a settlement structure): a static box on the ground that carries an asset hash.
+    // The hash is the named art model's (the client shows it when the art is served) or, with none
+    // named, the kind's "structure:<kind>". The box stands on the ground with its centre at ground
+    // level, so a model's base sits on the ground and a stand-in box shows exactly `height` above it.
+    const structure = node.components?.Structure;
+    if (structure) {
+      const kind = str(structure.kind);
+      if (!kind) out.skipped.push({ id: node.id, reason: "Structure has no kind" });
+      else {
+        const half: [number, number, number] = [Number(structure.width) / 2, Number(structure.height), Number(structure.depth) / 2];
+        const asset = str(structure.asset) || `structure:${kind}`;
+        // A named model that the catalog knows sizes the body (bounds x scale); otherwise the authored footprint.
+        const modelSized = str(structure.asset) !== "" && deps.bounds?.(asset) !== undefined;
+        const collision = { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
+        // Ground under the whole footprint, not just its centre: the floor stands on the highest point
+        // (nothing sinks into a slope), the body reaches the lowest, and a foundation slab fills the gap.
+        const f = deps.scale?.("building", asset) ?? 1;
+        const size = modelSized ? deps.bounds?.(asset) : undefined;
+        const [hw, hd] = size ? [(size[0] * f) / 2, (size[2] * f) / 2] : [half[0] * f, half[2] * f];
+        const yaw = (w.yawDeg * Math.PI) / 180;
+        const cos = Math.cos(yaw);
+        const sin = Math.sin(yaw);
+        let high = -Infinity;
+        let low = Infinity;
+        // Wet footing: every sample a metre above the water surface, and none on a river cell.
+        let wet: string | null = null;
+        // A grid over the footprint, a sample a metre or so apart (the terrain's own sample spacing), always
+        // including the corners, edge midpoints and centre. ponytail: capped at 32 a side; a bump narrower than that spacing can slip between samples.
+        const nx = Math.min(16, Math.max(2, Math.ceil(hw)));
+        const nz = Math.min(16, Math.max(2, Math.ceil(hd)));
+        for (let i = -nx; i <= nx; i++) {
+          for (let j = -nz; j <= nz; j++) {
+            const lx = (i / nx) * hw;
+            const lz = (j / nz) * hd;
+            const sx = x + lx * cos + lz * sin;
+            const sz = z - lx * sin + lz * cos;
+            const g = deps.groundHeightAt?.(sx, sz) ?? 0;
+            if (g > high) high = g;
+            if (g < low) low = g;
+            if (wet === null && deps.groundHeightAt) {
+              if (!landDry(g, surfaceAt(deps.waterAt, deps.seaLevel, sx, sz), STRUCTURE_MARGIN_M)) wet = "under water or on the shore (less than " + STRUCTURE_MARGIN_M + " m above the water)";
+              else if (deps.riverAt?.(sx, sz)) wet = "on a river";
+            }
+          }
+        }
+        if (wet !== null) {
+          out.skipped.push({ id: node.id, reason: `structure ${kind} refused: its footprint is ${wet}` });
+          continue;
+        }
+        // On a slope the floor stands a plinth above the highest sample: the ground between samples can peak a few cm higher.
+        const floor = high - low > 0.01 ? high + PLINTH_M : high;
+        const drop = floor - low;
+        const building = spawnBody(deps, node.id, w, floor, asset, collision, "building");
+        const entities = [building];
+        if (drop > 0) {
+          // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).
+          if (BodyConfig.shapeKind[building] === ShapeKind.Box) BodyConfig.halfY[building] = Math.max(BodyConfig.halfY[building]!, drop);
+          // The slab: the building's footprint, from the lowest ground up to the floor.
+          const f2 = deps.scale?.("building", "structure:foundation") ?? 1;
+          const slab = { shape: "box" as const, halfExtents: [hw / f2, drop / 2 / f2, hd / f2] as [number, number, number], motion: "static" as const };
+          entities.push(spawnBody(deps, `${node.id}/foundation`, w, floor - drop / 2, "structure:foundation", slab, "building"));
+        }
+        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities });
+      }
+      continue;
+    }
     const creature = node.components?.Spawner?.creature;
     const names = [str(creature), node.prefab ?? "", (node.prefab ?? "").split("/").pop() ?? ""].filter(Boolean);
     const kind = names.find((n) => deps.creatures.has(n));
@@ -158,18 +263,29 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       else out.spawned.push({ id: node.id, what: `species ${species}`, entities: deps.creatures.spawnPack(deps.sim, species, x, z, sp.pack) });
       continue;
     }
+    // A Collider node: its box/sphere replaces a prop's own collision, or stands alone as a static body.
+    const collision = colliderOf(node.components?.Collider);
     const table = deps.table();
     const asset = table ? names.find((n) => n in table.archetypes) : undefined;
     if (table && asset) {
       const built = buildSpawn(table, asset, x, ground + y, z, (w.yawDeg * Math.PI) / 180);
       if (!("error" in built)) {
+        if (deps.groundHeightAt && !archetypeOk(built.archetype, LAND_MARGIN_M, ground, surfaceAt(deps.waterAt, deps.seaLevel, x, z))) {
+          out.skipped.push({ id: node.id, reason: `prop ${asset} refused: ${built.archetype.habitat === "water" ? "not at its depths in the water" : "under water or on the shore"} (ground ${ground.toFixed(2)} m)` });
+          continue;
+        }
         built.sx = w.scale[0];
         built.sy = w.scale[1];
         built.sz = w.scale[2];
         built.seed = (fnv1a32(node.id) >>> 0) || 1;
-        out.spawned.push({ id: node.id, what: `prop ${asset}`, entities: [spawnScatterEntity(deps.sim, built)] });
+        if (collision) built.archetype = { ...built.archetype, collision };
+        out.spawned.push({ id: node.id, what: `prop ${asset}`, entities: [spawnScatterEntity(deps.sim, built, deps.bounds, deps.scale)] });
         continue;
       }
+    }
+    if (collision && collision.shape !== "none") {
+      out.spawned.push({ id: node.id, what: `collider ${collision.shape}`, entities: [spawnBody(deps, node.id, w, ground, names[0] || `collider:${node.id}`, collision)] });
+      continue;
     }
     out.skipped.push({ id: node.id, reason: names.length > 0 ? `nothing spawns "${names[0]}"` : "no prefab or Spawner creature" });
   }

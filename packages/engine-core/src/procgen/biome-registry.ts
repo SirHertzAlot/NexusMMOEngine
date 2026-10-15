@@ -160,6 +160,8 @@ export interface PlannedPack {
   x: number;
   z: number;
   pack?: [number, number];
+  /** Lives in the water (the wildlife table's water habitat): spawns where it is deep, not where it is dry. */
+  aquatic?: boolean;
 }
 
 export interface PackPlanContext {

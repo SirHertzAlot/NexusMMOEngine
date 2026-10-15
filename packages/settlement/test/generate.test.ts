@@ -40,21 +40,28 @@ describe("generateSettlement", () => {
     for (const g of manifest.validation) assert.ok(g.ok, `${g.gate}: ${g.detail}`);
   });
 
+  it("carries who lives and works where, and the gates that check it", () => {
+    assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
+    assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
+    const gates = manifest.validation.map((g) => g.gate);
+    for (const g of ["occupancy_homes", "occupancy_jobs", "occupancy_population"]) assert.ok(gates.includes(g), g);
+  });
+
   it("holds its tables in id order, with no wall-clock or random state in them", () => {
-    for (const table of [manifest.districts, manifest.parcels, manifest.structures] as { id: string }[][]) {
+    for (const table of [manifest.districts, manifest.parcels, manifest.structures, manifest.occupancy.households, manifest.occupancy.npcs, manifest.occupancy.shops] as { id: string }[][]) {
       assert.deepEqual(table.map((r) => r.id), [...table.map((r) => r.id)].sort());
     }
     assert.ok(!/\d{4}-\d{2}-\d{2}T/.test(JSON.stringify(manifest)), "no ISO timestamps");
   });
 
   it("logs a summary event per stage, and a collapse per parcel at verbose", () => {
-    assert.deepEqual(events.filter((e) => e.level === "summary").map((e) => e.stage), ["demographics", "demand", "layout", "structures", "validation"]);
+    assert.deepEqual(events.filter((e) => e.level === "summary").map((e) => e.stage), ["demographics", "demand", "layout", "structures", "occupancy", "validation"]);
     assert.equal(events.filter((e) => e.event === "structure_collapsed").length, manifest.parcels.length);
   });
 
   it("keeps only what the verbosity asks for (silent: nothing)", () => {
     assert.deepEqual(must(generateSettlement({ ...request, verbosity: "silent" })).events, []);
-    assert.equal(must(generateSettlement({ ...request, verbosity: "summary" })).events.length, 5);
+    assert.equal(must(generateSettlement({ ...request, verbosity: "summary" })).events.length, 6);
   });
 
   it("fails with the stage and reason when the demand cannot be met", () => {
@@ -72,4 +79,5 @@ describe("generateSettlement", () => {
   });
 });
 
-const GOLDEN = "9af84d1679625c93eea33585fe3f52c8b5cfe2c8b156c78e9194d28e1b749db4";
+// Re-pinned on purpose: rules version settlement-rules/1 -> /2 (floors + architecture replace heightM); the layout and placement are unchanged, only the recorded rulesVersion moved.
+const GOLDEN = "fae20507defe25f0049f817c9aefdeadb8dd3c43deb50934aef141a9d4c67806";

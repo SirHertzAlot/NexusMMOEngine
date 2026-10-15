@@ -19,8 +19,8 @@ import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
-import { ValgrindPanel } from "./valgrind-panel.js";
 import { StringsPanel } from "./strings-panel.js";
+import { ScalePanel } from "./scale-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
 import { MaterialsPanel } from "./materials-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
@@ -38,7 +38,7 @@ import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.j
 import { requestOpenAsset } from "./open-asset.js";
 import { loadCatalog } from "../gameplay-client.js";
 import { BakesPane, OutputPane, ProblemsPane, problemCount, useDiskProblems, useDocProblems, useServerOutput, type DiskProblems, type ServerOutput } from "./dock-panes.js";
-import { DatabaseNote, FlowNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
+import { DatabaseNote, FlowNote, ScaleNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
 import { OwnedFiles } from "./owned-files.js";
 import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
@@ -181,6 +181,7 @@ const WORKSPACES: Workspace[] = [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
       { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
       { id: "materials", label: "Materials", icon: "texture", kind: "panel", panel: <MaterialsPanel /> },
+      { id: "scale", label: "Scale", icon: "straighten", kind: "panel", panel: <ScalePanel /> },
     ], // VFX and audio panels contributed by the vfx/audio modules
     leftTitle: "Library",
   },
@@ -235,6 +236,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   audit: "database audit log undo",
   "story-editor": "quest dialog npc story graph",
   assets: "art assets models textures import",
+  scale: "scale size factor global buildings trees rocks height meters gauge",
   modules: "modules enable disable apply",
 };
 
@@ -2135,6 +2137,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow") return <FlowNote />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
+  if (workspace === "artaudio" && view === "scale") return <ScaleNote />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {

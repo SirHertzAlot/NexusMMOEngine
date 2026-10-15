@@ -209,7 +209,11 @@ entrance}` from a party member standing at an entrance
 and themes and starts a `DungeonInstance` in-process: its own SimWorld and
 Gateway on an ephemeral port, running stats, creatures, intents, combat, death,
 stamina and integration, with the layout grid as its collider
-(`DungeonWallSystem`; the prebaked shell is what clients draw). Instead of the
+(`DungeonWallSystem`; the prebaked shell is what clients draw). The system
+sweeps each move cell by cell, so a fast step cannot skip a thin wall or slip
+between two wall cells at a corner, and pushes bodies out of the file's
+`colliders` (round props: a dressing line's `collision`, "solid" unless mounted
+on a wall or set to "none", plus the layout's pillars, graves and chests). Instead of the
 migration handoff, each party member online gets a `transfer` message with the
 instance's endpoint and a token (`Gateway.admit`) and says hello there as their
 character, at the entrance; their region avatar stays at the entrance. Every

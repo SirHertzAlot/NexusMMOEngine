@@ -2,6 +2,39 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-15 — Flat land is made by the terrain, not found by loosening the rules; a stranded flat is not a site.**
+  Site selection (3 m of relief over the whole town footprint) found no site
+  on the default world for 100, 300 or 600 people: erosion and the biome
+  surface left the low ground as one rolling ramp. We could have relaxed
+  `maxReliefM`, but the rule is the right one (a town on a slope is wrong), so
+  the terrain changed instead: an opt-in `plains` pass (`plains.ts`) cuts the
+  low ground into long flat treads between short risers (a strictly
+  increasing remap, so water still runs downhill), adds river and shore flats
+  and a few metres of rolling undulation, and fades out before the mountains,
+  which stay exactly as the erosion pass shaped them. It is switchable and
+  tunable in the world spec, off by default (old worlds bake byte-identically,
+  checked against the previous commit), and on in the default world (re-bake).
+  The second half is reachability: a flat ringed by cliffs is a stranded
+  object, so `selectSites` rejects a candidate that is not walkable (steps up
+  to `walkSlopeDeg`, water blocking) from the spawn, or the largest land. Not
+  done, by choice: terraces follow contours, so the risers are wide arcs
+  around the massif rather than walls; crazy placements (a keep on a crag)
+  can come later with their own constraints.
+- **2026-10-15 — New terrain relief passes are opt-in in the schema, on in the default world.**
+  The new passes (`ranges.crest`, `erosion.incision`, `erosion.rockTalusDeg`,
+  `volcano.gullies`) default to off, so any world file that does not name
+  them bakes byte-identical heights to before (checked: the default world
+  with the new keys removed hashes the same as the old code). The
+  checked-in `default.world.json` turns them on, because it is what the
+  user looked at: its mountains were rounded domes (a quartic cross-section
+  with a flat crown; the ridge noise only scaled their height), the river
+  cuts were capped near 24 m against ~300 m of relief, thermal erosion had
+  one angle for soil and rock, and the volcano was left a perfectly smooth
+  cone. The cost is that every baked default world must be re-baked and the
+  settlement site selection moves with the new slopes and water. Incision is
+  the implicit stream-power step (stable for any strength, no per-cell
+  objects), re-routed every three passes.
+
 - **2026-10-06 — Developer tooling mounts only in the editor's Play Mode
   (ROADMAP E5).** The player client no longer has a `devtools` mode or mounts
   the debugger panels. `npm run dev` starts the server and editor instead.

@@ -11,11 +11,17 @@ import { bakeDemographics } from "./demographics.js";
 import { solveDemand } from "./demand.js";
 import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
-import { layOut } from "./layout.js";
+import { layOut, scaledLayout, townCentreMm } from "./layout.js";
+import { occupy } from "./occupancy.js";
 import { streams, type Streams } from "./rng.js";
 import { BUILTIN_RULES, type SettlementRules } from "./rules.js";
 import { placeStructures } from "./structures.js";
 import { validateTown, type Gate, type Town } from "./validate.js";
+
+/** How many block rows a town beside water may grow to make up for its wet parcels. */
+const MAX_EXTRA_BLOCKS = 3;
+/** Where along a parcel side (fraction of its size from the centre) the dryness is tested: a 5 x 5 grid. */
+const FOOTPRINT_SAMPLES = [-0.5, -0.25, 0, 0.25, 0.5];
 
 export const GENERATOR_VERSION = "settlement-gen/0.1.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
@@ -25,6 +31,14 @@ export interface SettlementRequest {
   seed: number;
   population: number;
   rules?: SettlementRules;
+  /** The building factor (`resolveScale(doc, "building")`) the town is laid out at; default 1. */
+  scale?: number;
+  /**
+   * Where the town will stand (the scene's origin, world metres [x, z]) and the world's dryness test at a world
+   * point. A parcel whose footprint (centre, corners, edge midpoints) is not dry is dropped before the structures
+   * are solved: the town is built on what is left, or fails with the solver's reason. Without it, the ground is not considered.
+   */
+  site?: { origin: [number, number]; dry: (x: number, z: number) => boolean };
   verbosity?: Verbosity;
 }
 
@@ -35,6 +49,8 @@ export interface SettlementManifest {
   rulesVersion: string;
   settlementId: string;
   seed: number;
+  /** The building factor the parcels and streets were baked at: a different scale is a different town (and hash). */
+  scale: number;
   determinism: { rngStreams: Record<string, number>; sortPolicy: "id"; units: "millimeters" };
   demographics: Town["demographics"];
   demand: Town["demand"];
@@ -42,6 +58,7 @@ export interface SettlementManifest {
   districts: Town["layout"]["districts"];
   parcels: Town["layout"]["parcels"];
   structures: Town["structures"];
+  occupancy: Town["occupancy"];
   validation: Gate[];
 }
 
@@ -93,7 +110,7 @@ const STAGES: Stage[] = [
   {
     name: "layout",
     run(ctx) {
-      const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng);
+      const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1);
       ctx.town.layout = layout;
       ctx.events.emit("summary", "layout", "laid_out", { blocks: layout.blocks, parcels: layout.parcels.length, junctions: layout.roads.nodes.length });
     },
@@ -101,11 +118,50 @@ const STAGES: Stage[] = [
   {
     name: "structures",
     run(ctx) {
-      const { layout, demand } = ctx.town;
-      const structures = placeStructures(layout!, demand!, ctx.rules, ctx.rng);
+      const { demand } = ctx.town;
+      const site = ctx.request.site;
+      let layout = ctx.town.layout!;
+      let structures;
+      if (!site) structures = placeStructures(layout, demand!, ctx.rules, ctx.rng);
+      else {
+        // The wet parcels are not part of the town: the solve, the gates and the manifest see only the dry ones.
+        // Losing some may leave too little to house and serve everyone, so the grid grows a block row at a time
+        // (a bigger town, laid out again) until the demand is met, up to MAX_EXTRA_BLOCKS; then it fails, saying why.
+        const [pw, pd] = scaledLayout(ctx.rules, ctx.request.scale ?? 1).parcelMm;
+        let failure = "";
+        for (let extra = 0; extra <= MAX_EXTRA_BLOCKS && !structures; extra++) {
+          const full = extra === 0 ? layout : layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1, extra);
+          const c = townCentreMm(full.roads.nodes);
+          const dry = (p: (typeof full.parcels)[number]): boolean => {
+            for (const fx of FOOTPRINT_SAMPLES) for (const fz of FOOTPRINT_SAMPLES) if (!site.dry(site.origin[0] + (p.center.x + fx * pw - c.x) / 1000, site.origin[1] + (p.center.z + fz * pd - c.z) / 1000)) return false;
+            return true;
+          };
+          const kept = { ...full, parcels: full.parcels.filter(dry) };
+          ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
+          try {
+            structures = placeStructures(kept, demand!, ctx.rules, ctx.rng);
+            layout = kept;
+          } catch (err) {
+            if (!(err instanceof WfcError)) throw err;
+            failure = `${err.message}; ${full.parcels.length - kept.parcels.length} of ${full.parcels.length} parcels are not dry`;
+          }
+        }
+        if (!structures) throw new StageFailure("unsolvable", `the site is too wet for the town (no dry layout up to ${MAX_EXTRA_BLOCKS} extra block rows): ${failure}; choose a drier site`);
+        ctx.town.layout = layout;
+      }
       ctx.town.structures = structures;
       ctx.events.emit("summary", "structures", "placed", { structures: structures.length });
       for (const s of structures) ctx.events.emit("verbose", "structures", "structure_collapsed", { target: s.parcel, chosen: s.archetype });
+    },
+  },
+  {
+    name: "occupancy",
+    run(ctx) {
+      const { demographics, structures } = ctx.town;
+      const o = occupy(ctx.request.settlementId, demographics!, structures!, ctx.rules, ctx.rng);
+      ctx.town.occupancy = o;
+      const employed = o.npcs.filter((n) => n.workplace).length;
+      ctx.events.emit("summary", "occupancy", "settled", { households: o.households.length, npcs: o.npcs.length, employed, shops: o.shops.length });
     },
   },
   {
@@ -125,6 +181,8 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
   const fail = (stage: string, code: string, message: string): GenerationResult => ({ ok: false, error: { stage, code, message }, events: events.events(verbosity) });
   if (!Number.isInteger(request.population) || request.population < 1) return fail("request", "bad_population", "population must be a positive whole number");
 
+  if (request.scale !== undefined && !(request.scale > 0 && Number.isFinite(request.scale))) return fail("request", "bad_scale", "scale must be a positive number");
+
   const ctx: Context = { request, rules: request.rules ?? BUILTIN_RULES, rng: streams(request.seed), events, town: {}, validation: [] };
   for (const stage of STAGES) {
     try {
@@ -136,13 +194,14 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { demographics, demand, layout, structures } = ctx.town as Town;
+  const { demographics, demand, layout, structures, occupancy } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
     rulesVersion: ctx.rules.version,
     settlementId: request.settlementId,
     seed: request.seed,
+    scale: request.scale ?? 1,
     determinism: { rngStreams: ctx.rng.seeds(), sortPolicy: "id" as const, units: "millimeters" as const },
     demographics,
     demand,
@@ -150,9 +209,10 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     districts: layout.districts,
     parcels: layout.parcels,
     structures,
+    occupancy,
     validation: ctx.validation,
   };
   const byId = <T extends { id: string }>(rows: T[]): T[] => [...rows].sort((a, b) => (a.id < b.id ? -1 : 1));
-  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), structures: byId(body.structures) };
+  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), structures: byId(body.structures), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
   return { ok: true, manifest: { ...sorted, hash: contentHash(sorted) }, events: events.events(verbosity) };
 }

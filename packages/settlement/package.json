@@ -7,13 +7,16 @@
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/wfc && tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@mmo-engine/wfc && npm run build --workspace=@mmo-engine/scene && tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
-    "settlement:bake": "npm run build && node dist/src/cli.js"
+    "settlement:bake": "npm run build && node dist/src/cli.js",
+    "settlement:scale-report": "npm run build && node dist/src/scale-report-cli.js",
+    "settlement:scale-fit": "npm run build && node dist/src/scale-fit-cli.js"
   },
   "dependencies": {
     "zod": "^4.6.5",
-    "@mmo-engine/wfc": "0.1.0"
+    "@mmo-engine/wfc": "0.1.0",
+    "@mmo-engine/scene": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

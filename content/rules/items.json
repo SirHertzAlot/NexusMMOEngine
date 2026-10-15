@@ -27,7 +27,13 @@
     "ring": { "slot": "ring", "mass": 0.01, "length": 0.02, "hardness": 0.9, "durability": 500,
       "models": ["fantasy-kingdom/SM_Item_Ring_01", "fantasy-kingdom/SM_Item_Ring_03", "fantasy-kingdom/SM_Item_Ring_05"] },
     "amulet": { "slot": "amulet", "mass": 0.05, "length": 0.3, "hardness": 0.6, "durability": 300,
-      "models": ["fantasy-kingdom/SM_Item_Necklace_Flat_01", "fantasy-kingdom/SM_Item_Necklace_Flat_03"] }
+      "models": ["fantasy-kingdom/SM_Item_Necklace_Flat_01", "fantasy-kingdom/SM_Item_Necklace_Flat_03"] },
+    "bite": { "mass": 1.0, "length": 0.5, "edge": 0.9, "point": 0.6, "hardness": 0.9, "balance": 0.8, "durability": 1000, "hand": "none", "technique": "cut", "models": [] },
+    "claw": { "mass": 1.0, "length": 0.7, "edge": 0.95, "point": 0.8, "hardness": 0.9, "balance": 0.9, "durability": 1000, "hand": "none", "technique": "cut", "models": [] },
+    "tusk": { "mass": 1.0, "length": 0.6, "edge": 0.5, "point": 1.0, "hardness": 0.9, "balance": 0.6, "durability": 1000, "hand": "none", "technique": "thrust", "models": [] },
+    "horn": { "mass": 1.0, "length": 0.8, "edge": 0.3, "point": 0.95, "hardness": 0.95, "balance": 0.5, "durability": 1000, "hand": "none", "technique": "thrust", "models": [] },
+    "crush": { "mass": 1.0, "length": 1.1, "edge": 0.1, "point": 0.1, "hardness": 1.0, "balance": 0.4, "durability": 1000, "hand": "none", "technique": "bludgeon", "models": [] },
+    "tailslam": { "mass": 1.0, "length": 1.8, "edge": 0.1, "point": 0.1, "hardness": 0.95, "balance": 0.3, "durability": 1000, "hand": "none", "technique": "bludgeon", "models": [] }
   },
   "powerScale": 0.02
 }

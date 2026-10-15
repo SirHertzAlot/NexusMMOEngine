@@ -13,6 +13,7 @@
 
 import type { CoarseGrid } from "./survey.js";
 import { distanceTo, labelComponents, sampleBilinear, smoothstep } from "./grid-ops.js";
+import { crestProfile } from "./relief.js";
 import { windVector, worldBounds, type WorldSpec } from "./world-spec.js";
 
 /** A mountain range's axis (world metres) and its size. */
@@ -251,6 +252,8 @@ export function rangeUplift(
   crossNoise: Float32Array,
   warpU: Float32Array,
   warpV: Float32Array,
+  /** Ridged multifractal 0..1 (relief.ts); applied when spec.ranges.crest.detailOctaves > 0. */
+  detail?: Float32Array,
 ): Float32Array {
   const R = spec.ranges;
   const W = grid.width;
@@ -290,7 +293,7 @@ export function rangeUplift(
         const r = best / halfW;
         if (r >= 1) continue;
         const i = v * W + u;
-        const profile = (1 - r * r) * (1 - r * r);
+        const profile = crestProfile(r, R.crest.sharpness);
         const ends = (range.spur ? 1 : smoothstep(0, 0.2, along)) * smoothstep(0, 0.2, 1 - along);
         const lift = range.height * profile * ends * (0.75 + 0.25 * alongNoise[i]);
         if (lift > up[i]) up[i] = lift;
@@ -309,6 +312,8 @@ export function rangeUplift(
       const side = (1 - Math.abs(crossNoise[i])) ** 2;
       const ridge = Math.max(main, 0.8 * side);
       up[i] *= 1 - R.ridges + 2 * R.ridges * ridge;
+      // Ridged multifractal crests: detail gathers on the high ground.
+      if (detail) up[i] *= 1 - R.crest.detailStrength + 2 * R.crest.detailStrength * detail[i];
     }
   }
   return up;
@@ -382,6 +387,12 @@ export function raiseVolcanoes(
   baseLevel: Float32Array,
   volcanoes: Volcano[],
   lobes: Float32Array,
+  /**
+   * Noise (-1..1) read in polar coordinates (angle across, radius slowly
+   * down) so ridged crests run down the cone: with `volcano.gullies` > 0 the
+   * flank is cut by radial gullies between spur ridges, from below the rim.
+   */
+  gullyNoise?: Float32Array,
 ): void {
   const V = spec.volcano;
   const W = grid.width;
@@ -402,7 +413,15 @@ export function raiseVolcanoes(
           continue;
         }
         const flank = (reachHere - r) / (reachHere - V.craterRadius);
-        h[i] = Math.max(h[i], base + V.height * Math.pow(flank, 1.6));
+        let rise = V.height * Math.pow(flank, 1.6);
+        if (gullyNoise && V.gullies > 0) {
+          // Polar noise coordinates: ~50 cells of noise per radian, radius stretched ~3x.
+          const theta = Math.atan2(v - cv, u - cu);
+          const n = sampleBilinear(gullyNoise, W, D, W / 2 + theta * 50, D / 2 + (r / grid.cell) * 0.3);
+          const spur = (1 - Math.abs(n)) ** 2;
+          rise *= 1 - V.gullies * (1 - spur) * smoothstep(0.08, 0.45, 1 - flank) * Math.min(1, flank * 4);
+        }
+        h[i] = Math.max(h[i], base + rise);
       }
     }
   }
