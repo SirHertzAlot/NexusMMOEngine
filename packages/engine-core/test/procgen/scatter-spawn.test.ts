@@ -36,6 +36,9 @@ function flatHeights(n: number, h = 3): Float32Array {
   return new Float32Array(n).fill(h);
 }
 
+/** Sizes as the PICG cook gives them: [x, y, z] metres. */
+const TREE_BOUNDS = (id: string): [number, number, number] | undefined => ({ oak: [4, 5, 4], birch: [2, 6, 2] } as Record<string, [number, number, number]>)[id];
+
 function stubContent(): ScatterContent {
   return loadScatterContent();
 }
@@ -102,7 +105,7 @@ test("scatterChunkToECS: Transform + AssetRef wiring", () => {
 test("scatterChunkToECS: oak gets Health (breakable) + static BodyConfig", () => {
   const world = new SimWorld();
   const eids = scatterChunkToECS(world, stubBinding([oakRecord()]), stubContent(), {
-    worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256),
+    worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256), bounds: TREE_BOUNDS,
   });
   const eid = eids[0];
   // yaw = PI/2 -> quaternion (0, sin(pi/4), 0, cos(pi/4)): yaw-only rotation.
@@ -116,16 +119,20 @@ test("scatterChunkToECS: oak gets Health (breakable) + static BodyConfig", () =>
   assert.ok(hasComponent(world.ecs, Velocity, eid));
   assert.ok(hasComponent(world.ecs, BodyConfig, eid));
   assert.equal(BodyConfig.shapeKind[eid], ShapeKind.Box);
-  assert.equal(BodyConfig.halfX[eid], 0.5);
-  assert.equal(BodyConfig.halfY[eid], 2.0);
-  assert.equal(BodyConfig.halfZ[eid], 0.5);
+  // fit 0.4 of a 4 m footprint, the 5 m height x the record's y scale (2).
+  assert.ok(Math.abs(BodyConfig.halfX[eid] - 0.8) < 1e-5);
+  assert.ok(Math.abs(BodyConfig.halfY[eid] - 10) < 1e-5);
+  assert.ok(Math.abs(BodyConfig.halfZ[eid] - 0.8) < 1e-5);
   assert.equal(BodyConfig.motionType[eid], MotionType.Static);
   assert.equal(BodyConfig.layer[eid], 0);
 });
 
-test("scatterChunkToECS: birch declares no collision, so it gets a default static box", () => {
+test("scatterChunkToECS: an archetype with no collision and no known size gets a default static box", () => {
   const world = new SimWorld();
-  const eids = scatterChunkToECS(world, stubBinding([birchRecord()]), stubContent(), {
+  const content = stubContent();
+  const table = structuredClone(content.table);
+  delete table.archetypes.birch.collision;
+  const eids = scatterChunkToECS(world, stubBinding([birchRecord()]), { ...content, table }, {
     worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256),
   });
   const eid = eids[0];

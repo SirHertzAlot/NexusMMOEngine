@@ -441,7 +441,7 @@ async function main(): Promise<void> {
     for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[], kinds })) console.warn(`[biomes] ${p} (${biomesFile})`);
   }
   // What grows on new chunks (see world-populator: ecology or PCG).
-  const populator = makeWorldPopulator({
+  const populator = await makeWorldPopulator({
     worldSeed,
     chunkWorldSize: CHUNK_SIZE,
     seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
