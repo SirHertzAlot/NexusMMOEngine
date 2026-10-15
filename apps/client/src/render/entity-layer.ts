@@ -50,6 +50,7 @@ import { DEFAULT_CLIP_MAP, indexClipMap, parseClipMap, planClip } from "@mmo-eng
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
+import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
 
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
@@ -72,6 +73,10 @@ interface TrackedMesh {
   female?: boolean;
   /** The combat move on show: "seq:move" of its Action row. */
   actionKey?: string;
+  /** A static animal model given a procedural skeleton and gait (see animal/animal-rig.ts). */
+  animal?: AnimalRig;
+  /** The animal rig was tried (a model without a quadruped shape stays as it is). */
+  animalTried?: boolean;
   /** Nameplate sprite above the head, and the name it shows. */
   plate?: THREE.Sprite;
   plateFor?: string;
@@ -129,6 +134,8 @@ export class EntityLayer {
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
   private readonly syntyProps: SyntyProps;
+  /** Rig data per art model (null: the model is not a quadruped); disposed with the layer. */
+  private readonly animalTemplates = new Map<number, AnimalTemplate | null>();
   /** The modular character kit; null until loaded (or when the art isn't served). */
   private kit: CharacterKit | null = null;
   /** The characters' clips; null until loaded (or when none are served). */
@@ -382,6 +389,9 @@ export class EntityLayer {
         this.pickMap.set(obj, wid);
       }
 
+      // A moving entity whose AssetRef is a static animal model: give it a procedural skeleton once the model is in.
+      if (!tracked.animalTried && !tracked.character && !e.appearance && e.asset) this.dressAsAnimal(wid, tracked, e.asset);
+
       // Appearance: show (or restyle) the entity as its modular character.
       if (e.appearance && this.kit && tracked.look !== e.appearance.look) {
         this.dressAsCharacter(wid, tracked, e.appearance.look);
@@ -412,6 +422,22 @@ export class EntityLayer {
           },
           plan,
         );
+      } else if (tracked.animal) {
+        const acting = e.action && e.action.move !== 0 ? e.action : null;
+        turnToward(tracked, e.velocity, dt, acting?.yaw);
+        tracked.object.scale.set(t.sx, t.sy, t.sz);
+        const move = acting ? combatMove(acting.move) : undefined;
+        tracked.animal.update(
+          dt,
+          {
+            speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
+            attackT: acting && move ? Math.max(0, (clock.tick - acting.started) / clock.tickHz) : -1,
+            hitAt: move?.hitAt ?? (move ? move.duration * 0.5 : 0),
+            attackDuration: move?.duration ?? 0,
+            dead: e.health !== undefined && e.health.current <= 0,
+          },
+          this.camera.getWorldPosition(tmpEye).distanceTo(tracked.object.position) < ANIMAL_LOD_RADIUS,
+        );
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
         tracked.object.scale.set(t.sx, t.sy, t.sz);
@@ -424,6 +450,8 @@ export class EntityLayer {
         highlight(tracked.object, "hit");
       } else if (tracked.character) {
         highlight(tracked.object, wid === this.hoveredWireId && !isPlayer ? "hover" : "none");
+      } else if (tracked.animal) {
+        // Shares the model's material with the scenery: no per-entity tint.
       } else {
         highlight(tracked.object, isPlayer ? "player" : wid === this.hoveredWireId ? "hover" : "none");
       }
@@ -455,6 +483,8 @@ export class EntityLayer {
     this.meshes.clear();
     this.pickMap.clear();
     this.props.dispose();
+    for (const t of this.animalTemplates.values()) t?.dispose();
+    this.animalTemplates.clear();
     this.pcgMeshes?.dispose();
     this.syntyProps.dispose();
     this.kit?.dispose();
@@ -510,6 +540,32 @@ export class EntityLayer {
     mesh.scale.setScalar(1 / Math.max(scale.x, 1e-6));
     bone.add(mesh);
     tracked.weapons![side] = mesh;
+  }
+
+  /**
+   * Swap the stand-in for the animal's art model on a procedural skeleton, once the model has loaded.
+   * Retried each frame until the model is in; a model that is not a quadruped is left as it is.
+   */
+  private dressAsAnimal(wid: bigint, tracked: TrackedMesh, asset: AssetRefRow): void {
+    const ready = this.syntyProps.model(asset.assetHash, asset.variant);
+    if (!ready) return;
+    tracked.animalTried = true;
+    let template = this.animalTemplates.get(asset.assetHash);
+    if (template === undefined) {
+      template = AnimalTemplate.from(ready.geometry);
+      this.animalTemplates.set(asset.assetHash, template);
+    }
+    if (!template) return;
+    const rig = template.create(ready.material);
+    this.group.remove(tracked.object);
+    this.pickMap.delete(tracked.object);
+    detachPlate(tracked);
+    disposeObject(tracked.object);
+    tracked.object = rig.root;
+    tracked.animal = rig;
+    tracked.shaped = true;
+    this.group.add(rig.root);
+    this.pickMap.set(rig.root, wid);
   }
 
   private dressAsCharacter(wid: bigint, tracked: TrackedMesh, lookJson: string): void {
@@ -665,6 +721,7 @@ function disposeTracked(t: TrackedMesh): void {
   detachWeapons(t);
   t.animator?.dispose();
   if (t.character) t.character.dispose();
+  else if (t.animal) t.animal.dispose(); // geometry and material belong to the model cache
   else disposeObject(t.object);
 }
 

@@ -14,6 +14,27 @@ species-specific code: one brain (`creatures.ts`) runs every kind from numbers, 
 the table* (`wildlifeCreatures`, `src/procgen/wildlife-creatures.ts`), so health, damage, notice radius, warning
 seconds and group size live in `wildlife.json` and nowhere else. A kind the rules already define (the goblin) wins
 over a generated one.
+- **Real, moving, fighting creatures exist.** `CreatureSystem` (`creatures.ts`) runs a brain per creature (idle at
+  home, chase when a living character comes inside `aggroRadius`, swing through intent, return home past
+  `leashRadius`), packs spawn together, and `WildCreatures` spawns a biome's packs as chunks load
+  (`MMO_WILD_CREATURES=1`, `content/biomes.json`). Species come from `content/rules/creatures.json`; only the
+  goblin is defined there, so the registry's wolves and bears wait for rules.
+- **This table drives what, where and how many.** With `MMO_WILDLIFE=1` the server also plans the wildlife table
+  (`planWildlifeChunk`, via `WildCreatures.extraPlan`): ratios, danger ramp, safe radius, aquatic depths, livestock
+  ring. A species only spawns once it has creature rules; until then it is planned out, like the registry's.
+- **Missing for real wildlife behaviour** (not built; the data is ready for it):
+  1. creature rules for these species. A creature carries an item-base weapon (`dagger`, `axe`, ...); animals need
+     natural-weapon bases (bite, claw, tusk, horn) with the table's `damageX` and `health`;
+  2. brain modes beyond idle/chase/return: `flee` (skittish), `defend` (fight only when hit or with young),
+     territorial warning with `telegraphS`, pack `flank` and `ambush` tactics, activity by time of day
+     (`MMO_DAY_SECONDS` gives the engine a day clock; nothing reads `activity` yet);
+  3. a look for non-humanoid creatures (`lookOf` returns a character Look; animal GLBs are static props, and the
+     imported ones are not skinned or animated; the client already rigs and animates a moving entity that carries
+     such a model's `AssetRef`, see [`ART-PIPELINE.md`](ART-PIPELINE.md) "Animals");
+  4. aquatic creatures: the wild-pack path skips water (`blocked`) and creatures walk, they do not swim;
+  5. settlement centres are not fed to the planner yet (only the spawn), so livestock waits;
+  6. the editor (below).
+- Until those land, `npm run wildlife:plan` places the same animals as static ambient props.
 
 **Real**
 
