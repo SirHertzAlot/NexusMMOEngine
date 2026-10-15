@@ -7,29 +7,65 @@ page is why the numbers are what they are. **Every number lives in
 checked by `parseWildlifeTable` (`src/procgen/wildlife-table.ts`, zod schema plus the pyramid and safety rules
 below); a table that breaks a rule does not load.
 
-## What exists today, and what does not
+## What is real now, and what is not
 
-- **Real, moving, fighting creatures exist.** `CreatureSystem` (`creatures.ts`) runs a brain per creature (idle at
-  home, chase when a living character comes inside `aggroRadius`, swing through intent, return home past
-  `leashRadius`), packs spawn together, and `WildCreatures` spawns a biome's packs as chunks load
-  (`MMO_WILD_CREATURES=1`, `content/biomes.json`). Species come from `content/rules/creatures.json`; only the
-  goblin is defined there, so the registry's wolves and bears wait for rules.
-- **This table drives what, where and how many.** With `MMO_WILDLIFE=1` the server also plans the wildlife table
-  (`planWildlifeChunk`, via `WildCreatures.extraPlan`): ratios, danger ramp, safe radius, aquatic depths, livestock
-  ring. A species only spawns once it has creature rules; until then it is planned out, like the registry's.
-- **Missing for real wildlife behaviour** (not built; the data is ready for it):
-  1. creature rules for these species. A creature carries an item-base weapon (`dagger`, `axe`, ...); animals need
-     natural-weapon bases (bite, claw, tusk, horn) with the table's `damageX` and `health`;
-  2. brain modes beyond idle/chase/return: `flee` (skittish), `defend` (fight only when hit or with young),
-     territorial warning with `telegraphS`, pack `flank` and `ambush` tactics, activity by time of day
-     (`MMO_DAY_SECONDS` gives the engine a day clock; nothing reads `activity` yet);
-  3. a look for non-humanoid creatures (`lookOf` returns a character Look; animal GLBs are static props, and the
-     imported ones are not skinned or animated);
-  4. aquatic creatures: the wild-pack path skips water (`blocked`) and creatures walk, they do not swim;
-  5. settlement centres are not fed to the planner yet (only the spawn), so livestock waits;
-  6. the editor (below).
-- Until those land, `npm run wildlife:plan` places the same animals as static ambient props.
+With `MMO_WILD_CREATURES=1 MMO_WILDLIFE=1` the table spawns real, moving, fighting creatures. Nothing here is
+species-specific code: one brain (`creatures.ts`) runs every kind from numbers, and the kinds are *generated from
+the table* (`wildlifeCreatures`, `src/procgen/wildlife-creatures.ts`), so health, damage, notice radius, warning
+seconds and group size live in `wildlife.json` and nowhere else. A kind the rules already define (the goblin) wins
+over a generated one.
 
+**Real**
+
+- **Creature rules from the table.** Health, `damageX` (a blow is that many goblin blows: the natural weapon's
+  mass scales by `damageX^(1/massPower)`, checked against `computeDamage`), group size, notice radius,
+  telegraph, tactics, activity, habitat and depth. Derived knobs (documented in the file): leash is a fifth of
+  the territory held to 25-150 m, run speed 0.75 + 0.05 per tier (prey run 1.4x faster), blow rate 1.2 s + 0.2 s
+  per tier, respawn 300 s, no drops.
+- **Natural weapons** are item bases in `content/rules/items.json`: `bite`, `claw`, `tusk`, `horn`, `crush`,
+  `tailslam` (reach, which property they use: cut / thrust / bludgeon). `content/wildlife/natural.json` maps a
+  species to one, else its role does. A creature's reach grows with its `size`.
+- **Temperaments** (`behavior.temperament`): `flee` runs from anyone inside the notice radius until 1.5x clear, then
+  walks home; `defend` bluffs (a warning, no strike) and fights back only once hurt (attacker from CombatSystem, else
+  the nearest within 20 m); `territorial` warns, then drives the intruder off and gives up when it leaves 1.6x the
+  notice radius; `hunt` warns (if it has a telegraph) then chases to its leash; `raid` below.
+- **The warning is the existing telegraph (0x1e):** a creature with `telegraphS > 0` stops, faces the player and casts
+  a damage-0 cone through `TelegraphSystem`, so every client draws it; the blow comes `telegraphS` later through
+  the normal attack intent. Backing away cancels the warning (and it stays calm 6 s).
+- **Packs.** One member noticing alerts the group (40 m); `flank` members approach from alternating sides and
+  converge inside 6 m; `ambush` creatures notice only half as far (they lie in wait).
+- **Day and night.** `activity` is read from the day clock (`MMO_DAY_SECONDS`): outside its hours a creature is
+  asleep and notices a quarter as far. Windows: diurnal 06-18, nocturnal 18-06, crepuscular 04:48-08:24 and
+  15:36-19:12, cathemeral always.
+- **Aquatic.** Water species spawn only where the water is deep enough (the spawner's `blocked` now knows aquatic
+  packs), swim (`Locomotion` Swim), hold their `depthM` below the surface through the vertical intent, and never
+  swim on toward a cell shallower than their depth (walking creatures keep to land as before). They steer by direct
+  intent: the navmesh does not cover water.
+- **Raids** (`temperament: raid`, `behavior.raid`): instinct, no planning. When hungry (`hungerSeconds`) the creature
+  picks the settlement within `rangeM` with the best size over distance (and at least `minStructures`),
+  walks to it, and at each rescan takes the target of greatest weight over distance among players (noise),
+  livestock (food, scent) and structures (bulk), by `weights`. After `satiateSeconds` of fighting, or when
+  beaten to a quarter of its health, it goes home to its lair and is hungry again after `hungerSeconds`. No
+  table species is a raider yet; the megafauna data (`feat/megafauna`) names them.
+- **Looks.** A kind's model (first match for the species in the gitignored `content/wildlife/models.local.json`,
+  rotating through them) is its `AssetRef` hash (the scatter path's `fnv1a32` of the catalog id), drawn at
+  `Transform` scale = `behavior.size`. Nothing is skinned: no walk cycle yet.
+- **Settlements.** The boot scene's `Structure` nodes form a settlement (centre, count, radius,
+  `sceneSettlements`); its centre is a planner centre, so livestock appears in the ring round it and nothing of tier 2+
+  within `safeRadiusM`, and raiders can choose it.
+- `MMO_WILDLIFE_LOG=1` logs every pack spawned.
+
+**Not built**
+
+1. Settlement buildings carry no `Health`, so raiders can fight players and livestock but there is nothing to
+   smash: destructible structures are the next piece (a raid on an empty town ends after the raider lingers).
+2. No wandering: creatures stand at home until they notice something. Herds do not graze or move.
+3. Per-species animation (walk, bite, rear up) and an animal Look: models are static meshes.
+4. Pack roles beyond left/right flankers (no pincer timing, no retreat of wounded wolves).
+5. Prey fleeing from predators and predators hunting prey (only players are noticed).
+6. `behavior.size` also scales reach but not the physics capsule, so a megafauna collides like a person.
+7. The editor (below).
+- `npm run wildlife:plan` still places the same animals as static ambient props.
 ## The pyramid (why the ratios)
 
 Counted by individuals per biome (groups x mean group size, `biomeCounts`):
@@ -133,7 +169,7 @@ anything skinned are only shown once the engine can animate them.
 
 ## Editor parity
 
-The editor edits `content/rules/creatures.json`, the species overlay and the biome registry in its Gameplay
+The editor edits `content/rules/creatures.json` (now with `damageX` and `behavior` fields it does not show yet), the species overlay and the biome registry in its Gameplay
 grids; the wildlife table (ratios, group sizes, danger tiers, `safeRadiusM`, rings) is **not yet viewable or
 editable there**. Follow-up: add a `wildlife` table to `gameplay-tables.ts`/`gameplay-host.ts` and a ratio gauge
 per biome (the `biomeCounts` numbers above), reusing `checkWildlife` for the Problems list.

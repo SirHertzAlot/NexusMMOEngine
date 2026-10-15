@@ -55,8 +55,11 @@
  *   MMO_WILDLIFE   with MMO_WILD_CREATURES=1: also plan the wildlife table
  *                  (1 = content/wildlife/wildlife.json, or a file): trophic
  *                  ratios, danger ramping with distance from the spawn,
- *                  safe radius (docs/WILDLIFE.md). Settlement centres are
- *                  not fed in yet, so livestock waits.
+ *                  safe radius (docs/WILDLIFE.md), and turn the table's
+ *                  species into creature kinds with a brain (flee, defend,
+ *                  territorial, hunt, raid). The boot scene's structures are
+ *                  the settlements (livestock ring, safe radius, raids).
+ *                  MMO_WILDLIFE_LOG=1 logs each pack spawned.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
  *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
  *                  overrides the scenes dir, MMO_PREFABS the prefab files (content/prefabs)
@@ -145,7 +148,7 @@ import {
   SqlitePartyStore,
   SqliteSocialStore,
 } from "./index.js";
-import { Ability, type DayClock } from "@mmo-engine/protocol";
+import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { healthHttpHandler } from "./net/health.js";
@@ -205,6 +208,11 @@ import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./procgen/wildlife-table.js";
+import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
+import { sceneSettlements } from "./procgen/wildlife-settlements.js";
+import type { RaidSettlement } from "./creatures.js";
+import type { TelegraphSystem } from "./telegraph.js";
+import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
@@ -266,6 +274,10 @@ async function main(): Promise<void> {
     throw err;
   }
   console.log(`[server] ${game.summary}`);
+  // The wildlife table's species become creature kinds (docs/WILDLIFE.md), under any the rules define.
+  const wildlifeTable = process.env.MMO_WILDLIFE ? loadWildlifeTable(process.env.MMO_WILDLIFE === "1" ? DEFAULT_WILDLIFE_TABLE : process.env.MMO_WILDLIFE) : null;
+  const wildlifeKinds = wildlifeTable ? wildlifeCreatures(wildlifeTable, loadNaturalWeapons()) : null;
+  if (wildlifeKinds) game.rules.creatures.creatures = withWildlife(game.rules.creatures.creatures, wildlifeKinds);
   // Authored data beyond the rules: the species roster and the crafting rules.
   let speciesRoster: ServerRoster;
   let crafting: CraftingRules;
@@ -570,6 +582,23 @@ async function main(): Promise<void> {
   // Creatures domain (AI1, slice 6): the creatures module builds bots, crowd,
   // creatures, and needs from this config during assembly.
   // See modules/creatures/server.js.
+  // Wildlife: the animal models (gitignored local species -> catalog ids, `npm run wildlife:models`) and the towns of the boot scene.
+  const wildlifeModels: Record<string, string[]> = (() => {
+    const f = new URL("../../content/wildlife/models.local.json", import.meta.url);
+    try { return wildlifeTable && fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, "utf8")) as Record<string, string[]>) : {}; } catch { return {}; }
+  })();
+  const modelPick = new Map<string, number>();
+  const wildlifeModelOf = (kind: string): string | undefined => {
+    const ids = wildlifeModels[kind];
+    if (!ids?.length) return undefined;
+    const n = modelPick.get(kind) ?? 0;
+    modelPick.set(kind, n + 1);
+    return ids[n % ids.length];
+  };
+  const wildlifeSettlements: RaidSettlement[] =
+    wildlifeTable && process.env.MMO_SCENE
+      ? sceneSettlements(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR))
+      : [];
   const botCount = Number(process.env.MMO_BOTS ?? 0);
   const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number);
   const creaturesConfig = {
@@ -581,19 +610,32 @@ async function main(): Promise<void> {
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     playerAbilities,
     // hasCrowd/crowdBackend now come from ctx.shared.navBackend (physics module)
+    // Wildlife (docs/WILDLIFE.md): the day clock, the warning cones, who hurt a creature, the water, the animal models, the towns raiders go for.
+    timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
+    warn: (e: number, x: number, z: number, yaw: number, range: number, ms: number, tick: number) => {
+      const tg = (assembled.byName["telegraphs"] as unknown as TelegraphSystem | undefined);
+      tg?.cast(sim, { source: e, shape: { kind: "cone", x, z, yaw, range, halfAngle: 0.7 }, warnMs: ms, amount: 0 }, tick);
+    },
+    cancelWarn: (e: number, tick: number) => { (assembled.byName["telegraphs"] as unknown as TelegraphSystem | undefined)?.cancelFrom(e, tick); },
+    attackerOf: (e: number) => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    waterSurfaceAt: water ? (x: number, z: number) => surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z) : undefined,
+    waterDepthAt: water ? (x: number, z: number) => { const s = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return s === null ? 0 : Math.max(0, s - characterOf().groundHeight(x, z)); } : undefined,
+    modelOf: wildlifeModelOf,
+    settlements: () => wildlifeSettlements,
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
+  let startWild: (() => void) | null = null;
   if (process.env.MMO_WILD_CREATURES === "1") {
     if (!biomeAt) {
       console.warn("[biomes] MMO_WILD_CREATURES=1 but this world has no biome map: no wild packs");
     } else {
-      const wildlifeTable = process.env.MMO_WILDLIFE ? loadWildlifeTable(process.env.MMO_WILDLIFE === "1" ? DEFAULT_WILDLIFE_TABLE : process.env.MMO_WILDLIFE) : null;
       const wild = new WildCreatures({
         registry: biomes,
+        log: process.env.MMO_WILDLIFE_LOG === "1" ? (l) => console.log(l) : undefined,
         extraPlan: wildlifeTable
           ? (cx, cz) => planWildlifeChunk(wildlifeTable, {
               seed: ecologySeed32(worldSeed), cx, cz, chunkWorldSize: CHUNK_SIZE, biomeAt,
-              centres: [{ x: spawn.x, z: spawn.z, kind: "spawn" }],
+              centres: [{ x: spawn.x, z: spawn.z, kind: "spawn" }, ...wildlifeSettlements.map((s) => ({ x: s.x, z: s.z, kind: "settlement" as const }))],
               depthAt: water ? (x, z) => { const w = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return w === null ? null : w - characterOf().groundHeight(x, z); } : undefined,
               spawnable: (k) => creaturesOf().has(k),
             })
@@ -608,15 +650,27 @@ async function main(): Promise<void> {
         chunkWorldSize: CHUNK_SIZE,
         biomeAt,
         // No packs in the water, nor on ground at or below the sea (the lake lookup finds no water near a low dry basin).
-        blocked: water ? (x, z) => !landDry(characterOf().groundHeight(x, z), surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z), 0) : undefined,
+        blocked: water
+          ? (x, z, aquatic) => {
+              const ground = characterOf().groundHeight(x, z);
+              const surface = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z);
+              // Aquatic packs need deep enough water to swim in; land packs need dry ground.
+              return aquatic ? surface === null || surface - ground < 1 : !landDry(ground, surface, 0);
+            }
+          : (_x, _z, aquatic) => aquatic,
       });
-      streamer.attachContents(sim, wild);
-      const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
-      const waiting = [...kinds].filter((k) => !creaturesOf().has(k));
-      console.log(
-        `[biomes] wild packs on: ${wild.stats().packs} pack(s) round the spawn area` +
-          (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
-      );
+      // The chunks already loaded spawn their packs on attach, which needs the creature system: that is
+      // assembled below, so the hook goes on once it is (startWild).
+      startWild = () => {
+        streamer.attachContents(sim, wild);
+        const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
+        const waiting = [...kinds].filter((k) => !(k in game.rules.creatures.creatures));
+        const st = wild.stats();
+        console.log(
+          `[biomes] wild packs on: ${st.packs} pack(s), ${st.creatures} creature(s) round the spawn area` +
+            (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
+        );
+      };
     }
   }
   // Stamina gating (slice 5): the combat module builds it; see combatConfig below.
@@ -721,6 +775,7 @@ async function main(): Promise<void> {
   const reloader = new RulesReloader(game.dir, (g) => {
     game = g;
     hooks.current = g.hooks;
+    if (wildlifeKinds) g.rules.creatures.creatures = withWildlife(g.rules.creatures.creatures, wildlifeKinds);
     creaturesOf().setRules(g.rules.creatures.creatures, g.rules.items.bases);
     dropperRef?.setCreatures(g.rules.creatures.creatures);
     dropperRef?.setTables(g.rules.loot.tables ?? {});
@@ -927,6 +982,7 @@ async function main(): Promise<void> {
     bots: (assembled.byName["bots"] as unknown as import("./bots.js").BotSystem) ?? null,
     crowd: (assembled.byName["crowd"] as unknown as import("./navigation/crowd-system.js").CrowdSystem) ?? null,
   };
+  (startWild as (() => void) | null)?.();
   // Physics domain (slice 8).
   physicsRef = assembled.byName["physics"] as unknown as { terrainColliders(s: number): (...a: unknown[]) => unknown };
   // Character domain (slice 7).
