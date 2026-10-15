@@ -17,6 +17,8 @@ import { handleFlowRoute } from "./flow-host.js";
 import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { readStrings } from "./strings-host.js";
 import { readScale } from "./scale-host.js";
+import { readRigs, rigsFile } from "./rig-host.js";
+import { validateRigs } from "./rig-doc.js";
 import { audioFile, checkAudio } from "./audio-host.js";
 import { checkVfx, vfxDir } from "./vfx-host.js";
 import { readClipMap } from "./animation-host.js";
@@ -28,7 +30,7 @@ import { handleModulesRoute } from "./modules-host.js";
 import { STORY_FILES, type StoryFiles } from "./story-validate.js";
 import { checkStory, readStoryFile } from "./story-host.js";
 
-export type ProblemSource = "flow" | "hud" | "strings" | "scale" | "audio" | "vfx" | "animation" | "gameplay" | "rules" | "scenes" | "modules" | "story" | "build" | "playtest";
+export type ProblemSource = "flow" | "hud" | "strings" | "scale" | "rigs" | "audio" | "vfx" | "animation" | "gameplay" | "rules" | "scenes" | "modules" | "story" | "build" | "playtest";
 export interface Problem {
   source: ProblemSource;
   /** Repo-relative file (or a name) the problem belongs to. */
@@ -69,6 +71,7 @@ export function problemCollectors(repoRoot: string): Collector[] {
       })),
     ],
     ["scale", () => errs("scale", "content/scale.json", validateScale(readScale(repoRoot)))],
+    ["rigs", () => (existsSync(rigsFile(repoRoot)) ? errs("rigs", "content/rigs.local.json", validateRigs(readRigs(repoRoot))) : [])],
     ["audio", async () => (existsSync(audioFile(repoRoot)) ? errs("audio", "content/audio/events.json", await checkAudio(repoRoot, readJson(audioFile(repoRoot)))) : [])],
     ["vfx", async () => {
       const out: Problem[] = [];

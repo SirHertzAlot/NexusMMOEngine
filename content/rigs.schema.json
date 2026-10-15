@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rigs.schema.json",
+  "title": "Rig overrides (content/rigs.local.json)",
+  "description": "Per catalog model id overrides of the automatic rig. The real file is gitignored (its keys are licensed model ids); content/rigs.example.json shows the shape with synthetic ids. The editor's validateRigs (apps/editor/src/rig-doc.ts) is the authority; this file mirrors it for other tools.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "models"],
+  "properties": {
+    "version": { "const": 1 },
+    "models": {
+      "type": "object",
+      "maxProperties": 5000,
+      "propertyNames": { "pattern": "^[A-Za-z0-9_\\-./]{1,200}$" },
+      "additionalProperties": { "$ref": "#/$defs/modelRig" }
+    }
+  },
+  "$defs": {
+    "boneName": { "type": "string", "pattern": "^[A-Za-z0-9_\\-. ]{1,64}$" },
+    "triple": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "limit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number", "minimum": 0, "maximum": 180 },
+        "max": { "type": "number", "minimum": 0, "maximum": 180 }
+      },
+      "description": "Degrees; min must be below max. Interior angle for a two-bone limb (180 is straight), bend for a chain joint."
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "weight"],
+      "properties": {
+        "offset": { "allOf": [{ "$ref": "#/$defs/triple" }], "description": "Tip displacement from its rest position, metres, each within 10." },
+        "pole": { "allOf": [{ "$ref": "#/$defs/triple" }], "description": "Direction the knee points; not all zero." },
+        "weight": { "type": "number", "minimum": 0, "maximum": 1, "description": "IK vs procedural blend." }
+      }
+    },
+    "modelRig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bodyPlan": { "enum": ["quadruped", "skinned"] },
+        "headSign": { "enum": [1, -1] },
+        "legTop": { "type": "number", "minimum": 0.1, "maximum": 0.9 },
+        "knee": { "type": "number", "minimum": 0.05, "maximum": 0.95 },
+        "limits": { "type": "object", "propertyNames": { "$ref": "#/$defs/boneName" }, "additionalProperties": { "$ref": "#/$defs/limit" } },
+        "targets": { "type": "object", "propertyNames": { "$ref": "#/$defs/boneName" }, "additionalProperties": { "$ref": "#/$defs/target" } },
+        "inactive": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "$ref": "#/$defs/boneName" } }
+      }
+    }
+  }
+}

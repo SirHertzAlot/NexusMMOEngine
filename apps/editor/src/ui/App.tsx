@@ -21,6 +21,7 @@ import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
 import { StringsPanel } from "./strings-panel.js";
 import { ScalePanel } from "./scale-panel.js";
+import { ValgrindPanel } from "./valgrind-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
 import { MaterialsPanel } from "./materials-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";

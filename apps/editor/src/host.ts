@@ -48,6 +48,7 @@
  *                                    400 with per-path issues when invalid
  *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
  *   GET/PUT /api/editor/scale      → the global scale document content/scale.json (scale-host.ts)
+ *   GET/PUT /api/editor/rigs       → per-model rig overrides content/rigs.local.json, gitignored (rig-host.ts)
  *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
  *   GET  /api/editor/story         → the quest and dialog documents (EA20)
  *   GET  /api/editor/story/:name   → one document and the rules references
@@ -119,6 +120,7 @@ import { handleFilesRoute } from "./files-host.js";
 import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
 import { handleScaleRoute } from "./scale-host.js";
+import { handleRigRoute } from "./rig-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
@@ -1428,6 +1430,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (scaleReply) {
             sendJson(res, scaleReply.status, scaleReply.body);
+            return;
+          }
+          // Per-model rig overrides (content/rigs.local.json, rig-host.ts).
+          const rigReply = handleRigRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/rigs" ? await readBody(req) : undefined,
+          );
+          if (rigReply) {
+            sendJson(res, rigReply.status, rigReply.body);
             return;
           }
           // Playtests (EA26) and the Network workspace's routes file.
