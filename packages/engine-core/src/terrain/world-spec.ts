@@ -189,6 +189,21 @@ export const WorldSpecSchema = z
         ridges: z.number().min(0).max(1).default(0.45),
         /** Smallest distance between a range's axis and the sea, metres. */
         coastClearance: z.number().min(0).default(350),
+        /**
+         * Crest shaping, off by default (the old rounded quartic profile):
+         * `sharpness` 0..1 blends the cross-section toward a pointed ridge
+         * (a crest line instead of a dome); `detailOctaves` layers a
+         * domain-warped ridged multifractal over the range (1..5 octaves, 0
+         * = none) at `detailStrength` of the range height.
+         */
+        crest: z
+          .object({
+            sharpness: z.number().min(0).max(1).default(0),
+            detailOctaves: z.number().int().min(0).max(5).default(0),
+            detailStrength: z.number().min(0).max(1).default(0.5),
+          })
+          .strict()
+          .prefault({}),
       })
       .strict()
       .prefault({}),
@@ -253,6 +268,30 @@ export const WorldSpecSchema = z
         /** River incision (stream power): passes and strength. */
         fluvialPasses: z.number().int().min(0).default(12),
         fluvialStrength: z.number().min(0).default(0.004),
+        /**
+         * Stream-power incision (implicit, detachment-limited, off with
+         * passes 0): valleys cut in proportion to k * area^areaExponent *
+         * slope, so channels deepen while summits (no drainage area) stay.
+         * `maxCutM` caps how deep any cell may be cut in total.
+         */
+        incision: z
+          .object({
+            passes: z.number().int().min(0).default(0),
+            k: z.number().min(0).default(0.0012),
+            areaExponent: z.number().min(0.1).max(1).default(0.5),
+            maxCutM: z.number().positive().default(40),
+          })
+          .strict()
+          .prefault({}),
+        /**
+         * Bare rock holds a steeper face than scree: above `rockFromM` the
+         * angle of repose rises to `rockTalusDeg` over `rockSpanM` metres of
+         * height, so crests stay sharp while the slopes below weather to
+         * `talusDeg`. Omitted = one angle everywhere (the old behaviour).
+         */
+        rockTalusDeg: z.number().gt(0).lt(90).optional(),
+        rockFromM: z.number().default(150),
+        rockSpanM: z.number().positive().default(100),
       })
       .strict()
       .prefault({}),
@@ -296,6 +335,8 @@ export const WorldSpecSchema = z
         craterDepth: z.number().min(0).default(45),
         /** Vent heat at the summit (keeps the crater clear of ice), °C, fading to 0 at the base. */
         heatC: z.number().min(0).default(10),
+        /** Radial gullies cut in the cone's flanks (0 = the smooth young cone, 1 = deeply dissected). */
+        gullies: z.number().min(0).max(1).default(0),
       })
       .strict()
       .prefault({}),

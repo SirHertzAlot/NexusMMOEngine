@@ -20,11 +20,12 @@
     "minIslandArea": 20000
   },
   "ranges": {
-    "count": 1, "center": { "x": -32, "z": -712 }, "height": 380, "width": 600, "length": 3400,
+    "count": 1, "center": { "x": -32, "z": -712 }, "height": 560, "width": 680, "length": 3400,
     "spurs": 2, "spurLength": 1100, "spurScale": 0.7,
-    "ridgeScale": 500, "ridges": 0.45, "coastClearance": 500
+    "ridgeScale": 500, "ridges": 0.45, "coastClearance": 500,
+    "crest": { "sharpness": 0.7, "detailOctaves": 4, "detailStrength": 0.6 }
   },
-  "volcano": { "count": 1, "height": 520, "radius": 650, "craterRadius": 70, "craterDepth": 45, "heatC": 10 },
+  "volcano": { "count": 1, "height": 520, "radius": 650, "craterRadius": 70, "craterDepth": 45, "heatC": 10, "gullies": 0.45 },
   "climate": {
     "wind": "west",
     "seaTempC": 16,
@@ -37,7 +38,8 @@
     "recycling": 0.35,
     "inlandHumidity": 0.35
   },
-  "erosion": { "droplets": 150000, "strength": 0.35, "talusDeg": 38, "thermalPasses": 30, "fluvialPasses": 12, "fluvialStrength": 0.004 },
+  "erosion": { "droplets": 150000, "strength": 0.35, "talusDeg": 38, "thermalPasses": 30, "fluvialPasses": 12, "fluvialStrength": 0.004,
+    "incision": { "passes": 30, "k": 0.003, "areaExponent": 0.5, "maxCutM": 60 }, "rockTalusDeg": 55, "rockFromM": 150, "rockSpanM": 100 },
   "glaciers": { "formBelowC": -2, "minSnowMm": 500, "meltAboveC": 1, "meltRate": 2.5, "passes": 5, "strength": 0.01, "maxCutPerPassM": 4, "moraineM": 6 },
   "rivers": { "minCatchment": 250000, "maxDepth": 4 },
   "lakes": { "minDepth": 0.8, "minArea": 12000, "minRainMm": 350 },
