@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
 import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
+import { BodyConfig, ShapeKind } from "./components.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
 import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
@@ -42,7 +43,9 @@ import type { ScaleResolver } from "./scale.js";
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 /** The repo's content/scenes (this file is dist/src/scene-spawn.js). */
 export const DEFAULT_SCENES_DIR = fileURLToPath(new URL("../../../../content/scenes", import.meta.url));
-const META_KEY = "scene_entities";
+/** A building on a slope stands this far above its footprint's highest ground sample, metres. */
+const PLINTH_M = 0.05;
+const META_KEY ="scene_entities";
 const ITEMS_KEY = "scene_items";
 /** The repo's content/prefabs (this file is dist/src/scene-spawn.js). */
 export const DEFAULT_PREFABS_DIR = fileURLToPath(new URL("../../../../content/prefabs", import.meta.url));
@@ -183,7 +186,43 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         // A named model that the catalog knows sizes the body (bounds x scale); otherwise the authored footprint.
         const modelSized = str(structure.asset) !== "" && deps.bounds?.(asset) !== undefined;
         const collision = { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
-        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [spawnBody(deps, node.id, w, ground, asset, collision, "building")] });
+        // Ground under the whole footprint, not just its centre: the floor stands on the highest point
+        // (nothing sinks into a slope), the body reaches the lowest, and a foundation slab fills the gap.
+        const f = deps.scale?.("building", asset) ?? 1;
+        const size = modelSized ? deps.bounds?.(asset) : undefined;
+        const [hw, hd] = size ? [(size[0] * f) / 2, (size[2] * f) / 2] : [half[0] * f, half[2] * f];
+        const yaw = (w.yawDeg * Math.PI) / 180;
+        const cos = Math.cos(yaw);
+        const sin = Math.sin(yaw);
+        let high = -Infinity;
+        let low = Infinity;
+        // A grid over the footprint, a sample a metre or so apart (the terrain's own sample spacing), always
+        // including the corners, edge midpoints and centre. ponytail: capped at 32 a side; a bump narrower than that spacing can slip between samples.
+        const nx = Math.min(16, Math.max(2, Math.ceil(hw)));
+        const nz = Math.min(16, Math.max(2, Math.ceil(hd)));
+        for (let i = -nx; i <= nx; i++) {
+          for (let j = -nz; j <= nz; j++) {
+            const lx = (i / nx) * hw;
+            const lz = (j / nz) * hd;
+            const g = deps.groundHeightAt?.(x + lx * cos + lz * sin, z - lx * sin + lz * cos) ?? 0;
+            if (g > high) high = g;
+            if (g < low) low = g;
+          }
+        }
+        // On a slope the floor stands a plinth above the highest sample: the ground between samples can peak a few cm higher.
+        const floor = high - low > 0.01 ? high + PLINTH_M : high;
+        const drop = floor - low;
+        const building = spawnBody(deps, node.id, w, floor, asset, collision, "building");
+        const entities = [building];
+        if (drop > 0) {
+          // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).
+          if (BodyConfig.shapeKind[building] === ShapeKind.Box) BodyConfig.halfY[building] = Math.max(BodyConfig.halfY[building]!, drop);
+          // The slab: the building's footprint, from the lowest ground up to the floor.
+          const f2 = deps.scale?.("building", "structure:foundation") ?? 1;
+          const slab = { shape: "box" as const, halfExtents: [hw / f2, drop / 2 / f2, hd / f2] as [number, number, number], motion: "static" as const };
+          entities.push(spawnBody(deps, `${node.id}/foundation`, w, floor - drop / 2, "structure:foundation", slab, "building"));
+        }
+        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities });
       }
       continue;
     }

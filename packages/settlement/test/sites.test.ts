@@ -69,3 +69,61 @@ describe("selectSites", () => {
     assert.deepEqual(selectSites(iced, BUILTIN_RULES.sites, 6), []);
   });
 });
+
+/** All plains and dry; `shape(x, z)` is the height in metres. A 100 m cell, so a 150 m town reaches two cells each way. */
+function relief(shape: (x: number, z: number) => number): TerrainFields {
+  const height = new Float32Array(N * N);
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) height[idx(x, z)] = shape(x, z);
+  const river = new Uint8Array(N * N);
+  river[0] = 1; // one wet cell, so water distance exists; waterRangeM below makes it count the same everywhere
+  return { grid: { width: N, depth: N, cell: CELL, originX: 0, originZ: 0 }, height, water: new Uint8Array(N * N), river, ice: new Uint8Array(N * N), biome: new Uint8Array(N * N).fill(1), biomeIds: ["sea", "plains"], seaLevel: 0 };
+}
+const TOWN_M = 150;
+const rulesOf = (over: Partial<typeof BUILTIN_RULES.sites>): typeof BUILTIN_RULES.sites => ({ ...BUILTIN_RULES.sites, minSpacingM: 400, waterRangeM: [1, 1e7], minPressurePermille: 0, ...over });
+
+describe("selectSites: flat, low land", () => {
+  it("accepts a low plateau", () => {
+    assert.ok(selectSites(relief(() => 12), rulesOf({}), 3, TOWN_M).length > 0);
+  });
+
+  it("rejects a long gentle ramp: it passes the slope limit but climbs too far across a town", () => {
+    const ramp = relief((x) => 2 * x); // 20 permille, far under maxSlopePermille
+    assert.ok(20 < BUILTIN_RULES.sites.maxSlopePermille);
+    assert.deepEqual(selectSites(ramp, rulesOf({ maxElevationM: 1000, mountainClearanceM: 0 }), 3, TOWN_M), []);
+    // with the relief limit lifted the ramp is a site: relief is what rejected it
+    assert.ok(selectSites(ramp, rulesOf({ maxElevationM: 1000, mountainClearanceM: 0, maxReliefM: 100 }), 3, TOWN_M).length > 0);
+  });
+
+  it("rejects a ridge that coarse slope hides, and keeps a margin from it", () => {
+    // a 40 m step between two cells: slope reads it at one cell only, the footprint window sees it from two cells away
+    const step = relief((x) => (x >= 20 ? 40 : 5));
+    const s = selectSites(step, rulesOf({ maxElevationM: 1000, mountainClearanceM: 0 }), 20, TOWN_M);
+    assert.ok(s.length > 0);
+    for (const site of s) assert.ok(site.x <= 1700 || site.x >= 2200, `site at x=${site.x} sees the step`);
+  });
+
+  it("never builds above maxElevationM, even on perfectly flat ground", () => {
+    assert.deepEqual(selectSites(relief(() => 90), rulesOf({ maxElevationM: 60 }), 3, TOWN_M), []);
+  });
+
+  it("keeps clear of mountains: nothing within mountainClearanceM of ground above ridgeHeightM", () => {
+    const peak = relief((x, z) => (x === 30 && z === 20 ? 300 : 10));
+    const rules = rulesOf({ ridgeHeightM: 150, mountainClearanceM: 600, maxReliefM: 1000 });
+    const s = selectSites(peak, rules, 50, TOWN_M);
+    assert.ok(s.length > 0);
+    for (const site of s) assert.ok(Math.max(Math.abs(site.x - 3000), Math.abs(site.z - 2000)) > 600, `site (${site.x}, ${site.z}) is under the peak`);
+  });
+
+  it("prefers a low flat valley floor over higher ground", () => {
+    const valley = relief((x) => 4 + Math.min(Math.abs(x - 20) * 0.4, 30)); // floor at x=20 (2000 m); sides rise gently
+    const best = selectSites(valley, rulesOf({ maxReliefM: 100 }), 1, TOWN_M)[0]!;
+    assert.ok(Math.abs(best.x - 2000) <= 300, `best site x=${best.x}`);
+    assert.ok(best.elevationM <= 8 && best.reliefM <= 1, `elevation ${best.elevationM}, relief ${best.reliefM}`);
+  });
+
+  it("reports each site's elevation and relief, in whole metres", () => {
+    const s = selectSites(relief(() => 12), rulesOf({}), 1, TOWN_M)[0]!;
+    assert.equal(s.elevationM, 12);
+    assert.equal(s.reliefM, 0);
+  });
+});

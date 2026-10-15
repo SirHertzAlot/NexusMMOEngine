@@ -99,6 +99,16 @@ export const SettlementRulesSchema = z.strictObject({
     minSpacingM: z.number().positive(),
     /** Below this pressure (0 to 1000) a place is not a site. */
     minPressurePermille: z.number().int().min(0).max(1000),
+    /** Never build with any of the town's footprint above this absolute height, metres. */
+    maxElevationM: z.number().positive().default(60),
+    /** Nor above this height over the sea (the world's sea level), metres: the lowland band. */
+    lowlandBandM: z.number().positive().default(40),
+    /** The most the ground may rise and fall across the town's whole footprint (max minus min height, from the height field, not the slope), metres. */
+    maxReliefM: z.number().positive().default(3),
+    /** Ground above this height is a mountain, metres. */
+    ridgeHeightM: z.number().positive().default(120),
+    /** No site lies within this many metres of a mountain (0 turns it off). */
+    mountainClearanceM: z.number().min(0).default(300),
   }),
 });
 
@@ -152,6 +162,11 @@ export const BUILTIN_RULES: SettlementRules = {
     waterRangeM: [200, 800],
     minSpacingM: 1500,
     minPressurePermille: 150,
+    maxElevationM: 60,
+    lowlandBandM: 40,
+    maxReliefM: 3,
+    ridgeHeightM: 120,
+    mountainClearanceM: 300,
   },
 };
 

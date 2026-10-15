@@ -75,15 +75,27 @@ export function scaledLayout(rules: SettlementRules, scale = 1): { parcelMm: [nu
   return { parcelMm: [Math.round(parcelSizeMm[0] * scale), Math.round(parcelSizeMm[1] * scale)], streetMm: Math.max(MIN_STREET_MM, Math.round(streetWidthMm * scale)) };
 }
 
-export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams, scale = 1): Layout {
+/** The block grid of a town of `households`: blocks per side and the pitch (block plus street) each way, mm. */
+function blockGrid(households: number, rules: SettlementRules, scale: number): { n: number; pitchX: number; pitchZ: number; streetWidthMm: number; pw: number; pd: number } {
   const { block, parcelsPerHouseholdPermille } = rules.layout;
   const [bw, bd] = block;
   const { parcelMm, streetMm: streetWidthMm } = scaledLayout(rules, scale);
   const [pw, pd] = parcelMm;
   const parcelsWanted = Math.ceil((households * parcelsPerHouseholdPermille) / 1000);
   const n = Math.max(2, Math.ceil(Math.sqrt(Math.ceil(parcelsWanted / (bw * bd)))));
-  const pitchX = bw * pw + streetWidthMm;
-  const pitchZ = bd * pd + streetWidthMm;
+  return { n, pitchX: bw * pw + streetWidthMm, pitchZ: bd * pd + streetWidthMm, streetWidthMm, pw, pd };
+}
+
+/** Half the town's footprint, metres (the larger side, so a square window of this reach holds the whole town). Site selection measures relief over it. */
+export function townHalfExtentM(households: number, rules: SettlementRules, scale = 1): number {
+  const { n, pitchX, pitchZ } = blockGrid(households, rules, scale);
+  return Math.ceil((n * Math.max(pitchX, pitchZ)) / 2000);
+}
+
+export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams, scale = 1): Layout {
+  const { block } = rules.layout;
+  const [bw, bd] = block;
+  const { n, pitchX, pitchZ, streetWidthMm, pw, pd } = blockGrid(households, rules, scale);
 
   // Streets: a node at each crossing, an edge per segment.
   const nodeId = (i: number, j: number): string => entityId("junction", settlement, i, j);

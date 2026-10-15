@@ -105,9 +105,38 @@ surveys the world (several seconds), places the town at its best site and
 writes the scene there. On the shipped 4 x 4 km world that finds two sites
 with the default 1.5 km spacing; `rules.sites` is data like the rest.
 
+### Flat, low land only (SG2c)
+
+Slope alone is deceptive: a gentle grade over a long distance is a big change
+in height, and a coarse cell's slope can hide a ridge. So site selection also
+reads the height field over the town's whole footprint (`townHalfExtentM`, half
+the block grid's larger side, passed to `selectSites` as `extentM`). A cell is
+rejected when, within that reach:
+
+- any ground is above `maxElevationM` (absolute) or more than `lowlandBandM`
+  over the sea;
+- the ground rises and falls by more than `maxReliefM` (highest minus lowest,
+  default 3 m);
+- there is water, a river or ice;
+- any ground within `mountainClearanceM` is above `ridgeHeightM` (a mountain).
+
+Lower and flatter also scores higher (each factor takes the pressure from 1000
+down to 500 at its limit). A `Site` reports its `elevationM` and `reliefM`. The
+defaults are strict on purpose: on the shipped 4 x 4 km world no cell passes
+them for a 600-person town (the dry land is a thin, rolling strip), so the CLI
+says "the world has fewer sites" rather than build on a hillside. Relax
+`rules.sites.maxReliefM` (pass `--rules`) or settle fewer people; a town of 100
+fits at about 6 m of relief and one of 600 needs about 25 m.
+
+The spawner then grounds each building on its whole footprint, not its centre:
+the floor stands on the highest ground sample under it (a plinth of 5 cm above
+on a slope), the body reaches the lowest, and a foundation slab (a static box
+named `structure:foundation`) fills the gap from the lowest ground to the floor.
+The terrain is not edited.
+
 What is still a plain grid: the roads (SG2b brings engineered alignments,
 profiles and drainage, spec §28) and the layout does not yet bend to a river
-or a slope; each building does follow the ground under it at spawn.
+or a slope; each building stands on the highest ground under its footprint at spawn.
 
 ## Showing the town: art models with a box fallback (SG4a)
 
