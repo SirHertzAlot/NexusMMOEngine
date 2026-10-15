@@ -58,3 +58,6 @@ apps/client/public/surfaces/
 
 # per-model scale fit: names licensed models (settlement:scale-fit), never commit
 content/scale.local.json
+
+# wildlife ecology plan: lists licensed models by id (wildlife:plan), never commit
+packages/engine-core/content/ecology/*.local.ecology.json

@@ -110,6 +110,34 @@ Everything here stays under `assets/`, which is gitignored. **Run it from the
 repo root**; `convert:packs` builds the art package first, but the other two
 need `npm run build -w @mmo-engine/art` beforehand.
 
+## Importing ready-made GLB packs
+
+Packs that arrive as GLBs (a folder of `.glb` and a `manifest.json` of
+`{ title, publicID, licence, file?, page }`, as Poly Pizza zips do) skip the FBX
+converter. Unzip each into its own folder, then:
+
+```bash
+npm run build -w @mmo-engine/art
+npm run import:glb -w @mmo-engine/art -- <dir>... [--assets <dir>]
+```
+
+Per model it copies the GLB to `models/glb/<slug>/<Category>/`, **rescales it to
+a natural size** (the packs' units are arbitrary: the same pack holds a rabbit
+2 units long and a sheep 766; `natural-size.ts` maps whole name words to metres)
+with the base centre at the origin, and adds `catalog.json` / `manifest.json`
+entries carrying `license` (author, licence name, page), `animations` and
+`skinned`. Re-running a pack replaces its entries; `convert:packs` keeps them.
+Models with no known size keep their units and are listed in the catalog
+diagnostics.
+
+What to do with them is data: `npm run wildlife:plan` (engine-core) writes a
+gitignored `content/ecology/wildlife.local.ecology.json` (the wilds plan plus
+name-pattern layers: sea floor with `habitat: "water"` and depths, shore birds,
+woodland fauna, critters, farm animals; static, skinned models excluded; run
+with `MMO_ECOLOGY`). `DEFAULT_DRESSING_PATTERNS` (settlement `art.ts`) names
+farm produce, crops, tools and yard pieces for farmsteads. A creature that
+moves needs a simulated agent, which is not built.
+
 ## The character rig
 
 Two more converters prepare the modular character:
@@ -200,6 +228,12 @@ Two different licences are in play and they must not be confused:
   to grant. The animation sources' licences are declared in
   `ANIMATION_SOURCES`; check them before redistributing anything built from
   them.
+- **Third-party art that needs attribution** (the CC-BY packs) is credited in
+  `content/credits.json`, typed by `parseCredits` (`@mmo-engine/art/browser`):
+  an author, a licence name and the line to show, never a model. The game's
+  entrance / credits screen should read it
+  (`import credits from ".../content/credits.json"`). Entries marked
+  `confirmed: false` have wording still to be checked against the licence.
 - **The vendored C++ libraries and the CC0 surface textures are open**, with
   their own notices. `packages/dungeon/THIRD_PARTY_NOTICES.md` is the model for
   how a ported or vendored dependency is attributed — it names the upstream
