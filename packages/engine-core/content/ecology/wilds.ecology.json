@@ -41,6 +41,7 @@
  "layers": [
   {
    "id": "stoneCircles",
+   "category": "rock",
    "place": {
     "kind": "formation",
     "spacing": 8,
@@ -208,6 +209,7 @@
   },
   {
    "id": "trees",
+   "category": "tree",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -508,6 +510,7 @@
   },
   {
    "id": "loneTrees",
+   "category": "tree",
    "place": {
     "kind": "field",
     "spacing": 16
@@ -668,6 +671,7 @@
   },
   {
    "id": "deadfall",
+   "category": "tree",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -733,6 +737,7 @@
   },
   {
    "id": "understory",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "trees",
@@ -819,6 +824,7 @@
   },
   {
    "id": "edgeShrubs",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -998,6 +1004,7 @@
   },
   {
    "id": "outcrops",
+   "category": "rock",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -1127,6 +1134,7 @@
   },
   {
    "id": "scree",
+   "category": "rock",
    "place": {
     "kind": "around",
     "parent": "outcrops",
@@ -1188,6 +1196,7 @@
   },
   {
    "id": "rockGrass",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "outcrops",
@@ -1236,6 +1245,7 @@
   },
   {
    "id": "pebbles",
+   "category": "rock",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -1315,6 +1325,7 @@
   },
   {
    "id": "meadowPatch",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -1360,6 +1371,7 @@
   },
   {
    "id": "wildflowers",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "meadowPatch",
@@ -1508,6 +1520,7 @@
   },
   {
    "id": "strayFlowers",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -1644,6 +1657,7 @@
   },
   {
    "id": "grass",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 2
@@ -1696,6 +1710,7 @@
   },
   {
    "id": "reedbed",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -1719,6 +1734,7 @@
   },
   {
    "id": "reeds",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "reedbed",
@@ -1762,6 +1778,7 @@
   },
   {
    "id": "lilies",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4

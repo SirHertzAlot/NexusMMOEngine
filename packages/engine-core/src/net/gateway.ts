@@ -151,6 +151,7 @@ import type { SocialStore } from "../social-store.js";
 import * as builtInChat from "../chat.js";
 import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { clearOfStatics } from "../prop-collision.js";
+import type { ScaleResolver } from "../scale.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
 import { AbilitySystem } from "../abilities.js";
@@ -309,6 +310,8 @@ export interface GatewayOptions {
    * table in tests.
    */
   spawnTable?: SpawnTable;
+  /** The global scale for admin-spawned props (default: none). */
+  scale?: ScaleResolver;
   /**
    * Region chat text filter (roadmap S1): return false to reject a line.
    * Default allows everything that passes shape limits; a profanity or
@@ -762,6 +765,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "scale"
       | "extensions"
       | "items"
     >
@@ -859,6 +863,7 @@ export class Gateway {
    * first use so addon-less boots never pay for it.
    */
   private spawnTable: SpawnTable | null = null;
+  private readonly scale: ScaleResolver | undefined;
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
@@ -928,6 +933,7 @@ export class Gateway {
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
+    this.scale = opts.scale;
     this.textFilter = opts.textFilter ?? this.chatRules.allowAllText;
     for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
@@ -2620,7 +2626,7 @@ export class Gateway {
     }
     const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
-    const eid = spawnScatterEntity(this.world, built);
+    const eid = spawnScatterEntity(this.world, built, undefined, this.scale);
     return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
   }
 

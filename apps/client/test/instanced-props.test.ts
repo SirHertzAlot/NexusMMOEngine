@@ -51,11 +51,14 @@ describe("InstancedProps", () => {
     props.dispose();
   });
 
-  it("sizes each instance from its body and transform scale", () => {
+  it("sizes a stand-in from its body alone: the body is world-final, the Transform scale is not applied again", () => {
     const m = propMatrix(transform(1n, 3, 4, 2), body(1n, BOX, 0.5));
     const s = new THREE.Vector3();
     m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
-    assert.deepEqual([s.x, s.y, s.z].map((v) => +v.toFixed(5)), [2, 4, 2], "2 x (1 x 2 x 1) box");
+    assert.deepEqual([s.x, s.y, s.z].map((v) => +v.toFixed(5)), [1, 2, 1], "the body's size, whatever the Transform scale");
+    const bare = propMatrix(transform(3n, 0, 0, 2), null);
+    bare.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
+    assert.deepEqual([s.x, s.y, s.z].map((v) => +v.toFixed(5)), [2, 2, 2], "no body: a 1 m unit box at the Transform scale");
     const sphere = propMatrix(transform(2n, 0, 0), body(2n, SPHERE, 0.75));
     sphere.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
     assert.equal(+s.x.toFixed(5), 0.75, "unit sphere scaled to the radius");
