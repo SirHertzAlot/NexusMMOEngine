@@ -20,16 +20,22 @@ interface Row {
   duty: number;
   /** Stride length (one full cycle of travel) in leg lengths. */
   stride: number;
-  /** Swing foot lift, in leg lengths. */
+  /** Swing foot lift, in leg lengths (informative: the knee flexion below lifts the foot). */
   lift: number;
   /** Body bounce, in leg lengths. */
   bob: number;
+  /**
+   * Peak knee flexion in swing (radians), front carpus and hind hock. Dog/horse/deer kinematics:
+   * about 35 to 45 degrees at a walk, 55 to 70 at a trot, 70 to 85 at a gallop (the hock a little less).
+   */
+  flexF: number;
+  flexH: number;
 }
 
 /** Lateral-sequence walk, diagonal trot, transverse gallop. */
-export const WALK: Row = { off: [0.25, 0.75, 0, 0.5], duty: 0.65, stride: 1.4, lift: 0.1, bob: 0.015 };
-export const TROT: Row = { off: [0, 0.5, 0.5, 0], duty: 0.5, stride: 2.6, lift: 0.16, bob: 0.03 };
-export const GALLOP: Row = { off: [0.5, 0.6, 0, 0.1], duty: 0.36, stride: 3.6, lift: 0.2, bob: 0.05 };
+export const WALK: Row = { off: [0.25, 0.75, 0, 0.5], duty: 0.65, stride: 1.4, lift: 0.1, bob: 0.015, flexF: 0.7, flexH: 0.55 };
+export const TROT: Row = { off: [0, 0.5, 0.5, 0], duty: 0.5, stride: 2.6, lift: 0.16, bob: 0.03, flexF: 1.1, flexH: 0.9 };
+export const GALLOP: Row = { off: [0.5, 0.6, 0, 0.1], duty: 0.36, stride: 3.6, lift: 0.2, bob: 0.05, flexF: 1.35, flexH: 1.1 };
 
 /** Froude speeds (v / sqrt(g L)) where walk becomes trot and trot becomes gallop: [from, to]. */
 export const WALK_TO_TROT: readonly [number, number] = [0.45, 0.7];
@@ -50,6 +56,9 @@ export interface GaitParams {
   lift: number;
   /** Body bounce amplitude (metres). */
   bob: number;
+  /** Peak knee flexion in swing, radians: front carpus, hind hock (scaled by how much it moves). */
+  flexF: number;
+  flexH: number;
   offsets: [number, number, number, number];
   /** 0 standing, 1 moving (smooth). */
   moveW: number;
@@ -63,7 +72,7 @@ export function smoothstep(a: number, b: number, x: number): number {
 }
 
 export function newGait(): GaitParams {
-  return { freq: 0, duty: 0.65, sweep: 0, lift: 0, bob: 0, offsets: [0, 0, 0, 0], moveW: 0, gait: 0 };
+  return { freq: 0, duty: 0.65, sweep: 0, lift: 0, bob: 0, flexF: 0, flexH: 0, offsets: [0, 0, 0, 0], moveW: 0, gait: 0 };
 }
 
 /** The gait for a speed (m/s) and a leg length (m); fills `out` (reuse one per animal: no allocation). */
@@ -77,8 +86,10 @@ export function gaitAt(speed: number, legLen: number, out: GaitParams = newGait(
   out.duty = mix(WALK.duty, TROT.duty, GALLOP.duty);
   out.lift = mix(WALK.lift, TROT.lift, GALLOP.lift) * L;
   out.bob = mix(WALK.bob, TROT.bob, GALLOP.bob) * L;
-  for (let i = 0; i < 4; i++) out.offsets[i] = mix(WALK.off[i], TROT.off[i], GALLOP.off[i]);
   out.moveW = smoothstep(MOVE_FROM, MOVE_FULL, speed);
+  out.flexF = mix(WALK.flexF, TROT.flexF, GALLOP.flexF) * out.moveW;
+  out.flexH = mix(WALK.flexH, TROT.flexH, GALLOP.flexH) * out.moveW;
+  for (let i = 0; i < 4; i++) out.offsets[i] = mix(WALK.off[i], TROT.off[i], GALLOP.off[i]);
   out.freq = speed > 1e-3 ? speed / stride : 0;
   // A foot on the ground goes back by speed x stance time = stride x duty; the hip swings it.
   const sweep = Math.asin(Math.min(0.95, (stride * out.duty) / (2 * L)));
@@ -99,18 +110,22 @@ const ease = (x: number): number => x * x * (3 - 2 * x);
  * One leg's swing angle (+1 forward .. -1 back) and lift (0..1) at a cycle
  * phase (the leg's own offset already added). Stance moves the foot back
  * at a steady rate (so it does not slide); swing brings it forward.
+ * `flex` (0..1) is the knee flexion: zero in stance, peaking a little before
+ * mid-swing (the foot clears the ground early, then reaches forward straight).
  * Writes into `out` (no allocation).
  */
-export function legCurve(phase: number, duty: number, out: { angle: number; lift: number }): void {
+export function legCurve(phase: number, duty: number, out: { angle: number; lift: number; flex: number }): void {
   const p = ((phase % 1) + 1) % 1;
   if (p < duty) {
     out.angle = 1 - 2 * (p / duty);
     out.lift = 0;
+    out.flex = 0;
     return;
   }
   const q = (p - duty) / (1 - duty);
   out.angle = -1 + 2 * ease(q);
   out.lift = Math.sin(Math.PI * q);
+  out.flex = Math.sin(Math.PI * Math.pow(q, 0.75));
 }
 
 /** Seconds a strike takes to snap out after the hit frame. */

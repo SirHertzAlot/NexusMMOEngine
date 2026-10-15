@@ -223,8 +223,8 @@ with an index manifest for `RE.Model.fetch()`.
 
 The imported animals (woodland fauna, farm animals) are static meshes with no
 skeleton and no clips. They move through `apps/client/src/render/animal/`:
-the client cuts the mesh into parts, adds a seven-bone skeleton to a copy of
-its geometry and poses it from the server's velocity. No clip files are made
+the client cuts the mesh into parts, adds an eleven-bone skeleton (body, head,
+tail and four two-segment legs) to a copy of its geometry and poses it from the server's velocity. No clip files are made
 or needed, so every static quadruped moves the day it is imported.
 
 **Decision.** The idea came from
@@ -244,7 +244,7 @@ or needed, so every static quadruped moves the day it is imported.
   the ideas (a gait is a table of per-leg touchdown phase offsets and a duty
   factor, rows blended by speed, speeds compared by Froude number so a wolf
   and a bear change gait at the same effort, one-shots layered over
-  locomotion) and wrote them for a seven-bone rig. **No code from the library
+  locomotion) and wrote them for our own eleven-bone rig. **No code from the library
   is vendored**, so there is no licence text to carry and no
   `content/credits.json` entry; the concept credit is this paragraph. If you
   vendor any of its files later, copy its `LICENSE` and copyright notice next
@@ -257,13 +257,26 @@ or needed, so every static quadruped moves the day it is imported.
   the head end is the one held higher off the ground (the rear reaches down
   with hind legs; right on the seven tried: deer, bear, fox, cougar, wolf, pig, goat; vertex count is only the
   tiebreak); the belly is where a height slice's footprint fills in; smooth
-  region weights give head, tail, four legs and body, four influences per
-  vertex. A mesh that is not four-legged (length under 0.7 of height, snakes,
+  region weights give head, tail, body and four legs, each leg an upper bone
+  (hip/shoulder) and a lower bone (knee/hock), four influences per vertex.
+  The knee is found as the narrowest leg slice in the middle band of the leg
+  (clamped to 42 to 58 percent of the hip height, else halfway), blended over
+  a band 28 percent of the leg wide so the joint bends smoothly. A mesh that is not four-legged (length under 0.7 of height, snakes,
   birds, upright shapes) returns null and stays a static prop.
 - `gait.ts` (pure): walk, trot, gallop rows blended by speed (Froude), duty
-  factor, stride, swing lift, bob, the attack windup/strike pose and the
-  death fall. A leg's hip angle is chosen so its stance foot moves at body
-  speed (no sliding), up to a cap.
+  factor, stride, peak knee flexion, bob, the attack windup/strike pose and
+  the death fall. The upper leg swings from the hip through an arc symmetric
+  about vertical (plus and minus 27 degrees at a walk, 40 at a trot, capped
+  at 43 at a gallop: the range real dogs, deer and horses use), with `sin`
+  of the angle linear through stance so the foot moves back at body speed and
+  does not slide. The knee flexes only in swing, peaking at about 40 percent
+  of it (about 40 degrees at a walk, 65 at a trot, 80 at a gallop), and is
+  straight at touchdown. The front knee folds the foot backward, the hind
+  hock the opposite way (forward). The hip drops with the swing angle, and
+  rises just enough in late swing, so a planted foot stays on the ground and
+  a swinging one clears it. The body bobs twice per cycle, twists and rolls
+  slightly in walk and trot, the head counter-rotates and nods, and the tail
+  follows with a lag.
 - `animal-rig.ts`: `AnimalTemplate` (one per model: skinned geometry copy) and
   `AnimalRig` (one per animal: `SkinnedMesh`, bones, state). `update` allocates
   nothing. The material is the model cache's, shared with the scenery, and is
@@ -282,9 +295,14 @@ predators) rig the same way; their stride scales with leg length (Froude).
 Sea giants, birds and snakes need their own cut (fin and tail wave, wings,
 spine wave): not built.
 
-**Known artifacts.** Legs are rigid pieces blended over the belly, so a leg
-shows some stretch at the hip, and there is no knee or hoof bend: feet slide
-a little at gallop (hip swing is capped) and paws do not roll. Wide antlers or
+**Known artifacts.** Legs are two rigid pieces blended over the belly and
+across the knee, so there is some skin stretch at the hip and a visible kink
+at the knee on thick legs (elk, bear), and no pastern or hoof/paw roll. The
+rest hock is straight (a real hind leg stands bent). Short-legged animals
+(bear) look crouched at trot because the flexion is not scaled by leg length.
+The stance foot still slides up to about 0.07 m over a 0.36 m stance on the
+test animal (body twist and pitch), and more at gallop where the hip swing is
+capped. Wide antlers or
 tusks clip the ground when the body lies down. Only a dozen models were tried;
 the head and belly heuristics may need a hint for others. A far animal is posed at
 rest, not drawn from the instanced prop batch. Developer views of the rig

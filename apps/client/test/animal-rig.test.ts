@@ -10,7 +10,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { advancePhase, attackPose, deathProgress, gaitAt, legCurve, MAX_SWEEP } from "../src/render/animal/gait.js";
 import {
-  BONE_BODY, BONE_FL, BONE_FR, BONE_HEAD, BONE_HL, BONE_HR, BONE_TAIL, findFrame, segmentQuadruped,
+  BONE_BODY, BONE_FL, BONE_FR, BONE_HEAD, BONE_HL, BONE_HR, BONE_LOWER, BONE_TAIL, findFrame, segmentQuadruped,
 } from "../src/render/animal/segment.js";
 import { AnimalTemplate } from "../src/render/animal/animal-rig.js";
 
@@ -74,7 +74,7 @@ describe("gait maths", () => {
 
   it("wraps the phase and the leg curve runs back in stance, forward in swing", () => {
     assert.ok(Math.abs(advancePhase(0.9, 1, 0.3) - 0.2) < 1e-9);
-    const o = { angle: 0, lift: 0 };
+    const o = { angle: 0, lift: 0, flex: 0 };
     legCurve(0, 0.6, o);
     assert.equal(o.angle, 1);
     legCurve(0.3, 0.6, o);
@@ -133,10 +133,14 @@ describe("quadruped segmentation", () => {
       for (let k = 0; k < 4; k++) if (seg.skinWeight[best * 4 + k] > bw) { bw = seg.skinWeight[best * 4 + k]; bone = seg.skinIndex[best * 4 + k]; }
       return bone;
     };
-    assert.equal(dominant(0.18, 0, 0.3), BONE_FL, "front-left foot (x > 0, front)");
-    assert.equal(dominant(-0.18, 0, 0.3), BONE_FR);
-    assert.equal(dominant(0.18, 0, -0.4), BONE_HL);
-    assert.equal(dominant(-0.18, 0, -0.4), BONE_HR);
+    assert.equal(dominant(0.18, 0, 0.3), BONE_LOWER, "front-left foot is on the lower leg bone (x > 0, front)");
+    assert.equal(dominant(-0.18, 0, 0.3), BONE_LOWER + 1);
+    assert.equal(dominant(0.18, 0, -0.4), BONE_LOWER + 2);
+    assert.equal(dominant(-0.18, 0, -0.4), BONE_LOWER + 3);
+    assert.equal(dominant(0.18, 0.27, 0.3), BONE_FL, "above the knee it is the upper leg");
+    assert.equal(dominant(-0.18, 0.27, -0.4), BONE_HR);
+    assert.ok(seg.kneeHeight > 0.35 * seg.legLength && seg.kneeHeight < 0.65 * seg.legLength, `knee ${seg.kneeHeight} of leg ${seg.legLength}`);
+    assert.ok(Math.abs(segmentQuadruped(g.getAttribute("position").array, { knee: 0.45 })!.kneeHeight - 0.45 * seg.legLength) < 1e-6, "a hint moves the knee");
     assert.equal(dominant(0, 0.95, 0.5), BONE_HEAD, "top of the head");
     assert.equal(dominant(0, 0.6, -0.75), BONE_TAIL, "tail tip");
     assert.equal(dominant(0, 0.6, 0), BONE_BODY, "middle of the back");
@@ -165,7 +169,8 @@ describe("AnimalRig", () => {
 
   it("builds a skinned mesh with seven bones and the geometry skin attributes", () => {
     const r = rig();
-    assert.equal(r.skeleton.bones.length, 7);
+    assert.equal(r.skeleton.bones.length, 11);
+    assert.equal(r.skeleton.bones[BONE_LOWER].parent, r.skeleton.bones[BONE_FL], "the lower leg hangs off the upper leg");
     assert.ok(r.mesh.geometry.getAttribute("skinIndex") && r.mesh.geometry.getAttribute("skinWeight"));
   });
 
@@ -187,15 +192,7 @@ describe("AnimalRig", () => {
 
   it("plants the stance foot: it stays on the ground and does not slide against it", () => {
     const r = rig();
-    const g = r.mesh.geometry;
-    const w = g.getAttribute("skinWeight"), idx = g.getAttribute("skinIndex"), pos = g.getAttribute("position");
-    let foot = -1;
-    for (let i = 0; i < pos.count; i++) {
-      for (let k = 0; k < 4; k++) {
-        if (idx.getComponent(i, k) === BONE_FL && w.getComponent(i, k) > 0.95 && (foot < 0 || pos.getY(i) < pos.getY(foot))) foot = i;
-      }
-    }
-    assert.ok(foot >= 0);
+    const verts = sole(r, 0);
     const v = 1.0, dt = 1 / 120;
     const p = new THREE.Vector3();
     let travelled = 0, minZ = Infinity, maxZ = -Infinity, maxY = 0, planted = 0, worst = 0, was = false;
@@ -204,7 +201,7 @@ describe("AnimalRig", () => {
       travelled += v * dt;
       if (i < 120 * 2) continue; // let the speed settle
       r.mesh.updateMatrixWorld(true);
-      r.mesh.getVertexPosition(foot, p);
+      soleAt(r, verts, p);
       if (p.y < 0.004) {
         planted++;
         if (!was) { minZ = Infinity; maxZ = -Infinity; }
@@ -218,6 +215,76 @@ describe("AnimalRig", () => {
     assert.ok(planted > 60, `the foot spends part of the cycle on the ground (${planted} frames)`);
     assert.ok(worst < 0.08, `planted foot slides ${worst.toFixed(3)} m over one stance`);
     assert.ok(maxY > 0.02, "and lifts in swing");
+  });
+
+  /** The vertices of a leg's sole (lowest points of its lower bone) and where their centre is now. */
+  function sole(r: ReturnType<typeof rig>, leg: number): number[] {
+    const g = r.mesh.geometry;
+    const w = g.getAttribute("skinWeight"), idx = g.getAttribute("skinIndex"), pos = g.getAttribute("position");
+    const out: number[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      for (let k = 0; k < 4; k++) {
+        if (idx.getComponent(i, k) === BONE_LOWER + leg && w.getComponent(i, k) > 0.95 && pos.getY(i) < 0.001) out.push(i);
+      }
+    }
+    assert.ok(out.length >= 4);
+    return out;
+  }
+  const soleAt = (r: ReturnType<typeof rig>, verts: number[], out: THREE.Vector3): THREE.Vector3 => {
+    const t = new THREE.Vector3();
+    out.set(0, 0, 0);
+    for (const v of verts) out.add(r.mesh.getVertexPosition(v, t));
+    return out.multiplyScalar(1 / verts.length);
+  };
+
+  it("flexes the knee only in swing: straight when the foot is planted, bent when it is up", () => {
+    const r = rig();
+    const verts = sole(r, 0);
+    const p = new THREE.Vector3();
+    let peak = 0, bentOnGround = 0, straightInAir = 0;
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: 0.8 });
+      if (i < 240) continue;
+      r.mesh.updateMatrixWorld(true);
+      soleAt(r, verts, p);
+      const flex = Math.abs(leg(r, BONE_LOWER).rotation.x);
+      peak = Math.max(peak, flex);
+      if (p.y < 0.004 && flex > 0.15) bentOnGround++;
+      if (p.y > 0.03 && flex < 0.02) straightInAir++;
+    }
+    assert.ok(peak > 0.4, `the knee bends in swing (${peak.toFixed(2)} rad)`);
+    assert.equal(bentOnGround, 0, "never bent while the foot is on the ground");
+    assert.equal(straightInAir, 0, "never straight while the foot is well off the ground");
+  });
+
+  it("swings the upper leg in an arc symmetric about vertical at a walk", () => {
+    const r = rig();
+    let hi = -Infinity, lo = Infinity, sum = 0, n = 0;
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: 0.8 });
+      if (i < 240) continue;
+      const a = leg(r, BONE_FL).rotation.x;
+      hi = Math.max(hi, a);
+      lo = Math.min(lo, a);
+      sum += a;
+      n++;
+    }
+    assert.ok(hi > 0.2 && lo < -0.2, `swings both ways (${lo.toFixed(2)} .. ${hi.toFixed(2)})`);
+    assert.ok(Math.abs(hi + lo) < 0.06 * (hi - lo), "peak forward equals peak back");
+    // The mean is not zero (stance is slower than swing), but it stays a small share of the range.
+    assert.ok(Math.abs(sum / n) < 0.25 * (hi - lo));
+  });
+
+  it("bends the hind hock the opposite way to the front knee", () => {
+    const r = rig();
+    let front = 0, hind = 0;
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: 2.0 });
+      const f = leg(r, BONE_LOWER).rotation.x, h = leg(r, BONE_LOWER + 2).rotation.x;
+      if (Math.abs(f) > Math.abs(front)) front = f;
+      if (Math.abs(h) > Math.abs(hind)) hind = h;
+    }
+    assert.ok(front > 0.5 && hind < -0.4, `front knee ${front.toFixed(2)}, hind hock ${hind.toFixed(2)}`);
   });
 
   it("winds up before the hit frame, lowers the head, and lies down when dead", () => {

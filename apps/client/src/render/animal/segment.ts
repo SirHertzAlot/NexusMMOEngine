@@ -6,7 +6,8 @@
  * shape: the longest horizontal axis is the spine, the end held higher off
  * the ground (the rear reaches down with hind legs) is the front, the belly
  * is where the footprint of a height slice fills in, and everything is
- * then cut into head, tail, four legs and body by smooth region weights
+ * then cut into head, tail, body and four two-segment legs (upper leg
+ * from the hip, lower leg from the knee) by smooth region weights
  * (so joints bend without cracks). Meshes that do not look like a
  * four-legged animal return null and stay static.
  *
@@ -17,11 +18,16 @@
 export const BONE_BODY = 0;
 export const BONE_HEAD = 1;
 export const BONE_TAIL = 2;
+/** Upper leg bones (swing at hip/shoulder): FL, FR, HL, HR. The lower leg (knee/hock down) of leg k is BONE_LOWER + k. */
 export const BONE_FL = 3;
 export const BONE_FR = 4;
 export const BONE_HL = 5;
 export const BONE_HR = 6;
-export const BONE_NAMES = ["body", "head", "tail", "legFL", "legFR", "legHL", "legHR"] as const;
+export const BONE_LOWER = 7;
+export const BONE_COUNT = 11;
+export const BONE_NAMES = [
+  "body", "head", "tail", "upperFL", "upperFR", "upperHL", "upperHR", "lowerFL", "lowerFR", "lowerHL", "lowerHR",
+] as const;
 
 export interface Frame {
   /** Rotation about +Y (radians) that turns the mesh to face +Z. */
@@ -40,6 +46,8 @@ export interface Segmentation {
   width: number;
   /** Hip height: the leg length. */
   legLength: number;
+  /** Knee (hock) height above the ground; the upper leg is legLength - kneeHeight long. */
+  kneeHeight: number;
   /** Bone pivots in the normalised frame, indexed by BONE_*. */
   pivots: Array<[number, number, number]>;
   /** Four bone indices and weights per vertex, in the mesh's own vertex order. */
@@ -50,6 +58,8 @@ export interface Segmentation {
 export interface SegmentHints {
   /** Fraction of the height where the legs end (the belly); found from the shape when absent. */
   legTop?: number;
+  /** Knee height as a fraction of the hip height (found from the narrowest leg slice, else 0.5). */
+  knee?: number;
   /** +1 / -1 forces which end of the spine is the head, in the normalised frame's input order. */
   headSign?: 1 | -1;
 }
@@ -145,6 +155,39 @@ function findLegTop(pts: Float32Array, n: number, L: number, W: number, H: numbe
   return 0.4;
 }
 
+/** Knee height as a fraction of the hip height: the narrowest leg slice in the middle band, else halfway. */
+function findKnee(pts: Float32Array, n: number, legTop: number, W: number): number {
+  const slices = 10, lo = 0.35, hi = 0.65;
+  const x0 = new Float32Array(slices * 4).fill(Infinity), x1 = new Float32Array(slices * 4).fill(-Infinity);
+  const z0 = new Float32Array(slices * 4).fill(Infinity), z1 = new Float32Array(slices * 4).fill(-Infinity);
+  const cnt = new Uint16Array(slices * 4);
+  for (let i = 0; i < n; i++) {
+    const f = pts[i * 3 + 1] / legTop;
+    if (f < lo || f >= hi || Math.abs(pts[i * 3]) < 0.1 * W) continue;
+    const s = Math.floor(((f - lo) / (hi - lo)) * slices);
+    const q = (pts[i * 3] > 0 ? 0 : 1) + (pts[i * 3 + 2] > 0 ? 0 : 2);
+    const k = s * 4 + q;
+    cnt[k]++;
+    x0[k] = Math.min(x0[k], pts[i * 3]);
+    x1[k] = Math.max(x1[k], pts[i * 3]);
+    z0[k] = Math.min(z0[k], pts[i * 3 + 2]);
+    z1[k] = Math.max(z1[k], pts[i * 3 + 2]);
+  }
+  let best = -1, bestArea = Infinity;
+  for (let s = 0; s < slices; s++) {
+    let area = 0, legs = 0;
+    for (let q = 0; q < 4; q++) {
+      const k = s * 4 + q;
+      if (cnt[k] < 3) continue;
+      area += (x1[k] - x0[k]) * (z1[k] - z0[k]);
+      legs++;
+    }
+    if (legs >= 3 && area < bestArea) { bestArea = area; best = s; }
+  }
+  // Clamp: a noisy slice must not put the knee near the hip or the foot.
+  return best < 0 ? 0.5 : Math.min(0.58, Math.max(0.42, lo + ((best + 0.5) / slices) * (hi - lo)));
+}
+
 /** Cut a quadruped mesh into bones. Null when it does not look like a four-legged animal. */
 export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHints = {}): Segmentation | null {
   const frame = findFrame(positions, hints);
@@ -169,38 +212,43 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
   if (L < 1e-3 || H < 1e-3 || L < H * 0.7 || W > L * 1.2) return null;
 
   const legTop = (hints.legTop ?? findLegTop(pts, n, L, W, H)) * H;
+  const kneeY = (hints.knee ?? findKnee(pts, n, legTop, W)) * legTop;
   const zMid = (zMin + zMax) / 2;
   const zNeck = zMax - 0.3 * L;
   const zRoot = zMin + 0.16 * L;
+  // Knee blend: below the knee the lower leg bone, above the upper; wide enough to bend smoothly.
+  const kb = 0.14 * legTop;
 
   const skinIndex = new Uint16Array(n * 4);
   const skinWeight = new Float32Array(n * 4);
-  // Weighted centroids of each leg's own vertices give the hip pivots.
-  const legSum = [0, 1, 2, 3].map(() => ({ w: 0, x: 0, z: 0 }));
+  // Weighted centroids of each leg's own vertices give the hip pivots (the knee sits under the hip).
+  const hipSum = [0, 1, 2, 3].map(() => ({ w: 0, x: 0, z: 0 }));
   let headY = 0, headW = 0, tailY = 0, tailW = 0;
-  const cand = new Float32Array(7);
+  const cand = new Float32Array(BONE_COUNT);
   for (let i = 0; i < n; i++) {
     const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
     const ax = Math.abs(x);
     const lateral = smooth(0.1 * W, 0.22 * W, ax); // 0 on the centreline (belly, tail), 1 out at a leg
-    const legW = (1 - smooth(legTop * 0.7, legTop * 1.15, y)) * lateral;
+    const legW = (1 - smooth(legTop * 0.6, legTop * 1.2, y)) * lateral;
     const front = smooth(zMid - 0.06 * L, zMid + 0.06 * L, z);
     const left = smooth(-0.08 * W, 0.08 * W, x);
-    cand[BONE_FL] = legW * front * left;
-    cand[BONE_FR] = legW * front * (1 - left);
-    cand[BONE_HL] = legW * (1 - front) * left;
-    cand[BONE_HR] = legW * (1 - front) * (1 - left);
+    const lowerF = 1 - smooth(kneeY - kb, kneeY + kb, y);
+    const q = [legW * front * left, legW * front * (1 - left), legW * (1 - front) * left, legW * (1 - front) * (1 - left)];
+    for (let k = 0; k < 4; k++) {
+      cand[BONE_FL + k] = q[k] * (1 - lowerF);
+      cand[BONE_LOWER + k] = q[k] * lowerF;
+    }
     const room = 1 - legW;
     cand[BONE_HEAD] = room * smooth(zNeck - 0.05 * L, zNeck + 0.08 * L, z) * smooth(legTop * 0.9, legTop * 1.3, y);
     cand[BONE_TAIL] = room * (1 - smooth(zMin + 0.1 * L, zMin + 0.22 * L, z)) * (1 - lateral) * smooth(0.35 * legTop, 0.6 * legTop, y);
     let sum = 0;
-    for (let b = 1; b < 7; b++) sum += cand[b];
+    for (let b = 1; b < BONE_COUNT; b++) sum += cand[b];
     cand[BONE_BODY] = Math.max(0, 1 - sum);
     // Top four influences, normalised.
     let w4 = 0;
     for (let k = 0; k < 4; k++) {
       let best = -1, bw = 0;
-      for (let b = 0; b < 7; b++) if (cand[b] > bw) { bw = cand[b]; best = b; }
+      for (let b = 0; b < BONE_COUNT; b++) if (cand[b] > bw) { bw = cand[b]; best = b; }
       if (best < 0) break;
       skinIndex[i * 4 + k] = best;
       skinWeight[i * 4 + k] = bw;
@@ -211,11 +259,14 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
       skinIndex[i * 4] = BONE_BODY;
       skinWeight[i * 4] = 1;
     } else for (let k = 0; k < 4; k++) skinWeight[i * 4 + k] /= w4;
-    // Pivot statistics from vertices that belong clearly to a part.
+    // Pivot statistics from vertices that belong clearly to a part (a lower leg counts for its leg's hip too).
     for (let k = 0; k < 4; k++) {
       const b = skinIndex[i * 4 + k], w = skinWeight[i * 4 + k];
-      if (b >= BONE_FL && w > 0.8) {
-        const s = legSum[b - BONE_FL];
+      if (b >= BONE_FL && b < BONE_FL + 4 && w > 0.8) {
+        const s = hipSum[b - BONE_FL];
+        s.w += 1; s.x += x; s.z += z;
+      } else if (b >= BONE_LOWER && w > 0.8) {
+        const s = hipSum[b - BONE_LOWER];
         s.w += 1; s.x += x; s.z += z;
       } else if (b === BONE_HEAD && w > 0.8 && Math.abs(z - zNeck) < 0.06 * L) { headY += y; headW++; }
       else if (b === BONE_TAIL && w > 0.8 && z < zRoot + 0.05 * L) { tailY += y; tailW++; }
@@ -230,8 +281,10 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
     [0.18 * W, zMid - 0.25 * L], [-0.18 * W, zMid - 0.25 * L],
   ];
   for (let k = 0; k < 4; k++) {
-    const s = legSum[k];
-    pivots[BONE_FL + k] = s.w > 0 ? [s.x / s.w, legTop, s.z / s.w] : [quad[k][0], legTop, quad[k][1]];
+    const s = hipSum[k];
+    const hip: [number, number, number] = s.w > 0 ? [s.x / s.w, legTop, s.z / s.w] : [quad[k][0], legTop, quad[k][1]];
+    pivots[BONE_FL + k] = hip;
+    pivots[BONE_LOWER + k] = [hip[0], kneeY, hip[2]];
   }
-  return { frame, length: L, height: H, width: W, legLength: legTop, pivots, skinIndex, skinWeight };
+  return { frame, length: L, height: H, width: W, legLength: legTop, kneeHeight: kneeY, pivots, skinIndex, skinWeight };
 }

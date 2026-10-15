@@ -2,7 +2,7 @@
  * AnimalRig: a procedural skeleton for a static animal mesh.
  *
  * The art animals are plain meshes (no bones, no clips). `AnimalTemplate`
- * cuts one into head, tail, four legs and body (segment.ts), writes skin
+ * cuts one into head, tail, body and four two-segment legs (segment.ts), writes skin
  * weights onto a copy of its geometry and keeps them; `AnimalRig` is one
  * animal's skinned mesh, bones and gait state. The pose each frame comes
  * from gait.ts (speed -> gait phase, idle/walk/trot/gallop blend) plus
@@ -17,7 +17,7 @@
 import * as THREE from "three";
 import { advancePhase, attackPose, deathProgress, gaitAt, legCurve, newGait, type GaitParams } from "./gait.js";
 import {
-  BONE_BODY, BONE_FL, BONE_HEAD, BONE_NAMES, BONE_TAIL, segmentQuadruped,
+  BONE_BODY, BONE_FL, BONE_HEAD, BONE_LOWER, BONE_NAMES, BONE_TAIL, segmentQuadruped,
   type SegmentHints, type Segmentation,
 } from "./segment.js";
 
@@ -77,7 +77,7 @@ export class AnimalTemplate {
   }
 }
 
-const scratchPose = { angle: 0, lift: 0 };
+const scratchPose = { angle: 0, lift: 0, flex: 0 };
 const scratchAttack = { windup: 0, strike: 0 };
 
 export class AnimalRig {
@@ -106,13 +106,14 @@ export class AnimalRig {
       b.name = name;
       this.bones.push(b);
     }
-    // Body is the root; the others hang off it at their pivots.
+    // Body is the root; head, tail and upper legs hang off it, each lower leg off its upper leg.
     for (let i = 0; i < this.bones.length; i++) {
       const [x, y, z] = pivots[i];
-      const parent = i === BONE_BODY ? null : pivots[BONE_BODY];
+      const parentIndex = i === BONE_BODY ? -1 : i >= BONE_LOWER ? i - BONE_LOWER + BONE_FL : BONE_BODY;
+      const parent = parentIndex >= 0 ? pivots[parentIndex] : null;
       this.rest.push(parent ? [x - parent[0], y - parent[1], z - parent[2]] : [x, y, z]);
       this.bones[i].position.set(...this.rest[i]);
-      if (i !== BONE_BODY) this.bones[BONE_BODY].add(this.bones[i]);
+      if (parentIndex >= 0) this.bones[parentIndex].add(this.bones[i]);
     }
     this.mesh = new THREE.SkinnedMesh(template.geometry, material);
     this.mesh.name = "animal";
@@ -165,19 +166,35 @@ export class AnimalRig {
     );
     // Gallop bounds nose-up/down; the windup rocks the weight back onto the haunches.
     const pitch = Math.sin(2 * Math.PI * this.phase) * 0.05 * g.moveW * Math.min(1, g.gait) + windup * 0.12 - strike * 0.08;
-    body.rotation.set(pitch * alive, 0, 0);
+    const trotW = g.moveW * Math.max(0, 1 - Math.max(0, g.gait - 1)); // the spine twists in walk and trot, less in a gallop
+    const twist = Math.sin(2 * Math.PI * this.phase) * 0.04 * trotW;
+    body.rotation.set(pitch * alive, twist * alive, Math.sin(2 * Math.PI * this.phase + 1.2) * 0.02 * trotW * alive);
 
+    // Legs: the upper leg swings from the hip, the lower leg bends at the knee only. The knee
+    // folds the foot back on a front leg (carpus) and forward on a hind leg (hock): the opposite way.
+    const bodyDrop = (bob + breathe - windup * 0.1 * L) * alive;
     for (let k = 0; k < 4; k++) {
-      const leg = this.bones[BONE_FL + k];
+      const upper = this.bones[BONE_FL + k];
+      const lower = this.bones[BONE_LOWER + k];
       legCurve(this.phase + g.offsets[k], g.duty, scratchPose);
-      // Forward foot is +Z: swing about X by a negative angle. The foot's reach is L sin(angle), so
-      // sin(angle) runs linearly through stance (a constant ground speed: no sliding), and the hip
-      // drops by L (1 - cos) so the foot stays on the ground instead of arcing up.
+      const side = k % 2 === 0 ? 1 : -1;
+      const front = k < 2;
+      // The foot's reach is L sin(angle): sin(angle) runs linearly through stance (constant ground
+      // speed, no sliding), and the hip drops by L (1 - cos) so a straight stance leg keeps its foot down.
       const ang = Math.asin(Math.sin(g.sweep) * scratchPose.angle) * alive;
-      leg.rotation.set(-ang, 0, (k % 2 === 0 ? 1 : -1) * d * 0.5);
-      leg.position.set(
+      const flex = ((front ? g.flexF : g.flexH) * scratchPose.flex) * alive + d * 0.5;
+      const bend = front ? flex : -flex;
+      upper.rotation.set(-ang, 0, side * d * 0.5);
+      lower.rotation.set(bend, 0, 0);
+      // Where the flexed foot would be relative to the straight leg at this angle: the knee lifts it,
+      // but a leg reaching forward with a straightening lower leg would dip it below the ground, so
+      // the hip rises just enough to keep a small swing clearance.
+      const cosA = Math.cos(ang);
+      const rise = seg.kneeHeight * (cosA - Math.cos(ang - bend));
+      const clearance = Math.max(rise, 0.5 * g.lift * scratchPose.lift * g.moveW * alive);
+      upper.position.set(
         this.rest[BONE_FL + k][0],
-        this.rest[BONE_FL + k][1] - (bob + breathe - windup * 0.1 * L) * alive - L * (1 - Math.cos(ang)) + scratchPose.lift * g.lift * g.moveW * alive,
+        this.rest[BONE_FL + k][1] - bodyDrop - L * (1 - cosA) + (clearance - rise),
         this.rest[BONE_FL + k][2],
       );
     }
@@ -186,13 +203,13 @@ export class AnimalRig {
     const head = this.bones[BONE_HEAD];
     head.rotation.set(
       (-pitch * 0.8 + Math.sin(4 * Math.PI * this.phase) * 0.05 * g.moveW + windup * 0.35 - strike * 0.5 + Math.sin(this.clock * 0.7) * 0.03) * alive + d * 0.4,
-      Math.sin(this.clock * 0.4) * 0.15 * (1 - g.moveW) * alive,
+      (Math.sin(this.clock * 0.4) * 0.15 * (1 - g.moveW) - twist * 1.5) * alive,
       0,
     );
     // Tail: swings side to side with the stride, lagging it; a lazy drift when idle.
     const tail = this.bones[BONE_TAIL];
     tail.rotation.set(
-      0.08 * Math.sin(2 * Math.PI * this.phase) * g.moveW + windup * -0.2,
+      0.1 * Math.sin(4 * Math.PI * this.phase - 0.9) * g.moveW + windup * -0.2,
       (0.35 * Math.sin(2 * Math.PI * this.phase - 1) * g.moveW + 0.12 * Math.sin(this.clock * 1.1)) * alive,
       0,
     );
