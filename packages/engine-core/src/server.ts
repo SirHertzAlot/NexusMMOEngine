@@ -736,7 +736,8 @@ async function main(): Promise<void> {
     },
   };
   // A scene's nodes spawn through the creature, prop, item and quest paths (EA6, data-driven entities).
-  // After items and quests exist, so item and quest nodes have somewhere to go.
+  // After items and quests exist, so item and quest nodes have somewhere to go: this runs once the systems are assembled.
+  const spawnBootScene = (): void => {
   if (process.env.MMO_SCENE) {
     const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
     const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
@@ -776,6 +777,7 @@ async function main(): Promise<void> {
         (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
     );
   }
+  };
   // Dungeon instances (D4): the gateway's "dungeon" extension starts a
   // sandbox gateway per run from the prebaked pool and commits its result.
   // Slice 3: the dungeons module builds the pool and InstanceManager from
@@ -905,6 +907,7 @@ async function main(): Promise<void> {
     character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
     mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
   };
+  spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
   // above). Contents attached earlier (attachContents) still reach these
@@ -977,6 +980,8 @@ async function main(): Promise<void> {
     // 16x16 heights to chunk rows on network snapshots/deltas. The
     // persistence path never sees them (SnapshotStore collects separately).
     chunkSource: procgen,
+    // On-demand chunk tiles (0x22/0x23) are generated from this seed.
+    worldSeed,
     // Editor-only debug (protocol v3, 0x0a): read-only answers composed
     // from the live sim. The gateway only validates/authenticates and
     // encodes — all sim knowledge lives behind this interface.
