@@ -297,3 +297,51 @@ describe("structures in a scene", () => {
     assert.equal(r.spawned[0].entities.length, 1);
   });
 });
+
+describe("sea level in a scene", () => {
+  const house = (id: string, x = 10, z = 20) => ({ id, transform: { position: [x, 0, z] }, components: { Structure: { kind: "house", width: 6, depth: 6, height: 3 } } });
+  const tree = (id: string, x = 10, z = 20) => ({ id, kind: "prefab", prefab: "oak", transform: { position: [x, 0, z] } });
+  const run = (nodes: unknown[], ground: (x: number, z: number) => number, extra: object = {}) => {
+    const { deps } = setup();
+    return spawnScene(doc(nodes) as never, { ...deps, groundHeightAt: ground, seaLevel: 0, ...extra });
+  };
+
+  it("refuses a house under water, with the reason, instead of drowning it", () => {
+    const r = run([house("drowned"), house("dry", 100, 20)], (x) => (x < 50 ? -2 : 5));
+    assert.deepEqual(r.spawned.map((s) => s.id), ["dry"]);
+    assert.match(r.skipped.find((s) => s.id === "drowned")!.reason, /under water|below the water/);
+  });
+
+  it("refuses a house on a shore parcel: any part of the footprint within a metre of the water", () => {
+    const slope = (x: number): number => (x - 7) * 0.5; // the footprint (x 7..13) climbs from 0 to 3 m
+    assert.equal(run([house("shore")], slope).spawned.length, 0);
+    assert.equal(run([house("ok")], (x) => 1 + (x - 7) * 0.5).spawned.length, 1, "lowest point exactly 1 m up");
+    assert.equal(run([house("close")], (x) => 0.99 + (x - 7) * 0.5).spawned.length, 0, "a hair under");
+  });
+
+  it("refuses a house on a river or lake cell, and under a lake's surface", () => {
+    assert.equal(run([house("riv")], () => 5, { riverAt: () => true }).spawned.length, 0);
+    assert.equal(run([house("lake")], () => 40, { waterAt: () => 40.5 }).spawned.length, 0);
+    assert.equal(run([house("far")], () => 40, { waterAt: () => 10 }).spawned.length, 1);
+  });
+
+  it("refuses a land prop below the water or inside the margin; one exactly at the margin stands", () => {
+    assert.equal(run([tree("sunk")], () => -2).spawned.length, 0);
+    assert.match(run([tree("sunk")], () => -2).skipped[0].reason, /water/);
+    assert.equal(run([tree("wet")], () => 0.29).spawned.length, 0);
+    assert.equal(run([tree("edge")], () => 0.3).spawned.length, 1);
+  });
+
+  it("an aquatic prop (habitat water) stands on the sea floor within its depths", () => {
+    const { deps } = setup();
+    const coral = parseSpawnTableJSON({ version: 1, archetypes: { coral: { asset: "coral", habitat: "water", depthM: [1, 6] } } });
+    const go = (g: number) => spawnScene(doc([{ id: "c", kind: "prefab", prefab: "coral", transform: { position: [1, 0, 1] } }]) as never, { ...deps, table: () => coral, groundHeightAt: () => g, seaLevel: 0 }).spawned.length;
+    assert.equal(go(-2), 1);
+    assert.equal(go(3), 0);
+  });
+
+  it("without any water known, nothing is refused (legacy worlds)", () => {
+    const { deps } = setup();
+    assert.equal(spawnScene(doc([house("h")]) as never, { ...deps, groundHeightAt: () => -50 }).spawned.length, 1);
+  });
+});

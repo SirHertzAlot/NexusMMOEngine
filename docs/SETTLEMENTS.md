@@ -82,6 +82,16 @@ and props, not a settlement-specific loader.
   size, so a spawned town is visible before any art is mapped.
 - **Mapping kinds to art later** is only a table from `structure:<kind>` to a
   model in the art manifest; nothing on the server changes.
+- **Wet footing.** The scene spawner refuses (and reports as skipped) a building
+  whose footprint, sampled about a metre apart, has any point less than 1 m above
+  the water surface (sea or lake) or on a river cell, instead of drowning it.
+  Upstream, a settlement request can carry `site: { origin, dry }` (`--world` does):
+  parcels whose footprint (a 5 x 5 grid of tests) is not dry are dropped before the
+  structures are solved, and the grid grows a block row at a time (up to 3) to make up
+  for them; if the dry parcels still cannot house and serve the town, generation fails
+  with "the site is too wet for the town ... choose a drier site". A dry site is the
+  same town as no site. `--origin` without `--world` has no terrain to test, so only
+  the spawner's refusal protects it.
 - Entities are remembered per boot like every scene's, so a restart does not
   duplicate the town.
 - Not spawned yet: roads (SG2 brings engineered roads) and the residents. The

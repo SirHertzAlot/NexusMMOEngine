@@ -37,6 +37,7 @@ import { createHash } from "node:crypto";
 import { fnv1a32, type EntitySpawn, type SpawnArchetype } from "@mmo-engine/scatter";
 import { SCALE_CATEGORIES } from "@mmo-engine/scene";
 import { terrainHeightAt } from "../systems.js";
+import { bandSurfaceAt, habitatOk, HABITATS, LAND_MARGIN_M, surfaceAt, type Habitat } from "./habitat.js";
 import { checkFormation, FormationCache, formationExtent, formationPieces, formationTile, pickAsset, tileOfChunk, type FormationSpec } from "./formation.js";
 
 // ---------------------------------------------------------------- plan
@@ -103,7 +104,13 @@ export interface EcologyLayer {
   slope?: [number, number];
   /** Extra chance per unit of slope (outcrops like steep ground). */
   slopeBoost?: number;
-  /** Ground height above the water surface, metres ([min, max]; max null = no limit). */
+  /**
+   * Where it lives against the water: "land" (default) stands at least the plan's `landMarginM` above
+   * the sea or lake; "shore" keeps to its `aboveWater` band round the water line (reeds); "water" is
+   * aquatic (coral, kelp, lily pads) and the only kind placed below it, on the floor within its `aboveWater` depths.
+   */
+  habitat?: Habitat;
+  /** Ground height above the water surface, metres ([min, max]; max null = no limit). Required for shore and water layers (water: depths, max <= 0). */
   aboveWater?: [number, number | null];
   /** Stand on the water surface, not the ground (lily pads). */
   onWater?: boolean;
@@ -131,6 +138,8 @@ export interface EcologyPlan {
   /** biome name → group → multiplier; `default` for anything unlisted (and worlds without biomes). */
   biomes: Record<string, Record<string, number>>;
   layers: EcologyLayer[];
+  /** How far above the water surface land layers stand, metres (default LAND_MARGIN_M). */
+  landMarginM?: number;
 }
 
 /** Read and check a plan (layer references, fields, asset lists). */
@@ -141,6 +150,12 @@ export function parseEcologyPlan(json: unknown): EcologyPlan {
   for (const l of plan.layers) {
     if (l.category !== undefined && !(SCALE_CATEGORIES as readonly string[]).includes(l.category)) throw new Error(`ecology plan: layer "${l.id}" has unknown category "${l.category}" (have ${SCALE_CATEGORIES.join(", ")})`);
     if (seen.has(l.id)) throw new Error(`ecology plan: layer "${l.id}" twice`);
+    if (l.habitat !== undefined && !HABITATS.includes(l.habitat)) throw new Error(`ecology plan: layer "${l.id}" has unknown habitat "${String(l.habitat)}" (have ${HABITATS.join(", ")})`);
+    if (l.habitat === "shore" && !l.aboveWater) throw new Error(`ecology plan: shore layer "${l.id}" needs aboveWater (the band it keeps to)`);
+    if (l.habitat === "water") {
+      if (!l.aboveWater) throw new Error(`ecology plan: water layer "${l.id}" needs aboveWater, its depth range (negative metres)`);
+      if (l.aboveWater[0] > 0 || (l.aboveWater[1] ?? 1) > 0) throw new Error(`ecology plan: water layer "${l.id}" must stay below the water (aboveWater max <= 0)`);
+    }
     if (l.place.kind === "around" && !seen.has(l.place.parent)) {
       throw new Error(`ecology plan: layer "${l.id}" grows around "${l.place.parent}", which must come before it`);
     }
@@ -285,8 +300,8 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
     const dz = (ground(x, czp) - ground(x, czm)) / (czp - czm);
     return { slope: Math.hypot(dx, dz), dx, dz };
   };
-  const water = (x: number, z: number): number | null =>
-    ctx.waterAt ? ctx.waterAt(x, z) : ctx.seaLevel !== undefined ? ctx.seaLevel : null;
+  const water = (x: number, z: number): number | null => surfaceAt(ctx.waterAt, ctx.seaLevel, x, z);
+  const margin = plan.landMarginM ?? LAND_MARGIN_M;
   const biomeOf = (x: number, z: number): string => ctx.biomeAt?.(x, z) ?? "default";
   const biomeFactor = (layer: EcologyLayer, biome: string): number => {
     if (!layer.biome) return 1;
@@ -315,11 +330,7 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
       if (r(0) >= p) return null;
       const g = ground(x, z);
       const w = water(x, z);
-      if (layer.aboveWater) {
-        const above = w === null ? Infinity : g - w;
-        const [lo, hi] = layer.aboveWater;
-        if (above < lo || (hi !== null && above > hi)) return null;
-      }
+      if (!habitatOk(layer, margin, g, w, bandSurfaceAt(ctx.waterAt, ctx.seaLevel, x, z))) return null;
       for (const [other, dist] of Object.entries(layer.avoid ?? {})) {
         for (const q of placed.get(other) ?? []) {
           const dx = q.x - x;
@@ -374,6 +385,8 @@ export function planChunk(plan: EcologyPlan, ctx: EcologyContext): EcologyPoint[
       for (const fp of tilePoints) {
         if (fp.x < x0 - margin || fp.x >= x0 + W + margin || fp.z < z0 - margin || fp.z >= z0 + W + margin) continue;
         const own = fp.x >= x0 && fp.x < x0 + W && fp.z >= z0 && fp.z < z0 + W;
+        // A piece the ground puts in or at the water is dropped (its site's cell passed; the piece may not).
+        if (fp.option >= 0 && !habitatOk(layer, margin, fp.y, water(fp.x, fp.z), bandSurfaceAt(ctx.waterAt, ctx.seaLevel, fp.x, fp.z))) continue;
         // A piece, or a site's unseen centre (option < 0: avoided, never spawned).
         const piece = fp.option >= 0 ? pieces[fp.option].piece : null;
         const r = (k: number): number => unit(hash(layerSeed, fp.i, fp.j, k));

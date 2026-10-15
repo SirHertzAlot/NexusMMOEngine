@@ -30,7 +30,7 @@ import {
 } from "../../src/index.js";
 import type { ScatterBinding, ScatterContent } from "../../src/index.js";
 import type { SpawnRecord } from "@mmo-engine/scatter";
-import { fnv1a32 } from "@mmo-engine/scatter";
+import { fnv1a32, parseSpawnTableJSON } from "@mmo-engine/scatter";
 
 function flatHeights(n: number, h = 3): Float32Array {
   return new Float32Array(n).fill(h);
@@ -197,4 +197,27 @@ test("real binding: deterministic across runs, points rest on terrain", () => {
     // not the old y=0 bug.
     assert.ok(Math.abs(p.y - hAt(p.x, p.z)) < 0.05, `y=${p.y} off terrain`);
   }
+});
+
+test("scatterChunkToECS: nothing lands in or at the water (sea level, and a lake's surface), a tree at -2 m is dropped", () => {
+  const rec = (y: number, x = 4): SpawnRecord => ({ ...oakRecord(), x, y });
+  const run = (records: SpawnRecord[], extra: object): number =>
+    scatterChunkToECS(new SimWorld(), stubBinding(records), stubContent(), { worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256), ...extra }).length;
+  assert.equal(run([rec(-2)], { seaLevel: 0 }), 0);
+  assert.equal(run([rec(0.1)], { seaLevel: 0 }), 0, "inside the margin");
+  assert.equal(run([rec(0.3)], { seaLevel: 0 }), 1, "exactly at the margin");
+  assert.equal(run([rec(40)], { seaLevel: 0, waterAt: () => 41 }), 0, "under a lake");
+  assert.equal(run([rec(40, 4), rec(60, 9)], { seaLevel: 0, waterAt: (x: number) => (x < 6 ? 41 : null) }), 1, "by the lake's own cells");
+});
+
+test("scatterChunkToECS: a spawn-table archetype with habitat water is the one kind placed below the sea, within its depths", () => {
+  const table = parseSpawnTableJSON({ version: 1, archetypes: { coral: { asset: "coral", habitat: "water", depthM: [1, 6] }, oak: { asset: "oak" } } });
+  const rec = (asset: string, y: number): SpawnRecord => ({ ...oakRecord(), asset, y });
+  const run = (records: SpawnRecord[]): number =>
+    scatterChunkToECS(new SimWorld(), stubBinding(records), { ...stubContent(), table }, { worldSeed: 99n, cx: 0, cz: 0, heights: flatHeights(256), seaLevel: 0 }).length;
+  assert.equal(run([rec("coral", -2), rec("oak", -2)]), 1, "the coral, not the oak");
+  assert.equal(run([rec("coral", -0.5)]), 0, "too shallow");
+  assert.equal(run([rec("coral", -9)]), 0, "too deep");
+  assert.equal(run([rec("coral", 3)]), 0, "not on land");
+  assert.throws(() => parseSpawnTableJSON({ version: 1, archetypes: { coral: { asset: "coral", habitat: "water" } } }), /depthM/);
 });

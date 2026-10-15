@@ -78,7 +78,7 @@ export async function makeWorldPopulator(opts: {
   if (kind !== "ecology" && kind !== "pcg") throw new Error(`MMO_SCATTER=${kind}: want ecology or pcg`);
   if (kind === "pcg") {
     const bounds = await loadPcgBounds();
-    const p = makeScatterPopulator(opts.worldSeed, opts.chunkWorldSize, { bounds, scale, ...(opts.seaLevel === undefined ? {} : { seaLevel: opts.seaLevel }) });
+    const p = makeScatterPopulator(opts.worldSeed, opts.chunkWorldSize, { bounds, scale, ...(opts.seaLevel === undefined ? {} : { seaLevel: opts.seaLevel }), ...(opts.waterAt ? { waterAt: opts.waterAt } : {}) });
     opts.log?.(`[scatter] PCG forest graph (PICG trees, colliders ${bounds ? "from the cooked meshes" : "default boxes: no native cook"})`);
     return { ...p, planHash: p.planHash, kind };
   }

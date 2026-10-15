@@ -95,8 +95,8 @@ describe("ecology placement", () => {
 
   it("reeds keep to the water line; lily pads float on the shallows", () => {
     const p = plan([
-      { id: "reeds", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-0.4, 0.4], assets: A("reed"), scale: [1, 1] },
-      { id: "lilies", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-1.5, -0.4], onWater: true, assets: A("lily"), scale: [1, 1] },
+      { id: "reeds", habitat: "shore", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-0.4, 0.4], assets: A("reed"), scale: [1, 1] },
+      { id: "lilies", habitat: "water", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-1.5, -0.4], onWater: true, assets: A("lily"), scale: [1, 1] },
     ]);
     // Ground rising from 2 m under the water (x = 0) to 3 m above it (x = 16); the surface at 10.
     const ground = (x: number): number => 8 + (x / W) * 5;

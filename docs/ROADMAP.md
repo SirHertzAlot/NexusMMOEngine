@@ -281,6 +281,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | --- | --- | --- | --- |
 | — | World bake (4 × 4 km, climate-driven survey, glaciers, volcano) | ✅ | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 1 |
 | TE1 | Terrain relief: sharp crests (pointed range profile, domain-warped ridged multifractal), stream-power valley incision, rock-aware talus, gullied volcano cone; each switchable in the world spec | 🚧 | [`WORLD-BUILDING.md`](WORLD-BUILDING.md) "Relief passes"; the default world opts in, so worlds must be re-baked (`npm run bake:world:force`) |
+| TE2 | Sea level in placement: land content (trees, props, buildings) never below or at the water; `habitat` land/shore/water per ecology layer and spawn-table archetype with a depth range for aquatic ones; the scene spawner refuses wet buildings and props; settlement parcels that are not dry are dropped (the grid grows to make up) | 🚧 | [`WORLD-BUILDING.md`](WORLD-BUILDING.md) "Sea level and habitat", [`SETTLEMENTS.md`](SETTLEMENTS.md); on branch `fix/sea-level-placement`; no coral or kelp art exists yet |
 | — | Server streaming of chunks round players | ✅ | 〃 Phase 2 |
 | — | Client terrain: streamed chunks near, the coarse map to the horizon, water, sky, weather | ✅ | 〃 Phase 3, [`CLIENT-FX.md`](CLIENT-FX.md) |
 | — | Client terrain LOD rings and fewer terrain draw calls | ✅ | 〃 Phase 3: 289 → 25 terrain draw calls for a 17×17 area (#114) |
@@ -384,6 +385,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-15**: TE2 sea level in placement (🚧) on `fix/sea-level-placement`: houses, trees and props were placed below the water (on the 4 km scratch world, 131 of 9 504 sampled ecology points were land layers on ground at or below sea level, and 136 to 230 of 288 buildings stood wet at shore origins). `habitat` (land default, shore, water with a depth range) on ecology layers and spawn-table archetypes, land needs 0.3 m over the water (sea level is the floor even where the lake lookup finds none), the scene spawner refuses buildings under 1 m above it or on rivers and wet props, wet settlement parcels are dropped and the grid grows to compensate. The wilds plan's hash changes (reeds/lilies annotated): re-bake.
 
 - **2026-10-15**: TE1 terrain relief (🚧) on `feat/terrain-erosion`: mountains read as blobs on dirt mounds (rounded quartic range profile, ridge noise only scaled the height, river cuts capped near 24 m, no bare-rock angle, volcano cone left perfectly smooth). New opt-in passes: `ranges.crest` (pointed profile + ridged multifractal), `erosion.incision` (implicit stream power), `erosion.rockTalusDeg`, `volcano.gullies`; the default world opts in (re-bake needed, town sites move). Survey 9.6 s to 13.5 s.
 

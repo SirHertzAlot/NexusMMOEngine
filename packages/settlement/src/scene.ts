@@ -8,7 +8,7 @@
 
 import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene";
 import type { SettlementManifest } from "./generate.js";
-import { scaledLayout } from "./layout.js";
+import { scaledLayout, townCentreMm } from "./layout.js";
 import { buildingHeightM, type SettlementRules } from "./rules.js";
 
 /** A stable index from an id (FNV-1a), so the same structure always gets the same model. */
@@ -34,8 +34,7 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
   const f = manifest.scale ?? 1;
   const [pw, pd] = scaledLayout(rules, f).parcelMm;
   const nodes = manifest.roads.nodes;
-  const cx = (Math.min(...nodes.map((n) => n.x)) + Math.max(...nodes.map((n) => n.x))) / 2;
-  const cz = (Math.min(...nodes.map((n) => n.z)) + Math.max(...nodes.map((n) => n.z))) / 2;
+  const { x: cx, z: cz } = townCentreMm(nodes);
   const parcels = new Map(manifest.parcels.map((p) => [p.id, p]));
   const children: SceneNode[] = manifest.structures.map((s) => {
     const p = parcels.get(s.parcel)!;

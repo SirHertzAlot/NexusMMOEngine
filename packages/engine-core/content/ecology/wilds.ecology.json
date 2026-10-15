@@ -1710,6 +1710,7 @@
   },
   {
    "id": "reedbed",
+   "habitat": "shore",
    "category": "plant",
    "place": {
     "kind": "field",
@@ -1734,6 +1735,7 @@
   },
   {
    "id": "reeds",
+   "habitat": "shore",
    "category": "plant",
    "place": {
     "kind": "around",
@@ -1778,6 +1780,7 @@
   },
   {
    "id": "lilies",
+   "habitat": "water",
    "category": "plant",
    "place": {
     "kind": "field",

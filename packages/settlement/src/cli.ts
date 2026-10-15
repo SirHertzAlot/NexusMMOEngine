@@ -47,13 +47,16 @@ async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const out = o.out ? fromUser(o.out) : resolve(here, "../../../../content/settlements");
   let origin = (o.origin ?? "0,0").split(",").map(Number);
+  /** The world's dryness test at a point (with --world): parcels that are not dry are dropped from the town. */
+  let dry: ((x: number, z: number) => boolean) | undefined;
   if (o.world) {
     const rules = o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES;
     const households = Math.round((Number(o.population ?? 600) * 10) / rules.demographics.householdSizeX10);
     const buildingScale = o.scale ? resolveScale(JSON.parse(readFileSync(fromUser(o.scale), "utf8")) as ScaleDoc, "building") : 1;
     const extent = townHalfExtentM(households, rules, buildingScale);
-    const sites = await findSites(fromUser(o.world), here, rules, extent);
-    const site = sites[Number(o.site ?? 1) - 1];
+    const found = await findSites(fromUser(o.world), here, rules, extent);
+    dry = found.dry;
+    const site = found.sites[Number(o.site ?? 1) - 1];
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
     origin = [site.x, site.z];
     console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, elevation ${site.elevationM} m, relief ${site.reliefM} m over a ${Math.round(2 * extent)} m town, ${site.biome}`);
@@ -74,7 +77,7 @@ async function main(): Promise<void> {
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
     out,
     o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
@@ -84,14 +87,25 @@ async function main(): Promise<void> {
   console.log(`[settlement:bake] ${m.settlementId}: ${m.demographics.population} people, ${m.parcels.length} parcels, ${m.structures.length} structures, hash ${m.hash.slice(0, 12)} -> ${r.file}`);
 }
 
-/** The world's sites, best first: the survey from the built engine-core, read by selectSites. */
-async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<Site[]> {
+/** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is land a structure's margin above the sea, and no lake or river. */
+async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
   const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
   const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { biomes: { id: string }[] } };
   const spec = loadWorldSpec(worldFile);
   const survey = surveyWorld(spec);
-  return selectSites({ ...survey, biomeIds: spec.biomes.map((b) => b.id) }, rules.sites, 20, extentM);
+  const fields = { ...survey, biomeIds: spec.biomes.map((b) => b.id) };
+  const { STRUCTURE_MARGIN_M } = (await import(pathToFileURL(resolve(here, "../../../engine-core/dist/src/procgen/habitat.js")).href)) as { STRUCTURE_MARGIN_M: number };
+  const g = survey.grid;
+  const sea = survey.seaLevel ?? 0;
+  const dry = (x: number, z: number): boolean => {
+    const u = Math.round((x - g.originX) / g.cell);
+    const v = Math.round((z - g.originZ) / g.cell);
+    if (u < 0 || v < 0 || u >= g.width || v >= g.depth) return false;
+    const i = v * g.width + u;
+    return !survey.water[i] && !survey.river[i] && survey.height[i]! >= sea + STRUCTURE_MARGIN_M;
+  };
+  return { sites: selectSites(fields, rules.sites, 20, extentM), dry };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

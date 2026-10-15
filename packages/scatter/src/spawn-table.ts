@@ -46,7 +46,14 @@ export const SpawnArchetypeSchema = z.object({
   category: z.enum(["building", "tree", "rock", "plant", "prop"]).optional(),
   /** Optional health → Health component at spawn. */
   health: z.object({ max: z.number().positive() }).optional(),
-});
+  /**
+   * Where it may stand against the water: "land" (default) stays above the sea and lakes; "water" (coral,
+   * kelp) is the only kind placed below them, on the floor within `depthM`.
+   */
+  habitat: z.enum(["land", "water"]).optional(),
+  /** habitat "water": the depths it grows at, [shallowest, deepest] metres below the surface. */
+  depthM: z.tuple([z.number().min(0), z.number().positive()]).optional(),
+}).refine((a) => a.habitat !== "water" || a.depthM !== undefined, { message: "habitat water needs depthM (the depths it grows at)", path: ["depthM"] });
 export type SpawnArchetype = z.infer<typeof SpawnArchetypeSchema>;
 
 export const SpawnTableSchema = z.object({

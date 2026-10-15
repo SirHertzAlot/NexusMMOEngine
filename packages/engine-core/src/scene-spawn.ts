@@ -37,6 +37,7 @@ import { BodyConfig, ShapeKind } from "./components.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
 import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
+import { archetypeOk, landDry, LAND_MARGIN_M, STRUCTURE_MARGIN_M, surfaceAt } from "./procgen/habitat.js";
 import type { ModelBounds } from "./procgen/prop-shape.js";
 import type { ScaleResolver } from "./scale.js";
 
@@ -56,6 +57,14 @@ export interface SceneSpawnDeps {
   /** The prop table (lazy: loading it cooks the scatter plan). */
   table: () => SpawnTable | null;
   groundHeightAt?: (x: number, z: number) => number;
+  /**
+   * The world's water (habitat.ts): the sea level, the water surface lookup (sea and lakes) and the river cells.
+   * With any of them, a building or prop standing in or at the water is refused (and reported), never drowned;
+   * aquatic archetypes (habitat water) are the only ones placed below it. Without them nothing is checked.
+   */
+  seaLevel?: number;
+  waterAt?: (x: number, z: number) => number | null;
+  riverAt?: (x: number, z: number) => boolean;
   /** The global scale: the factor per (category, asset), multiplied into every spawned prop and building. */
   scale?: ScaleResolver;
   /** Model sizes (the local art catalog): a Structure naming a model takes its body from them. */
@@ -196,6 +205,8 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         const sin = Math.sin(yaw);
         let high = -Infinity;
         let low = Infinity;
+        // Wet footing: every sample a metre above the water surface, and none on a river cell.
+        let wet: string | null = null;
         // A grid over the footprint, a sample a metre or so apart (the terrain's own sample spacing), always
         // including the corners, edge midpoints and centre. ponytail: capped at 32 a side; a bump narrower than that spacing can slip between samples.
         const nx = Math.min(16, Math.max(2, Math.ceil(hw)));
@@ -204,10 +215,20 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           for (let j = -nz; j <= nz; j++) {
             const lx = (i / nx) * hw;
             const lz = (j / nz) * hd;
-            const g = deps.groundHeightAt?.(x + lx * cos + lz * sin, z - lx * sin + lz * cos) ?? 0;
+            const sx = x + lx * cos + lz * sin;
+            const sz = z - lx * sin + lz * cos;
+            const g = deps.groundHeightAt?.(sx, sz) ?? 0;
             if (g > high) high = g;
             if (g < low) low = g;
+            if (wet === null && deps.groundHeightAt) {
+              if (!landDry(g, surfaceAt(deps.waterAt, deps.seaLevel, sx, sz), STRUCTURE_MARGIN_M)) wet = "under water or on the shore (less than " + STRUCTURE_MARGIN_M + " m above the water)";
+              else if (deps.riverAt?.(sx, sz)) wet = "on a river";
+            }
           }
+        }
+        if (wet !== null) {
+          out.skipped.push({ id: node.id, reason: `structure ${kind} refused: its footprint is ${wet}` });
+          continue;
         }
         // On a slope the floor stands a plinth above the highest sample: the ground between samples can peak a few cm higher.
         const floor = high - low > 0.01 ? high + PLINTH_M : high;
@@ -249,6 +270,10 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
     if (table && asset) {
       const built = buildSpawn(table, asset, x, ground + y, z, (w.yawDeg * Math.PI) / 180);
       if (!("error" in built)) {
+        if (deps.groundHeightAt && !archetypeOk(built.archetype, LAND_MARGIN_M, ground, surfaceAt(deps.waterAt, deps.seaLevel, x, z))) {
+          out.skipped.push({ id: node.id, reason: `prop ${asset} refused: ${built.archetype.habitat === "water" ? "not at its depths in the water" : "under water or on the shore"} (ground ${ground.toFixed(2)} m)` });
+          continue;
+        }
         built.sx = w.scale[0];
         built.sy = w.scale[1];
         built.sz = w.scale[2];

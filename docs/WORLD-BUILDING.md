@@ -199,6 +199,24 @@ There are three kinds of layer:
   tile, six or more `stone`s within 6.5 m of it, and no two centres within
   45 m.
 
+**Sea level and habitat.** Below the water (the sea, a lake) is for aquatic
+content only. A layer's `habitat` says where it may stand: `"land"` (the
+default) needs its ground at least the plan's `landMarginM` (default 0.3 m,
+`LAND_MARGIN_M` in `procgen/habitat.ts`) above the water surface, wherever the
+water lookup finds no water too (the sea level is the floor); `"shore"` keeps to
+its `aboveWater` band round the water line (reeds, ground a little under to a
+little over the surface); `"water"` is aquatic (coral, kelp, lily pads), the only
+kind placed below the water, on the floor between the depths of its `aboveWater`
+range (negative metres; `onWater: true` floats it on the surface instead).
+`parseEcologyPlan` refuses a shore layer without a band and a water layer
+without a depth range. The same rule runs in the PCG path (a spawn-table
+archetype takes `habitat: "water"` with `depthM: [shallowest, deepest]`) and in the
+scene spawner, which refuses (and lists under `skipped`) a land prop in the water
+and a building whose footprint is not at least `STRUCTURE_MARGIN_M` (1 m) above
+it or lies on a river cell. One source of the water: the world's sea level
+(`sea_level` meta, from the spec) and the surface lookup built from the bake's
+`water_level` map.
+
 A layer also carries `assets` (weighted, with per-asset scale) and
 `biomeAssets` overrides — pines on the cold heights, broadleaves below — and
 an optional `collision` block so a boulder is something you can stand on or

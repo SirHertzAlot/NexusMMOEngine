@@ -68,6 +68,7 @@ import {
   type SpawnRecord,
   type SpawnTable,
 } from "@mmo-engine/scatter";
+import { archetypeOk, LAND_MARGIN_M, surfaceAt } from "./habitat.js";
 import { ecologySeed32, planChunk, type EcologyPlan } from "./ecology.js";
 import { bakeFormations, FormationCache, type FormationTileBacking } from "./formation.js";
 import type { ChunkDataSource } from "./chunk-source.js";
@@ -159,8 +160,9 @@ export interface ScatterChunkOptions {
   heights: Float32Array;
   /** Chunk world size in units (default 16, matches MMO_CHUNK_SIZE). */
   chunkWorldSize?: number;
-  /** Nothing is placed below this height (the sea: no trees on the sea floor). */
-  minHeight?: number;
+  /** The sea, and the lakes' surfaces: land content stays LAND_MARGIN_M above them (see habitat.ts). */
+  seaLevel?: number;
+  waterAt?: (x: number, z: number) => number | null;
   /** Model sizes, for colliders that fit the prop (see prop-shape.ts). */
   bounds?: ModelBounds;
   /** The global scale's factor per (category, asset). */
@@ -284,8 +286,7 @@ export function scatterChunkToECS(
     gridStep: chunkWorldSize / (side - 1),
   });
 
-  const minHeight = opts.minHeight ?? -Infinity;
-  const spawns = resolveSpawns(records, content.table).filter((s) => s.y >= minHeight);
+  const spawns = resolveSpawns(records, content.table).filter((s) => archetypeOk(s.archetype, LAND_MARGIN_M, s.y, surfaceAt(opts.waterAt, opts.seaLevel, s.x, s.z)));
   return spawns.map((s) => spawnScatterEntity(world, s, opts.bounds, opts.scale));
 }
 
@@ -293,13 +294,10 @@ export function scatterChunkToECS(
  * A chunk's first-load contents for the ChunkStreamer: the scatter plan
  * run over its heights. Loads the plan and the native binding once.
  */
-/** Scatter stays this far above the sea (props don't stand in the surf). */
-const SHORE_CLEARANCE_M = 0.2;
-
 export function makeScatterPopulator(
   worldSeed: bigint,
   chunkWorldSize: number,
-  opts: { seaLevel?: number; bounds?: ModelBounds; scale?: ScaleResolver } = {},
+  opts: { seaLevel?: number; waterAt?: (x: number, z: number) => number | null; bounds?: ModelBounds; scale?: ScaleResolver } = {},
 ): {
   populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
   readonly planHash: string;
@@ -315,7 +313,8 @@ export function makeScatterPopulator(
         cz,
         heights,
         chunkWorldSize,
-        minHeight: opts.seaLevel === undefined ? undefined : opts.seaLevel + SHORE_CLEARANCE_M,
+        seaLevel: opts.seaLevel,
+        waterAt: opts.waterAt,
         bounds: opts.bounds,
         scale: opts.scale,
       });

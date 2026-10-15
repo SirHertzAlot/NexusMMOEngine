@@ -186,6 +186,7 @@ import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, sp
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
+import { landDry, riverAtFromMap, surfaceAt } from "./procgen/habitat.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
@@ -591,8 +592,8 @@ async function main(): Promise<void> {
         seed: ecologySeed32(worldSeed),
         chunkWorldSize: CHUNK_SIZE,
         biomeAt,
-        // No packs in the water.
-        blocked: water ? (x, z) => (water(x, z) ?? -Infinity) > characterOf().groundHeight(x, z) : undefined,
+        // No packs in the water, nor on ground at or below the sea (the lake lookup finds no water near a low dry basin).
+        blocked: water ? (x, z) => !landDry(characterOf().groundHeight(x, z), surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z), 0) : undefined,
       });
       streamer.attachContents(sim, wild);
       const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
@@ -755,6 +756,10 @@ async function main(): Promise<void> {
         scale,
         bounds: fs.existsSync(ART_CATALOG) ? catalogBounds(ART_CATALOG) : undefined,
         groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
+        // Buildings and land props refuse to stand in the water (habitat.ts).
+        seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
+        waterAt: water ?? undefined,
+        riverAt: tiles.getMap("river") ? riverAtFromMap(tiles.getMap("river")!) : undefined,
         prefabs,
         species: (id) => speciesRoster.roster[id],
         items: {

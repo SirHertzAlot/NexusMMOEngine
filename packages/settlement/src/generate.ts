@@ -11,12 +11,17 @@ import { bakeDemographics } from "./demographics.js";
 import { solveDemand } from "./demand.js";
 import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
-import { layOut } from "./layout.js";
+import { layOut, scaledLayout, townCentreMm } from "./layout.js";
 import { occupy } from "./occupancy.js";
 import { streams, type Streams } from "./rng.js";
 import { BUILTIN_RULES, type SettlementRules } from "./rules.js";
 import { placeStructures } from "./structures.js";
 import { validateTown, type Gate, type Town } from "./validate.js";
+
+/** How many block rows a town beside water may grow to make up for its wet parcels. */
+const MAX_EXTRA_BLOCKS = 3;
+/** Where along a parcel side (fraction of its size from the centre) the dryness is tested: a 5 x 5 grid. */
+const FOOTPRINT_SAMPLES = [-0.5, -0.25, 0, 0.25, 0.5];
 
 export const GENERATOR_VERSION = "settlement-gen/0.1.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
@@ -28,6 +33,12 @@ export interface SettlementRequest {
   rules?: SettlementRules;
   /** The building factor (`resolveScale(doc, "building")`) the town is laid out at; default 1. */
   scale?: number;
+  /**
+   * Where the town will stand (the scene's origin, world metres [x, z]) and the world's dryness test at a world
+   * point. A parcel whose footprint (centre, corners, edge midpoints) is not dry is dropped before the structures
+   * are solved: the town is built on what is left, or fails with the solver's reason. Without it, the ground is not considered.
+   */
+  site?: { origin: [number, number]; dry: (x: number, z: number) => boolean };
   verbosity?: Verbosity;
 }
 
@@ -107,8 +118,37 @@ const STAGES: Stage[] = [
   {
     name: "structures",
     run(ctx) {
-      const { layout, demand } = ctx.town;
-      const structures = placeStructures(layout!, demand!, ctx.rules, ctx.rng);
+      const { demand } = ctx.town;
+      const site = ctx.request.site;
+      let layout = ctx.town.layout!;
+      let structures;
+      if (!site) structures = placeStructures(layout, demand!, ctx.rules, ctx.rng);
+      else {
+        // The wet parcels are not part of the town: the solve, the gates and the manifest see only the dry ones.
+        // Losing some may leave too little to house and serve everyone, so the grid grows a block row at a time
+        // (a bigger town, laid out again) until the demand is met, up to MAX_EXTRA_BLOCKS; then it fails, saying why.
+        const [pw, pd] = scaledLayout(ctx.rules, ctx.request.scale ?? 1).parcelMm;
+        let failure = "";
+        for (let extra = 0; extra <= MAX_EXTRA_BLOCKS && !structures; extra++) {
+          const full = extra === 0 ? layout : layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1, extra);
+          const c = townCentreMm(full.roads.nodes);
+          const dry = (p: (typeof full.parcels)[number]): boolean => {
+            for (const fx of FOOTPRINT_SAMPLES) for (const fz of FOOTPRINT_SAMPLES) if (!site.dry(site.origin[0] + (p.center.x + fx * pw - c.x) / 1000, site.origin[1] + (p.center.z + fz * pd - c.z) / 1000)) return false;
+            return true;
+          };
+          const kept = { ...full, parcels: full.parcels.filter(dry) };
+          ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
+          try {
+            structures = placeStructures(kept, demand!, ctx.rules, ctx.rng);
+            layout = kept;
+          } catch (err) {
+            if (!(err instanceof WfcError)) throw err;
+            failure = `${err.message}; ${full.parcels.length - kept.parcels.length} of ${full.parcels.length} parcels are not dry`;
+          }
+        }
+        if (!structures) throw new StageFailure("unsolvable", `the site is too wet for the town (no dry layout up to ${MAX_EXTRA_BLOCKS} extra block rows): ${failure}; choose a drier site`);
+        ctx.town.layout = layout;
+      }
       ctx.town.structures = structures;
       ctx.events.emit("summary", "structures", "placed", { structures: structures.length });
       for (const s of structures) ctx.events.emit("verbose", "structures", "structure_collapsed", { target: s.parcel, chosen: s.archetype });
