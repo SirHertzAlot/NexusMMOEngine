@@ -1,6 +1,6 @@
 # Settlements: procedural towns, baked offline
 
-Status: **SG1 built** (the first vertical slice). SG2 to SG4 are planned; see
+Status: **SG1 built** (the first vertical slice) and **SG3 spawning** in the world (this branch). SG2, SG3b and SG4 are planned; see
 the [roadmap](ROADMAP.md) §4. The full design this follows is the
 Procedural Settlement Engine specification (sections referenced as §n below).
 
@@ -62,3 +62,27 @@ low enough that a town full of non-housing parcels fits its labour pool, or
 the structure solve has no solution and the run fails at the `structures`
 stage with the solver's reason. The built-in set keeps most structures at one
 job and the participation rate at 85 % of adults and adolescents.
+
+## Spawning a town into the world (SG3)
+
+Spawning is generic: it goes through the scene spawner, like creatures, items
+and props, not a settlement-specific loader.
+
+    npm run settlement:bake -- --id 0182 --seed 1234 --population 600 --scene --origin 200,-300
+    MMO_SCENE=settlement-0182 npm run server
+
+- `settlementScene(manifest, rules, { origin })` makes a world scene: one group
+  at the origin, a node per structure with a `Structure` component (`kind`,
+  `width`, `depth`, `height`, metres). The town is centred on the origin.
+- The scene spawner turns a `Structure` node into a static box resting on the
+  ground (the node's height is added to the ground height under it, like every
+  node), carrying an `AssetRef` whose hash is `fnv1a32("structure:<kind>")`. The
+  client already draws a static prop without a model as a box of its body's
+  size, so a spawned town is visible before any art is mapped.
+- **Mapping kinds to art later** is only a table from `structure:<kind>` to a
+  model in the art manifest; nothing on the server changes.
+- Entities are remembered per boot like every scene's, so a restart does not
+  duplicate the town.
+- Not spawned yet: roads (SG2 brings engineered roads), residents and shops
+  (SG3b).
+

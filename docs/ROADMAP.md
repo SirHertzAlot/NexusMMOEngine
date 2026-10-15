@@ -297,7 +297,8 @@ Everything here is React DOM over the world canvas, fed by the server
 | PCG2 | Asset library, server cook, client meshes | ✅ | 〃 |
 | SG1 | Settlement generator, first slice (`packages/settlement`, `npm run settlement:bake`): demographics, economic demand, street grid, four districts, parcels, WFC structure placement, validation gates, canonical hashed manifest | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-engine-s1` |
 | SG2 | Settlements: terrain-aware site selection, hydrology and resource fields read from the world bake; civil-engineered roads (alignment, profile, drainage) | 📋 | 〃 §28 |
-| SG3 | Settlements: occupancy, households and NPCs, shops, carts and props; spawn into the world through the scene spawner | 📋 | 〃 §19–20 |
+| SG3 | Spawn settlements into the world: `settlementScene` turns a manifest into a world scene of `Structure` nodes (kind and footprint), the scene spawner makes each a static box carrying the kind's asset hash; `npm run settlement:bake -- --scene --origin x,z` then `MMO_SCENE=settlement-<id>` | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-engine-s1` |
+| SG3b | Settlements: occupancy, households and NPCs, shops, carts and props | 📋 | 〃 §19–20 |
 | SG4 | Settlements in the editor: pick archetypes and districts, preview and bake; the art manifest maps archetypes to models | 📋 | 〃 |
 
 ## 5. Engine, physics and native libraries
@@ -374,6 +375,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-15**: SG3 settlements spawn through the scene spawner (🚧): a `Structure` scene component (kind and footprint), a spawner branch that makes it a static box with the kind's asset hash (art mapping comes later), `settlementScene` and `settlement:bake --scene --origin`. A baked 600-person town spawned as 288 entities of 12 kinds around the chosen origin. Occupancy and NPCs split out as SG3b.
 - **2026-10-15**: SG1 settlement generator first slice (🚧) on `feat/settlement-engine-s1`: `@mmo-engine/settlement` bakes one deterministic town (demographics, demand, street grid, four districts, parcels, WFC-placed structures from 12 archetypes) to `<id>.settlement.json` with seven validation gates, a verbosity-filtered event log and a content hash pinned by a golden test; `npm run settlement:bake`. Rules are data (`SettlementRulesSchema`). Roadmap rows SG2 to SG4 added for what follows.
 - **2026-10-15**: Three bugs that stopped a scene-spawned world from being played, found by running a settlement town end to end: `MMO_SCENE` crashed the boot (the scene spawned before the creature system was assembled; it now runs after assembly), the gateway was never given the world seed so every client was refused with "tile streaming unavailable" (4003), and the terrain renderer threw when a wire id outlived its chunk, leaving the 3D view blank.
 - **2026-10-15**: Fixed the editor build on main: merge d96ee34 left half of the old tabbed shell in `App.tsx` (a `TABS` array with no end, a stray `main`/`footer` inside the command palette), so the editor did not typecheck. The Valgrind panel now lives under Release; the module-manifest tests read paths with `fileURLToPath` (they built `C:\C:\...` on Windows). Editor suite 666 of 666.

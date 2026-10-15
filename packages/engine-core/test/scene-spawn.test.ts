@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSpawnTableJSON } from "@mmo-engine/scatter";
+import { fnv1a32, parseSpawnTableJSON } from "@mmo-engine/scatter";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { CreatureSystem } from "../src/creatures.js";
@@ -191,5 +191,27 @@ describe("loadSceneFile", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("structures in a scene", () => {
+  it("spawns a Structure node as a static box on the ground, carrying the kind's asset hash", () => {
+    const { deps } = setup();
+    const r = spawnScene(
+      doc([
+        { id: "smithy-1", transform: { position: [10, 0, 20], rotation: [0, 90, 0] }, components: { Structure: { kind: "smithy", width: 10, depth: 18, height: 4 } } },
+        { id: "blank", components: { Structure: { width: 4, depth: 4, height: 4 } } },
+      ]) as never,
+      deps,
+    );
+    const e = r.spawned.find((s) => s.id === "smithy-1")!.entities[0];
+    assert.equal(r.spawned.find((s) => s.id === "smithy-1")!.what, "structure smithy");
+    assert.equal(C.AssetRef.assetHash[e], fnv1a32("structure:smithy"));
+    assert.equal(C.BodyConfig.shapeKind[e], C.ShapeKind.Box);
+    assert.deepEqual([C.BodyConfig.halfX[e], C.BodyConfig.halfY[e], C.BodyConfig.halfZ[e]], [5, 2, 9]);
+    assert.equal(C.BodyConfig.motionType[e], C.MotionType.Static);
+    assert.equal(C.Transform.py[e], 4, "the box rests on the ground (ground 2 + half its height)");
+    assert.ok(Math.abs(C.Transform.qy[e] - Math.sin(Math.PI / 4)) < 1e-6, "yaw 90 degrees");
+    assert.deepEqual(r.skipped.map((s) => s.id), ["blank"]);
   });
 });

@@ -87,6 +87,17 @@ export const COMPONENTS: Record<string, ComponentDef> = {
   QuestGiver: component("Quest giver", {
     quest: { type: "string", default: "" },
   }),
+  /**
+   * A building: a kind (settlement archetype, "smithy") and a footprint in
+   * metres. At spawn it becomes a static box on the ground carrying an asset
+   * reference for the kind, which the art side maps to a model later.
+   */
+  Structure: component("Structure", {
+    kind: { type: "string", default: "" },
+    width: { type: "number", default: 4, min: 0.1 },
+    depth: { type: "number", default: 4, min: 0.1 },
+    height: { type: "number", default: 4, min: 0.1 },
+  }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },
   }),
