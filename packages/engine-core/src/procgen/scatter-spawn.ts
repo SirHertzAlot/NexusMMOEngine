@@ -11,9 +11,10 @@
  *   3. Each resolved spawn becomes an entity: Transform (position from
  *      the record, yaw->quaternion, scale), AssetRef (assetHash/variant),
  *      plus Health when the archetype declares it (breakable resources)
- *      and Velocity+BodyConfig unless its collision is "none" (a default
- *      box when it declares none at all; static bodies are picked up by PhysicsSystem on the next tick via its membership
- *      diff — no special wiring).
+ *      and Velocity+BodyConfig unless its collision is "none" (sized from
+ *      the model's bounds when it declares none; static bodies are picked up
+ *      by PhysicsSystem on the next tick via its membership diff — no
+ *      special wiring).
  *
  * Design decisions (explicit, not accidental):
  *
@@ -54,6 +55,7 @@ import {
 } from "../components.js";
 import type { SimWorld } from "../world.js";
 import { attachDefaultCollider } from "../systems.js";
+import { propShape, type ModelBounds } from "./prop-shape.js";
 import {
   cook,
   hashU32,
@@ -158,6 +160,8 @@ export interface ScatterChunkOptions {
   chunkWorldSize?: number;
   /** Nothing is placed below this height (the sea: no trees on the sea floor). */
   minHeight?: number;
+  /** Model sizes, for colliders that fit the prop (see prop-shape.ts). */
+  bounds?: ModelBounds;
 }
 
 /**
@@ -180,7 +184,7 @@ function yawToQuat(yaw: number): { qx: number; qy: number; qz: number; qw: numbe
  * Spawn one resolved scatter record as ECS entities. Returns the eid.
  * Exported for tests.
  */
-export function spawnScatterEntity(world: SimWorld, s: EntitySpawn): number {
+export function spawnScatterEntity(world: SimWorld, s: EntitySpawn, bounds?: ModelBounds): number {
   const eid = world.spawn();
   const T = Transform;
   addComponent(world.ecs, T, eid);
@@ -203,29 +207,28 @@ export function spawnScatterEntity(world: SimWorld, s: EntitySpawn): number {
   }
 
   // Collision: every prop is a physics body unless its data says
-  // "shape": "none" (grass, flowers); an archetype that doesn't say gets
-  // a static box the size of its scale. PhysicsSystem owns [Transform,
-  // Velocity, BodyConfig] entities, so Velocity (zeroed) rides along.
-  const col = s.archetype.collision;
-  if (!col) {
+  // "shape": "none" (grass, flowers) or it is too low to be more than a
+  // step. The shape comes from the model's bounds x the instance's scale
+  // (propShape), or the spawn table's explicit one; a model of unknown
+  // size gets the default box. PhysicsSystem owns [Transform, Velocity,
+  // BodyConfig] entities, so Velocity (zeroed) rides along.
+  const shape = propShape(s, bounds);
+  if (!shape) {
     attachDefaultCollider(world, eid);
-  } else if (col.shape !== "none") {
+  } else if (shape.kind !== "none") {
     const V = Velocity;
     addComponent(world.ecs, V, eid);
     V.lx[eid] = 0; V.ly[eid] = 0; V.lz[eid] = 0;
     V.ax[eid] = 0; V.ay[eid] = 0; V.az[eid] = 0;
     const B = BodyConfig;
     addComponent(world.ecs, B, eid);
-    if (col.shape === "sphere" && col.radius) {
+    if (shape.kind === "sphere") {
       B.shapeKind[eid] = ShapeKind.Sphere;
       B.halfX[eid] = 0; B.halfY[eid] = 0; B.halfZ[eid] = 0;
-      B.radius[eid] = col.radius;
+      B.radius[eid] = shape.r;
     } else {
-      // box (halfExtents optional in the schema; fall back to unit box
-      // rather than silently dropping collision).
-      const he = col.halfExtents ?? [0.5, 0.5, 0.5];
       B.shapeKind[eid] = ShapeKind.Box;
-      B.halfX[eid] = he[0]; B.halfY[eid] = he[1]; B.halfZ[eid] = he[2];
+      B.halfX[eid] = shape.hx; B.halfY[eid] = shape.hy; B.halfZ[eid] = shape.hz;
       B.radius[eid] = 0;
     }
     B.mass[eid] = 0;
@@ -274,7 +277,7 @@ export function scatterChunkToECS(
 
   const minHeight = opts.minHeight ?? -Infinity;
   const spawns = resolveSpawns(records, content.table).filter((s) => s.y >= minHeight);
-  return spawns.map((s) => spawnScatterEntity(world, s));
+  return spawns.map((s) => spawnScatterEntity(world, s, opts.bounds));
 }
 
 /**
@@ -287,7 +290,7 @@ const SHORE_CLEARANCE_M = 0.2;
 export function makeScatterPopulator(
   worldSeed: bigint,
   chunkWorldSize: number,
-  opts: { seaLevel?: number } = {},
+  opts: { seaLevel?: number; bounds?: ModelBounds } = {},
 ): {
   populate(world: SimWorld, cx: number, cz: number, heights: Float32Array): void;
   readonly planHash: string;
@@ -304,6 +307,7 @@ export function makeScatterPopulator(
         heights,
         chunkWorldSize,
         minHeight: opts.seaLevel === undefined ? undefined : opts.seaLevel + SHORE_CLEARANCE_M,
+        bounds: opts.bounds,
       });
     },
   };
@@ -323,6 +327,8 @@ export function makeEcologyPopulator(
     biomeAt?: (x: number, z: number) => string | null;
     waterAt?: (x: number, z: number) => number | null;
     seaLevel?: number;
+    /** Model sizes, for colliders that fit the prop (see prop-shape.ts). */
+    bounds?: ModelBounds;
     /** The terrain, for formation layers (their tiles span and border other chunks). */
     terrain?: ChunkDataSource;
     /** Where solved formation tiles persist (world.db): the bake fills it, the server reads it. */
@@ -374,7 +380,7 @@ export function makeEcologyPopulator(
         heightsOf,
         formations,
       });
-      for (const p of points) spawnScatterEntity(world, p);
+      for (const p of points) spawnScatterEntity(world, p, opts.bounds);
     },
   };
 }
