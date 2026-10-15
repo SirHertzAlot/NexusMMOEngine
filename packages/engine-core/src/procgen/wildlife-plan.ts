@@ -16,13 +16,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import type { SpawnArchetype } from "@mmo-engine/scatter";
-import { parseEcologyPlan, type EcologyLayer, type EcologyPlan } from "./ecology.js";
+import { fieldAt, parseEcologyPlan, ramp, type EcologyLayer, type EcologyPlan } from "./ecology.js";
+import { loadWildlifeTable, words, type CatalogModel, type WildlifeTable } from "./wildlife-table.js";
 
-export interface CatalogModel {
-  id: string;
-  name: string;
-  skinned: boolean;
-}
+export type { CatalogModel };
 
 /** What a wildlife layer places, by name. `names` match whole `_`-separated words (case-insensitive); `not` drops names that also match (body parts). */
 export interface WildlifeKind {
@@ -50,8 +47,6 @@ export const WILDLIFE_KINDS: readonly WildlifeKind[] = [
   { id: "critters", names: "frog|tree_frog|salamander|snail|beetle|ladybug|mouse|rat|snake|caterpillar|dragonfly|butterfly", layer: { ...prop, place: { kind: "field", spacing: 8 }, chance: 0.05, biome: "open", scale: [0.9, 1.2] } },
   { id: "farmAnimals", names: "cow|bull|horse|donkey|llama|pig|sheep|goat|turkey|hen|rooster|chick|duck|goose", layer: { ...prop, place: { kind: "field", spacing: 30 }, chance: 0.1, biome: "open", density: [{ field: "meadow", ramp: [0.4, 0.55] }], scale: [0.9, 1.1] } },
 ];
-
-const words = (src: string): RegExp => new RegExp(`(^|_)(${src})(_|$)`, "i");
 
 /** The kind's models: static, name-matched, parts excluded; sorted by id. */
 export function kindModels(kind: WildlifeKind, models: readonly CatalogModel[]): CatalogModel[] {
@@ -91,6 +86,62 @@ export function withWildlife(plan: EcologyPlan, models: readonly CatalogModel[])
   return parseEcologyPlan({ ...plan, layers: [...plan.layers, ...layers] });
 }
 
+// -------------------------------------------------------------- megaflora
+
+const pascal = (id: string): string => id.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+
+/**
+ * One ecology layer per megaflora entry of the table that has static catalog models. The scale is the
+ * table's (over the model's natural size, on top of the global category dial), a trunk blocks only a thin
+ * share of its footprint and fronds and caps do not block at all, and groves follow the `megaGrove` field
+ * that `withMegaflora` adds. Each layer reads the biome group named after itself, so its biome weights are its own.
+ */
+export function megafloraLayers(t: WildlifeTable, models: readonly CatalogModel[]): EcologyLayer[] {
+  const out: EcologyLayer[] = [];
+  for (const [id, f] of Object.entries(t.megaflora ?? {})) {
+    const yes = words(f.names), no = f.not ? words(f.not) : null;
+    const ms = models.filter((m) => !m.skinned && yes.test(m.name) && !(no && no.test(m.name))).sort((a, b) => a.id.localeCompare(b.id));
+    if (ms.length === 0) continue;
+    const layerId = `mega${pascal(id)}`;
+    out.push({
+      id: layerId,
+      category: f.kind === "tree" ? "tree" : "plant",
+      place: { kind: "field", spacing: f.kind === "tree" ? 14 : 9 },
+      chance: 0.35,
+      ...(f.groves ? { density: [{ field: "megaGrove", ramp: [0.45, 0.6] as [number, number] }] } : {}),
+      biome: layerId,
+      scale: f.scale,
+      collision: f.collision === "trunk" ? { shape: "box", fit: 0.15, motion: "static" } : { shape: "none", motion: "static" },
+      assets: ms.map((m) => ({ asset: m.id, weight: 1 })),
+    });
+  }
+  return out;
+}
+
+const MEGA_GROVE = { scale: 220, octaves: 3, seed: 7717 } as const;
+
+/** The plan with the megaflora layers, the `megaGrove` field and each layer's biome weights (zero in every biome the table does not list). Returns a validated copy. */
+export function withMegaflora(plan: EcologyPlan, t: WildlifeTable, models: readonly CatalogModel[]): EcologyPlan {
+  const have = new Set(plan.layers.map((l) => l.id));
+  const layers = megafloraLayers(t, models).filter((l) => !have.has(l.id));
+  if (layers.length === 0) return parseEcologyPlan(JSON.parse(JSON.stringify(plan)));
+  const biomes: EcologyPlan["biomes"] = JSON.parse(JSON.stringify(plan.biomes));
+  biomes.default ??= {};
+  for (const [id, f] of Object.entries(t.megaflora ?? {})) {
+    const layerId = `mega${pascal(id)}`;
+    if (!layers.some((l) => l.id === layerId)) continue;
+    biomes.default[layerId] = 0;
+    for (const [b, w] of Object.entries(f.biomes)) (biomes[b] ??= {})[layerId] = w;
+  }
+  return parseEcologyPlan({ ...plan, fields: { ...plan.fields, megaGrove: plan.fields.megaGrove ?? { ...MEGA_GROVE } }, biomes, layers: [...plan.layers, ...layers] });
+}
+
+/** How much megaflora grove stands at (x, z), 0 to 1: pass it as `groveAt` to `planMegafauna`. 0 where the plan has no grove field. */
+export function megaGroveAt(plan: EcologyPlan, x: number, z: number): number {
+  const f = plan.fields.megaGrove;
+  return f ? ramp(fieldAt(f, x, z), [0.45, 0.6]) : 0;
+}
+
 // ------------------------------------------------------------------- CLI
 
 const isMain = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -101,7 +152,8 @@ if (isMain) {
   const catalog = JSON.parse(readFileSync(flag("--catalog") ?? `${root}assets/catalog.json`, "utf8")) as { models: CatalogModel[] };
   const base = JSON.parse(readFileSync(flag("--base") ?? `${root}packages/engine-core/content/ecology/wilds.ecology.json`, "utf8")) as EcologyPlan;
   const out = flag("--out") ?? `${root}packages/engine-core/content/ecology/wildlife.local.ecology.json`;
-  const plan = withWildlife(base, catalog.models);
+  const table = loadWildlifeTable(flag("--table"));
+  const plan = withMegaflora(withWildlife(base, catalog.models), table, catalog.models);
   writeFileSync(out, JSON.stringify({ ...plan, name: `${plan.name}+wildlife` }, null, 1));
   const added = plan.layers.slice(base.layers.length);
   console.log(`[wildlife] ${added.map((l) => `${l.id} ${l.assets.length}`).join(", ") || "no layers (no matching models)"} -> ${out} (gitignored; MMO_ECOLOGY=<that file>)`);

@@ -73,6 +73,7 @@ range); "near but not on top of prey" is approximated by the large `territoryM` 
 | 2 | solitary, clearly telegraphed | boar, elk bull, bobcat, snake, eel, jellyfish | 250 m (`safeRadiusM`) |
 | 3 | packs and big hunters | wolves, coyotes, cougar, shark | 700 m |
 | 4 | apex | bear, orca | 1500 m |
+| 5 | boss (megafauna) | short-faced bear, megalodon, mammoth | 1600 m, from the spawn only (see below) |
 
 Every species of tier 2 or more must have `telegraphS > 0`: a visible warning (a growl, rearing up, a hiss, a
 head-lowered stare) before it attacks. Livestock is tier 0 or 1 only, and appears only in the `livestock.radiusM`
@@ -124,6 +125,102 @@ Aquatic species stand in water within `depthM` (metres below the surface), by th
 `habitat.ts` (water habitat only below the surface, land habitat only above it); land species never appear in
 water.
 
+## Megafauna: mega predators and megaherbivores as mini bosses
+
+Tier 5 is the prehistoric record scaled to a fight: animals far larger, faster and stronger than a human, as
+dangerous as orcs, trolls and golems and with none of their cunning. They act on instinct alone
+(`boss.intelligence: 0`, enforced by the schema): no talk, no tactics beyond what the animal does, no
+bargaining. Everything is in `content/wildlife/wildlife.json` (`species.*.boss`, `megafauna`), checked by
+`checkMegafauna`; a table that breaks a bound does not load. They are outside the pyramid (`biomeCounts` skips
+them, the per-chunk planner never places them): their own planner is `planMegafauna` (`megafauna.ts`).
+
+**Strength against the creature yardstick.** `content/rules/creatures.json` has only the goblin (60 hp, damage 1).
+The orc, troll and golem do not exist as rules yet, so `megafauna.yardsticks` names the design values bosses
+are read against (they are not shipped creatures): goblin 60, orc 180 (3 goblins), troll 500, golem 1000 hp.
+A boss has 2 to 8 trolls of health (1000 to 4000 hp, `healthTrolls`; 3 to 6 for most) and hits 6 to 16 times a
+goblin's blow (`damageX`; bear 2.4 and orca 3.0 are the old apex). The ratio is what makes one a mini boss: a
+party of 4 to 6 geared players, with a telegraph (`telegraphS` >= 2.5 s) and weak points to exploit.
+
+| Boss | Kind | Body m (L x H) | Model scale | HP (trolls) | Dmg x | Speed x sprint | Notice m | Warn s | Lives | Rarity /100 km2 | Raids |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| short-faced-bear | land hunter | 3.8 x 2.4 | 1.9 | 2200 (4.4) | 9 | 1.35 | 60 | 3.0 | forest, plains, mountains, tundra | 1.5 | edge, livestock/structures/players |
+| sabre-tooth | land ambusher | 3.0 x 1.4 | 2.7 | 1700 (3.4) | 8 | 1.7 | 70 | 2.5 | forest, plains, rainforest | 1.5 | edge, livestock/players |
+| dire-wolf (alpha, 4 to 7 wolves) | land pack | 3.0 x 1.6 | 2.5 | 1500 (3.0) | 7 | 1.6 | 80 | 3.0 | forest, plains, tundra, snow | 1.2 | direct, livestock/players |
+| terror-bird | land runner | 3.0 x 4.0 | 6.8 | 1400 (2.8) | 7 | 2.0 | 90 | 2.5 | plains, forest | 1.2 | direct, livestock/players |
+| giant-monitor | land ambusher | 5.5 x 1.2 | 5.5 | 1600 (3.2) | 7 | 1.3 | 40 | 3.0 | swamp, rainforest, plains | 1.0 | edge, livestock/players |
+| giant-crocodilian | shore ambusher | 10.0 x 2.0 | 10 | 2800 (5.6) | 11 | 1.2 land, 1.8 swim | 50 | 3.0 | swamp, rainforest, lake | 1.2 | along water, livestock/players/boats |
+| giant-constrictor | land ambusher | 12.0 x 1.0 | 12 | 1800 (3.6) | 6.5 | 1.2 | 25 | 2.5 | swamp, rainforest | 1.0 | edge, livestock/players |
+| mammoth | megaherbivore | 6.0 x 4.0 | 2.5 | 3000 (6.0) | 10 | 1.25 | 35 | 3.5 | tundra, snow, plains | 1.2 | none (rut, provoked) |
+| woolly-rhino | megaherbivore | 4.2 x 2.0 | 3.2 | 2000 (4.0) | 9.5 | 1.5 | 30 | 2.5 | tundra, plains | 1.2 | none (rut, provoked) |
+| giant-ground-sloth | megaherbivore | 6.0 x 3.0 | 3.0 | 2600 (5.2) | 8.5 | 1.1 | 20 | 4.0 | forest, rainforest, swamp | 1.0 | none (defends young) |
+| megalodon | sea hunter | 16 x 4 | 5.3 | 3500 (7.0) | 12 | 1.9 swim | 90 | 3.0 | sea 6 to 200 m | 1.2 | along water, boats/players/piers |
+| raptorial-whale | sea hunter | 15 x 4 | 1.9 | 4000 (8.0) | 13 | 2.0 swim | 100 | 3.5 | sea 10 to 300 m | 0.6 | along water, boats/players |
+| mosasaur | sea ambusher | 12 x 2.5 | 4.0 | 3000 (6.0) | 11 | 2.1 swim | 70 | 3.0 | sea 3 to 80 m, lakes | 1.0 | along water, boats/players/livestock |
+| giant-squid (kraken-scale) | sea ambusher | 16 x 5 | 20 | 3200 (6.4) | 10 | 1.6 swim | 50 | 3.0 | sea 8 to 400 m | 0.6 | along water, boats/piers/players |
+| giant-eel | sea ambusher | 9 x 1.2 | 7.5 | 1500 (3.0) | 6.5 | 1.8 swim | 25 | 2.5 | sea, lakes 2 to 40 m | 1.2 | along water, livestock/players/boats |
+
+Speeds are multiples of the player's sprint: even the sloth (1.1) cannot be outrun, the fastest (terror bird 2.0,
+mosasaur 2.1) cannot be escaped on foot or by swimming; the answer is a door, a boat, a trap or a party.
+`megafauna.minSpeedX` (1.1) and `minSwimSpeedX` (1.3) are checked. A giant flying predator is not in the table: the
+habitat rules are land, shore and water, with no altitude, so it waits for an air habitat.
+
+**Instincts, as data.** `boss.drives` are tags for the brain: `hunger`, `territory`, `scent_blood`,
+`scent_food`, `scent_livestock`, `noise` and `season` (the rut). The megaherbivores are `territory`, `noise` and
+`season` only: they never raid, they charge what enters the lair, wounds, noise or a smell of food at rut
+season. `boss.weakPoints` (`part`, `damageMult`, `staggerS`) are where a hit hurts more and interrupts (the eye of a
+crocodile, the throat of a wolf, the foreleg of a mammoth). `boss.loot` names a drop table for the creature rules.
+
+**How rare (a handful per world at most).** Per species `rarityPer100Km2` is at most 2 (`maxRarityPer100Km2`), the
+total 20 (`totalRarityPer100Km2`; shipped 16.6) and no world holds more than `maxPerWorld` = 4. On the default
+4x4 km world (16 km2) the rarity sum gives 2.7 bosses on average if every habitat exists; the synthetic run in
+the tests, with sea round the edge and mixed land, gives 1.5 (0 in 18%, 4 in 4%). `boss:predator` is checked
+per biome: a boss is at most 5% as common as the predator groups it lives among (`bossToPredator`), so the
+pyramid above is unchanged (bosses do not count in it).
+
+**Where (`planMegafauna`).** Per species the world draws a count (rarity x area, rounded by a seeded draw), then
+for each lair tries 48 seeded points and takes the first that: has biome weight (accepted with weight over the
+species' largest, so the table's biome weights matter), suits the habitat (water bosses in water within `depthM`,
+land bosses dry, shore bosses by the water), is allowed tier 5 by the rings measured from the spawn only (1600 m,
+past the tier 4 ring at 1500 m; so never in the safe radius), is >= 500 m from any settlement and >= 800 m from
+another lair, and leans toward megaflora groves by the species' `lair.floraBias` (pass `groveAt: (x, z) =>
+megaGroveAt(plan, x, z)`). The result is capped at `maxPerWorld`, dropping the lowest seeded scores. Pure and
+seeded: same inputs, same lairs.
+
+**Settlement raids (`raid`, `raidTargets`).** A raiding boss targets a settlement only if all thresholds hold:
+population >= `minPopulation` (>= 300, `raidMinPopulation`, i.e. towns not hamlets), `minStructures`,
+`minLivestock`, `minFoodStores`, within `rangeM` of its lair, reachable by its `approach` (`habitat_edge`: leaves its
+biome's edge nearest the town; `along_water`: by river, lake or sea, so only waterside towns, and water bosses
+must use it; `direct`: straight from the lair), and not inside `safeRadiusM` of the spawn unless the species'
+raid sets `allowInsideSafeRadius`. Between raids it waits `cooldownS` (>= 7200 s). `targets` are livestock,
+structures, players, boats; it retreats when fed (`satiatedMeals`), below `hpBelowPct` health or after `maxS`.
+`warningSigns` (`tracks`, `claw_marks`, `carcass`, `wake`, `noise`, `bones`) are the dressing the settlement can
+find `leadS` seconds before, within `radiusM`, so a raid is learnable: spawning that dressing is a follow-up.
+
+**Models.** `bossModels` maps each boss to static catalog models: its own `models` name words (minus
+`modelsNot`: heads, props, items), else its `base` species' models; the scale is the boss' `lengthM` over the
+model's longer horizontal side (or `base.lengthM` if the catalog has no size); a model that would need more than
+`maxModelScale` (20) is skipped. `npm run wildlife:models` writes `content/wildlife/megafauna.local.json` beside
+`models.local.json` (gitignored, lists licensed ids). On the local catalog: own model for short-faced-bear,
+sabre-tooth, dire-wolf, terror-bird (a turkey, x4.5), giant-constrictor, megalodon, raptorial-whale, giant-squid,
+giant-eel; scaled from the base species' model for giant-monitor and giant-crocodilian (snake), mammoth (bull),
+woolly-rhino (boar), giant-ground-sloth (bear) and mosasaur (shark); none without a model. They are static props
+until a creature look and animation exist.
+
+### Megaflora
+
+`megaflora` entries are giant ancient plants as ecology layers (`megafloraLayers`, `withMegaflora`, written by
+`npm run wildlife:plan` to the gitignored plan). The size is the layer's `scale` (1.5 to 8 times the model's
+natural size, `MEGAFLORA_SCALE`, validated), on top of the global dial for its category (`tree` or `plant` in
+`content/scale.json`): no new scale category was needed. Kinds: `giant-fern`, `giant-horsetail` (fronds, no
+collision), `scale-tree` (club-moss/lepidodendron-like trunks), `giant-cycad`, `giant-fungus` (prototaxites,
+5 to 8 m caps) and `giant-pitcher` (a carnivorous plant with a `hazard`: radius, `damageX`, a telegraph).
+Trunks and stems use a box fitted to 15% of the footprint (`fit`), so the trunk collides and the crown does not;
+fronds, fern leaves and caps are `none`. They live in humid lowlands by biome weights (swamp, rainforest, a
+little forest; zero everywhere else, since each layer reads a biome group named after itself) and grow in groves
+(the `megaGrove` noise field, 220 m features). Lairs lean toward groves, so a giant constrictor's lair is in the
+thick of it. On the local catalog: giant ferns 4 models, scale trees 1 (palm), giant fungus 5, no cycad,
+horsetail or pitcher models yet.
+
 ## Art models
 
 A species' `models` are generic name words matched against the local art catalog, so no licensed model name is
@@ -135,5 +232,5 @@ anything skinned are only shown once the engine can animate them.
 
 The editor edits `content/rules/creatures.json`, the species overlay and the biome registry in its Gameplay
 grids; the wildlife table (ratios, group sizes, danger tiers, `safeRadiusM`, rings) is **not yet viewable or
-editable there**. Follow-up: add a `wildlife` table to `gameplay-tables.ts`/`gameplay-host.ts` and a ratio gauge
+editable there** (nor the megafauna block or raid rules). Follow-up: add a `wildlife` table to `gameplay-tables.ts`/`gameplay-host.ts` and a ratio gauge
 per biome (the `biomeCounts` numbers above), reusing `checkWildlife` for the Problems list.
