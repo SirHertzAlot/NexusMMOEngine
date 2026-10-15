@@ -19,7 +19,8 @@
  *     wind, wrung out over the ranges, with rain shadows behind them
  *     (climate.ts). Glaciers melt by warmth and sunshine;
  *  5. biomes: read off all of the above by the spec's rules, smoothed into
- *     regions, each adding its surface character (biomes.ts).
+ *     regions, each adding its surface character (biomes.ts), then, if the
+ *     spec asks, rolling plains and flat terraces on the low ground (plains.ts).
  *
  * The fine heightmap (world-heights.ts) is built on top of it. Terrain is
  * baked once and stored, so this only needs to be reproducible (same spec
@@ -33,6 +34,7 @@ import { dropletErosion, fluvialErosion, streamPowerIncision, thermalErosion, ty
 import { glaciate } from "./glaciers.js";
 import { sunlight, uvIndex } from "./sun.js";
 import { boxBlur, distanceTo, sampleBilinear, slopeDegrees } from "./grid-ops.js";
+import { applyPlains } from "./plains.js";
 import { ridgedMultifractal } from "./relief.js";
 import {
   accumulate,
@@ -349,10 +351,27 @@ export function surveyWorld(spec: WorldSpec): Survey {
   smoothBiomes(biome, water, W, D, spec.minBiomeArea / (grid.cell * grid.cell));
   const { regions, region } = biomeRegions(biome, grid);
 
-  // ---- surface character, then river beds -------------------------------------
+  // ---- surface character, plains and terraces, then river beds ----------------
+  const preSurface = spec.plains.enabled ? Float32Array.from(height) : undefined;
   const roughness = applySurface(spec, grid, height, biome, water, (b) =>
     noiseField(grid, fieldSeed(spec.seed, 100 + b), spec.biomes[b].surface!.scale),
   );
+  if (preSurface) {
+    const P = spec.plains;
+    applyPlains(
+      P,
+      sea,
+      grid,
+      height,
+      preSurface,
+      water,
+      waterLevel,
+      river,
+      glaciers.ice,
+      noiseField(grid, fieldSeed(spec.seed, 40), P.undulationScaleM),
+      noiseField(grid, fieldSeed(spec.seed, 41), 1.5 * P.treads.treadWidthM),
+    );
+  }
   carveRivers(height, grid, river, flow, water, spec.rivers.minCatchment, spec.rivers.maxDepth);
   // Land stays above the sea off the rivers: the water map is final, and
   // surface noise must not open flooded pits it doesn't know about.

@@ -127,3 +127,55 @@ describe("selectSites: flat, low land", () => {
     assert.equal(s.reliefM, 0);
   });
 });
+
+/** An 8 m cell grid (a 2 m-per-cell climb is 14 deg; a 14 m step between two cells is a 60 deg cliff). */
+function plateauWorld(): TerrainFields {
+  const n = 80;
+  const cell = 8;
+  const height = new Float32Array(n * n).fill(20);
+  // a 14 m high plateau, 24 cells (192 m) square, ringed by cliffs
+  for (let z = 40; z < 64; z++) for (let x = 40; x < 64; x++) height[z * n + x] = 34;
+  const river = new Uint8Array(n * n);
+  river[0] = 1;
+  return { grid: { width: n, depth: n, cell, originX: 0, originZ: 0 }, height, water: new Uint8Array(n * n), river, ice: new Uint8Array(n * n), biome: new Uint8Array(n * n).fill(1), biomeIds: ["sea", "plains"], seaLevel: 0 };
+}
+const onPlateau = (s: { x: number; z: number }): boolean => s.x >= 8 * 40 - 8 && s.x < 8 * 64 + 8 && s.z >= 8 * 40 - 8 && s.z < 8 * 64 + 8;
+
+describe("selectSites: reachability", () => {
+  const rules = { ...BUILTIN_RULES.sites, minSpacingM: 60, waterRangeM: [1, 1e7] as [number, number], minPressurePermille: 0 };
+
+  it("a plateau ringed by cliffs passes relief but is not a site: nobody can walk up to it", () => {
+    const t = plateauWorld();
+    const lenient = selectSites(t, { ...rules, requireReachable: false }, 200, 40);
+    assert.ok(lenient.some(onPlateau), "without the walk rule the plateau is a site (it is flat and low)");
+    const strict = selectSites(t, rules, 200, 40);
+    assert.ok(strict.length > 0, "the plain around it is still a site");
+    assert.ok(!strict.some(onPlateau), "no site on the stranded plateau");
+  });
+
+  it("a ramp up the plateau makes it reachable again", () => {
+    const t = plateauWorld();
+    for (let k = 0; k < 7; k++) for (let dz = 0; dz < 3; dz++) t.height[(50 + dz) * 80 + 39 - k] = 34 - 2 * (k + 1); // 14 deg ramp, 3 cells wide
+    assert.ok(selectSites(t, rules, 200, 40).some(onPlateau));
+  });
+
+  it("walks from the spawn when the world has one, else from the largest land", () => {
+    const t = plateauWorld();
+    // a spawn on the plateau makes the plateau the reachable land, and the plain around it the stranded one
+    const fromPlateau = selectSites({ ...t, spawn: { x: 8 * 52, z: 8 * 52 } }, rules, 200, 40);
+    assert.ok(fromPlateau.length > 0 && fromPlateau.every(onPlateau), "only the spawn's land");
+    const fromPlain = selectSites({ ...t, spawn: { x: 100, z: 100 } }, rules, 200, 40);
+    assert.ok(fromPlain.length > 0 && !fromPlain.some(onPlateau));
+  });
+
+  it("a steeper walk limit is data: with 80 degrees the cliffs are climbable", () => {
+    assert.ok(selectSites(plateauWorld(), { ...rules, walkSlopeDeg: 80 }, 200, 40).some(onPlateau));
+  });
+
+  it("the sea is not walkable: land cut off by water is stranded too", () => {
+    const t = plateauWorld();
+    for (let z = 0; z < 80; z++) for (let x = 20; x < 24; x++) t.water[z * 80 + x] = 1; // a strait down the west side
+    const s = selectSites(t, rules, 200, 40);
+    assert.ok(s.length > 0 && s.every((site) => site.x > 24 * 8), "west of the strait is not reachable from the larger east");
+  });
+});

@@ -118,15 +118,25 @@ rejected when, within that reach:
 - the ground rises and falls by more than `maxReliefM` (highest minus lowest,
   default 3 m);
 - there is water, a river or ice;
-- any ground within `mountainClearanceM` is above `ridgeHeightM` (a mountain).
+- any ground within `mountainClearanceM` is above `ridgeHeightM` (a mountain);
+- the centre cannot be walked to from the world's spawn (or, with no spawn, from
+  the largest connected land): 8-neighbour steps no steeper than `walkSlopeDeg`
+  (default 25), water blocking, rivers and ice not. A flat plateau ringed by
+  cliffs passes every rule above and is still not a site: nobody could reach a
+  home there. `requireReachable: false` turns it off. `TerrainFields.spawn`
+  carries the spawn (the bake CLI passes `spawnPoint`); the engine's
+  `reachableLand` (`terrain/reach.ts`) is the same rule over a whole survey.
 
 Lower and flatter also scores higher (each factor takes the pressure from 1000
 down to 500 at its limit). A `Site` reports its `elevationM` and `reliefM`. The
-defaults are strict on purpose: on the shipped 4 x 4 km world no cell passes
-them for a 600-person town (the dry land is a thin, rolling strip), so the CLI
-says "the world has fewer sites" rather than build on a hillside. Relax
-`rules.sites.maxReliefM` (pass `--rules`) or settle fewer people; a town of 100
-fits at about 6 m of relief and one of 600 needs about 25 m.
+defaults are strict on purpose, and the CLI says "the world has fewer sites"
+rather than build on a hillside. Before the plains pass (TE2, `plains` in the
+world spec, see `WORLD-BUILDING.md`) the shipped 4 x 4 km world had no site at
+3 m of relief for 100, 300 or 600 people (the dry land was a thin, rolling
+strip: 6 m of relief for 100, 10 m for 300, 25 m for 600). With the plains
+pass on, which the default world does, it has sites for all three, the nearest
+under 500 m from the spawn (strict defaults; 2 / 2 / 1 sites at the 1.5 km
+spacing).
 
 The spawner then grounds each building on its whole footprint, not its centre:
 the floor stands on the highest ground sample under it (a plinth of 5 cm above

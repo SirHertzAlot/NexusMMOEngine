@@ -281,6 +281,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | --- | --- | --- | --- |
 | — | World bake (4 × 4 km, climate-driven survey, glaciers, volcano) | ✅ | [`OPEN-WORLD-PLAN.md`](OPEN-WORLD-PLAN.md) Phase 1 |
 | TE1 | Terrain relief: sharp crests (pointed range profile, domain-warped ridged multifractal), stream-power valley incision, rock-aware talus, gullied volcano cone; each switchable in the world spec | 🚧 | [`WORLD-BUILDING.md`](WORLD-BUILDING.md) "Relief passes"; the default world opts in, so worlds must be re-baked (`npm run bake:world:force`) |
+| TE2 | Terrain plains and terraces: rolling plains, flat treads between short risers, river and shore flats, mountains untouched, no stranded flats (`reachableLand`; site selection rejects sites not walkable from the spawn); switchable in the world spec, on in the default world | 🚧 | [`WORLD-BUILDING.md`](WORLD-BUILDING.md) "Plains and terraces", [`SETTLEMENTS.md`](SETTLEMENTS.md); PR on `feat/terrain-plains` (base `integration/terrain`); worlds must be re-baked |
 | — | Server streaming of chunks round players | ✅ | 〃 Phase 2 |
 | — | Client terrain: streamed chunks near, the coarse map to the horizon, water, sky, weather | ✅ | 〃 Phase 3, [`CLIENT-FX.md`](CLIENT-FX.md) |
 | — | Client terrain LOD rings and fewer terrain draw calls | ✅ | 〃 Phase 3: 289 → 25 terrain draw calls for a 17×17 area (#114) |
@@ -385,6 +386,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-15**: TE2 plains and terraces (🚧, `feat/terrain-plains`): the default world had no site at 3 m of relief for 100, 300 or 600 people (land within 0-30 m of the sea and under 2 degrees: 14%). New opt-in `plains` pass (terraces, ramps, rolling undulation, river and shore flats, fades out above 45-100 m) and `reachableLand`; `rules.sites` gains `walkSlopeDeg`/`requireReachable` and `TerrainFields.spawn`, so a plateau ringed by cliffs is rejected. Default world opts in (re-bake): that land share 53%, strict sites 2 / 2 / 1 for 100 / 300 / 600, nearest under 500 m from the spawn. Survey +6%.
 - **2026-10-15**: TE1 terrain relief (🚧) on `feat/terrain-erosion`: mountains read as blobs on dirt mounds (rounded quartic range profile, ridge noise only scaled the height, river cuts capped near 24 m, no bare-rock angle, volcano cone left perfectly smooth). New opt-in passes: `ranges.crest` (pointed profile + ridged multifractal), `erosion.incision` (implicit stream power), `erosion.rockTalusDeg`, `volcano.gullies`; the default world opts in (re-bake needed, town sites move). Survey 9.6 s to 13.5 s.
 
 - **2026-10-15**: GS2 global scale applied (🚧): `loadScale` at boot, the factor threaded through `spawnScatterEntity` (so scene, scatter, ecology, formation and admin spawns all agree between Transform and BodyConfig); categories on ecology layers and spawn-table archetypes; the client draws a stand-in at its body size, no longer multiplying the Transform scale on top.

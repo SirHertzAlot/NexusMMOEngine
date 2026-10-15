@@ -120,6 +120,72 @@ Cost: the default world's survey goes from about 9.6 s to 13.5 s (the
 incision's flow re-routing). The passes work on the coarse grid in typed
 arrays, same seed, same bytes.
 
+### Plains and terraces (land to build on)
+
+One more switchable pass, `plains` (`plains.ts`), off unless the world file
+sets `plains.enabled`. The erosion and surface passes leave low ground as one
+continuous ramp from the shore to the hills, rolling by several metres, so
+there is nowhere flat for a few hundred metres at a time; a town cannot stand
+on that (and a house on a jutting slope nobody can walk up to is a stranded
+object, not a home). The pass runs after the biome surface and before the
+river beds are cut, deterministically, on typed arrays. `worlds/default.world.json`
+opts in: re-bake it (`npm run bake:world:force`). A world without the key bakes
+byte-identically to before.
+
+- **Terraces.** The low land is smoothed (`smoothM`, only over low, dry land so
+  the sea floor and the hills do not pull it) and remapped through a strictly
+  increasing curve of steps: a long tread that keeps `tilt` of the land's climb
+  (so it drains) and a short riser that takes the rest. The step height follows
+  the climb at that altitude, so a tread is about `treadWidthM` wide on a gentle
+  slope and a steeper one alike (bounded by `stepMinM`..`stepMaxM`). Because the
+  map only increases, water still runs downhill; any hollow the pass does open
+  (the undulation) is filled to its spill level, so no new sinks appear.
+- **Ramps and steepness.** Noise dissolves the steps back into the plain slope
+  over `rampShare` of the land, so risers have somewhere to walk up, and where
+  the land's own climb would make a riser steeper than `maxRiserDeg` the step
+  fades back toward the plain slope.
+- **Rolling plains.** `undulationM` (± metres) of long-wavelength noise
+  (`undulationScaleM`), left off the river and shore flats.
+- **Floodplain and shelf.** Within `floodplain.widthM` of a river and
+  `coast.widthM` of the sea or a lake the ground is blended toward a surface
+  graded gently (`gradient`, rise over run) up from the bed or water level, so
+  valleys and coasts are flat; ground more than `riseM` off that surface is valley
+  wall and keeps its shape. Rivers are carved afterwards, into the flattened land.
+- **Mountain safety.** Everything fades out between `fadeFromM` and `fadeToM`
+  above the sea and on ground steeper than `slopeFromPct`..`slopeToPct`; above
+  `fadeToM` not a single cell changes (tested), so the ridges and the volcano
+  keep the shape the erosion pass gave them.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `plains.enabled` | `false` | the switch |
+| `smoothM` | `300` | smoothing the treads are cut from (about one standard deviation), metres |
+| `fadeFromM` / `fadeToM` | `45` / `100` | height above the sea where the pass fades out / is gone |
+| `slopeFromPct` / `slopeToPct` | `6` / `12` | climb (%) where steep ground starts to keep its shape / keeps it |
+| `undulationM` / `undulationScaleM` | `1.5` / `1200` | rolling plains: amplitude and wavelength |
+| `treads.treadWidthM` | `1000` | wanted tread width; the step height follows the climb |
+| `treads.stepMinM` / `stepMaxM` | `2` / `24` | step height bounds |
+| `treads.treadShare` / `tilt` | `0.9` / `0.05` | share of a step that is tread / the climb a tread keeps |
+| `treads.rampShare` / `maxRiserDeg` | `0.15` / `22` | land where steps dissolve into ramps / steepest riser |
+| `floodplain.widthM` / `gradient` / `riseM` | `500` / `0.003` / `3` | river flats |
+| `coast.widthM` / `gradient` / `marginM` / `riseM` | `800` / `0.003` / `0.8` / `3` | shore flats; the plain starts `marginM` above the water |
+
+Reachability: `reachableLand(heights, grid, slopeLimitDeg, from, blocked)`
+(`reach.ts`) flood-fills the walkable cells (8 neighbours, no step steeper than
+the limit, water blocks). A test bakes the default world and checks that the
+flat land is walkable from the spawn wherever the land is connected at all
+(99.9%; the rest of the flat land is on separate islands). Site selection
+applies the same rule (see `SETTLEMENTS.md`).
+
+On the default world (seed 1234) the share of land within 0 to 30 m of the sea
+that is under 2 degrees rose from 14% to 53%, and the strict site rules (3 m of
+relief over the whole town) went from finding no site for 100, 300 or 600
+people to 2, 2 and 1 sites, the nearest within 500 m of the spawn for each size. The
+survey costs about 6% more. What the pass does not do: it cannot make room the
+coast and mountains leave out (a 600-person town needs 324 m of dry flat ground
+300 m from any peak), and a tread boundary is a contour, so the risers read as
+wide concentric scarps around the massif rather than as hand-made field walls.
+
 ## Baking
 
 ```bash

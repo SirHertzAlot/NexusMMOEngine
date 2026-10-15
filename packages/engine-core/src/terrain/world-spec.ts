@@ -296,6 +296,71 @@ export const WorldSpecSchema = z
       .strict()
       .prefault({}),
 
+    /**
+     * Plains and terraces (plains.ts), off by default: low ground becomes
+     * rolling plains and a stair of flat treads between short risers, with
+     * flats along rivers and the shore, so there is land to build on.
+     * Ground above `fadeToM` is never touched. Worlds opting in must be
+     * re-baked.
+     */
+    plains: z
+      .object({
+        enabled: z.boolean().default(false),
+        /** Smoothing of the land the treads are cut from (about one standard deviation), metres. */
+        smoothM: z.number().positive().default(300),
+        /** Height above the sea where the pass starts to fade out, and where it is gone (mountains stay as they are), metres. */
+        fadeFromM: z.number().min(0).default(45),
+        fadeToM: z.number().positive().default(100),
+        /** Ground steeper than this (rise over run, %) starts to keep its shape; gone at `slopeToPct`. */
+        slopeFromPct: z.number().min(0).default(6),
+        slopeToPct: z.number().positive().default(12),
+        /** Rolling undulation on the plains: height (± metres) and wavelength (metres). */
+        undulationM: z.number().min(0).default(1.5),
+        undulationScaleM: z.number().positive().default(1200),
+        treads: z
+          .object({
+            /** Wanted tread width, metres: the step height follows the local climb (steeper land, taller steps). */
+            treadWidthM: z.number().positive().default(1000),
+            /** Step height bounds, metres. */
+            stepMinM: z.number().positive().default(2),
+            stepMaxM: z.number().positive().default(24),
+            /** Share of a step that is tread (the rest is riser), 0.3..0.95. */
+            treadShare: z.number().min(0.3).max(0.95).default(0.9),
+            /** How much of the land's climb a tread keeps (0 = dead level), 0..0.5: treads drain gently. */
+            tilt: z.number().min(0).max(0.5).default(0.05),
+            /** Share of the land where the steps dissolve into a plain slope: ramps up every riser, 0..0.6. */
+            rampShare: z.number().min(0).max(0.6).default(0.15),
+            /** Steepest riser, degrees: where the land's own climb would make a steeper one, the step fades back toward the plain slope. */
+            maxRiserDeg: z.number().positive().max(60).default(22),
+          })
+          .strict()
+          .prefault({}),
+        /** River floodplain: flat to this distance from a river (metres), graded this much (rise over run). */
+        floodplain: z
+          .object({
+            widthM: z.number().min(0).default(500),
+            gradient: z.number().min(0).default(0.003),
+            /** Ground more than this far (metres) off the plain is valley wall and keeps its shape. */
+            riseM: z.number().positive().default(3),
+          })
+          .strict()
+          .prefault({}),
+        /** Coastal shelf (and lake shores): the same, from the water's edge. */
+        coast: z
+          .object({
+            widthM: z.number().min(0).default(800),
+            gradient: z.number().min(0).default(0.003),
+            /** The plain starts this far above the water, metres. */
+            marginM: z.number().min(0.3).default(0.8),
+            /** Ground more than this far (metres) off the plain keeps its shape. */
+            riseM: z.number().positive().default(3),
+          })
+          .strict()
+          .prefault({}),
+      })
+      .strict()
+      .prefault({}),
+
     glaciers: z
       .object({
         /** Snow turns to ice where the mean temperature is at or below this, °C… */
@@ -406,6 +471,15 @@ export const WorldSpecSchema = z
         code: "custom",
         message: `land.coast.tip (${tip}) must reach past where the side edges turn to sea (${sidesTurn.toFixed(2)} for waterEdge ${waterEdge})`,
       });
+    }
+    if (w.plains.fadeFromM >= w.plains.fadeToM) {
+      ctx.addIssue({ code: "custom", message: `plains.fadeFromM (${w.plains.fadeFromM}) must be below plains.fadeToM (${w.plains.fadeToM})` });
+    }
+    if (w.plains.slopeFromPct >= w.plains.slopeToPct) {
+      ctx.addIssue({ code: "custom", message: `plains.slopeFromPct (${w.plains.slopeFromPct}) must be below plains.slopeToPct (${w.plains.slopeToPct})` });
+    }
+    if (w.plains.treads.stepMinM > w.plains.treads.stepMaxM) {
+      ctx.addIssue({ code: "custom", message: "plains.treads.stepMinM must be <= stepMaxM" });
     }
     const spawnBiome = w.spawn?.biome;
     if (spawnBiome !== undefined && !ids.has(spawnBiome)) {

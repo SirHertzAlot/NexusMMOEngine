@@ -41,6 +41,7 @@
   "erosion": { "droplets": 150000, "strength": 0.35, "talusDeg": 38, "thermalPasses": 30, "fluvialPasses": 12, "fluvialStrength": 0.004,
     "incision": { "passes": 30, "k": 0.003, "areaExponent": 0.5, "maxCutM": 60 }, "rockTalusDeg": 55, "rockFromM": 150, "rockSpanM": 100 },
   "glaciers": { "formBelowC": -2, "minSnowMm": 500, "meltAboveC": 1, "meltRate": 2.5, "passes": 5, "strength": 0.01, "maxCutPerPassM": 4, "moraineM": 6 },
+  "plains": { "enabled": true },
   "rivers": { "minCatchment": 250000, "maxDepth": 4 },
   "lakes": { "minDepth": 0.8, "minArea": 12000, "minRainMm": 350 },
   "minBiomeArea": 6000,
