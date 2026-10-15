@@ -127,6 +127,17 @@ rejected when, within that reach:
   over the sea;
 - the ground rises and falls by more than `maxReliefM` (highest minus lowest,
   default 3 m);
+- the footprint's lowest ground (not its centre) is less than `minElevationM`
+  (default 4 m) over the sea, or over any lake surface or river bed within a
+  cell of the footprint: a coastal tread 1 m up is a tidal flat, not a home.
+  The floor is never below `TerrainFields.safeFloorM`, which the bake CLI sets
+  to the spawner's `STRUCTURE_MARGIN_M` (1 m) plus the world's `detailAmplitude`
+  (1.5 m, the most the stored tiles' detail noise can pull ground under the
+  survey): 2.5 m, so a site that passes never has a structure refused for wet
+  footing. (On the default 4 km world this took the 600-person site from 269 of
+  273 structures refused to none.) The default world's plains pass keeps its
+  coastal tread 5 m above the water (`plains.coast.marginM`) so the shore still
+  has sites;
 - there is water, a river or ice;
 - any ground within `mountainClearanceM` is above `ridgeHeightM` (a mountain);
 - the centre cannot be walked to from the world's spawn (or, with no spawn, from

@@ -17,6 +17,13 @@ export interface TerrainFields {
   water: Uint8Array;
   river: Uint8Array;
   ice?: Uint8Array;
+  /** Water surface height on sea and lake cells, NaN on land (the survey's `waterLevel`); without it the sea level stands for every water cell. */
+  waterLevel?: Float32Array;
+  /**
+   * Metres above the sea the footprint's lowest survey ground needs so the stored tiles (survey plus detail noise) still clear
+   * the spawner's wet-footing margin: the caller passes STRUCTURE_MARGIN_M plus the world's detailAmplitude. Raises, never lowers, `rules.minElevationM`.
+   */
+  safeFloorM?: number;
   biome: Uint8Array;
   /** The biome id of each biome index. */
   biomeIds: readonly string[];
@@ -149,6 +156,16 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
   const wet = new Float32Array(width * depth);
   for (let i = 0; i < wet.length; i++) wet[i] = t.water[i] || t.river[i] || t.ice?.[i] ? 1 : 0;
   const wetNear = windowExtreme(wet, width, depth, reach, Math.max);
+  // Dry feet: the footprint's lowest ground stands this far above the sea and above any water surface near it (the lakes, and
+  // the rivers' beds, one cell past the reach: the spawner's sample at the footprint's edge sees the surface of the cells around it).
+  // Never less than `safeFloorM`: the survey is coarse, the stored tiles add detail noise, and the spawner wants its margin under the whole footprint.
+  const floorM = Math.max(rules.minElevationM, t.safeFloorM ?? 0);
+  const surface = new Float32Array(width * depth).fill(sea);
+  for (let i = 0; i < surface.length; i++) {
+    if (t.water[i]) surface[i] = Math.max(sea, t.waterLevel?.[i] ?? sea);
+    else if (t.river[i]) surface[i] = Math.max(sea, t.height[i]!);
+  }
+  const nearSurface = windowExtreme(surface, width, depth, reach + 1, Math.max);
   const peaks = windowExtreme(t.height, width, depth, Math.ceil(rules.mountainClearanceM / cell), Math.max);
   // The footprint may rise this far above the sea: the stricter of the lowland band and the absolute cap.
   const ceilingM = Math.min(rules.lowlandBandM, rules.maxElevationM - sea);
@@ -170,6 +187,7 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
       const slopeFactor = 1000 - Math.round((slope * 1000) / rules.maxSlopePermille);
       // Elevation and relief over the whole footprint; a mountain anywhere near rules the cell out.
       const relief = hi[i]! - lo[i]!;
+      if (lo[i]! - nearSurface[i]! < floorM) continue;
       if (wetNear[i]! > 0 || hi[i]! - sea > ceilingM || relief > rules.maxReliefM || peaks[i]! > rules.ridgeHeightM) continue;
       const elevFactor = 1000 - Math.round(((hi[i]! - sea) * 500) / ceilingM);
       const reliefFactor = 1000 - Math.round((relief * 500) / rules.maxReliefM);

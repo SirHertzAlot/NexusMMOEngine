@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   console.log(`[settlement:bake] ${m.settlementId}: ${m.demographics.population} people, ${m.parcels.length} parcels, ${m.structures.length} structures, hash ${m.hash.slice(0, 12)} -> ${r.file}`);
 }
 
-/** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is land a structure's margin above the sea, and no lake or river. */
+/** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is land the safe floor (structure margin plus detail noise) above the sea, and no lake or river. */
 async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
   const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
@@ -96,8 +96,11 @@ async function findSites(worldFile: string, here: string, rules: SettlementRules
   const survey = surveyWorld(spec);
   const { spawnPoint } = (await import(`${terrain}/world-bake.js`)) as { spawnPoint(spec: unknown, survey: unknown): { x: number; z: number } };
   // Sites must be walkable from where players spawn.
-  const fields = { ...survey, biomeIds: spec.biomes.map((b) => b.id), spawn: spawnPoint(spec, survey) };
   const { STRUCTURE_MARGIN_M } = (await import(pathToFileURL(resolve(here, "../../../engine-core/dist/src/procgen/habitat.js")).href)) as { STRUCTURE_MARGIN_M: number };
+  // The stored tiles are the survey plus detail noise of at most `detailAmplitude` metres (world-heights.ts); the spawner wants
+  // STRUCTURE_MARGIN_M of dry footing under every footprint sample, so the survey must show that much plus the noise.
+  const safeFloorM = STRUCTURE_MARGIN_M + (spec as unknown as { detailAmplitude: number }).detailAmplitude;
+  const fields = { ...survey, biomeIds: spec.biomes.map((b) => b.id), spawn: spawnPoint(spec, survey), safeFloorM };
   const g = survey.grid;
   const sea = survey.seaLevel ?? 0;
   const dry = (x: number, z: number): boolean => {
@@ -105,7 +108,7 @@ async function findSites(worldFile: string, here: string, rules: SettlementRules
     const v = Math.round((z - g.originZ) / g.cell);
     if (u < 0 || v < 0 || u >= g.width || v >= g.depth) return false;
     const i = v * g.width + u;
-    return !survey.water[i] && !survey.river[i] && survey.height[i]! >= sea + STRUCTURE_MARGIN_M;
+    return !survey.water[i] && !survey.river[i] && survey.height[i]! >= sea + safeFloorM;
   };
   return { sites: selectSites(fields, rules.sites, 20, extentM), dry };
 }

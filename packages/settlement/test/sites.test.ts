@@ -179,3 +179,55 @@ describe("selectSites: reachability", () => {
     assert.ok(s.length > 0 && s.every((site) => site.x > 24 * 8), "west of the strait is not reachable from the larger east");
   });
 });
+
+/** A low coast: the footprint's lowest ground must stand above the sea by the floor (and the spawner's margin), not just its centre. */
+describe("selectSites above the water", () => {
+  const M = 40;
+  const flat = (h: number): TerrainFields => ({
+    grid: { width: M, depth: M, cell: 8, originX: 0, originZ: 0 },
+    height: new Float32Array(M * M).fill(h),
+    water: new Uint8Array(M * M),
+    river: new Uint8Array(M * M),
+    biome: new Uint8Array(M * M),
+    biomeIds: ["plains"],
+    seaLevel: 0,
+  });
+  // No water in these worlds (so no water-distance pressure) and a tiny map: pressure and spacing are not what is tested.
+  const rules = { ...BUILTIN_RULES.sites, minPressurePermille: 0, minSpacingM: 8 };
+
+  it("the default floor is 4 m: a coast 1 or 3 m above the sea is no site, 6 m is", () => {
+    assert.equal(rules.minElevationM, 4);
+    assert.equal(selectSites(flat(1), rules, 5, 40).length, 0);
+    assert.equal(selectSites(flat(3), rules, 5, 40).length, 0);
+    assert.ok(selectSites(flat(6), rules, 5, 40).length > 0);
+  });
+
+  it("reads the lowest ground of the whole footprint, not the centre", () => {
+    const t = flat(6);
+    t.height[20 * M + 22] = 3; // a low spot two cells from cell (20, 20), inside a 40 m reach
+    const s = selectSites(t, rules, 5000, 40);
+    assert.ok(s.length > 0);
+    assert.ok(s.every((p) => Math.max(Math.abs(p.x - 22 * 8), Math.abs(p.z - 20 * 8)) > 40), "no site within reach of the low spot");
+  });
+
+  it("the caller's safe floor (spawner margin plus detail noise) raises the floor above a low rule", () => {
+    const low = { ...rules, minElevationM: 1 };
+    assert.ok(selectSites(flat(2), low, 5, 40).length > 0, "the rule alone: 2 m is enough");
+    assert.equal(selectSites({ ...flat(2), safeFloorM: 2.5 }, low, 5, 40).length, 0);
+    assert.ok(selectSites({ ...flat(3), safeFloorM: 2.5 }, low, 5, 40).length > 0);
+  });
+
+  it("a lake higher than the sea counts: land just beyond the reach, under the band above its surface, is no site", () => {
+    const t = flat(20);
+    const level = new Float32Array(M * M).fill(Number.NaN);
+    for (let z = 0; z < M; z++) {
+      t.water[z * M + 5] = 2;
+      t.height[z * M + 5] = 15;
+      level[z * M + 5] = 18; // the lake surface
+    }
+    for (let z = 0; z < M; z++) for (let x = 6; x < M; x++) t.height[z * M + x] = x < 30 ? 20 : 30; // the shore is 2 m above the lake
+    const s = selectSites({ ...t, waterLevel: level }, rules, 5000, 40);
+    assert.ok(s.length > 0);
+    assert.ok(s.every((p) => p.x / 8 >= 12), "cell 11, one cell past the reach of the lake, has a footprint 2 m above its surface");
+  });
+});

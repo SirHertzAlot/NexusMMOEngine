@@ -103,6 +103,8 @@ export const SettlementRulesSchema = z.strictObject({
     maxElevationM: z.number().positive().default(60),
     /** Nor above this height over the sea (the world's sea level), metres: the lowland band. */
     lowlandBandM: z.number().positive().default(40),
+    /** The lowest ground of the town's whole footprint stands at least this far above the sea (a livable tread, not a tidal flat), metres. Also at least this far above any lake or river nearby. The survey caller may raise it (`TerrainFields.safeFloorM`) so the stored tiles clear the spawner's margin. */
+    minElevationM: z.number().positive().default(4),
     /** The most the ground may rise and fall across the town's whole footprint (max minus min height, from the height field, not the slope), metres. */
     maxReliefM: z.number().positive().default(3),
     /** Ground above this height is a mountain, metres. */
@@ -168,6 +170,7 @@ export const BUILTIN_RULES: SettlementRules = {
     minPressurePermille: 150,
     maxElevationM: 60,
     lowlandBandM: 40,
+    minElevationM: 4,
     maxReliefM: 3,
     ridgeHeightM: 120,
     mountainClearanceM: 300,
