@@ -109,6 +109,10 @@ export const SettlementRulesSchema = z.strictObject({
     ridgeHeightM: z.number().positive().default(120),
     /** No site lies within this many metres of a mountain (0 turns it off). */
     mountainClearanceM: z.number().min(0).default(300),
+    /** The steepest step a person walks, degrees: a site must be walkable from the world's spawn (or the largest connected land) over steps no steeper than this. Water blocks. */
+    walkSlopeDeg: z.number().positive().max(89).default(25),
+    /** Turn the walk rule off (false) to allow stranded flats (a plateau ringed by cliffs). */
+    requireReachable: z.boolean().default(true),
   }),
 });
 
@@ -167,6 +171,8 @@ export const BUILTIN_RULES: SettlementRules = {
     maxReliefM: 3,
     ridgeHeightM: 120,
     mountainClearanceM: 300,
+    walkSlopeDeg: 25,
+    requireReachable: true,
   },
 };
 

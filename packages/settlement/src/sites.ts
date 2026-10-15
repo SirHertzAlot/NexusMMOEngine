@@ -2,7 +2,8 @@
  * Site selection (spec §9 to §10): where a settlement can stand, read from the
  * world bake's coarse fields. A cell's *pressure* (0 to 1000) is how well it
  * suits a town: gentle slope, living-distance from water (not on the bank, not
- * far), fertile land around it. Sites are the best cells that keep their
+ * far), fertile land around it. A site must also be walkable from the spawn: a flat
+ * plateau ringed by cliffs is a stranded object, not a place to live. Sites are the best cells that keep their
  * distance from each other. The input is structural, so the world survey
  * (`surveyWorld`) passes in as it is; nothing here depends on the engine.
  */
@@ -21,6 +22,8 @@ export interface TerrainFields {
   biomeIds: readonly string[];
   /** Land below this is not buildable (default 0). */
   seaLevel?: number;
+  /** Where players spawn, world metres: sites must be walkable from here (default: from the largest connected land). */
+  spawn?: { x: number; z: number };
 }
 
 export interface Site {
@@ -80,6 +83,54 @@ function waterDistance(t: TerrainFields): Int32Array {
 }
 
 /**
+ * Cells walkable from the spawn (else from the largest connected land): 8-neighbour steps no steeper than
+ * `slopeDeg`, over any cell that is not sea or lake. Rivers and ice are walkable. The same rule as
+ * `reachableLand` in the engine's terrain code (the packages don't depend on each other).
+ */
+function walkable(t: TerrainFields, slopeDeg: number): Uint8Array {
+  const { width, depth, cell, originX, originZ } = t.grid;
+  const tan = Math.tan((slopeDeg * Math.PI) / 180);
+  const label = new Int32Array(width * depth);
+  const queue = new Int32Array(width * depth);
+  const sizes: number[] = [];
+  for (let s = 0; s < label.length; s++) {
+    if (label[s] || t.water[s]) continue;
+    const id = sizes.length + 1;
+    let head = 0;
+    let tail = 0;
+    label[s] = id;
+    queue[tail++] = s;
+    while (head < tail) {
+      const i = queue[head++]!;
+      const x = i % width;
+      const z = (i - x) / width;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if ((dx === 0 && dz === 0) || nx < 0 || nz < 0 || nx >= width || nz >= depth) continue;
+          const j = nz * width + nx;
+          if (label[j] || t.water[j]) continue;
+          if (Math.abs(t.height[j]! - t.height[i]!) > tan * cell * (dx !== 0 && dz !== 0 ? Math.SQRT2 : 1)) continue;
+          label[j] = id;
+          queue[tail++] = j;
+        }
+      }
+    }
+    sizes.push(tail);
+  }
+  let keep = sizes.indexOf(Math.max(0, ...sizes)) + 1;
+  if (t.spawn) {
+    const sx = Math.round((t.spawn.x - originX) / cell);
+    const sz = Math.round((t.spawn.z - originZ) / cell);
+    if (sx >= 0 && sz >= 0 && sx < width && sz < depth && label[sz * width + sx]) keep = label[sz * width + sx]!;
+  }
+  const out = new Uint8Array(width * depth);
+  for (let i = 0; i < out.length; i++) out[i] = label[i] === keep ? 1 : 0;
+  return out;
+}
+
+/**
  * The best `count` sites. `extentM` is half the town's footprint (`townHalfExtentM`): a site's
  * elevation and relief are read from the height field over that whole reach, so a gentle slope
  * that climbs far, or a ridge a coarse cell's slope hides, still rules the place out.
@@ -88,6 +139,7 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
   const { width, depth, cell, originX, originZ } = t.grid;
   const sea = t.seaLevel ?? 0;
   const dist = waterDistance(t);
+  const walk = rules.requireReachable ? walkable(t, rules.walkSlopeDeg) : undefined;
   const fertility = (i: number): number => rules.fertilityPermille[t.biomeIds[t.biome[i]!]!] ?? 0;
   const [near, far] = rules.waterRangeM;
   const reach = Math.ceil(extentM / cell);
@@ -109,7 +161,7 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
   for (let cz = 1; cz < depth - 1; cz++) {
     for (let cx = 1; cx < width - 1; cx++) {
       const i = cz * width + cx;
-      if (t.water[i] || t.river[i] || t.ice?.[i] || t.height[i]! <= sea) continue;
+      if (t.water[i] || t.river[i] || t.ice?.[i] || t.height[i]! <= sea || (walk && !walk[i])) continue;
       // Slope: the steepest rise over a cell to a neighbour, permille.
       let rise = 0;
       for (const j of [i - 1, i + 1, i - width, i + width]) rise = Math.max(rise, Math.abs(t.height[j]! - t.height[i]!));
