@@ -41,6 +41,8 @@ import { Button } from "./components.js";
 import { clearViewportActions, registerViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
+import { useColliderOverlay } from "./collider-overlay.js";
+import type * as THREE from "three";
 import { editorSelection } from "./editor-selection.js";
 import { attachMountToPopup, popOutGameView, takePendingPopup, type PoppedOutView } from "./play-popup.js";
 
@@ -63,6 +65,13 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   // Wireframe is the shared viewport toggle (the toolbar's viewport options and the tools panel below).
   const wireframe = viewportFlags.use().wireframe;
   const [showcase, setShowcase] = React.useState(false);
+  // Colliders overlay: the server's collision bodies around the player, drawn in the world's scene.
+  const [colliders, setColliders] = React.useState(false);
+  const [scene, setScene] = React.useState<THREE.Scene | null>(null);
+  const hudRef = React.useRef<HudData | null>(null);
+  const colliderReadout = useColliderOverlay(client, scene, colliders, () =>
+    hudRef.current ? { x: hudRef.current.px, z: hudRef.current.pz } : null,
+  );
   const [maximized, setMaximized] = React.useState(false);
   // Camera view: third-person follow or first-person (V toggles in the view too).
   const [view, setView] = React.useState<"third" | "first">("third");
@@ -147,6 +156,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
 
   const onHudBoth = React.useCallback(
     (h: HudData) => {
+      hudRef.current = h;
       setHud(h);
       onHud?.(h);
     },
@@ -220,6 +230,16 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
             <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => setShowcase((v) => !v)}>
               {showcase ? "hide FX" : "FX showcase"}
             </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant={colliders ? "default" : "secondary"}
+              title="Draw the server's collision bodies near you: boxes orange, spheres cyan, character capsules green"
+              onClick={() => setColliders((v) => !v)}
+              data-testid="colliders-toggle"
+            >
+              {colliders ? "hide colliders" : "colliders"}
+            </Button>
             <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setMaximized((m) => !m)}>
               {maximized ? "restore view" : "maximize view"}
             </Button>
@@ -248,6 +268,15 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
               pop out
             </Button>
           </div>
+          {colliders && (
+            <div className="mt-1 text-muted-foreground tabular-nums" data-testid="colliders-count">
+              {colliderReadout
+                ? `${colliderReadout.box} boxes · ${colliderReadout.sphere} spheres · ${colliderReadout.capsule} capsules${
+                    colliderReadout.total > colliderReadout.box + colliderReadout.sphere + colliderReadout.capsule ? ` (of ${colliderReadout.total})` : ""
+                  }`
+                : "asking the server…"}
+            </div>
+          )}
           <AdminConsole client={client} />
         </>
       ),
@@ -300,6 +329,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       maximized={maximized}
       onHud={onHudBoth}
       onGpu={setGpu}
+      onScene={setScene}
       onQuality={onQuality}
       combat={combat}
       containerRef={setFrame}
