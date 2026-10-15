@@ -19,6 +19,9 @@ import { fileURLToPath } from "node:url";
 import { loadEcologyPlan } from "./ecology.js";
 import { applyBiomeScatter, checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, ecologyGroups, loadBiomeRegistry, type BiomeRegistry } from "./biome-registry.js";
 import { makeEcologyPopulator, makeScatterPopulator } from "./scatter-spawn.js";
+import { catalogBounds, pcgBounds, type ModelBounds } from "./prop-shape.js";
+import { DEFAULT_PCG_ASSETS, loadNativeCooker } from "../pcg/boot.js";
+import { PcgAssetLibrary } from "../pcg/asset-library.js";
 import type { SimWorld } from "../world.js";
 import type { ChunkDataSource } from "./chunk-source.js";
 import type { FormationTileStore } from "../persist/formation-tiles.js";
@@ -42,7 +45,18 @@ export interface WorldPopulator {
 export const ART_MANIFEST = fileURLToPath(new URL("../../../../../assets/manifest.json", import.meta.url));
 export const DEFAULT_ECOLOGY_PLAN = fileURLToPath(new URL("../../../content/ecology/wilds.ecology.json", import.meta.url));
 
-export function makeWorldPopulator(opts: {
+/** The art catalog next to the manifest: model sizes for the ecology's colliders (null where the art isn't). */
+export const ART_CATALOG = fileURLToPath(new URL("../../../../../assets/catalog.json", import.meta.url));
+
+/** The PICG trees' sizes from their cooked meshes (undefined without the native cook or the library). */
+async function loadPcgBounds(): Promise<ModelBounds | undefined> {
+  const dir = process.env.MMO_PCG_ASSETS || DEFAULT_PCG_ASSETS;
+  const { cooker } = loadNativeCooker();
+  if (!cooker || !fs.existsSync(`${dir}/index.json`)) return undefined;
+  return pcgBounds(PcgAssetLibrary.load(dir, cooker));
+}
+
+export async function makeWorldPopulator(opts: {
   worldSeed: bigint;
   chunkWorldSize: number;
   seaLevel?: number;
@@ -55,12 +69,13 @@ export function makeWorldPopulator(opts: {
   /** Per-biome scatter multipliers (default: loaded from MMO_BIOMES or content/biomes.json). */
   biomes?: BiomeRegistry;
   log?: (line: string) => void;
-}): WorldPopulator {
+}): Promise<WorldPopulator> {
   const kind = process.env.MMO_SCATTER || (fs.existsSync(ART_MANIFEST) ? "ecology" : "pcg");
   if (kind !== "ecology" && kind !== "pcg") throw new Error(`MMO_SCATTER=${kind}: want ecology or pcg`);
   if (kind === "pcg") {
-    const p = makeScatterPopulator(opts.worldSeed, opts.chunkWorldSize, opts.seaLevel === undefined ? {} : { seaLevel: opts.seaLevel });
-    opts.log?.("[scatter] PCG forest graph (PICG trees)");
+    const bounds = await loadPcgBounds();
+    const p = makeScatterPopulator(opts.worldSeed, opts.chunkWorldSize, { bounds, ...(opts.seaLevel === undefined ? {} : { seaLevel: opts.seaLevel }) });
+    opts.log?.(`[scatter] PCG forest graph (PICG trees, colliders ${bounds ? "from the cooked meshes" : "default boxes: no native cook"})`);
     return { ...p, planHash: p.planHash, kind };
   }
   const file = process.env.MMO_ECOLOGY || DEFAULT_ECOLOGY_PLAN;
@@ -73,8 +88,11 @@ export function makeWorldPopulator(opts: {
     `[scatter] ecology plan "${plan.name}": ${plan.layers.length} layers` +
       `${opts.biomeAt ? `, by biome (${Object.keys(registry.biomes).length} in the registry)` : ""}${opts.waterAt ? ", by water" : ""} (${file})`,
   );
+  const bounds = fs.existsSync(ART_CATALOG) ? catalogBounds(ART_CATALOG) : undefined;
+  if (!bounds) opts.log?.("[scatter] no art catalog: ecology props without an explicit shape get default boxes");
   const p = makeEcologyPopulator(opts.worldSeed, opts.chunkWorldSize, {
     plan,
+    bounds,
     planHash: hash,
     biomeAt: opts.biomeAt,
     waterAt: opts.waterAt,

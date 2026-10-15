@@ -29,6 +29,11 @@ const CollisionSchema = z.object({
   shape: z.enum(["box", "sphere", "none"]),
   halfExtents: z.tuple([z.number(), z.number(), z.number()]).optional(),
   radius: z.number().positive().optional(),
+  /**
+   * Without halfExtents/radius the shape comes from the model's bounds: this
+   * share of its footprint (a trunk inside a canopy), default all of it.
+   */
+  fit: z.number().positive().max(1).optional(),
   motion: z.enum(["static", "kinematic", "dynamic"]).default("static"),
 });
 

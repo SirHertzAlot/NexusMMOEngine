@@ -35,6 +35,27 @@ describe("settlementScene", () => {
     }
   });
 
+  it("leaves a walkable street between buildings and never overlaps two footprints", () => {
+    const CAPSULE_WIDTH_M = 0.7; // CHARACTER_CAPSULE.radius * 2 (engine-core)
+    const at = worldNodes(scene).filter((w) => w.node.components?.Structure);
+    const box = at.map((w) => {
+      const s = w.node.components!.Structure!;
+      return { x: w.position[0], z: w.position[2], hw: (s.width as number) / 2, hd: (s.depth as number) / 2 };
+    });
+    // Axis-aligned (no node yaw): the gap between two boxes is the larger of their per-axis gaps.
+    let minGap = Infinity;
+    for (let i = 0; i < box.length; i++) {
+      for (let j = i + 1; j < box.length; j++) {
+        const a = box[i]!;
+        const b = box[j]!;
+        const gap = Math.max(Math.abs(a.x - b.x) - a.hw - b.hw, Math.abs(a.z - b.z) - a.hd - b.hd);
+        assert.ok(gap > 0, `${i} and ${j} overlap (${gap} m)`);
+        minGap = Math.min(minGap, gap);
+      }
+    }
+    assert.ok(minGap >= CAPSULE_WIDTH_M, `the narrowest street is ${minGap} m, a character is ${CAPSULE_WIDTH_M} m wide`);
+  });
+
   it("centres the town on the origin, in metres", () => {
     const at = worldNodes(scene).filter((w) => w.node.components?.Structure);
     const mean = (f: (p: number[]) => number): number => at.reduce((a, w) => a + f(w.position), 0) / at.length;

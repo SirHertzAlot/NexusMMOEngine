@@ -15,7 +15,8 @@
  * Node resolution: an `ItemSpawn` component puts an item on the ground, a
  * `QuestGiver` moves the quest giver's post, a `Structure` becomes a static box on the
  * ground carrying the kind's asset hash (settlement buildings); otherwise a `Spawner` component's
- * `creature`, else the node's `prefab` (the whole string, then its last path
+ * `creature`, else the node's `prefab`; a `Collider` replaces a prop's collision (shape `none`
+ * makes it walk-through) or, on a node nothing else spawns, is a static box/sphere body (the whole string, then its last path
  * segment, so "camps/goblin" finds the goblin), else the `Spawner`'s `species`
  * (the roster's pack size). `spawn-point` and unknown prefabs are
  * reported as skipped, never an error. Heights: a node's y is added to the
@@ -29,8 +30,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fnv1a32, type SpawnTable } from "@mmo-engine/scatter";
-import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc } from "@mmo-engine/scene";
+import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
+import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
@@ -113,6 +114,25 @@ export function loadSceneFile(dir: string, name: string): SceneDoc {
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+type Collision = NonNullable<SpawnArchetype["collision"]>;
+
+/** A scene `Collider` as a static collision (scene defaults: a 0.5 box, a 0.5 sphere); none when the node has no Collider. */
+function colliderOf(c: Record<string, unknown> | undefined): Collision | undefined {
+  if (!c) return undefined;
+  const n = (v: unknown, d: number): number => (typeof v === "number" ? v : d);
+  const shape = c.shape === "sphere" || c.shape === "none" ? c.shape : "box";
+  return { shape, halfExtents: [n(c.hx, 0.5), n(c.hy, 0.5), n(c.hz, 0.5)], radius: n(c.radius, 0.5), motion: "static" };
+}
+
+/** One static body at the node's world pose (y above the ground), carrying `asset`'s hash, through the scatter spawn path. */
+function spawnBody(sim: SimWorld, id: string, w: WorldNode, ground: number, asset: string, collision: Collision): number {
+  const [x, y, z] = w.position;
+  return spawnScatterEntity(sim, {
+    x, y: ground + y, z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
+    assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(id) >>> 0) || 1, archetype: { asset, collision },
+  });
+}
+
 export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnResult {
   const out: SceneSpawnResult = { spawned: [], skipped: [] };
   // Prefab files become their bundle (components, children) before anything spawns.
@@ -154,12 +174,8 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       else {
         const half: [number, number, number] = [Number(structure.width) / 2, Number(structure.height), Number(structure.depth) / 2];
         const asset = str(structure.asset) || `structure:${kind}`;
-        const archetype = { asset, collision: { shape: "box" as const, halfExtents: half, motion: "static" as const } };
-        const entity = spawnScatterEntity(deps.sim, {
-          x, y: ground + y, z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
-          assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(node.id) >>> 0) || 1, archetype,
-        });
-        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [entity] });
+        const collision = { shape: "box" as const, halfExtents: half, motion: "static" as const };
+        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [spawnBody(deps.sim, node.id, w, ground, asset, collision)] });
       }
       continue;
     }
@@ -179,6 +195,8 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       else out.spawned.push({ id: node.id, what: `species ${species}`, entities: deps.creatures.spawnPack(deps.sim, species, x, z, sp.pack) });
       continue;
     }
+    // A Collider node: its box/sphere replaces a prop's own collision, or stands alone as a static body.
+    const collision = colliderOf(node.components?.Collider);
     const table = deps.table();
     const asset = table ? names.find((n) => n in table.archetypes) : undefined;
     if (table && asset) {
@@ -188,9 +206,14 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         built.sy = w.scale[1];
         built.sz = w.scale[2];
         built.seed = (fnv1a32(node.id) >>> 0) || 1;
+        if (collision) built.archetype = { ...built.archetype, collision };
         out.spawned.push({ id: node.id, what: `prop ${asset}`, entities: [spawnScatterEntity(deps.sim, built)] });
         continue;
       }
+    }
+    if (collision && collision.shape !== "none") {
+      out.spawned.push({ id: node.id, what: `collider ${collision.shape}`, entities: [spawnBody(deps.sim, node.id, w, ground, names[0] || `collider:${node.id}`, collision)] });
+      continue;
     }
     out.skipped.push({ id: node.id, reason: names.length > 0 ? `nothing spawns "${names[0]}"` : "no prefab or Spawner creature" });
   }
