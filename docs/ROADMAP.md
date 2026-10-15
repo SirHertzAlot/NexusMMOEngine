@@ -300,7 +300,8 @@ Everything here is React DOM over the world canvas, fed by the server
 | SG2b | Settlements: civil-engineered roads (horizontal alignment, vertical profile, drainage, junctions, earthwork) and a layout that follows rivers and slopes | 📋 | 〃 §28 |
 | SG3 | Spawn settlements into the world: `settlementScene` turns a manifest into a world scene of `Structure` nodes (kind and footprint), the scene spawner makes each a static box carrying the kind's asset hash; `npm run settlement:bake -- --scene --origin x,z` then `MMO_SCENE=settlement-<id>` | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-engine-s1` |
 | SG3b | Settlements: occupancy (households, npcs with cohort, class, home, workplace and role, shops with owners) in the manifest, three more gates; spawning residents needs a simulated-agent path and is next | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-occupancy` |
-| SG4 | Settlements in the editor: pick archetypes and districts, preview and bake; the art manifest maps archetypes to models | 📋 | 〃 |
+| SG4a | Settlements: structures name art models from the local catalog (`settlement:bake --catalog`), stand-in boxes as the fallback; checked in the running client | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md): on branch `feat/settlement-art` |
+| SG4b | Settlements in the editor: pick archetypes and districts, preview and bake | 📋 | 〃 |
 
 ## 5. Engine, physics and native libraries
 
@@ -376,6 +377,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-15**: SG4a settlement art (🚧): `Structure` takes an optional `asset`, `buildArtMap` maps the 12 kinds to the packs' building presets by name pattern, `settlement:bake --catalog` bakes it into the (gitignored) scene. Played in the client: 288 buildings of 12 kinds with their models, and as stand-in boxes without. The spawner box is now centred on the ground.
 - **2026-10-15**: SG2a settlement site selection (🚧): `selectSites` scores each survey cell by slope, water distance and fertility and keeps the best apart; on the shipped world it finds two sites in 64 ms (the survey itself takes 8.5 s). `settlement:bake --world --site` places the town there. Also fixed the CLI's default output folders, which resolved to `packages/content` instead of `content`.
 - **2026-10-15**: SG3b settlement occupancy (🚧): the occupancy baker deals a 600-person town into 136 households and homes, 283 jobs and 86 shops, with the demographic cohorts and classes exact; three new gates (population, homes, jobs); the golden hash is re-pinned for the new manifest section. Residents are data only for now; spawning them needs a simulated-agent path.
 - **2026-10-15**: SG3 settlements spawn through the scene spawner (🚧): a `Structure` scene component (kind and footprint), a spawner branch that makes it a static box with the kind's asset hash (art mapping comes later), `settlementScene` and `settlement:bake --scene --origin`. A baked 600-person town spawned as 288 entities of 12 kinds around the chosen origin. Occupancy and NPCs split out as SG3b.

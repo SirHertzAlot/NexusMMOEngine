@@ -109,3 +109,29 @@ What is still a plain grid: the roads (SG2b brings engineered alignments,
 profiles and drainage, spec §28) and the layout does not yet bend to a river
 or a slope; each building does follow the ground under it at spawn.
 
+## Showing the town: art models with a box fallback (SG4a)
+
+A `Structure` node may name an art model (`asset`, a catalog id). The server
+gives the entity that model's asset hash, which the client already resolves
+from the catalog the dev server serves out of the ignored `assets/` folder; the
+body stays the footprint box. With no model named, or with the art not served,
+the client draws the stand-in box of the body's size, so the town is always
+visible.
+
+The box is centred on the ground (half-height equal to the building's height),
+so a model's base sits on the ground and a stand-in shows exactly `height`
+above it.
+
+    npm run settlement:bake -- --id 0182 --seed 1234 --world packages/engine-core/worlds/default.world.json --site 1 --scene --catalog assets/catalog.json
+
+`--catalog` builds a kind-to-models map by name pattern (`buildArtMap`,
+`DEFAULT_ART_PATTERNS`: the packs' whole-building presets) and each structure
+takes one by its id, the same one every time. A kind with no match stays a
+box. **The baked scene names licensed models, so
+`content/scenes/settlement-*.scene.json` is gitignored: bake it locally.**
+The manifest itself holds only archetypes and can be committed.
+
+Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0182`,
+the client logged in and walking among 288 buildings (12 kinds, all mapped),
+and the same town as stand-in boxes.
+
