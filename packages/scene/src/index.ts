@@ -94,6 +94,8 @@ export const COMPONENTS: Record<string, ComponentDef> = {
    */
   Structure: component("Structure", {
     kind: { type: "string", default: "" },
+    /** An art catalog model id to show instead of the stand-in box (empty: the box). */
+    asset: { type: "string", default: "" },
     width: { type: "number", default: 4, min: 0.1 },
     depth: { type: "number", default: 4, min: 0.1 },
     height: { type: "number", default: 4, min: 0.1 },

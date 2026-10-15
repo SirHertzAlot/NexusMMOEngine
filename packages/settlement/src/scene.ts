@@ -10,12 +10,21 @@ import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene"
 import type { SettlementManifest } from "./generate.js";
 import type { SettlementRules } from "./rules.js";
 
+/** A stable index from an id (FNV-1a), so the same structure always gets the same model. */
+function pick(id: string, n: number): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return (h >>> 0) % n;
+}
+
 /** Space left between a building and its parcel's edge, each side, metres. */
 const MARGIN_M = 1;
 
 export interface SceneOptions {
   /** Where the town's centre goes, in world metres [x, z]. */
   origin: [number, number];
+  /** Art model ids per structure kind (`buildArtMap`); a structure takes one by its id, a kind with none stays a box. */
+  art?: Record<string, string[]>;
 }
 
 export function settlementScene(manifest: SettlementManifest, rules: SettlementRules, opts: SceneOptions): SceneDoc {
@@ -26,11 +35,12 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
   const parcels = new Map(manifest.parcels.map((p) => [p.id, p]));
   const children: SceneNode[] = manifest.structures.map((s) => {
     const p = parcels.get(s.parcel)!;
+    const models = opts.art?.[s.archetype];
     return {
       id: s.id,
       name: s.archetype,
       transform: { position: [(p.center.x - cx) / 1000, 0, (p.center.z - cz) / 1000] },
-      components: { Structure: { kind: s.archetype, width: pw / 1000 - 2 * MARGIN_M, depth: pd / 1000 - 2 * MARGIN_M, height: rules.archetypes[s.archetype]!.heightM } },
+      components: { Structure: { kind: s.archetype, asset: models ? models[pick(s.id, models.length)]! : "", width: pw / 1000 - 2 * MARGIN_M, depth: pd / 1000 - 2 * MARGIN_M, height: rules.archetypes[s.archetype]!.heightM } },
     };
   });
   const scene: SceneDoc = {

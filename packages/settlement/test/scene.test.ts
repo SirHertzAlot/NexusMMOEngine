@@ -52,4 +52,19 @@ describe("settlementScene", () => {
     assert.ok(bad.ok);
     assert.throws(() => settlementScene(bad.manifest, BUILTIN_RULES, { origin: [0, 0] }), /name/);
   });
+
+  it("names an art model per structure when given a map, picking among a kind's models by the structure's id", () => {
+    const art = { house: ["pack/House_A", "pack/House_B"], smithy: ["pack/Smithy_01"] };
+    const withArt = settlementScene(manifest, BUILTIN_RULES, { origin: [100, 200], art });
+    const kids = withArt.nodes[0]!.children!;
+    for (const n of kids) {
+      const c = n.components!.Structure!;
+      const models = (art as Record<string, string[]>)[c.kind as string];
+      if (models) assert.ok(models.includes(c.asset as string), `${c.kind} -> ${String(c.asset)}`);
+      else assert.equal(c.asset, "", `${c.kind} has no model, so it stays a box`);
+    }
+    const houses = kids.filter((n) => n.components!.Structure!.kind === "house").map((n) => n.components!.Structure!.asset);
+    assert.ok(houses.includes("pack/House_A") && houses.includes("pack/House_B"), "variants are used");
+    assert.deepEqual(settlementScene(manifest, BUILTIN_RULES, { origin: [100, 200], art }), withArt, "the same pick every time");
+  });
 });

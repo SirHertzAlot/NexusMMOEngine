@@ -195,23 +195,25 @@ describe("loadSceneFile", () => {
 });
 
 describe("structures in a scene", () => {
-  it("spawns a Structure node as a static box on the ground, carrying the kind's asset hash", () => {
+  const node = (id: string, structure: Record<string, unknown>) => ({ id, transform: { position: [10, 0, 20], rotation: [0, 90, 0] }, components: { Structure: structure } });
+
+  it("spawns a Structure node as a static box centred on the ground, carrying the kind's asset hash", () => {
     const { deps } = setup();
-    const r = spawnScene(
-      doc([
-        { id: "smithy-1", transform: { position: [10, 0, 20], rotation: [0, 90, 0] }, components: { Structure: { kind: "smithy", width: 10, depth: 18, height: 4 } } },
-        { id: "blank", components: { Structure: { width: 4, depth: 4, height: 4 } } },
-      ]) as never,
-      deps,
-    );
+    const r = spawnScene(doc([node("smithy-1", { kind: "smithy", width: 10, depth: 18, height: 4 }), { id: "blank", components: { Structure: { width: 4, depth: 4, height: 4 } } }]) as never, deps);
     const e = r.spawned.find((s) => s.id === "smithy-1")!.entities[0];
     assert.equal(r.spawned.find((s) => s.id === "smithy-1")!.what, "structure smithy");
     assert.equal(C.AssetRef.assetHash[e], fnv1a32("structure:smithy"));
     assert.equal(C.BodyConfig.shapeKind[e], C.ShapeKind.Box);
-    assert.deepEqual([C.BodyConfig.halfX[e], C.BodyConfig.halfY[e], C.BodyConfig.halfZ[e]], [5, 2, 9]);
+    assert.deepEqual([C.BodyConfig.halfX[e], C.BodyConfig.halfY[e], C.BodyConfig.halfZ[e]], [5, 4, 9], "half the footprint, the full height above and below the ground");
     assert.equal(C.BodyConfig.motionType[e], C.MotionType.Static);
-    assert.equal(C.Transform.py[e], 4, "the box rests on the ground (ground 2 + half its height)");
+    assert.equal(C.Transform.py[e], 2, "on the ground, so a model's base sits on it and a stand-in box shows its height above it");
     assert.ok(Math.abs(C.Transform.qy[e] - Math.sin(Math.PI / 4)) < 1e-6, "yaw 90 degrees");
     assert.deepEqual(r.skipped.map((s) => s.id), ["blank"]);
+  });
+
+  it("carries the named art model's hash when the node names one", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([node("smithy-2", { kind: "smithy", asset: "pack/Smithy_01", width: 10, depth: 18, height: 4 })]) as never, deps);
+    assert.equal(C.AssetRef.assetHash[r.spawned[0].entities[0]], fnv1a32("pack/Smithy_01"));
   });
 });

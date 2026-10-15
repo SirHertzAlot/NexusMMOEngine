@@ -17,12 +17,18 @@
  *                      and place the town at its best site (the engine must be built;
  *                      the survey takes several seconds)
  *   --site <rank>      with --world, which site, best first (default 1)
+ *   --catalog <file>   with --scene, an art catalog (assets/catalog.json): each structure
+ *                      names a matching model; the scene stays a box where none matches.
+ *                      The names go into the scene file, so keep it out of git (the
+ *                      default scenes folder holds only what you commit)
  *   --verbosity <v>    silent | summary | normal | verbose | debug (default summary)
  */
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { buildArtMap, DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
 import { BUILTIN_RULES, loadRules } from "./rules.js";
@@ -30,7 +36,7 @@ import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
@@ -44,10 +50,16 @@ async function main(): Promise<void> {
     console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, ${site.biome}`);
   }
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
+  let art: Record<string, string[]> | undefined;
+  if (o.catalog) {
+    const models = (JSON.parse(readFileSync(resolve(o.catalog), "utf8")) as { models: CatalogModel[] }).models;
+    art = buildArtMap(models, DEFAULT_ART_PATTERNS);
+    console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
+  }
   const r = bakeSettlement(
     { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(resolve(o.rules)) : BUILTIN_RULES, verbosity },
     out,
-    o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!] } } : {},
+    o.scene ? { scene: { dir: resolve(here, "../../../../content/scenes"), origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
   for (const e of r.events) console.log(`  [${e.stage}] ${e.event} ${JSON.stringify(e.data)}`);
   if (!r.ok) throw new Error(`${r.error.stage}: ${r.error.message}`);

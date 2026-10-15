@@ -143,17 +143,20 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       else out.skipped.push({ id: node.id, reason: refused });
       continue;
     }
-    // A building (a settlement structure): a static box on the ground that carries the kind's asset hash.
+    // A building (a settlement structure): a static box on the ground that carries an asset hash.
+    // The hash is the named art model's (the client shows it when the art is served) or, with none
+    // named, the kind's "structure:<kind>". The box stands on the ground with its centre at ground
+    // level, so a model's base sits on the ground and a stand-in box shows exactly `height` above it.
     const structure = node.components?.Structure;
     if (structure) {
       const kind = str(structure.kind);
       if (!kind) out.skipped.push({ id: node.id, reason: "Structure has no kind" });
       else {
-        const half: [number, number, number] = [Number(structure.width) / 2, Number(structure.height) / 2, Number(structure.depth) / 2];
-        const asset = `structure:${kind}`;
+        const half: [number, number, number] = [Number(structure.width) / 2, Number(structure.height), Number(structure.depth) / 2];
+        const asset = str(structure.asset) || `structure:${kind}`;
         const archetype = { asset, collision: { shape: "box" as const, halfExtents: half, motion: "static" as const } };
         const entity = spawnScatterEntity(deps.sim, {
-          x, y: ground + y + half[1], z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
+          x, y: ground + y, z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
           assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(node.id) >>> 0) || 1, archetype,
         });
         out.spawned.push({ id: node.id, what: `structure ${kind}`, entities: [entity] });
