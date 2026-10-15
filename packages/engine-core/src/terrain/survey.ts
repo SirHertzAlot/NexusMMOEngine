@@ -29,10 +29,11 @@
 import { makeProcgenChunkSource } from "../procgen/chunk-source.js";
 import { applySurface, biomeRegions, classifyBiomes, smoothBiomes } from "./biomes.js";
 import { rainfall, temperature } from "./climate.js";
-import { dropletErosion, fluvialErosion, thermalErosion } from "./erosion.js";
+import { dropletErosion, fluvialErosion, streamPowerIncision, thermalErosion, type RockTalus } from "./erosion.js";
 import { glaciate } from "./glaciers.js";
 import { sunlight, uvIndex } from "./sun.js";
-import { boxBlur, distanceTo, slopeDegrees } from "./grid-ops.js";
+import { boxBlur, distanceTo, sampleBilinear, slopeDegrees } from "./grid-ops.js";
+import { ridgedMultifractal } from "./relief.js";
 import {
   accumulate,
   carveRivers,
@@ -193,6 +194,30 @@ export function noiseField(grid: CoarseGrid, seed: bigint, scale: number): Float
   return out;
 }
 
+/**
+ * Ridged multifractal detail over the ranges (undefined when the spec asks
+ * for none): octaves of ridged noise at half the ridge scale and finer,
+ * each domain-warped by the range's warp fields.
+ */
+function crestDetail(spec: WorldSpec, grid: CoarseGrid, warpU: Float32Array, warpV: Float32Array): Float32Array | undefined {
+  const octaves = spec.ranges.crest.detailOctaves;
+  if (octaves === 0) return undefined;
+  const warp = (2 * spec.ranges.ridgeScale) / 25 / grid.cell;
+  const fields: Float32Array[] = [];
+  for (let k = 0; k < octaves; k++) {
+    const noise = noiseField(grid, fieldSeed(spec.seed, 20 + k), spec.ranges.ridgeScale / 2 ** (k + 1));
+    const warped = new Float32Array(noise.length);
+    for (let v = 0; v < grid.depth; v++) {
+      for (let u = 0; u < grid.width; u++) {
+        const i = v * grid.width + u;
+        warped[i] = sampleBilinear(noise, grid.width, grid.depth, u + warp * warpU[i], v + warp * warpV[i]);
+      }
+    }
+    fields.push(warped);
+  }
+  return ridgedMultifractal(fields, 0.5);
+}
+
 /** Neighbourhood for sea exposure: ~400 m across. */
 const SEA_EXPOSURE_RADIUS_M = 400;
 
@@ -216,6 +241,8 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const baseLevel = Float32Array.from(height);
   const layout = mulberry32(spec.seed ^ 0x5eed);
   const ranges = placeRanges(spec, grid, land, layout);
+  const warpU = noiseField(grid, fieldSeed(spec.seed, 10), spec.ranges.ridgeScale * 2);
+  const warpV = noiseField(grid, fieldSeed(spec.seed, 11), spec.ranges.ridgeScale * 2);
   const uplift = rangeUplift(
     spec,
     grid,
@@ -223,8 +250,9 @@ export function surveyWorld(spec: WorldSpec): Survey {
     noiseField(grid, fieldSeed(spec.seed, 5), spec.ranges.ridgeScale),
     noiseField(grid, fieldSeed(spec.seed, 6), spec.ranges.length / 3),
     noiseField(grid, fieldSeed(spec.seed, 9), spec.ranges.ridgeScale * 0.6),
-    noiseField(grid, fieldSeed(spec.seed, 10), spec.ranges.ridgeScale * 2),
-    noiseField(grid, fieldSeed(spec.seed, 11), spec.ranges.ridgeScale * 2),
+    warpU,
+    warpV,
+    crestDetail(spec, grid, warpU, warpV),
   );
   for (let i = 0; i < N; i++) if (land[i]) height[i] += uplift[i];
   // Volcanoes: placed now (their heat shapes the climate the erosion
@@ -234,7 +262,9 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const vents = ventDistance(spec, grid, volcanoes, lobes);
 
   // ---- 2. erosion, driven by a first look at the rain ------------------------
-  thermalErosion(height, grid, E.talusDeg, Math.ceil(E.thermalPasses / 2));
+  const rock: RockTalus | undefined =
+    E.rockTalusDeg === undefined ? undefined : { deg: E.rockTalusDeg, fromM: sea + E.rockFromM, spanM: E.rockSpanM };
+  thermalErosion(height, grid, E.talusDeg, Math.ceil(E.thermalPasses / 2), rock);
   const shaped = Float32Array.from(height);
   const firstSea = seaMask(height, grid, sea);
   const firstRain = rainfall(spec, grid, height, (i) => firstSea[i] === 1).rainMm;
@@ -252,8 +282,9 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const share = firstRain.map((r) => r / spec.climate.rainMm);
   const runoff = firstRain.map((r, i) => (r + meltMm[i]) / spec.climate.rainMm);
   const deepestCutM = fluvialErosion(height, grid, sea, runoff, E.fluvialPasses, E.fluvialStrength);
+  streamPowerIncision(height, grid, sea, runoff, E.incision.passes, E.incision.k, E.incision.areaExponent, E.incision.maxCutM);
   dropletErosion(height, grid, sea, share, E.droplets, E.strength, mulberry32(spec.seed ^ 0xe20d));
-  thermalErosion(height, grid, E.talusDeg, Math.floor(E.thermalPasses / 2));
+  thermalErosion(height, grid, E.talusDeg, Math.floor(E.thermalPasses / 2), rock);
   let erodedSum = 0;
   let erodedMaxM = 0;
   for (let i = 0; i < N; i++) {
@@ -261,7 +292,8 @@ export function surveyWorld(spec: WorldSpec): Survey {
     erodedSum += change;
     erodedMaxM = Math.max(erodedMaxM, change);
   }
-  raiseVolcanoes(spec, grid, height, baseLevel, volcanoes, lobes);
+  const gullyNoise = spec.volcano.gullies > 0 ? noiseField(grid, fieldSeed(spec.seed, 30), 22 * grid.cell) : undefined;
+  raiseVolcanoes(spec, grid, height, baseLevel, volcanoes, lobes, gullyNoise);
 
   // ---- 3. water ---------------------------------------------------------------
   // One landmass: islands the erosion cut off, if too small, go under.

@@ -70,6 +70,7 @@ stages under `packages/engine-core/src/terrain/`:
    the drainage, melt with warmth and sunshine, grind U-shaped valleys, calve
    at the sea and drop terminal moraines; stream-power river incision weighted
    by rain and meltwater; droplet erosion where it rains, leaving deltas.
+   The relief passes below sharpen what this produces.
 3. **Water** (`hydrology.ts`) — the sea is everything below sea level and open
    to it; lakes form in hollows that are deep, large and wet enough; rivers
    come from rain-weighted drainage, with depressions filled so every cell
@@ -99,6 +100,25 @@ is a `when` clause over the climate and water fields plus a `roughness`:
 
 **Biomes are not capped or counted.** They emerge from climate and water, so
 a change to rainfall or temperature changes where they are.
+
+### Relief passes (sharp peaks, carved valleys)
+
+Four switchable passes, all off unless the world file names them (a world
+without them bakes exactly as before). `worlds/default.world.json` turns them
+on, so re-bake it (`npm run bake:world:force`); towns' site selection moves
+with the new slopes.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `ranges.crest.sharpness` | `0` | 0..1: blends the range cross-section from the rounded quartic dome toward a pointed ridge (`(1-r)^1.6`), so a crest is a line, not a crown |
+| `ranges.crest.detailOctaves` / `detailStrength` | `0` / `0.5` | 1..5 octaves of domain-warped ridged multifractal (Musgrave) over the range, each octave weighted by the last so detail gathers on crests; strength is the share of the range height it modulates |
+| `erosion.incision.passes` / `k` / `areaExponent` / `maxCutM` | `0` / `0.0012` / `0.5` / `40` | implicit stream-power incision, `h = (h + F·h_receiver)/(1+F)`, `F = k·area^m/distance`, outlet-first so it is stable for any `k`; summits (no drainage area) stay, trunk valleys deepen; no cell is cut more than `maxCutM` in total; flow is re-routed every 3 passes |
+| `erosion.rockTalusDeg` / `rockFromM` / `rockSpanM` | unset / `150` / `100` | bare rock holds a steeper angle than scree: the thermal angle rises from `talusDeg` to `rockTalusDeg` over `rockSpanM` above `rockFromM`, so crests stay sharp while the slopes below weather to scree; unset = one angle |
+| `volcano.gullies` | `0` | 0..1: radial gullies between spur ridges on the cone's flanks (the cone is raised after erosion, so without this it stays perfectly smooth) |
+
+Cost: the default world's survey goes from about 9.6 s to 13.5 s (the
+incision's flow re-routing). The passes work on the coarse grid in typed
+arrays, same seed, same bytes.
 
 ## Baking
 
