@@ -122,6 +122,8 @@ export interface WorldCanvasProps {
   /** "auto": the preset for this GPU, stepped down (and back up) by the frame-rate governor; else a pinned preset. */
   quality: "auto" | QualityTier;
   onGpu?: (gpu: GpuInfo) => void;
+  /** The three.js scene once the canvas exists (the editor's debugger adds its overlays to it). */
+  onScene?: (scene: THREE.Scene) => void;
   /** The preset running now, and the one detected for the GPU (null until known). */
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
@@ -218,7 +220,8 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       dpr={dpr}
       gl={{ antialias: true, preserveDrawingBuffer: props.captureFrames === true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, scene }) => {
+        props.onScene?.(scene);
         const gpu = detectGpu(gl);
         onGpu?.(gpu);
         void detectQuality(gl, gpu.software).then((r) => setDetected(r.tier));

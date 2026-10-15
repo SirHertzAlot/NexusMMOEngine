@@ -530,14 +530,47 @@ export const PROTOCOL_VERSION = 24; // v24 (2026-10-14): chunk-streaming tile re
  *   waypoints for one entity (from the server WaypointStore).
  * - `{kind:"debug", query:"tiles"}` — loaded navmesh tile bounds
  *   `[{x0,z0,x1,z1}]` in world units.
+ * - `{kind:"debug", query:"colliders", x, z, radius}` — static boxes and
+ *   spheres plus kinematic capsules near (x, z) (editor Colliders overlay).
  */
 export type DebugQuery =
   | { kind: "debug"; query: "waypoints"; entity: string }
   | { kind: "debug"; query: "tiles" }
-  | { kind: "debug"; query: "timings" };
+  | { kind: "debug"; query: "timings" }
+  /** Collision bodies whose centre lies within `radius` metres of (x, z). */
+  | { kind: "debug"; query: "colliders"; x: number; z: number; radius: number };
+
+/**
+ * One collision body of a `colliders` answer. Boxes and spheres are
+ * centred on (x, y, z); a capsule's (x, y, z) is its feet.
+ * `shape`: 0 box (hx/hy/hz half extents, `yaw` about +Y), 1 sphere (r),
+ * 2 capsule (r, hy = half the straight section). `motion`: 0 static,
+ * 1 kinematic, 2 dynamic. `asset` is the AssetRef hash (0: none).
+ */
+export interface DebugCollider {
+  id: string;
+  shape: 0 | 1 | 2;
+  motion: 0 | 1 | 2;
+  x: number;
+  y: number;
+  z: number;
+  hx: number;
+  hy: number;
+  hz: number;
+  r: number;
+  yaw: number;
+  asset: number;
+}
 
 /** S→C answer to a DebugQuery (0x0a, JSON). */
 export type DebugResponse =
+  | {
+      kind: "debug";
+      query: "colliders";
+      /** The bodies in range up to the server's cap; `total` counts every match. */
+      colliders: DebugCollider[];
+      total: number;
+    }
   | {
       kind: "debug";
       query: "waypoints";

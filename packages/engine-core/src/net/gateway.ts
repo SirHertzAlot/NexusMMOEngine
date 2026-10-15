@@ -2292,6 +2292,13 @@ export class Gateway {
         query: "tiles",
         tiles: this.debugSource?.tiles() ?? [],
       };
+    } else if (q.query === "colliders") {
+      res = this.debugSource?.colliders(q.x, q.z, q.radius) ?? {
+        kind: "debug",
+        query: "colliders",
+        colliders: [],
+        total: 0,
+      };
     } else if (q.query === "timings") {
       const t = this.getTickTimings();
       res = {

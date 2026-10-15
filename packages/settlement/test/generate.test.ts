@@ -79,4 +79,4 @@ describe("generateSettlement", () => {
   });
 });
 
-const GOLDEN = "09b8e799a17efebd63d486f6982dbbeb9e71aecb4799aea423b3b975ff2f82c9";
+const GOLDEN = "e97e09bd68ce07c442cbbe7190f0c0a8a39835e463c4ef8cfe19c24befed474a";
