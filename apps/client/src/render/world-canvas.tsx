@@ -59,6 +59,7 @@ import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js"
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { StreamingCoordinator } from "./terrain/streaming-coordinator.js";
 import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
@@ -154,6 +155,8 @@ export interface WorldCanvasProps {
   onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
+  /** Optional ref to receive the streaming coordinator for region-change notifications. */
+  streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
 }
 
 /** The player's health and the target, as the frames show them (U12a). */
@@ -287,6 +290,7 @@ interface Runtime {
   drops: DropLabels;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
+  streaming: StreamingCoordinator;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -317,6 +321,7 @@ function MirrorWorld({
   settings,
   screen,
   physicalSky,
+  streamingRef,
 }: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -354,6 +359,8 @@ function MirrorWorld({
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
   // For CombatFeedback.prune, made once per client rather than every frame.
   const hasEntity = useCallback((wid: bigint) => client.state.entities.has(wid), [client]);
+  // Chunk world size for streaming (updated when world loads).
+  const chunkWorldSizeRef = useRef(client.world?.chunkWorldSize ?? 16);
 
   // Create the world's renderers and bind input; the same effect disposes
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
@@ -406,6 +413,18 @@ function MirrorWorld({
         else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
       },
     });
+    // Chunk streaming: request tiles around the camera from the region server.
+    chunkWorldSizeRef.current = client.world?.chunkWorldSize ?? 16;
+    const streaming = new StreamingCoordinator(terrain, { radius: 6, handoffMargin: 2 });
+    streaming.attachClient(client);
+    // Expose streaming coordinator for region-change notifications from App.
+    if (streamingRef) streamingRef.current = streaming;
+    // Register the initial world as a region. The welcome includes bounds and endpoint.
+    if (world) {
+      // Use the URL the client connected to (stored in the client's socket URL).
+      const endpoint = (client as unknown as { socket?: { url?: string } }).socket?.url ?? "ws://localhost:7777";
+      streaming.addRegion("main", world.bounds, endpoint);
+    }
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       camDistance.current = clampCamDistance(camDistance.current + e.deltaY * 0.01);
@@ -441,7 +460,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances, streaming };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -450,6 +469,7 @@ function MirrorWorld({
     }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
+      const streaming = rt.current?.streaming;
       rt.current = null;
       unbind();
       canvas.removeEventListener("wheel", onWheel);
@@ -475,6 +495,7 @@ function MirrorWorld({
       drops.dispose();
       npcs.dispose();
       entrances.dispose();
+      streaming?.streamManager.dispose();
       terrain.dispose();
       workers?.dispose();
       water.dispose();
@@ -609,6 +630,12 @@ function MirrorWorld({
       r.layer.setPlayerHidden(false);
       followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
     }
+    // Chunk streaming: track camera position and velocity for demand + handoff prediction.
+    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
+    if (r.layer.player && me) {
+      const playerVel = me.velocity ?? { lx: 0, ly: 0, lz: 0 };
+      r.streaming.trackPlayer(camera.position.x, camera.position.z, playerVel.lx, playerVel.lz, chunkWorldSizeRef.current);
+    }
     const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
@@ -620,8 +647,10 @@ function MirrorWorld({
     r.sky.setDomeVisible(!physical);
     physical?.setSun(r.sky.sunDir);
     if (fog) {
-      fog.near = physical ? CAMERA_FAR * 10 : FOG_NEAR;
-      fog.far = physical ? CAMERA_FAR * 20 : FOG_FAR;
+      // Always use the configured fog range for culling; physical sky adds
+      // aerial perspective visually but we still need fog to limit far draws.
+      fog.near = FOG_NEAR;
+      fog.far = FOG_FAR;
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
@@ -632,7 +661,6 @@ function MirrorWorld({
     const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
     const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
     // Splashes where the player swims and moves.
-    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
     const v = me?.velocity;
     if (swimming && r.layer.player && v && Math.hypot(v.lx, v.lz) > 0.5) {
