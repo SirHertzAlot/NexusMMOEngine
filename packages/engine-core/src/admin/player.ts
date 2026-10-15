@@ -15,6 +15,8 @@ import { z } from "zod";
 import { Ability } from "@mmo-engine/protocol";
 import { restoreBody } from "../body.js";
 import * as C from "../components.js";
+import { clearOfStatics } from "../prop-collision.js";
+import { CHARACTER_CAPSULE } from "../systems.js";
 import type { SimWorld } from "../world.js";
 
 export const TeleportArgsSchema = z
@@ -82,21 +84,23 @@ export const GodArgsSchema = z
 
 export type GodArgs = z.infer<typeof GodArgsSchema>
 
-/** Move the entity to (x, z): ground snap + stilled velocity. Pure sim write. */
+/** Move the entity to (x, z), cleared of static colliders: ground snap + stilled velocity. Pure sim write. */
 export function applyTeleport(
   world: SimWorld,
   wireId: bigint,
   x: number,
   z: number,
-  groundY: number | null,
+  groundAt: ((x: number, z: number) => number) | null,
 ): { ok: boolean; message: string } {
   const eid = world.resolveWireId(wireId);
   if (eid < 0 || !hasComponent(world.ecs, C.Transform, eid)) {
     return { ok: false, message: `unknown entity ${wireId}` };
   }
+  // Never land inside a static collider (a building): step out of it.
+  ({ x, z } = clearOfStatics(world, x, z, CHARACTER_CAPSULE.radius));
   C.Transform.px[eid] = x;
   C.Transform.pz[eid] = z;
-  C.Transform.py[eid] = groundY ?? C.Transform.py[eid];
+  C.Transform.py[eid] = groundAt?.(x, z) ?? C.Transform.py[eid];
   if (hasComponent(world.ecs, C.Velocity, eid)) {
     C.Velocity.lx[eid] = 0; C.Velocity.ly[eid] = 0; C.Velocity.lz[eid] = 0;
     C.Velocity.ax[eid] = 0; C.Velocity.ay[eid] = 0; C.Velocity.az[eid] = 0;

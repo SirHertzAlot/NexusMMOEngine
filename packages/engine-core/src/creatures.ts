@@ -18,7 +18,8 @@ import { IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import type { CreaturesRules, ItemBaseRules } from "@mmo-engine/rules";
 import * as C from "./components.js";
 import type { Weapon } from "./combat.js";
-import { PLAYER_SPEED, type SimSystem } from "./systems.js";
+import { CHARACTER_CAPSULE, PLAYER_SPEED, type SimSystem } from "./systems.js";
+import { clearOfStatics } from "./prop-collision.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
 
@@ -171,6 +172,8 @@ export class CreatureSystem implements SimSystem {
     const baseId = def.weapons[Math.floor(this.rand() * def.weapons.length)];
     const base = this.opts.bases[baseId];
     if (!base) throw new Error(`creature "${kind}" weapon "${baseId}" is not an item base`);
+    // Never inside a baked building; the cleared spot is also home.
+    ({ x, z } = clearOfStatics(sim, x, z, CHARACTER_CAPSULE.radius));
     const eid = sim.spawn();
     for (const c of [C.Transform, C.Velocity, C.PlayerIntent, C.Health, C.Locomotion, C.Action, C.NavAgent]) {
       addComponent(sim.ecs, c, eid);
