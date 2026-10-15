@@ -26,6 +26,8 @@ export interface SettlementRequest {
   seed: number;
   population: number;
   rules?: SettlementRules;
+  /** The building factor (`resolveScale(doc, "building")`) the town is laid out at; default 1. */
+  scale?: number;
   verbosity?: Verbosity;
 }
 
@@ -36,6 +38,8 @@ export interface SettlementManifest {
   rulesVersion: string;
   settlementId: string;
   seed: number;
+  /** The building factor the parcels and streets were baked at: a different scale is a different town (and hash). */
+  scale: number;
   determinism: { rngStreams: Record<string, number>; sortPolicy: "id"; units: "millimeters" };
   demographics: Town["demographics"];
   demand: Town["demand"];
@@ -95,7 +99,7 @@ const STAGES: Stage[] = [
   {
     name: "layout",
     run(ctx) {
-      const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng);
+      const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1);
       ctx.town.layout = layout;
       ctx.events.emit("summary", "layout", "laid_out", { blocks: layout.blocks, parcels: layout.parcels.length, junctions: layout.roads.nodes.length });
     },
@@ -137,6 +141,8 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
   const fail = (stage: string, code: string, message: string): GenerationResult => ({ ok: false, error: { stage, code, message }, events: events.events(verbosity) });
   if (!Number.isInteger(request.population) || request.population < 1) return fail("request", "bad_population", "population must be a positive whole number");
 
+  if (request.scale !== undefined && !(request.scale > 0 && Number.isFinite(request.scale))) return fail("request", "bad_scale", "scale must be a positive number");
+
   const ctx: Context = { request, rules: request.rules ?? BUILTIN_RULES, rng: streams(request.seed), events, town: {}, validation: [] };
   for (const stage of STAGES) {
     try {
@@ -155,6 +161,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     rulesVersion: ctx.rules.version,
     settlementId: request.settlementId,
     seed: request.seed,
+    scale: request.scale ?? 1,
     determinism: { rngStreams: ctx.rng.seeds(), sortPolicy: "id" as const, units: "millimeters" as const },
     demographics,
     demand,

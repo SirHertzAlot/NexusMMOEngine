@@ -8,6 +8,7 @@
 
 import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene";
 import type { SettlementManifest } from "./generate.js";
+import { scaledLayout } from "./layout.js";
 import type { SettlementRules } from "./rules.js";
 
 /** A stable index from an id (FNV-1a), so the same structure always gets the same model. */
@@ -28,7 +29,10 @@ export interface SceneOptions {
 }
 
 export function settlementScene(manifest: SettlementManifest, rules: SettlementRules, opts: SceneOptions): SceneDoc {
-  const [pw, pd] = rules.layout.parcelSizeMm;
+  // The scene stays authored at scale 1 (the spawner applies the building factor), so a footprint is sized
+  // such that, once scaled, it still leaves MARGIN_M to the scaled parcel's edge.
+  const f = manifest.scale ?? 1;
+  const [pw, pd] = scaledLayout(rules, f).parcelMm;
   const nodes = manifest.roads.nodes;
   const cx = (Math.min(...nodes.map((n) => n.x)) + Math.max(...nodes.map((n) => n.x))) / 2;
   const cz = (Math.min(...nodes.map((n) => n.z)) + Math.max(...nodes.map((n) => n.z))) / 2;
@@ -40,7 +44,7 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       id: s.id,
       name: s.archetype,
       transform: { position: [(p.center.x - cx) / 1000, 0, (p.center.z - cz) / 1000] },
-      components: { Structure: { kind: s.archetype, asset: models ? models[pick(s.id, models.length)]! : "", width: pw / 1000 - 2 * MARGIN_M, depth: pd / 1000 - 2 * MARGIN_M, height: rules.archetypes[s.archetype]!.heightM } },
+      components: { Structure: { kind: s.archetype, asset: models ? models[pick(s.id, models.length)]! : "", width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: rules.archetypes[s.archetype]!.heightM } },
     };
   });
   const scene: SceneDoc = {
