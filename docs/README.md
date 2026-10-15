@@ -22,6 +22,7 @@ or planned.
 | [CHARACTERS-AND-SOCIAL.md](CHARACTERS-AND-SOCIAL.md) | Characters, social systems, and their data model |
 | [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md) | Mastery, skills, stats, and the combat ruleset |
 | [DUNGEONS-AND-LOOT.md](DUNGEONS-AND-LOOT.md) | Dungeon generation, species, ranks, loot, crafting |
+| [SETTLEMENTS.md](SETTLEMENTS.md) | Procedural settlements: what is built, how the stages fit, and what comes next |
 | [OPEN-WORLD-PLAN.md](OPEN-WORLD-PLAN.md) | The open-world build plan |
 | [PCG-SPEC.md](PCG-SPEC.md) | Procedural asset generation |
 | [EDGE-CORE-SPLIT.md](EDGE-CORE-SPLIT.md) | The edge/core split design and slices |
