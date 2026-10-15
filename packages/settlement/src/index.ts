@@ -15,3 +15,4 @@ export * from "./scene.js";
 export * from "./occupancy.js";
 export * from "./sites.js";
 export * from "./art.js";
+export * from "./report.js";
