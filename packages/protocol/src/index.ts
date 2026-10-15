@@ -24,6 +24,7 @@ export type {
   ChatMessage,
   CreateCharacterMessage,
   DebugQuery,
+  DebugCollider,
   DebugResponse,
   EnterWorldMessage,
   ErrorMessage,

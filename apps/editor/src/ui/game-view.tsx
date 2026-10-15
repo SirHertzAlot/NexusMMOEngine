@@ -19,6 +19,7 @@
  */
 
 import * as React from "react";
+import type * as THREE from "three";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import { getAllMedia } from "../media-client.js";
 import {
@@ -47,6 +48,8 @@ export interface GameViewProps {
   maximized?: boolean;
   onHud?: (hud: HudData) => void;
   onGpu?: (gpu: GpuInfo) => void;
+  /** The world's three.js scene, once it exists (debug overlays draw into it). */
+  onScene?: (scene: THREE.Scene) => void;
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   /** Hit feedback and the picked target (a left click on a body picks it); one is made when absent. */
   combat?: CombatFeedback;
@@ -69,6 +72,7 @@ export function GameView({
   maximized = false,
   onHud,
   onGpu,
+  onScene,
   onQuality,
   combat: givenCombat,
   containerRef,
@@ -114,6 +118,7 @@ export function GameView({
         combat={combat}
         onHud={onHud}
         onGpu={onGpu}
+        onScene={onScene}
         onQuality={onQuality}
         view={view}
         onViewChange={onViewChange}
