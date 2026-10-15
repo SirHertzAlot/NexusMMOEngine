@@ -12,10 +12,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkClipMap } from "@mmo-engine/art";
 import { loadProfile } from "@mmo-engine/build";
-import { validateFlow, validateScene, validateTables } from "@mmo-engine/scene";
+import { validateFlow, validateScale, validateScene, validateTables } from "@mmo-engine/scene";
 import { handleFlowRoute } from "./flow-host.js";
 import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { readStrings } from "./strings-host.js";
+import { readScale } from "./scale-host.js";
 import { audioFile, checkAudio } from "./audio-host.js";
 import { checkVfx, vfxDir } from "./vfx-host.js";
 import { readClipMap } from "./animation-host.js";
@@ -27,7 +28,7 @@ import { handleModulesRoute } from "./modules-host.js";
 import { STORY_FILES, type StoryFiles } from "./story-validate.js";
 import { checkStory, readStoryFile } from "./story-host.js";
 
-export type ProblemSource = "flow" | "hud" | "strings" | "audio" | "vfx" | "animation" | "gameplay" | "rules" | "scenes" | "modules" | "story" | "build" | "playtest";
+export type ProblemSource = "flow" | "hud" | "strings" | "scale" | "audio" | "vfx" | "animation" | "gameplay" | "rules" | "scenes" | "modules" | "story" | "build" | "playtest";
 export interface Problem {
   source: ProblemSource;
   /** Repo-relative file (or a name) the problem belongs to. */
@@ -67,6 +68,7 @@ export function problemCollectors(repoRoot: string): Collector[] {
         message: i.id ? `${i.id}: ${i.message}` : i.message,
       })),
     ],
+    ["scale", () => errs("scale", "content/scale.json", validateScale(readScale(repoRoot)))],
     ["audio", async () => (existsSync(audioFile(repoRoot)) ? errs("audio", "content/audio/events.json", await checkAudio(repoRoot, readJson(audioFile(repoRoot)))) : [])],
     ["vfx", async () => {
       const out: Problem[] = [];
