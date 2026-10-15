@@ -30,12 +30,25 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   warehouse: ["Preset_Stables_\[0-9]+_Optimized$", "Preset_House_04_Optimized$"],
 };
 
-/** Model ids per kind whose names match any of the kind's patterns, sorted; never skinned models or glass panes. A kind with no match is left out. */
-export function buildArtMap(models: readonly CatalogModel[], patterns: Record<string, string[]>): Record<string, string[]> {
+/**
+ * Yard and field dressing for farmsteads (produce, tools, crops, fences), for the imported farm packs: whole names, so
+ * match them with `buildArtMap(models, DEFAULT_DRESSING_PATTERNS, "i")`. These are small props, not structures, so they
+ * stay out of DEFAULT_ART_PATTERNS (scale-fit sizes every kind there to a building).
+ */
+export const DEFAULT_DRESSING_PATTERNS: Record<string, string[]> = {
+  farm_produce: ["^(pumpkin|corn|ear_of_corn|tomato|turnip|potato|carrot|onion|garlic|beet|radish|eggplant|cucumber|pea_pod|egg|fruit_bowl|apple|orange|pear)$"],
+  farm_crops: ["^field_of_", "^(wheat|sunflower|vine|scarecrow)$"],
+  farm_tools: ["^(pitchfork|shovel|bucket|watering_can|wheelbarrow|barrel|horseshoe|saddle|wagon)$"],
+  farm_yard: ["^(well|fence|picket_fence|silo|windmill|barn|barn_scene|tractor)$"],
+  camp_props: ["^(anvil|campfire|lantern|candelabra|tent|ladder|flag|gravestone|fountain)$"],
+};
+
+/** Model ids per kind whose names match any of the kind's patterns (`flags` "i" for case-insensitive), sorted; never skinned models or glass panes. A kind with no match is left out. */
+export function buildArtMap(models: readonly CatalogModel[], patterns: Record<string, string[]>, flags = ""): Record<string, string[]> {
   const usable = models.filter((m) => !m.skinned && !m.name.includes("Glass"));
   const map: Record<string, string[]> = {};
   for (const [kind, ps] of Object.entries(patterns)) {
-    const res = ps.map((p) => new RegExp(p));
+    const res = ps.map((p) => new RegExp(p, flags));
     const ids = usable.filter((m) => res.some((r) => r.test(m.name))).map((m) => m.id).sort();
     if (ids.length > 0) map[kind] = ids;
   }

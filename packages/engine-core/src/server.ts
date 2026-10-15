@@ -52,6 +52,11 @@
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
  *                  baked world with biomes; default off). Only kinds with
  *                  creature rules spawn.
+ *   MMO_WILDLIFE   with MMO_WILD_CREATURES=1: also plan the wildlife table
+ *                  (1 = content/wildlife/wildlife.json, or a file): trophic
+ *                  ratios, danger ramping with distance from the spawn,
+ *                  safe radius (docs/WILDLIFE.md). Settlement centres are
+ *                  not fed in yet, so livestock waits.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
  *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
  *                  overrides the scenes dir, MMO_PREFABS the prefab files (content/prefabs)
@@ -199,6 +204,7 @@ import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
+import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./procgen/wildlife-table.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
@@ -581,8 +587,17 @@ async function main(): Promise<void> {
     if (!biomeAt) {
       console.warn("[biomes] MMO_WILD_CREATURES=1 but this world has no biome map: no wild packs");
     } else {
+      const wildlifeTable = process.env.MMO_WILDLIFE ? loadWildlifeTable(process.env.MMO_WILDLIFE === "1" ? DEFAULT_WILDLIFE_TABLE : process.env.MMO_WILDLIFE) : null;
       const wild = new WildCreatures({
         registry: biomes,
+        extraPlan: wildlifeTable
+          ? (cx, cz) => planWildlifeChunk(wildlifeTable, {
+              seed: ecologySeed32(worldSeed), cx, cz, chunkWorldSize: CHUNK_SIZE, biomeAt,
+              centres: [{ x: spawn.x, z: spawn.z, kind: "spawn" }],
+              depthAt: water ? (x, z) => { const w = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return w === null ? null : w - characterOf().groundHeight(x, z); } : undefined,
+              spawnable: (k) => creaturesOf().has(k),
+            })
+          : undefined,
         // A species the overlay edits sets its pack size where the biome table doesn't.
         spawner: {
           has: (k) => creaturesOf().has(k),
