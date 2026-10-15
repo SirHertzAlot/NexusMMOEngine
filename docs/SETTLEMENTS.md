@@ -151,7 +151,7 @@ makes houses bigger or smaller, so the town they stand in must follow.
 - **The scene stays authored at scale 1.** A `Structure` node means "this size at
   scale 1"; the server's spawner applies the factor at spawn. Footprints are sized
   `(scaled parcel - 2 m margin) / factor`, so once the spawner multiplies them they
-  leave 1 m to the scaled parcel's edge. Heights are the rules' `heightM`, unscaled.
+  leave 1 m to the scaled parcel's edge. Heights are `buildingHeightM` (see Architectural scale), unscaled.
   Node positions come from the scaled parcels.
 - **Per-asset factors** (an `assets` entry for one model) are applied by the
   spawner on top and do not move parcels; use the report to see which overflow.
@@ -162,4 +162,30 @@ Per kind, every mapped model's size before and after its factor, the parcel
 (width x depth) it must fit, and `OVERFLOW` where the scaled footprint exceeds the
 parcel minus the margin; the exit code is 1 if any overflow. It reads the licensed
 catalog locally and prints model ids to the terminal only.
+
+## Architectural scale
+
+The world is real scale (`content/scale.json` building factor 1): a human is 1.8 m,
+and buildings are drawn for that human, not as flat boxes.
+
+- **A storey is 1.5x the human**: `architecture.storeyM` 2.7 m floor to floor, the
+  ground-floor ceiling `groundCeilingM` 2.44 m (8 ft), `roofM` 2 m, `characterM` 1.8 m.
+- **Archetypes carry `floors`** (and an optional `storeyM` for tall halls) instead of a
+  flat `heightM`. `buildingHeightM(archetype, architecture)` = ground storey +
+  (floors - 1) x storey + roof, where an archetype's own `storeyM` replaces both the
+  ground ceiling and the storey. A 2-storey house is 2.44 + 2.7 + 2 = 7.14 m, not 5 m;
+  a chapel (one 8 m nave) 10 m; a mill (3 x 3.5 m) 12.5 m; a granary 8 m; a warehouse 7 m.
+  The scene's `Structure.height` is this value. Rule files stay data-driven: a game
+  changes the numbers, not the code.
+- **The rules version is `settlement-rules/2`**, recorded in every manifest, so the
+  golden hash was re-pinned on purpose (layout and placement did not change).
+- **Art is brought to size per model**, not by one factor:
+
+      npm run settlement:scale-fit -- [--catalog assets/catalog.json] [--scale content/scale.json] [--out content/scale.local.json]
+
+  For each mapped model, the factor that brings its height to its archetype's
+  `buildingHeightM`, held to what fits the parcel (parcel minus the 2 m margin): the
+  smaller of the two. The output names licensed models, so it defaults to the gitignored
+  `content/scale.local.json`; run the server with `MMO_SCALE=content/scale.local.json`.
+  `settlement:scale-report --scale content/scale.local.json` then shows no overflows.
 

@@ -9,7 +9,7 @@
 import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene";
 import type { SettlementManifest } from "./generate.js";
 import { scaledLayout } from "./layout.js";
-import type { SettlementRules } from "./rules.js";
+import { buildingHeightM, type SettlementRules } from "./rules.js";
 
 /** A stable index from an id (FNV-1a), so the same structure always gets the same model. */
 function pick(id: string, n: number): number {
@@ -44,7 +44,7 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       id: s.id,
       name: s.archetype,
       transform: { position: [(p.center.x - cx) / 1000, 0, (p.center.z - cz) / 1000] },
-      components: { Structure: { kind: s.archetype, asset: models ? models[pick(s.id, models.length)]! : "", width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: rules.archetypes[s.archetype]!.heightM } },
+      components: { Structure: { kind: s.archetype, asset: models ? models[pick(s.id, models.length)]! : "", width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: buildingHeightM(rules.archetypes[s.archetype]!, rules.architecture) } },
     };
   });
   const scene: SceneDoc = {

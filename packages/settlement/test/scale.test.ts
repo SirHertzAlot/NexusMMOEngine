@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SCALE, type ScaleDoc } from "@mmo-engine/scene";
-import { BUILTIN_RULES, MIN_STREET_MM, generateSettlement, layOut, scaleReport, settlementScene, streams, type CatalogModel } from "../src/index.js";
+import { BUILTIN_RULES, MIN_STREET_MM, buildingHeightM, generateSettlement, layOut, scaleReport, settlementScene, streams, type CatalogModel } from "../src/index.js";
 
 const [pw, pd] = BUILTIN_RULES.layout.parcelSizeMm;
 
@@ -43,7 +43,7 @@ describe("a baked town at scale", () => {
         const c = n.components!.Structure!;
         assert.ok((c.width as number) * f + 2 <= (pw * f) / 1000 + 1e-9);
         assert.ok((c.depth as number) * f + 2 <= (pd * f) / 1000 + 1e-9);
-        assert.equal(c.height, BUILTIN_RULES.archetypes[c.kind as string]!.heightM);
+        assert.equal(c.height, buildingHeightM(BUILTIN_RULES.archetypes[c.kind as string]!, BUILTIN_RULES.architecture));
       }
     });
   }

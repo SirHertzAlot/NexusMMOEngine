@@ -11,7 +11,7 @@ import { scaledLayout } from "./layout.js";
 import type { SettlementRules } from "./rules.js";
 
 /** Space the footprint leaves to the parcel's edge, each side, metres (matches the scene's margin). */
-const MARGIN_M = 1;
+export const MARGIN_M = 1;
 
 export interface ScaleReportRow {
   kind: string;
