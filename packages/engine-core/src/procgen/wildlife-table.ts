@@ -341,7 +341,7 @@ export interface WildlifePlanContext {
   spawnable?: (species: string) => boolean;
 }
 
-export interface WildlifePack { kind: string; biome: string; x: number; z: number; pack: [number, number]; tier: number; }
+export interface WildlifePack { kind: string; biome: string; x: number; z: number; pack: [number, number]; tier: number; aquatic: boolean; }
 
 const unit = (h: number): number => h / 4294967296;
 const SALT = 0x71d1;
@@ -416,7 +416,7 @@ export function planWildlifeChunk(t: WildlifeTable, ctx: WildlifePlanContext): W
     const id = pick(cands, unit(hash(ctx.seed, SALT, ctx.cx, ctx.cz, 4 + k)));
     if (id === null) continue;
     const sp = t.species[id]!;
-    out.push({ kind: id, biome, x, z, pack: [sp.group.size[0], sp.group.size[1]], tier: sp.danger.tier });
+    out.push({ kind: id, biome, x, z, pack: [sp.group.size[0], sp.group.size[1]], tier: sp.danger.tier, aquatic: sp.habitat === "water" });
   }
   return out;
 }
