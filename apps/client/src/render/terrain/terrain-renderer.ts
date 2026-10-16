@@ -263,6 +263,11 @@ export class TerrainRenderer {
     this.farMaterial.wireframe = on;
   }
 
+  /** Wet look (WX1): 0 = dry, 1 = soaked. Driven by the weather field. */
+  setWetness(v: number): void {
+    this.uniforms.uWetness.value = v;
+  }
+
   /** The loaded chunk under world (x, z), or null (tests, tools). */
   loadedChunkAt(x: number, z: number): { cx: number; cz: number } | null {
     const cx = Math.floor(x / this.chunkWorldSize);

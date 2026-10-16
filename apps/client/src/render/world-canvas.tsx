@@ -59,6 +59,8 @@ import { FieldService, type ClimateParams } from "./weather/field-service.js";
 import { overcastFromSample, type OvercastParams } from "./weather/sky-overcast.js";
 import { CloudVolume } from "./weather/cloud-volume.js";
 import { RainCurtain } from "./weather/rain-curtain.js";
+import { WeatherFeel } from "./weather/weather-feel.js";
+import type { AudioEngine } from "../audio/engine.js";
 import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
@@ -167,6 +169,8 @@ export interface WorldCanvasProps {
   onCombat?: (view: CombatView) => void;
   /** Optional ref to receive the streaming coordinator for region-change notifications. */
   streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
+  /** The audio engine for weather sound (rain bed). */
+  audio?: AudioEngine | null;
 }
 
 /** The player's health and the target, as the frames show them (U12a). */
@@ -304,6 +308,7 @@ interface Runtime {
   weather: FieldService;
   clouds: CloudVolume;
   rain: RainCurtain;
+  weatherFeel: WeatherFeel;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -335,6 +340,7 @@ function MirrorWorld({
   screen,
   physicalSky,
   streamingRef,
+  audio,
 }: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -408,6 +414,8 @@ function MirrorWorld({
     const weather = new FieldService(weatherMap, workers ?? null, 1234, worldClimate);
     const clouds = new CloudVolume(10);
     const rain = new RainCurtain();
+    const weatherFeel = new WeatherFeel();
+    weatherFeel.setAudio(audio ?? null);
     scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, clouds.group, rain.mesh);
     // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
     // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
@@ -480,7 +488,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances, streaming, weather, clouds, rain };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances, streaming, weather, clouds, rain, weatherFeel };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -696,6 +704,8 @@ function MirrorWorld({
     // Rain curtain: visible only when raining.
     const rainIntensity = wxSample.kind === "rain" ? wxSample.intensity : 0;
     r.rain.update(seconds, wxSample.windX, wxSample.windZ, rainIntensity, camera.position);
+    // WX1 couplings: wet look, water ripples, and rain audio.
+    r.weatherFeel.update(wxSample, delta, r.water, r.terrain);
     // Splashes where the player swims and moves.
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
     const v = me?.velocity;

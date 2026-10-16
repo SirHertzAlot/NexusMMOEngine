@@ -626,6 +626,7 @@ export function App(): React.ReactElement {
           combat={combat}
           onCombat={setCombatView}
           streamingRef={streamingRef}
+          audio={audio}
         />
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
