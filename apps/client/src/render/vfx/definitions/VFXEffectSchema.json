@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mmo-engine.dev/schemas/vfx-effect.json",
+  "title": "VFX Effect Definition",
+  "description": "Engine-agnostic VFX effect definition (VFX Engine Spec §15). Source of truth for both JS client and C++ backend.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "emitters"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "description": "Unique effect ID (e.g. 'fireball-impact', 'heal', 'muzzle-flash')"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Schema version for forward compatibility"
+    },
+    "emitters": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/emitter" },
+      "description": "List of particle emitters in this effect"
+    },
+    "blendMode": {
+      "$ref": "#/$defs/blendMode",
+      "default": "normal",
+      "description": "How particles blend (rendering hint)"
+    },
+    "texture": {
+      "type": "string",
+      "description": "Texture reference by asset ID (e.g. 'vfx/soft-circle'). Omit for untextured particles."
+    },
+    "authoredTier": {
+      "$ref": "#/$defs/qualityTier",
+      "default": "medium",
+      "description": "Budget tier this effect was authored for; runtime scales by active tier"
+    }
+  },
+  "$defs": {
+    "qualityTier": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "ultra"],
+      "description": "Quality tier for budget scaling"
+    },
+    "blendMode": {
+      "type": "string",
+      "enum": ["normal", "additive", "multiply", "screen"],
+      "description": "Particle blend mode"
+    },
+    "curvePoint": {
+      "type": "object",
+      "required": ["t", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "t": { "type": "number", "minimum": 0, "maximum": 1, "description": "Normalized life position [0,1]" },
+        "value": { "type": "number", "description": "Value at this point" }
+      }
+    },
+    "curve": {
+      "type": "object",
+      "required": ["points"],
+      "additionalProperties": false,
+      "properties": {
+        "points": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/curvePoint" },
+          "description": "Piecewise-linear curve over normalized life"
+        }
+      }
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "number", "description": "Constant value" },
+        { "$ref": "#/$defs/curve" }
+      ],
+      "description": "A scalar that's either constant or a curve over particle life"
+    },
+    "vec3": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "color": {
+      "type": "object",
+      "required": ["r", "g", "b"],
+      "additionalProperties": false,
+      "properties": {
+        "r": { "type": "number", "minimum": 0, "maximum": 1 },
+        "g": { "type": "number", "minimum": 0, "maximum": 1 },
+        "b": { "type": "number", "minimum": 0, "maximum": 1 },
+        "a": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
+      }
+    },
+    "colorGradient": {
+      "type": "object",
+      "required": ["stops"],
+      "additionalProperties": false,
+      "properties": {
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["t", "color"],
+            "additionalProperties": false,
+            "properties": {
+              "t": { "type": "number", "minimum": 0, "maximum": 1 },
+              "color": { "$ref": "#/$defs/color" }
+            }
+          }
+        }
+      }
+    },
+    "spawnShape": {
+      "oneOf": [
+        { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "point" } }, "additionalProperties": false },
+        { "type": "object", "required": ["kind", "radius"], "properties": { "kind": { "const": "sphere" }, "radius": { "type": "number", "exclusiveMinimum": 0 } }, "additionalProperties": false },
+        { "type": "object", "required": ["kind", "halfExtents"], "properties": { "kind": { "const": "box" }, "halfExtents": { "$ref": "#/$defs/vec3" } }, "additionalProperties": false },
+        {
+          "type": "object",
+          "required": ["kind", "angle", "radius", "height"],
+          "properties": {
+            "kind": { "const": "cone" },
+            "angle": { "type": "number", "minimum": 0, "maximum": 1.5707963267948966 },
+            "radius": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "radius"],
+          "properties": {
+            "kind": { "const": "disc" },
+            "radius": { "type": "number", "exclusiveMinimum": 0 },
+            "normal": { "$ref": "#/$defs/vec3", "default": { "x": 0, "y": 1, "z": 0 } }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "description": "Emitter spawn shape (engine-agnostic)"
+    },
+    "force": {
+      "oneOf": [
+        { "type": "object", "required": ["kind", "acceleration"], "properties": { "kind": { "const": "gravity" }, "acceleration": { "$ref": "#/$defs/vec3" } }, "additionalProperties": false },
+        { "type": "object", "required": ["kind", "coefficient"], "properties": { "kind": { "const": "drag" }, "coefficient": { "type": "number", "minimum": 0 } }, "additionalProperties": false },
+        { "type": "object", "required": ["kind", "intensity", "frequency"], "properties": { "kind": { "const": "turbulence" }, "intensity": { "type": "number", "minimum": 0 }, "frequency": { "type": "number", "exclusiveMinimum": 0 } }, "additionalProperties": false },
+        { "type": "object", "required": ["kind", "target", "strength"], "properties": { "kind": { "const": "attractor" }, "target": { "$ref": "#/$defs/vec3" }, "strength": { "type": "number" } }, "additionalProperties": false }
+      ],
+      "description": "Particle force (engine-agnostic)"
+    },
+    "burst": {
+      "type": "object",
+      "required": ["time", "count"],
+      "additionalProperties": false,
+      "properties": {
+        "time": { "type": "number", "minimum": 0, "description": "Time in seconds after emitter start" },
+        "count": { "type": "integer", "minimum": 1, "description": "Number of particles to spawn" },
+        "repeat": { "type": "integer", "minimum": 0, "default": 0, "description": "How many times to repeat (0 = infinite while emitter active)" },
+        "interval": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "Seconds between repeats" }
+      }
+    },
+    "emitter": {
+      "type": "object",
+      "required": ["name", "maxParticles", "spawnShape"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Unique name within the effect" },
+        "rate": { "type": "number", "minimum": 0, "default": 0, "description": "Continuous emission rate (particles/second)" },
+        "bursts": { "type": "array", "items": { "$ref": "#/$defs/burst" }, "default": [] },
+        "duration": { "type": "number", "minimum": 0, "default": 0, "description": "Emitter lifetime in seconds (0 = infinite)" },
+        "looping": { "type": "boolean", "default": true, "description": "Whether the emitter loops when duration expires" },
+        "maxParticles": { "type": "integer", "exclusiveMinimum": 0, "description": "Maximum live particles from this emitter" },
+        "spawnShape": { "$ref": "#/$defs/spawnShape" },
+        "speed": { "$ref": "#/$defs/scalar", "description": "Initial speed (units/s)" },
+        "direction": { "$ref": "#/$defs/vec3", "default": { "x": 0, "y": 1, "z": 0 }, "description": "Initial direction" },
+        "spread": { "type": "number", "minimum": 0, "maximum": 3.141592653589793, "default": 0, "description": "Spread angle in radians around direction" },
+        "lifetime": { "$ref": "#/$defs/scalar", "description": "Particle lifetime in seconds" },
+        "size": { "$ref": "#/$defs/scalar", "description": "Particle size in world units" },
+        "color": { "oneOf": [{ "$ref": "#/$defs/color" }, { "$ref": "#/$defs/colorGradient" }], "description": "Particle color (constant or gradient over life)" },
+        "forces": { "type": "array", "items": { "$ref": "#/$defs/force" }, "default": [] },
+        "position": { "$ref": "#/$defs/vec3", "default": { "x": 0, "y": 0, "z": 0 }, "description": "Local offset from effect origin" }
+      }
+    }
+  }
+}
