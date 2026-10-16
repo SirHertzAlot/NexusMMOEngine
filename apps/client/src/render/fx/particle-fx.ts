@@ -44,6 +44,8 @@ const NEBULA_FORCE_SCALE = 100;
 const MAX_PARTICLES = 8000;
 /** Emission step: nebula emits `count` particles every `EMIT_EVERY` seconds. */
 const EMIT_EVERY = 0.05;
+/** How far upwind of the camera the weather is emitted, so it slants downwind. */
+const WIND_EMIT_OFFSET = 3;
 
 /** The tier budgets, validated at load. */
 const BUDGETS = DEFAULT_PARTICLE_BUDGETS;
@@ -220,7 +222,10 @@ export class ParticleFx {
         w.count = count;
         w.emitter.setRate(new Rate(new Span(count, count), new Span(EMIT_EVERY)));
       }
-      w.emitter.setPosition({ x: cameraPos.x, y: cameraPos.y + 6, z: cameraPos.z });
+      // Emit upwind of the camera so the precipitation slants downwind.
+      const wx = weather.windX ?? 0;
+      const wz = weather.windZ ?? 0;
+      w.emitter.setPosition({ x: cameraPos.x - wx * WIND_EMIT_OFFSET, y: cameraPos.y + 6, z: cameraPos.z - wz * WIND_EMIT_OFFSET });
     }
     this.splashCooldown = Math.max(0, this.splashCooldown - dt);
     void this.system.update(dt);
