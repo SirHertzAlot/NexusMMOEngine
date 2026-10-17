@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SCALE, resolveScale } from "@mmo-engine/scene";
-import { BUILTIN_RULES, SettlementRulesSchema, buildingHeightM, fitScale, scaleReport, settlementScene, generateSettlement, type CatalogModel } from "../src/index.js";
+import { BUILTIN_RULES, SettlementRulesSchema, buildingHeightM, fitScale, scaleReport, settlementScene, generateSettlement, PROP_KINDS, type CatalogModel } from "../src/index.js";
 
 const A = BUILTIN_RULES.architecture;
 
@@ -53,7 +53,7 @@ describe("architecture rules", () => {
       const c = n.components!.Structure!;
       const a = BUILTIN_RULES.archetypes[c.kind as string];
       if (a) assert.equal(c.height, buildingHeightM(a, A));
-      else assert.ok(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field"].includes(c.kind as string), `${String(c.kind)} is a building, a wall piece or the square`);
+      else assert.ok(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field", "paved_road", "terrace", "stair_step", ...PROP_KINDS].includes(c.kind as string), `${String(c.kind)} is a building, a wall piece, the square, paving or a prop`);
     }
   });
 });

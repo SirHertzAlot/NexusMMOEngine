@@ -87,6 +87,22 @@ export const DEFAULT_DRESSING_PATTERNS: Record<string, string[]> = {
 };
 
 /**
+ * Street furniture (rules.props, and the terraces' steps), for the packs' prop models: matched case-insensitively
+ * (`buildArtMap(models, DEFAULT_PROP_PATTERNS, "i")`). Small props like the dressing, so they stay out of
+ * DEFAULT_ART_PATTERNS too; a kind with no model stays its stand-in box.
+ */
+export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
+  street_lamp: ["(^|_)(street_?)?(lamp|lantern)(_?post)?(_[0-9]+)?$"],
+  bench: ["(^|_)bench(_[0-9]+)?$"],
+  fountain: ["(^|_)fountain(_[0-9]+)?$"],
+  statue: ["(^|_)statue(_[0-9]+)?$"],
+  barrel: ["(^|_)barrel(_[0-9]+)?$"],
+  crate: ["(^|_)(crate|box_wood(en)?)(_[0-9]+)?$"],
+  planter: ["(^|_)(planter|flower_?(box|pot))(_[0-9]+)?$"],
+  stair_step: ["(^|_)(stone_)?(step|stairs?)(_[0-9]+)?$"],
+};
+
+/**
  * Model ids per kind whose names match any of the kind's patterns (`flags` "i" for case-insensitive), sorted; never
  * skinned models or glass panes, and only a wall kind (FORTIFICATION_KINDS) takes a wall, gate or tower model
  * (FORTIFICATION_NAME). A kind with no match is left out.

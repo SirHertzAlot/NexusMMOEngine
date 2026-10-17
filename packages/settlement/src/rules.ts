@@ -247,6 +247,51 @@ export const DEFAULT_SETTINGS: Settings = {
   remotePressurePermille: 250,
 };
 
+/**
+ * Street furniture and dressing (the props stage): what stands in a town's streets, its square and its parks. A
+ * walled town's streets are paved (the road edges' `surface`), a village's are beaten earth.
+ *   - Lamps line the streets at the plots' boundaries, one every `lampEveryPlots` plots on each side, the two sides
+ *     staggered, `lampInsetMm` into the street from its edge; one at each corner of the square.
+ *   - The square has benches round its edge (every `squareBenchSpacingMm`, `squareBenchInsetMm` in), a fountain
+ *     from `fountainMinPopulation` people, a statue from `statueMinPopulation`, and a statue to each grand master.
+ *   - A park has `parkBenches` benches facing a fountain or a statue (the "props" stream picks which).
+ *   - The `stores` (taverns, inns, warehouses, bakeries) have a barrel and a crate by the door; homes on the
+ *     `planters` wealth bands a planter either side of it.
+ *   - The `terraces` archetypes stand on a raised terrace over their whole plot, `heightMm` up, reached from the
+ *     street by stairs of `stepRiseMm` steps, each `stepTreadMm` deep and `stairsWidthMm` wide.
+ * Sizes are millimetres [width, depth, height]: width along the street (or the bench's seat), depth away from it.
+ */
+export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter"] as const;
+export type PropKind = (typeof PROP_KINDS)[number];
+const SizeMm = z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]);
+export const PropsSchema = z.strictObject({
+  sizesMm: z.strictObject(Object.fromEntries(PROP_KINDS.map((k) => [k, SizeMm])) as Record<PropKind, typeof SizeMm>),
+  lampEveryPlots: z.number().int().positive(),
+  lampInsetMm: z.number().int().min(0),
+  squareBenchSpacingMm: z.number().int().positive(),
+  squareBenchInsetMm: z.number().int().min(0),
+  fountainMinPopulation: z.number().int().min(0),
+  statueMinPopulation: z.number().int().min(0),
+  parkBenches: z.number().int().min(0).max(4),
+  stores: z.array(z.string()),
+  planters: z.array(z.enum(["high", "middle", "low"])),
+  terraces: z.strictObject({ archetypes: z.array(z.string()), heightMm: z.number().int().positive(), stepRiseMm: z.number().int().positive(), stepTreadMm: z.number().int().positive(), stairsWidthMm: z.number().int().positive() }),
+});
+export type Props = z.infer<typeof PropsSchema>;
+export const DEFAULT_PROPS: Props = {
+  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600] },
+  lampEveryPlots: 2,
+  lampInsetMm: 500,
+  squareBenchSpacingMm: 8000,
+  squareBenchInsetMm: 2500,
+  fountainMinPopulation: 1000,
+  statueMinPopulation: 2000,
+  parkBenches: 2,
+  stores: ["tavern", "inn", "warehouse", "bakery", "master_bakery"],
+  planters: ["high"],
+  terraces: { archetypes: ["town_hall", "parish_church", "cathedral", "library", "townhouse"], heightMm: 600, stepRiseMm: 200, stepTreadMm: 350, stairsWidthMm: 3000 },
+};
+
 export const DEFAULT_FORTIFICATION: Fortification = { minHouseholds: 45, setbackMm: 4000, thicknessMm: 2000, heightM: 6, pieceMm: 6000, towerMm: 5000, towerHeightM: 9, towerSpacingMm: 40000, gateHeightM: 8 };
 
 export const SettlementRulesSchema = z.strictObject({
@@ -286,6 +331,8 @@ export const SettlementRulesSchema = z.strictObject({
   mastery: MasterySchema.optional(),
   homeless: HomelessSchema.optional(),
   openGround: OpenGroundSchema.optional(),
+  /** Street furniture, paving and terraces (none without it). */
+  props: PropsSchema.optional(),
   settings: SettingsSchema.default(DEFAULT_SETTINGS),
   /** Worship: the churches' seats hold at least `sharePermille` of the people (a mass at a time). */
   worship: z.strictObject({ archetypes: z.array(z.string()), sharePermille: z.number().int().min(0).max(1000) }).optional(),
@@ -339,7 +386,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/7",
+  version: "settlement-rules/8",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -353,6 +400,7 @@ export const BUILTIN_RULES: SettlementRules = {
   mastery: DEFAULT_MASTERY,
   homeless: DEFAULT_HOMELESS,
   openGround: DEFAULT_OPEN_GROUND,
+  props: DEFAULT_PROPS,
   settings: DEFAULT_SETTINGS,
   worship: { archetypes: ["chapel", "parish_church", "cathedral"], sharePermille: 500 },
   architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },

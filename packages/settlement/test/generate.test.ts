@@ -10,6 +10,9 @@ import { ACRE_M2, BUILTIN_RULES, contentHash, drawMastery, generateSettlement, G
 
 const request = { settlementId: "0182", seed: 1234, population: 600 };
 
+const onSquareOf = (m: { square: { center: { x: number; z: number }; widthMm: number; depthMm: number } | null }) => (p: { center: { x: number; z: number } }) =>
+  !!m.square && Math.abs(p.center.x - m.square.center.x) < m.square.widthMm / 2 && Math.abs(p.center.z - m.square.center.z) < m.square.depthMm / 2;
+
 function must(r: ReturnType<typeof generateSettlement>) {
   assert.ok(r.ok, r.ok ? "" : `${r.error.stage}: ${r.error.message}`);
   return r;
@@ -230,6 +233,59 @@ describe("generateSettlement", () => {
     assert.ok(g || sh);
   });
 
+  it("dresses the town: lamps along both sides of its paved streets, benches, a fountain and statues in the square, a statue to each grand master", () => {
+    const pr = BUILTIN_RULES.props!;
+    const of = (m: typeof manifest, k: string) => m.props.filter((p) => p.kind === k);
+    assert.ok(manifest.walled && manifest.roads.edges.every((e) => (e.surface === "paved") === (e.roadClass !== "country_road" || !e.to.startsWith("roadend"))), "a walled town is paved out to its gates, the roads beyond are earth");
+    const lamps = of(manifest, "street_lamp");
+    const inner = manifest.parcels.filter((p) => p.kind !== "agriculture" && p.kind !== "manufacturing");
+    assert.equal(lamps.length, inner.filter((p) => (p.gx + (p.facing === 0 ? 1 : 0)) % pr.lampEveryPlots === 0).length + 4, "a lamp every other plot on each side of a street, and one at each corner of the square");
+    assert.ok(lamps.some((l) => l.yawDeg === 0) && lamps.some((l) => l.yawDeg === 180), "both sides of the streets");
+    const sq = manifest.square!;
+    const onSquare = (p: { center: { x: number; z: number } }) => Math.abs(p.center.x - sq.center.x) < sq.widthMm / 2 && Math.abs(p.center.z - sq.center.z) < sq.depthMm / 2;
+    assert.ok(of(manifest, "bench").filter(onSquare).length >= 8, "benches round the square");
+    assert.ok(!of(manifest, "fountain").some(onSquare) && !of(manifest, "statue").some(onSquare), `a town of 600 has no fountain or statue in its square (from ${pr.fountainMinPopulation} and ${pr.statueMinPopulation})`);
+    // The same town with fountains and statues from anyone, and every master grand: a fountain, the town's statue and one to each grand master.
+    const rules = structuredClone(BUILTIN_RULES);
+    rules.props = { ...pr, fountainMinPopulation: 0, statueMinPopulation: 0 };
+    rules.mastery!.grandMaster = { oneInMasters: 1, pupils: 30, pupilsPerWorkplace: 5 };
+    const m = must(generateSettlement({ settlementId: "g", seed: 2, population: 600, rules })).manifest;
+    const grand = m.occupancy.npcs.filter((n) => n.grandMaster).map((n) => n.id).sort();
+    assert.equal(of(m, "fountain").filter(onSquareOf(m)).length, 1);
+    const statues = of(m, "statue").filter(onSquareOf(m));
+    assert.deepEqual(statues.filter((s) => s.honours).map((s) => s.honours).sort(), grand.slice(0, 6), "a statue to each grand master");
+    assert.equal(statues.filter((s) => !s.honours).length, 1, "and the town's own");
+    // Parks: benches facing a fountain or a statue; the stores' doors have barrels, the well-off homes planters.
+    for (const park of m.structures.filter((s) => s.archetype === BUILTIN_RULES.openGround!.park)) {
+      const here = m.props.filter((p) => p.parcel === park.parcel);
+      assert.equal(here.filter((p) => p.kind === "bench").length, pr.parkBenches);
+      assert.equal(here.filter((p) => p.kind === "fountain" || p.kind === "statue").length, 1);
+    }
+    for (const s of m.structures.filter((s) => pr.stores.includes(s.archetype))) assert.ok(m.props.some((p) => p.kind === "barrel" && p.parcel === s.parcel), `${s.archetype} has barrels`);
+    assert.ok(of(m, "planter").length > 0);
+    const gate = m.validation.find((g) => g.gate === "props")!;
+    assert.ok(gate.ok, gate.detail);
+  });
+
+  it("raises the town hall and the churches on terraces, stairs down to the street", () => {
+    const t = BUILTIN_RULES.props!.terraces;
+    const built = new Map(manifest.structures.map((s) => [s.parcel, s.archetype]));
+    const raised = manifest.structures.filter((s) => t.archetypes.includes(s.archetype));
+    assert.ok(raised.some((s) => s.archetype === "town_hall"));
+    const terraces = manifest.props.filter((p) => p.kind === "terrace");
+    assert.deepEqual(terraces.map((p) => p.parcel).sort(), raised.map((s) => s.parcel).sort(), "a terrace under each, and nothing else");
+    for (const p of terraces) {
+      assert.equal(p.heightMm, t.heightMm);
+      const stairs = manifest.props.find((q) => q.kind === "stairs" && q.parcel === p.parcel)!;
+      const parcel = manifest.parcels.find((q) => q.id === p.parcel)!;
+      const out = parcel.facing === 0 ? [0, 1] : parcel.facing === 180 ? [0, -1] : parcel.facing === 90 ? [1, 0] : [-1, 0];
+      const ahead = (stairs.center.x - parcel.center.x) * out[0]! + (stairs.center.z - parcel.center.z) * out[1]!;
+      assert.ok(ahead > BUILTIN_RULES.layout.parcelSizeMm[1] / 2, `${built.get(p.parcel!)}'s stairs run out into the street before its door`);
+    }
+    // What stands at a raised door stands on the terrace.
+    for (const p of manifest.props.filter((p) => p.parcel && terraces.some((q) => q.parcel === p.parcel) && ["barrel", "crate", "planter"].includes(p.kind))) assert.equal(p.yMm, t.heightMm);
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -245,13 +301,13 @@ describe("generateSettlement", () => {
   });
 
   it("logs a summary event per stage, and a collapse per parcel at verbose", () => {
-    assert.deepEqual(events.filter((e) => e.level === "summary").map((e) => e.stage), ["demographics", "demand", "layout", "structures", "occupancy", "validation"]);
+    assert.deepEqual(events.filter((e) => e.level === "summary").map((e) => e.stage), ["demographics", "demand", "layout", "structures", "occupancy", "props", "validation"]);
     assert.equal(events.filter((e) => e.event === "structure_collapsed").length, manifest.parcels.length);
   });
 
   it("keeps only what the verbosity asks for (silent: nothing)", () => {
     assert.deepEqual(must(generateSettlement({ ...request, verbosity: "silent" })).events, []);
-    assert.equal(must(generateSettlement({ ...request, verbosity: "summary" })).events.length, 6);
+    assert.equal(must(generateSettlement({ ...request, verbosity: "summary" })).events.length, 7);
   });
 
   it("fails with the stage and reason when the demand cannot be met", () => {
@@ -273,5 +329,6 @@ describe("generateSettlement", () => {
 // civic, market, entertainment and education quarters, the crafts and farms outside along the roads, plots facing their
 // streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
 // cathedral and monastery). Again for settlement-rules/7 and settlement-gen/0.4.0: acreage, the watch, shared homes,
-// mastery and grand masters, the homeless, masters on the best ground, parks and empty lots.
-const GOLDEN = "487992472a485f18b8d5dd28fde8b2da3fbc47fb40842e541de4aed1c299a5f9";
+// mastery and grand masters, the homeless, masters on the best ground, parks and empty lots. Again for
+// settlement-rules/8 and settlement-gen/0.5.0: street props, paved streets, terraces and stairs.
+const GOLDEN = "4ff854f89832fa04cfc78f1e14c822ecbdd2a0718a8386bc413260cab6f5cac6";

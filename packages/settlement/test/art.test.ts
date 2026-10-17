@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildArtMap, DEFAULT_ART_PATTERNS, DEFAULT_DRESSING_PATTERNS, FORTIFICATION_KINDS, FORTIFICATION_NAME, type CatalogModel } from "../src/index.js";
+import { buildArtMap, DEFAULT_ART_PATTERNS, DEFAULT_DRESSING_PATTERNS, DEFAULT_PROP_PATTERNS, PROP_KINDS, FORTIFICATION_KINDS, FORTIFICATION_NAME, type CatalogModel } from "../src/index.js";
 
 const models: CatalogModel[] = [
   { id: "pack/SM_Bld_Preset_House_02_Optimized", name: "SM_Bld_Preset_House_02_Optimized", skinned: false },
@@ -33,6 +33,17 @@ describe("buildArtMap", () => {
     assert.deepEqual(map.farm_crops, ["farm/Field_of_wheat"]);
     assert.deepEqual(map.farm_yard, ["farm/Barn", "farm/Picket_fence"]);
     assert.equal("camp_props" in map, false);
+  });
+
+  it("maps street furniture case-insensitively, on synthetic entries, a pattern for every prop kind", () => {
+    for (const k of PROP_KINDS) assert.ok(DEFAULT_PROP_PATTERNS[k], k);
+    const props: CatalogModel[] = ["SM_Prop_Street_Lamp_01", "SM_Prop_Bench_02", "SM_Prop_Fountain_01", "SM_Prop_Statue_03", "SM_Prop_Barrel_01", "SM_Prop_Crate_02", "SM_Prop_FlowerBox_01", "SM_Prop_Stairs_01", "SM_Prop_Barrel_Lid_01"].map((n) => ({ id: `pack/${n}`, name: n, skinned: false }));
+    const map = buildArtMap(props, DEFAULT_PROP_PATTERNS, "i");
+    assert.deepEqual(map.street_lamp, ["pack/SM_Prop_Street_Lamp_01"]);
+    assert.deepEqual(map.barrel, ["pack/SM_Prop_Barrel_01"], "a barrel's lid is not a barrel");
+    assert.deepEqual(map.planter, ["pack/SM_Prop_FlowerBox_01"]);
+    assert.deepEqual(map.stair_step, ["pack/SM_Prop_Stairs_01"]);
+    for (const k of ["bench", "fountain", "statue", "crate"]) assert.equal(map[k]!.length, 1, k);
   });
 
   it("never gives a building a wall, gate, tower or archway model, and gives those to the wall's kinds", () => {

@@ -54,6 +54,8 @@ export interface RoadEdge {
   roadClass: "primary_town_road" | "secondary_street" | "country_road";
   lengthMm: number;
   widthMm: number;
+  /** Paved (a walled town's streets, out to its gates) or beaten earth (a village's, and the country roads beyond the gates). */
+  surface: "paved" | "dirt";
 }
 
 export interface District {
@@ -338,8 +340,8 @@ export function layOut(settlement: string, households: number, rules: Settlement
   for (let j = 0; j <= m; j++) for (let i = 0; i <= m; i++) nodes.push({ id: nodeId(i, j), x: i * pitchX - s / 2, z: j * pitchZ - s / 2 });
   const mid = Math.floor((m + 1) / 2);
   const edges: RoadEdge[] = [];
-  const edge = (from: string, to: string, lengthMm: number, roadClass: RoadEdge["roadClass"]): void => {
-    edges.push({ id: entityId("road", settlement, edges.length), from, to, roadClass, lengthMm, widthMm: s });
+  const edge = (from: string, to: string, lengthMm: number, roadClass: RoadEdge["roadClass"], surface: RoadEdge["surface"] = walled ? "paved" : "dirt"): void => {
+    edges.push({ id: entityId("road", settlement, edges.length), from, to, roadClass, lengthMm, widthMm: s, surface });
   };
   for (let j = 0; j <= m; j++) for (let i = 0; i < m; i++) edge(nodeId(i, j), nodeId(i + 1, j), pitchX, j === mid ? "primary_town_road" : "secondary_street");
   for (let i = 0; i <= m; i++) for (let j = 0; j < m; j++) edge(nodeId(i, j), nodeId(i, j + 1), pitchZ, i === mid ? "primary_town_road" : "secondary_street");
@@ -624,7 +626,7 @@ export function layOut(settlement: string, households: number, rules: Settlement
     }
     const end = { id: entityId("roadend", settlement, k), x: e.at.x + e.dx * roadOut, z: e.at.z + e.dz * roadOut };
     nodes.push(end);
-    edge(from, end.id, roadOut - (walled ? s / 2 + out : 0), "country_road");
+    edge(from, end.id, roadOut - (walled ? s / 2 + out : 0), "country_road", "dirt");
   });
 
   const parcels: Parcel[] = [];

@@ -9,7 +9,8 @@ import type { Demand } from "./demand.js";
 import type { Demographics } from "./demographics.js";
 import type { TownMastery } from "./mastery.js";
 import type { TownSetting } from "./setting.js";
-import { ACRE_M2, type Holding, type Layout } from "./layout.js";
+import { ACRE_M2, scaledLayout, type Holding, type Layout } from "./layout.js";
+import { BUILDING_MARGIN_MM, propBox, type Prop } from "./props.js";
 import type { Occupancy } from "./occupancy.js";
 import type { SettlementRules } from "./rules.js";
 import type { Structure } from "./structures.js";
@@ -28,6 +29,7 @@ export interface Town {
   layout: Layout;
   structures: Structure[];
   occupancy: Occupancy;
+  props: Prop[];
 }
 
 const gate = (name: string, ok: boolean, detail: string): Gate => ({ gate: name, ok, detail });
@@ -286,6 +288,56 @@ export function settingGate(t: Pick<Town, "setting" | "demographics" | "occupanc
   return gate("setting", problems.length === 0, problems.length ? problems.join("; ") : `${where}; ${homeless.length} homeless (${sheltered} sheltered, ${homeless.length - sheltered} sleeping rough); ${parks} parks, ${lots} empty lots`);
 }
 
+/**
+ * The props, re-derived from where they stand: none that you walk into (all but terraces) stands in a building or
+ * in another such prop, every terrace is under a building of a terraced kind with its stairs before it, and every
+ * statue to a grand master honours one of the town's.
+ */
+export function propsGate(t: Pick<Town, "layout" | "structures" | "occupancy" | "props">, rules: SettlementRules, scale = 1): Gate {
+  const r = rules.props;
+  if (!r) return gate("props", t.props.length === 0, "no props in these rules");
+  const [pw, pd] = scaledLayout(rules, scale).parcelMm;
+  const open = new Set([rules.openGround?.park, rules.openGround?.lot]);
+  const parcels = new Map(t.layout.parcels.map((p) => [p.id, p]));
+  type Box = { x0: number; x1: number; z0: number; z1: number };
+  const m = BUILDING_MARGIN_MM;
+  const buildings: Box[] = t.structures.filter((s) => !open.has(s.archetype)).map((s) => {
+    const p = parcels.get(s.parcel)!;
+    const [w, d] = p.facing % 180 === 0 ? [pw, pd] : [pd, pw];
+    return { x0: p.center.x - w / 2 + m, x1: p.center.x + w / 2 - m, z0: p.center.z - d / 2 + m, z1: p.center.z + d / 2 - m };
+  });
+  const solid = t.props.filter((p) => p.kind !== "terrace").map((p) => ({ p, b: propBox(p) }));
+  // A grid of 10 m cells, so each prop is tested only against what is near it.
+  const CELL = 10_000;
+  const grid = new Map<string, Box[]>();
+  const cells = (b: Box): string[] => {
+    const out: string[] = [];
+    for (let i = Math.floor(b.x0 / CELL); i <= Math.floor(b.x1 / CELL); i++) for (let j = Math.floor(b.z0 / CELL); j <= Math.floor(b.z1 / CELL); j++) out.push(`${i},${j}`);
+    return out;
+  };
+  const hit = (a: Box, b: Box): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1;
+  for (const b of buildings) for (const k of cells(b)) grid.set(k, [...(grid.get(k) ?? []), b]);
+  const inBuilding = solid.filter(({ b }) => cells(b).some((k) => (grid.get(k) ?? []).some((o) => hit(b, o))));
+  const seen = new Map<string, Box[]>();
+  let overlapping = 0;
+  for (const { b } of solid) {
+    if (cells(b).some((k) => (seen.get(k) ?? []).some((o) => hit(b, o)))) overlapping++;
+    for (const k of cells(b)) seen.set(k, [...(seen.get(k) ?? []), b]);
+  }
+  const built = new Map(t.structures.map((s) => [s.parcel, s.archetype]));
+  const stairs = new Set(t.props.filter((p) => p.kind === "stairs").map((p) => p.parcel));
+  const terraces = t.props.filter((p) => p.kind === "terrace");
+  const steps = Math.ceil(r.terraces.heightMm / r.terraces.stepRiseMm) - 1;
+  const badTerraces = terraces.filter((p) => !r.terraces.archetypes.includes(built.get(p.parcel!) ?? "") || (steps > 0 && !stairs.has(p.parcel)));
+  const grand = new Set(t.occupancy.npcs.filter((n) => n.grandMaster).map((n) => n.id));
+  const badStatues = t.props.filter((p) => p.honours !== undefined && !grand.has(p.honours));
+  const counts = new Map<string, number>();
+  for (const p of t.props) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
+  const ok = inBuilding.length === 0 && overlapping === 0 && badTerraces.length === 0 && badStatues.length === 0;
+  const problems = [inBuilding.length && `${inBuilding.length} in a building`, overlapping && `${overlapping} in another prop`, badTerraces.length && `${badTerraces.length} terraces without their building or stairs`, badStatues.length && `${badStatues.length} statues to no grand master`].filter(Boolean);
+  return gate("props", ok, ok ? [...counts].map(([k, n]) => `${n} ${k}`).join(", ") || "no props" : problems.join(", "));
+}
+
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
   const sum = (f: (id: string) => number): number => t.structures.reduce((a, s) => a + f(s.archetype), 0);
   const d = t.demographics;
@@ -339,6 +391,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     accessGate(t, rules),
     masteryGate(t, rules),
     settingGate(t, rules),
+    propsGate(t, rules, scale),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

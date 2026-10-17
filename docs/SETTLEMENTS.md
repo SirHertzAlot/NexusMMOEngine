@@ -431,6 +431,23 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   (the inner half). A stable town has a few, scattered. Neither stands on the poor streets,
   which the town's crowding needs. Both are pinned like posts (`post.why` "park" or "lot"),
   never placed by the solve alone, and walk-through in the scene.
+- **Street props, paving and terraces (settlement-rules/8, settlement-gen/0.5.0).** A props
+  stage runs after occupancy and fills `manifest.props` from `rules.props`. Each prop has a
+  kind, a centre, a facing and a size in mm. A walled town's streets are paved out to its gates
+  (`roads.edges[].surface`); a village's streets and the roads beyond the gates stay earth, and
+  so does a street that runs into water. The scene lays a walk-through `paved_road` slab along
+  each paved street. Lamps stand at the plots' boundaries, every second plot on each side, the
+  two sides staggered, with one at each corner of the square. The square has benches round its
+  edge, a fountain from 1000 people and the town's statue from 2000. Each grand master gets a
+  gilded statue (`honours`, the NPC). A park has two benches facing a fountain or a statue (the
+  "props" stream picks). Taverns, inns, warehouses and bakeries have a barrel and a crate at the
+  door; well-off homes have a planter either side of it. The town hall, churches, library and
+  townhouses stand on a terrace raised over their plot (600 mm). Stone steps run out into the
+  street before the door (200 mm rises, 350 mm treads), and the building, and anything at its
+  door, stands on top. Gate `props` checks that nothing you walk into stands in a building or
+  in another prop, that every terrace has its building and stairs, and that every statue's
+  grand master is one of the town's. `DEFAULT_PROP_PATTERNS` maps prop models by name
+  (case-insensitive) for `--catalog`.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are

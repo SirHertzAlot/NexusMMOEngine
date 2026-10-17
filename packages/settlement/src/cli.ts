@@ -32,7 +32,7 @@ import { fromUser, settlementPaths } from "./paths.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { buildArtMap, DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
+import { buildArtMap, DEFAULT_ART_PATTERNS, DEFAULT_PROP_PATTERNS, type CatalogModel } from "./art.js";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
 import { ACCESS, BUILTIN_RULES, loadRules, type Access, type SettlementRules } from "./rules.js";
@@ -72,8 +72,8 @@ async function main(): Promise<void> {
   let art: Record<string, string[]> | undefined;
   if (o.catalog) {
     const models = (JSON.parse(readFileSync(fromUser(o.catalog), "utf8")) as { models: CatalogModel[] }).models;
-    art = buildArtMap(models, DEFAULT_ART_PATTERNS);
-    console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
+    art = { ...buildArtMap(models, DEFAULT_ART_PATTERNS), ...buildArtMap(models, DEFAULT_PROP_PATTERNS, "i") };
+    console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length + Object.keys(DEFAULT_PROP_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
   }
   let scale = 1;
   if (o.scale) {

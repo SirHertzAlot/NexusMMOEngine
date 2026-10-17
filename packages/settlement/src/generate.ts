@@ -15,6 +15,7 @@ import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from
 import { drawMastery } from "./mastery.js";
 import { drawHomeless, townSetting, withDensity } from "./setting.js";
 import { occupy } from "./occupancy.js";
+import { placeProps, propBox } from "./props.js";
 import { streams, type Streams } from "./rng.js";
 import { ACCESS, BUILTIN_RULES, type Access, type SettlementRules } from "./rules.js";
 import { placeStructures } from "./structures.js";
@@ -23,7 +24,7 @@ import { validateTown, type Gate, type Town } from "./validate.js";
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.4.0";
+export const GENERATOR_VERSION = "settlement-gen/0.5.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
@@ -75,6 +76,8 @@ export interface SettlementManifest {
   square: Town["layout"]["square"];
   structures: Town["structures"];
   occupancy: Town["occupancy"];
+  /** Street furniture and dressing (lamps, benches, fountains, statues, barrels, planters) and the terraces with their stairs, in id order. */
+  props: Town["props"];
   validation: Gate[];
 }
 
@@ -175,7 +178,16 @@ const STAGES: Stage[] = [
           // The square stays only if its whole paving is dry.
           const sq = full.square;
           const squareDry = sq !== null && FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => site.dry(site.origin[0] + (sq.center.x + fx * sq.widthMm - c.x) / 1000, site.origin[1] + (sq.center.z + fz * sq.depthMm - c.z) / 1000)));
-          const kept = { ...full, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length, square: squareDry ? sq : null };
+          // No paving is laid in the water: a paved street whose slab (over its crossings) is not all dry stays a track.
+          const at = new Map(full.roads.nodes.map((n) => [n.id, n]));
+          const slabDry = (e: (typeof full.roads.edges)[number]): boolean => {
+            const a = at.get(e.from)!;
+            const b = at.get(e.to)!;
+            const [w, d] = a.z === b.z ? [Math.abs(b.x - a.x) + e.widthMm, e.widthMm] : [e.widthMm, Math.abs(b.z - a.z) + e.widthMm];
+            return FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => dryMm((a.x + b.x) / 2 + fx * w - c.x, (a.z + b.z) / 2 + fz * d - c.z)));
+          };
+          const edges = full.roads.edges.map((e) => (e.surface === "paved" && !slabDry(e) ? { ...e, surface: "dirt" as const } : e));
+          const kept = { ...full, roads: { ...full.roads, edges }, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length, square: squareDry ? sq : null };
           ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
           try {
             structures = placeStructures(kept, demand!, ctx.rules, ctx.rng);
@@ -201,6 +213,32 @@ const STAGES: Stage[] = [
       ctx.town.occupancy = o;
       const employed = o.npcs.filter((n) => n.workplace).length;
       ctx.events.emit("summary", "occupancy", "settled", { households: o.households.length, npcs: o.npcs.length, employed, shops: o.shops.length });
+    },
+  },
+  {
+    name: "props",
+    run(ctx) {
+      const { layout, structures, occupancy, demographics } = ctx.town;
+      const scale = ctx.request.scale ?? 1;
+      let props = placeProps(ctx.request.settlementId, layout!, structures!, occupancy!, demographics!.population, ctx.rules, ctx.rng, scaledLayout(ctx.rules, scale).parcelMm, scale);
+      const site = ctx.request.site;
+      if (site) {
+        // Nothing stands in the water: a prop whose footprint is not dry is left out, and a terrace whose stairs are
+        // goes too (its building and what stood on it come down to the ground).
+        const c = townCentreMm(layout!.roads.nodes);
+        const dry = (p: (typeof props)[number]): boolean => {
+          const b = propBox(p);
+          return [b.x0, b.x1].every((x) => [b.z0, b.z1].every((z) => site.dry(site.origin[0] + (x - c.x) / 1000, site.origin[1] + (z - c.z) / 1000)));
+        };
+        const kept = props.filter((p) => p.kind === "terrace" || dry(p));
+        const stairs = new Set(kept.filter((p) => p.kind === "stairs").map((p) => p.parcel));
+        const flat = new Set(kept.filter((p) => p.kind === "terrace" && !stairs.has(p.parcel)).map((p) => p.parcel));
+        props = kept.filter((p) => !(p.kind === "terrace" && flat.has(p.parcel))).map((p) => (p.yMm && flat.has(p.parcel) ? (({ yMm: _, ...rest }) => rest)(p) : p));
+      }
+      ctx.town.props = props;
+      const counts: Record<string, number> = {};
+      for (const p of props) counts[p.kind] = (counts[p.kind] ?? 0) + 1;
+      ctx.events.emit("summary", "props", "dressed", counts);
     },
   },
   {
@@ -234,7 +272,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { setting, demographics, mastery, demand, layout, structures, occupancy } = ctx.town as Town;
+  const { setting, demographics, mastery, demand, layout, structures, occupancy, props } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -256,9 +294,10 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     square: layout.square,
     structures,
     occupancy,
+    props,
     validation: ctx.validation,
   };
   const byId = <T extends { id: string }>(rows: T[]): T[] => [...rows].sort((a, b) => (a.id < b.id ? -1 : 1));
-  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), fortifications: byId(body.fortifications), structures: byId(body.structures), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
+  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), fortifications: byId(body.fortifications), structures: byId(body.structures), props: byId(body.props), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
   return { ok: true, manifest: { ...sorted, hash: contentHash(sorted) }, events: events.events(verbosity) };
 }
