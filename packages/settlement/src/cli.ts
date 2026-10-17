@@ -8,7 +8,7 @@
  *   --population <n>   people to settle (default 600)
  *   --seed <u32>       world seed (default 1)
  *   --id <name>        the settlement's id (default 0001)
- *   --rules <file>     replace the built-in rules (same shape as BUILTIN_RULES)
+ *   --rules <file>     use these rules instead of content/settlements/rules.json (same shape as BUILTIN_RULES)
  *   --out <dir>        output folder
  *   --scene            also write content/scenes/settlement-<id>.scene.json, which
  *                      the server spawns with MMO_SCENE=settlement-<id>
@@ -35,7 +35,7 @@ import { parseArgs } from "node:util";
 import { buildArtMap, DEFAULT_ART_PATTERNS, DEFAULT_PROP_PATTERNS, type CatalogModel } from "./art.js";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
-import { ACCESS, BUILTIN_RULES, loadRules, type Access, type SettlementRules } from "./rules.js";
+import { ACCESS, defaultRules, loadRules, type Access, type SettlementRules } from "./rules.js";
 import { siteAccess } from "./setting.js";
 import type { Land } from "./industry.js";
 import { townHalfExtentM } from "./layout.js";
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   /** The land around the site (with --world): the town's industry reads it. */
   let land: Land | undefined;
   if (o.world) {
-    const rules = o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES;
+    const rules = o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules);
     const households = Math.round((Number(o.population ?? 600) * 10) / rules.demographics.householdSizeX10);
     const buildingScale = o.scale ? resolveScale(JSON.parse(readFileSync(fromUser(o.scale), "utf8")) as ScaleDoc, "building") : 1;
     const extent = townHalfExtentM(households, rules, buildingScale);
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
     out,
     o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );

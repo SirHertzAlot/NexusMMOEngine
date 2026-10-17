@@ -25,12 +25,12 @@ import { findSites } from "./cli.js";
 import { townHalfExtentM } from "./layout.js";
 import { fromUser, settlementPaths } from "./paths.js";
 import { evolveRegion, planRegion } from "./region.js";
-import { BUILTIN_RULES, loadRules } from "./rules.js";
+import { defaultRules, loadRules } from "./rules.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({ options: { world: { type: "string" }, years: { type: "string" }, every: { type: "string" }, population: { type: "string" }, rules: { type: "string" }, out: { type: "string" } } });
   if (!o.world) throw new Error("--world <file> is required");
-  const rules = o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES;
+  const rules = o.rules ? loadRules(fromUser(o.rules)) : defaultRules(settlementPaths().rules);
   const years = Number(o.years ?? 100);
   const every = Number(o.every ?? 25);
   if (!Number.isInteger(years) || years < 0 || !Number.isInteger(every) || every < 1) throw new Error("--years and --every must be whole numbers (every at least 1)");

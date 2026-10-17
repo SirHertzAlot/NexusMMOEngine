@@ -19,6 +19,7 @@ import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
+import { SettlementPanel } from "./settlement-panel.js";
 import { StringsPanel } from "./strings-panel.js";
 import { ScalePanel } from "./scale-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
@@ -133,6 +134,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "dungeons", label: "Dungeon", icon: "castle", kind: "panel", panel: <DungeonPanel /> },
       { id: "graphs", label: "PICG Graphs", icon: "graph_3", kind: "panel", panel: <GraphEditorPanel /> },
+      { id: "towns", label: "Towns", icon: "location_city", kind: "panel", panel: <SettlementPanel /> },
     ],
     leftTitle: "Library",
   },
@@ -229,6 +231,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
   dungeons: "dungeon rooms layout instances",
+  towns: "towns settlements generator rules industry guilds resources",
   graphs: "picg graph nodes procedural",
   play: "play mode debugger overlays navmesh waypoints server",
   changes: "git commit diff merge locks version control",
@@ -2062,6 +2065,11 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
       {folder("quests", "content/quests", "folder", (
         <>
           {["quests.json", "steps.json", "npcs.json", "dialogs.json"].map((f) => file(`content/quests/${f}`, f, ["story", "quests"]))}
+        </>
+      ))}
+      {folder("settlements", "content/settlements", "folder", (
+        <>
+          {file("content/settlements/rules.json", "rules.json", ["dungeons", "towns"])}
         </>
       ))}
       {folder("dungeons", "content/dungeons", "folder", (

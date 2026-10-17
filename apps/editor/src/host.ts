@@ -48,6 +48,8 @@
  *                                    400 with per-path issues when invalid
  *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
  *   GET/PUT /api/editor/scale      → the global scale document content/scale.json (scale-host.ts)
+ *   GET/PUT /api/editor/settlements/rules, POST /settlements/preview → the town generator's
+ *                                    rules content/settlements/rules.json and a town built from them (settlement-host.ts)
  *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
  *   GET  /api/editor/story         → the quest and dialog documents (EA20)
  *   GET  /api/editor/story/:name   → one document and the rules references
@@ -119,6 +121,7 @@ import { handleFilesRoute } from "./files-host.js";
 import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
 import { handleScaleRoute } from "./scale-host.js";
+import { handleSettlementRoute } from "./settlement-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
@@ -1428,6 +1431,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (scaleReply) {
             sendJson(res, scaleReply.status, scaleReply.body);
+            return;
+          }
+          // The town generator's rules and the town preview (content/settlements/rules.json, settlement-host.ts).
+          const settlementReply = await handleSettlementRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            (req.method === "PUT" || req.method === "POST") && scenesUrl.pathname.startsWith("/api/editor/settlements/") ? await readBody(req) : undefined,
+          );
+          if (settlementReply) {
+            sendJson(res, settlementReply.status, settlementReply.body);
             return;
           }
           // Playtests (EA26) and the Network workspace's routes file.
