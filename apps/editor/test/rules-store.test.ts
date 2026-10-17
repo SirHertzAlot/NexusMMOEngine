@@ -73,7 +73,7 @@ describe("saveRulesTable", () => {
 
 describe("isEditableTable", () => {
   it("allows only the editor's tables", () => {
-    for (const t of ["items", "creatures", "loot", "death", "ingress"]) assert.equal(isEditableTable(t), true, t);
+    for (const t of ["items", "creatures", "loot", "death", "ingress", "gathering"]) assert.equal(isEditableTable(t), true, t);
     for (const t of ["combat", "body", "../loot", "", 3, undefined]) assert.equal(isEditableTable(t), false, String(t));
   });
 });

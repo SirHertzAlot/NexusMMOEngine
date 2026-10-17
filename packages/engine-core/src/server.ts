@@ -685,7 +685,12 @@ async function main(): Promise<void> {
   const wallet = new WalletSystem(walletStore);
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
+  // Reach, pace, pouch size and training come from content/rules/gathering.json.
   const gathering = new GatheringSystem({
+    reachM: game.rules.gathering.reachM,
+    cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
+    pouchMax: game.rules.gathering.pouchMax,
+    trainPerTier: game.rules.gathering.trainDifficultyPerTier,
     store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);

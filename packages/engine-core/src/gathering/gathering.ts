@@ -52,6 +52,8 @@ export interface GatheringOptions {
   pouchMax?: number;
   /** Wall clock (unix ms); tests pass their own. */
   now?: () => number;
+  /** Training difficulty per material tier (capped at 1). */
+  trainPerTier?: number;
   /** Train the gatherer's skill (lowercase id, e.g. "mining") at a difficulty 0..1 against a target key. */
   train?: (avatar: number, skill: string, difficulty: number, key: number) => void;
 }
@@ -146,7 +148,7 @@ export class GatheringSystem implements SimSystem {
     pouch.set(node.material, have + 1);
     if (holder >= 0) this.opts.store?.savePouch(holder, node.material, have + 1);
     this.changed.add(node);
-    this.opts.train?.(avatar, node.skill.toLowerCase(), Math.min(1, node.tier * 0.2), eid);
+    this.opts.train?.(avatar, node.skill.toLowerCase(), Math.min(1, node.tier * (this.opts.trainPerTier ?? 0.2)), eid);
     return { ok: true, material: node.material, name: node.name, count: 1 };
   }
 

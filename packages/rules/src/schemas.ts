@@ -459,6 +459,20 @@ export const IngressSchema = z.strictObject({
   maxViolations: z.number().int().min(1).default(100),
 });
 
+// -------------------------------------------------------------- gathering
+
+/** Gathering from resource nodes (tree stands, ore veins, fishing spots): reach, pace, the pouch, training. */
+export const GatheringSchema = z.strictObject({
+  /** How far from a node's edge a player can gather, metres. */
+  reachM: z.number().min(0).default(2.5),
+  /** One gather per character this often, seconds. */
+  cooldownSeconds: z.number().min(0).default(1.2),
+  /** Most of one material a pouch holds. */
+  pouchMax: z.number().int().min(1).default(999),
+  /** A gather trains the node's skill at this difficulty per material tier (tier 2: twice it), capped at 1. */
+  trainDifficultyPerTier: z.number().min(0).max(1).default(0.2),
+});
+
 // -------------------------------------------------------------- creatures
 
 export const TEMPERAMENTS = ["flee", "defend", "territorial", "hunt", "raid"] as const;
@@ -616,6 +630,7 @@ export const RULE_FILES = {
   needs: NeedsSchema,
   ingress: IngressSchema,
   spells: SpellsSchema,
+  gathering: GatheringSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -640,6 +655,7 @@ export type LootRules = z.infer<typeof LootSchema>;
 export type NeedsRules = z.infer<typeof NeedsSchema>;
 export type NeedRules = z.infer<typeof NeedSchema>;
 export type IngressRules = z.infer<typeof IngressSchema>;
+export type GatheringRules = z.infer<typeof GatheringSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
@@ -661,4 +677,5 @@ export interface Rules {
   creatures: CreaturesRules;
   needs: NeedsRules;
   spells: SpellsRules;
+  gathering: GatheringRules;
 }
