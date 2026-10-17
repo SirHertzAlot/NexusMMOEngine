@@ -322,6 +322,28 @@ describe("generateSettlement", () => {
     for (const w of [...workplaces, "master_fishery"]) assert.ok(!manifest.structures.some((s) => s.archetype === w), `no ${w} without the land`);
   });
 
+  it("has the craft guild of its industry: a hall by the square from 400 people, led by a master, selling recipes by rank", () => {
+    const forest = { biomes: { forest: 650, plains: 350 }, waterKind: "none" as const, shoreM: -1 };
+    const m = must(generateSettlement({ settlementId: "g", seed: 1, population: 1000, access: "road", land: forest })).manifest;
+    const g = m.guild!;
+    assert.equal(g.profession, "crafting");
+    const hall = m.structures.find((s) => s.id === g.hall)!;
+    assert.equal(hall.archetype, "guild_hall");
+    assert.equal(m.structures.filter((s) => s.archetype === "guild_hall").length, 1);
+    assert.equal(m.occupancy.npcs.find((n) => n.id === g.master)?.mastery, "crafting", "a master of the guild leads it");
+    assert.equal(m.props.filter((p) => p.kind === "guild_banner" && p.parcel === hall.parcel).length, 2, "banners either side of its door");
+    assert.ok(m.props.some((p) => p.kind === "terrace" && p.parcel === hall.parcel), "on a terrace like the town hall");
+    // Ash furniture to an initiate; the town's yew longbows only to a master's pupil.
+    assert.deepEqual(g.ranks.map((r) => r.recipes), [["ash furniture"], [], [], ["yew longbows and cabinets"], []]);
+    assert.ok(g.ranks.find((r) => r.recipes.includes(g.signature))!.pupil);
+    // A hamlet has the guild but no hall; a town without the land has neither.
+    const hamlet = must(generateSettlement({ settlementId: "g", seed: 1, population: 250, land: forest })).manifest;
+    assert.equal(hamlet.guild?.hall, null);
+    assert.ok(!hamlet.structures.some((s) => s.archetype === "guild_hall"));
+    assert.equal(manifest.guild, null);
+    assert.ok(!manifest.structures.some((s) => s.archetype === "guild_hall"));
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -368,5 +390,5 @@ describe("generateSettlement", () => {
 // mastery and grand masters, the homeless, masters on the best ground, parks and empty lots. Again for
 // settlement-rules/8 and settlement-gen/0.5.0: street props, paved streets, terraces and stairs. Again for
 // settlement-rules/9 and settlement-gen/0.6.0: industry (and its workplaces ruled out of a town without the land), and the
-// home-space cap no longer counting farmsteads.
-const GOLDEN = "47e8234dc29b0de4263eaf8b750d32735becfbc1c35ef5d1cc7d42ef1de2c695";
+// home-space cap no longer counting farmsteads. Again for settlement-rules/10 and settlement-gen/0.7.0: the guild hall.
+const GOLDEN = "06a61ec579babd3ea7144bf0d14925d32e1fee1a1d30db096431b750a4df52df";

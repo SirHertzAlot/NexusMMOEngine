@@ -10,6 +10,7 @@ import type { Demographics } from "./demographics.js";
 import type { TownMastery } from "./mastery.js";
 import type { TownSetting } from "./setting.js";
 import type { TownIndustry } from "./industry.js";
+import type { Guild } from "./guild.js";
 import { ACRE_M2, scaledLayout, type Holding, type Layout } from "./layout.js";
 import { BUILDING_MARGIN_MM, propBox, type Prop } from "./props.js";
 import type { Occupancy } from "./occupancy.js";
@@ -32,6 +33,7 @@ export interface Town {
   structures: Structure[];
   occupancy: Occupancy;
   props: Prop[];
+  guild: Guild | null;
 }
 
 const gate = (name: string, ok: boolean, detail: string): Gate => ({ gate: name, ok, detail });
@@ -341,7 +343,8 @@ export function propsGate(t: Pick<Town, "layout" | "structures" | "occupancy" | 
 }
 
 /**
- * The town's industry, re-derived: it is the most abundant of its land's resources (by priority), its workplace or its masters'
+ * The town's industry, re-derived: it is the most abundant of its land's resources (by priority), or one it has long worked
+ * that is still rich enough and within `history.switchPermille` of the most abundant; its workplace or its masters'
  * stands (a hamlet's masters may do all its work), no other industry's does, and the town is no bigger than its land allows.
  */
 export function industryGate(t: Pick<Town, "industry" | "structures" | "mastery" | "setting">, rules: SettlementRules): Gate {
@@ -357,12 +360,39 @@ export function industryGate(t: Pick<Town, "industry" | "structures" | "mastery"
   const masters = Object.values(t.mastery.masters).reduce((a, b) => a + b, 0);
   const works = count(own.workplace);
   const masterWorks = count(own.profession.master);
-  const ok = ind.primary === top && works + masterWorks > 0 && stray.length === 0;
+  const kept = ind.primary === top || (ind.resources[ind.primary] >= ir.minAbundancePermille && score(top) * 1000 <= score(ind.primary) * (1000 + (ir.history?.switchPermille ?? 0)));
+  const ok = kept && works + masterWorks > 0 && stray.length === 0;
   return gate(
     "industry",
     ok,
     stray.length ? `another industry's workplace stands: ${stray.join(", ")}` : `${ind.primary} (${ind.abundancePermille}), known for ${ind.product?.export}: ${works} ${own.workplace}${masterWorks ? ` and ${masterWorks} ${own.profession.master}` : ""}, ${t.mastery.masters[own.profession.name] ?? 0} of ${masters} masters in ${own.profession.name}${t.setting.capacity !== null ? `, capped at ${t.setting.capacity}` : ""}`,
   );
+}
+
+/**
+ * The town's guild, re-derived: a town with an industry and at least `guild.minPopulation` people has one guild hall,
+ * named as the guild's, led by one of its masters where it has any; a smaller town, or one with no industry, has no hall.
+ * Each rank sells only recipes up to its tier, and the signature only to a master's pupil.
+ */
+export function guildGate(t: Pick<Town, "industry" | "structures" | "occupancy" | "demographics" | "guild">, rules: SettlementRules): Gate {
+  const g = rules.industry?.guild;
+  if (!g) return gate("guild", t.guild === null, "no guild rules");
+  const halls = t.structures.filter((s) => s.archetype === g.archetype).map((s) => s.id);
+  const wants = !!t.industry?.primary && t.demographics.population >= g.minPopulation;
+  if (!t.guild || !wants) return gate("guild", halls.length === 0 && (!t.industry?.primary || !!t.guild), halls.length ? `${halls.length} guild halls in a town without a guild` : "no guild hall: no industry, or too small a town");
+  const gd = t.guild;
+  const master = gd.master ? t.occupancy.npcs.find((n) => n.id === gd.master) : undefined;
+  const hasMasters = t.occupancy.npcs.some((n) => n.mastery === gd.profession);
+  const overTier = gd.ranks.filter((r) => r.recipes.some((name) => (rules.industry!.industries[t.industry!.primary!].products.find((p) => p.export === name)?.tier ?? 99) > r.tier));
+  const signatureAt = gd.ranks.find((r) => r.recipes.includes(gd.signature));
+  const problems = [
+    halls.length !== 1 && `${halls.length} guild halls`,
+    gd.hall !== halls[0] && "the guild names another hall",
+    hasMasters && master?.mastery !== gd.profession && "the guild master is not one of its masters",
+    overTier.length && `${overTier.map((r) => r.title).join(", ")} sell recipes above their tier`,
+    g.ranks.some((r) => r.pupil) && signatureAt && !signatureAt.pupil && "the signature is sold before a master takes the player on",
+  ].filter(Boolean);
+  return gate("guild", problems.length === 0, problems.length ? problems.join(", ") : `the ${gd.profession} guild: its hall ${gd.hall}, led by ${gd.master ?? "no master"}, ${gd.ranks.length} ranks, ${gd.signature} taught to ${signatureAt?.title ?? "no rank"}`);
 }
 
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
@@ -420,6 +450,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     settingGate(t, rules),
     propsGate(t, rules, scale),
     industryGate(t, rules),
+    guildGate(t, rules),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

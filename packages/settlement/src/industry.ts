@@ -7,8 +7,13 @@
 import { INDUSTRIES, type IndustryId, type SettlementRules } from "./rules.js";
 import type { Site } from "./sites.js";
 
-/** The land around a town: the share of each biome within reach (permille), and the water it sits by. */
-export type Land = Pick<Site, "biomes" | "waterKind" | "shoreM">;
+/**
+ * The land around a town: the share of each biome within reach (permille), and the water it sits by. A town that has
+ * worked it for years (`evolveRegion`) has used up some of each industry's stock (`depletedPermille`): that much less is
+ * left. It keeps the industry it has `worked` while that is rich enough and nothing beats it by `switchPermille`
+ * (rules.industry.history): its people, mills and mines do not change trade for a small edge.
+ */
+export type Land = Pick<Site, "biomes" | "waterKind" | "shoreM"> & { depletedPermille?: Partial<Record<IndustryId, number>>; worked?: IndustryId };
 
 export interface TownIndustry {
   /** The town's industry: the most abundant by priority (null: none rich enough, the town lives off what it has). */
@@ -41,15 +46,22 @@ export function townIndustry(land: Land, rules: SettlementRules): TownIndustry |
       // Water is fished by a town on it, half as well by one within easy reach.
       const w = wet ? (ind.water[land.waterKind as keyof typeof ind.water] ?? 0) : 0;
       if (w > 0 && land.shoreM <= far) a = Math.max(a, land.shoreM <= near ? w : Math.round(w / 2));
-      return [id, a];
+      // What years of working it have used up is gone (until it regrows).
+      const used = Math.min(1000, Math.max(0, land.depletedPermille?.[id] ?? 0));
+      return [id, Math.round((a * (1000 - used)) / 1000)];
     }),
   ) as Record<IndustryId, number>;
   const score = (id: IndustryId): number => resources[id] * ir.industries[id].priorityPermille;
-  const best = INDUSTRIES.reduce((b, id) => (score(id) > score(b) ? id : b));
+  const richest = INDUSTRIES.reduce((b, id) => (score(id) > score(b) ? id : b));
+  const w = land.worked;
+  const margin = 1000 + (ir.history?.switchPermille ?? 0);
+  const best = w && w !== richest && resources[w] >= ir.minAbundancePermille && score(richest) * 1000 <= score(w) * margin ? w : richest;
   const primary = resources[best] >= ir.minAbundancePermille && resources[best] > 0 ? best : null;
   if (!primary) return { primary: null, resources, abundancePermille: 0, profession: null, workplace: null, product: null };
   const ind = ir.industries[primary];
-  const near_ = (p: (typeof ind.products)[number]): boolean => (p.biomes.length > 0 && p.biomes.reduce((a, b) => a + share(b), 0) >= p.minSharePermille) || (wet && (p.water as string[]).includes(land.waterKind));
+  // A worked-out stock gives up its rarest product first: what is used up counts against each product's share.
+  const left = 1000 - Math.min(1000, Math.max(0, land.depletedPermille?.[primary] ?? 0));
+  const near_ = (p: (typeof ind.products)[number]): boolean => (p.biomes.length > 0 && (p.biomes.reduce((a, b) => a + share(b), 0) * left) / 1000 >= p.minSharePermille) || (wet && (p.water as string[]).includes(land.waterKind));
   // The rarest thing near is what the town is known for; the first listed of a tier wins a tie. A town fishing
   // or farming with none of its products' land listed still makes the first.
   const product = ind.products.reduce<(typeof ind.products)[number] | null>((b, p) => (near_(p) && (!b || p.tier > b.tier) ? p : b), null) ?? ind.products[0]!;
@@ -63,11 +75,17 @@ export function industryCap(cap: number, industry: TownIndustry | null, rules: S
   return Math.round((cap * (ir.capFloorPermille + ((1000 - ir.capFloorPermille) * industry.abundancePermille) / 1000)) / 1000);
 }
 
+/** The people one of its industry's workplaces stands for: `exportPerPeople` at full abundance, more as it thins. */
+export function peoplePerWorkplace(industry: TownIndustry, rules: SettlementRules): number {
+  return Math.max(1, Math.ceil(((rules.industry?.exportPerPeople ?? 1) * 1000) / Math.max(1, industry.abundancePermille)));
+}
+
 /**
  * The rules a town of this industry is laid out by. Its industry's workplace is required, one per `exportPerPeople`
  * people at full abundance (fewer as it thins), at most twice that; its profession takes `specialtyPermille` of the
- * masters (added when the rules lack it). Every other industry's workplace, and the master workplace of a
- * profession the rules lack, is ruled out (none stands in the town). With no industry (null) only that.
+ * masters (added when the rules lack it), and a town of `guild.minPopulation` people has its guild's hall. Every other
+ * industry's workplace, and the master workplace of a profession the rules lack, is ruled out (none stands in the
+ * town). With no industry (null) only that.
  */
 export function withIndustry(rules: SettlementRules, industry: TownIndustry | null): SettlementRules {
   const ir = rules.industry;
@@ -82,12 +100,13 @@ export function withIndustry(rules: SettlementRules, industry: TownIndustry | nu
     if (!professions[ind.profession.name] && ind.profession.master !== own?.profession.master) required[ind.profession.master] = { max: 0 };
   }
   if (own && industry) {
-    const per = Math.max(1, Math.ceil((ir.exportPerPeople * 1000) / Math.max(1, industry.abundancePermille)));
+    const per = peoplePerWorkplace(industry, rules);
     const was = rules.required[own.workplace];
     // An ordinary workplace (the mill) keeps its own count where that is more; the export lifts its ceiling to
     // twice the count it needs.
     const need = Math.min(per, was?.perPopulation ?? per);
     required[own.workplace] = { min: Math.max(1, was?.min ?? 0), perPopulation: need, maxPerPopulation: Math.max(1, Math.floor(need / 2)), export: true };
+    if (ir.guild) required[ir.guild.archetype] = { min: 1, max: 1, minPopulation: ir.guild.minPopulation };
     if (rules.mastery) {
       const name = own.profession.name;
       const others = Object.entries(professions).filter(([n]) => n !== name).reduce((a, [, p]) => a + p.weight, 0);

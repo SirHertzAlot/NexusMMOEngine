@@ -10,7 +10,7 @@ import { expandPrefabs, worldNodes, type PrefabLookup, type SceneDoc } from "@mm
 import type { RaidSettlement } from "../creatures.js";
 
 /** The Structure kinds that are not buildings: the town wall (settlement layout's WallPieceKind), the square, fields, paving and props (settlement's PROP_KINDS, terraces and stairs). */
-const WALL_KINDS = new Set(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field", "paved_road", "terrace", "stair_step", "street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks"]);
+const WALL_KINDS = new Set(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field", "paved_road", "terrace", "stair_step", "street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks", "guild_banner"]);
 
 export function sceneSettlements(scene: SceneDoc, prefabs?: PrefabLookup): RaidSettlement[] {
   const doc = prefabs ? expandPrefabs(scene, prefabs).doc : scene;

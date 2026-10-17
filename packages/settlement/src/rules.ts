@@ -264,7 +264,7 @@ export const DEFAULT_SETTINGS: Settings = {
  *     street by stairs of `stepRiseMm` steps, each `stepTreadMm` deep and `stairsWidthMm` wide.
  * Sizes are millimetres [width, depth, height]: width along the street (or the bench's seat), depth away from it.
  */
-export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks"] as const;
+export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks", "guild_banner"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 const SizeMm = z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]);
 export const PropsSchema = z.strictObject({
@@ -283,7 +283,7 @@ export const PropsSchema = z.strictObject({
 });
 export type Props = z.infer<typeof PropsSchema>;
 export const DEFAULT_PROPS: Props = {
-  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600], log_pile: [3000, 900, 1100], ore_cart: [1400, 900, 1100], fish_rack: [2400, 700, 1600], grain_sacks: [1600, 900, 800] },
+  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600], log_pile: [3000, 900, 1100], ore_cart: [1400, 900, 1100], fish_rack: [2400, 700, 1600], grain_sacks: [1600, 900, 800], guild_banner: [1000, 400, 4500] },
   lampEveryPlots: 2,
   lampInsetMm: 500,
   squareBenchSpacingMm: 8000,
@@ -293,8 +293,8 @@ export const DEFAULT_PROPS: Props = {
   parkBenches: 2,
   stores: ["tavern", "inn", "warehouse", "bakery", "master_bakery"],
   planters: ["high"],
-  dressing: { sawmill: "log_pile", mine: "ore_cart", fishery: "fish_rack", master_fishery: "fish_rack", mill: "grain_sacks" },
-  terraces: { archetypes: ["town_hall", "parish_church", "cathedral", "library", "townhouse"], heightMm: 600, stepRiseMm: 200, stepTreadMm: 350, stairsWidthMm: 3000 },
+  dressing: { sawmill: "log_pile", mine: "ore_cart", fishery: "fish_rack", master_fishery: "fish_rack", mill: "grain_sacks", guild_hall: "guild_banner" },
+  terraces: { archetypes: ["town_hall", "guild_hall", "parish_church", "cathedral", "library", "townhouse"], heightMm: 600, stepRiseMm: 200, stepTreadMm: 350, stairsWidthMm: 3000 },
 };
 
 /**
@@ -335,6 +335,50 @@ export const IndustrySchema = z.strictObject({
   profession: z.strictObject({ name: z.string(), archetype: z.string(), master: z.string() }),
   workplace: z.string(),
   products: z.array(ProductSchema).min(1),
+  /** What it trades as (rules.industry.trade): the good's name and its price where it is made, in copper a load. */
+  good: z.string(),
+  basePrice: z.number().int().positive(),
+  /**
+   * Its stock over the years (rules.industry.history): a town working it at its full cap uses `depletePermillePerYear`
+   * of it a year, and `regrowPermillePerYear` of what is used comes back each year (forests regrow, fish return; ore does not).
+   */
+  depletePermillePerYear: z.number().int().min(0).max(1000).default(0),
+  regrowPermillePerYear: z.number().int().min(0).max(1000).default(0),
+});
+/**
+ * Trade between towns (`tradeRegion`): each industry's workplace sends `loadsPerWorkplace` loads a year, and every town
+ * needs a load of each good per `peoplePerLoad` people. A town sells its own goods first at home; what it lacks it buys from
+ * the nearest towns with loads to spare. The price rises `pricePermillePerKm` a km on the road (by sea between two ports,
+ * `seaPermille` of that), and goods the town cannot get at all cost `shortagePermille` of the dearest price.
+ */
+export const TradeRulesSchema = z.strictObject({
+  loadsPerWorkplace: z.number().int().positive(),
+  peoplePerLoad: z.number().int().positive(),
+  pricePermillePerKm: z.number().int().min(0),
+  seaPermille: z.number().int().min(0).max(1000),
+  shortagePermille: z.number().int().min(1000),
+});
+/**
+ * A region over the years (`evolveRegion`): a town grows toward the people its land keeps by `growthPermillePerYear` of
+ * itself a year, or shrinks toward it by `shrinkPermillePerYear`; within `stablePermille` of it, it is stable. It turns
+ * from the industry it works to another only when that one is richer by `switchPermille` (or its own is too poor).
+ */
+export const HistoryRulesSchema = z.strictObject({
+  switchPermille: z.number().int().min(0).default(0),
+  growthPermillePerYear: z.number().int().min(0).max(1000),
+  shrinkPermillePerYear: z.number().int().min(0).max(1000),
+  stablePermille: z.number().int().min(0).max(1000),
+});
+/**
+ * A town's craft guild (`townGuild`): a town with an industry and at least `minPopulation` people has a guild hall
+ * (`archetype`) of its profession, led by its best master. The guild's ranks are the reputation a player earns with it;
+ * each rank lets them buy the guild's recipes up to its tier, and a rank with `pupil` needs a master of the guild to take
+ * them on (the town's signature recipe is sold only from such a rank).
+ */
+export const GuildRulesSchema = z.strictObject({
+  archetype: z.string(),
+  minPopulation: z.number().int().positive(),
+  ranks: z.array(z.strictObject({ title: z.string(), reputation: z.number().int().min(0), tier: z.number().int().min(1).max(5), pupil: z.boolean().default(false) })).min(1),
 });
 export const IndustryRulesSchema = z.strictObject({
   industries: z.record(z.enum(INDUSTRIES), IndustrySchema),
@@ -343,6 +387,9 @@ export const IndustryRulesSchema = z.strictObject({
   capFloorPermille: z.number().int().min(0).max(1000),
   specialtyPermille: z.number().int().min(0).max(999),
   exportPerPeople: z.number().int().positive(),
+  trade: TradeRulesSchema.optional(),
+  history: HistoryRulesSchema.optional(),
+  guild: GuildRulesSchema.optional(),
 });
 export type IndustryRules = z.infer<typeof IndustryRulesSchema>;
 export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
@@ -351,6 +398,10 @@ export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
       biomes: { forest: 1000, rainforest: 1000, swamp: 500 },
       profession: { name: "crafting", archetype: "workshop", master: "master_workshop" },
       workplace: "sawmill",
+      good: "timber",
+      basePrice: 40,
+      depletePermillePerYear: 12,
+      regrowPermillePerYear: 30,
       products: [
         { material: "ash-log", tier: 1, biomes: ["forest", "plains"], export: "ash furniture" },
         { material: "yew-log", tier: 2, biomes: ["forest", "swamp"], minSharePermille: 200, export: "yew longbows and cabinets" },
@@ -362,6 +413,9 @@ export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
       biomes: { mountains: 1000, volcanic: 1000, glacier: 600, desert: 500, tundra: 500 },
       profession: { name: "smithing", archetype: "smithy", master: "master_smithy" },
       workplace: "mine",
+      good: "metal",
+      basePrice: 90,
+      depletePermillePerYear: 10,
       products: [
         { material: "iron-ore", tier: 1, biomes: ["mountains", "tundra", "desert"], export: "iron blades and tools" },
         { material: "silver-ore", tier: 2, biomes: ["mountains"], minSharePermille: 250, export: "silver-inlaid blades" },
@@ -373,6 +427,10 @@ export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
       water: { sea: 1000, lake: 700, river: 500 },
       profession: { name: "fishing", archetype: "fishery", master: "master_fishery" },
       workplace: "fishery",
+      good: "fish",
+      basePrice: 30,
+      depletePermillePerYear: 15,
+      regrowPermillePerYear: 80,
       products: [
         { material: "sea-fish", tier: 1, water: ["sea"], export: "salted sea fish" },
         { material: "river-fish", tier: 1, water: ["lake", "river"], export: "smoked river fish" },
@@ -383,6 +441,8 @@ export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
       priorityPermille: 600,
       profession: { name: "farming", archetype: "farmstead", master: "master_farmstead" },
       workplace: "mill",
+      good: "grain",
+      basePrice: 20,
       products: [{ material: "grain", tier: 1, biomes: ["plains"], export: "flour and ale" }],
     },
   },
@@ -391,6 +451,19 @@ export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
   capFloorPermille: 400,
   specialtyPermille: 600,
   exportPerPeople: 150,
+  trade: { loadsPerWorkplace: 12, peoplePerLoad: 60, pricePermillePerKm: 40, seaPermille: 400, shortagePermille: 1500 },
+  history: { switchPermille: 250, growthPermillePerYear: 30, shrinkPermillePerYear: 50, stablePermille: 50 },
+  guild: {
+    archetype: "guild_hall",
+    minPopulation: 400,
+    ranks: [
+      { title: "Initiate", reputation: 0, tier: 1 },
+      { title: "Journeyman", reputation: 1000, tier: 2 },
+      { title: "Craftsman", reputation: 3000, tier: 3 },
+      { title: "Pupil of a master", reputation: 6000, tier: 4, pupil: true },
+      { title: "Master of the guild", reputation: 12000, tier: 5, pupil: true },
+    ],
+  },
 });
 
 export const DEFAULT_FORTIFICATION: Fortification = { minHouseholds: 45, setbackMm: 4000, thicknessMm: 2000, heightM: 6, pieceMm: 6000, towerMm: 5000, towerHeightM: 9, towerSpacingMm: 40000, gateHeightM: 8 };
@@ -489,7 +562,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/9",
+  version: "settlement-rules/10",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -532,6 +605,8 @@ export const BUILTIN_RULES: SettlementRules = {
     mine: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 6, feeds: 0, floors: 1, storeyM: 4, role: "miner", shop: false, entrances: 1 },
     fishery: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 1, storeyM: 3.5, role: "fisherman", shop: true, entrances: 2 },
     master_fishery: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 2, role: "master fisherman", shop: true, entrances: 2 },
+    // A craft guild's hall (rules.industry.guild): by the square, where the guild meets, keeps its rolls and sells its recipes.
+    guild_hall: { kinds: ["civic"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 3, storeyM: 4.5, role: "guild clerk", shop: true, entrances: 2, capacity: 120 },
     master_bakery: { kinds: ["shopping"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, role: "master baker", shop: true, entrances: 2, capacity: 16 },
     granary: { kinds: ["agriculture"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 6, role: "granary keeper", shop: false, entrances: 1 },
     mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 3, storeyM: 3.5, role: "miller", shop: false, entrances: 2 },
@@ -580,6 +655,8 @@ export const BUILTIN_RULES: SettlementRules = {
     theatre: { minPopulation: 600, perPopulation: 2000, max: 2 },
     bathhouse: { minPopulation: 400, perPopulation: 1000, max: 3 },
     town_hall: { minPopulation: 200, min: 1, max: 1 },
+    // Only a town with an industry has a guild (withIndustry).
+    guild_hall: { max: 0 },
     parish_church: { minPopulation: 200, min: 1, perPopulation: 1500, max: 4 },
     churchyard: { min: 1, perPopulation: 1500, max: 4 },
     rectory: { minPopulation: 200, min: 1, perPopulation: 1500, max: 4 },

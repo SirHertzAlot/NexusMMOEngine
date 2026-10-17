@@ -60,6 +60,8 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$"],
   park: ["(Prop|Preset)_(Park|Grove|Tree_?Cluster|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   empty_lot: ["(Prop|Preset)_(Fence|Rubble|Ruin|Empty_?Lot)(_\[0-9]+)?(_Optimized)?$"],
+  // A craft guild's hall (rules.industry.guild): a hall by the square, else a grand house.
+  guild_hall: ["Preset_(Guild_?Hall|Hall|Manor)_\[0-9]+_Optimized$", "Preset_House_1[1-9](_[A-C])?_Optimized$"],
   // An industry's workplace (rules.industry).
   sawmill: ["Preset_(Sawmill|Lumber_?Mill|Woodcutter|Lumberjack)_\[0-9]+_Optimized$", "Preset_Workshop_\[0-9]+_Optimized$"],
   mine: ["(Prop|Preset)_(Mine|Mine_?Entrance|Mineshaft|Quarry)(_\[0-9]+)?(_Optimized)?$"],
@@ -108,6 +110,7 @@ export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
   log_pile: ["(^|_)(log_?pile|logs|wood_?pile|lumber(_?pile)?)(_[0-9]+)?$"],
   ore_cart: ["(^|_)(ore_?cart|mine_?cart|minecart|cart_ore)(_[0-9]+)?$"],
   fish_rack: ["(^|_)(fish_?rack|drying_?rack|fish_?stand)(_[0-9]+)?$"],
+  guild_banner: ["(^|_)(banner|flag|pennant)(_?(pole|stand))?(_[0-9]+)?$"],
   grain_sacks: ["(^|_)(grain_?sacks?|sacks?(_grain|_flour)?|flour_?sacks?)(_[0-9]+)?$"],
 };
 

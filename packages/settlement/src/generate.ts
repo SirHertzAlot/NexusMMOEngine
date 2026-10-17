@@ -15,17 +15,18 @@ import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from
 import { drawMastery } from "./mastery.js";
 import { drawHomeless, townSetting, withDensity } from "./setting.js";
 import { townIndustry, withIndustry, type Land } from "./industry.js";
+import { townGuild } from "./guild.js";
 import { occupy } from "./occupancy.js";
 import { placeProps, propBox } from "./props.js";
 import { streams, type Streams } from "./rng.js";
-import { ACCESS, BUILTIN_RULES, type Access, type SettlementRules } from "./rules.js";
+import { ACCESS, BUILTIN_RULES, type Access, type SettlementRules, TRENDS, type Trend } from "./rules.js";
 import { placeStructures } from "./structures.js";
 import { validateTown, type Gate, type Town } from "./validate.js";
 
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.6.0";
+export const GENERATOR_VERSION = "settlement-gen/0.7.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
@@ -42,6 +43,8 @@ export interface SettlementRequest {
    * it grows on that land, what it exports and what its masters practise. Without it the town has no industry.
    */
   land?: Land;
+  /** Whether the town is growing, stable or shrinking (a region's history, `evolveRegion`); without it, drawn from its access. */
+  trend?: Trend;
   rules?: SettlementRules;
   /** The building factor (`resolveScale(doc, "building")`) the town is laid out at; default 1. */
   scale?: number;
@@ -68,6 +71,8 @@ export interface SettlementManifest {
   setting: Town["setting"];
   /** What the town lives off and is known for (null: no land given, or no industry rules). */
   industry: Town["industry"];
+  /** The town's craft guild: its hall, its master, and the recipes each rank of reputation with it may buy (null: no industry). */
+  guild: Town["guild"];
   demographics: Town["demographics"];
   /** The town's masters by profession, the master communities, and the residents and visitors they draw. */
   mastery: Town["mastery"];
@@ -125,7 +130,8 @@ const STAGES: Stage[] = [
       // Its industry first, from the land: it caps how big the town grows there and what its masters practise.
       const industry = ctx.request.land ? townIndustry(ctx.request.land, ctx.rules) : null;
       ctx.town.industry = industry;
-      const setting = townSetting(ctx.request.population, ctx.request.access, ctx.rules, ctx.rng, industry);
+      const drawn = townSetting(ctx.request.population, ctx.request.access, ctx.rules, ctx.rng, industry);
+      const setting = drawn.access && ctx.request.trend ? { ...drawn, trend: ctx.request.trend } : drawn;
       ctx.town.setting = setting;
       ctx.rules = withIndustry(withDensity(ctx.rules, setting.densityPermille, setting.trend), industry);
       if (setting.population < setting.requestedPopulation) ctx.events.emit("summary", "demographics", "capped", { access: setting.access, requested: setting.requestedPopulation, capacity: setting.capacity });
@@ -222,6 +228,7 @@ const STAGES: Stage[] = [
       const { demographics, structures } = ctx.town;
       const o = occupy(ctx.request.settlementId, demographics!, structures!, ctx.rules, ctx.rng, ctx.town.mastery!.grandMasters);
       ctx.town.occupancy = o;
+      ctx.town.guild = townGuild(ctx.town.industry ?? null, structures!, o, ctx.rules);
       const employed = o.npcs.filter((n) => n.workplace).length;
       ctx.events.emit("summary", "occupancy", "settled", { households: o.households.length, npcs: o.npcs.length, employed, shops: o.shops.length });
     },
@@ -270,6 +277,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
   if (!Number.isInteger(request.population) || request.population < 1) return fail("request", "bad_population", "population must be a positive whole number");
 
   if (request.access !== undefined && !ACCESS.includes(request.access)) return fail("request", "bad_access", `access must be one of ${ACCESS.join(", ")}`);
+  if (request.trend !== undefined && !TRENDS.includes(request.trend)) return fail("request", "bad_trend", `trend must be one of ${TRENDS.join(", ")}`);
   if (request.scale !== undefined && !(request.scale > 0 && Number.isFinite(request.scale))) return fail("request", "bad_scale", "scale must be a positive number");
 
   const ctx: Context = { request, rules: request.rules ?? BUILTIN_RULES, rng: streams(request.seed), events, town: {}, validation: [] };
@@ -283,7 +291,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { setting, industry, demographics, mastery, demand, layout, structures, occupancy, props } = ctx.town as Town;
+  const { setting, industry, guild, demographics, mastery, demand, layout, structures, occupancy, props } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -294,6 +302,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     determinism: { rngStreams: ctx.rng.seeds(), sortPolicy: "id" as const, units: "millimeters" as const },
     setting,
     industry,
+    guild,
     demographics,
     mastery,
     demand,

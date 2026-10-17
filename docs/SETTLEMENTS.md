@@ -469,6 +469,34 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   industry's do. The home-space cap (`homeSpacePermille`) now counts only the households in
   town, not the farmsteads' families. Before, a town with fewer master farmers needed more
   farms than the cap left room for, and the structure solve failed.
+- **Guilds (settlement-rules/10, settlement-gen/0.7.0).** A town with an industry has the craft
+  guild of its profession (`manifest.guild`). From 400 people it has a `guild_hall` by the square,
+  on a terrace with a banner either side of the door. Its best master leads it (a grand master
+  first). A player earns reputation with the guild, and each rank (Initiate, Journeyman,
+  Craftsman, Pupil of a master, Master of the guild) may buy its recipes up to the rank's tier.
+  The town's signature product is taught only from the first rank that needs a master to take the
+  player on as a pupil. The game server keeps each player's reputation; the manifest says what
+  each town's guild offers. Gate `guild` checks the hall, its master and the ranks' tiers.
+- **A region of towns** (`region.ts`, `npm run settlement:region -- --world <file>`). Gate
+  `industry` also accepts an industry the town has long worked (`land.worked`) while it is rich
+  enough and nothing beats it by `history.switchPermille`.
+  - `planRegion(sites)` makes each site a town of its access and industry, as big as its land
+    keeps.
+  - `tradeRegion` gives each industry a good (timber, metal, fish, grain). A workplace sends 12
+    loads a year, and every town needs a load of each good per 60 people. A town uses its own
+    good first and buys what it lacks from towns with loads to spare, cheapest first. A load
+    costs 4% more per km by road; between two sea ports it goes by sea at 40% of that. What a
+    town cannot get at all costs 1.5 times the dearest load.
+  - `evolveRegion(region, years)` runs it on year by year. A town uses up its industry's stock
+    (`land.depletedPermille`) as hard as it works it, up to 1% a year for ore. Forests and fish
+    regrow; ore does not. The land then keeps fewer people, and the town grows (3% a year) or
+    shrinks (5% a year) toward that. Its rarest product runs out first (a silver town becomes an
+    iron town). When the stock is too poor it turns to the next best thing, only once that is
+    25% richer, so towns do not flip back and forth.
+  - `regionTownRequest(snapshot, townId)` is what to pass to `generateSettlement` to build that
+    town as it stands (`request.trend` comes from the history).
+  - The default world has room for only two towns of 600 people: a fishing port and a remote
+    timber town, trading fish for wood 2.5 km apart.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are
