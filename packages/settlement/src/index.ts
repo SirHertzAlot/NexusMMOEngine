@@ -13,6 +13,7 @@ export * from "./generate.js";
 export * from "./bake.js";
 export * from "./scene.js";
 export * from "./occupancy.js";
+export * from "./mastery.js";
 export * from "./sites.js";
 export * from "./art.js";
 export * from "./report.js";

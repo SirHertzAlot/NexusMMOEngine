@@ -103,6 +103,16 @@ varied a lot, the rules keep the number as data so a game can change it.
 | Shared homes, tenements | `house` 2 households, `tenement` 3, `familiesPerHomeX10`, `homeSpacePermille` |
 | Stores and works away from homes | warehouses with the crafts, `worksBufferMm`, gate `works_separation` |
 
+## Mastery (our world, not history)
+
+In this world anyone can master a profession, roughly one person in a hundred, and a
+community can be full of masters. A master's work counts four times: a master farm
+feeds four times as many people from a quarter of the land, and a master smith or
+craftsman does the work of four workshops. Towns with masters draw people. More
+residents settle there, and traders, buyers and would-be apprentices pass through,
+filling extra taverns and inns. Every master is a named NPC at their workplace with
+apprentices beside them, so players can seek them out to learn.
+
 ## Next steps worth building
 
 1. **The day by the bells**: give residents (occupancy NPCs) a schedule from the

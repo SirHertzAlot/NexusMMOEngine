@@ -65,6 +65,7 @@ export function placeStructures(layout: Layout, demand: Demand, rules: Settlemen
       { cost: cost((a) => a.workers), max: demand.laborPool },
     ],
   };
-  const solution = solve(problem, { seed: Math.floor(rng.get("structures").raw() * 2 ** 32) >>> 0 });
+  // A big town has many plots to settle: more restarts before it gives up.
+  const solution = solve(problem, { seed: Math.floor(rng.get("structures").raw() * 2 ** 32) >>> 0, maxRestarts: 24 });
   return layout.parcels.map((p, i) => ({ id: p.id.replace(/^parcel/, "structure"), archetype: solution.ids[i]!, parcel: p.id, district: p.district }));
 }

@@ -357,6 +357,22 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   so no home stands empty while another is shared. A town of 600 houses its 136
   households in about 107 homes. Market streets gained a `shop` (shopkeeper living
   above) and merchants' townhouses.
+- **Mastery.** `rules.mastery`: each person is a master of their profession with a
+  chance of one in `oneInPeople` (100), drawn per town from the "mastery" stream, so one
+  town has none and the next a cluster; each master's profession is drawn by weight
+  (farming 6, crafting 3, smithing 2, baking 2). A master runs a master workplace
+  (`master_farmstead`, `master_smithy`, `master_workshop`, `master_bakery`, with
+  apprentices) that does the work of `yield` (4) ordinary ones: the ordinary
+  archetype's required count drops by 4 per master and the craft quarter by 3 plots per
+  master smith or craftsman. A master farm feeds 4 times the people (120) on a
+  `landFactor`th (a quarter) of an ordinary holding, stands nearest the town on a dry
+  road, and the town needs that many fewer farms. Masters draw people:
+  `residentsPerMaster` (10) more live there (in the demographics) and
+  `visitorsPerMaster` (50) come through, which taverns and inns (`required.<kind>.visitors`)
+  also serve. Three or more masters of one profession make a master community
+  (`manifest.mastery.communities`). The master is the first worker of their workplace
+  (`npc.mastery`, for players to learn from); the others are apprentices. Gate
+  `mastery` checks a workplace and a working master for every master.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are

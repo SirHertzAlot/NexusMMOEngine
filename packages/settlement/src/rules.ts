@@ -79,6 +79,8 @@ export const RequiredSchema = z.strictObject({
   maxPerPopulation: z.number().int().positive().optional(),
   /** A settlement smaller than this has none (a village has no barracks or theatre). */
   minPopulation: z.number().int().positive().optional(),
+  /** It also serves the visitors the town's masters draw (taverns, inns): counted on residents plus visitors. */
+  visitors: z.boolean().optional(),
 });
 
 /**
@@ -138,6 +140,39 @@ export const FarmingSchema = z.strictObject({
 export type Farming = z.infer<typeof FarmingSchema>;
 export const DEFAULT_FARMING: Farming = { acresPerPersonX10: 15, fieldAspect: 2 };
 
+/**
+ * Mastery: about one person in `oneInPeople` is a master of their profession, drawn per town (the "mastery"
+ * stream). A master runs a master workplace (`professions[p].master`) that does the work of `yield` ordinary
+ * ones, so the town needs fewer of them; a master farm needs a `landFactor`th of the land. Masters draw people:
+ * `residentsPerMaster` more live in the town, `visitorsPerMaster` more come through it (taverns, inns). A town with
+ * `communityMasters` masters of one profession is a master community in it.
+ */
+export const MasterySchema = z.strictObject({
+  oneInPeople: z.number().int().positive(),
+  yield: z.number().int().min(1),
+  landFactor: z.number().int().min(1),
+  residentsPerMaster: z.number().int().min(0),
+  visitorsPerMaster: z.number().int().min(0),
+  communityMasters: z.number().int().positive(),
+  /** Each profession: the ordinary archetype, the master's, and how likely a master is of it. */
+  professions: z.record(z.string(), z.strictObject({ archetype: z.string(), master: z.string(), weight: z.number().positive() })),
+});
+export type Mastery = z.infer<typeof MasterySchema>;
+export const DEFAULT_MASTERY: Mastery = {
+  oneInPeople: 100,
+  yield: 4,
+  landFactor: 4,
+  residentsPerMaster: 10,
+  visitorsPerMaster: 50,
+  communityMasters: 3,
+  professions: {
+    farming: { archetype: "farmstead", master: "master_farmstead", weight: 6 },
+    smithing: { archetype: "smithy", master: "master_smithy", weight: 2 },
+    crafting: { archetype: "workshop", master: "master_workshop", weight: 3 },
+    baking: { archetype: "bakery", master: "master_bakery", weight: 2 },
+  },
+};
+
 export const DEFAULT_FORTIFICATION: Fortification = { minHouseholds: 45, setbackMm: 4000, thicknessMm: 2000, heightM: 6, pieceMm: 6000, towerMm: 5000, towerHeightM: 9, towerSpacingMm: 40000, gateHeightM: 8 };
 
 export const SettlementRulesSchema = z.strictObject({
@@ -170,6 +205,7 @@ export const SettlementRulesSchema = z.strictObject({
   }),
   farming: FarmingSchema.default(DEFAULT_FARMING),
   watch: WatchSchema.optional(),
+  mastery: MasterySchema.optional(),
   /** Worship: the churches' seats hold at least `sharePermille` of the people (a mass at a time). */
   worship: z.strictObject({ archetypes: z.array(z.string()), sharePermille: z.number().int().min(0).max(1000) }).optional(),
   architecture: ArchitectureSchema,
@@ -225,6 +261,7 @@ export const BUILTIN_RULES: SettlementRules = {
   layout: { block: [4, 2], parcelSizeMm: [12000, 20000], streetWidthMm: 6000, parcelsPerHouseholdPermille: 1550, farmSurplusPermille: 1250, familiesPerHomeX10: 20, worksBufferMm: 40000, homeSpacePermille: 1250 },
   farming: DEFAULT_FARMING,
   watch: DEFAULT_WATCH,
+  mastery: DEFAULT_MASTERY,
   worship: { archetypes: ["chapel", "parish_church", "cathedral"], sharePermille: 500 },
   architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },
   fortification: DEFAULT_FORTIFICATION,
@@ -238,6 +275,12 @@ export const BUILTIN_RULES: SettlementRules = {
     townhouse: { kinds: ["civic", "shopping", "entertainment", "education"], weight: 3, households: 1, workers: 0, feeds: 0, floors: 3, role: "", shop: false, entrances: 2, capacity: 8 },
     artisan_house: { kinds: ["housing"], weight: 3, households: 1, workers: 1, feeds: 0, floors: 2, role: "artisan", shop: false, entrances: 2, capacity: 8 },
     farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, floors: 2, role: "farmer", shop: false, entrances: 3, capacity: 8 },
+    // Masters: a master's workplace does the work of four (rules.mastery.yield), with apprentices to learn from them.
+    // A master farm feeds four times the people on a quarter of the land.
+    master_farmstead: { kinds: ["agriculture"], weight: 1, households: 1, workers: 3, feeds: 120, floors: 2, role: "master farmer", shop: false, entrances: 3, capacity: 10 },
+    master_smithy: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, storeyM: 4, role: "master blacksmith", shop: true, entrances: 2 },
+    master_workshop: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 2, role: "master craftsman", shop: true, entrances: 2 },
+    master_bakery: { kinds: ["shopping"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, role: "master baker", shop: true, entrances: 2, capacity: 16 },
     granary: { kinds: ["agriculture"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 6, role: "granary keeper", shop: false, entrances: 1 },
     mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 3, storeyM: 3.5, role: "miller", shop: false, entrances: 2 },
     // The market streets' shops: a draper, cobbler, butcher or chandler, the shopkeeper's family living above.
@@ -280,8 +323,8 @@ export const BUILTIN_RULES: SettlementRules = {
     mill: { min: 1, perPopulation: 600, maxPerPopulation: 300 },
     bakery: { min: 1, perPopulation: 250, maxPerPopulation: 120 },
     smithy: { min: 1, perPopulation: 400, maxPerPopulation: 150 },
-    tavern: { min: 1, perPopulation: 300, maxPerPopulation: 150 },
-    inn: { minPopulation: 250, perPopulation: 500, maxPerPopulation: 300 },
+    tavern: { min: 1, perPopulation: 300, maxPerPopulation: 150, visitors: true },
+    inn: { minPopulation: 250, perPopulation: 500, maxPerPopulation: 300, visitors: true },
     theatre: { minPopulation: 600, perPopulation: 2000, max: 2 },
     bathhouse: { minPopulation: 400, perPopulation: 1000, max: 3 },
     town_hall: { minPopulation: 200, min: 1, max: 1 },

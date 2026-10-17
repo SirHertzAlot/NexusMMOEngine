@@ -7,6 +7,7 @@
 
 import type { Demand } from "./demand.js";
 import type { Demographics } from "./demographics.js";
+import type { TownMastery } from "./mastery.js";
 import { ACRE_M2, type Holding, type Layout } from "./layout.js";
 import type { Occupancy } from "./occupancy.js";
 import type { SettlementRules } from "./rules.js";
@@ -20,6 +21,7 @@ export interface Gate {
 
 export interface Town {
   demographics: Demographics;
+  mastery: TownMastery;
   demand: Demand;
   layout: Layout;
   structures: Structure[];
@@ -145,9 +147,14 @@ export function acreageGate(l: Layout, rules: SettlementRules, people: number, s
   const intruded = others.filter((p) => boxes.some((b) => inside(b, p.center))).length;
   if (intruded) problems.push(`${intruded} town or craft plots inside a farm's fields`);
   const acres = boxes.reduce((a, b) => a + ((b.x1 - b.x0) * (b.z1 - b.z0)) / 1_000_000, 0) / ACRE_M2 / (scale * scale);
-  const need = (people * rules.farming.acresPerPersonX10) / 10;
+  // A master farm (rules.mastery) feeds its people on a `landFactor`th of an ordinary holding.
+  const acresPer = rules.farming.acresPerPersonX10 / 10;
+  const masters = farms.filter((p) => p.post?.why === "master");
+  const masterFed = masters.reduce((a, p) => a + (rules.archetypes[p.post!.archetype]?.feeds ?? 0), 0);
+  const ordinary = rules.mastery ? (rules.archetypes[Object.values(rules.mastery.professions).find((p) => p.master === masters[0]?.post?.archetype)?.archetype ?? ""]?.feeds ?? 0) : 0;
+  const need = Math.max(0, people - masterFed) * acresPer + (masters.length * ordinary * acresPer) / (rules.mastery?.landFactor ?? 1);
   if (acres + 1e-6 < need) problems.push(`${Math.round(acres)} acres for ${people} people, who need ${Math.round(need)}`);
-  return gate("farm_acreage", problems.length === 0, problems.length ? problems.join("; ") : `${farms.length} farms on ${Math.round(acres)} acres (${Math.round(need)} needed), each alone in its fields`);
+  return gate("farm_acreage", problems.length === 0, problems.length ? problems.join("; ") : `${farms.length} farms on ${Math.round(acres)} acres (${Math.round(need)} needed), each alone in its fields${masters.length ? `, ${masters.length} of them master farms on a quarter of the land` : ""}`);
 }
 
 /** Homes stand at least `worksBufferMm` from every workshop and warehouse plot. */
@@ -218,6 +225,20 @@ export function accessGate(t: Pick<Town, "layout" | "structures" | "demographics
   return gate("access_capacity", problems.length === 0, problems.length ? problems.join("; ") : `markets on corner plots; church seats for ${seats} of ${t.demographics.population}`);
 }
 
+/** Each master has their master workplace, and someone working in it is the master. */
+export function masteryGate(t: Pick<Town, "mastery" | "structures" | "occupancy">, rules: SettlementRules): Gate {
+  const problems: string[] = [];
+  for (const [name, p] of Object.entries(rules.mastery?.professions ?? {})) {
+    const want = t.mastery.masters[name] ?? 0;
+    const shops = t.structures.filter((s) => s.archetype === p.master);
+    if (shops.length !== want) problems.push(`${want} master ${name} but ${shops.length} master workplaces`);
+    const masters = t.occupancy.npcs.filter((n) => n.mastery === name).length;
+    if (masters !== shops.length) problems.push(`${shops.length} master ${name} workplaces but ${masters} masters at work`);
+  }
+  const total = Object.values(t.mastery.masters).reduce((a, b) => a + b, 0);
+  return gate("mastery", problems.length === 0, problems.length ? problems.join("; ") : total ? `${total} masters (${Object.entries(t.mastery.masters).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(", ")}), drawing ${t.mastery.residents} residents and ${t.mastery.visitors} visitors` : "no masters in this town");
+}
+
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
   const sum = (f: (id: string) => number): number => t.structures.reduce((a, s) => a + f(s.archetype), 0);
   const d = t.demographics;
@@ -268,6 +289,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     separationGate(t.layout, rules, scale),
     watchGate(t, rules, scale),
     accessGate(t, rules),
+    masteryGate(t, rules),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

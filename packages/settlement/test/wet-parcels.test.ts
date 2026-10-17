@@ -54,7 +54,7 @@ describe("settlements beside water", () => {
   });
 
   it("fails with a clear message when the site is too wet to house and serve the town", () => {
-    const wetEast = generateSettlement({ ...base, site: { origin, dry: (x) => x < origin[0] - 30 } });
+    const wetEast = generateSettlement({ ...base, site: { origin, dry: (x) => x < origin[0] - 400 } });
     assert.equal(wetEast.ok, false);
     if (!wetEast.ok) {
       assert.equal(wetEast.error.stage, "structures");

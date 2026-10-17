@@ -27,6 +27,8 @@ export interface Npc {
   role: string;
   /** The structure they work in (absent: not employed). */
   workplace?: string;
+  /** The profession they are a master of (rules.mastery): players can learn from them. */
+  mastery?: string;
 }
 
 export interface Shop {
@@ -53,6 +55,7 @@ export function occupy(settlement: string, d: Demographics, structures: readonly
   const r = rng.get("population");
   const byId = [...structures].sort((a, b) => (a.id < b.id ? -1 : 1));
   const archetypeOf = new Map(byId.map((s) => [s.id, rules.archetypes[s.archetype]!]));
+  const structureArchetype = new Map(byId.map((s) => [s.id, s.archetype]));
 
   // Households, each in one home slot. The crowded homes of the poor (built for three families or more) fill
   // first; the others a family at a time, every home taking one before any takes a second, so shared homes are
@@ -91,7 +94,23 @@ export function occupy(settlement: string, d: Demographics, structures: readonly
   const jobs = slots(byId, (a) => rules.archetypes[a]!.workers);
   const eligible = shuffle(npcs.filter((n) => WORKING.has(n.cohort)), r);
   jobs.slice(0, eligible.length).forEach((structure, i) => (eligible[i]!.workplace = structure));
+  // The first worker of each master workplace is its master; the others are their apprentices.
+  const professionOf = new Map(Object.entries(rules.mastery?.professions ?? {}).map(([name, p]) => [p.master, name]));
+  const mastered = new Set<string>();
+  for (const n of eligible) {
+    const s = n.workplace;
+    const name = s ? professionOf.get(structureArchetype.get(s)!) : undefined;
+    if (s && name && !mastered.has(s)) {
+      mastered.add(s);
+      n.mastery = name;
+    }
+  }
   for (const n of npcs) n.role = n.workplace ? archetypeOf.get(n.workplace)!.role : n.cohort === "child" ? "child" : n.cohort === "elder" ? "elder" : "resident";
+  // The others at a master's workplace are apprentices of the ordinary trade.
+  for (const n of npcs) {
+    const name = n.workplace && !n.mastery ? professionOf.get(structureArchetype.get(n.workplace)!) : undefined;
+    if (name) n.role = `apprentice ${rules.archetypes[rules.mastery!.professions[name]!.archetype]?.role ?? name}`;
+  }
 
   const shops: Shop[] = byId
     .filter((s) => archetypeOf.get(s.id)!.shop)

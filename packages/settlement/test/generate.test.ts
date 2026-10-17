@@ -65,9 +65,8 @@ describe("generateSettlement", () => {
 
   it("gives every farm its own acreage, apart from its neighbours, and keeps the homes away from the crafts", () => {
     const farms = manifest.parcels.filter((p) => p.kind === "agriculture");
-    const acres = farms.reduce((a, p) => a + p.holding!.areaM2, 0) / ACRE_M2;
-    assert.ok(acres >= (manifest.demographics.population * BUILTIN_RULES.farming.acresPerPersonX10) / 10, `${Math.round(acres)} acres`);
-    for (const f of farms) assert.ok(f.holding!.areaM2 / ACRE_M2 >= 40, "a holding is tens of acres");
+    // An ordinary holding is tens of acres; a master farm a quarter of that.
+    for (const f of farms) assert.ok(f.holding!.areaM2 / ACRE_M2 >= (f.post?.why === "master" ? 10 : 40), "a holding is tens of acres");
     const apart = Math.min(...farms.flatMap((a, i) => farms.slice(i + 1).map((b) => Math.hypot(a.center.x - b.center.x, a.center.z - b.center.z))));
     assert.ok(apart >= 100_000, `the nearest two farmsteads are ${apart / 1000} m apart`);
     for (const g of ["farm_acreage", "works_separation"]) assert.ok(manifest.validation.find((v) => v.gate === g)!.ok, g);
@@ -100,6 +99,29 @@ describe("generateSettlement", () => {
     assert.ok([...per.values()].some((n) => n >= 2), "some homes are shared");
     const homes = manifest.structures.filter((s) => (BUILTIN_RULES.archetypes[s.archetype]!.households ?? 0) > 0).length;
     assert.ok(homes < manifest.demographics.households, `${homes} homes for ${manifest.demographics.households} households`);
+  });
+
+  it("draws masters about one in a hundred: smaller, richer farms, fewer workshops, busier towns, masters to learn from", () => {
+    const draws = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => must(generateSettlement({ settlementId: "m", seed, population: 1000 })).manifest);
+    const totals = draws.map((m) => Object.values(m.mastery.masters).reduce((a, b) => a + b, 0));
+    assert.ok(new Set(totals).size > 1, "mastery differs from town to town");
+    const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
+    assert.ok(mean > 4 && mean < 18, `about 10 masters in 1000 people, got ${mean}`);
+    const m = draws[totals.indexOf(Math.max(...totals))]!;
+    const count = (id: string) => m.structures.filter((s) => s.archetype === id).length;
+    const y = BUILTIN_RULES.mastery!.yield;
+    for (const [name, p] of Object.entries(BUILTIN_RULES.mastery!.professions)) assert.equal(count(p.master), m.mastery.masters[name], `one master ${name} workplace per master`);
+    assert.equal(m.demographics.population, 1000 + m.mastery.residents, "masters draw people to live there");
+    assert.ok(m.mastery.visitors > 0 && count("tavern") + count("inn") >= Math.ceil((1000 + m.mastery.residents + m.mastery.visitors) / 300), "taverns and inns serve the visitors");
+    if (m.mastery.masters.smithing! > 0) assert.ok(m.demand.required.smithy! <= Math.max(0, Math.ceil(m.demographics.population / 400) - y * m.mastery.masters.smithing!), "a master smith does the work of four smithies");
+    const masterFarms = m.parcels.filter((p) => p.post?.why === "master");
+    const ordinary = m.parcels.find((p) => p.kind === "agriculture" && !p.post)!;
+    if (masterFarms.length) assert.ok(Math.abs(masterFarms[0]!.holding!.areaM2 * BUILTIN_RULES.mastery!.landFactor - ordinary.holding!.areaM2) / ordinary.holding!.areaM2 < 0.01, "a master farm on a quarter of the land");
+    assert.equal(BUILTIN_RULES.archetypes.master_farmstead!.feeds, y * BUILTIN_RULES.archetypes.farmstead!.feeds, "and four times the food");
+    const masters = m.occupancy.npcs.filter((n) => n.mastery);
+    assert.equal(masters.length, Object.values(m.mastery.masters).reduce((a, b) => a + b, 0), "every master is someone, at work");
+    assert.ok(m.occupancy.npcs.some((n) => n.role.startsWith("apprentice ")), "with apprentices beside them");
+    assert.ok(m.validation.find((g) => g.gate === "mastery")!.ok);
   });
 
   it("carries who lives and works where, and the gates that check it", () => {
@@ -145,4 +167,4 @@ describe("generateSettlement", () => {
 // civic, market, entertainment and education quarters, the crafts and farms outside along the roads, plots facing their
 // streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
 // cathedral and monastery).
-const GOLDEN = "a03557b8d322f04223a02e2d960702640e6b5dead1a2c16b18d1a6a3d855dc4b";
+const GOLDEN = "120e5d739c03efac321d8f1a7bbd9b4bb90e0509dfd97c4be33849c421ad3977";

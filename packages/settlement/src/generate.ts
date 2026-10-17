@@ -12,6 +12,7 @@ import { solveDemand } from "./demand.js";
 import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
 import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from "./layout.js";
+import { drawMastery } from "./mastery.js";
 import { occupy } from "./occupancy.js";
 import { streams, type Streams } from "./rng.js";
 import { BUILTIN_RULES, type SettlementRules } from "./rules.js";
@@ -51,6 +52,8 @@ export interface SettlementManifest {
   scale: number;
   determinism: { rngStreams: Record<string, number>; sortPolicy: "id"; units: "millimeters" };
   demographics: Town["demographics"];
+  /** The town's masters by profession, the master communities, and the residents and visitors they draw. */
+  mastery: Town["mastery"];
   demand: Town["demand"];
   roads: Town["layout"]["roads"];
   districts: Town["layout"]["districts"];
@@ -99,15 +102,18 @@ const STAGES: Stage[] = [
   {
     name: "demographics",
     run(ctx) {
-      const d = bakeDemographics(ctx.request.population, ctx.rules.demographics);
+      // The town's masters are drawn first: the people they draw to live there are part of its population.
+      const mastery = drawMastery(ctx.request.population, ctx.rules, ctx.rng);
+      ctx.town.mastery = mastery;
+      const d = bakeDemographics(ctx.request.population + mastery.residents, ctx.rules.demographics);
       ctx.town.demographics = d;
-      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, laborPool: d.laborPool });
+      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, laborPool: d.laborPool, masters: mastery.masters, communities: mastery.communities, visitors: mastery.visitors });
     },
   },
   {
     name: "demand",
     run(ctx) {
-      const demand = solveDemand(ctx.town.demographics!, ctx.rules);
+      const demand = solveDemand(ctx.town.demographics!, ctx.rules, ctx.town.mastery);
       ctx.town.demand = demand;
       ctx.events.emit("summary", "demand", "solved", { housing: demand.housingDemand, food: demand.foodDemand, required: demand.required });
     },
@@ -115,7 +121,7 @@ const STAGES: Stage[] = [
   {
     name: "layout",
     run(ctx) {
-      const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1);
+      const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1, 0, undefined, ctx.town.mastery);
       ctx.town.layout = layout;
       ctx.events.emit("summary", "layout", "laid_out", { blocks: layout.blocks, parcels: layout.parcels.length, junctions: layout.roads.nodes.length, walled: layout.walled, wallPieces: layout.fortifications.length });
     },
@@ -138,7 +144,7 @@ const STAGES: Stage[] = [
           // Laid out again knowing the ground, so the quarters keep to dry blocks; the "districts" stream is
           // re-forked so every attempt picks from the same draw.
           const dryMm = (dx: number, dz: number): boolean => site.dry(site.origin[0] + dx / 1000, site.origin[1] + dz / 1000);
-          const full = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, streams(ctx.request.seed), ctx.request.scale ?? 1, extra, dryMm);
+          const full = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, streams(ctx.request.seed), ctx.request.scale ?? 1, extra, dryMm, ctx.town.mastery);
           const c = townCentreMm(full.roads.nodes);
           // A farm stays only if its fields are dry too.
           const dry = (p: (typeof full.parcels)[number]): boolean =>
@@ -213,7 +219,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { demographics, demand, layout, structures, occupancy } = ctx.town as Town;
+  const { demographics, mastery, demand, layout, structures, occupancy } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -223,6 +229,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     scale: request.scale ?? 1,
     determinism: { rngStreams: ctx.rng.seeds(), sortPolicy: "id" as const, units: "millimeters" as const },
     demographics,
+    mastery,
     demand,
     roads: layout.roads,
     districts: layout.districts,

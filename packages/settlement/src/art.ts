@@ -58,6 +58,11 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   watch_hq: ["Preset_(Watch_?House|Guard_?House|Barracks)_\[0-9]+_Optimized$"],
   gaol: ["Preset_(Gaol|Jail|Prison|Dungeon)_\[0-9]+_Optimized$"],
   garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$"],
+  // A master's workplace looks like the trade's own.
+  master_farmstead: ["Preset_Farm(house)?_\[0-9]+_Optimized$", "Preset_(Hut|Shelter|Stables)_\[0-9]+_Optimized$"],
+  master_smithy: ["Preset_Blacksmith_\[0-9]+_Optimized$"],
+  master_workshop: ["Preset_Workshop_\[0-9]+_Optimized$"],
+  master_bakery: ["Preset_Bakery_\[0-9]+_Optimized$"],
   // The town square's well or fountain.
   town_well: ["(Prop|Preset)_(Well|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   // The town wall: straight wall runs, towers, and the gate the road passes through.
