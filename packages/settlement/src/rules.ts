@@ -238,8 +238,8 @@ export const SettingsSchema = z.strictObject({
 export type Settings = z.infer<typeof SettingsSchema>;
 export const DEFAULT_SETTINGS: Settings = {
   access: {
-    port: { maxPopulation: 12000, masteryPermille: 1500, trendPermille: [500, 100], densityPermille: [1050, 1200] },
-    river: { maxPopulation: 6000, masteryPermille: 1200, trendPermille: [400, 150], densityPermille: [950, 1100] },
+    port: { maxPopulation: 3500, masteryPermille: 1500, trendPermille: [500, 100], densityPermille: [1050, 1200] },
+    river: { maxPopulation: 3000, masteryPermille: 1200, trendPermille: [400, 150], densityPermille: [950, 1100] },
     road: { maxPopulation: 2500, masteryPermille: 1000, trendPermille: [300, 250], densityPermille: [850, 1000] },
     remote: { maxPopulation: 600, masteryPermille: 250, trendPermille: [150, 450], densityPermille: [600, 800] },
   },

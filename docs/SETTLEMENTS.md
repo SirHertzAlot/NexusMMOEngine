@@ -399,7 +399,9 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
 - **Access, size and density.** `request.access` (port, river, road or remote;
   `siteAccess(site)` reads it off a selected site) sets what a town's place allows, from
   `rules.settings.access`. Goods and food move far more cheaply by water than overland, so a
-  port keeps up to 12000 people, a river town 6000, a road town 2500 and a remote town 600.
+  port keeps up to 3500 people (about 4200 with the people its masters draw), a river town
+  3000, a road town 2500 and a remote town 600. These are the largest the structure solve builds
+  reliably today; a port of 4000 or more does not solve yet.
   A larger request is capped (`manifest.setting.requestedPopulation` against `population`,
   with a "capped" event). Access also sets density, a draw per town from a range: ports
   1050 to 1200, river towns 950 to 1100, road towns 850 to 1000, remote towns 600 to 800.
