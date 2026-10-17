@@ -154,6 +154,13 @@ export const MasterySchema = z.strictObject({
   residentsPerMaster: z.number().int().min(0),
   visitorsPerMaster: z.number().int().min(0),
   communityMasters: z.number().int().positive(),
+  /**
+   * Grand masters: each master is one with a chance of one in `oneInMasters`. Pupils pay a grand master to learn
+   * the craft over years: each draws `pupils` more people to live in the town, and the town builds a workplace of
+   * the discipline's ordinary kind for every `pupilsPerWorkplace` of them, so it grows bigger around the one
+   * discipline that honours them.
+   */
+  grandMaster: z.strictObject({ oneInMasters: z.number().int().positive(), pupils: z.number().int().min(0), pupilsPerWorkplace: z.number().int().positive() }).optional(),
   /** Each profession: the ordinary archetype, the master's, and how likely a master is of it. */
   professions: z.record(z.string(), z.strictObject({ archetype: z.string(), master: z.string(), weight: z.number().positive() })),
 });
@@ -165,12 +172,60 @@ export const DEFAULT_MASTERY: Mastery = {
   residentsPerMaster: 10,
   visitorsPerMaster: 50,
   communityMasters: 3,
+  grandMaster: { oneInMasters: 20, pupils: 30, pupilsPerWorkplace: 5 },
   professions: {
     farming: { archetype: "farmstead", master: "master_farmstead", weight: 6 },
     smithing: { archetype: "smithy", master: "master_smithy", weight: 2 },
     crafting: { archetype: "workshop", master: "master_workshop", weight: 3 },
     baking: { archetype: "bakery", master: "master_bakery", weight: 2 },
   },
+};
+
+/**
+ * The homeless: a few people in a town have no home of their own (beggars, vagrants, the widowed and orphaned,
+ * day labourers between masters). A town of `minPopulation` or more has between `permille[0]` and `permille[1]`
+ * of its people homeless, drawn per town (the "homeless" stream) and scaled by its density (a crowded town has
+ * more); they sleep at the `shelters` (the hospital, the monasteries and churches) or rough where there are none.
+ */
+export const HomelessSchema = z.strictObject({
+  permille: z.tuple([z.number().int().min(0).max(1000), z.number().int().min(0).max(1000)]),
+  minPopulation: z.number().int().min(0),
+  shelters: z.array(z.string()),
+});
+export type Homeless = z.infer<typeof HomelessSchema>;
+export const DEFAULT_HOMELESS: Homeless = { permille: [10, 30], minPopulation: 150, shelters: ["hospital", "monastery", "chapel", "parish_church", "cathedral"] };
+
+/** How a town is reached: by sea (a port), by river or lake, by road, or hardly at all (remote: far over land or on poor ground). */
+export const ACCESS = ["port", "river", "road", "remote"] as const;
+export type Access = (typeof ACCESS)[number];
+
+/**
+ * Settings: what a town's place allows. Its access caps how many people it can keep (trade and food come in by
+ * water far more cheaply than by cart, so a port grows biggest and a remote town stays small), and sets how
+ * densely they live: `densityPermille` is a range a town is drawn from (the "setting" stream), 1000 the rules'
+ * own layout. A dense town shares homes more and keeps few gardens; a sparse one spreads out over more ground.
+ * Masters go where their goods sell: a town's chance of each person being a master is `masteryPermille` of the
+ * rules' (more in a port, few in a remote town, which lacks much else besides).
+ * A site is a port when the sea is within the rules' far water range, a river town when a river or lake is;
+ * it is remote when the walk to it from the spawn is longer than `remoteWalkM` or its land is poor (pressure
+ * under `remotePressurePermille`).
+ */
+const AccessSettingSchema = z.strictObject({ maxPopulation: z.number().int().positive(), masteryPermille: z.number().int().min(0).max(5000), densityPermille: z.tuple([z.number().int().min(500).max(1500), z.number().int().min(500).max(1500)]) });
+export const SettingsSchema = z.strictObject({
+  access: z.strictObject({ port: AccessSettingSchema, river: AccessSettingSchema, road: AccessSettingSchema, remote: AccessSettingSchema }),
+  remoteWalkM: z.number().positive(),
+  remotePressurePermille: z.number().int().min(0).max(1000),
+});
+export type Settings = z.infer<typeof SettingsSchema>;
+export const DEFAULT_SETTINGS: Settings = {
+  access: {
+    port: { maxPopulation: 12000, masteryPermille: 1500, densityPermille: [1050, 1200] },
+    river: { maxPopulation: 6000, masteryPermille: 1200, densityPermille: [950, 1100] },
+    road: { maxPopulation: 2500, masteryPermille: 1000, densityPermille: [850, 1000] },
+    remote: { maxPopulation: 600, masteryPermille: 250, densityPermille: [600, 800] },
+  },
+  remoteWalkM: 1500,
+  remotePressurePermille: 250,
 };
 
 export const DEFAULT_FORTIFICATION: Fortification = { minHouseholds: 45, setbackMm: 4000, thicknessMm: 2000, heightM: 6, pieceMm: 6000, towerMm: 5000, towerHeightM: 9, towerSpacingMm: 40000, gateHeightM: 8 };
@@ -202,10 +257,14 @@ export const SettlementRulesSchema = z.strictObject({
     worksBufferMm: z.number().int().min(0).default(0),
     /** Room for at most this many households per household (permille): with homes shared, the town is not built with a home to spare for every family. */
     homeSpacePermille: z.number().int().min(1000).optional(),
+    /** How densely the town lives (permille, 1000 as laid out): set per town from its settings (`withDensity`), not in a rules file. */
+    densityPermille: z.number().int().min(500).max(1500).optional(),
   }),
   farming: FarmingSchema.default(DEFAULT_FARMING),
   watch: WatchSchema.optional(),
   mastery: MasterySchema.optional(),
+  homeless: HomelessSchema.optional(),
+  settings: SettingsSchema.default(DEFAULT_SETTINGS),
   /** Worship: the churches' seats hold at least `sharePermille` of the people (a mass at a time). */
   worship: z.strictObject({ archetypes: z.array(z.string()), sharePermille: z.number().int().min(0).max(1000) }).optional(),
   architecture: ArchitectureSchema,
@@ -250,7 +309,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/5",
+  version: "settlement-rules/6",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -262,6 +321,8 @@ export const BUILTIN_RULES: SettlementRules = {
   farming: DEFAULT_FARMING,
   watch: DEFAULT_WATCH,
   mastery: DEFAULT_MASTERY,
+  homeless: DEFAULT_HOMELESS,
+  settings: DEFAULT_SETTINGS,
   worship: { archetypes: ["chapel", "parish_church", "cathedral"], sharePermille: 500 },
   architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },
   fortification: DEFAULT_FORTIFICATION,

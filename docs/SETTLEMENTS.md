@@ -373,6 +373,45 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   (`manifest.mastery.communities`). The master is the first worker of their workplace
   (`npc.mastery`, for players to learn from); the others are apprentices. Gate
   `mastery` checks a workplace and a working master for every master.
+- **Masters on the best ground (settlement-rules/6).** Masters can pay for the safest,
+  best-placed land. Master farms take the holdings nearest the town on every road, and the
+  ordinary farms start no nearer than the masters' fields reach: the near ground is
+  theirs, farther from bandits and wild animals. Master smiths and craftsmen take the dry
+  craft plots nearest the town. A master baker takes a corner plot by the square, after the
+  corners the markets need. All are pinned like the watch's posts (`post.why` "master"). Gate
+  `mastery` also checks that no ordinary farm or workplace stands nearer the town on its road
+  than a master's.
+- **Grand masters.** `rules.mastery.grandMaster`: each master is a grand master with a
+  chance of one in `oneInMasters` (20). Pupils pay a grand master to learn their craft over
+  years: each brings `pupils` (30) more people to live in the town (in `residents`), and
+  the town builds one more of the discipline's ordinary workplaces for every
+  `pupilsPerWorkplace` (5) pupils, so it grows around the one discipline it honours
+  (`manifest.mastery.discipline`, the profession with the most grand masters). The grand
+  master is `npc.grandMaster`, with the role "grand master ...".
+- **The homeless.** `rules.homeless`: a town of `minPopulation` (150) or more has between 1
+  and 3 in 100 of its people without a home, drawn per town (the "homeless" stream) and
+  scaled by density. `demographics.homeless` is part of the population and in no household;
+  households are formed from the housed people only. The homeless are the poorest
+  (peasants). Each has `npc.home` and `npc.household` set to null and a `npc.shelter`, one
+  of the hospitals, monasteries and churches dealt round in turn, or none, to sleep rough,
+  where the town has no shelters. Without work their role is "beggar" ("orphan" for a
+  child); with work they are day labourers like anyone.
+- **Access, size and density.** `request.access` (port, river, road or remote;
+  `siteAccess(site)` reads it off a selected site) sets what a town's place allows, from
+  `rules.settings.access`. Goods and food move far more cheaply by water than overland, so a
+  port keeps up to 12000 people, a river town 6000, a road town 2500 and a remote town 600.
+  A larger request is capped (`manifest.setting.requestedPopulation` against `population`,
+  with a "capped" event). Access also sets density, a draw per town from a range: ports
+  1050 to 1200, river towns 950 to 1100, road towns 850 to 1000, remote towns 600 to 800.
+  Density scales families per home (`withDensity`) and the share of poor streets
+  (tenements). A sparse town also gets a bigger housing quarter in gardens and yards, so the
+  same people cover more ground. Masters go where their goods sell, so a town's chance of
+  masters is `masteryPermille` of the rules': 1500 for a port, 250 for a remote town, which
+  lacks much else besides. Sites now carry `waterKind` (sea, lake, river or none) and
+  `walkM`, the walk from the spawn. A site is a port with the sea within the far water
+  range, a river town with a river or lake, and remote past `remoteWalkM` (1500 m) or on
+  poor land. Without `access`, a town is laid out as before, uncapped. Gate `setting` checks
+  the cap and the homeless.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are

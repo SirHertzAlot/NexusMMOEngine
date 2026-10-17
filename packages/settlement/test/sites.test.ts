@@ -8,6 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BUILTIN_RULES, selectSites, type TerrainFields } from "../src/index.js";
+import { siteAccess } from "../src/setting.js";
 
 const N = 40;
 const CELL = 100;
@@ -54,6 +55,22 @@ describe("selectSites", () => {
   it("prefers land near water, but not on the bank", () => {
     const best = sites[0]!;
     assert.ok(best.waterDistanceM >= BUILTIN_RULES.sites.waterRangeM[0] && best.waterDistanceM <= BUILTIN_RULES.sites.waterRangeM[1] * 2, `water ${best.waterDistanceM} m`);
+  });
+
+  it("says which water is nearest and how far a site is to walk, and so how the town is reached", () => {
+    for (const s of sites) {
+      const { cx } = cellOf(s);
+      // The river is column 10, the sea from column 36.
+      assert.equal(s.waterKind, Math.abs(cx - 10) <= 36 - cx ? "river" : "sea", `site at column ${cx}`);
+      assert.ok(s.walkM >= 0, "walkable");
+    }
+    const at = { waterDistanceM: 300, walkM: 200, pressurePermille: 800 };
+    assert.equal(siteAccess({ ...at, waterKind: "sea" }, BUILTIN_RULES), "port");
+    assert.equal(siteAccess({ ...at, waterKind: "lake" }, BUILTIN_RULES), "river");
+    assert.equal(siteAccess({ ...at, waterKind: "none", waterDistanceM: -1 }, BUILTIN_RULES), "road");
+    assert.equal(siteAccess({ ...at, waterKind: "sea", waterDistanceM: 5000 }, BUILTIN_RULES), "road", "the sea out of reach");
+    assert.equal(siteAccess({ ...at, waterKind: "none", walkM: 5000 }, BUILTIN_RULES), "remote", "a long walk from anywhere");
+    assert.equal(siteAccess({ ...at, waterKind: "none", pressurePermille: 100 }, BUILTIN_RULES), "remote", "poor land");
   });
 
   it("returns the best first, keeps the spacing, and never more than asked", () => {

@@ -8,6 +8,7 @@
 import type { Demand } from "./demand.js";
 import type { Demographics } from "./demographics.js";
 import type { TownMastery } from "./mastery.js";
+import type { TownSetting } from "./setting.js";
 import { ACRE_M2, type Holding, type Layout } from "./layout.js";
 import type { Occupancy } from "./occupancy.js";
 import type { SettlementRules } from "./rules.js";
@@ -20,6 +21,7 @@ export interface Gate {
 }
 
 export interface Town {
+  setting: TownSetting;
   demographics: Demographics;
   mastery: TownMastery;
   demand: Demand;
@@ -226,8 +228,21 @@ export function accessGate(t: Pick<Town, "layout" | "structures" | "demographics
 }
 
 /** Each master has their master workplace, and someone working in it is the master. */
-export function masteryGate(t: Pick<Town, "mastery" | "structures" | "occupancy">, rules: SettlementRules): Gate {
+export function masteryGate(t: Pick<Town, "mastery" | "structures" | "occupancy" | "layout">, rules: SettlementRules): Gate {
   const problems: string[] = [];
+  // Masters get the best ground: on every road out, their farms and works come before the ordinary ones (a
+  // plot's gx counts out along its lane, its gz names the lane).
+  for (const kind of ["agriculture", "manufacturing"] as const) {
+    const lanes = new Map<number, { master: number; plain: number }>();
+    for (const p of t.layout.parcels) {
+      if (p.kind !== kind) continue;
+      const l = lanes.get(p.gz) ?? { master: -1, plain: Infinity };
+      if (p.post?.why === "master") l.master = Math.max(l.master, p.gx);
+      else l.plain = Math.min(l.plain, p.gx);
+      lanes.set(p.gz, l);
+    }
+    if ([...lanes.values()].some((l) => l.master > l.plain)) problems.push(`an ordinary ${kind === "agriculture" ? "farm" : "workplace"} stands nearer the town than a master's on its road`);
+  }
   for (const [name, p] of Object.entries(rules.mastery?.professions ?? {})) {
     const want = t.mastery.masters[name] ?? 0;
     const shops = t.structures.filter((s) => s.archetype === p.master);
@@ -235,8 +250,37 @@ export function masteryGate(t: Pick<Town, "mastery" | "structures" | "occupancy"
     const masters = t.occupancy.npcs.filter((n) => n.mastery === name).length;
     if (masters !== shops.length) problems.push(`${shops.length} master ${name} workplaces but ${masters} masters at work`);
   }
+  for (const [name, n] of Object.entries(t.mastery.grandMasters)) {
+    const grand = t.occupancy.npcs.filter((x) => x.grandMaster && x.mastery === name).length;
+    if (grand !== n) problems.push(`${n} grand master ${name} but ${grand} at work`);
+  }
   const total = Object.values(t.mastery.masters).reduce((a, b) => a + b, 0);
-  return gate("mastery", problems.length === 0, problems.length ? problems.join("; ") : total ? `${total} masters (${Object.entries(t.mastery.masters).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(", ")}), drawing ${t.mastery.residents} residents and ${t.mastery.visitors} visitors` : "no masters in this town");
+  const grandTotal = Object.values(t.mastery.grandMasters).reduce((a, b) => a + b, 0);
+  return gate("mastery", problems.length === 0, problems.length ? problems.join("; ") : total ? `${total} masters (${Object.entries(t.mastery.masters).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(", ")}), drawing ${t.mastery.residents} residents and ${t.mastery.visitors} visitors${grandTotal ? `; ${grandTotal} grand masters, ${t.mastery.pupils} pupils, the town honours ${t.mastery.discipline}` : ""}` : "no masters in this town");
+}
+
+/**
+ * The setting held: the town is no bigger than its access keeps (the masters' residents aside), and its homeless
+ * are as many as drawn, with no household or home, each at a shelter of the rules' kinds or sleeping rough where
+ * the town has none.
+ */
+export function settingGate(t: Pick<Town, "setting" | "demographics" | "occupancy" | "structures" | "mastery">, rules: SettlementRules): Gate {
+  const problems: string[] = [];
+  const s = t.setting;
+  if (s.capacity !== null && s.population > s.capacity) problems.push(`${s.population} people over the ${s.capacity} a ${s.access} town keeps`);
+  if (t.demographics.population !== s.population + t.mastery.residents) problems.push(`${t.demographics.population} people, not the ${s.population} settled and ${t.mastery.residents} drawn by masters`);
+  const homeless = t.occupancy.npcs.filter((n) => n.home === null);
+  if (homeless.length !== t.demographics.homeless) problems.push(`${homeless.length} homeless, not ${t.demographics.homeless}`);
+  const kinds = new Set(rules.homeless?.shelters ?? []);
+  const archetypeOf = new Map(t.structures.map((x) => [x.id, x.archetype]));
+  const shelters = t.structures.filter((x) => kinds.has(x.archetype)).length;
+  for (const n of homeless) {
+    if (n.household !== null) problems.push(`${n.id} is homeless but in a household`);
+    if (n.shelter ? !kinds.has(archetypeOf.get(n.shelter) ?? "") : shelters > 0) problems.push(`${n.id} has no shelter of the rules' kinds`);
+  }
+  const sheltered = homeless.filter((n) => n.shelter).length;
+  const where = s.access ? `a ${s.access} town at density ${s.densityPermille}${s.population < s.requestedPopulation ? `, capped at ${s.capacity} of ${s.requestedPopulation} asked` : ""}` : "no setting";
+  return gate("setting", problems.length === 0, problems.length ? problems.join("; ") : `${where}; ${homeless.length} homeless (${sheltered} sheltered, ${homeless.length - sheltered} sleeping rough)`);
 }
 
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
@@ -268,6 +312,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
   const o = t.occupancy;
   const perHome = new Map<string, number>();
   for (const h of o.households) perHome.set(h.home, (perHome.get(h.home) ?? 0) + 1);
+  const housed = o.households.reduce((a, h) => a + h.size, 0);
   const overHome = [...perHome].filter(([id, n]) => n > rules.archetypes[kindById.get(id)!]!.households);
   const perJob = new Map<string, number>();
   for (const n of o.npcs) if (n.workplace) perJob.set(n.workplace, (perJob.get(n.workplace) ?? 0) + 1);
@@ -280,7 +325,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     gate("labor_balance", workers <= d.laborPool, `${workers} jobs for ${d.laborPool} workers`),
     gate("road_connectivity", reached.size === t.layout.roads.nodes.length && t.layout.parcels.every((p) => p.roadFrontage), `${reached.size} of ${t.layout.roads.nodes.length} junctions reachable`),
     gate("structure_coverage", t.layout.parcels.every((p) => built.has(p.id)) && short.length === 0, short.length ? `short of ${short.map(([id]) => id).join(", ")}` : `${t.structures.length} structures on ${t.layout.parcels.length} parcels`),
-    gate("occupancy_population", o.npcs.length === d.population && o.households.reduce((a, h) => a + h.size, 0) === d.population, `${o.npcs.length} people in ${o.households.length} households`),
+    gate("occupancy_population", o.npcs.length === d.population && housed + d.homeless === d.population, `${housed} people in ${o.households.length} households and ${d.homeless} homeless`),
     gate("occupancy_homes", overHome.length === 0 && o.households.length === d.households, overHome.length ? `${overHome.length} homes over capacity` : `${o.households.length} households, each in a home with room`),
     gate("occupancy_jobs", overJob.length === 0, overJob.length ? `${overJob.length} workplaces over their jobs` : `${perJob.size} workplaces staffed within their jobs`),
     fortificationGate(t.layout),
@@ -290,6 +335,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     watchGate(t, rules, scale),
     accessGate(t, rules),
     masteryGate(t, rules),
+    settingGate(t, rules),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

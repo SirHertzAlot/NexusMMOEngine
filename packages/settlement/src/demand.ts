@@ -35,7 +35,8 @@ export function solveDemand(d: Demographics, rules: SettlementRules, mastery: To
  * How many of each required archetype a settlement of `population` must have, and at most may have. With its
  * masters (`mastery`): a master workplace stands for each master and does the work of `yield` ordinary ones, so
  * the ordinary archetype's count drops by that much (to none, if the masters cover it); and a kind that serves
- * visitors (`visitors`) is counted on the residents plus the visitors the masters draw.
+ * visitors (`visitors`) is counted on the residents plus the visitors the masters draw. A grand master's pupils
+ * add a workplace of the discipline's ordinary archetype for every `pupilsPerWorkplace` of them.
  */
 export function requiredCounts(population: number, rules: SettlementRules, mastery: TownMastery = NO_MASTERY): Record<string, { required: number; max: number }> {
   const out: Record<string, { required: number; max: number }> = {};
@@ -57,6 +58,16 @@ export function requiredCounts(population: number, rules: SettlementRules, maste
     // The masters' work also lowers the ceiling: a town of master smiths has fewer smithies, not as many.
     const capped = cover > 0 ? Math.max(Math.min(want, ceiling), ceiling - cover) : ceiling;
     out[id] = { required: Math.min(want, ceiling), max: capped };
+  }
+  // A grand master's pupils learn in the discipline's ordinary workplaces: one more for every `pupilsPerWorkplace`.
+  for (const [name, p] of Object.entries(m?.professions ?? {})) {
+    const g = m!.grandMaster;
+    const pupils = (mastery.grandMasters?.[name] ?? 0) * (g?.pupils ?? 0);
+    // Farm pupils learn on the grand master's own land: the town's food, not its plots, grows with them.
+    if (!pupils || !g || rules.archetypes[p.archetype]?.kinds.includes("agriculture")) continue;
+    const extra = Math.ceil(pupils / g.pupilsPerWorkplace);
+    const o = out[p.archetype] ?? { required: 0, max: Infinity };
+    out[p.archetype] = { required: o.required + extra, max: o.max + extra };
   }
   // Each master has their workplace: exactly as many as there are masters.
   for (const [name, p] of Object.entries(m?.professions ?? {})) out[p.master] = { required: mastery.masters[name] ?? 0, max: mastery.masters[name] ?? 0 };

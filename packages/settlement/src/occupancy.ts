@@ -20,8 +20,11 @@ export interface Household {
 
 export interface Npc {
   id: string;
-  household: string;
-  home: string;
+  /** Their household and its home; null for the homeless (rules.homeless). */
+  household: string | null;
+  home: string | null;
+  /** Where a homeless person sleeps (a hospital, monastery or church; absent: rough, where the town has none). */
+  shelter?: string;
   cohort: string;
   class: string;
   role: string;
@@ -29,6 +32,8 @@ export interface Npc {
   workplace?: string;
   /** The profession they are a master of (rules.mastery): players can learn from them. */
   mastery?: string;
+  /** A grand master of it: pupils come from afar to learn from them. */
+  grandMaster?: boolean;
 }
 
 export interface Shop {
@@ -51,7 +56,7 @@ function slots(structures: readonly Structure[], capacity: (archetype: string) =
   return structures.flatMap((s) => Array.from({ length: capacity(s.archetype) }, () => s.id));
 }
 
-export function occupy(settlement: string, d: Demographics, structures: readonly Structure[], rules: SettlementRules, rng: Streams): Occupancy {
+export function occupy(settlement: string, d: Demographics, structures: readonly Structure[], rules: SettlementRules, rng: Streams, grandMasters: Record<string, number> = {}): Occupancy {
   const r = rng.get("population");
   const byId = [...structures].sort((a, b) => (a.id < b.id ? -1 : 1));
   const archetypeOf = new Map(byId.map((s) => [s.id, rules.archetypes[s.archetype]!]));
@@ -67,16 +72,42 @@ export function occupy(settlement: string, d: Demographics, structures: readonly
     ...Array.from({ length: rounds }, (_, round) => shuffle(slots(byId, (a) => (cap(a) < 3 && cap(a) > round ? 1 : 0)), r)).flat(),
   ];
   if (homes.length < d.households) throw new Error(`${d.households} households but only ${homes.length} homes`);
-  const base = Math.floor(d.population / d.households);
-  const extra = d.population - base * d.households;
+  const housed = d.population - d.homeless;
+  const base = Math.floor(housed / d.households);
+  const extra = housed - base * d.households;
   const households: Household[] = Array.from({ length: d.households }, (_, i) => ({ id: entityId("household", settlement, i), home: homes[i]!, size: base + (i < extra ? 1 : 0) }));
 
-  // People: an adult heads each household; the rest are dealt out shuffled.
+  // People: an adult heads each household; the rest are dealt out shuffled. The homeless are taken from the
+  // rest first, grown people before children (the orphans among them only when there are not enough).
   const labels = Object.entries(d.ageCohorts).flatMap(([cohort, n]) => Array.from({ length: n }, () => cohort));
   const adults = labels.filter((c) => c === "adult");
   if (adults.length < d.households) throw new Error(`${d.households} households but only ${adults.length} adults`);
-  const rest = shuffle([...adults.slice(d.households), ...labels.filter((c) => c !== "adult")], r);
-  const classes = shuffle(Object.entries(d.socialClasses).flatMap(([c, n]) => Array.from({ length: n }, () => c)), r);
+  const shuffled = shuffle([...adults.slice(d.households), ...labels.filter((c) => c !== "adult")], r);
+  const grown = shuffled.filter((c) => c !== "child");
+  const homelessCohorts = [...grown, ...shuffled.filter((c) => c === "child")].slice(0, d.homeless);
+  const taken = new Map<string, number>();
+  for (const c of homelessCohorts) taken.set(c, (taken.get(c) ?? 0) + 1);
+  const rest = shuffled.filter((c) => {
+    const n = taken.get(c) ?? 0;
+    if (n === 0) return true;
+    taken.set(c, n - 1);
+    return false;
+  });
+  // Classes: the homeless are the poorest (peasants, as far as there are), the housed take the rest shuffled.
+  const classLabels = Object.entries(d.socialClasses).flatMap(([c, n]) => Array.from({ length: n }, () => c));
+  const poorest = "peasant";
+  const homelessClasses = [...classLabels.filter((c) => c === poorest), ...classLabels.filter((c) => c !== poorest)].slice(0, d.homeless);
+  const left = new Map<string, number>();
+  for (const c of homelessClasses) left.set(c, (left.get(c) ?? 0) + 1);
+  const classes = shuffle(
+    classLabels.filter((c) => {
+      const n = left.get(c) ?? 0;
+      if (n === 0) return true;
+      left.set(c, n - 1);
+      return false;
+    }),
+    r,
+  );
   let next = 0;
   const npcs: Npc[] = households.flatMap((h, hi) =>
     Array.from({ length: h.size }, (_, mi) => ({
@@ -89,6 +120,12 @@ export function occupy(settlement: string, d: Demographics, structures: readonly
     })),
   );
   npcs.forEach((n, i) => (n.class = classes[i]!));
+  // The homeless sleep at the shelters, dealt round them in turn; with none, rough.
+  const shelterIds = new Set(rules.homeless?.shelters ?? []);
+  const shelters = shuffle(byId.filter((s) => shelterIds.has(s.archetype)).map((s) => s.id), r);
+  homelessCohorts.forEach((cohort, i) =>
+    npcs.push({ id: entityId("npc", settlement, d.households, i), household: null, home: null, ...(shelters.length ? { shelter: shelters[i % shelters.length]! } : {}), cohort, class: homelessClasses[i]!, role: "" }),
+  );
 
   // Jobs: working-age people, shuffled, fill the jobs in structure order.
   const jobs = slots(byId, (a) => rules.archetypes[a]!.workers);
@@ -103,9 +140,16 @@ export function occupy(settlement: string, d: Demographics, structures: readonly
     if (s && name && !mastered.has(s)) {
       mastered.add(s);
       n.mastery = name;
+      // The first masters of a profession at work are its grand masters, as many as the town has.
+      if ((grandMasters[name] ?? 0) > 0) {
+        grandMasters = { ...grandMasters, [name]: grandMasters[name]! - 1 };
+        n.grandMaster = true;
+      }
     }
   }
-  for (const n of npcs) n.role = n.workplace ? archetypeOf.get(n.workplace)!.role : n.cohort === "child" ? "child" : n.cohort === "elder" ? "elder" : "resident";
+  // The homeless without work beg; those with work are day labourers at it, like anyone.
+  for (const n of npcs) n.role = n.workplace ? archetypeOf.get(n.workplace)!.role : n.home === null ? (n.cohort === "child" ? "orphan" : "beggar") : n.cohort === "child" ? "child" : n.cohort === "elder" ? "elder" : "resident";
+  for (const n of npcs) if (n.grandMaster) n.role = `grand ${n.role}`;
   // The others at a master's workplace are apprentices of the ordinary trade.
   for (const n of npcs) {
     const name = n.workplace && !n.mastery ? professionOf.get(structureArchetype.get(n.workplace)!) : undefined;

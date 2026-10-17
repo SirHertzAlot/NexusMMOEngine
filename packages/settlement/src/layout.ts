@@ -199,6 +199,10 @@ interface Plan {
   masterFarms: number;
   masterField: { frontMm: number; deepMm: number };
   masterFarm: string;
+  /** The other masters' workplaces (craft and shop), by archetype and district kind, each pinned to the best plot of its kind. */
+  masterWorks: { archetype: string; kind: DistrictKind }[];
+  /** Corner plots the shopping quarter keeps for what must stand on one (markets): masters take the corners beyond these. */
+  cornersNeeded: number;
   /** A farm's field: frontage along the road and depth away from it, mm. */
   field: { frontMm: number; deepMm: number };
   /** Guard posts, headquarters and gaols the watch reserves, by why. */
@@ -232,12 +236,15 @@ function plan(households: number, rules: SettlementRules, scale: number, extraBl
   const withSpare = (need: number): number => (need > 0 ? need + Math.ceil(need / 4) : 0);
   const shopping = Math.max(withSpare(onlyIn("shopping")), shares.shopping);
   // Families share homes, so housing is the homes the households need (with a quarter spare), not a plot each.
-  const housing = withSpare(Math.ceil((households * 10) / rules.layout.familiesPerHomeX10));
+  // A sparse town (density under 1000) keeps more ground about its homes: the housing quarter grows by as much, in gardens and yards.
+  const density = rules.layout.densityPermille ?? 1000;
+  const homes = withSpare(Math.ceil((households * 10) / rules.layout.familiesPerHomeX10));
+  const housing = density < 1000 ? Math.ceil((homes * 1000) / density) : homes;
   const watch = rules.watch;
   const posts = {
     gate: watch ? (walled ? 4 : watch.villageEntrancePosts) : 0,
     market: watch ? Math.floor(shopping / watch.marketPlotsPerPost) : 0,
-    poor: watch ? Math.floor(Math.floor((housing * watch.lowIncomePermille) / 1000) / watch.poorHomesPerPost) : 0,
+    poor: watch ? Math.floor(Math.floor((homes * watch.lowIncomePermille) / 1000) / watch.poorHomesPerPost) : 0,
     headquarters: watch ? (counts[watch.headquarters]?.required ?? 0) : 0,
     gaol: watch ? (counts[watch.gaol]?.required ?? 0) : 0,
   };
@@ -262,7 +269,9 @@ function plan(households: number, rules: SettlementRules, scale: number, extraBl
   // A town grown to make up for wet ground (`extraBlocks`) also gets a farm more on each of its eight lanes per row;
   // the ordinary farms always have room for the granaries, mills and monastery that stand only on farmland.
   const fed = feeds > 0 ? Math.ceil(Math.max(0, (people * rules.layout.farmSurplusPermille) / 1000 - masterFed) / feeds) : shares.agriculture;
-  const farms = Math.max(masterFarms > 0 ? 0 : 1, fed, withSpare(onlyIn("agriculture") - masterFarms)) + 8 * extraBlocks;
+  // However few the people, there are plots enough to feed them besides the buildings that stand only on farmland.
+  const bare = feeds > 0 ? Math.ceil(Math.max(0, people - masterFed) / feeds) + onlyIn("agriculture") - masterFarms : 0;
+  const farms = Math.max(masterFarms > 0 ? 0 : 1, fed, bare, withSpare(onlyIn("agriculture") - masterFarms)) + 8 * extraBlocks;
   // A master smith or craftsman does the work of `yield` workshops: the craft quarter needs that many fewer plots.
   const industryMasters = professions.filter(([, p]) => rules.archetypes[p.master]?.kinds.includes("manufacturing")).reduce((a, [name]) => a + (mastery.masters[name] ?? 0), 0);
   const crafts = Math.max(withSpare(onlyIn("manufacturing")), shares.manufacturing - (rules.mastery ? rules.mastery.yield - 1 : 0) * industryMasters);
@@ -274,7 +283,11 @@ function plan(households: number, rules: SettlementRules, scale: number, extraBl
   // A master farm feeds more on a `landFactor`th of the land: each side shrinks by its square root.
   const shrink = Math.sqrt(rules.mastery?.landFactor ?? 1);
   const masterField = { frontMm: Math.max(pw, Math.round(field.frontMm / shrink)), deepMm: Math.max(pd, Math.round(field.deepMm / shrink)) };
-  return { m, pitchX: bw * pw + streetWidthMm, pitchZ: bd * pd + streetWidthMm, streetWidthMm, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, field, posts, crafts, walled };
+  const masterWorks = professions
+    .filter(([, p]) => rules.archetypes[p.master] && !rules.archetypes[p.master]!.kinds.includes("agriculture"))
+    .flatMap(([name, p]) => Array.from({ length: mastery.masters[name] ?? 0 }, () => ({ archetype: p.master, kind: rules.archetypes[p.master]!.kinds[0]! })));
+  const cornersNeeded = Object.entries(counts).reduce((a, [id, c]) => a + ((rules.archetypes[id]?.minAccess ?? 1) >= 2 ? c.required : 0), 0);
+  return { m, pitchX: bw * pw + streetWidthMm, pitchZ: bd * pd + streetWidthMm, streetWidthMm, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, masterWorks, cornersNeeded, field, posts, crafts, walled };
 }
 
 /** Half the walled town's footprint, metres (the larger side, streets and wall, not the farms outside). Site selection measures relief over it. */
@@ -311,7 +324,7 @@ export function plotIsDry(p: { center: { x: number; z: number }; facing: Facing 
  */
 export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams, scale = 1, extraBlocks = 0, dry?: (dxMm: number, dzMm: number) => boolean, mastery: TownMastery = NO_MASTERY): Layout {
   const [bw, bd] = rules.layout.block;
-  const { m, pitchX, pitchZ, streetWidthMm: s, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, field, posts, crafts, walled } = plan(households, rules, scale, extraBlocks, mastery);
+  const { m, pitchX, pitchZ, streetWidthMm: s, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, masterWorks, cornersNeeded, field, posts, crafts, walled } = plan(households, rules, scale, extraBlocks, mastery);
   const wall = scaledFortification(rules, scale);
 
   // Streets: a node at each crossing, an edge per segment.
@@ -463,8 +476,17 @@ export function layOut(settlement: string, households: number, rules: Settlement
   const nHigh = watch ? Math.floor((homes.length * watch.highIncomePermille) / 1000) : 0;
   homes.forEach((p, i) => wealthOf.set(p.k, i < nLow ? "low" : i >= homes.length - nHigh ? "high" : "middle"));
   const postOf = new Map<string, { archetype: string; why: PostReason }>();
+  const free = (p: { k: string; wet: boolean }): boolean => !p.wet && !postOf.has(p.k);
+  // Masters first: they can pay for the best ground. A master's shop takes the corner plots nearest the square
+  // (open to two streets) beyond those the markets need, else the nearest others.
+  const masterShops = masterWorks.filter((w) => w.kind !== "manufacturing");
+  if (masterShops.length) {
+    const shopPlots = innerPlots.filter((p) => p.kind === masterShops[0]!.kind && free(p)).sort((a, b) => d2(a.center, sq) - d2(b.center, sq) || byGrid(a, b));
+    const corners = shopPlots.filter((p) => accessOf(p.gx) === 2);
+    const best = [...corners.slice(cornersNeeded), ...shopPlots.filter((p) => accessOf(p.gx) === 1)];
+    masterShops.forEach((w, i) => best[i] && postOf.set(best[i]!.k, { archetype: w.archetype, why: "master" }));
+  }
   if (watch) {
-    const free = (p: { k: string; wet: boolean }): boolean => !p.wet && !postOf.has(p.k);
     const nearest = (to: { x: number; z: number }, among: typeof innerPlots) => among.filter(free).sort((a, b) => d2(a.center, to) - d2(b.center, to) || byGrid(a, b))[0];
     // `n` posts spread evenly over `among` (in its order).
     const spread = (n: number, among: typeof innerPlots, why: PostReason): void => {
@@ -496,18 +518,21 @@ export function layOut(settlement: string, households: number, rules: Settlement
   // stands alone in its holding (frontage along the road, depth away from it); a lane's first holding starts far
   // enough out that its depth clears the fields of the roads either side.
   const used = lanes.map(() => craftStart);
-  const outside: { lane: number; k: number; along: number; master?: boolean }[] = [];
+  const outside: { lane: number; k: number; along: number; master?: boolean; works?: string }[] = [];
+  // The master smiths and craftsmen take the dry craft plots nearest the town, on the road in.
+  const masterCrafts = masterWorks.filter((w) => w.kind === "manufacturing");
   for (let c = 0; c < crafts; c++) {
     const p = craftPlot(side, c);
     used[p.lane] = craftStart + (p.k + 1) * pw;
-    outside.push({ lane: p.lane, k: p.k, along: craftAlong(p.k) });
+    const along = craftAlong(p.k);
+    const works = masterCrafts.length > 0 && !wet(outsidePlot(p.lane, along)) ? masterCrafts.shift()!.archetype : undefined;
+    outside.push({ lane: p.lane, k: p.k, along, ...(works ? { works } : {}) });
   }
   const clear = field.deepMm - Math.min(xr, m * pitchX - s - xr, zr, m * pitchZ - s - zr) + pw;
   const laneK = lanes.map((_, l) => outside.filter((o) => o.lane === l).length);
   // The far side of each road is staggered by half a holding, so no two farmsteads face each other across it.
   const next = used.map((u, l) => Math.max(clear, u === craftStart ? farmStart : u + pw) + (l >= 4 ? Math.round(field.frontMm / 2) : 0));
-  // The master farms first, nearest the town on their roads, each on its smaller holding, on the roads where that
-  // first holding is dry (a master's farm is not lost to the water); then the ordinary farms round all eight.
+  // Whether a holding's field (and its farmstead's plot) would be wet.
   const fieldWet = (lane: number, along: number, f: { frontMm: number; deepMm: number }): boolean => {
     if (!dry) return false;
     const e = exits[lanes[lane]![0]]!;
@@ -515,37 +540,39 @@ export function layOut(settlement: string, households: number, rules: Settlement
     const [w, d] = e.dx !== 0 ? [f.frontMm, f.deepMm] : [f.deepMm, f.frontMm];
     return wet(outsidePlot(lane, along)) || !FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => dry(c.x + fx * w - centre.x, c.z + fz * d - centre.z)));
   };
-  const dryLanes = lanes.map((_, l) => l).filter((l) => !fieldWet(l, next[l]! + masterField.frontMm / 2, masterField));
-  const masterLanes = dryLanes.length ? dryLanes : lanes.map((_, l) => l);
-  const dealt: { lane: number; master: boolean }[] = [];
   const outsideFarms: { lane: number; k: number; along: number; master?: boolean }[] = [];
-  for (let f = 0; f < masterFarms + farms; f++) {
-    const master = f < masterFarms;
-    dealt.push({ lane: master ? masterLanes[f % masterLanes.length]! : (f - masterFarms) % 8, master });
-  }
-  // Each lane in turn, the near side of every road (lanes 0-3) first. A farmstead on the far side keeps at least
-  // half a holding along the road from every farmstead facing it, so none stands opposite another.
-  const alongs = new Map<number, number[]>();
+  // Every farm takes the nearest free holding on any road whose ground is dry, the masters' first (they can pay
+  // for the best: safest from bandits and beasts, nearest the market). The first ring of holdings round the town,
+  // a master holding deep, is then the masters' alone: the ordinary farms lie beyond it, unless only water is out
+  // there. A farmstead keeps at least half a holding along the road from every farmstead facing it.
+  const alongs = new Map<number, number[]>(lanes.map((_, l) => [l, []]));
   const gap = field.frontMm / 2;
-  for (const lane of [0, 1, 2, 3, 4, 5, 6, 7]) {
-    const opposite = lane >= 4 ? (alongs.get(lane - 4) ?? []) : [];
-    const mine: number[] = [];
-    dealt.forEach((d, i) => {
-      if (d.lane !== lane) return;
-      const front = (d.master ? masterField : field).frontMm;
-      let along = next[lane]! + front / 2;
-      for (let bumped = true; bumped; ) {
-        bumped = false;
-        for (const o of opposite) if (Math.abs(o - along) < gap) {
-          along = o + gap;
-          bumped = true;
-        }
+  const spot = (lane: number, front: number, from = next[lane]!): number => {
+    const opposite = alongs.get((lane + 4) % 8)!;
+    let along = from + front / 2;
+    for (let bumped = true; bumped; ) {
+      bumped = false;
+      for (const o of opposite) if (Math.abs(o - along) < gap) {
+        along = o + gap;
+        bumped = true;
       }
-      next[lane] = along + front / 2;
-      mine.push(along);
-      outsideFarms[i] = { lane, k: laneK[lane]!++, along, ...(d.master ? { master: true } : {}) };
-    });
-    alongs.set(lane, mine);
+    }
+    return along;
+  };
+  const place = (master: boolean, from: number[] = next): void => {
+    const f = master ? masterField : field;
+    const spots = lanes.map((_, l) => ({ l, along: spot(l, f.frontMm, Math.max(next[l]!, from[l]!)) })).sort((x, y) => x.along - y.along || x.l - y.l);
+    const pick = spots.find((c) => !fieldWet(c.l, c.along, f)) ?? spots[0]!;
+    next[pick.l] = pick.along + f.frontMm / 2;
+    alongs.get(pick.l)!.push(pick.along);
+    outsideFarms.push({ lane: pick.l, k: laneK[pick.l]!++, along: pick.along, ...(master ? { master: true } : {}) });
+  };
+  for (let f = 0; f < masterFarms; f++) place(true);
+  const ring = lanes.map((_, l) => (masterFarms > 0 ? Math.max(clear, used[l] === craftStart ? farmStart : used[l]! + pw) + masterField.frontMm : 0));
+  for (let f = 0; f < farms; f++) {
+    // Beyond the ring where any of it is dry; else wherever is.
+    const beyond = lanes.some((_, l) => !fieldWet(l, spot(l, field.frontMm, Math.max(next[l]!, ring[l]!)), field));
+    place(false, beyond ? ring : next);
   }
   outside.push(...outsideFarms);
   const roadOut = Math.max(...next, ...used);
@@ -584,7 +611,7 @@ export function layOut(settlement: string, households: number, rules: Settlement
     if (d.kind === "agriculture" || d.kind === "manufacturing") {
       // Outside plots, each on its lane, facing back across to the road. A lane is its own parcel row.
       const [from, count] = d.kind === "manufacturing" ? [0, crafts] : [crafts, masterFarms + farms];
-      for (const { lane, k, along, master } of outside.slice(from, from + count)) {
+      for (const { lane, k, along, master, works } of outside.slice(from, from + count)) {
         const { center, facing } = outsidePlot(lane, along);
         parcels.push({
           id: entityId("parcel", settlement, di, index++),
@@ -598,7 +625,7 @@ export function layOut(settlement: string, households: number, rules: Settlement
           facing,
           access: 1,
           ...(d.kind === "agriculture" ? { holding: holdingOf(lane, along, !!master) } : {}),
-          ...(master ? { post: { archetype: masterFarm, why: "master" as const } } : {}),
+          ...(master ? { post: { archetype: masterFarm, why: "master" as const } } : works ? { post: { archetype: works, why: "master" as const } } : {}),
         });
       }
       return;

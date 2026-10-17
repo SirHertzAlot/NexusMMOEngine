@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ACRE_M2, BUILTIN_RULES, contentHash, generateSettlement, GENERATOR_VERSION } from "../src/index.js";
+import { ACRE_M2, BUILTIN_RULES, contentHash, drawMastery, generateSettlement, GENERATOR_VERSION, streams } from "../src/index.js";
 
 const request = { settlementId: "0182", seed: 1234, population: 600 };
 
@@ -124,6 +124,83 @@ describe("generateSettlement", () => {
     assert.ok(m.validation.find((g) => g.gate === "mastery")!.ok);
   });
 
+  it("gives masters the best ground: their farms and works nearest the town, ordinary farms farther out", () => {
+    const m = must(generateSettlement({ settlementId: "p", seed: 1, population: 1000 })).manifest;
+    const lanes = new Map<number, { master: number[]; plain: number[] }>();
+    for (const p of m.parcels.filter((x) => x.kind === "agriculture" || x.kind === "manufacturing")) {
+      const l = lanes.get(p.gz * 10 + (p.kind === "agriculture" ? 1 : 0)) ?? { master: [], plain: [] };
+      (p.post?.why === "master" ? l.master : l.plain).push(p.gx);
+      lanes.set(p.gz * 10 + (p.kind === "agriculture" ? 1 : 0), l);
+    }
+    assert.ok(m.parcels.some((p) => p.kind === "agriculture" && p.post?.why === "master"), "this town has master farms");
+    assert.ok(m.parcels.some((p) => p.kind === "manufacturing" && p.post?.why === "master"), "and master works");
+    for (const l of lanes.values()) if (l.master.length && l.plain.length) assert.ok(Math.max(...l.master) < Math.min(...l.plain), "on every road the masters come first");
+    // Across the roads too: no ordinary farmstead is nearer the town than the farthest master farm's holding reaches.
+    const c = { x: 0, z: 0 };
+    for (const n of m.roads.nodes) (c.x += n.x / m.roads.nodes.length), (c.z += n.z / m.roads.nodes.length);
+    const far = (p: (typeof m.parcels)[number]) => Math.hypot(p.center.x - c.x, p.center.z - c.z);
+    const masterFar = Math.max(...m.parcels.filter((p) => p.kind === "agriculture" && p.post?.why === "master").map(far));
+    const farmsteads = new Set(m.structures.filter((s) => s.archetype === "farmstead").map((s) => s.parcel));
+    assert.ok(Math.min(...m.parcels.filter((p) => farmsteads.has(p.id)).map(far)) > masterFar, "the ordinary farms lie beyond the masters'");
+    assert.ok(m.validation.find((g) => g.gate === "mastery")!.ok);
+  });
+
+  it("makes a few masters grand masters, whose paying pupils grow the town around their discipline", () => {
+    const rules = structuredClone(BUILTIN_RULES);
+    rules.mastery!.grandMaster = { oneInMasters: 1, pupils: 30, pupilsPerWorkplace: 5 };
+    const m = must(generateSettlement({ settlementId: "g", seed: 2, population: 600, rules })).manifest;
+    const grand = Object.values(m.mastery.grandMasters).reduce((a, b) => a + b, 0);
+    assert.ok(grand > 0 && grand === Object.values(m.mastery.masters).reduce((a, b) => a + b, 0), "every master grand at one in one");
+    assert.equal(m.mastery.pupils, grand * 30);
+    assert.equal(m.demographics.population, 600 + m.mastery.residents, "the pupils live in the town");
+    assert.ok(m.mastery.discipline !== null && m.mastery.grandMasters[m.mastery.discipline]! === Math.max(...Object.values(m.mastery.grandMasters)), "the town honours its grand masters' discipline");
+    const p = rules.mastery!.professions[m.mastery.discipline!]!;
+    const plain = generateSettlement({ settlementId: "g", seed: 2, population: 600 + m.mastery.residents, rules: { ...rules, mastery: { ...rules.mastery!, grandMaster: undefined } } });
+    if (plain.ok) assert.ok(m.demand.required[p.archetype]! >= Math.ceil((m.mastery.grandMasters[m.mastery.discipline!]! * 30) / 5), `the pupils' ${p.archetype}s`);
+    assert.equal(m.occupancy.npcs.filter((n) => n.grandMaster).length, grand, "every grand master is someone, at work");
+    assert.ok(m.occupancy.npcs.some((n) => n.role.startsWith("grand master")));
+    // The built-in chance: about one master in twenty.
+    const big = drawMastery(200_000, BUILTIN_RULES, streams(5));
+    const ratio = Object.values(big.grandMasters).reduce((a, b) => a + b, 0) / Object.values(big.masters).reduce((a, b) => a + b, 0);
+    assert.ok(ratio > 0.03 && ratio < 0.07, `about 1 in 20 masters grand, got ${ratio}`);
+  });
+
+  it("leaves a few people homeless, sheltering at the hospital and the churches", () => {
+    const m = must(generateSettlement({ settlementId: "h", seed: 1, population: 1000 })).manifest;
+    const d = m.demographics;
+    assert.ok(d.homeless >= Math.floor(d.population / 100) && d.homeless <= Math.ceil((d.population * 3) / 100), `1 to 3 in 100 homeless, got ${d.homeless} of ${d.population}`);
+    const homeless = m.occupancy.npcs.filter((n) => n.home === null);
+    assert.equal(homeless.length, d.homeless);
+    assert.equal(m.occupancy.households.reduce((a, h) => a + h.size, 0) + d.homeless, d.population, "everyone else lives in a household");
+    const shelters = new Set(m.structures.filter((s) => BUILTIN_RULES.homeless!.shelters.includes(s.archetype)).map((s) => s.id));
+    for (const n of homeless) {
+      assert.equal(n.household, null);
+      assert.ok(n.shelter && shelters.has(n.shelter), "sleeping at a shelter");
+      assert.ok(n.workplace || n.role === "beggar" || n.role === "orphan", n.role);
+    }
+    assert.ok(homeless.every((n) => n.class === "peasant"), "the poorest");
+    assert.equal(must(generateSettlement({ settlementId: "h", seed: 1, population: 60 })).manifest.demographics.homeless, 0, "a hamlet takes in its own");
+    assert.ok(m.validation.find((g) => g.gate === "setting")!.ok);
+  });
+
+  it("sizes a town by its access: ports grow big and dense, remote towns stay small, sparse and short of masters", () => {
+    const port = must(generateSettlement({ settlementId: "a", seed: 3, population: 2000, access: "port" })).manifest;
+    const remote = must(generateSettlement({ settlementId: "a", seed: 3, population: 2000, access: "remote" })).manifest;
+    assert.equal(port.setting.population, 2000, "a port keeps them all");
+    assert.equal(remote.setting.population, BUILTIN_RULES.settings.access.remote.maxPopulation, "a remote town only so many");
+    assert.ok(port.setting.densityPermille > 1000 && remote.setting.densityPermille < 1000);
+    // People per plot inside the walls: the port crowds, the remote town spreads out.
+    const perPlot = (m: typeof port) => m.demographics.population / m.parcels.filter((p) => p.kind !== "agriculture" && p.kind !== "manufacturing").length;
+    assert.ok(perPlot(port) > 1.4 * perPlot(remote), `${perPlot(port)} vs ${perPlot(remote)} people a plot`);
+    for (const m of [port, remote]) assert.ok(m.validation.every((g) => g.ok), m.validation.filter((g) => !g.ok).map((g) => g.detail).join("; "));
+    // Masters go where their goods sell.
+    const masters = (permille: number) => Object.values(drawMastery(100_000, BUILTIN_RULES, streams(9), permille).masters).reduce((a, b) => a + b, 0);
+    assert.ok(masters(BUILTIN_RULES.settings.access.remote.masteryPermille) * 3 < masters(BUILTIN_RULES.settings.access.road.masteryPermille), "a remote town has far fewer masters");
+    assert.ok(masters(BUILTIN_RULES.settings.access.port.masteryPermille) > masters(1000), "a port more");
+    const r = generateSettlement({ ...request, access: "moon" as never });
+    assert.ok(!r.ok && r.error.code === "bad_access");
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -166,5 +243,6 @@ describe("generateSettlement", () => {
 // Re-pinned on purpose: settlement-rules/4 and settlement-gen/0.2.0 (walled towns with gates and towers, a town square,
 // civic, market, entertainment and education quarters, the crafts and farms outside along the roads, plots facing their
 // streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
-// cathedral and monastery).
-const GOLDEN = "120e5d739c03efac321d8f1a7bbd9b4bb90e0509dfd97c4be33849c421ad3977";
+// cathedral and monastery). Again for settlement-rules/6 and settlement-gen/0.4.0: acreage, the watch, shared homes,
+// mastery and grand masters, the homeless, masters on the best ground.
+const GOLDEN = "34495bf000cc02ccc6d53fc24d3bda314ea93db90681c3e315db1c37eeb158e9";

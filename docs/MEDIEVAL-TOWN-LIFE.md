@@ -113,6 +113,27 @@ residents settle there, and traders, buyers and would-be apprentices pass throug
 filling extra taverns and inns. Every master is a named NPC at their workplace with
 apprentices beside them, so players can seek them out to learn.
 
+## Where people live and who has the best land (settlement-rules/6)
+
+- **Not everyone had a home.** Every town had people with nowhere to live: beggars,
+  vagrants, widows and orphans, and day labourers between employers. Hospitals (often
+  almshouses), monasteries and church porches took some of them in. In the generator, 1 to
+  3 in 100 people in a town of 150 or more are homeless, more in a crowded town, sheltering
+  at those buildings where the town has them.
+- **Size followed access.** Moving goods by water cost a fraction of hauling them overland,
+  so ports and river towns could feed and supply far more people than inland towns. Places
+  off the roads, or on poor land, stayed small. Crowded towns packed families into
+  tenements, while sparse ones kept gardens, yards and orchards between the houses. Since
+  ground travel is the norm in this world, the generator caps each town by its access
+  (port, river, road or remote) and draws its density from a range for that access.
+- **The best land went to those who could pay for it.** Master farmers and craftsmen sold
+  sought-after goods at good prices and could afford the land nearest the walls and the
+  market, safer from bandits and wild animals. Ordinary farms lay farther out. Remote towns
+  attracted few masters at all.
+- **Grand masters (our world).** A rare master's fame draws pupils who pay to learn for
+  years. They settle in the town, which grows around that one discipline in the grand
+  master's honour.
+
 ## Next steps worth building
 
 1. **The day by the bells**: give residents (occupancy NPCs) a schedule from the

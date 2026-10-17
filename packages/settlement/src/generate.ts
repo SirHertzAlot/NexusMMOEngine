@@ -13,22 +13,28 @@ import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
 import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from "./layout.js";
 import { drawMastery } from "./mastery.js";
+import { drawHomeless, townSetting, withDensity } from "./setting.js";
 import { occupy } from "./occupancy.js";
 import { streams, type Streams } from "./rng.js";
-import { BUILTIN_RULES, type SettlementRules } from "./rules.js";
+import { ACCESS, BUILTIN_RULES, type Access, type SettlementRules } from "./rules.js";
 import { placeStructures } from "./structures.js";
 import { validateTown, type Gate, type Town } from "./validate.js";
 
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.3.0";
+export const GENERATOR_VERSION = "settlement-gen/0.4.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
   settlementId: string;
   seed: number;
   population: number;
+  /**
+   * How the town is reached (rules.settings; `siteAccess` reads it off a site): caps the population and sets how
+   * densely it lives. Without it the population stands as asked and the layout is the rules' own.
+   */
+  access?: Access;
   rules?: SettlementRules;
   /** The building factor (`resolveScale(doc, "building")`) the town is laid out at; default 1. */
   scale?: number;
@@ -51,6 +57,8 @@ export interface SettlementManifest {
   /** The building factor the parcels and streets were baked at: a different scale is a different town (and hash). */
   scale: number;
   determinism: { rngStreams: Record<string, number>; sortPolicy: "id"; units: "millimeters" };
+  /** How the town is reached, how densely it lives, and the people asked for against the people its access keeps. */
+  setting: Town["setting"];
   demographics: Town["demographics"];
   /** The town's masters by profession, the master communities, and the residents and visitors they draw. */
   mastery: Town["mastery"];
@@ -102,12 +110,18 @@ const STAGES: Stage[] = [
   {
     name: "demographics",
     run(ctx) {
-      // The town's masters are drawn first: the people they draw to live there are part of its population.
-      const mastery = drawMastery(ctx.request.population, ctx.rules, ctx.rng);
+      // The town's setting first: its access caps the people and sets the density every later stage lays out by.
+      const setting = townSetting(ctx.request.population, ctx.request.access, ctx.rules, ctx.rng);
+      ctx.town.setting = setting;
+      ctx.rules = withDensity(ctx.rules, setting.densityPermille);
+      if (setting.population < setting.requestedPopulation) ctx.events.emit("summary", "demographics", "capped", { access: setting.access, requested: setting.requestedPopulation, capacity: setting.capacity });
+      // The town's masters next: the people they draw to live there are part of its population.
+      const mastery = drawMastery(setting.population, ctx.rules, ctx.rng, setting.access ? ctx.rules.settings.access[setting.access].masteryPermille : 1000);
       ctx.town.mastery = mastery;
-      const d = bakeDemographics(ctx.request.population + mastery.residents, ctx.rules.demographics);
+      const people = setting.population + mastery.residents;
+      const d = bakeDemographics(people, ctx.rules.demographics, drawHomeless(people, setting.densityPermille, ctx.rules, ctx.rng));
       ctx.town.demographics = d;
-      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, laborPool: d.laborPool, masters: mastery.masters, communities: mastery.communities, visitors: mastery.visitors });
+      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, homeless: d.homeless, laborPool: d.laborPool, access: setting.access, densityPermille: setting.densityPermille, masters: mastery.masters, communities: mastery.communities, grandMasters: mastery.grandMasters, discipline: mastery.discipline, pupils: mastery.pupils, visitors: mastery.visitors });
     },
   },
   {
@@ -183,7 +197,7 @@ const STAGES: Stage[] = [
     name: "occupancy",
     run(ctx) {
       const { demographics, structures } = ctx.town;
-      const o = occupy(ctx.request.settlementId, demographics!, structures!, ctx.rules, ctx.rng);
+      const o = occupy(ctx.request.settlementId, demographics!, structures!, ctx.rules, ctx.rng, ctx.town.mastery!.grandMasters);
       ctx.town.occupancy = o;
       const employed = o.npcs.filter((n) => n.workplace).length;
       ctx.events.emit("summary", "occupancy", "settled", { households: o.households.length, npcs: o.npcs.length, employed, shops: o.shops.length });
@@ -206,6 +220,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
   const fail = (stage: string, code: string, message: string): GenerationResult => ({ ok: false, error: { stage, code, message }, events: events.events(verbosity) });
   if (!Number.isInteger(request.population) || request.population < 1) return fail("request", "bad_population", "population must be a positive whole number");
 
+  if (request.access !== undefined && !ACCESS.includes(request.access)) return fail("request", "bad_access", `access must be one of ${ACCESS.join(", ")}`);
   if (request.scale !== undefined && !(request.scale > 0 && Number.isFinite(request.scale))) return fail("request", "bad_scale", "scale must be a positive number");
 
   const ctx: Context = { request, rules: request.rules ?? BUILTIN_RULES, rng: streams(request.seed), events, town: {}, validation: [] };
@@ -219,7 +234,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { demographics, mastery, demand, layout, structures, occupancy } = ctx.town as Town;
+  const { setting, demographics, mastery, demand, layout, structures, occupancy } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -228,6 +243,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     seed: request.seed,
     scale: request.scale ?? 1,
     determinism: { rngStreams: ctx.rng.seeds(), sortPolicy: "id" as const, units: "millimeters" as const },
+    setting,
     demographics,
     mastery,
     demand,
