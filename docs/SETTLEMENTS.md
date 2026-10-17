@@ -254,28 +254,48 @@ and buildings are drawn for that human, not as flat boxes.
   `settlement:scale-report --scale content/scale.local.json` then shows no overflows.
 
 
-## Town plan: quarters, walls, gates and farms (SG5)
+## Town plan: square, quarters, walls, gates and farms (SG5)
 
 Before this, a town was a grid of blocks dealt to districts at random: taverns and
 bakeries sat in housing blocks, the craft and farm districts were scattered, every
 building faced the same way and there was no wall. Generator `settlement-gen/0.2.0`,
-rules `settlement-rules/3` lay it out like a planned medieval town:
+rules `settlement-rules/4` lay it out like a planned medieval town (the history it
+draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
 
-- **Quarters.** The market (shopping) takes the blocks nearest the centre, the craft
-  quarter (manufacturing) a run of blocks along one side of town (the side is seeded,
-  `rng.get("districts")`), housing the rest. Bakery and tavern are shopping kinds only.
-  The `district_quarters` gate fails if any district's blocks are not one 4-connected
-  group (blocks lost to water count as passable).
-- **Farms outside.** Agriculture is no longer a share of the grid: farm plots line both
-  sides of the four country roads leading out of the gates, facing their road. Their
-  count comes from food demand (`layout.farmSurplusPermille`, default 1250, i.e. 25 %
-  surplus) plus spare plots as the grid grows to replace wet parcels.
+- **The square.** The block where the two primary roads cross is the town square (a
+  village green): no plots, a paved, walk-through `town_square` node and a
+  `town_well` at its centre. It is in the manifest as `square` (null if water took it).
+- **Quarters grown from the square.** Seven district kinds: `housing`, `agriculture`,
+  `shopping`, `manufacturing`, and now `civic`, `entertainment`, `education`. Each
+  quarter inside grows block by block from its best block, a neighbour at a time, so
+  it stays one piece: the civic quarter (town hall, guardhouses, parish church,
+  rectory, almshouse-hospital, barracks, cathedral) first round the square, then the
+  market, then the entertainment quarter (taverns, inns, theatre, baths) from one gate
+  in along the main road, then the education quarter (schools, library) by the centre;
+  housing is the rest (and may be several neighbourhoods). In a quarter's last block,
+  its plots are the ones nearest the square and the rest are homes, so a village's
+  tavern block is a tavern and its neighbours.
+- **Sized by what must stand there.** Housing, shopping and manufacturing take
+  `districtShares` of the plots the households need (the shares now cover only those
+  four kinds); civic, entertainment and education get a plot per building that may
+  stand only there (`required` counts) plus a quarter as many to spare. So a village of
+  100 has one school and one tavern, and a city of 2500 a quarter of each.
+  `required.<kind>.minPopulation` keeps a kind out of smaller places (theatre 600,
+  library 800, barracks 1200, cathedral 2000, town hall and parish church 200);
+  `maxPerPopulation` caps a kind at one per that many people.
+- **Crafts and farms outside.** The craft quarter lines both sides of the road out of
+  one gate, nearest the wall (the "districts" stream picks the side); beyond it, and
+  along the other three roads, as many farm plots as feed the town (with
+  `layout.farmSurplusPermille`, default 1250). A `monastery` stands among the farms in
+  a town of 1000 or more.
+- **Church life.** A `parish_church` with its `rectory` and the `hospital`
+  (almshouse and infirmary) in the civic quarter, a `churchyard` beside them and among
+  the homes, `chapel`s in the neighbourhoods, an `apothecary` in the market, and
+  `forbiddenAdjacent` keeps taverns off churches, schools and churchyards.
+- **Guards.** `guardhouse` (one per 300, "town guard", 4 jobs) and, for cities,
+  `barracks` ("soldier", 8 jobs); occupancy staffs them like any workplace.
 - **Every building faces its street.** `Parcel.facing` (0/90/180/270) is the yaw the
-  scene writes to `transform.rotation[1]`: a block's front row faces the street before
-  it, its back row the street behind, farms face their road.
-- **Fewer of the big buildings.** `required.<kind>.maxPerPopulation` caps a kind at one
-  per that many people (never below its `min`): bakery 120, tavern 150, smithy 150,
-  warehouse 150, granary 200, chapel 250, mill 300.
+  scene writes to `transform.rotation[1]`.
 - **A wall round a town, not round a house.** `rules.fortification` (defaulted, so old
   rule files parse): a town of `minHouseholds` (45) or more gets a ring wall
   `setbackMm` outside the outer street, `thicknessMm` thick and `heightM` tall, split
@@ -285,18 +305,24 @@ rules `settlement-rules/3` lay it out like a planned medieval town:
   side. Smaller places are open villages. Pieces are in the manifest's
   `fortifications`; the scene makes them `Structure` nodes of those kinds, and a gate
   carries `Collider: none` so the spawner makes it walk-through (no slab). Pieces that
-  would stand in water are dropped and counted in `wallOpenToWater` (the town is open
-  on its water side). The `fortification` gate checks the ring is closed, one gate per
-  side on a road, streets inside and farms outside. `townHalfExtentM` now includes the
-  wall ring, so site selection keeps room for it.
+  would stand in water are dropped and counted in `wallOpenToWater`.
+- **Gates.** `fortification` checks the ring is closed, one gate per side on a road,
+  streets inside and crafts and farms outside; `district_quarters` checks each quarter
+  inside (housing aside) is one connected group of blocks (empty blocks, the square
+  or water, join their neighbours) and the crafts are on one road.
+- **Beside water.** `layOut(..., dry)` takes the site's dryness test (mm from the town's
+  centre): quarters take dry blocks first and the crafts the driest road, so a shore
+  town keeps its tavern and school on land. Wet plots are still dropped by the
+  generator as before.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are
   gone from the bakery and workshop patterns. Those models map to the three wall kinds
-  instead (`FORTIFICATION_KINDS`). `scale-fit` and `scale-report` size a wall model to
-  its piece (`kindRoom`: length, thickness and height from the fortification rules)
-  rather than to a parcel.
-- **Village-wildlife centres** ignore wall pieces when measuring a settlement.
+  instead (`FORTIFICATION_KINDS`). New kinds have name patterns too (inn, theatre,
+  bathhouse, town hall, guardhouse, barracks, school, library, churches, hospital,
+  monastery, apothecary, well). `scale-fit` and `scale-report` size a wall model to its
+  piece (`kindRoom`) rather than to a parcel.
 
-Still to do: districts walled off from each other inside the town, roads spawned as
-surfaces, and a curved wall that follows the ground.
+Still to do: see "Next steps" in [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)
+(a day by the bells, market days, guild streets, parishes, inner walls), plus roads
+spawned as surfaces and a wall that follows the ground.
