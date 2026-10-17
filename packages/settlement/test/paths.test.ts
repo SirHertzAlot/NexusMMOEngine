@@ -16,6 +16,7 @@ describe("settlementPaths", () => {
     assert.equal(p.scaleBase, at("content/scale.json"));
     assert.equal(p.scaleOut, at("content/scale.local.json"));
     assert.equal(p.catalog, at("assets/catalog.json"));
+    assert.equal(p.rules, at("content/settlements/rules.json"));
   });
   it("derives everything from MMO_CONTENT_DIR and MMO_ASSETS_DIR", () => {
     const p = settlementPaths({ MMO_CONTENT_DIR: "/c", MMO_ASSETS_DIR: "/a" }, "/x", repo);
@@ -23,6 +24,8 @@ describe("settlementPaths", () => {
     assert.equal(p.scenes, resolve("/c/scenes"));
     assert.equal(p.scaleOut, resolve("/c/scale.local.json"));
     assert.equal(p.catalog, resolve("/a/catalog.json"));
+    assert.equal(p.rules, at("content/settlements/rules.json"), "the rules are authored content: they stay with the repo");
+    assert.equal(settlementPaths({ MMO_SETTLEMENT_RULES: "/r.json" }, "/x", repo).rules, resolve("/r.json"));
   });
   it("lets the specific variables win, and accepts the server's MMO_SCENES", () => {
     assert.equal(settlementPaths({ MMO_CONTENT_DIR: "/c", MMO_SCENES: "/s1" }, "/x", repo).scenes, resolve("/s1"));

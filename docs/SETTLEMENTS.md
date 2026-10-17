@@ -35,8 +35,14 @@ every collection is sorted by id, geometry is integer millimetres, each
 domain has its own seeded RNG stream (`streams.ts`, the wfc package's
 mulberry32), events are kept apart from the manifest and filtered by
 verbosity (`silent` to `debug`), and the rules are data
-(`SettlementRulesSchema`, `BUILTIN_RULES`; a game replaces them with
-`--rules file.json`).
+(`SettlementRulesSchema`). Our game's rules are
+`content/settlements/rules.json`, which every settlement CLI reads unless
+`--rules file.json` names another (`MMO_SETTLEMENT_RULES` moves it;
+`BUILTIN_RULES` stand in when it is absent, and the golden tests pin them).
+The editor's **Towns** view (Dungeons & PCG) edits that file section by
+section, saves it only when `checkRules` finds nothing (the schema, then every
+archetype the rules name), and previews a town built from the unsaved rules
+on a chosen land, with its plan, industry, guild and resource nodes.
 
 ## Decisions and deviations from the spec
 

@@ -6,7 +6,7 @@
  * exact and platform-independent.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
 /**
@@ -739,4 +739,54 @@ export function buildingHeightM(a: Pick<Archetype, "floors" | "storeyM">, arch: 
 
 export function loadRules(file: string): SettlementRules {
   return SettlementRulesSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+}
+
+/** The authored rules file (content/settlements/rules.json, `settlementPaths().rules`) when there is one, else the built-in rules. */
+export function defaultRules(file: string): SettlementRules {
+  return existsSync(file) ? loadRules(file) : BUILTIN_RULES;
+}
+
+/** A problem with a rules file, at a path into it ("industry.guild.ranks[0].tier"). */
+export interface RulesIssue {
+  path: string;
+  message: string;
+}
+
+type Segment = string | number;
+const formatPath = (segments: readonly PropertyKey[]): string =>
+  segments.reduce<string>((s, k) => (typeof k === "number" ? `${s}[${k}]` : s ? `${s}.${String(k)}` : String(k)), "");
+
+/**
+ * Every problem with a candidate rules file: the schema's, then each name that should be an archetype and is not one
+ * (a typo there would otherwise only show as a town missing its watch or its guild hall). Empty when it is good to use.
+ */
+export function checkRules(content: unknown): RulesIssue[] {
+  const parsed = SettlementRulesSchema.safeParse(content);
+  if (!parsed.success) return parsed.error.issues.map((i) => ({ path: formatPath(i.path), message: i.message }));
+  const r = parsed.data;
+  const issues: RulesIssue[] = [];
+  const known = (name: string, ...path: Segment[]): void => {
+    if (!(name in r.archetypes)) issues.push({ path: formatPath(path), message: `no archetype "${name}"` });
+  };
+  for (const name of Object.keys(r.required)) known(name, "required", name);
+  r.forbiddenAdjacent.forEach(([a, b], i) => {
+    known(a, "forbiddenAdjacent", i, 0);
+    known(b, "forbiddenAdjacent", i, 1);
+  });
+  r.worship?.archetypes.forEach((a, i) => known(a, "worship", "archetypes", i));
+  if (r.watch) for (const k of ["post", "headquarters", "gaol"] as const) known(r.watch[k], "watch", k);
+  if (r.openGround) for (const k of ["park", "lot"] as const) known(r.openGround[k], "openGround", k);
+  r.homeless?.shelters.forEach((a, i) => known(a, "homeless", "shelters", i));
+  if (r.props) {
+    r.props.stores.forEach((a, i) => known(a, "props", "stores", i));
+    for (const a of Object.keys(r.props.dressing)) known(a, "props", "dressing", a);
+    r.props.terraces.archetypes.forEach((a, i) => known(a, "props", "terraces", "archetypes", i));
+  }
+  for (const [p, prof] of Object.entries(r.mastery?.professions ?? {})) known(prof.archetype, "mastery", "professions", p, "archetype");
+  for (const [id, ind] of Object.entries(r.industry?.industries ?? {})) {
+    known(ind.workplace, "industry", "industries", id, "workplace");
+    known(ind.profession.archetype, "industry", "industries", id, "profession", "archetype");
+  }
+  if (r.industry?.guild) known(r.industry.guild.archetype, "industry", "guild", "archetype");
+  return issues;
 }

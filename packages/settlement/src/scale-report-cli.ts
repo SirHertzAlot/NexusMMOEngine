@@ -12,7 +12,7 @@ import { parseArgs } from "node:util";
 import { validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
 import { formatScaleReport, scaleReport } from "./report.js";
-import { BUILTIN_RULES } from "./rules.js";
+import { defaultRules } from "./rules.js";
 
 const paths = settlementPaths();
 const { values: o } = parseArgs({ options: { catalog: { type: "string" }, scale: { type: "string" } } });
@@ -23,7 +23,7 @@ if (issues.length) {
   process.exit(1);
 }
 const models = (JSON.parse(readFileSync(fromUser(o.catalog ?? paths.catalog), "utf8")) as { models: CatalogModel[] }).models;
-const rows = scaleReport(models, DEFAULT_ART_PATTERNS, doc as ScaleDoc, BUILTIN_RULES);
+const rows = scaleReport(models, DEFAULT_ART_PATTERNS, doc as ScaleDoc, defaultRules(paths.rules));
 console.log(formatScaleReport(rows));
 const bad = rows.filter((r) => r.overflow).length;
 console.log(`[scale-report] ${rows.length} models, ${bad} overflow their room`);

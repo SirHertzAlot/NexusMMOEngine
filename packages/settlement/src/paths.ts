@@ -13,6 +13,8 @@ export interface SettlementPaths {
   scaleBase: string;
   scaleOut: string;
   catalog: string;
+  /** The town generator's rules file (the editor's Towns screen edits it). */
+  rules: string;
 }
 
 /**
@@ -32,5 +34,7 @@ export function settlementPaths(env: NodeJS.ProcessEnv = process.env, cwd: strin
     scaleBase: resolve(content, "scale.json"),
     scaleOut: abs(pick("MMO_SCALE_OUT"), resolve(content, "scale.local.json")),
     catalog: abs(pick("MMO_CATALOG"), resolve(assets, "catalog.json")),
+    // Authored content, not bake output: it stays with the repo when MMO_CONTENT_DIR points the bakes elsewhere.
+    rules: abs(pick("MMO_SETTLEMENT_RULES"), resolve(root, "content", "settlements", "rules.json")),
   };
 }
