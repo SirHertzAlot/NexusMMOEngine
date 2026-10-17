@@ -21,7 +21,7 @@ import { validateTown, type Gate, type Town } from "./validate.js";
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.2.0";
+export const GENERATOR_VERSION = "settlement-gen/0.3.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
@@ -140,7 +140,9 @@ const STAGES: Stage[] = [
           const dryMm = (dx: number, dz: number): boolean => site.dry(site.origin[0] + dx / 1000, site.origin[1] + dz / 1000);
           const full = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, streams(ctx.request.seed), ctx.request.scale ?? 1, extra, dryMm);
           const c = townCentreMm(full.roads.nodes);
-          const dry = (p: (typeof full.parcels)[number]): boolean => plotIsDry(p, pw, pd, c, dryMm);
+          // A farm stays only if its fields are dry too.
+          const dry = (p: (typeof full.parcels)[number]): boolean =>
+            plotIsDry(p, pw, pd, c, dryMm) && (!p.holding || FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => dryMm(p.holding!.center.x + fx * p.holding!.sizeXMm - c.x, p.holding!.center.z + fz * p.holding!.sizeZMm - c.z))));
           // The wall is not built in the water: a piece whose footprint is not dry is left out, and the town is open on that side.
           const dryPiece = (w: (typeof full.fortifications)[number]): boolean => {
             for (const fa of FOOTPRINT_SAMPLES) for (const fb of FOOTPRINT_SAMPLES) {
@@ -184,7 +186,7 @@ const STAGES: Stage[] = [
   {
     name: "validation",
     run(ctx) {
-      ctx.validation = validateTown(ctx.town as Town, ctx.rules);
+      ctx.validation = validateTown(ctx.town as Town, ctx.rules, ctx.request.scale ?? 1);
       const failed = ctx.validation.filter((g) => !g.ok);
       ctx.events.emit("summary", "validation", "checked", { gates: ctx.validation.length, failed: failed.length });
       if (failed.length) throw new StageFailure("gate_failed", failed.map((g) => `${g.gate}: ${g.detail}`).join("; "));

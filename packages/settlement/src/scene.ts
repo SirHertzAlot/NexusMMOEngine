@@ -4,7 +4,8 @@
  * town in the world (`MMO_SCENE=settlement-<id>`). The nodes carry only a kind
  * and a footprint, turned to face its street; which model stands for a kind is
  * the art side's mapping. The town wall's pieces (wall, towers, gates) are
- * Structure nodes too. Roads are not spawned yet.
+ * Structure nodes too, and each farm's fields a flat walk-through one. Roads
+ * are not spawned yet.
  */
 
 import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene";
@@ -23,6 +24,8 @@ function pick(id: string, n: number): number {
 const MARGIN_M = 1;
 /** The town square's paving, metres thick. */
 const SQUARE_PAVING_M = 0.2;
+/** A farm field's crop layer, metres thick. */
+const FIELD_M = 0.1;
 /** The well at the square's centre: side and height, metres. */
 const WELL_M = [3, 2.5] as const;
 
@@ -47,14 +50,21 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
   };
   const children: SceneNode[] = manifest.structures.map((s) => {
     const p = parcels.get(s.parcel)!;
+    const a = rules.archetypes[s.archetype]!;
     // The building turns to face its street; its width runs along the street (the parcel's frontage).
     return {
       id: s.id,
       name: s.archetype,
       transform: { position: [(p.center.x - cx) / 1000, 0, (p.center.z - cz) / 1000], rotation: [0, p.facing, 0] },
-      components: { Structure: { kind: s.archetype, asset: asset(s.id, s.archetype), width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: buildingHeightM(rules.archetypes[s.archetype]!, rules.architecture) } },
+      components: { Structure: { kind: s.archetype, asset: asset(s.id, s.archetype), width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: buildingHeightM(a, rules.architecture), entrances: a.entrances ?? 1, capacity: a.capacity ?? 0 } },
     };
   });
+  // A farm's fields: flat and walk-through, the farmstead standing in its yard at the road edge.
+  for (const p of manifest.parcels) {
+    const h = p.holding;
+    if (!h) continue;
+    children.push({ id: `field-${p.id}`, name: "farm_field", transform: { position: [(h.center.x - cx) / 1000, 0, (h.center.z - cz) / 1000] }, components: { Structure: { kind: "farm_field", asset: "", width: h.sizeXMm / 1000 / f, depth: h.sizeZMm / 1000 / f, height: FIELD_M }, Collider: { shape: "none" } } });
+  }
   // The wall: each piece a Structure along the ring. A gate is the opening the road passes through, so it is
   // walk-through (Collider none); the towers either side of it hold the line.
   const heights = { town_wall: rules.fortification.heightM, wall_tower: rules.fortification.towerHeightM, town_gate: rules.fortification.gateHeightM };

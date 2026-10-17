@@ -32,7 +32,12 @@ describe("layOut", () => {
   it("has every district, its area its plots", () => {
     assert.deepEqual(town.districts.map((d) => d.kind).sort(), [...DISTRICT_KINDS].sort());
     const [pw, pd] = BUILTIN_RULES.layout.parcelSizeMm;
-    for (const d of town.districts) assert.equal(d.areaM2, (town.parcels.filter((p) => p.district === d.id).length * pw * pd) / 1_000_000, d.kind);
+    for (const d of town.districts) {
+      const own = town.parcels.filter((p) => p.district === d.id);
+      // A farm district is its holdings' land, the rest their plots.
+      const area = d.kind === "agriculture" ? own.reduce((a, p) => a + p.holding!.areaM2, 0) : (own.length * pw * pd) / 1_000_000;
+      assert.ok(Math.abs(d.areaM2 - area) < 1e-3, d.kind);
+    }
     const plots = (k: string) => town.parcels.filter((p) => p.kind === k).length;
     assert.ok(plots("housing") > plots("shopping") && plots("shopping") > plots("civic"));
   });

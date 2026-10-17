@@ -21,7 +21,7 @@ describe("settlementScene", () => {
     assert.equal(scene.name, "settlement-0182");
     assert.equal(scene.kind, "world");
     assert.equal(scene.nodes.length, 1);
-    assert.equal(scene.nodes[0]!.children!.length, manifest.structures.length + manifest.fortifications.length + 2, "buildings, wall pieces, the square and its well");
+    assert.equal(scene.nodes[0]!.children!.length, manifest.structures.length + manifest.fortifications.length + 2 + manifest.parcels.filter((p) => p.holding).length, "buildings, wall pieces, the square and its well, the farms' fields");
   });
 
   it("paves the town square (walk-through) with a well at its centre, clear of every building", () => {
@@ -57,7 +57,8 @@ describe("settlementScene", () => {
         return { id: w.node.id, kind: s.kind as string, x: w.position[0], z: w.position[2], hw: across ? hd : hw, hd: across ? hw : hd };
       });
   const isWall = (k: string) => ["town_wall", "wall_tower", "town_gate"].includes(k);
-  const isSquare = (k: string) => k === "town_square";
+  // Ground layers: the square's paving and the farms' fields (each farmstead stands in its own).
+  const isSquare = (k: string) => k === "town_square" || k === "farm_field";
   const gapOf = (a: { x: number; z: number; hw: number; hd: number }, b: typeof a) => Math.max(Math.abs(a.x - b.x) - a.hw - b.hw, Math.abs(a.z - b.z) - a.hd - b.hd);
 
   it("leaves a walkable street between buildings and never overlaps two footprints", () => {

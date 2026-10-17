@@ -53,6 +53,11 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   hospital: ["Preset_(Hospital|Infirmary|Almshouse)_\[0-9]+_Optimized$"],
   monastery: ["Preset_(Monastery|Abbey|Priory)_\[0-9]+_Optimized$"],
   apothecary: ["Preset_(Apothecary|Herbalist|Alchemist)_\[0-9]+_Optimized$"],
+  tenement: ["Preset_(Tenement|House_1[1-9])(_[A-C])?_Optimized$", "Preset_House_0[2-3](_[A-C])?_Optimized$"],
+  shop: ["Preset_(Shop|Store|Merchant)_\[0-9]+_Optimized$", "Preset_House_0[4-6]_Optimized$"],
+  watch_hq: ["Preset_(Watch_?House|Guard_?House|Barracks)_\[0-9]+_Optimized$"],
+  gaol: ["Preset_(Gaol|Jail|Prison|Dungeon)_\[0-9]+_Optimized$"],
+  garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$"],
   // The town square's well or fountain.
   town_well: ["(Prop|Preset)_(Well|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   // The town wall: straight wall runs, towers, and the gate the road passes through.

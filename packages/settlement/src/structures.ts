@@ -36,21 +36,31 @@ export function placeStructures(layout: Layout, demand: Demand, rules: Settlemen
   });
   const forbidden = new Set(rules.forbiddenAdjacent.flatMap(([x, y]) => [`${x}|${y}`, `${y}|${x}`]));
 
-  const counts: NonNullable<WfcProblem["counts"]> = Object.entries(demand.required).flatMap(([id, min]) => {
-    const i = index.get(id);
-    return i === undefined ? [] : [{ options: [i], min, ...(demand.max[id] !== undefined ? { max: demand.max[id] } : {}) }];
-  });
+  // A plot the layout reserved for an archetype (the watch's posts) takes only that one, and that archetype
+  // stands nowhere else: its count is the reserved plots.
+  const posts = new Map<string, number>();
+  for (const p of layout.parcels) if (p.post) posts.set(p.post.archetype, (posts.get(p.post.archetype) ?? 0) + 1);
+  const counts: NonNullable<WfcProblem["counts"]> = [
+    ...Object.entries(demand.required).flatMap(([id, min]) => {
+      const i = index.get(id);
+      return i === undefined || posts.has(id) ? [] : [{ options: [i], min, ...(demand.max[id] !== undefined ? { max: demand.max[id] } : {}) }];
+    }),
+    ...[...posts].flatMap(([id, n]) => (index.has(id) ? [{ options: [index.get(id)!], min: n, max: n }] : [])),
+  ];
+  // Where an archetype may stand: its districts, a plot open to enough streets, a housing plot of its wealth band.
+  const allows = (a: (typeof arch)[number], id: string, p: Layout["parcels"][number]): boolean =>
+    a.kinds.includes(p.kind) && !posts.has(id) && (a.minAccess ?? 1) <= p.access && (!a.wealth || (p.wealth !== undefined && a.wealth.includes(p.wealth)));
   const cost = (f: (a: (typeof arch)[number]) => number): number[] => arch.map(f);
 
   const problem: WfcProblem = {
     options: ids.map((id, i) => ({ id, weight: arch[i]!.weight })),
     slots: layout.parcels.length,
-    domains: layout.parcels.map((p) => ids.flatMap((_id, i) => (arch[i]!.kinds.includes(p.kind) ? [i] : []))),
+    domains: layout.parcels.map((p) => (p.post && index.has(p.post.archetype) ? [index.get(p.post.archetype)!] : ids.flatMap((id, i) => (allows(arch[i]!, id, p) ? [i] : [])))),
     edges,
     rules: { apart: (x, y) => !forbidden.has(`${x.id}|${y.id}`) },
     counts,
     budgets: [
-      { cost: cost((a) => a.households), min: demand.housingDemand },
+      { cost: cost((a) => a.households), min: demand.housingDemand, ...(rules.layout.homeSpacePermille ? { max: Math.ceil((demand.housingDemand * rules.layout.homeSpacePermille) / 1000) } : {}) },
       { cost: cost((a) => a.feeds), min: demand.foodDemand },
       { cost: cost((a) => a.workers), max: demand.laborPool },
     ],

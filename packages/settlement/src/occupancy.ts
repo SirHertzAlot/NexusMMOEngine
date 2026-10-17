@@ -54,8 +54,15 @@ export function occupy(settlement: string, d: Demographics, structures: readonly
   const byId = [...structures].sort((a, b) => (a.id < b.id ? -1 : 1));
   const archetypeOf = new Map(byId.map((s) => [s.id, rules.archetypes[s.archetype]!]));
 
-  // Households, each in one home slot.
-  const homes = shuffle(slots(byId, (a) => rules.archetypes[a]!.households), r);
+  // Households, each in one home slot. The crowded homes of the poor (built for three families or more) fill
+  // first; the others a family at a time, every home taking one before any takes a second, so shared homes are
+  // common and no home stands empty while another is shared.
+  const cap = (a: string): number => rules.archetypes[a]!.households;
+  const rounds = Math.max(0, ...byId.map((s) => cap(s.archetype)));
+  const homes = [
+    ...shuffle(slots(byId, (a) => (cap(a) >= 3 ? cap(a) : 0)), r),
+    ...Array.from({ length: rounds }, (_, round) => shuffle(slots(byId, (a) => (cap(a) < 3 && cap(a) > round ? 1 : 0)), r)).flat(),
+  ];
   if (homes.length < d.households) throw new Error(`${d.households} households but only ${homes.length} homes`);
   const base = Math.floor(d.population / d.households);
   const extra = d.population - base * d.households;

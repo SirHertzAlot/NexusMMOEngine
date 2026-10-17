@@ -78,6 +78,31 @@ varied a lot, the rules keep the number as data so a game can change it.
 | A village: one school, one tavern | quarters are sized by required buildings; `minPopulation` keeps halls, theatres and libraries out of villages |
 | Taverns not on every street | `maxPerPopulation` ceilings |
 
+## Land, the watch, access and homes (settlement-rules/5)
+
+- **Land.** A peasant family's holding was tens of acres (a virgate was about 30), and
+  a three-field rotation left a third fallow each year, so a person needed one to two
+  acres of land to be fed. Farmsteads stood in their own fields along the lanes, often
+  well apart. The rules give each farm 1.5 acres per person it feeds (45 acres).
+- **The watch.** Trouble came at the gates (strangers, tolls, smuggling, curfew), in
+  the crowded market and in the poor streets, so that is where the watch stood. The
+  constable or captain kept a watch house, and a town held offenders in a gaol (often
+  by the town hall or in a gatehouse) for the stocks, a fine or the assizes.
+- **Access.** A market place was open to every street that reached it; a church had a
+  west door and a priest's door, a school one door, a gaol one guarded door.
+- **Homes.** The poor shared: several families, lodgers and servants under one roof,
+  tenements subdivided room by room. Workshops and stores that stank, burned or drew
+  carts were kept out of the residential streets.
+
+| History | In the rules |
+| --- | --- |
+| Holdings of tens of acres | `Parcel.holding`, `farming.acresPerPersonX10` 15, gate `farm_acreage` |
+| Watch at gates, market, poor streets | `rules.watch`, `Parcel.post`, `Parcel.wealth`, gate `town_watch` |
+| Watch house and gaol | `watch_hq`, `gaol` side by side at the back of the civic quarter |
+| Open market, controlled church | `entrances`, `capacity`, `minAccess`, gate `access_capacity` |
+| Shared homes, tenements | `house` 2 households, `tenement` 3, `familiesPerHomeX10`, `homeSpacePermille` |
+| Stores and works away from homes | warehouses with the crafts, `worksBufferMm`, gate `works_separation` |
+
 ## Next steps worth building
 
 1. **The day by the bells**: give residents (occupancy NPCs) a schedule from the

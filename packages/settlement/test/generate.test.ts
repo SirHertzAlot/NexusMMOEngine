@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { BUILTIN_RULES, contentHash, generateSettlement, GENERATOR_VERSION } from "../src/index.js";
+import { ACRE_M2, BUILTIN_RULES, contentHash, generateSettlement, GENERATOR_VERSION } from "../src/index.js";
 
 const request = { settlementId: "0182", seed: 1234, population: 600 };
 
@@ -63,6 +63,45 @@ describe("generateSettlement", () => {
     for (const g of manifest.validation) assert.ok(g.ok, `${g.gate}: ${g.detail}`);
   });
 
+  it("gives every farm its own acreage, apart from its neighbours, and keeps the homes away from the crafts", () => {
+    const farms = manifest.parcels.filter((p) => p.kind === "agriculture");
+    const acres = farms.reduce((a, p) => a + p.holding!.areaM2, 0) / ACRE_M2;
+    assert.ok(acres >= (manifest.demographics.population * BUILTIN_RULES.farming.acresPerPersonX10) / 10, `${Math.round(acres)} acres`);
+    for (const f of farms) assert.ok(f.holding!.areaM2 / ACRE_M2 >= 40, "a holding is tens of acres");
+    const apart = Math.min(...farms.flatMap((a, i) => farms.slice(i + 1).map((b) => Math.hypot(a.center.x - b.center.x, a.center.z - b.center.z))));
+    assert.ok(apart >= 100_000, `the nearest two farmsteads are ${apart / 1000} m apart`);
+    for (const g of ["farm_acreage", "works_separation"]) assert.ok(manifest.validation.find((v) => v.gate === g)!.ok, g);
+    const kindOf = new Map(manifest.parcels.map((p) => [p.id, p.kind]));
+    for (const s of manifest.structures.filter((x) => x.archetype === "warehouse")) assert.equal(kindOf.get(s.parcel), "manufacturing", "warehouses stand out with the crafts");
+  });
+
+  it("posts the watch at every gate, in the market and the poor streets, with a headquarters and a gaol beside it", () => {
+    const parcel = new Map(manifest.parcels.map((p) => [p.id, p]));
+    const posts = manifest.structures.filter((s) => s.archetype === "guardhouse").map((s) => parcel.get(s.parcel)!);
+    const why = (w: string) => posts.filter((p) => p.post?.why === w).length;
+    assert.equal(why("gate"), 4, "one inside each gate");
+    assert.ok(why("market") >= 1 && why("poor") >= 1, "the market and the poor streets have theirs");
+    assert.equal(manifest.structures.filter((s) => s.archetype === "watch_hq").length, 1);
+    assert.ok(manifest.structures.some((s) => s.archetype === "gaol"));
+    assert.ok(manifest.validation.find((v) => v.gate === "town_watch")!.ok);
+  });
+
+  it("opens the markets to two streets and keeps churches and schools to a door or two, seating the parish", () => {
+    const parcel = new Map(manifest.parcels.map((p) => [p.id, p]));
+    for (const s of manifest.structures.filter((x) => x.archetype === "market")) assert.equal(parcel.get(s.parcel)!.access, 2, "a market on a corner");
+    const doors = (id: string) => BUILTIN_RULES.archetypes[id]!.entrances!;
+    assert.ok(doors("market") > doors("parish_church") && doors("parish_church") <= 2 && doors("school") === 1);
+    assert.ok(manifest.validation.find((v) => v.gate === "access_capacity")!.ok);
+  });
+
+  it("shares homes between families: many homes hold two or three households", () => {
+    const per = new Map<string, number>();
+    for (const h of manifest.occupancy.households) per.set(h.home, (per.get(h.home) ?? 0) + 1);
+    assert.ok([...per.values()].some((n) => n >= 2), "some homes are shared");
+    const homes = manifest.structures.filter((s) => (BUILTIN_RULES.archetypes[s.archetype]!.households ?? 0) > 0).length;
+    assert.ok(homes < manifest.demographics.households, `${homes} homes for ${manifest.demographics.households} households`);
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -106,4 +145,4 @@ describe("generateSettlement", () => {
 // civic, market, entertainment and education quarters, the crafts and farms outside along the roads, plots facing their
 // streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
 // cathedral and monastery).
-const GOLDEN = "0301fb8297fa09e3c184816b423fc9036b623471910677e907641d02e6a0b4ea";
+const GOLDEN = "a03557b8d322f04223a02e2d960702640e6b5dead1a2c16b18d1a6a3d855dc4b";

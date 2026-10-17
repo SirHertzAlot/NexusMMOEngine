@@ -314,6 +314,49 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   centre): quarters take dry blocks first and the crafts the driest road, so a shore
   town keeps its tavern and school on land. Wet plots are still dropped by the
   generator as before.
+- **Acreage (settlement-rules/5).** A farm is a holding, not a plot: `Parcel.holding`
+  is one field beside its road, `farming.acresPerPersonX10` (15: arable, fallow and
+  pasture) acres for each person the farmstead feeds (45 acres, about 300 by 600 m at
+  scale 1, `farming.fieldAspect` 2 deep to 1 wide), the farmstead in its yard at the
+  road edge. Holdings follow each other along the roads out, the far side of a road
+  staggered by half a holding, so every farmstead stands alone in its fields; the first
+  holding on a road starts far enough out that its depth clears the next road's fields.
+  A town of 600 farms about 1100 acres, a city of 2500 nearly 5000, reaching kilometres
+  out. The scene draws each field as a flat walk-through `farm_field`; a farm whose
+  fields are not dry is dropped with its plot. Gate `farm_acreage`: every farm has its
+  own land, no two holdings overlap or reach a town or craft plot, and the acres cover
+  the people.
+- **The watch.** `rules.watch` puts guard posts where trouble is likeliest: inside
+  every gate (an open village at the two ends of its main road), one per
+  `marketPlotsPerPost` (10) market plots, and one per `poorHomesPerPost` (20) homes in
+  the poor streets. Housing plots carry `wealth`: the `lowIncomePermille` (30%)
+  farthest from the square and nearest the craft gate are `low`, the 20% nearest the
+  square `high`. A `watch_hq` (headquarters, "captain of the watch") stands at the
+  back of the civic quarter and the `gaol` on the civic plot beside it (towns of 200 or
+  more). The layout reserves these plots (`Parcel.post`, with why: gate, market, poor,
+  headquarters, gaol), and those archetypes stand nowhere else. Gate `town_watch`
+  re-derives it from where the buildings stand.
+- **Access and capacity.** Archetypes carry `entrances` and `capacity` (written to the
+  scene's `Structure`): a market is open stalls with 4 ways in and room for 200, a
+  parish church 2 doors for 400, a chapel, school or gaol one door. `Parcel.access` is
+  the streets a plot is open to (2 on a block's corner) and `minAccess: 2` keeps markets
+  on corners; the market quarter grows out from the square along the main roads where
+  the traffic is, and takes the corner plots of its blocks first. Gate
+  `access_capacity` checks the corners and that the churches (`rules.worship`) seat
+  half the people.
+- **Homes apart from the works.** Warehouses moved out to the craft quarter, granaries
+  to the farms and artisans' homes to the housing quarter; the craft quarter starts
+  `layout.worksBufferMm` (40 m) further out than before, and gate `works_separation`
+  checks no home is nearer a workshop or warehouse than that.
+- **Shared homes.** Families shared houses: a `house` holds 2 households, a
+  `tenement` (poor streets only, `wealth: ["low"]`) 3. Housing is the homes the
+  households need at `layout.familiesPerHomeX10` (2 per home) with a quarter spare,
+  `garden`s (yards and orchards) fill plots no one needs, and
+  `layout.homeSpacePermille` (1250) caps the room built at 1.25 households' worth per
+  household. Occupancy fills tenements first, then the other homes a family at a time,
+  so no home stands empty while another is shared. A town of 600 houses its 136
+  households in about 107 homes. Market streets gained a `shop` (shopkeeper living
+  above) and merchants' townhouses.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are

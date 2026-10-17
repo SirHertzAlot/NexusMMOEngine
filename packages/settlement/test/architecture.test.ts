@@ -53,7 +53,7 @@ describe("architecture rules", () => {
       const c = n.components!.Structure!;
       const a = BUILTIN_RULES.archetypes[c.kind as string];
       if (a) assert.equal(c.height, buildingHeightM(a, A));
-      else assert.ok(["town_wall", "wall_tower", "town_gate", "town_square", "town_well"].includes(c.kind as string), `${String(c.kind)} is a building, a wall piece or the square`);
+      else assert.ok(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field"].includes(c.kind as string), `${String(c.kind)} is a building, a wall piece or the square`);
     }
   });
 });

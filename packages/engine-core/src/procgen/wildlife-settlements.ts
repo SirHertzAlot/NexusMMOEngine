@@ -3,14 +3,14 @@
  * `Structure` nodes (a settlement scene is one town: settlementScene in @mmo-engine/settlement).
  * The centre is the mean of the structures' world positions, the size their count, the radius
  * the farthest one from the centre. A scene with no structures is no settlement. The town wall's
- * pieces and the town square with its well (WALL_KINDS) are not buildings: they count toward neither the size nor the radius.
+ * pieces, the town square with its well and the farms' fields (WALL_KINDS) are not buildings: they count toward neither the size nor the radius.
  */
 
 import { expandPrefabs, worldNodes, type PrefabLookup, type SceneDoc } from "@mmo-engine/scene";
 import type { RaidSettlement } from "../creatures.js";
 
 /** The town wall's Structure kinds (settlement layout's WallPieceKind). */
-const WALL_KINDS = new Set(["town_wall", "wall_tower", "town_gate", "town_square", "town_well"]);
+const WALL_KINDS = new Set(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field"]);
 
 export function sceneSettlements(scene: SceneDoc, prefabs?: PrefabLookup): RaidSettlement[] {
   const doc = prefabs ? expandPrefabs(scene, prefabs).doc : scene;

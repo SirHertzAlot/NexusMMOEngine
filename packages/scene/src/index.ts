@@ -99,6 +99,10 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     width: { type: "number", default: 4, min: 0.1 },
     depth: { type: "number", default: 4, min: 0.1 },
     height: { type: "number", default: 4, min: 0.1 },
+    /** Doors and openings people use (a market is open on every side, a church has one or two). */
+    entrances: { type: "number", default: 1, min: 1 },
+    /** People it holds at once. */
+    capacity: { type: "number", default: 0, min: 0 },
   }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },

@@ -7,7 +7,7 @@
 
 import type { Demand } from "./demand.js";
 import type { Demographics } from "./demographics.js";
-import type { Layout } from "./layout.js";
+import { ACRE_M2, type Holding, type Layout } from "./layout.js";
 import type { Occupancy } from "./occupancy.js";
 import type { SettlementRules } from "./rules.js";
 import type { Structure } from "./structures.js";
@@ -126,7 +126,99 @@ export function quartersGate(l: Layout, rules: SettlementRules): Gate {
   return gate("district_quarters", split.length === 0, split.length ? `split into pieces: ${split.join(", ")}` : `${byKind.size} quarters inside, each one connected group of blocks; the craft quarter on one road out`);
 }
 
-export function validateTown(t: Town, rules: SettlementRules): Gate[] {
+/**
+ * Farmland by acreage: every farm stands in its own holding (its plot inside it), no two holdings overlap, none
+ * reaches the town or the craft quarter, and together they are the acres the people need.
+ */
+export function acreageGate(l: Layout, rules: SettlementRules, people: number, scale = 1): Gate {
+  const farms = l.parcels.filter((p) => p.kind === "agriculture");
+  const problems: string[] = [];
+  const box = (h: Holding) => ({ x0: h.center.x - h.sizeXMm / 2, x1: h.center.x + h.sizeXMm / 2, z0: h.center.z - h.sizeZMm / 2, z1: h.center.z + h.sizeZMm / 2 });
+  const inside = (b: ReturnType<typeof box>, p: { x: number; z: number }): boolean => p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1;
+  const held = farms.filter((p) => p.holding && inside(box(p.holding), p.center));
+  if (held.length < farms.length) problems.push(`${farms.length - held.length} farms without their own land`);
+  const boxes = held.map((p) => box(p.holding!));
+  let overlaps = 0;
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (boxes[i]!.x0 < boxes[j]!.x1 && boxes[j]!.x0 < boxes[i]!.x1 && boxes[i]!.z0 < boxes[j]!.z1 && boxes[j]!.z0 < boxes[i]!.z1) overlaps++;
+  if (overlaps) problems.push(`${overlaps} pairs of holdings overlap`);
+  const others = l.parcels.filter((p) => p.kind !== "agriculture");
+  const intruded = others.filter((p) => boxes.some((b) => inside(b, p.center))).length;
+  if (intruded) problems.push(`${intruded} town or craft plots inside a farm's fields`);
+  const acres = boxes.reduce((a, b) => a + ((b.x1 - b.x0) * (b.z1 - b.z0)) / 1_000_000, 0) / ACRE_M2 / (scale * scale);
+  const need = (people * rules.farming.acresPerPersonX10) / 10;
+  if (acres + 1e-6 < need) problems.push(`${Math.round(acres)} acres for ${people} people, who need ${Math.round(need)}`);
+  return gate("farm_acreage", problems.length === 0, problems.length ? problems.join("; ") : `${farms.length} farms on ${Math.round(acres)} acres (${Math.round(need)} needed), each alone in its fields`);
+}
+
+/** Homes stand at least `worksBufferMm` from every workshop and warehouse plot. */
+export function separationGate(l: Layout, rules: SettlementRules, scale = 1): Gate {
+  const min = rules.layout.worksBufferMm * scale;
+  const homes = l.parcels.filter((p) => p.kind === "housing");
+  const works = l.parcels.filter((p) => p.kind === "manufacturing");
+  let nearest = Infinity;
+  for (const h of homes) for (const w of works) nearest = Math.min(nearest, Math.hypot(h.center.x - w.center.x, h.center.z - w.center.z));
+  const ok = nearest >= min;
+  return gate("works_separation", ok, works.length === 0 ? "no craft quarter" : `the nearest home is ${Math.round(nearest / 1000)} m from the craft quarter (at least ${Math.round(min / 1000)} m)`);
+}
+
+/**
+ * The watch, re-derived from where its buildings stand: a guard post by every gate (an open village: by the
+ * entrances its rules ask for), in the market and in the poor streets as the rules ask, a headquarters, and each
+ * gaol beside one.
+ */
+export function watchGate(t: Pick<Town, "layout" | "structures" | "demand">, rules: SettlementRules, scale = 1): Gate {
+  const w = rules.watch;
+  if (!w) return gate("town_watch", true, "no watch in these rules");
+  const l = t.layout;
+  const parcel = new Map(l.parcels.map((p) => [p.id, p]));
+  const of = (id: string) => t.structures.filter((s) => s.archetype === id).map((s) => parcel.get(s.parcel)!);
+  const posts = of(w.post);
+  const [bw, bd] = rules.layout.block;
+  const [pw, pd] = rules.layout.parcelSizeMm.map((v) => v * scale) as [number, number];
+  const reach = 2 * (Math.max(bw * pw, bd * pd) + rules.layout.streetWidthMm * scale);
+  const near = (a: { x: number; z: number }, among: typeof posts): boolean => among.some((p) => Math.hypot(p.center.x - a.x, p.center.z - a.z) <= reach);
+  const problems: string[] = [];
+  const gates = l.fortifications.filter((g) => g.kind === "town_gate");
+  if (l.walled) {
+    const bare = gates.filter((g) => !near(g.center, posts)).length;
+    if (bare) problems.push(`${bare} gates with no guard post`);
+  } else {
+    // The road's way out of an open village: the inner end of each country road.
+    const country = new Set(l.roads.edges.filter((e) => e.roadClass === "country_road").map((e) => e.from));
+    const ends = l.roads.nodes.filter((n) => country.has(n.id));
+    const guarded = ends.filter((n) => near(n, posts)).length;
+    if (guarded < Math.min(w.villageEntrancePosts, ends.length)) problems.push(`${guarded} of the village's entrances guarded, ${w.villageEntrancePosts} wanted`);
+  }
+  const market = l.parcels.filter((p) => p.kind === "shopping");
+  const marketPosts = posts.filter((p) => p.kind === "shopping").length;
+  if (marketPosts < Math.floor((market.length - marketPosts) / w.marketPlotsPerPost)) problems.push(`${marketPosts} guard posts for ${market.length} market plots`);
+  const low = l.parcels.filter((p) => p.wealth === "low");
+  const poorPosts = posts.filter((p) => p.wealth === "low").length;
+  if (poorPosts < Math.floor(low.length / w.poorHomesPerPost)) problems.push(`${poorPosts} guard posts for ${low.length} poor homes`);
+  const hq = of(w.headquarters);
+  const gaols = of(w.gaol);
+  if (hq.length < (t.demand.required[w.headquarters] ?? 0)) problems.push("no headquarters for the watch");
+  if (gaols.length < (t.demand.required[w.gaol] ?? 0)) problems.push("no gaol");
+  const far = gaols.filter((g) => !near(g.center, hq)).length;
+  if (far) problems.push(`${far} gaols away from the watch's headquarters`);
+  return gate("town_watch", problems.length === 0, problems.length ? problems.join("; ") : `${posts.length} guard posts (${l.walled ? `${gates.length} gates` : "the entrances"}, ${marketPosts} in the market, ${poorPosts} in the poor streets), ${hq.length} headquarters, ${gaols.length} gaols`);
+}
+
+/**
+ * Access and capacity: a building that needs the traffic (`minAccess`) stands on a plot open to that many
+ * streets, and the churches seat the share of the people the rules ask for.
+ */
+export function accessGate(t: Pick<Town, "layout" | "structures" | "demographics">, rules: SettlementRules): Gate {
+  const parcel = new Map(t.layout.parcels.map((p) => [p.id, p]));
+  const shut = t.structures.filter((s) => (rules.archetypes[s.archetype]!.minAccess ?? 1) > parcel.get(s.parcel)!.access);
+  const worship = rules.worship;
+  const seats = worship ? t.structures.filter((s) => worship.archetypes.includes(s.archetype)).reduce((a, s) => a + (rules.archetypes[s.archetype]!.capacity ?? 0), 0) : 0;
+  const need = worship ? Math.ceil((t.demographics.population * worship.sharePermille) / 1000) : 0;
+  const problems = [...(shut.length ? [`${shut.length} buildings that need a corner plot stand off one`] : []), ...(seats < need ? [`church seats for ${seats}, ${need} wanted`] : [])];
+  return gate("access_capacity", problems.length === 0, problems.length ? problems.join("; ") : `markets on corner plots; church seats for ${seats} of ${t.demographics.population}`);
+}
+
+export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
   const sum = (f: (id: string) => number): number => t.structures.reduce((a, s) => a + f(s.archetype), 0);
   const d = t.demographics;
   const housing = sum((id) => rules.archetypes[id]!.households);
@@ -172,6 +264,10 @@ export function validateTown(t: Town, rules: SettlementRules): Gate[] {
     gate("occupancy_jobs", overJob.length === 0, overJob.length ? `${overJob.length} workplaces over their jobs` : `${perJob.size} workplaces staffed within their jobs`),
     fortificationGate(t.layout),
     quartersGate(t.layout, rules),
+    acreageGate(t.layout, rules, d.population, scale),
+    separationGate(t.layout, rules, scale),
+    watchGate(t, rules, scale),
+    accessGate(t, rules),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }
