@@ -51,7 +51,13 @@ export function withDensity(rules: SettlementRules, densityPermille: number): Se
   // Crowding is the poor streets': more of a dense town is tenements, fewer of a sparse one.
   return {
     ...rules,
-    layout: { ...l, familiesPerHomeX10: Math.max(10, Math.round((l.familiesPerHomeX10 * densityPermille) / 1000)), densityPermille },
+    // A sparse town also keeps more room in its homes than it needs (homeSpacePermille): fewer families crowd in.
+    layout: {
+      ...l,
+      familiesPerHomeX10: Math.max(10, Math.round((l.familiesPerHomeX10 * densityPermille) / 1000)),
+      densityPermille,
+      ...(l.homeSpacePermille && densityPermille < 1000 ? { homeSpacePermille: Math.round((l.homeSpacePermille * 1000) / densityPermille) } : {}),
+    },
     ...(w ? { watch: { ...w, lowIncomePermille: Math.min(1000 - w.highIncomePermille, Math.round((w.lowIncomePermille * densityPermille) / 1000)) } } : {}),
   };
 }
