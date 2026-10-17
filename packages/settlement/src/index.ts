@@ -16,6 +16,7 @@ export * from "./occupancy.js";
 export * from "./mastery.js";
 export * from "./setting.js";
 export * from "./props.js";
+export * from "./industry.js";
 export * from "./sites.js";
 export * from "./art.js";
 export * from "./report.js";

@@ -81,6 +81,8 @@ export const RequiredSchema = z.strictObject({
   minPopulation: z.number().int().positive().optional(),
   /** It also serves the visitors the town's masters draw (taverns, inns): counted on residents plus visitors. */
   visitors: z.boolean().optional(),
+  /** It makes the town's export (`withIndustry` sets it): its masters' work is on top of it, not instead of it. */
+  export: z.boolean().optional(),
 });
 
 /**
@@ -256,12 +258,13 @@ export const DEFAULT_SETTINGS: Settings = {
  *     from `fountainMinPopulation` people, a statue from `statueMinPopulation`, and a statue to each grand master.
  *   - A park has `parkBenches` benches facing a fountain or a statue (the "props" stream picks which).
  *   - The `stores` (taverns, inns, warehouses, bakeries) have a barrel and a crate by the door; homes on the
- *     `planters` wealth bands a planter either side of it.
+ *     `planters` wealth bands a planter either side of it; an industry's workplace its `dressing` either side
+ *     (logs at a sawmill, ore carts at a mine, fish racks at a fishery, sacks at a mill).
  *   - The `terraces` archetypes stand on a raised terrace over their whole plot, `heightMm` up, reached from the
  *     street by stairs of `stepRiseMm` steps, each `stepTreadMm` deep and `stairsWidthMm` wide.
  * Sizes are millimetres [width, depth, height]: width along the street (or the bench's seat), depth away from it.
  */
-export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter"] as const;
+export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 const SizeMm = z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]);
 export const PropsSchema = z.strictObject({
@@ -275,11 +278,12 @@ export const PropsSchema = z.strictObject({
   parkBenches: z.number().int().min(0).max(4),
   stores: z.array(z.string()),
   planters: z.array(z.enum(["high", "middle", "low"])),
+  dressing: z.record(z.string(), z.enum(PROP_KINDS)).default({}),
   terraces: z.strictObject({ archetypes: z.array(z.string()), heightMm: z.number().int().positive(), stepRiseMm: z.number().int().positive(), stepTreadMm: z.number().int().positive(), stairsWidthMm: z.number().int().positive() }),
 });
 export type Props = z.infer<typeof PropsSchema>;
 export const DEFAULT_PROPS: Props = {
-  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600] },
+  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600], log_pile: [3000, 900, 1100], ore_cart: [1400, 900, 1100], fish_rack: [2400, 700, 1600], grain_sacks: [1600, 900, 800] },
   lampEveryPlots: 2,
   lampInsetMm: 500,
   squareBenchSpacingMm: 8000,
@@ -289,8 +293,105 @@ export const DEFAULT_PROPS: Props = {
   parkBenches: 2,
   stores: ["tavern", "inn", "warehouse", "bakery", "master_bakery"],
   planters: ["high"],
+  dressing: { sawmill: "log_pile", mine: "ore_cart", fishery: "fish_rack", master_fishery: "fish_rack", mill: "grain_sacks" },
   terraces: { archetypes: ["town_hall", "parish_church", "cathedral", "library", "townhouse"], heightMm: 600, stepRiseMm: 200, stepTreadMm: 350, stairsWidthMm: 3000 },
 };
+
+/**
+ * Industry: what a town lives off and is known for, read from the land around it (a site's `biomes` share within
+ * reach, its water). Each industry's abundance (0 to 1000) is the weighted share of its biomes near the town, full
+ * at `fullSharePermille` (fishing: the water the town sits on; farming: the land's fertility, `sites.fertilityPermille`).
+ * The most abundant (at least `minAbundancePermille`; compared by `priorityPermille` of it, so farming, which any
+ * fertile land has, gives way to rarer riches) is the town's industry:
+ *   - Its size: the access's population cap is scaled from `capFloorPermille` (no resources) to the whole cap (rich land),
+ *     so only towns on rich land grow big.
+ *   - Its export: a `workplace` (sawmill, mine, fishery, mill) for every `exportPerPeople` people at full abundance, out
+ *     in the craft quarter; its signature product is the highest-tier `product` whose land is near (rare wood, special ore).
+ *   - Its masters: `specialtyPermille` of them practise the industry's `profession` (added to the professions, with
+ *     `archetype` and `master`, when the rules have none).
+ * Another industry's workplace (and a profession's master workplace the rules lack) stands in no town.
+ */
+export const INDUSTRIES = ["timber", "mining", "fishing", "farming"] as const;
+export type IndustryId = (typeof INDUSTRIES)[number];
+export const WATER_KINDS_FISHED = ["sea", "lake", "river"] as const;
+const ProductSchema = z.strictObject({
+  /** The raw material (a crafting material id where one exists). */
+  material: z.string(),
+  tier: z.number().int().min(1).max(5),
+  /** Biomes it comes from: at least `minSharePermille` of the land within reach must be one of them. */
+  biomes: z.array(z.string()).default([]),
+  minSharePermille: z.number().int().min(1).max(1000).default(1),
+  /** Or the water the town sits on. */
+  water: z.array(z.enum(WATER_KINDS_FISHED)).default([]),
+  /** What the town makes of it and is known for. */
+  export: z.string(),
+});
+export const IndustrySchema = z.strictObject({
+  biomes: z.record(z.string(), z.number().int().min(0).max(1000)).default({}),
+  water: z.partialRecord(z.enum(WATER_KINDS_FISHED), z.number().int().min(0).max(1000)).default({}),
+  fertility: z.boolean().default(false),
+  /** How much it counts when choosing the town's industry, permille of its abundance: farming is what every town falls back on, so rarer riches win over it. */
+  priorityPermille: z.number().int().min(1).max(1000).default(1000),
+  profession: z.strictObject({ name: z.string(), archetype: z.string(), master: z.string() }),
+  workplace: z.string(),
+  products: z.array(ProductSchema).min(1),
+});
+export const IndustryRulesSchema = z.strictObject({
+  industries: z.record(z.enum(INDUSTRIES), IndustrySchema),
+  fullSharePermille: z.number().int().min(1).max(1000),
+  minAbundancePermille: z.number().int().min(0).max(1000),
+  capFloorPermille: z.number().int().min(0).max(1000),
+  specialtyPermille: z.number().int().min(0).max(999),
+  exportPerPeople: z.number().int().positive(),
+});
+export type IndustryRules = z.infer<typeof IndustryRulesSchema>;
+export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
+  industries: {
+    timber: {
+      biomes: { forest: 1000, rainforest: 1000, swamp: 500 },
+      profession: { name: "crafting", archetype: "workshop", master: "master_workshop" },
+      workplace: "sawmill",
+      products: [
+        { material: "ash-log", tier: 1, biomes: ["forest", "plains"], export: "ash furniture" },
+        { material: "yew-log", tier: 2, biomes: ["forest", "swamp"], minSharePermille: 200, export: "yew longbows and cabinets" },
+        { material: "ironwood-log", tier: 3, biomes: ["rainforest"], export: "ironwood furniture" },
+        { material: "heartwood", tier: 4, biomes: ["rainforest"], minSharePermille: 400, export: "heartwood furniture and staves" },
+      ],
+    },
+    mining: {
+      biomes: { mountains: 1000, volcanic: 1000, glacier: 600, desert: 500, tundra: 500 },
+      profession: { name: "smithing", archetype: "smithy", master: "master_smithy" },
+      workplace: "mine",
+      products: [
+        { material: "iron-ore", tier: 1, biomes: ["mountains", "tundra", "desert"], export: "iron blades and tools" },
+        { material: "silver-ore", tier: 2, biomes: ["mountains"], minSharePermille: 250, export: "silver-inlaid blades" },
+        { material: "fire-crystal", tier: 3, biomes: ["volcanic"], export: "fire-forged blades" },
+        { material: "frost-crystal", tier: 3, biomes: ["glacier"], export: "frost-tempered blades" },
+      ],
+    },
+    fishing: {
+      water: { sea: 1000, lake: 700, river: 500 },
+      profession: { name: "fishing", archetype: "fishery", master: "master_fishery" },
+      workplace: "fishery",
+      products: [
+        { material: "sea-fish", tier: 1, water: ["sea"], export: "salted sea fish" },
+        { material: "river-fish", tier: 1, water: ["lake", "river"], export: "smoked river fish" },
+      ],
+    },
+    farming: {
+      fertility: true,
+      priorityPermille: 600,
+      profession: { name: "farming", archetype: "farmstead", master: "master_farmstead" },
+      workplace: "mill",
+      products: [{ material: "grain", tier: 1, biomes: ["plains"], export: "flour and ale" }],
+    },
+  },
+  fullSharePermille: 500,
+  minAbundancePermille: 150,
+  capFloorPermille: 400,
+  specialtyPermille: 600,
+  exportPerPeople: 150,
+});
 
 export const DEFAULT_FORTIFICATION: Fortification = { minHouseholds: 45, setbackMm: 4000, thicknessMm: 2000, heightM: 6, pieceMm: 6000, towerMm: 5000, towerHeightM: 9, towerSpacingMm: 40000, gateHeightM: 8 };
 
@@ -333,6 +434,8 @@ export const SettlementRulesSchema = z.strictObject({
   openGround: OpenGroundSchema.optional(),
   /** Street furniture, paving and terraces (none without it). */
   props: PropsSchema.optional(),
+  /** What a town lives off, from the land around it (none without it, or without the land). */
+  industry: IndustryRulesSchema.optional(),
   settings: SettingsSchema.default(DEFAULT_SETTINGS),
   /** Worship: the churches' seats hold at least `sharePermille` of the people (a mass at a time). */
   worship: z.strictObject({ archetypes: z.array(z.string()), sharePermille: z.number().int().min(0).max(1000) }).optional(),
@@ -386,7 +489,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/8",
+  version: "settlement-rules/9",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -401,6 +504,7 @@ export const BUILTIN_RULES: SettlementRules = {
   homeless: DEFAULT_HOMELESS,
   openGround: DEFAULT_OPEN_GROUND,
   props: DEFAULT_PROPS,
+  industry: DEFAULT_INDUSTRY,
   settings: DEFAULT_SETTINGS,
   worship: { archetypes: ["chapel", "parish_church", "cathedral"], sharePermille: 500 },
   architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },
@@ -423,6 +527,11 @@ export const BUILTIN_RULES: SettlementRules = {
     master_farmstead: { kinds: ["agriculture"], weight: 1, households: 1, workers: 3, feeds: 120, floors: 2, role: "master farmer", shop: false, entrances: 3, capacity: 10 },
     master_smithy: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, storeyM: 4, role: "master blacksmith", shop: true, entrances: 2 },
     master_workshop: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 2, role: "master craftsman", shop: true, entrances: 2 },
+    // Industry (rules.industry): only the town's own industry's workplace stands, in the craft quarter.
+    sawmill: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 1, storeyM: 4.5, role: "sawyer", shop: false, entrances: 2 },
+    mine: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 6, feeds: 0, floors: 1, storeyM: 4, role: "miner", shop: false, entrances: 1 },
+    fishery: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 1, storeyM: 3.5, role: "fisherman", shop: true, entrances: 2 },
+    master_fishery: { kinds: ["manufacturing"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 2, role: "master fisherman", shop: true, entrances: 2 },
     master_bakery: { kinds: ["shopping"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, role: "master baker", shop: true, entrances: 2, capacity: 16 },
     granary: { kinds: ["agriculture"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 6, role: "granary keeper", shop: false, entrances: 1 },
     mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 3, storeyM: 3.5, role: "miller", shop: false, entrances: 2 },

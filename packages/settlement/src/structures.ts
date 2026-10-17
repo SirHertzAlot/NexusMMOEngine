@@ -62,7 +62,10 @@ export function placeStructures(layout: Layout, demand: Demand, rules: Settlemen
     rules: { apart: (x, y) => !forbidden.has(`${x.id}|${y.id}`) },
     counts,
     budgets: [
-      { cost: cost((a) => a.households), min: demand.housingDemand, ...(rules.layout.homeSpacePermille ? { max: Math.ceil((demand.housingDemand * rules.layout.homeSpacePermille) / 1000) } : {}) },
+      { cost: cost((a) => a.households), min: demand.housingDemand },
+      // The room the town's homes keep (homeSpacePermille) caps its homes, not its farms: a farmstead's family lives
+      // on its land, and the farms are as many as the food needs (a town with fewer master farmers has more).
+      ...(rules.layout.homeSpacePermille ? [{ cost: cost((a) => (a.kinds.includes("agriculture") ? 0 : a.households)), max: Math.ceil((demand.housingDemand * rules.layout.homeSpacePermille) / 1000) }] : []),
       { cost: cost((a) => a.feeds), min: demand.foodDemand },
       { cost: cost((a) => a.workers), max: demand.laborPool },
     ],

@@ -9,10 +9,11 @@ import type { Demand } from "./demand.js";
 import type { Demographics } from "./demographics.js";
 import type { TownMastery } from "./mastery.js";
 import type { TownSetting } from "./setting.js";
+import type { TownIndustry } from "./industry.js";
 import { ACRE_M2, scaledLayout, type Holding, type Layout } from "./layout.js";
 import { BUILDING_MARGIN_MM, propBox, type Prop } from "./props.js";
 import type { Occupancy } from "./occupancy.js";
-import type { SettlementRules } from "./rules.js";
+import { INDUSTRIES, type SettlementRules } from "./rules.js";
 import type { Structure } from "./structures.js";
 
 export interface Gate {
@@ -23,6 +24,7 @@ export interface Gate {
 
 export interface Town {
   setting: TownSetting;
+  industry: TownIndustry | null;
   demographics: Demographics;
   mastery: TownMastery;
   demand: Demand;
@@ -338,6 +340,31 @@ export function propsGate(t: Pick<Town, "layout" | "structures" | "occupancy" | 
   return gate("props", ok, ok ? [...counts].map(([k, n]) => `${n} ${k}`).join(", ") || "no props" : problems.join(", "));
 }
 
+/**
+ * The town's industry, re-derived: it is the most abundant of its land's resources (by priority), its workplace or its masters'
+ * stands (a hamlet's masters may do all its work), no other industry's does, and the town is no bigger than its land allows.
+ */
+export function industryGate(t: Pick<Town, "industry" | "structures" | "mastery" | "setting">, rules: SettlementRules): Gate {
+  const ind = t.industry;
+  const ir = rules.industry;
+  if (!ind || !ir) return gate("industry", true, "no industry: the land was not given");
+  const count = (id: string): number => t.structures.filter((s) => s.archetype === id).length;
+  const score = (id: (typeof INDUSTRIES)[number]): number => ind.resources[id] * ir.industries[id].priorityPermille;
+  const top = INDUSTRIES.reduce((b, id) => (score(id) > score(b) ? id : b));
+  if (!ind.primary) return gate("industry", ind.resources[top] < ir.minAbundancePermille || ind.resources[top] === 0, `no industry rich enough (best ${ind.resources[top]} of ${ir.minAbundancePermille})`);
+  const own = ir.industries[ind.primary];
+  const stray = INDUSTRIES.filter((id) => id !== ind.primary && !rules.required[ir.industries[id].workplace]?.perPopulation && ir.industries[id].workplace !== own.workplace).filter((id) => count(ir.industries[id].workplace) > 0);
+  const masters = Object.values(t.mastery.masters).reduce((a, b) => a + b, 0);
+  const works = count(own.workplace);
+  const masterWorks = count(own.profession.master);
+  const ok = ind.primary === top && works + masterWorks > 0 && stray.length === 0;
+  return gate(
+    "industry",
+    ok,
+    stray.length ? `another industry's workplace stands: ${stray.join(", ")}` : `${ind.primary} (${ind.abundancePermille}), known for ${ind.product?.export}: ${works} ${own.workplace}${masterWorks ? ` and ${masterWorks} ${own.profession.master}` : ""}, ${t.mastery.masters[own.profession.name] ?? 0} of ${masters} masters in ${own.profession.name}${t.setting.capacity !== null ? `, capped at ${t.setting.capacity}` : ""}`,
+  );
+}
+
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
   const sum = (f: (id: string) => number): number => t.structures.reduce((a, s) => a + f(s.archetype), 0);
   const d = t.demographics;
@@ -392,6 +419,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     masteryGate(t, rules),
     settingGate(t, rules),
     propsGate(t, rules, scale),
+    industryGate(t, rules),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

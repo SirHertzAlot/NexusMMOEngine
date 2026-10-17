@@ -448,6 +448,27 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   in another prop, that every terrace has its building and stairs, and that every statue's
   grand master is one of the town's. `DEFAULT_PROP_PATTERNS` maps prop models by name
   (case-insensitive) for `--catalog`.
+- **Industry (settlement-rules/9, settlement-gen/0.6.0).** A town lives off the land around it.
+  `selectSites` records each site's `biomes`, the permille share of every biome within its
+  reach. Given that `land` (the CLI passes it with `--world`), `townIndustry` scores timber
+  (forest, rainforest, swamp), mining (mountains, volcanic, glacier, desert, tundra), fishing
+  (sea, lake or river near the town) and farming (fertile land, at 600 priority so it wins only
+  where nothing richer is near). The richest is the town's industry (`manifest.industry`):
+  - Its size. The access's cap is scaled from 40% with no industry to 100% at full
+    abundance (`industryCap`), so big towns stand only where the resource is.
+  - Its export: the rarest material near (by crafting tier), and what the town is known for,
+    such as yew longbows, silver-inlaid blades, fire- or frost-forged blades, heartwood
+    furniture or salted sea fish.
+  - Its workplaces: one sawmill, mine, fishery or mill per 150 people at full abundance (at
+    most twice that), with their stock (log piles, ore carts, fish racks, grain sacks) at the
+    door. They are the export (`required[].export`), so masters of the trade add to them and
+    never replace them. No other industry's workplace stands in the town.
+  - Its masters: 60% of them practise its craft (crafting, smithing, fishing or farming).
+  Without `land` a town has no industry and none of those workplaces. Gate `industry` checks
+  the primary is the richest, that its workplaces (or its masters') stand and that no other
+  industry's do. The home-space cap (`homeSpacePermille`) now counts only the households in
+  town, not the farmsteads' families. Before, a town with fewer master farmers needed more
+  farms than the cap left room for, and the structure solve failed.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are

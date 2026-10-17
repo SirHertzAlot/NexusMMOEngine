@@ -286,6 +286,42 @@ describe("generateSettlement", () => {
     for (const p of manifest.props.filter((p) => p.parcel && terraces.some((q) => q.parcel === p.parcel) && ["barrel", "crate", "planter"].includes(p.kind))) assert.equal(p.yMm, t.heightMm);
   });
 
+  it("lives off its land: its richest resource is its industry, its export and its masters' craft, and caps its size", () => {
+    const lands = {
+      forest: { biomes: { forest: 650, plains: 350 }, waterKind: "none" as const, shoreM: -1 },
+      mountain: { biomes: { mountains: 450, plains: 400, forest: 150 }, waterKind: "none" as const, shoreM: -1 },
+      coast: { biomes: { sea: 400, beach: 100, plains: 300, forest: 200 }, waterKind: "sea" as const, shoreM: 20 },
+      plains: { biomes: { plains: 900, forest: 100 }, waterKind: "river" as const, shoreM: 400 },
+      rainforest: { biomes: { rainforest: 700, plains: 300 }, waterKind: "none" as const, shoreM: -1 },
+    };
+    const expect = { forest: ["timber", "sawmill", "crafting", "yew longbows and cabinets"], mountain: ["mining", "mine", "smithing", "silver-inlaid blades"], coast: ["fishing", "fishery", "fishing", "salted sea fish"], plains: ["farming", "mill", "farming", "flour and ale"], rainforest: ["timber", "sawmill", "crafting", "heartwood furniture and staves"] } as const;
+    const workplaces = Object.values(BUILTIN_RULES.industry!.industries).map((i) => i.workplace).filter((w) => w !== "mill");
+    for (const [name, land] of Object.entries(lands)) {
+      const [primary, workplace, profession, product] = expect[name as keyof typeof expect];
+      let specialists = 0;
+      let masters = 0;
+      for (const seed of [1, 2, 3]) {
+        const m = must(generateSettlement({ settlementId: "i", seed, population: 1000, access: "road", land })).manifest;
+        assert.equal(m.industry?.primary, primary, name);
+        assert.equal(m.industry?.product?.export, product, `${name} is known for its rarest resource`);
+        assert.ok(m.structures.some((s) => s.archetype === workplace), `${name} has its ${workplace}s`);
+        for (const w of workplaces) if (w !== workplace) assert.ok(!m.structures.some((s) => s.archetype === w), `${name} has no ${w}`);
+        specialists += m.mastery.masters[profession] ?? 0;
+        masters += Object.values(m.mastery.masters).reduce((a, b) => a + b, 0);
+        const g = m.validation.find((v) => v.gate === "industry")!;
+        assert.ok(g.ok, g.detail);
+      }
+      assert.ok(specialists * 2 > masters, `most of ${name}'s masters are in ${profession}: ${specialists} of ${masters}`);
+    }
+    // Poor land keeps a town small: its cap is scaled down from the access's.
+    const poor = must(generateSettlement({ settlementId: "i", seed: 1, population: 2500, access: "road", land: { biomes: { beach: 1000 }, waterKind: "none", shoreM: -1 } })).manifest;
+    assert.ok(poor.setting.capacity! < BUILTIN_RULES.settings.access.road.maxPopulation * 0.6, `poor land caps a road town at ${poor.setting.capacity}`);
+    assert.equal(poor.setting.population, poor.setting.capacity);
+    // Without the land a town has no industry, and no industry's workplace stands.
+    assert.equal(manifest.industry, null);
+    for (const w of [...workplaces, "master_fishery"]) assert.ok(!manifest.structures.some((s) => s.archetype === w), `no ${w} without the land`);
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -330,5 +366,7 @@ describe("generateSettlement", () => {
 // streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
 // cathedral and monastery). Again for settlement-rules/7 and settlement-gen/0.4.0: acreage, the watch, shared homes,
 // mastery and grand masters, the homeless, masters on the best ground, parks and empty lots. Again for
-// settlement-rules/8 and settlement-gen/0.5.0: street props, paved streets, terraces and stairs.
-const GOLDEN = "4ff854f89832fa04cfc78f1e14c822ecbdd2a0718a8386bc413260cab6f5cac6";
+// settlement-rules/8 and settlement-gen/0.5.0: street props, paved streets, terraces and stairs. Again for
+// settlement-rules/9 and settlement-gen/0.6.0: industry (and its workplaces ruled out of a town without the land), and the
+// home-space cap no longer counting farmsteads.
+const GOLDEN = "47e8234dc29b0de4263eaf8b750d32735becfbc1c35ef5d1cc7d42ef1de2c695";

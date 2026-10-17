@@ -8,6 +8,7 @@
 import type { Streams } from "./rng.js";
 import type { Access, SettlementRules, Trend } from "./rules.js";
 import type { Site } from "./sites.js";
+import { industryCap, type TownIndustry } from "./industry.js";
 
 export interface TownSetting {
   access: Access | null;
@@ -38,7 +39,8 @@ export function siteAccess(site: Pick<Site, "waterKind" | "shoreM" | "walkM" | "
   return "road";
 }
 
-export function townSetting(population: number, access: Access | undefined, rules: SettlementRules, rng: Streams): TownSetting {
+/** With the town's industry (`townIndustry`), the access's cap is scaled by how rich the land is (`industryCap`). */
+export function townSetting(population: number, access: Access | undefined, rules: SettlementRules, rng: Streams, industry: TownIndustry | null = null): TownSetting {
   if (!access) return { access: null, densityPermille: 1000, trend: "stable", capacity: null, requestedPopulation: population, population };
   const a = rules.settings.access[access];
   const r = rng.get("setting");
@@ -47,7 +49,8 @@ export function townSetting(population: number, access: Access | undefined, rule
   const roll = r.raw() * 1000;
   const [grow, shrink] = a.trendPermille;
   const trend: Trend = roll < grow ? "growing" : roll < grow + shrink ? "shrinking" : "stable";
-  return { access, densityPermille, trend, capacity: a.maxPopulation, requestedPopulation: population, population: Math.min(population, a.maxPopulation) };
+  const capacity = industryCap(a.maxPopulation, industry, rules);
+  return { access, densityPermille, trend, capacity, requestedPopulation: population, population: Math.min(population, capacity) };
 }
 
 /**

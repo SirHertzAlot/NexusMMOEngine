@@ -37,6 +37,7 @@ import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
 import { ACCESS, BUILTIN_RULES, loadRules, type Access, type SettlementRules } from "./rules.js";
 import { siteAccess } from "./setting.js";
+import type { Land } from "./industry.js";
 import { townHalfExtentM } from "./layout.js";
 import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
@@ -55,6 +56,8 @@ async function main(): Promise<void> {
   let access = o.access as Access | undefined;
   /** The world's dryness test at a point (with --world): parcels that are not dry are dropped from the town. */
   let dry: ((x: number, z: number) => boolean) | undefined;
+  /** The land around the site (with --world): the town's industry reads it. */
+  let land: Land | undefined;
   if (o.world) {
     const rules = o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES;
     const households = Math.round((Number(o.population ?? 600) * 10) / rules.demographics.householdSizeX10);
@@ -66,7 +69,8 @@ async function main(): Promise<void> {
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
     origin = [site.x, site.z];
     access ??= siteAccess(site, rules);
-    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) ${access}, pressure ${site.pressurePermille}, ${site.waterKind} ${site.waterDistanceM} m, walk ${site.walkM} m, elevation ${site.elevationM} m, relief ${site.reliefM} m over a ${Math.round(2 * extent)} m town, ${site.biome}`);
+    land = { biomes: site.biomes, waterKind: site.waterKind, shoreM: site.shoreM };
+    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) ${access}, pressure ${site.pressurePermille}, ${site.waterKind} ${site.waterDistanceM} m, walk ${site.walkM} m, elevation ${site.elevationM} m, relief ${site.reliefM} m over a ${Math.round(2 * extent)} m town, ${site.biome}; land ${Object.entries(site.biomes).map(([b, n]) => `${b} ${n}`).join(", ")}`);
   }
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   let art: Record<string, string[]> | undefined;
@@ -84,7 +88,7 @@ async function main(): Promise<void> {
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), ...(access ? { access } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
     out,
     o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );

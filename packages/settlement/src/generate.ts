@@ -14,6 +14,7 @@ import { contentHash } from "./hash.js";
 import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from "./layout.js";
 import { drawMastery } from "./mastery.js";
 import { drawHomeless, townSetting, withDensity } from "./setting.js";
+import { townIndustry, withIndustry, type Land } from "./industry.js";
 import { occupy } from "./occupancy.js";
 import { placeProps, propBox } from "./props.js";
 import { streams, type Streams } from "./rng.js";
@@ -24,7 +25,7 @@ import { validateTown, type Gate, type Town } from "./validate.js";
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.5.0";
+export const GENERATOR_VERSION = "settlement-gen/0.6.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
@@ -36,6 +37,11 @@ export interface SettlementRequest {
    * densely it lives. Without it the population stands as asked and the layout is the rules' own.
    */
   access?: Access;
+  /**
+   * The land around the town (a site's `biomes`, `waterKind` and `shoreM`): its industry (rules.industry) caps how big
+   * it grows on that land, what it exports and what its masters practise. Without it the town has no industry.
+   */
+  land?: Land;
   rules?: SettlementRules;
   /** The building factor (`resolveScale(doc, "building")`) the town is laid out at; default 1. */
   scale?: number;
@@ -60,6 +66,8 @@ export interface SettlementManifest {
   determinism: { rngStreams: Record<string, number>; sortPolicy: "id"; units: "millimeters" };
   /** How the town is reached, how densely it lives, and the people asked for against the people its access keeps. */
   setting: Town["setting"];
+  /** What the town lives off and is known for (null: no land given, or no industry rules). */
+  industry: Town["industry"];
   demographics: Town["demographics"];
   /** The town's masters by profession, the master communities, and the residents and visitors they draw. */
   mastery: Town["mastery"];
@@ -114,9 +122,12 @@ const STAGES: Stage[] = [
     name: "demographics",
     run(ctx) {
       // The town's setting first: its access caps the people and sets the density every later stage lays out by.
-      const setting = townSetting(ctx.request.population, ctx.request.access, ctx.rules, ctx.rng);
+      // Its industry first, from the land: it caps how big the town grows there and what its masters practise.
+      const industry = ctx.request.land ? townIndustry(ctx.request.land, ctx.rules) : null;
+      ctx.town.industry = industry;
+      const setting = townSetting(ctx.request.population, ctx.request.access, ctx.rules, ctx.rng, industry);
       ctx.town.setting = setting;
-      ctx.rules = withDensity(ctx.rules, setting.densityPermille, setting.trend);
+      ctx.rules = withIndustry(withDensity(ctx.rules, setting.densityPermille, setting.trend), industry);
       if (setting.population < setting.requestedPopulation) ctx.events.emit("summary", "demographics", "capped", { access: setting.access, requested: setting.requestedPopulation, capacity: setting.capacity });
       // The town's masters next: the people they draw to live there are part of its population.
       const mastery = drawMastery(setting.population, ctx.rules, ctx.rng, setting.access ? ctx.rules.settings.access[setting.access].masteryPermille : 1000);
@@ -124,7 +135,7 @@ const STAGES: Stage[] = [
       const people = setting.population + mastery.residents;
       const d = bakeDemographics(people, ctx.rules.demographics, drawHomeless(people, setting.densityPermille, ctx.rules, ctx.rng));
       ctx.town.demographics = d;
-      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, homeless: d.homeless, laborPool: d.laborPool, access: setting.access, densityPermille: setting.densityPermille, trend: setting.trend, masters: mastery.masters, communities: mastery.communities, grandMasters: mastery.grandMasters, discipline: mastery.discipline, pupils: mastery.pupils, visitors: mastery.visitors });
+      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, homeless: d.homeless, laborPool: d.laborPool, access: setting.access, densityPermille: setting.densityPermille, trend: setting.trend, industry: industry?.primary ?? null, masters: mastery.masters, communities: mastery.communities, grandMasters: mastery.grandMasters, discipline: mastery.discipline, pupils: mastery.pupils, visitors: mastery.visitors });
     },
   },
   {
@@ -272,7 +283,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { setting, demographics, mastery, demand, layout, structures, occupancy, props } = ctx.town as Town;
+  const { setting, industry, demographics, mastery, demand, layout, structures, occupancy, props } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -282,6 +293,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     scale: request.scale ?? 1,
     determinism: { rngStreams: ctx.rng.seeds(), sortPolicy: "id" as const, units: "millimeters" as const },
     setting,
+    industry,
     demographics,
     mastery,
     demand,

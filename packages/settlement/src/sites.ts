@@ -53,6 +53,8 @@ export interface Site {
   resourcePermille: number;
   /** The walk from the spawn (else the largest connected land) to the site over walkable cells, metres; -1 when not walkable. */
   walkM: number;
+  /** The land within reach of the footprint (its half extent plus `resourceRangeM`): each biome's share of it, permille (the town's industry reads it). */
+  biomes: Record<string, number>;
 }
 
 /** Highest (or lowest) height within `r` cells of each cell, a square window clipped to the grid; two separable passes. */
@@ -235,7 +237,7 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
   // The footprint may rise this far above the sea: the stricter of the lowland band and the absolute cap.
   const ceilingM = Math.min(rules.lowlandBandM, rules.maxElevationM - sea);
 
-  interface Candidate extends Site {
+  interface Candidate extends Omit<Site, "biomes"> {
     cx: number;
     cz: number;
   }
@@ -274,5 +276,22 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
     if (chosen.length >= count) break;
     if (chosen.every((s) => Math.hypot(s.x - c.x, s.z - c.z) >= rules.minSpacingM)) chosen.push(c);
   }
-  return chosen.map(({ cx: _cx, cz: _cz, ...site }) => site);
+  // The land around each chosen site: the share of every biome within reach, over the same square of cells the resources are read from.
+  const around = Math.ceil((extentM + (rules.resourceRangeM ?? 600)) / cell);
+  const landOf = (cx: number, cz: number): Record<string, number> => {
+    const n = new Map<string, number>();
+    let total = 0;
+    for (let dz = -around; dz <= around; dz++) {
+      for (let dx = -around; dx <= around; dx++) {
+        const x = cx + dx;
+        const z = cz + dz;
+        if (x < 0 || z < 0 || x >= width || z >= depth) continue;
+        const b = t.biomeIds[t.biome[z * width + x]!]!;
+        n.set(b, (n.get(b) ?? 0) + 1);
+        total++;
+      }
+    }
+    return Object.fromEntries([...n].sort(([a], [b]) => (a < b ? -1 : 1)).map(([b, k]) => [b, Math.round((k * 1000) / total)]));
+  };
+  return chosen.map(({ cx, cz, ...site }) => ({ ...site, biomes: landOf(cx, cz) }));
 }

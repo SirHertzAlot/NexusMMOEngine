@@ -51,7 +51,8 @@ export function requiredCounts(population: number, rules: SettlementRules, maste
       continue;
     }
     const scaled = r.perPopulation ? Math.ceil(people / r.perPopulation) : 0;
-    const cover = covered.get(id) ?? 0;
+    // An export's workplaces stand whatever the masters do: their work is for the town, the export is besides.
+    const cover = r.export ? 0 : (covered.get(id) ?? 0);
     const min = cover > 0 ? 0 : (r.min ?? 0);
     const want = Math.max(min, scaled - cover);
     const ceiling = Math.min(r.max ?? Infinity, r.maxPerPopulation ? Math.max(r.min ?? 0, Math.ceil(people / r.maxPerPopulation)) : Infinity);

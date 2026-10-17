@@ -66,6 +66,18 @@ describe("selectSites", () => {
     assert.ok(best.pressurePermille > sites[0]!.pressurePermille, "and is worth more than the best without it");
   });
 
+  it("reads the land around each site, every biome's share within reach, so the town knows its industry", () => {
+    for (const s of sites) {
+      const total = Object.values(s.biomes).reduce((a, b) => a + b, 0);
+      assert.ok(Math.abs(total - 1000) <= Object.keys(s.biomes).length, `shares sum to 1000, got ${total}`);
+    }
+    const wooded = land();
+    wooded.biomeIds = [...wooded.biomeIds, "forest"];
+    for (let z = 30; z < 34; z++) for (let x = 22; x < 26; x++) wooded.biome[idx(x, z)] = 3;
+    const best = selectSites(wooded, BUILTIN_RULES.sites, 6)[0]!;
+    assert.ok((best.biomes.forest ?? 0) > 0, "the forest is in its land");
+  });
+
   it("says which water is nearest and how far a site is to walk, and so how the town is reached", () => {
     for (const s of sites) {
       const { cx } = cellOf(s);

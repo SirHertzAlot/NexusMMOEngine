@@ -132,18 +132,25 @@ export function placeProps(settlement: string, layout: Layout, structures: reado
     for (const [dx, dz, yaw] of seats.slice(0, r.parkBenches)) put("bench", p.center.x + dx, p.center.z + dz, yaw, { parcel: p.id });
   }
 
-  // At the doors: barrels and a crate at the stores, planters at the well-off homes; in the front margin (on the terrace if raised).
+  // At the doors: barrels and a crate at the stores, planters at the well-off homes, an industry's stock at its
+  // workplace; in the front margin (on the terrace if raised).
   for (const p of layout.parcels) {
     const archetype = built.get(p.id);
     if (!archetype) continue;
     const store = r.stores.includes(archetype);
     const planted = !!p.wealth && r.planters.includes(p.wealth) && rules.archetypes[archetype]!.households > 0;
-    if (!store && !planted) continue;
+    const dressed = r.dressing[archetype];
+    if (!store && !planted && !dressed) continue;
     const { out: o, along } = axes(p.facing);
     const front = pd / 2 - BUILDING_MARGIN_MM / 2;
     const at = (a: number): [number, number] => [p.center.x + o[0] * front + along[0] * a * scale, p.center.z + o[1] * front + along[1] * a * scale];
     const on = raised.has(p.id) ? { yMm: t.heightMm } : {};
-    if (store) {
+    if (dressed) {
+      // An industry's stock either side of its door, set back to clear the street.
+      const w = r.sizesMm[dressed][0];
+      put(dressed, ...at(Math.max(2500, w / 2 + 1500)), p.facing, { parcel: p.id, ...on });
+      put(dressed, ...at(-Math.max(2500, w / 2 + 1500)), p.facing, { parcel: p.id, ...on });
+    } else if (store) {
       put("barrel", ...at(3000), p.facing, { parcel: p.id, ...on });
       put("crate", ...at(-3000), p.facing, { parcel: p.id, ...on });
     } else {

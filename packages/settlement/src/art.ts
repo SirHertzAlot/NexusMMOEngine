@@ -60,11 +60,16 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$"],
   park: ["(Prop|Preset)_(Park|Grove|Tree_?Cluster|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   empty_lot: ["(Prop|Preset)_(Fence|Rubble|Ruin|Empty_?Lot)(_\[0-9]+)?(_Optimized)?$"],
+  // An industry's workplace (rules.industry).
+  sawmill: ["Preset_(Sawmill|Lumber_?Mill|Woodcutter|Lumberjack)_\[0-9]+_Optimized$", "Preset_Workshop_\[0-9]+_Optimized$"],
+  mine: ["(Prop|Preset)_(Mine|Mine_?Entrance|Mineshaft|Quarry)(_\[0-9]+)?(_Optimized)?$"],
+  fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$", "Preset_Hut_\[0-9]+_Optimized$"],
   // A master's workplace looks like the trade's own.
   master_farmstead: ["Preset_Farm(house)?_\[0-9]+_Optimized$", "Preset_(Hut|Shelter|Stables)_\[0-9]+_Optimized$"],
   master_smithy: ["Preset_Blacksmith_\[0-9]+_Optimized$"],
   master_workshop: ["Preset_Workshop_\[0-9]+_Optimized$"],
   master_bakery: ["Preset_Bakery_\[0-9]+_Optimized$"],
+  master_fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$"],
   // The town square's well or fountain.
   town_well: ["(Prop|Preset)_(Well|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   // The town wall: straight wall runs, towers, and the gate the road passes through.
@@ -100,6 +105,10 @@ export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
   crate: ["(^|_)(crate|box_wood(en)?)(_[0-9]+)?$"],
   planter: ["(^|_)(planter|flower_?(box|pot))(_[0-9]+)?$"],
   stair_step: ["(^|_)(stone_)?(step|stairs?)(_[0-9]+)?$"],
+  log_pile: ["(^|_)(log_?pile|logs|wood_?pile|lumber(_?pile)?)(_[0-9]+)?$"],
+  ore_cart: ["(^|_)(ore_?cart|mine_?cart|minecart|cart_ore)(_[0-9]+)?$"],
+  fish_rack: ["(^|_)(fish_?rack|drying_?rack|fish_?stand)(_[0-9]+)?$"],
+  grain_sacks: ["(^|_)(grain_?sacks?|sacks?(_grain|_flour)?|flour_?sacks?)(_[0-9]+)?$"],
 };
 
 /**
