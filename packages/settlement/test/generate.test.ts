@@ -37,6 +37,7 @@ describe("generateSettlement", () => {
 
   it("passes every validation gate", () => {
     assert.ok(manifest.validation.length >= 6);
+    for (const g of ["fortification", "district_quarters"]) assert.ok(manifest.validation.some((v) => v.gate === g), g);
     for (const g of manifest.validation) assert.ok(g.ok, `${g.gate}: ${g.detail}`);
   });
 
@@ -79,5 +80,6 @@ describe("generateSettlement", () => {
   });
 });
 
-// Re-pinned on purpose: rules version settlement-rules/1 -> /2 (floors + architecture replace heightM); the layout and placement are unchanged, only the recorded rulesVersion moved.
-const GOLDEN = "fae20507defe25f0049f817c9aefdeadb8dd3c43deb50934aef141a9d4c67806";
+// Re-pinned on purpose: settlement-rules/3 and settlement-gen/0.2.0 (walled towns with gates and towers, farms outside
+// along the roads, one quarter per district, plots facing their streets, ceilings on taverns, bakeries and the like).
+const GOLDEN = "98c124f9535abcff766052967c57c135c3d7795482be45e50158c1d3b5b9ffe3";

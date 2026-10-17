@@ -21,13 +21,13 @@ describe("settlementScene", () => {
     assert.equal(scene.name, "settlement-0182");
     assert.equal(scene.kind, "world");
     assert.equal(scene.nodes.length, 1);
-    assert.equal(scene.nodes[0]!.children!.length, manifest.structures.length);
+    assert.equal(scene.nodes[0]!.children!.length, manifest.structures.length + manifest.fortifications.length);
   });
 
   it("gives each structure its kind and a footprint that fits inside its parcel", () => {
     const [pw, pd] = BUILTIN_RULES.layout.parcelSizeMm;
     const byId = new Map(manifest.structures.map((s) => [s.id, s]));
-    for (const n of scene.nodes[0]!.children!) {
+    for (const n of scene.nodes[0]!.children!.filter((k) => byId.has(k.id))) {
       const c = n.components!.Structure!;
       assert.equal(c.kind, byId.get(n.id)!.archetype);
       assert.ok((c.width as number) < pw / 1000 && (c.depth as number) < pd / 1000);
@@ -35,25 +35,54 @@ describe("settlementScene", () => {
     }
   });
 
+  // A footprint's half extents along world x and z: a node turned a quarter has its width along z.
+  const boxes = (filter: (kind: string) => boolean) =>
+    worldNodes(scene)
+      .filter((w) => w.node.components?.Structure && filter(w.node.components.Structure.kind as string))
+      .map((w) => {
+        const s = w.node.components!.Structure!;
+        const across = Math.round(w.yawDeg) % 180 !== 0;
+        const [hw, hd] = [(s.width as number) / 2, (s.depth as number) / 2];
+        return { id: w.node.id, kind: s.kind as string, x: w.position[0], z: w.position[2], hw: across ? hd : hw, hd: across ? hw : hd };
+      });
+  const isWall = (k: string) => ["town_wall", "wall_tower", "town_gate"].includes(k);
+  const gapOf = (a: { x: number; z: number; hw: number; hd: number }, b: typeof a) => Math.max(Math.abs(a.x - b.x) - a.hw - b.hw, Math.abs(a.z - b.z) - a.hd - b.hd);
+
   it("leaves a walkable street between buildings and never overlaps two footprints", () => {
     const CAPSULE_WIDTH_M = 0.7; // CHARACTER_CAPSULE.radius * 2 (engine-core)
-    const at = worldNodes(scene).filter((w) => w.node.components?.Structure);
-    const box = at.map((w) => {
-      const s = w.node.components!.Structure!;
-      return { x: w.position[0], z: w.position[2], hw: (s.width as number) / 2, hd: (s.depth as number) / 2 };
-    });
-    // Axis-aligned (no node yaw): the gap between two boxes is the larger of their per-axis gaps.
+    const box = boxes((k) => !isWall(k));
     let minGap = Infinity;
     for (let i = 0; i < box.length; i++) {
       for (let j = i + 1; j < box.length; j++) {
-        const a = box[i]!;
-        const b = box[j]!;
-        const gap = Math.max(Math.abs(a.x - b.x) - a.hw - b.hw, Math.abs(a.z - b.z) - a.hd - b.hd);
-        assert.ok(gap > 0, `${i} and ${j} overlap (${gap} m)`);
+        const gap = gapOf(box[i]!, box[j]!);
+        assert.ok(gap > 0, `${box[i]!.id} and ${box[j]!.id} overlap (${gap} m)`);
         minGap = Math.min(minGap, gap);
       }
     }
     assert.ok(minGap >= CAPSULE_WIDTH_M, `the narrowest street is ${minGap} m, a character is ${CAPSULE_WIDTH_M} m wide`);
+  });
+
+  it("turns every building to face its street", () => {
+    const parcels = new Map(manifest.parcels.map((p) => [p.id, p]));
+    const structures = new Map(manifest.structures.map((s) => [s.id, s]));
+    for (const n of scene.nodes[0]!.children!) {
+      const s = structures.get(n.id);
+      if (s) assert.equal(n.transform!.rotation![1], parcels.get(s.parcel)!.facing, n.id);
+    }
+  });
+
+  it("builds the wall from Structure nodes: wall pieces, towers, and walk-through gates, clear of every building", () => {
+    const kids = scene.nodes[0]!.children!;
+    const walls = kids.filter((n) => isWall(n.components!.Structure!.kind as string));
+    assert.equal(walls.length, manifest.fortifications.length);
+    assert.ok(walls.length > 0, "a town of 600 is walled");
+    for (const n of walls) {
+      const kind = n.components!.Structure!.kind as string;
+      assert.equal(n.components!.Collider?.shape === "none", kind === "town_gate", `${n.id}: only a gate is walk-through`);
+      assert.equal(n.components!.Structure!.height, { town_wall: BUILTIN_RULES.fortification.heightM, wall_tower: BUILTIN_RULES.fortification.towerHeightM, town_gate: BUILTIN_RULES.fortification.gateHeightM }[kind]);
+    }
+    const buildings = boxes((k) => !isWall(k));
+    for (const w of boxes(isWall)) for (const b of buildings) assert.ok(gapOf(w, b) > 1, `${w.id} touches ${b.id}`);
   });
 
   it("centres the town on the origin, in metres", () => {

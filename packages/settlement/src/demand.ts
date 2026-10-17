@@ -26,8 +26,9 @@ export function solveDemand(d: Demographics, rules: SettlementRules): Demand {
   for (const [id, r] of Object.entries(rules.required)) {
     const scaled = r.perPopulation ? Math.ceil(d.population / r.perPopulation) : 0;
     const want = Math.max(r.min ?? 0, scaled);
-    required[id] = r.max !== undefined ? Math.min(want, r.max) : want;
-    if (r.max !== undefined) max[id] = r.max;
+    const ceiling = Math.min(r.max ?? Infinity, r.maxPerPopulation ? Math.max(r.min ?? 0, Math.ceil(d.population / r.maxPerPopulation)) : Infinity);
+    required[id] = Math.min(want, ceiling);
+    if (ceiling !== Infinity) max[id] = ceiling;
   }
   return { foodDemand: d.population, housingDemand: d.households, laborPool: d.laborPool, required, max };
 }

@@ -23,7 +23,7 @@ const MAX_EXTRA_BLOCKS = 3;
 /** Where along a parcel side (fraction of its size from the centre) the dryness is tested: a 5 x 5 grid. */
 const FOOTPRINT_SAMPLES = [-0.5, -0.25, 0, 0.25, 0.5];
 
-export const GENERATOR_VERSION = "settlement-gen/0.1.0";
+export const GENERATOR_VERSION = "settlement-gen/0.2.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
@@ -57,6 +57,11 @@ export interface SettlementManifest {
   roads: Town["layout"]["roads"];
   districts: Town["layout"]["districts"];
   parcels: Town["layout"]["parcels"];
+  /** Whether the town is walled, and its wall pieces (towers, gates, wall) in id order; none for an open village. */
+  walled: boolean;
+  /** Wall pieces left out where water stands (the town is open to the water there); 0 for a full ring. */
+  wallOpenToWater: number;
+  fortifications: Town["layout"]["fortifications"];
   structures: Town["structures"];
   occupancy: Town["occupancy"];
   validation: Gate[];
@@ -112,7 +117,7 @@ const STAGES: Stage[] = [
     run(ctx) {
       const layout = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1);
       ctx.town.layout = layout;
-      ctx.events.emit("summary", "layout", "laid_out", { blocks: layout.blocks, parcels: layout.parcels.length, junctions: layout.roads.nodes.length });
+      ctx.events.emit("summary", "layout", "laid_out", { blocks: layout.blocks, parcels: layout.parcels.length, junctions: layout.roads.nodes.length, walled: layout.walled, wallPieces: layout.fortifications.length });
     },
   },
   {
@@ -133,10 +138,21 @@ const STAGES: Stage[] = [
           const full = extra === 0 ? layout : layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1, extra);
           const c = townCentreMm(full.roads.nodes);
           const dry = (p: (typeof full.parcels)[number]): boolean => {
-            for (const fx of FOOTPRINT_SAMPLES) for (const fz of FOOTPRINT_SAMPLES) if (!site.dry(site.origin[0] + (p.center.x + fx * pw - c.x) / 1000, site.origin[1] + (p.center.z + fz * pd - c.z) / 1000)) return false;
+            // A plot facing east or west lies across: its width runs along z.
+            const [w, d] = p.facing % 180 === 0 ? [pw, pd] : [pd, pw];
+            for (const fx of FOOTPRINT_SAMPLES) for (const fz of FOOTPRINT_SAMPLES) if (!site.dry(site.origin[0] + (p.center.x + fx * w - c.x) / 1000, site.origin[1] + (p.center.z + fz * d - c.z) / 1000)) return false;
             return true;
           };
-          const kept = { ...full, parcels: full.parcels.filter(dry) };
+          // The wall is not built in the water: a piece whose footprint is not dry is left out, and the town is open on that side.
+          const dryPiece = (w: (typeof full.fortifications)[number]): boolean => {
+            for (const fa of FOOTPRINT_SAMPLES) for (const fb of FOOTPRINT_SAMPLES) {
+              const [dx, dz] = w.yawDeg === 0 ? [fa * w.lengthMm, fb * w.thicknessMm] : [fb * w.thicknessMm, fa * w.lengthMm];
+              if (!site.dry(site.origin[0] + (w.center.x + dx - c.x) / 1000, site.origin[1] + (w.center.z + dz - c.z) / 1000)) return false;
+            }
+            return true;
+          };
+          const fortifications = full.fortifications.filter(dryPiece);
+          const kept = { ...full, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length };
           ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
           try {
             structures = placeStructures(kept, demand!, ctx.rules, ctx.rng);
@@ -208,11 +224,14 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     roads: layout.roads,
     districts: layout.districts,
     parcels: layout.parcels,
+    walled: layout.walled,
+    wallOpenToWater: layout.wallOpenToWater,
+    fortifications: layout.fortifications,
     structures,
     occupancy,
     validation: ctx.validation,
   };
   const byId = <T extends { id: string }>(rows: T[]): T[] => [...rows].sort((a, b) => (a.id < b.id ? -1 : 1));
-  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), structures: byId(body.structures), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
+  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), fortifications: byId(body.fortifications), structures: byId(body.structures), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
   return { ok: true, manifest: { ...sorted, hash: contentHash(sorted) }, events: events.events(verbosity) };
 }

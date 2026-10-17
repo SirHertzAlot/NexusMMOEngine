@@ -253,3 +253,50 @@ and buildings are drawn for that human, not as flat boxes.
   `content/scale.local.json`; run the server with `MMO_SCALE=content/scale.local.json`.
   `settlement:scale-report --scale content/scale.local.json` then shows no overflows.
 
+
+## Town plan: quarters, walls, gates and farms (SG5)
+
+Before this, a town was a grid of blocks dealt to districts at random: taverns and
+bakeries sat in housing blocks, the craft and farm districts were scattered, every
+building faced the same way and there was no wall. Generator `settlement-gen/0.2.0`,
+rules `settlement-rules/3` lay it out like a planned medieval town:
+
+- **Quarters.** The market (shopping) takes the blocks nearest the centre, the craft
+  quarter (manufacturing) a run of blocks along one side of town (the side is seeded,
+  `rng.get("districts")`), housing the rest. Bakery and tavern are shopping kinds only.
+  The `district_quarters` gate fails if any district's blocks are not one 4-connected
+  group (blocks lost to water count as passable).
+- **Farms outside.** Agriculture is no longer a share of the grid: farm plots line both
+  sides of the four country roads leading out of the gates, facing their road. Their
+  count comes from food demand (`layout.farmSurplusPermille`, default 1250, i.e. 25 %
+  surplus) plus spare plots as the grid grows to replace wet parcels.
+- **Every building faces its street.** `Parcel.facing` (0/90/180/270) is the yaw the
+  scene writes to `transform.rotation[1]`: a block's front row faces the street before
+  it, its back row the street behind, farms face their road.
+- **Fewer of the big buildings.** `required.<kind>.maxPerPopulation` caps a kind at one
+  per that many people (never below its `min`): bakery 120, tavern 150, smithy 150,
+  warehouse 150, granary 200, chapel 250, mill 300.
+- **A wall round a town, not round a house.** `rules.fortification` (defaulted, so old
+  rule files parse): a town of `minHouseholds` (45) or more gets a ring wall
+  `setbackMm` outside the outer street, `thicknessMm` thick and `heightM` tall, split
+  into `town_wall` pieces no longer than `pieceMm` (one model's run), `wall_tower`s at
+  the corners, beside each gate and at least every `towerSpacingMm`, and a
+  `town_gate` where each primary road leaves, as wide as the street plus a metre each
+  side. Smaller places are open villages. Pieces are in the manifest's
+  `fortifications`; the scene makes them `Structure` nodes of those kinds, and a gate
+  carries `Collider: none` so the spawner makes it walk-through (no slab). Pieces that
+  would stand in water are dropped and counted in `wallOpenToWater` (the town is open
+  on its water side). The `fortification` gate checks the ring is closed, one gate per
+  side on a road, streets inside and farms outside. `townHalfExtentM` now includes the
+  wall ring, so site selection keeps room for it.
+- **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
+  Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
+  (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are
+  gone from the bakery and workshop patterns. Those models map to the three wall kinds
+  instead (`FORTIFICATION_KINDS`). `scale-fit` and `scale-report` size a wall model to
+  its piece (`kindRoom`: length, thickness and height from the fortification rules)
+  rather than to a parcel.
+- **Village-wildlife centres** ignore wall pieces when measuring a settlement.
+
+Still to do: districts walled off from each other inside the town, roads spawned as
+surfaces, and a curved wall that follows the ground.

@@ -60,7 +60,34 @@ export const RequiredSchema = z.strictObject({
   perPopulation: z.number().int().positive().optional(),
   min: z.number().int().min(0).optional(),
   max: z.number().int().min(0).optional(),
+  /** At most one per this many people (rounded up): a ceiling that grows with the town, so a tavern is not on every street. */
+  maxPerPopulation: z.number().int().positive().optional(),
 });
+
+/**
+ * The town wall (spec §16): a ring around the streets with a gate where each main road leaves and a tower at
+ * the corners and every `towerSpacingMm`. Farms stand outside it, along the roads out of the gates. Lengths are
+ * millimetres at scale 1 (they follow the building factor like parcels); heights are metres.
+ */
+export const FortificationSchema = z.strictObject({
+  /** Towns of at least this many households are walled; smaller ones are open villages (no wall, same farms). */
+  minHouseholds: z.number().int().min(0),
+  /** Clear ground between the outermost street and the wall's inner face. */
+  setbackMm: z.number().int().min(0),
+  thicknessMm: z.number().int().positive(),
+  heightM: z.number().positive(),
+  /** The longest wall piece: one wall model's run (a wall is pieces, so each can be one model). */
+  pieceMm: z.number().int().positive(),
+  /** A tower's side (towers are square). */
+  towerMm: z.number().int().positive(),
+  towerHeightM: z.number().positive(),
+  /** The most wall between two towers. */
+  towerSpacingMm: z.number().int().positive(),
+  gateHeightM: z.number().positive(),
+});
+export type Fortification = z.infer<typeof FortificationSchema>;
+
+export const DEFAULT_FORTIFICATION: Fortification = { minHouseholds: 45, setbackMm: 4000, thicknessMm: 2000, heightM: 6, pieceMm: 6000, towerMm: 5000, towerHeightM: 9, towerSpacingMm: 40000, gateHeightM: 8 };
 
 export const SettlementRulesSchema = z.strictObject({
   version: z.string().min(1),
@@ -81,8 +108,12 @@ export const SettlementRulesSchema = z.strictObject({
     streetWidthMm: z.number().int().positive(),
     /** Parcels the town has per household (permille, rounded up), for housing and everything else. */
     parcelsPerHouseholdPermille: z.number().int().min(1000),
+    /** Farm plots outside the town: enough to feed everyone, times this (permille), so granaries and mills fit too. */
+    farmSurplusPermille: z.number().int().min(1000).default(1250),
   }),
   architecture: ArchitectureSchema,
+  /** The town wall; a rules file without one gets DEFAULT_FORTIFICATION. */
+  fortification: FortificationSchema.default(DEFAULT_FORTIFICATION),
   archetypes: z.record(z.string(), ArchetypeSchema),
   required: z.record(z.string(), RequiredSchema),
   /** Pairs that may never stand on neighbouring parcels. */
@@ -122,7 +153,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/2",
+  version: "settlement-rules/3",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -130,31 +161,32 @@ export const BUILTIN_RULES: SettlementRules = {
     classShares: { peasant: 610, artisan: 230, merchant: 100, clergy: 25, guard: 25, noble: 10 },
   },
   districtShares: { housing: 560, agriculture: 165, shopping: 110, manufacturing: 165 },
-  layout: { block: [4, 2], parcelSizeMm: [12000, 20000], streetWidthMm: 6000, parcelsPerHouseholdPermille: 1550 },
+  layout: { block: [4, 2], parcelSizeMm: [12000, 20000], streetWidthMm: 6000, parcelsPerHouseholdPermille: 1550, farmSurplusPermille: 1250 },
   architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },
+  fortification: DEFAULT_FORTIFICATION,
   archetypes: {
     house: { kinds: ["housing"], weight: 10, households: 1, workers: 0, feeds: 0, floors: 2, role: "", shop: false },
     artisan_house: { kinds: ["housing", "manufacturing"], weight: 3, households: 1, workers: 1, feeds: 0, floors: 2, role: "artisan", shop: false },
     farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, floors: 2, role: "farmer", shop: false },
     granary: { kinds: ["agriculture", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 6, role: "granary keeper", shop: false },
     mill: { kinds: ["agriculture", "manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 3, storeyM: 3.5, role: "miller", shop: false },
-    bakery: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 2, role: "baker", shop: true },
+    bakery: { kinds: ["shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 2, role: "baker", shop: true },
     smithy: { kinds: ["manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 4, role: "blacksmith", shop: true },
     workshop: { kinds: ["manufacturing"], weight: 4, households: 0, workers: 2, feeds: 0, floors: 2, role: "craftsman", shop: true },
     market: { kinds: ["shopping"], weight: 6, households: 0, workers: 1, feeds: 0, floors: 1, role: "trader", shop: true },
-    tavern: { kinds: ["shopping", "housing"], weight: 2, households: 0, workers: 2, feeds: 0, floors: 3, role: "innkeeper", shop: true },
+    tavern: { kinds: ["shopping"], weight: 2, households: 0, workers: 2, feeds: 0, floors: 3, role: "innkeeper", shop: true },
     chapel: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 8, role: "priest", shop: false },
     warehouse: { kinds: ["manufacturing", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 5, role: "porter", shop: false },
   },
   required: {
     market: { min: 1, perPopulation: 400 },
-    chapel: { min: 1, max: 3, perPopulation: 600 },
-    granary: { min: 1, perPopulation: 500 },
-    mill: { min: 1, perPopulation: 600 },
-    bakery: { min: 1, perPopulation: 250 },
-    smithy: { min: 1, perPopulation: 400 },
-    tavern: { min: 1, perPopulation: 300 },
-    warehouse: { min: 1, perPopulation: 500 },
+    chapel: { min: 1, max: 3, perPopulation: 600, maxPerPopulation: 250 },
+    granary: { min: 1, perPopulation: 500, maxPerPopulation: 200 },
+    mill: { min: 1, perPopulation: 600, maxPerPopulation: 300 },
+    bakery: { min: 1, perPopulation: 250, maxPerPopulation: 120 },
+    smithy: { min: 1, perPopulation: 400, maxPerPopulation: 150 },
+    tavern: { min: 1, perPopulation: 300, maxPerPopulation: 150 },
+    warehouse: { min: 1, perPopulation: 500, maxPerPopulation: 150 },
     workshop: { perPopulation: 150 },
   },
   forbiddenAdjacent: [

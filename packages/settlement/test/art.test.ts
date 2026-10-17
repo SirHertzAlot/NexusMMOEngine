@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildArtMap, DEFAULT_DRESSING_PATTERNS, type CatalogModel } from "../src/index.js";
+import { buildArtMap, DEFAULT_ART_PATTERNS, DEFAULT_DRESSING_PATTERNS, FORTIFICATION_KINDS, FORTIFICATION_NAME, type CatalogModel } from "../src/index.js";
 
 const models: CatalogModel[] = [
   { id: "pack/SM_Bld_Preset_House_02_Optimized", name: "SM_Bld_Preset_House_02_Optimized", skinned: false },
@@ -33,6 +33,21 @@ describe("buildArtMap", () => {
     assert.deepEqual(map.farm_crops, ["farm/Field_of_wheat"]);
     assert.deepEqual(map.farm_yard, ["farm/Barn", "farm/Picket_fence"]);
     assert.equal("camp_props" in map, false);
+  });
+
+  it("never gives a building a wall, gate, tower or archway model, and gives those to the wall's kinds", () => {
+    const named = (n: string): CatalogModel => ({ id: `pack/${n}`, name: n, skinned: false });
+    const pack = ["SM_Bld_Preset_House_02_Optimized", "SM_Bld_Preset_House_Archway_01_Optimized", "SM_Bld_Preset_House_Wall_02_Optimized", "SM_Bld_Castle_Wall_01", "SM_Bld_Castle_Tower_01", "SM_Bld_Castle_Gate_01", "SM_Prop_Market_Stall_01"].map(named);
+    const map = buildArtMap(pack, { ...DEFAULT_ART_PATTERNS, house: ["Preset_House_"], market: ["Stall"] });
+    assert.deepEqual(map.house, ["pack/SM_Bld_Preset_House_02_Optimized"], "the archway and the wall piece are not homes, though their names match");
+    assert.deepEqual(map.market, ["pack/SM_Prop_Market_Stall_01"], "a stall is not a wall");
+    assert.deepEqual(map.town_wall, ["pack/SM_Bld_Castle_Wall_01"]);
+    assert.deepEqual(map.wall_tower, ["pack/SM_Bld_Castle_Tower_01"]);
+    assert.deepEqual(map.town_gate, ["pack/SM_Bld_Castle_Gate_01"]);
+    for (const kind of FORTIFICATION_KINDS) assert.ok(kind in DEFAULT_ART_PATTERNS, `${kind} has default patterns`);
+    for (const [kind, ids] of Object.entries(buildArtMap(pack, DEFAULT_ART_PATTERNS))) {
+      if (!(FORTIFICATION_KINDS as readonly string[]).includes(kind)) for (const id of ids) assert.ok(!FORTIFICATION_NAME.test(id), `${kind} took ${id}`);
+    }
   });
 
   it("is sorted and so the same every time", () => {

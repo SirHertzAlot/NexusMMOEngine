@@ -26,5 +26,5 @@ const models = (JSON.parse(readFileSync(fromUser(o.catalog ?? paths.catalog), "u
 const rows = scaleReport(models, DEFAULT_ART_PATTERNS, doc as ScaleDoc, BUILTIN_RULES);
 console.log(formatScaleReport(rows));
 const bad = rows.filter((r) => r.overflow).length;
-console.log(`[scale-report] ${rows.length} models, ${bad} overflow their parcel`);
+console.log(`[scale-report] ${rows.length} models, ${bad} overflow their room`);
 process.exit(bad ? 1 : 0);

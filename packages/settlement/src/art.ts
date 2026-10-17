@@ -14,20 +14,33 @@ export interface CatalogModel {
   size?: [number, number, number];
 }
 
+/**
+ * The kinds that make up a town wall (layout's WallPieceKind). Only these may take a model whose name says it is
+ * fortification: a wall, gate, tower or archway is never a home or a shop.
+ */
+export const FORTIFICATION_KINDS = ["town_wall", "wall_tower", "town_gate"] as const;
+
+/** A model name that is part of a wall or a gate, whatever pattern it also matches. */
+export const FORTIFICATION_NAME = /(Wall|Gate|Gatehouse|Arch(way)?|Tower|Portcullis|Palisade|Rampart|Battlement)(_|$)/i;
+
 /** Name patterns per structure kind, for the packs' whole-building presets. A game replaces them with `--art-patterns`. */
 export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   house: ["Preset_House_0[2-9](_[A-C])?_Optimized$", "Preset_Hut_\[0-9]+_Optimized$"],
   artisan_house: ["Preset_House_(01_A|10)_Optimized$", "Preset_House_0[4-6]_Optimized$"],
-  farmstead: ["Preset_(Hut|Shelter|Stables)_\[0-9]+_Optimized$"],
+  farmstead: ["Preset_(Hut|Shelter|Stables)_\[0-9]+_Optimized$", "Preset_Farm(house)?_\[0-9]+_Optimized$"],
   granary: ["Preset_Shelter_\[0-9]+_Optimized$"],
   mill: ["Preset_House_Windmill_\[0-9]+_Optimized$"],
-  bakery: ["Preset_House_Archway_0[12]_Optimized$"],
+  bakery: ["Preset_Bakery_\[0-9]+_Optimized$", "Preset_House_0[4-6]_Optimized$"],
   smithy: ["Preset_Blacksmith_\[0-9]+_Optimized$"],
-  workshop: ["Preset_House_01_A_Optimized$", "Preset_House_Archway_02_Optimized$"],
+  workshop: ["Preset_Workshop_\[0-9]+_Optimized$", "Preset_House_01_A_Optimized$"],
   market: ["Prop_Market_Stall_\[0-9]+$"],
   tavern: ["Preset_Tavern_\[0-9]+_Optimized$"],
   chapel: ["Preset_Church_\[0-9]+_[AB]_Optimized$"],
   warehouse: ["Preset_Stables_\[0-9]+_Optimized$", "Preset_House_04_Optimized$"],
+  // The town wall: straight wall runs, towers, and the gate the road passes through.
+  town_wall: ["(Castle|Town|City|Stone|Wood(en)?)_Wall(_Straight|_Long|_Mid)?_\[0-9]+$", "_Wall_(Straight|Long|Mid)_\[0-9]+$", "Palisade(_Wall|_Straight)?_\[0-9]+$"],
+  wall_tower: ["(Castle|Wall|Town|Guard|Watch)_Tower(_Round|_Square)?_\[0-9]+$", "Palisade_Tower_\[0-9]+$"],
+  town_gate: ["(Castle|Town|City|Wall|Palisade)_Gate(house)?(_Large|_Small)?_\[0-9]+$", "_Gatehouse_\[0-9]+$"],
 };
 
 /**
@@ -43,13 +56,18 @@ export const DEFAULT_DRESSING_PATTERNS: Record<string, string[]> = {
   camp_props: ["^(anvil|campfire|lantern|candelabra|tent|ladder|flag|gravestone|fountain)$"],
 };
 
-/** Model ids per kind whose names match any of the kind's patterns (`flags` "i" for case-insensitive), sorted; never skinned models or glass panes. A kind with no match is left out. */
+/**
+ * Model ids per kind whose names match any of the kind's patterns (`flags` "i" for case-insensitive), sorted; never
+ * skinned models or glass panes, and only a wall kind (FORTIFICATION_KINDS) takes a wall, gate or tower model
+ * (FORTIFICATION_NAME). A kind with no match is left out.
+ */
 export function buildArtMap(models: readonly CatalogModel[], patterns: Record<string, string[]>, flags = ""): Record<string, string[]> {
   const usable = models.filter((m) => !m.skinned && !m.name.includes("Glass"));
+  const walls = new Set<string>(FORTIFICATION_KINDS);
   const map: Record<string, string[]> = {};
   for (const [kind, ps] of Object.entries(patterns)) {
     const res = ps.map((p) => new RegExp(p, flags));
-    const ids = usable.filter((m) => res.some((r) => r.test(m.name))).map((m) => m.id).sort();
+    const ids = usable.filter((m) => res.some((r) => r.test(m.name)) && (walls.has(kind) || !FORTIFICATION_NAME.test(m.name))).map((m) => m.id).sort();
     if (ids.length > 0) map[kind] = ids;
   }
   return map;

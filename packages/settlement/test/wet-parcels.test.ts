@@ -32,7 +32,8 @@ describe("settlements beside water", () => {
     assert.ok(r.ok);
     const scene = settlementScene(r.manifest, BUILTIN_RULES, { origin });
     const kids = scene.nodes[0]!.children!;
-    assert.equal(kids.length, r.manifest.structures.length);
+    assert.equal(kids.length, r.manifest.structures.length + r.manifest.fortifications.length, "a node per building and per wall piece left standing");
+    assert.ok(r.manifest.wallOpenToWater > 0, "the wall is not built in the sea: it is open to the water");
     for (const n of kids) {
       const [px, , pz] = n.transform!.position!;
       const s = n.components!.Structure!;
