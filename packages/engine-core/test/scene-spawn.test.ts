@@ -296,6 +296,17 @@ describe("structures in a scene", () => {
     const r = spawnScene(doc([node("smithy-6", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, deps);
     assert.equal(r.spawned[0].entities.length, 1);
   });
+
+  it("makes a Structure with a Collider of shape none walk-through (a town gate), with no foundation slab", () => {
+    const { deps } = setup();
+    const gate = { id: "gate-1", transform: { position: [10, 0, 20] }, components: { Structure: { kind: "town_gate", width: 8, depth: 2, height: 8 }, Collider: { shape: "none" } } };
+    const r = spawnScene(doc([gate]) as never, { ...deps, groundHeightAt: (x: number) => 0.1 * x });
+    assert.equal(r.spawned[0]!.what, "structure town_gate");
+    assert.equal(r.spawned[0]!.entities.length, 1, "no slab under the road");
+    const e = r.spawned[0]!.entities[0]!;
+    assert.equal(C.AssetRef.assetHash[e], fnv1a32("structure:town_gate"));
+    assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, e), "no body: nothing to bump into");
+  });
 });
 
 describe("sea level in a scene", () => {

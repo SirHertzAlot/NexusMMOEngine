@@ -14,7 +14,8 @@
  *
  * Node resolution: an `ItemSpawn` component puts an item on the ground, a
  * `QuestGiver` moves the quest giver's post, a `Structure` becomes a static box on the
- * ground carrying the kind's asset hash (settlement buildings); otherwise a `Spawner` component's
+ * ground carrying the kind's asset hash (settlement buildings; with a `Collider` of shape
+ * `none` it is walk-through, like a town gate, and gets no foundation slab); otherwise a `Spawner` component's
  * `creature`, else the node's `prefab`; a `Collider` replaces a prop's collision (shape `none`
  * makes it walk-through) or, on a node nothing else spawns, is a static box/sphere body (the whole string, then its last path
  * segment, so "camps/goblin" finds the goblin), else the `Spawner`'s `species`
@@ -194,7 +195,9 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         const asset = str(structure.asset) || `structure:${kind}`;
         // A named model that the catalog knows sizes the body (bounds x scale); otherwise the authored footprint.
         const modelSized = str(structure.asset) !== "" && deps.bounds?.(asset) !== undefined;
-        const collision = { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
+        // A Collider with shape "none" makes it walk-through (a town gate: the road passes under it).
+        const walkThrough = node.components?.Collider?.shape === "none";
+        const collision = walkThrough ? { shape: "none" as const, motion: "static" as const } : { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
         // Ground under the whole footprint, not just its centre: the floor stands on the highest point
         // (nothing sinks into a slope), the body reaches the lowest, and a foundation slab fills the gap.
         const f = deps.scale?.("building", asset) ?? 1;
@@ -235,7 +238,7 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         const drop = floor - low;
         const building = spawnBody(deps, node.id, w, floor, asset, collision, "building");
         const entities = [building];
-        if (drop > 0) {
+        if (drop > 0 && !walkThrough) {
           // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).
           if (BodyConfig.shapeKind[building] === ShapeKind.Box) BodyConfig.halfY[building] = Math.max(BodyConfig.halfY[building]!, drop);
           // The slab: the building's footprint, from the lowest ground up to the floor.

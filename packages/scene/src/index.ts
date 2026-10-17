@@ -99,6 +99,23 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     width: { type: "number", default: 4, min: 0.1 },
     depth: { type: "number", default: 4, min: 0.1 },
     height: { type: "number", default: 4, min: 0.1 },
+    /** Doors and openings people use (a market is open on every side, a church has one or two). */
+    entrances: { type: "number", default: 1, min: 1 },
+    /** People it holds at once. */
+    capacity: { type: "number", default: 0, min: 0 },
+  }),
+  /**
+   * Something players gather (a tree stand, an ore vein, a fishing spot): the crafting material it gives and its
+   * tier, the skill that gathers it, the gathers it holds, and the hours it takes to come back once worked out
+   * (0: never). `town` is the settlement whose stock it is.
+   */
+  ResourceNode: component("Resource node", {
+    material: { type: "string", default: "" },
+    tier: { type: "number", default: 1, min: 1, max: 5 },
+    skill: { type: "string", default: "" },
+    stock: { type: "number", default: 1, min: 0 },
+    regrowHours: { type: "number", default: 0, min: 0 },
+    town: { type: "string", default: "" },
   }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },

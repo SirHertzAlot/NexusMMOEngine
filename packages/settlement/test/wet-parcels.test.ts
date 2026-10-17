@@ -32,7 +32,12 @@ describe("settlements beside water", () => {
     assert.ok(r.ok);
     const scene = settlementScene(r.manifest, BUILTIN_RULES, { origin });
     const kids = scene.nodes[0]!.children!;
-    assert.equal(kids.length, r.manifest.structures.length);
+    const steps = r.manifest.props.filter((p) => p.kind === "stairs").reduce((a, p) => a + p.sizeMm[1] / BUILTIN_RULES.props!.terraces.stepTreadMm, 0);
+    const props = r.manifest.props.filter((p) => p.kind !== "stairs").length + steps;
+    const paved = r.manifest.roads.edges.filter((e) => e.surface === "paved").length;
+    assert.equal(kids.length, r.manifest.structures.length + r.manifest.fortifications.length + (r.manifest.square ? 2 : 0) + r.manifest.parcels.filter((p) => p.holding).length + paved + props, "a node per building and per wall piece left standing, the square, the farms' fields, the paved streets and the props (a node per step)");
+    assert.ok(r.manifest.roads.edges.some((e) => e.surface === "dirt" && e.roadClass !== "country_road"), "a street running into the water is left unpaved");
+    assert.ok(r.manifest.wallOpenToWater > 0, "the wall is not built in the sea: it is open to the water");
     for (const n of kids) {
       const [px, , pz] = n.transform!.position!;
       const s = n.components!.Structure!;
@@ -53,7 +58,7 @@ describe("settlements beside water", () => {
   });
 
   it("fails with a clear message when the site is too wet to house and serve the town", () => {
-    const wetEast = generateSettlement({ ...base, site: { origin, dry: (x) => x < origin[0] - 30 } });
+    const wetEast = generateSettlement({ ...base, site: { origin, dry: (x) => x < origin[0] - 400 } });
     assert.equal(wetEast.ok, false);
     if (!wetEast.ok) {
       assert.equal(wetEast.error.stage, "structures");

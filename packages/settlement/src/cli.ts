@@ -17,6 +17,8 @@
  *                      and place the town at its best site (the engine must be built;
  *                      the survey takes several seconds)
  *   --site <rank>      with --world, which site, best first (default 1)
+ *   --access <a>       how the town is reached: port | river | road | remote (caps its size and sets its
+ *                      density; with --world, read off the site unless given)
  *   --catalog <file>   with --scene, an art catalog (assets/catalog.json): each structure
  *                      names a matching model; the scene stays a box where none matches.
  *                      The names go into the scene file, so keep it out of git (the
@@ -30,17 +32,19 @@ import { fromUser, settlementPaths } from "./paths.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { buildArtMap, DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
+import { buildArtMap, DEFAULT_ART_PATTERNS, DEFAULT_PROP_PATTERNS, type CatalogModel } from "./art.js";
 import { bakeSettlement } from "./bake.js";
 import { VERBOSITY, type Verbosity } from "./events.js";
-import { BUILTIN_RULES, loadRules, type SettlementRules } from "./rules.js";
+import { ACCESS, BUILTIN_RULES, loadRules, type Access, type SettlementRules } from "./rules.js";
+import { siteAccess } from "./setting.js";
+import type { Land } from "./industry.js";
 import { townHalfExtentM } from "./layout.js";
 import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" }, access: { type: "string" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
@@ -48,8 +52,12 @@ async function main(): Promise<void> {
   const paths = settlementPaths();
   const out = o.out ? fromUser(o.out) : paths.settlements;
   let origin = (o.origin ?? "0,0").split(",").map(Number);
+  if (o.access && !ACCESS.includes(o.access as Access)) throw new Error(`--access must be one of ${ACCESS.join(", ")}`);
+  let access = o.access as Access | undefined;
   /** The world's dryness test at a point (with --world): parcels that are not dry are dropped from the town. */
   let dry: ((x: number, z: number) => boolean) | undefined;
+  /** The land around the site (with --world): the town's industry reads it. */
+  let land: Land | undefined;
   if (o.world) {
     const rules = o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES;
     const households = Math.round((Number(o.population ?? 600) * 10) / rules.demographics.householdSizeX10);
@@ -60,14 +68,16 @@ async function main(): Promise<void> {
     const site = found.sites[Number(o.site ?? 1) - 1];
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
     origin = [site.x, site.z];
-    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) pressure ${site.pressurePermille}, water ${site.waterDistanceM} m, elevation ${site.elevationM} m, relief ${site.reliefM} m over a ${Math.round(2 * extent)} m town, ${site.biome}`);
+    access ??= siteAccess(site, rules);
+    land = { biomes: site.biomes, waterKind: site.waterKind, shoreM: site.shoreM };
+    console.log(`  [site] ${o.site ?? 1}: (${Math.round(site.x)}, ${Math.round(site.z)}) ${access}, pressure ${site.pressurePermille}, ${site.waterKind} ${site.waterDistanceM} m, walk ${site.walkM} m, elevation ${site.elevationM} m, relief ${site.reliefM} m over a ${Math.round(2 * extent)} m town, ${site.biome}; land ${Object.entries(site.biomes).map(([b, n]) => `${b} ${n}`).join(", ")}`);
   }
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   let art: Record<string, string[]> | undefined;
   if (o.catalog) {
     const models = (JSON.parse(readFileSync(fromUser(o.catalog), "utf8")) as { models: CatalogModel[] }).models;
-    art = buildArtMap(models, DEFAULT_ART_PATTERNS);
-    console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
+    art = { ...buildArtMap(models, DEFAULT_ART_PATTERNS), ...buildArtMap(models, DEFAULT_PROP_PATTERNS, "i") };
+    console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length + Object.keys(DEFAULT_PROP_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
   }
   let scale = 1;
   if (o.scale) {
@@ -78,7 +88,7 @@ async function main(): Promise<void> {
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : BUILTIN_RULES, scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
     out,
     o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
@@ -89,7 +99,7 @@ async function main(): Promise<void> {
 }
 
 /** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is land the safe floor (structure margin plus detail noise) above the sea, and no lake or river. */
-async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
+export async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
   const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
   const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { biomes: { id: string }[] } };

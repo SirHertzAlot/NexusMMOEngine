@@ -41,6 +41,7 @@ describe("a baked town at scale", () => {
       const scene = settlementScene(m, BUILTIN_RULES, { origin: [0, 0] });
       for (const n of scene.nodes[0]!.children!) {
         const c = n.components!.Structure!;
+        if (!(c.kind as string in BUILTIN_RULES.archetypes)) continue; // wall pieces have their own sizes
         assert.ok((c.width as number) * f + 2 <= (pw * f) / 1000 + 1e-9);
         assert.ok((c.depth as number) * f + 2 <= (pd * f) / 1000 + 1e-9);
         assert.equal(c.height, buildingHeightM(BUILTIN_RULES.archetypes[c.kind as string]!, BUILTIN_RULES.architecture));
@@ -55,11 +56,11 @@ describe("scaleReport", () => {
     { id: "p/Small_House", name: "Small_House", skinned: false, size: [8, 6, 8] },
   ];
   const doc: ScaleDoc = { ...DEFAULT_SCALE, categories: { building: 0.6 } };
-  it("gives before, after and the parcel, and flags overflow", () => {
+  it("gives before, after and the room (the parcel less the margin), and flags overflow", () => {
     const rows = scaleReport(models, { house: ["_House$"] }, doc, BUILTIN_RULES);
     const big = rows.find((r) => r.model === "p/Big_House")!;
     assert.deepEqual(big.after, [18, 4.8, 6]);
-    assert.deepEqual(big.parcel, [7.2, 12]);
+    assert.deepEqual(big.room, [7.2 - 2, 12 - 2]);
     assert.equal(big.overflow, true);
     assert.equal(rows.find((r) => r.model === "p/Small_House")!.overflow, false);
   });
