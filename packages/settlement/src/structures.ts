@@ -48,8 +48,10 @@ export function placeStructures(layout: Layout, demand: Demand, rules: Settlemen
     ...[...posts].flatMap(([id, n]) => (index.has(id) ? [{ options: [index.get(id)!], min: n, max: n }] : [])),
   ];
   // Where an archetype may stand: its districts, a plot open to enough streets, a housing plot of its wealth band.
+  // Open ground (parks, empty lots) stands only where the layout reserved it, so never on an unreserved plot.
+  const reservedOnly = new Set([...posts.keys(), rules.openGround?.park, rules.openGround?.lot]);
   const allows = (a: (typeof arch)[number], id: string, p: Layout["parcels"][number]): boolean =>
-    a.kinds.includes(p.kind) && !posts.has(id) && (a.minAccess ?? 1) <= p.access && (!a.wealth || (p.wealth !== undefined && a.wealth.includes(p.wealth)));
+    a.kinds.includes(p.kind) && !reservedOnly.has(id) && (a.minAccess ?? 1) <= p.access && (!a.wealth || (p.wealth !== undefined && a.wealth.includes(p.wealth)));
   const cost = (f: (a: (typeof arch)[number]) => number): number[] => arch.map(f);
 
   const problem: WfcProblem = {

@@ -58,6 +58,8 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   watch_hq: ["Preset_(Watch_?House|Guard_?House|Barracks)_\[0-9]+_Optimized$"],
   gaol: ["Preset_(Gaol|Jail|Prison|Dungeon)_\[0-9]+_Optimized$"],
   garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$"],
+  park: ["(Prop|Preset)_(Park|Grove|Tree_?Cluster|Fountain)(_\[0-9]+)?(_Optimized)?$"],
+  empty_lot: ["(Prop|Preset)_(Fence|Rubble|Ruin|Empty_?Lot)(_\[0-9]+)?(_Optimized)?$"],
   // A master's workplace looks like the trade's own.
   master_farmstead: ["Preset_Farm(house)?_\[0-9]+_Optimized$", "Preset_(Hut|Shelter|Stables)_\[0-9]+_Optimized$"],
   master_smithy: ["Preset_Blacksmith_\[0-9]+_Optimized$"],

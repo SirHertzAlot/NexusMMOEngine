@@ -44,6 +44,7 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
   const nodes = manifest.roads.nodes;
   const { x: cx, z: cz } = townCentreMm(nodes);
   const parcels = new Map(manifest.parcels.map((p) => [p.id, p]));
+  const openGround = new Set([rules.openGround?.park, rules.openGround?.lot]);
   const asset = (id: string, kind: string): string => {
     const models = opts.art?.[kind];
     return models ? models[pick(id, models.length)]! : "";
@@ -56,7 +57,11 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       id: s.id,
       name: s.archetype,
       transform: { position: [(p.center.x - cx) / 1000, 0, (p.center.z - cz) / 1000], rotation: [0, p.facing, 0] },
-      components: { Structure: { kind: s.archetype, asset: asset(s.id, s.archetype), width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: buildingHeightM(a, rules.architecture), entrances: a.entrances ?? 1, capacity: a.capacity ?? 0 } },
+      components: {
+        Structure: { kind: s.archetype, asset: asset(s.id, s.archetype), width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: buildingHeightM(a, rules.architecture), entrances: a.entrances ?? 1, capacity: a.capacity ?? 0 },
+        // Parks and empty lots are open ground: walked through, not round.
+        ...(openGround.has(s.archetype) ? { Collider: { shape: "none" } } : {}),
+      },
     };
   });
   // A farm's fields: flat and walk-through, the farmstead standing in its yard at the road edge.

@@ -52,9 +52,18 @@ describe("selectSites", () => {
     }
   });
 
-  it("prefers land near water, but not on the bank", () => {
+  it("prefers land near water: on it or in easy reach", () => {
     const best = sites[0]!;
-    assert.ok(best.waterDistanceM >= BUILTIN_RULES.sites.waterRangeM[0] && best.waterDistanceM <= BUILTIN_RULES.sites.waterRangeM[1] * 2, `water ${best.waterDistanceM} m`);
+    assert.ok(best.shoreM >= 0 && best.shoreM <= BUILTIN_RULES.sites.waterRangeM[1], `water ${best.shoreM} m from the town`);
+  });
+
+  it("prefers land near forest, all else equal", () => {
+    const wooded = land();
+    wooded.biomeIds = [...wooded.biomeIds, "forest"];
+    for (let z = 30; z < 34; z++) for (let x = 22; x < 26; x++) wooded.biome[idx(x, z)] = 3;
+    const best = selectSites(wooded, BUILTIN_RULES.sites, 6)[0]!;
+    assert.ok(best.resourcePermille > 0, "the best site has the forest within reach");
+    assert.ok(best.pressurePermille > sites[0]!.pressurePermille, "and is worth more than the best without it");
   });
 
   it("says which water is nearest and how far a site is to walk, and so how the town is reached", () => {
@@ -63,14 +72,16 @@ describe("selectSites", () => {
       // The river is column 10, the sea from column 36.
       assert.equal(s.waterKind, Math.abs(cx - 10) <= 36 - cx ? "river" : "sea", `site at column ${cx}`);
       assert.ok(s.walkM >= 0, "walkable");
+      assert.equal(s.shoreM, Math.max(0, s.waterDistanceM), "with no town extent, the shore is the water distance");
     }
-    const at = { waterDistanceM: 300, walkM: 200, pressurePermille: 800 };
-    assert.equal(siteAccess({ ...at, waterKind: "sea" }, BUILTIN_RULES), "port");
-    assert.equal(siteAccess({ ...at, waterKind: "lake" }, BUILTIN_RULES), "river");
-    assert.equal(siteAccess({ ...at, waterKind: "none", waterDistanceM: -1 }, BUILTIN_RULES), "road");
-    assert.equal(siteAccess({ ...at, waterKind: "sea", waterDistanceM: 5000 }, BUILTIN_RULES), "road", "the sea out of reach");
-    assert.equal(siteAccess({ ...at, waterKind: "none", walkM: 5000 }, BUILTIN_RULES), "remote", "a long walk from anywhere");
-    assert.equal(siteAccess({ ...at, waterKind: "none", pressurePermille: 100 }, BUILTIN_RULES), "remote", "poor land");
+    const at = { shoreM: 30, walkM: 200, pressurePermille: 800 };
+    assert.equal(siteAccess({ ...at, waterKind: "sea" }, BUILTIN_RULES), "port", "on the sea");
+    assert.equal(siteAccess({ ...at, waterKind: "river" }, BUILTIN_RULES), "port", "on a river");
+    assert.equal(siteAccess({ ...at, waterKind: "sea", shoreM: 300 }, BUILTIN_RULES), "road", "the sea in sight but not on it: no port");
+    assert.equal(siteAccess({ ...at, waterKind: "lake", shoreM: 300 }, BUILTIN_RULES), "river");
+    assert.equal(siteAccess({ ...at, waterKind: "none", shoreM: -1 }, BUILTIN_RULES), "road");
+    assert.equal(siteAccess({ ...at, waterKind: "none", shoreM: -1, walkM: 5000 }, BUILTIN_RULES), "remote", "a long walk from anywhere");
+    assert.equal(siteAccess({ ...at, waterKind: "none", shoreM: -1, pressurePermille: 100 }, BUILTIN_RULES), "remote", "poor land");
   });
 
   it("returns the best first, keeps the spacing, and never more than asked", () => {

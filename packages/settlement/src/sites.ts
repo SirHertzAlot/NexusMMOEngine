@@ -47,6 +47,10 @@ export interface Site {
   reliefM: number;
   /** The nearest water's kind: the sea (water at the sea's level), a lake (water above it), a river, or none. */
   waterKind: "sea" | "lake" | "river" | "none";
+  /** Water from the edge of the town's footprint, metres (the water distance less the town's half extent); -1 with no water. */
+  shoreM: number;
+  /** The best resource biome (rules.sites.resourcePermille) within reach of the footprint, 0 to 1000. */
+  resourcePermille: number;
   /** The walk from the spawn (else the largest connected land) to the site over walkable cells, metres; -1 when not walkable. */
   walkM: number;
 }
@@ -205,7 +209,10 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
   const walked = walkable(t, rules.walkSlopeDeg);
   const walk = rules.requireReachable ? walked.walk : undefined;
   const fertility = (i: number): number => rules.fertilityPermille[t.biomeIds[t.biome[i]!]!] ?? 0;
-  const [near, far] = rules.waterRangeM;
+  const far = rules.waterRangeM[1];
+  // Resources near the footprint: the best resource biome within its reach plus resourceRangeM.
+  const resource = new Float32Array(width * depth);
+  for (let i = 0; i < resource.length; i++) resource[i] = (rules.resourcePermille ?? {})[t.biomeIds[t.biome[i]!]!] ?? 0;
   const reach = Math.ceil(extentM / cell);
   const hi = windowExtreme(t.height, width, depth, reach, Math.max);
   const lo = windowExtreme(t.height, width, depth, reach, Math.min);
@@ -223,6 +230,7 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
     else if (t.river[i]) surface[i] = Math.max(sea, t.height[i]!);
   }
   const nearSurface = windowExtreme(surface, width, depth, reach + 1, Math.max);
+  const resourceNear = windowExtreme(resource, width, depth, Math.ceil((extentM + (rules.resourceRangeM ?? 600)) / cell), Math.max);
   const peaks = windowExtreme(t.height, width, depth, Math.ceil(rules.mountainClearanceM / cell), Math.max);
   // The footprint may rise this far above the sea: the stricter of the lowland band and the absolute cap.
   const ceilingM = Math.min(rules.lowlandBandM, rules.maxElevationM - sea);
@@ -248,13 +256,16 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
       if (wetNear[i]! > 0 || hi[i]! - sea > ceilingM || relief > rules.maxReliefM || peaks[i]! > rules.ridgeHeightM) continue;
       const elevFactor = 1000 - Math.round(((hi[i]! - sea) * 500) / ceilingM);
       const reliefFactor = 1000 - Math.round((relief * 500) / rules.maxReliefM);
+      // Water is measured from the footprint's edge: against it or in easy reach is best, a long walk worth less.
       const waterM = dist[i]! < 0 ? Infinity : dist[i]! * cell;
-      const waterFactor = waterM < near ? 400 : waterM <= far ? 1000 : Math.max(0, Math.round(1000 - ((waterM - far) * 1000) / (3 * far)));
+      const shoreM = Math.max(0, waterM - extentM);
+      const waterFactor = shoreM <= far ? 1000 : Math.max(0, Math.round(1000 - ((shoreM - far) * 1000) / (3 * far)));
+      const resourceFactor = 700 + Math.round((resourceNear[i]! * 300) / 1000);
       let fert = 0;
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) fert += fertility(i + dz * width + dx);
-      const pressure = Math.round((slopeFactor * waterFactor * Math.round(fert / 9) * elevFactor * reliefFactor) / 1e12);
+      const pressure = Math.round((((slopeFactor * waterFactor * Math.round(fert / 9) * elevFactor) / 1e9) * reliefFactor * resourceFactor) / 1e6);
       if (pressure < rules.minPressurePermille) continue;
-      candidates.push({ cx, cz, x: originX + cx * cell, z: originZ + cz * cell, pressurePermille: pressure, waterDistanceM: Number.isFinite(waterM) ? waterM : -1, slopePermille: slope, elevationM: Math.round(t.height[i]!), reliefM: Math.round(relief), biome: t.biomeIds[t.biome[i]!]!, waterKind: dist[i]! < 0 ? "none" : WATER_KINDS[waterKindOf[i]!]!, walkM: Math.round(walked.walkM[i]!) });
+      candidates.push({ cx, cz, x: originX + cx * cell, z: originZ + cz * cell, pressurePermille: pressure, waterDistanceM: Number.isFinite(waterM) ? waterM : -1, shoreM: Number.isFinite(waterM) ? Math.round(shoreM) : -1, resourcePermille: resourceNear[i]!, slopePermille: slope, elevationM: Math.round(t.height[i]!), reliefM: Math.round(relief), biome: t.biomeIds[t.biome[i]!]!, waterKind: dist[i]! < 0 ? "none" : WATER_KINDS[waterKindOf[i]!]!, walkM: Math.round(walked.walkM[i]!) });
     }
   }
   candidates.sort((a, b) => b.pressurePermille - a.pressurePermille || a.cz - b.cz || a.cx - b.cx);

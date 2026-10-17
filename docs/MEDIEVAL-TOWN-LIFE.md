@@ -134,6 +134,15 @@ apprentices beside them, so players can seek them out to learn.
   years. They settle in the town, which grows around that one discipline in the grand
   master's honour.
 
+## Ports, water and open ground (settlement-rules/7)
+
+- **A port is on the water.** A harbour town's quays and warehouses stand against the sea, a
+  lake or a navigable river. A town that can see the water but not reach it is no port. People
+  chose green, fertile land near water and near forest, for timber, fuel and game.
+- **Open ground shows a town's fortunes.** Growing towns cleared plots at their edges for new
+  streets. Shrinking towns, after plague, war or lost trade, left houses empty and pulled them
+  down, leaving gaps in the streets inside. Most towns also kept a green or two for the people.
+
 ## Next steps worth building
 
 1. **The day by the bells**: give residents (occupancy NPCs) a schedule from the

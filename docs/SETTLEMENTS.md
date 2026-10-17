@@ -412,6 +412,23 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   range, a river town with a river or lake, and remote past `remoteWalkM` (1500 m) or on
   poor land. Without `access`, a town is laid out as before, uncapped. Gate `setting` checks
   the cap and the homeless.
+- **Ports on the water, settlers by water and forest (settlement-rules/7).** Water is measured
+  from the edge of the town's footprint (`site.shoreM`), not its centre. A port must sit against
+  the sea, a lake or a river: within `waterRangeM[0]` (60 m) of the footprint. A town with only
+  water in sight is a river town (river or lake) or a road town. Nearer water never lowers a
+  site's pressure any more; the dry-feet rules already keep the town above floods. Biomes in
+  `sites.resourcePermille` (forest 1000, rainforest 700, swamp 300) within `resourceRangeM`
+  (600 m) of the footprint raise a site's pressure by up to 30% (`site.resourcePermille`), for
+  the timber, game and fuel.
+- **Parks and empty lots.** `rules.openGround`: a park per `parkPerPeople` (600) on the
+  middling streets, and empty lots as a share of the homes that depends on the town's trend.
+  Each town with a setting is growing, stable or shrinking (`setting.trend`), drawn from its
+  access's `trendPermille`: ports usually grow, remote towns often shrink. A growing town has 5
+  in 100 of its homes' worth of lots, cleared on its outskirts (the outer quarter of its
+  housing) waiting to be built on. A shrinking town has 8 in 100, abandoned plots inside it
+  (the inner half). A stable town has a few, scattered. Neither stands on the poor streets,
+  which the town's crowding needs. Both are pinned like posts (`post.why` "park" or "lot"),
+  never placed by the solve alone, and walk-through in the scene.
 - **Walls and gates are never houses.** `buildArtMap` keeps any model whose name says
   Wall, Gate, Gatehouse, Arch(way), Tower, Portcullis, Palisade, Rampart or Battlement
   (`FORTIFICATION_NAME`) out of every building kind, and the house-archway presets are

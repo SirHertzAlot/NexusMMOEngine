@@ -201,6 +201,35 @@ describe("generateSettlement", () => {
     assert.ok(!r.ok && r.error.code === "bad_access");
   });
 
+  it("leaves parks and empty lots: a growing town's lots cleared at its edge, a shrinking town's scattered", () => {
+    const og = BUILTIN_RULES.openGround!;
+    const towns = [1, 2, 3, 4, 5, 6].map((seed) => must(generateSettlement({ settlementId: "o", seed, population: 1000, access: "road" })).manifest);
+    const of = (m: (typeof towns)[number], id: string) => m.structures.filter((s) => s.archetype === id);
+    for (const m of towns) {
+      assert.equal(of(m, og.park).length, Math.floor((m.demographics.households * BUILTIN_RULES.demographics.householdSizeX10) / 10 / og.parkPerPeople), "a park per 600 people");
+      for (const s of [...of(m, og.park), ...of(m, og.lot)]) assert.ok(m.parcels.find((p) => p.id === s.parcel)!.post, "only where the layout reserved it");
+    }
+    const lots = (trend: string) => towns.filter((m) => m.setting.trend === trend).map((m) => of(m, og.lot).length);
+    const [growing, shrinking, stable] = [lots("growing"), lots("shrinking"), lots("stable")];
+    assert.ok(growing.length + shrinking.length > 0, "some towns are on the move");
+    for (const n of [...growing, ...shrinking]) assert.ok(stable.every((st) => n > st), "a town on the move has more empty lots than a stable one");
+    // Housing plots by distance from the square: a growing town's lots on its outskirts, a shrinking town's inside.
+    const placed = (trend: string) => {
+      const m = towns.find((t) => t.setting.trend === trend);
+      if (!m) return null;
+      const c = m.square!.center;
+      const far = (p: (typeof m.parcels)[number]) => Math.hypot(p.center.x - c.x, p.center.z - c.z);
+      const housing = m.parcels.filter((p) => p.kind === "housing").map(far).sort((a, b) => a - b);
+      const lotParcels = new Set(of(m, og.lot).map((s) => s.parcel));
+      return { lots: m.parcels.filter((p) => lotParcels.has(p.id)).map(far), median: housing[Math.floor(housing.length / 2)]! };
+    };
+    const g = placed("growing");
+    if (g) assert.ok(Math.min(...g.lots) > g.median, "a growing town's cleared lots are on its outskirts");
+    const sh = placed("shrinking");
+    if (sh) assert.ok(Math.max(...sh.lots) <= sh.median, "a shrinking town's empty lots are inside it");
+    assert.ok(g || sh);
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -243,6 +272,6 @@ describe("generateSettlement", () => {
 // Re-pinned on purpose: settlement-rules/4 and settlement-gen/0.2.0 (walled towns with gates and towers, a town square,
 // civic, market, entertainment and education quarters, the crafts and farms outside along the roads, plots facing their
 // streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
-// cathedral and monastery). Again for settlement-rules/6 and settlement-gen/0.4.0: acreage, the watch, shared homes,
-// mastery and grand masters, the homeless, masters on the best ground.
-const GOLDEN = "34495bf000cc02ccc6d53fc24d3bda314ea93db90681c3e315db1c37eeb158e9";
+// cathedral and monastery). Again for settlement-rules/7 and settlement-gen/0.4.0: acreage, the watch, shared homes,
+// mastery and grand masters, the homeless, masters on the best ground, parks and empty lots.
+const GOLDEN = "487992472a485f18b8d5dd28fde8b2da3fbc47fb40842e541de4aed1c299a5f9";

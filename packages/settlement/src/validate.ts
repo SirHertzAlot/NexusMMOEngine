@@ -279,8 +279,11 @@ export function settingGate(t: Pick<Town, "setting" | "demographics" | "occupanc
     if (n.shelter ? !kinds.has(archetypeOf.get(n.shelter) ?? "") : shelters > 0) problems.push(`${n.id} has no shelter of the rules' kinds`);
   }
   const sheltered = homeless.filter((n) => n.shelter).length;
-  const where = s.access ? `a ${s.access} town at density ${s.densityPermille}${s.population < s.requestedPopulation ? `, capped at ${s.capacity} of ${s.requestedPopulation} asked` : ""}` : "no setting";
-  return gate("setting", problems.length === 0, problems.length ? problems.join("; ") : `${where}; ${homeless.length} homeless (${sheltered} sheltered, ${homeless.length - sheltered} sleeping rough)`);
+  const og = rules.openGround;
+  const parks = og ? t.structures.filter((x) => x.archetype === og.park).length : 0;
+  const lots = og ? t.structures.filter((x) => x.archetype === og.lot).length : 0;
+  const where = s.access ? `a ${s.trend} ${s.access} town at density ${s.densityPermille}${s.population < s.requestedPopulation ? `, capped at ${s.capacity} of ${s.requestedPopulation} asked` : ""}` : "no setting";
+  return gate("setting", problems.length === 0, problems.length ? problems.join("; ") : `${where}; ${homeless.length} homeless (${sheltered} sheltered, ${homeless.length - sheltered} sleeping rough); ${parks} parks, ${lots} empty lots`);
 }
 
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {

@@ -90,7 +90,7 @@ export interface Parcel {
 }
 
 export type Wealth = "high" | "middle" | "low";
-export type PostReason = "gate" | "market" | "poor" | "headquarters" | "gaol" | "master";
+export type PostReason = "gate" | "market" | "poor" | "headquarters" | "gaol" | "master" | "park" | "lot";
 
 /** A farm's fields, mm: a rectangle beside its road, its frontage along the road and its depth away from it. */
 export interface Holding {
@@ -207,6 +207,8 @@ interface Plan {
   field: { frontMm: number; deepMm: number };
   /** Guard posts, headquarters and gaols the watch reserves, by why. */
   posts: { gate: number; market: number; poor: number; headquarters: number; gaol: number };
+  /** Parks and empty lots in the housing quarter (rules.openGround). */
+  open: { parks: number; lots: number };
   /** Craft plots outside the town, along one road. */
   crafts: number;
   walled: boolean;
@@ -254,7 +256,10 @@ function plan(households: number, rules: SettlementRules, scale: number, extraBl
     entertainment: withSpare(onlyIn("entertainment")),
     education: withSpare(onlyIn("education")),
   };
-  const inner = 1 + Object.values(quarters).reduce((a, q) => a + Math.ceil(q / perBlock), 0) + Math.ceil((housing + posts.gate + posts.poor) / perBlock);
+  // Open ground: parks for the people, empty lots as the town grows or shrinks, on plots of their own.
+  const og = rules.openGround;
+  const open = { parks: og ? Math.floor(people / og.parkPerPeople) : 0, lots: og ? Math.floor((homes * og.lotsPermille[rules.layout.trend ?? "stable"]) / 1000) : 0 };
+  const inner = 1 + Object.values(quarters).reduce((a, q) => a + Math.ceil(q / perBlock), 0) + Math.ceil((housing + posts.gate + posts.poor + open.parks + open.lots) / perBlock);
   const m = Math.max(2, Math.ceil(Math.sqrt(inner))) + extraBlocks;
   // Farms are not blocks: as many plots as it takes to feed the town (with the surplus), by the best-feeding
   // archetype that farms; with none, the agriculture share's plots.
@@ -287,7 +292,7 @@ function plan(households: number, rules: SettlementRules, scale: number, extraBl
     .filter(([, p]) => rules.archetypes[p.master] && !rules.archetypes[p.master]!.kinds.includes("agriculture"))
     .flatMap(([name, p]) => Array.from({ length: mastery.masters[name] ?? 0 }, () => ({ archetype: p.master, kind: rules.archetypes[p.master]!.kinds[0]! })));
   const cornersNeeded = Object.entries(counts).reduce((a, [id, c]) => a + ((rules.archetypes[id]?.minAccess ?? 1) >= 2 ? c.required : 0), 0);
-  return { m, pitchX: bw * pw + streetWidthMm, pitchZ: bd * pd + streetWidthMm, streetWidthMm, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, masterWorks, cornersNeeded, field, posts, crafts, walled };
+  return { m, pitchX: bw * pw + streetWidthMm, pitchZ: bd * pd + streetWidthMm, streetWidthMm, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, masterWorks, cornersNeeded, field, posts, open, crafts, walled };
 }
 
 /** Half the walled town's footprint, metres (the larger side, streets and wall, not the farms outside). Site selection measures relief over it. */
@@ -324,7 +329,7 @@ export function plotIsDry(p: { center: { x: number; z: number }; facing: Facing 
  */
 export function layOut(settlement: string, households: number, rules: SettlementRules, rng: Streams, scale = 1, extraBlocks = 0, dry?: (dxMm: number, dzMm: number) => boolean, mastery: TownMastery = NO_MASTERY): Layout {
   const [bw, bd] = rules.layout.block;
-  const { m, pitchX, pitchZ, streetWidthMm: s, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, masterWorks, cornersNeeded, field, posts, crafts, walled } = plan(households, rules, scale, extraBlocks, mastery);
+  const { m, pitchX, pitchZ, streetWidthMm: s, pw, pd, quarters, farms, masterFarms, masterField, masterFarm, masterWorks, cornersNeeded, field, posts, open, crafts, walled } = plan(households, rules, scale, extraBlocks, mastery);
   const wall = scaledFortification(rules, scale);
 
   // Streets: a node at each crossing, an edge per segment.
@@ -512,6 +517,23 @@ export function layOut(settlement: string, households: number, rules: Settlement
         if (g) postOf.set(g.k, { archetype: watch.gaol, why: "gaol" });
       }
     }
+  }
+
+  // Open ground, after the watch: parks spread over the middling streets. A growing town's empty lots are on its
+  // outskirts (cleared for building, the outer quarter of its housing); a shrinking town's are abandoned homes
+  // inside it (the inner half of its housing); a stable town's few are scattered through its streets.
+  const og = rules.openGround;
+  if (og) {
+    const spreadOn = (n: number, among: typeof innerPlots, archetype: string, why: PostReason): void => {
+      const c = among.filter(free);
+      for (let i = 0; i < Math.min(n, c.length); i++) postOf.set(c[Math.floor(((2 * i + 1) * c.length) / (2 * n))]!.k, { archetype, why });
+    };
+    spreadOn(open.parks, homes.filter((p) => wealthOf.get(p.k) !== "low"), og.park, "park");
+    // The poor streets keep their tenements: the town's crowding needs them.
+    const edge = homes.filter((p) => wealthOf.get(p.k) !== "low").sort((a, b) => d2(b.center, sq) - d2(a.center, sq) || byGrid(a, b));
+    const trend = rules.layout.trend ?? "stable";
+    const among = trend === "growing" ? edge.slice(0, Math.max(open.lots, Math.ceil(edge.length / 4))) : trend === "shrinking" ? edge.slice(-Math.max(open.lots, Math.ceil(edge.length / 2))) : homes;
+    spreadOn(open.lots, among, og.lot, "lot");
   }
 
   // The plots along the roads out: the craft quarter first, then the farms, dealt round all eight lanes. A farm

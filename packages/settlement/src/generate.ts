@@ -113,7 +113,7 @@ const STAGES: Stage[] = [
       // The town's setting first: its access caps the people and sets the density every later stage lays out by.
       const setting = townSetting(ctx.request.population, ctx.request.access, ctx.rules, ctx.rng);
       ctx.town.setting = setting;
-      ctx.rules = withDensity(ctx.rules, setting.densityPermille);
+      ctx.rules = withDensity(ctx.rules, setting.densityPermille, setting.trend);
       if (setting.population < setting.requestedPopulation) ctx.events.emit("summary", "demographics", "capped", { access: setting.access, requested: setting.requestedPopulation, capacity: setting.capacity });
       // The town's masters next: the people they draw to live there are part of its population.
       const mastery = drawMastery(setting.population, ctx.rules, ctx.rng, setting.access ? ctx.rules.settings.access[setting.access].masteryPermille : 1000);
@@ -121,7 +121,7 @@ const STAGES: Stage[] = [
       const people = setting.population + mastery.residents;
       const d = bakeDemographics(people, ctx.rules.demographics, drawHomeless(people, setting.densityPermille, ctx.rules, ctx.rng));
       ctx.town.demographics = d;
-      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, homeless: d.homeless, laborPool: d.laborPool, access: setting.access, densityPermille: setting.densityPermille, masters: mastery.masters, communities: mastery.communities, grandMasters: mastery.grandMasters, discipline: mastery.discipline, pupils: mastery.pupils, visitors: mastery.visitors });
+      ctx.events.emit("summary", "demographics", "baked", { population: d.population, households: d.households, homeless: d.homeless, laborPool: d.laborPool, access: setting.access, densityPermille: setting.densityPermille, trend: setting.trend, masters: mastery.masters, communities: mastery.communities, grandMasters: mastery.grandMasters, discipline: mastery.discipline, pupils: mastery.pupils, visitors: mastery.visitors });
     },
   },
   {

@@ -195,6 +195,22 @@ export const HomelessSchema = z.strictObject({
 export type Homeless = z.infer<typeof HomelessSchema>;
 export const DEFAULT_HOMELESS: Homeless = { permille: [10, 30], minPopulation: 150, shelters: ["hospital", "monastery", "chapel", "parish_church", "cathedral"] };
 
+/**
+ * Open ground inside the town: parks (one per `parkPerPeople`, on the middling streets) and empty lots, a share
+ * `lotsPermille[trend]` of the homes. A growing town's lots are cleared ground at its edge waiting to be built on;
+ * a shrinking town's are abandoned plots scattered through it; a stable town has a few. Both are walk-through.
+ */
+export const TRENDS = ["growing", "stable", "shrinking"] as const;
+export type Trend = (typeof TRENDS)[number];
+export const OpenGroundSchema = z.strictObject({
+  park: z.string(),
+  lot: z.string(),
+  parkPerPeople: z.number().int().positive(),
+  lotsPermille: z.strictObject({ growing: z.number().int().min(0).max(500), stable: z.number().int().min(0).max(500), shrinking: z.number().int().min(0).max(500) }),
+});
+export type OpenGround = z.infer<typeof OpenGroundSchema>;
+export const DEFAULT_OPEN_GROUND: OpenGround = { park: "park", lot: "empty_lot", parkPerPeople: 600, lotsPermille: { growing: 50, stable: 15, shrinking: 80 } };
+
 /** How a town is reached: by sea (a port), by river or lake, by road, or hardly at all (remote: far over land or on poor ground). */
 export const ACCESS = ["port", "river", "road", "remote"] as const;
 export type Access = (typeof ACCESS)[number];
@@ -204,13 +220,16 @@ export type Access = (typeof ACCESS)[number];
  * water far more cheaply than by cart, so a port grows biggest and a remote town stays small), and sets how
  * densely they live: `densityPermille` is a range a town is drawn from (the "setting" stream), 1000 the rules'
  * own layout. A dense town shares homes more and keeps few gardens; a sparse one spreads out over more ground.
+ * A town is growing, stable or shrinking: `trendPermille` is the chance of growing and of shrinking (the rest
+ * stable), drawn per town; trade brings people to a port, a remote town loses them.
  * Masters go where their goods sell: a town's chance of each person being a master is `masteryPermille` of the
  * rules' (more in a port, few in a remote town, which lacks much else besides).
- * A site is a port when the sea is within the rules' far water range, a river town when a river or lake is;
+ * A site is a port when its footprint sits against the sea, a lake or a river (within the near water range of its
+ * edge), a river town when a river or lake is within the far range;
  * it is remote when the walk to it from the spawn is longer than `remoteWalkM` or its land is poor (pressure
  * under `remotePressurePermille`).
  */
-const AccessSettingSchema = z.strictObject({ maxPopulation: z.number().int().positive(), masteryPermille: z.number().int().min(0).max(5000), densityPermille: z.tuple([z.number().int().min(500).max(1500), z.number().int().min(500).max(1500)]) });
+const AccessSettingSchema = z.strictObject({ maxPopulation: z.number().int().positive(), masteryPermille: z.number().int().min(0).max(5000), trendPermille: z.tuple([z.number().int().min(0).max(1000), z.number().int().min(0).max(1000)]), densityPermille: z.tuple([z.number().int().min(500).max(1500), z.number().int().min(500).max(1500)]) });
 export const SettingsSchema = z.strictObject({
   access: z.strictObject({ port: AccessSettingSchema, river: AccessSettingSchema, road: AccessSettingSchema, remote: AccessSettingSchema }),
   remoteWalkM: z.number().positive(),
@@ -219,10 +238,10 @@ export const SettingsSchema = z.strictObject({
 export type Settings = z.infer<typeof SettingsSchema>;
 export const DEFAULT_SETTINGS: Settings = {
   access: {
-    port: { maxPopulation: 12000, masteryPermille: 1500, densityPermille: [1050, 1200] },
-    river: { maxPopulation: 6000, masteryPermille: 1200, densityPermille: [950, 1100] },
-    road: { maxPopulation: 2500, masteryPermille: 1000, densityPermille: [850, 1000] },
-    remote: { maxPopulation: 600, masteryPermille: 250, densityPermille: [600, 800] },
+    port: { maxPopulation: 12000, masteryPermille: 1500, trendPermille: [500, 100], densityPermille: [1050, 1200] },
+    river: { maxPopulation: 6000, masteryPermille: 1200, trendPermille: [400, 150], densityPermille: [950, 1100] },
+    road: { maxPopulation: 2500, masteryPermille: 1000, trendPermille: [300, 250], densityPermille: [850, 1000] },
+    remote: { maxPopulation: 600, masteryPermille: 250, trendPermille: [150, 450], densityPermille: [600, 800] },
   },
   remoteWalkM: 1500,
   remotePressurePermille: 250,
@@ -259,11 +278,14 @@ export const SettlementRulesSchema = z.strictObject({
     homeSpacePermille: z.number().int().min(1000).optional(),
     /** How densely the town lives (permille, 1000 as laid out): set per town from its settings (`withDensity`), not in a rules file. */
     densityPermille: z.number().int().min(500).max(1500).optional(),
+    /** Whether the town is growing, stable or shrinking: set per town from its settings, not in a rules file (stable when absent). */
+    trend: z.enum(TRENDS).optional(),
   }),
   farming: FarmingSchema.default(DEFAULT_FARMING),
   watch: WatchSchema.optional(),
   mastery: MasterySchema.optional(),
   homeless: HomelessSchema.optional(),
+  openGround: OpenGroundSchema.optional(),
   settings: SettingsSchema.default(DEFAULT_SETTINGS),
   /** Worship: the churches' seats hold at least `sharePermille` of the people (a mass at a time). */
   worship: z.strictObject({ archetypes: z.array(z.string()), sharePermille: z.number().int().min(0).max(1000) }).optional(),
@@ -280,8 +302,16 @@ export const SettlementRulesSchema = z.strictObject({
     maxSlopePermille: z.number().int().positive(),
     /** How good a biome's land is for living off, 0 to 1000 (a biome not listed is 0). */
     fertilityPermille: z.record(z.string(), z.number().int().min(0).max(1000)),
-    /** The nearest and farthest water it wants, metres: nearer floods, farther is a walk. */
+    /**
+     * Water from the edge of the town's footprint, metres: within the first a town sits against it (a port can,
+     * on the sea, a lake or a river), within the second it is in easy reach; farther is a walk, and the site is
+     * worth less the farther it is. People settle by water: nearer is never worse (the dry-feet rules keep the
+     * town above floods).
+     */
     waterRangeM: z.tuple([z.number().positive(), z.number().positive()]),
+    /** Biomes whose resources (timber, game, fuel) draw settlers, 0 to 1000: a site with one within `resourceRangeM` of its footprint is worth up to 30% more. */
+    resourcePermille: z.record(z.string(), z.number().int().min(0).max(1000)).default({}),
+    resourceRangeM: z.number().positive().default(600),
     /** Sites are at least this far apart, metres. */
     minSpacingM: z.number().positive(),
     /** Below this pressure (0 to 1000) a place is not a site. */
@@ -309,7 +339,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/6",
+  version: "settlement-rules/7",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -322,6 +352,7 @@ export const BUILTIN_RULES: SettlementRules = {
   watch: DEFAULT_WATCH,
   mastery: DEFAULT_MASTERY,
   homeless: DEFAULT_HOMELESS,
+  openGround: DEFAULT_OPEN_GROUND,
   settings: DEFAULT_SETTINGS,
   worship: { archetypes: ["chapel", "parish_church", "cathedral"], sharePermille: 500 },
   architecture: { storeyM: 2.7, groundCeilingM: 2.44, roofM: 2, characterM: 1.8 },
@@ -331,6 +362,9 @@ export const BUILTIN_RULES: SettlementRules = {
     house: { kinds: ["housing"], weight: 10, households: 2, workers: 0, feeds: 0, floors: 2, role: "", shop: false, entrances: 2, capacity: 12 },
     tenement: { kinds: ["housing"], weight: 6, households: 3, workers: 0, feeds: 0, floors: 3, role: "", shop: false, entrances: 1, capacity: 16, wealth: ["low"] },
     // Gardens and orchards between the houses: with families sharing homes, the town needs fewer of them than plots.
+    // Open ground (rules.openGround): placed only where the layout reserves it, never by the solve alone.
+    park: { kinds: ["housing", "civic"], weight: 1, households: 0, workers: 0, feeds: 0, floors: 1, storeyM: 0.5, role: "", shop: false, entrances: 4, capacity: 150 },
+    empty_lot: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 0, feeds: 0, floors: 1, storeyM: 0.1, role: "", shop: false, entrances: 4 },
     garden: { kinds: ["housing"], weight: 8, households: 0, workers: 0, feeds: 0, floors: 1, storeyM: 0.5, role: "", shop: false, entrances: 1 },
     // A tall house on a busy street: the homes between the halls of the civic, entertainment and education quarters.
     townhouse: { kinds: ["civic", "shopping", "entertainment", "education"], weight: 3, households: 1, workers: 0, feeds: 0, floors: 3, role: "", shop: false, entrances: 2, capacity: 8 },
@@ -419,7 +453,9 @@ export const BUILTIN_RULES: SettlementRules = {
   sites: {
     maxSlopePermille: 150,
     fertilityPermille: { plains: 1000, forest: 450, rainforest: 350, swamp: 150, beach: 100, desert: 60, tundra: 80 },
-    waterRangeM: [200, 800],
+    waterRangeM: [60, 800],
+    resourcePermille: { forest: 1000, rainforest: 700, swamp: 300 },
+    resourceRangeM: 600,
     minSpacingM: 1500,
     minPressurePermille: 150,
     maxElevationM: 60,
