@@ -11,7 +11,7 @@ import { bakeDemographics } from "./demographics.js";
 import { solveDemand } from "./demand.js";
 import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
-import { layOut, scaledLayout, townCentreMm } from "./layout.js";
+import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from "./layout.js";
 import { occupy } from "./occupancy.js";
 import { streams, type Streams } from "./rng.js";
 import { BUILTIN_RULES, type SettlementRules } from "./rules.js";
@@ -20,8 +20,6 @@ import { validateTown, type Gate, type Town } from "./validate.js";
 
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
-/** Where along a parcel side (fraction of its size from the centre) the dryness is tested: a 5 x 5 grid. */
-const FOOTPRINT_SAMPLES = [-0.5, -0.25, 0, 0.25, 0.5];
 
 export const GENERATOR_VERSION = "settlement-gen/0.2.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
@@ -62,6 +60,8 @@ export interface SettlementManifest {
   /** Wall pieces left out where water stands (the town is open to the water there); 0 for a full ring. */
   wallOpenToWater: number;
   fortifications: Town["layout"]["fortifications"];
+  /** The town square at the centre (a village green), null where water took it. */
+  square: Town["layout"]["square"];
   structures: Town["structures"];
   occupancy: Town["occupancy"];
   validation: Gate[];
@@ -135,14 +135,12 @@ const STAGES: Stage[] = [
         const [pw, pd] = scaledLayout(ctx.rules, ctx.request.scale ?? 1).parcelMm;
         let failure = "";
         for (let extra = 0; extra <= MAX_EXTRA_BLOCKS && !structures; extra++) {
-          const full = extra === 0 ? layout : layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, ctx.rng, ctx.request.scale ?? 1, extra);
+          // Laid out again knowing the ground, so the quarters keep to dry blocks; the "districts" stream is
+          // re-forked so every attempt picks from the same draw.
+          const dryMm = (dx: number, dz: number): boolean => site.dry(site.origin[0] + dx / 1000, site.origin[1] + dz / 1000);
+          const full = layOut(ctx.request.settlementId, ctx.town.demographics!.households, ctx.rules, streams(ctx.request.seed), ctx.request.scale ?? 1, extra, dryMm);
           const c = townCentreMm(full.roads.nodes);
-          const dry = (p: (typeof full.parcels)[number]): boolean => {
-            // A plot facing east or west lies across: its width runs along z.
-            const [w, d] = p.facing % 180 === 0 ? [pw, pd] : [pd, pw];
-            for (const fx of FOOTPRINT_SAMPLES) for (const fz of FOOTPRINT_SAMPLES) if (!site.dry(site.origin[0] + (p.center.x + fx * w - c.x) / 1000, site.origin[1] + (p.center.z + fz * d - c.z) / 1000)) return false;
-            return true;
-          };
+          const dry = (p: (typeof full.parcels)[number]): boolean => plotIsDry(p, pw, pd, c, dryMm);
           // The wall is not built in the water: a piece whose footprint is not dry is left out, and the town is open on that side.
           const dryPiece = (w: (typeof full.fortifications)[number]): boolean => {
             for (const fa of FOOTPRINT_SAMPLES) for (const fb of FOOTPRINT_SAMPLES) {
@@ -152,7 +150,10 @@ const STAGES: Stage[] = [
             return true;
           };
           const fortifications = full.fortifications.filter(dryPiece);
-          const kept = { ...full, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length };
+          // The square stays only if its whole paving is dry.
+          const sq = full.square;
+          const squareDry = sq !== null && FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => site.dry(site.origin[0] + (sq.center.x + fx * sq.widthMm - c.x) / 1000, site.origin[1] + (sq.center.z + fz * sq.depthMm - c.z) / 1000)));
+          const kept = { ...full, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length, square: squareDry ? sq : null };
           ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
           try {
             structures = placeStructures(kept, demand!, ctx.rules, ctx.rng);
@@ -227,6 +228,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     walled: layout.walled,
     wallOpenToWater: layout.wallOpenToWater,
     fortifications: layout.fortifications,
+    square: layout.square,
     structures,
     occupancy,
     validation: ctx.validation,

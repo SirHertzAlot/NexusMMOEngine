@@ -1,8 +1,10 @@
 /**
- * The town's layout: a street grid (roads as a connected graph) in quarters,
- * a wall with gates and towers round a town big enough, farms outside along
- * the roads out of the gates, and every plot facing its street. All geometry
- * is integer millimetres, and the same seed lays out the same town.
+ * The town's layout: a street grid (roads as a connected graph) round a town
+ * square, in quarters (civic, market, entertainment, education, housing), a
+ * wall with gates and towers round a town big enough, the craft quarter and
+ * the farms outside along the roads out of the gates, and every plot facing
+ * its street. All geometry is integer millimetres, and the same seed lays out
+ * the same town.
  */
 
 import { describe, it } from "node:test";
@@ -11,26 +13,28 @@ import { BUILTIN_RULES, DISTRICT_KINDS, fortificationGate, layOut, quartersGate,
 
 const lay = (households: number, seed = 1) => layOut("0182", households, BUILTIN_RULES, streams(seed));
 const [bw, bd] = BUILTIN_RULES.layout.block;
-const inner = (l: Layout) => l.parcels.filter((p) => p.kind !== "agriculture");
+const inner = (l: Layout) => l.parcels.filter((p) => p.kind !== "agriculture" && p.kind !== "manufacturing");
 const farms = (l: Layout) => l.parcels.filter((p) => p.kind === "agriculture");
+const crafts = (l: Layout) => l.parcels.filter((p) => p.kind === "manufacturing");
 /** The gates that read only the layout. */
 const layoutGates = (l: Layout) => ({ fortification: fortificationGate(l), district_quarters: quartersGate(l, BUILTIN_RULES) });
 
 describe("layOut", () => {
   const town = lay(136);
 
-  it("gives enough parcels for the households: whole blocks inside, farms outside to feed everyone", () => {
-    assert.ok(inner(town).length >= Math.ceil((136 * BUILTIN_RULES.layout.parcelsPerHouseholdPermille) / 1000) - farms(town).length);
-    assert.equal(inner(town).length, town.blocks * town.blocks * bw * bd);
+  it("gives enough parcels for the households: every block inside but the square, farms outside to feed everyone", () => {
+    assert.ok(inner(town).length + crafts(town).length >= Math.ceil((136 * BUILTIN_RULES.layout.parcelsPerHouseholdPermille) / 1000) - farms(town).length);
+    assert.equal(inner(town).length, (town.blocks * town.blocks - 1) * bw * bd);
     const people = Math.ceil((136 * BUILTIN_RULES.demographics.householdSizeX10) / 10);
     assert.ok(farms(town).length * BUILTIN_RULES.archetypes.farmstead!.feeds >= people, "farm plots enough to feed the town");
   });
 
-  it("splits the blocks inside between housing, shopping and manufacturing, none left over", () => {
+  it("has every district, its area its plots", () => {
     assert.deepEqual(town.districts.map((d) => d.kind).sort(), [...DISTRICT_KINDS].sort());
-    const blocks = (k: string) => town.districts.find((d) => d.kind === k)!.blocks;
-    assert.equal(blocks("housing") + blocks("shopping") + blocks("manufacturing"), town.blocks * town.blocks);
-    assert.ok(blocks("housing") > blocks("shopping"));
+    const [pw, pd] = BUILTIN_RULES.layout.parcelSizeMm;
+    for (const d of town.districts) assert.equal(d.areaM2, (town.parcels.filter((p) => p.district === d.id).length * pw * pd) / 1_000_000, d.kind);
+    const plots = (k: string) => town.parcels.filter((p) => p.kind === k).length;
+    assert.ok(plots("housing") > plots("shopping") && plots("shopping") > plots("civic"));
   });
 
   it("puts every parcel in one district, with integer-millimetre geometry, road frontage and a facing", () => {
@@ -91,13 +95,50 @@ describe("quarters", () => {
     assert.ok(Math.max(...market) <= Math.max(...homes), "the market quarter is nearer the centre than the edge of town");
   });
 
-  it("puts the craft quarter on one side of town, next to a road out", () => {
-    const l = lay(136, 2);
-    const craft = inner(l).filter((p) => p.kind === "manufacturing");
-    const xs = craft.map((p) => Math.floor(p.gx / bw));
-    const zs = craft.map((p) => Math.floor(p.gz / bd));
-    const edge = [Math.min(...xs) === 0, Math.max(...xs) === l.blocks - 1, Math.min(...zs) === 0, Math.max(...zs) === l.blocks - 1];
-    assert.ok(edge.some(Boolean), "it reaches the town's edge");
+  it("leaves the block at the crossing of the main roads open as the town square, on the primary roads", () => {
+    for (const households of [25, 136, 400]) {
+      const l = lay(households);
+      assert.ok(l.square, "a square (a green, for a village)");
+      const sq = l.square!;
+      assert.ok(!l.parcels.some((p) => Math.abs(p.center.x - sq.center.x) < sq.widthMm / 2 && Math.abs(p.center.z - sq.center.z) < sq.depthMm / 2), "no plot on the square");
+      const primary = new Set(l.roads.edges.filter((e) => e.roadClass === "primary_town_road").flatMap((e) => [e.from, e.to]));
+      const s = BUILTIN_RULES.layout.streetWidthMm;
+      const corners = l.roads.nodes.filter((n) => primary.has(n.id) && Math.abs(Math.abs(n.x - sq.center.x) - (sq.widthMm + s) / 2) <= 1 && Math.abs(Math.abs(n.z - sq.center.z) - (sq.depthMm + s) / 2) <= 1);
+      assert.ok(corners.length >= 1, `${households}: the square is on the main roads`);
+    }
+  });
+
+  it("sets the civic quarter and the market round the square, and every plot of a quarter's block nearest the square is the quarter's", () => {
+    const l = lay(136);
+    const sq = l.square!;
+    const d = (p: { center: { x: number; z: number } }) => Math.hypot(p.center.x - sq.center.x, p.center.z - sq.center.z);
+    const near = (k: string) => Math.min(...inner(l).filter((p) => p.kind === k).map(d));
+    const homes = Math.max(...inner(l).filter((p) => p.kind === "housing").map(d));
+    for (const k of ["civic", "shopping"]) assert.ok(near(k) < (BUILTIN_RULES.layout.block[0] + 1) * BUILTIN_RULES.layout.parcelSizeMm[0], `${k} on the square`);
+    assert.ok(near("civic") < homes);
+  });
+
+  it("puts the craft quarter outside the town on one road out, nearest the wall, the farms beyond it", () => {
+    for (const seed of [1, 2, 3, 4]) {
+      const l = lay(136, seed);
+      const c = crafts(l);
+      assert.ok(c.length > 0);
+      const roads = new Set(c.map((p) => (-p.gz / 1000 - 1) % 4));
+      assert.equal(roads.size, 1, "one road");
+      const road = [...roads][0]!;
+      for (const f of farms(l).filter((p) => (-p.gz / 1000 - 1) % 4 === road)) assert.ok(c.filter((p) => p.gz === f.gz).every((p) => p.gx < f.gx), "farms on the craft road start beyond the crafts");
+    }
+  });
+
+  it("keeps the quarters off wet ground when it knows where the water is, and puts the crafts on the driest road", () => {
+    // The sea covers the east half (+x from the town's centre).
+    const dry = (dx: number) => dx < 0;
+    const l = layOut("0182", 136, BUILTIN_RULES, streams(2), 1, 0, dry);
+    const [pw, pd] = BUILTIN_RULES.layout.parcelSizeMm;
+    const centre = { x: (l.blocks * ((BUILTIN_RULES.layout.block[0] * pw) + BUILTIN_RULES.layout.streetWidthMm) - BUILTIN_RULES.layout.streetWidthMm) / 2 };
+    const east = (p: { center: { x: number } }) => p.center.x + pw / 2 > centre.x;
+    for (const k of ["civic", "entertainment", "education"]) assert.ok(inner(l).filter((p) => p.kind === k).some((p) => !east(p)), `${k} on the dry side`);
+    assert.ok(crafts(l).every((p) => !east(p)), "the craft road is a dry one");
   });
 });
 
@@ -145,10 +186,10 @@ describe("the town wall", () => {
     }
   });
 
-  it("sets the farms beyond the wall, along both sides of the roads, each facing its road", () => {
+  it("sets the farms and crafts beyond the wall, along both sides of the roads, each facing its road", () => {
     const xs = town.fortifications.map((p) => p.center.x);
     const zs = town.fortifications.map((p) => p.center.z);
-    for (const f of farms(town)) assert.ok(f.center.x < Math.min(...xs) || f.center.x > Math.max(...xs) || f.center.z < Math.min(...zs) || f.center.z > Math.max(...zs));
+    for (const f of [...farms(town), ...crafts(town)]) assert.ok(f.center.x < Math.min(...xs) || f.center.x > Math.max(...xs) || f.center.z < Math.min(...zs) || f.center.z > Math.max(...zs));
     assert.deepEqual([...new Set(farms(town).map((f) => f.facing))].sort((a, b) => a - b), [0, 90, 180, 270], "farms on all four roads, both sides");
   });
 

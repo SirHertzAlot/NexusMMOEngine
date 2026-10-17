@@ -21,6 +21,10 @@ function pick(id: string, n: number): number {
 
 /** Space left between a building and its parcel's edge, each side, metres. */
 const MARGIN_M = 1;
+/** The town square's paving, metres thick. */
+const SQUARE_PAVING_M = 0.2;
+/** The well at the square's centre: side and height, metres. */
+const WELL_M = [3, 2.5] as const;
 
 export interface SceneOptions {
   /** Where the town's centre goes, in world metres [x, z]. */
@@ -64,6 +68,15 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
         ...(w.kind === "town_gate" ? { Collider: { shape: "none" } } : {}),
       },
     });
+  }
+  // The town square: paving over its block (walk-through, standing on the ground) and a well at its centre.
+  const sq = manifest.square;
+  if (sq) {
+    const at: [number, number, number] = [(sq.center.x - cx) / 1000, 0, (sq.center.z - cz) / 1000];
+    children.push(
+      { id: `square-${manifest.settlementId}`, name: "town_square", transform: { position: at }, components: { Structure: { kind: "town_square", asset: "", width: sq.widthMm / 1000 / f, depth: sq.depthMm / 1000 / f, height: SQUARE_PAVING_M }, Collider: { shape: "none" } } },
+      { id: `well-${manifest.settlementId}`, name: "town_well", transform: { position: at }, components: { Structure: { kind: "town_well", asset: asset(`well-${manifest.settlementId}`, "town_well"), width: WELL_M[0], depth: WELL_M[0], height: WELL_M[1] } } },
+    );
   }
   const scene: SceneDoc = {
     version: 1,

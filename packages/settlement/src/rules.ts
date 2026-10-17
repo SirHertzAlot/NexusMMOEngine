@@ -9,8 +9,15 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
-export const DISTRICT_KINDS = ["housing", "agriculture", "shopping", "manufacturing"] as const;
+/**
+ * The districts a town is made of. The first four take a share of the town's blocks (`districtShares`); the
+ * civic, entertainment and education quarters are sized by the buildings that must stand in them (their
+ * required counts), so a village gets one school and one tavern and a city a quarter of each.
+ */
+export const DISTRICT_KINDS = ["housing", "agriculture", "shopping", "manufacturing", "civic", "entertainment", "education"] as const;
 export type DistrictKind = (typeof DISTRICT_KINDS)[number];
+/** The districts sized by a share of the blocks. */
+export const SHARED_DISTRICT_KINDS = ["housing", "agriculture", "shopping", "manufacturing"] as const;
 
 const sharesOf = (keys: readonly string[]) =>
   z
@@ -62,6 +69,8 @@ export const RequiredSchema = z.strictObject({
   max: z.number().int().min(0).optional(),
   /** At most one per this many people (rounded up): a ceiling that grows with the town, so a tavern is not on every street. */
   maxPerPopulation: z.number().int().positive().optional(),
+  /** A settlement smaller than this has none (a village has no barracks or theatre). */
+  minPopulation: z.number().int().positive().optional(),
 });
 
 /**
@@ -100,7 +109,7 @@ export const SettlementRulesSchema = z.strictObject({
     classShares: sharesOf(CLASSES),
   }),
   /** How the blocks are split between the district kinds. */
-  districtShares: sharesOf(DISTRICT_KINDS),
+  districtShares: sharesOf(SHARED_DISTRICT_KINDS),
   layout: z.strictObject({
     /** Parcels along and across a block. */
     block: z.tuple([z.number().int().positive(), z.number().int().positive()]),
@@ -153,7 +162,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/3",
+  version: "settlement-rules/4",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
@@ -166,6 +175,8 @@ export const BUILTIN_RULES: SettlementRules = {
   fortification: DEFAULT_FORTIFICATION,
   archetypes: {
     house: { kinds: ["housing"], weight: 10, households: 1, workers: 0, feeds: 0, floors: 2, role: "", shop: false },
+    // A tall house on a busy street: the homes between the halls of the civic, entertainment and education quarters.
+    townhouse: { kinds: ["civic", "entertainment", "education"], weight: 3, households: 1, workers: 0, feeds: 0, floors: 3, role: "", shop: false },
     artisan_house: { kinds: ["housing", "manufacturing"], weight: 3, households: 1, workers: 1, feeds: 0, floors: 2, role: "artisan", shop: false },
     farmstead: { kinds: ["agriculture"], weight: 10, households: 1, workers: 2, feeds: 30, floors: 2, role: "farmer", shop: false },
     granary: { kinds: ["agriculture", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 6, role: "granary keeper", shop: false },
@@ -174,8 +185,25 @@ export const BUILTIN_RULES: SettlementRules = {
     smithy: { kinds: ["manufacturing"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 4, role: "blacksmith", shop: true },
     workshop: { kinds: ["manufacturing"], weight: 4, households: 0, workers: 2, feeds: 0, floors: 2, role: "craftsman", shop: true },
     market: { kinds: ["shopping"], weight: 6, households: 0, workers: 1, feeds: 0, floors: 1, role: "trader", shop: true },
-    tavern: { kinds: ["shopping"], weight: 2, households: 0, workers: 2, feeds: 0, floors: 3, role: "innkeeper", shop: true },
-    chapel: { kinds: ["housing", "shopping"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 8, role: "priest", shop: false },
+    tavern: { kinds: ["entertainment"], weight: 2, households: 0, workers: 2, feeds: 0, floors: 3, role: "innkeeper", shop: true },
+    inn: { kinds: ["entertainment"], weight: 2, households: 0, workers: 3, feeds: 0, floors: 3, role: "innkeeper", shop: true },
+    theatre: { kinds: ["entertainment"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 1, storeyM: 9, role: "player", shop: true },
+    bathhouse: { kinds: ["entertainment"], weight: 1, households: 0, workers: 2, feeds: 0, floors: 1, storeyM: 5, role: "bath keeper", shop: true },
+    chapel: { kinds: ["housing", "civic"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 8, role: "priest", shop: false },
+    // Church life: the parish church on the square with its churchyard and the priest's house beside it; the
+    // church's almshouse-hospital for the sick, old and poor; a cathedral for a city; a monastery out on its own lands.
+    parish_church: { kinds: ["civic"], weight: 1, households: 0, workers: 2, feeds: 0, floors: 1, storeyM: 11, role: "priest", shop: false },
+    churchyard: { kinds: ["civic", "housing"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 1, role: "sexton", shop: false },
+    rectory: { kinds: ["civic"], weight: 1, households: 1, workers: 1, feeds: 0, floors: 2, role: "clerk", shop: false },
+    hospital: { kinds: ["civic"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, storeyM: 3.5, role: "infirmarian", shop: false },
+    cathedral: { kinds: ["civic"], weight: 1, households: 0, workers: 6, feeds: 0, floors: 1, storeyM: 18, role: "canon", shop: false },
+    monastery: { kinds: ["agriculture"], weight: 1, households: 0, workers: 8, feeds: 20, floors: 2, storeyM: 4, role: "monk", shop: false },
+    apothecary: { kinds: ["shopping"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 2, role: "apothecary", shop: true },
+    town_hall: { kinds: ["civic"], weight: 1, households: 0, workers: 3, feeds: 0, floors: 2, storeyM: 4, role: "clerk", shop: false },
+    guardhouse: { kinds: ["civic"], weight: 1, households: 0, workers: 4, feeds: 0, floors: 2, role: "town guard", shop: false },
+    barracks: { kinds: ["civic"], weight: 1, households: 0, workers: 8, feeds: 0, floors: 2, storeyM: 3.5, role: "soldier", shop: false },
+    school: { kinds: ["education"], weight: 1, households: 0, workers: 2, feeds: 0, floors: 2, role: "teacher", shop: false },
+    library: { kinds: ["education"], weight: 1, households: 0, workers: 1, feeds: 0, floors: 2, storeyM: 4, role: "scribe", shop: false },
     warehouse: { kinds: ["manufacturing", "shopping"], weight: 2, households: 0, workers: 1, feeds: 0, floors: 1, storeyM: 5, role: "porter", shop: false },
   },
   required: {
@@ -186,6 +214,21 @@ export const BUILTIN_RULES: SettlementRules = {
     bakery: { min: 1, perPopulation: 250, maxPerPopulation: 120 },
     smithy: { min: 1, perPopulation: 400, maxPerPopulation: 150 },
     tavern: { min: 1, perPopulation: 300, maxPerPopulation: 150 },
+    inn: { minPopulation: 250, perPopulation: 500, maxPerPopulation: 300 },
+    theatre: { minPopulation: 600, perPopulation: 2000, max: 2 },
+    bathhouse: { minPopulation: 400, perPopulation: 1000, max: 3 },
+    town_hall: { minPopulation: 200, min: 1, max: 1 },
+    parish_church: { minPopulation: 200, min: 1, perPopulation: 1500, max: 4 },
+    churchyard: { min: 1, perPopulation: 1500, max: 4 },
+    rectory: { minPopulation: 200, min: 1, perPopulation: 1500, max: 4 },
+    hospital: { minPopulation: 400, perPopulation: 1500, max: 3 },
+    cathedral: { minPopulation: 2000, min: 1, max: 1 },
+    monastery: { minPopulation: 1000, min: 1, max: 1 },
+    apothecary: { minPopulation: 250, perPopulation: 600, maxPerPopulation: 400 },
+    guardhouse: { min: 1, perPopulation: 300, maxPerPopulation: 200 },
+    barracks: { minPopulation: 1200, perPopulation: 2500, max: 2 },
+    school: { min: 1, perPopulation: 500, maxPerPopulation: 350 },
+    library: { minPopulation: 800, perPopulation: 2000, max: 2 },
     warehouse: { min: 1, perPopulation: 500, maxPerPopulation: 150 },
     workshop: { perPopulation: 150 },
   },
@@ -193,6 +236,11 @@ export const BUILTIN_RULES: SettlementRules = {
     ["smithy", "granary"],
     ["smithy", "chapel"],
     ["smithy", "bakery"],
+    ["tavern", "school"],
+    ["tavern", "chapel"],
+    ["tavern", "parish_church"],
+    ["smithy", "churchyard"],
+    ["tavern", "churchyard"],
   ],
   sites: {
     maxSlopePermille: 150,

@@ -76,23 +76,28 @@ export function fortificationGate(l: Layout): Gate {
   const roadless = gates.filter((g) => !l.roads.nodes.some((n) => Math.abs(n.x - g.center.x) <= 1 && Math.abs(n.z - g.center.z) <= 1));
   if (roadless.length) problems.push(`${roadless.length} gates with no road through them`);
   const inside = (p: { center: { x: number; z: number } }): boolean => p.center.x > x0 && p.center.x < x1 && p.center.z > z0 && p.center.z < z1;
-  const wrong = l.parcels.filter((p) => inside(p) === (p.kind === "agriculture"));
-  if (wrong.length) problems.push(`${wrong.length} plots on the wrong side of the wall (farms go outside, the rest inside)`);
+  const wrong = l.parcels.filter((p) => inside(p) === OUTSIDE.has(p.kind));
+  if (wrong.length) problems.push(`${wrong.length} plots on the wrong side of the wall (farms and crafts go outside, the rest inside)`);
   return gate("fortification", problems.length === 0, problems.length ? problems.join("; ") : `${l.fortifications.length} wall pieces, ${gates.length} gates, a closed ring`);
 }
 
+/** The districts that stand outside the wall, along the roads out. */
+const OUTSIDE = new Set(["agriculture", "manufacturing"]);
+
 /**
- * Each district inside the walls is one quarter: its blocks touch, side to side. A block water has emptied (its
- * plots all dropped as wet) still joins the quarters round it, the way a pond in a town does not split it.
+ * Each district inside the walls is one quarter: its blocks touch, side to side (housing may be several
+ * neighbourhoods). A block with no plots (the square, or one water has emptied) still joins the quarters round it,
+ * the way a pond in a town does not split it. Outside, the craft quarter lines one road.
  */
 export function quartersGate(l: Layout, rules: SettlementRules): Gate {
   const [bw, bd] = rules.layout.block;
   const byKind = new Map<string, Set<string>>();
   const built = new Set<string>();
   for (const p of l.parcels) {
-    if (p.kind === "agriculture") continue;
+    if (OUTSIDE.has(p.kind)) continue;
     const k = `${Math.floor(p.gx / bw)},${Math.floor(p.gz / bd)}`;
     built.add(k);
+    if (p.kind === "housing") continue;
     const set = byKind.get(p.kind) ?? new Set<string>();
     set.add(k);
     byKind.set(p.kind, set);
@@ -116,7 +121,9 @@ export function quartersGate(l: Layout, rules: SettlementRules): Gate {
     }
     if ([...blocks].some((k) => !seen.has(k))) split.push(kind);
   }
-  return gate("district_quarters", split.length === 0, split.length ? `split into pieces: ${split.join(", ")}` : `${byKind.size} quarters, each one connected group of blocks`);
+  const craftRoads = new Set(l.parcels.filter((p) => p.kind === "manufacturing").map((p) => (-p.gz / 1000 - 1) % 4));
+  if (craftRoads.size > 1) split.push("manufacturing (on more than one road)");
+  return gate("district_quarters", split.length === 0, split.length ? `split into pieces: ${split.join(", ")}` : `${byKind.size} quarters inside, each one connected group of blocks; the craft quarter on one road out`);
 }
 
 export function validateTown(t: Town, rules: SettlementRules): Gate[] {

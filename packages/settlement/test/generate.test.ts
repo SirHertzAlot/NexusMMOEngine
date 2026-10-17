@@ -38,6 +38,28 @@ describe("generateSettlement", () => {
   it("passes every validation gate", () => {
     assert.ok(manifest.validation.length >= 6);
     for (const g of ["fortification", "district_quarters"]) assert.ok(manifest.validation.some((v) => v.gate === g), g);
+  });
+
+  it("gives a village one school and one tavern, and a city its halls, guards, schools and entertainment", () => {
+    const count = (m: typeof manifest, id: string) => m.structures.filter((s) => s.archetype === id).length;
+    const village = generateSettlement({ settlementId: "0183", seed: 3, population: 100 });
+    assert.ok(village.ok, village.ok ? "" : village.error.message);
+    assert.equal(count(village.manifest, "school"), 1);
+    assert.equal(count(village.manifest, "tavern"), 1);
+    assert.ok(count(village.manifest, "guardhouse") >= 1, "a village has its watch");
+    for (const none of ["barracks", "theatre", "library", "town_hall"]) assert.equal(count(village.manifest, none), 0, none);
+    const city = generateSettlement({ settlementId: "0184", seed: 3, population: 2500 });
+    assert.ok(city.ok, city.ok ? "" : city.error.message);
+    for (const id of ["town_hall", "guardhouse", "barracks", "school", "library", "tavern", "inn", "theatre", "bathhouse"]) assert.ok(count(city.manifest, id) >= 1, id);
+    // Church life: a village has its chapel and churchyard; a city its parish churches, almshouse-hospital,
+    // cathedral, and a monastery out on its own lands.
+    assert.ok(count(village.manifest, "chapel") >= 1 && count(village.manifest, "churchyard") >= 1, "a village chapel and churchyard");
+    assert.equal(count(village.manifest, "cathedral"), 0);
+    for (const id of ["parish_church", "churchyard", "rectory", "hospital", "cathedral", "monastery", "apothecary"]) assert.ok(count(city.manifest, id) >= 1, id);
+    const kindOf = new Map(city.manifest.parcels.map((p) => [p.id, p.kind]));
+    assert.equal(kindOf.get(city.manifest.structures.find((s) => s.archetype === "monastery")!.parcel), "agriculture", "the monastery stands out on the farmland");
+    const guards = city.manifest.occupancy.npcs.filter((n) => n.role === "town guard" || n.role === "soldier").length;
+    assert.ok(guards >= 20, `${guards} guards and soldiers for 2500 people`);
     for (const g of manifest.validation) assert.ok(g.ok, `${g.gate}: ${g.detail}`);
   });
 
@@ -80,6 +102,8 @@ describe("generateSettlement", () => {
   });
 });
 
-// Re-pinned on purpose: settlement-rules/3 and settlement-gen/0.2.0 (walled towns with gates and towers, farms outside
-// along the roads, one quarter per district, plots facing their streets, ceilings on taverns, bakeries and the like).
-const GOLDEN = "98c124f9535abcff766052967c57c135c3d7795482be45e50158c1d3b5b9ffe3";
+// Re-pinned on purpose: settlement-rules/4 and settlement-gen/0.2.0 (walled towns with gates and towers, a town square,
+// civic, market, entertainment and education quarters, the crafts and farms outside along the roads, plots facing their
+// streets, ceilings on taverns, bakeries and the like, church life: parish church, churchyard, rectory, almshouse-hospital,
+// cathedral and monastery).
+const GOLDEN = "0301fb8297fa09e3c184816b423fc9036b623471910677e907641d02e6a0b4ea";
