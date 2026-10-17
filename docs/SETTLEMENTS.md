@@ -477,6 +477,27 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   The town's signature product is taught only from the first rank that needs a master to take the
   player on as a pupil. The game server keeps each player's reputation; the manifest says what
   each town's guild offers. Gate `guild` checks the hall, its master and the ranks' tiers.
+- **What players gather (settlement-rules/11, settlement-gen/0.8.0).** A town given its land
+  has its resources as objects in the world (`manifest.resources`):
+  - Kinds: tree stands (Woodcutting), ore veins (Mining) and fishing spots (Fishing). Farming
+    has its fields.
+  - Counts: its own industry has three per workplace, so a 1000-person mining town gets about
+    24 veins. Every other resource rich enough near it gets up to six (a mountain town with some
+    forest gets a couple of tree stands).
+  - Placement: in the open ground from the town's edge out to 400 m, about 25 m apart, clear of
+    its plots, fields, roads and wall. Fishing spots go on the water off the shore, so only
+    where the world is known (`request.site`).
+  - Materials: each node gives one of its industry's products near the town, the rarer tiers
+    fewer (weight `1 / tier`). The town's first node of its own industry is always what it is
+    known for, so there is some to find.
+  - Stock: each node holds `stock` gathers less what the town has used up
+    (`land.depletedPermille`), and comes back after `regrowHours`: trees after 72 hours, fish
+    after 6, ore never.
+  - In the scene each is a `Structure` (its look; `DEFAULT_PROP_PATTERNS` maps models) and a
+    `ResourceNode` component (material, tier, skill, stock, regrowHours, town) in
+    `packages/scene`. Gate `resources` checks that none stands on the town's ground or on
+    another node, and that each has its industry's kind and material.
+  - Gathering from them (the action, a pouch, live depletion) is not built yet.
 - **A region of towns** (`region.ts`, `npm run settlement:region -- --world <file>`). Gate
   `industry` also accepts an industry the town has long worked (`land.worked`) while it is rich
   enough and nothing beats it by `history.switchPermille`.

@@ -4,7 +4,7 @@
  * may grow, what it exports and is known for, and what most of its masters practise (`withIndustry`).
  */
 
-import { INDUSTRIES, type IndustryId, type SettlementRules } from "./rules.js";
+import { INDUSTRIES, type IndustryId, type IndustryRules, type SettlementRules } from "./rules.js";
 import type { Site } from "./sites.js";
 
 /**
@@ -59,13 +59,22 @@ export function townIndustry(land: Land, rules: SettlementRules): TownIndustry |
   const primary = resources[best] >= ir.minAbundancePermille && resources[best] > 0 ? best : null;
   if (!primary) return { primary: null, resources, abundancePermille: 0, profession: null, workplace: null, product: null };
   const ind = ir.industries[primary];
-  // A worked-out stock gives up its rarest product first: what is used up counts against each product's share.
-  const left = 1000 - Math.min(1000, Math.max(0, land.depletedPermille?.[primary] ?? 0));
-  const near_ = (p: (typeof ind.products)[number]): boolean => (p.biomes.length > 0 && (p.biomes.reduce((a, b) => a + share(b), 0) * left) / 1000 >= p.minSharePermille) || (wet && (p.water as string[]).includes(land.waterKind));
   // The rarest thing near is what the town is known for; the first listed of a tier wins a tie. A town fishing
   // or farming with none of its products' land listed still makes the first.
-  const product = ind.products.reduce<(typeof ind.products)[number] | null>((b, p) => (near_(p) && (!b || p.tier > b.tier) ? p : b), null) ?? ind.products[0]!;
+  const product = nearProducts(land, primary, rules).reduce<(typeof ind.products)[number] | null>((b, p) => (!b || p.tier > b.tier ? p : b), null) ?? ind.products[0]!;
   return { primary, resources, abundancePermille: resources[primary], profession: ind.profession.name, workplace: ind.workplace, product: { material: product.material, tier: product.tier, export: product.export } };
+}
+
+/**
+ * An industry's products whose land is near the town (in the rules' order): enough of their biomes within reach, or the
+ * water it sits on. A worked-out stock gives up its rarest product first: what is used up counts against each share.
+ */
+export function nearProducts(land: Land, id: IndustryId, rules: SettlementRules): IndustryRules["industries"][IndustryId]["products"] {
+  const ind = rules.industry!.industries[id];
+  const share = (b: string): number => land.biomes[b] ?? 0;
+  const wet = land.waterKind !== "none" && land.shoreM >= 0;
+  const left = 1000 - Math.min(1000, Math.max(0, land.depletedPermille?.[id] ?? 0));
+  return ind.products.filter((p) => (p.biomes.length > 0 && (p.biomes.reduce((a, b) => a + share(b), 0) * left) / 1000 >= p.minSharePermille) || (wet && (p.water as string[]).includes(land.waterKind)));
 }
 
 /** The population an access's cap allows on this land: from `capFloorPermille` of it with no industry to all of it at full abundance. */

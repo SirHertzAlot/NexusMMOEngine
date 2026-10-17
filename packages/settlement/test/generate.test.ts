@@ -6,7 +6,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ACRE_M2, BUILTIN_RULES, contentHash, drawMastery, generateSettlement, GENERATOR_VERSION, streams } from "../src/index.js";
+import { ACRE_M2, BUILTIN_RULES, contentHash, drawMastery, generateSettlement, GENERATOR_VERSION, settlementScene, streams } from "../src/index.js";
+import { worldNodes } from "@mmo-engine/scene";
 
 const request = { settlementId: "0182", seed: 1234, population: 600 };
 
@@ -344,6 +345,33 @@ describe("generateSettlement", () => {
     assert.ok(!manifest.structures.some((s) => s.archetype === "guild_hall"));
   });
 
+  it("puts what players gather round the town: tree stands, ore veins and fishing spots, clear of its ground", () => {
+    const mountain = { biomes: { mountains: 450, plains: 400, forest: 150 }, waterKind: "none" as const, shoreM: -1 };
+    const m = must(generateSettlement({ settlementId: "r", seed: 1, population: 1000, access: "road", land: mountain })).manifest;
+    const veins = m.resources.filter((r) => r.kind === "ore_vein");
+    const mines = m.structures.filter((s) => s.archetype === "mine").length;
+    assert.equal(veins.length, mines * BUILTIN_RULES.industry!.resources!.perWorkplace, "three veins a mine");
+    assert.ok(veins.some((r) => r.material === "silver-ore"), "some of what it is known for");
+    assert.ok(veins.every((r) => ["iron-ore", "silver-ore"].includes(r.material) && r.skill === "Mining" && r.regrowHours === 0));
+    // The forest near it is worth a few tree stands.
+    assert.equal(m.resources.filter((r) => r.kind === "tree_stand").length, Math.round((BUILTIN_RULES.industry!.resources!.nearby * m.industry!.resources.timber) / 1000));
+    assert.ok(m.validation.find((g) => g.gate === "resources")!.ok);
+    // A worked-out stock leaves less in each vein.
+    const worn = must(generateSettlement({ settlementId: "r", seed: 1, population: 1000, access: "road", land: { ...mountain, worked: "mining", depletedPermille: { mining: 300 } } })).manifest;
+    assert.ok(worn.resources.filter((r) => r.kind === "ore_vein").every((r) => r.stock === Math.round((BUILTIN_RULES.industry!.resources!.nodes.mining!.stock * 700) / 1000)));
+    // Fishing spots go on the water where the world is known: here the sea east of x = 250 m.
+    const coast = { biomes: { sea: 400, beach: 100, plains: 300, forest: 200 }, waterKind: "sea" as const, shoreM: 20 };
+    const site = { origin: [0, 0] as [number, number], dry: (x: number) => x < 250 };
+    const port = must(generateSettlement({ settlementId: "r", seed: 1, population: 250, access: "road", land: coast, site })).manifest;
+    const spots = port.resources.filter((r) => r.kind === "fishing_spot");
+    assert.ok(spots.length > 0 && spots.every((r) => r.material === "sea-fish"));
+    assert.equal(manifest.resources.length, 0, "none without the land");
+    // In the scene each is a node someone can gather from: what it gives, how much, and whose stock it is.
+    const nodes = worldNodes(settlementScene(m, BUILTIN_RULES, { origin: [0, 0] })).filter((w) => w.node.components?.ResourceNode);
+    assert.equal(nodes.length, m.resources.length);
+    assert.deepEqual(nodes.find((w) => w.node.id === veins[0]!.id)!.node.components!.ResourceNode, { material: veins[0]!.material, tier: veins[0]!.tier, skill: "Mining", stock: veins[0]!.stock, regrowHours: 0, town: "r" });
+  });
+
   it("carries who lives and works where, and the gates that check it", () => {
     assert.equal(manifest.occupancy.npcs.length, manifest.demographics.population);
     assert.equal(manifest.occupancy.households.length, manifest.demographics.households);
@@ -390,5 +418,6 @@ describe("generateSettlement", () => {
 // mastery and grand masters, the homeless, masters on the best ground, parks and empty lots. Again for
 // settlement-rules/8 and settlement-gen/0.5.0: street props, paved streets, terraces and stairs. Again for
 // settlement-rules/9 and settlement-gen/0.6.0: industry (and its workplaces ruled out of a town without the land), and the
-// home-space cap no longer counting farmsteads. Again for settlement-rules/10 and settlement-gen/0.7.0: the guild hall.
-const GOLDEN = "06a61ec579babd3ea7144bf0d14925d32e1fee1a1d30db096431b750a4df52df";
+// home-space cap no longer counting farmsteads. Again for settlement-rules/10 and settlement-gen/0.7.0: the guild hall; and for
+// settlement-rules/11 and settlement-gen/0.8.0: resource nodes (none here) and their gate.
+const GOLDEN = "a5612a7197eb481a5e30ab42a174767ebc83bd4a2004cf6281408c1b08c78fa0";

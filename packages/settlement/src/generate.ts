@@ -16,6 +16,7 @@ import { drawMastery } from "./mastery.js";
 import { drawHomeless, townSetting, withDensity } from "./setting.js";
 import { townIndustry, withIndustry, type Land } from "./industry.js";
 import { townGuild } from "./guild.js";
+import { placeResources } from "./resources.js";
 import { occupy } from "./occupancy.js";
 import { placeProps, propBox } from "./props.js";
 import { streams, type Streams } from "./rng.js";
@@ -26,7 +27,7 @@ import { validateTown, type Gate, type Town } from "./validate.js";
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.7.0";
+export const GENERATOR_VERSION = "settlement-gen/0.8.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {
@@ -91,6 +92,8 @@ export interface SettlementManifest {
   occupancy: Town["occupancy"];
   /** Street furniture and dressing (lamps, benches, fountains, statues, barrels, planters) and the terraces with their stairs, in id order. */
   props: Town["props"];
+  /** What players gather round the town (tree stands, ore veins, fishing spots), in id order; none without its land. */
+  resources: Town["resources"];
   validation: Gate[];
 }
 
@@ -254,6 +257,11 @@ const STAGES: Stage[] = [
         props = kept.filter((p) => !(p.kind === "terrace" && flat.has(p.parcel))).map((p) => (p.yMm && flat.has(p.parcel) ? (({ yMm: _, ...rest }) => rest)(p) : p));
       }
       ctx.town.props = props;
+      // What players gather round the town: on the world's dry land (fishing spots on its water) where the site is known.
+      const c0 = townCentreMm(layout!.roads.nodes);
+      const dryMm = site ? (x: number, z: number): boolean => site.dry(site.origin[0] + (x - c0.x) / 1000, site.origin[1] + (z - c0.z) / 1000) : undefined;
+      ctx.town.resources = placeResources(ctx.request.settlementId, layout!, structures!, ctx.town.industry ?? null, ctx.request.land ?? null, ctx.rules, ctx.rng, scaledLayout(ctx.rules, scale).parcelMm, dryMm);
+      if (ctx.town.resources.length) ctx.events.emit("normal", "props", "resources_placed", Object.fromEntries([...new Set(ctx.town.resources.map((r) => r.kind))].map((k) => [k, ctx.town.resources!.filter((r) => r.kind === k).length])));
       const counts: Record<string, number> = {};
       for (const p of props) counts[p.kind] = (counts[p.kind] ?? 0) + 1;
       ctx.events.emit("summary", "props", "dressed", counts);
@@ -291,7 +299,7 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     }
   }
 
-  const { setting, industry, guild, demographics, mastery, demand, layout, structures, occupancy, props } = ctx.town as Town;
+  const { setting, industry, guild, demographics, mastery, demand, layout, structures, occupancy, props, resources } = ctx.town as Town;
   const body = {
     format: MANIFEST_FORMAT as typeof MANIFEST_FORMAT,
     generatorVersion: GENERATOR_VERSION,
@@ -316,9 +324,10 @@ export function generateSettlement(request: SettlementRequest): GenerationResult
     structures,
     occupancy,
     props,
+    resources,
     validation: ctx.validation,
   };
   const byId = <T extends { id: string }>(rows: T[]): T[] => [...rows].sort((a, b) => (a.id < b.id ? -1 : 1));
-  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), fortifications: byId(body.fortifications), structures: byId(body.structures), props: byId(body.props), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
+  const sorted = { ...body, districts: byId(body.districts), parcels: byId(body.parcels), fortifications: byId(body.fortifications), structures: byId(body.structures), props: byId(body.props), resources: byId(body.resources), occupancy: { households: byId(occupancy.households), npcs: byId(occupancy.npcs), shops: byId(occupancy.shops) } };
   return { ok: true, manifest: { ...sorted, hash: contentHash(sorted) }, events: events.events(verbosity) };
 }

@@ -127,6 +127,20 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
     }
     children.push({ id: p.id, name: p.kind, transform: { position: pos(p.center.x, p.center.z, (p.yMm ?? 0) / 1000), rotation: [0, p.yawDeg, 0] }, components: { Structure: { kind: p.kind, asset: asset(p.id, p.kind), width: p.sizeMm[0] / 1000 / f, depth: p.sizeMm[1] / 1000 / f, height: p.heightMm / 1000 } } });
   }
+  // What players gather round the town: each node a Structure for its look (a fishing spot is walked over, on the
+  // water) and a ResourceNode for what it gives.
+  for (const r of manifest.resources ?? []) {
+    children.push({
+      id: r.id,
+      name: r.kind,
+      transform: { position: [(r.center.x - cx) / 1000, 0, (r.center.z - cz) / 1000] },
+      components: {
+        Structure: { kind: r.kind, asset: asset(r.id, r.kind), width: r.sizeMm[0] / 1000 / f, depth: r.sizeMm[1] / 1000 / f, height: r.heightMm / 1000 },
+        ResourceNode: { material: r.material, tier: r.tier, skill: r.skill, stock: r.stock, regrowHours: r.regrowHours, town: manifest.settlementId },
+        ...(r.kind === "fishing_spot" ? { Collider: { shape: "none" } } : {}),
+      },
+    });
+  }
   const scene: SceneDoc = {
     version: 1,
     name: `settlement-${manifest.settlementId}`,

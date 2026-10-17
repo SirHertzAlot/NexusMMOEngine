@@ -11,6 +11,7 @@ import type { TownMastery } from "./mastery.js";
 import type { TownSetting } from "./setting.js";
 import type { TownIndustry } from "./industry.js";
 import type { Guild } from "./guild.js";
+import { takenGround, type ResourceNode } from "./resources.js";
 import { ACRE_M2, scaledLayout, type Holding, type Layout } from "./layout.js";
 import { BUILDING_MARGIN_MM, propBox, type Prop } from "./props.js";
 import type { Occupancy } from "./occupancy.js";
@@ -34,6 +35,7 @@ export interface Town {
   occupancy: Occupancy;
   props: Prop[];
   guild: Guild | null;
+  resources: ResourceNode[];
 }
 
 const gate = (name: string, ok: boolean, detail: string): Gate => ({ gate: name, ok, detail });
@@ -395,6 +397,33 @@ export function guildGate(t: Pick<Town, "industry" | "structures" | "occupancy" 
   return gate("guild", problems.length === 0, problems.length ? problems.join(", ") : `the ${gd.profession} guild: its hall ${gd.hall}, led by ${gd.master ?? "no master"}, ${gd.ranks.length} ranks, ${gd.signature} taught to ${signatureAt?.title ?? "no rank"}`);
 }
 
+/**
+ * What players gather, re-derived: no node stands on the town's plots, fields, roads or wall, none on another; each is
+ * its industry's kind of node, of one of that industry's products, with stock left; and the town's own industry has
+ * some wherever its workplaces stand (unless its stock is worked out, or it fishes and the water is not known).
+ */
+export function resourcesGate(t: Pick<Town, "layout" | "structures" | "industry" | "resources">, rules: SettlementRules, scale = 1): Gate {
+  const rr = rules.industry?.resources;
+  if (!rr || !t.industry) return gate("resources", t.resources.length === 0, t.resources.length ? `${t.resources.length} resource nodes without the land` : "no resources: the land was not given");
+  const parcelMm = scaledLayout(rules, scale).parcelMm;
+  const taken = takenGround(t.layout, parcelMm);
+  // The town between its plots (its square and streets) too: the box of its street plots and wall.
+  const core = takenGround({ ...t.layout, parcels: t.layout.parcels.filter((p) => p.kind !== "agriculture" && p.kind !== "manufacturing"), roads: { nodes: [], edges: [] } }, parcelMm);
+  if (core.length) taken.push(core.reduce((b, g) => ({ x0: Math.min(b.x0, g.x0), x1: Math.max(b.x1, g.x1), z0: Math.min(b.z0, g.z0), z1: Math.max(b.z1, g.z1) })));
+  const box = (r: ResourceNode) => ({ x0: r.center.x - r.sizeMm[0] / 2, x1: r.center.x + r.sizeMm[0] / 2, z0: r.center.z - r.sizeMm[1] / 2, z1: r.center.z + r.sizeMm[1] / 2 });
+  const hit = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) => a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1;
+  const onTown = t.resources.filter((r) => taken.some((g) => hit(g, box(r))));
+  const crowded = t.resources.filter((r, i) => t.resources.some((o, j) => j > i && hit(box(r), box(o))));
+  const wrong = t.resources.filter((r) => rr.nodes[r.industry]?.kind !== r.kind || !rules.industry!.industries[r.industry].products.some((p) => p.material === r.material && p.tier === r.tier) || r.stock <= 0);
+  const own = t.industry.primary;
+  const works = own ? t.structures.filter((s) => s.archetype === rules.industry!.industries[own].workplace).length : 0;
+  const missing = !!own && !!rr.nodes[own] && own !== "fishing" && works > 0 && !t.resources.some((r) => r.industry === own);
+  const problems = [onTown.length && `${onTown.length} on the town's ground`, crowded.length && `${crowded.length} on another node`, wrong.length && `${wrong.length} of the wrong kind or material`, missing && `no ${own} nodes for its ${works} workplaces`].filter(Boolean);
+  const counts = new Map<string, number>();
+  for (const r of t.resources) counts.set(`${r.material} ${r.kind}`, (counts.get(`${r.material} ${r.kind}`) ?? 0) + 1);
+  return gate("resources", problems.length === 0, problems.length ? problems.join(", ") : [...counts].map(([k, n]) => `${n} ${k}`).join(", ") || "none to gather");
+}
+
 export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[] {
   const sum = (f: (id: string) => number): number => t.structures.reduce((a, s) => a + f(s.archetype), 0);
   const d = t.demographics;
@@ -451,6 +480,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     propsGate(t, rules, scale),
     industryGate(t, rules),
     guildGate(t, rules),
+    resourcesGate(t, rules, scale),
     gate("zoning", misplaced.length === 0, misplaced.length ? `${misplaced.length} structures outside their district` : "every structure stands in a district that allows it"),
   ];
 }

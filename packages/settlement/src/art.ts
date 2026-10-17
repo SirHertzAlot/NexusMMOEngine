@@ -110,6 +110,10 @@ export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
   log_pile: ["(^|_)(log_?pile|logs|wood_?pile|lumber(_?pile)?)(_[0-9]+)?$"],
   ore_cart: ["(^|_)(ore_?cart|mine_?cart|minecart|cart_ore)(_[0-9]+)?$"],
   fish_rack: ["(^|_)(fish_?rack|drying_?rack|fish_?stand)(_[0-9]+)?$"],
+  // What players gather (rules.industry.resources): a stand of trees, an outcrop with ore, a ripple on the water.
+  tree_stand: ["(^|_)(tree|trees|tree_?cluster|pine|oak|birch)(_[a-z]+)?(_[0-9]+)?$"],
+  ore_vein: ["(^|_)(ore|ore_?vein|ore_?rock|rock_?ore|mineral_?rock|crystal_?rock)(_[a-z]+)?(_[0-9]+)?$"],
+  fishing_spot: ["(^|_)(fishing_?spot|fish_?school|ripple|water_?ripple)(_[0-9]+)?$"],
   guild_banner: ["(^|_)(banner|flag|pennant)(_?(pole|stand))?(_[0-9]+)?$"],
   grain_sacks: ["(^|_)(grain_?sacks?|sacks?(_grain|_flour)?|flour_?sacks?)(_[0-9]+)?$"],
 };

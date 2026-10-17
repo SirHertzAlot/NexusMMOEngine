@@ -9,8 +9,8 @@
 import { expandPrefabs, worldNodes, type PrefabLookup, type SceneDoc } from "@mmo-engine/scene";
 import type { RaidSettlement } from "../creatures.js";
 
-/** The Structure kinds that are not buildings: the town wall (settlement layout's WallPieceKind), the square, fields, paving and props (settlement's PROP_KINDS, terraces and stairs). */
-const WALL_KINDS = new Set(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field", "paved_road", "terrace", "stair_step", "street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks", "guild_banner"]);
+/** The Structure kinds that are not buildings: the town wall (settlement layout's WallPieceKind), the square, fields, paving and props (settlement's PROP_KINDS, terraces and stairs) and what players gather (its resource node kinds). */
+const WALL_KINDS = new Set(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field", "paved_road", "terrace", "stair_step", "street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks", "guild_banner", "tree_stand", "ore_vein", "fishing_spot"]);
 
 export function sceneSettlements(scene: SceneDoc, prefabs?: PrefabLookup): RaidSettlement[] {
   const doc = prefabs ? expandPrefabs(scene, prefabs).doc : scene;

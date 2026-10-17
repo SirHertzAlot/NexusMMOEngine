@@ -380,6 +380,22 @@ export const GuildRulesSchema = z.strictObject({
   minPopulation: z.number().int().positive(),
   ranks: z.array(z.strictObject({ title: z.string(), reputation: z.number().int().min(0), tier: z.number().int().min(1).max(5), pupil: z.boolean().default(false) })).min(1),
 });
+/**
+ * What players gather around a town (`placeResources`): its land's resources as objects in the world, a node kind per
+ * industry (`nodes`; farming has its fields). The town's own industry has `perWorkplace` nodes for each of its
+ * workplaces; every other industry rich enough near it has up to `nearby` (fewer as it thins). They stand in the open
+ * ground round the town, from its edge out to `bandMm`, at least `spacingMm` apart and clear of its plots, fields and
+ * roads (fishing spots on the water, the rest on dry land). Each holds `stock` gathers, less what the town has used up
+ * (`land.depletedPermille`), and comes back after `regrowHours` (0: an ore vein, once worked out, is gone). A node is
+ * of one of the industry's products near the town, the rarer tiers fewer (one per tier in `1 / tier`).
+ */
+export const ResourceRulesSchema = z.strictObject({
+  nodes: z.partialRecord(z.enum(INDUSTRIES), z.strictObject({ kind: z.string(), skill: z.string(), sizeMm: z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]), stock: z.number().int().positive(), regrowHours: z.number().int().min(0) })),
+  perWorkplace: z.number().int().min(0),
+  nearby: z.number().int().min(0),
+  spacingMm: z.number().int().positive(),
+  bandMm: z.number().int().positive(),
+});
 export const IndustryRulesSchema = z.strictObject({
   industries: z.record(z.enum(INDUSTRIES), IndustrySchema),
   fullSharePermille: z.number().int().min(1).max(1000),
@@ -390,6 +406,7 @@ export const IndustryRulesSchema = z.strictObject({
   trade: TradeRulesSchema.optional(),
   history: HistoryRulesSchema.optional(),
   guild: GuildRulesSchema.optional(),
+  resources: ResourceRulesSchema.optional(),
 });
 export type IndustryRules = z.infer<typeof IndustryRulesSchema>;
 export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
@@ -453,6 +470,17 @@ export const DEFAULT_INDUSTRY: IndustryRules = IndustryRulesSchema.parse({
   exportPerPeople: 150,
   trade: { loadsPerWorkplace: 12, peoplePerLoad: 60, pricePermillePerKm: 40, seaPermille: 400, shortagePermille: 1500 },
   history: { switchPermille: 250, growthPermillePerYear: 30, shrinkPermillePerYear: 50, stablePermille: 50 },
+  resources: {
+    nodes: {
+      timber: { kind: "tree_stand", skill: "Woodcutting", sizeMm: [6000, 6000, 9000], stock: 40, regrowHours: 72 },
+      mining: { kind: "ore_vein", skill: "Mining", sizeMm: [3000, 2500, 1800], stock: 60, regrowHours: 0 },
+      fishing: { kind: "fishing_spot", skill: "Fishing", sizeMm: [4000, 4000, 300], stock: 30, regrowHours: 6 },
+    },
+    perWorkplace: 3,
+    nearby: 6,
+    spacingMm: 25000,
+    bandMm: 400000,
+  },
   guild: {
     archetype: "guild_hall",
     minPopulation: 400,
@@ -562,7 +590,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/10",
+  version: "settlement-rules/11",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },
