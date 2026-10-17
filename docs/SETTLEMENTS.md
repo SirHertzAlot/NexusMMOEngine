@@ -497,7 +497,10 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
     `ResourceNode` component (material, tier, skill, stock, regrowHours, town) in
     `packages/scene`. Gate `resources` checks that none stands on the town's ground or on
     another node, and that each has its industry's kind and material.
-  - Gathering from them (the action, a pouch, live depletion) is not built yet.
+  - Players gather from them in the game (`packages/engine-core/src/gathering`, catalog 0x24): E
+    by a node takes one into the materials pouch and trains its skill (woodcutting, mining,
+    fishing). A worked-out node is drawn low and comes back after its regrow time (on the wall
+    clock, across restarts); stocks and pouches are saved in `gathering.db`.
 - **A region of towns** (`region.ts`, `npm run settlement:region -- --world <file>`). Gate
   `industry` also accepts an industry the town has long worked (`land.worked`) while it is rich
   enough and nothing beats it by `history.switchPermille`.
