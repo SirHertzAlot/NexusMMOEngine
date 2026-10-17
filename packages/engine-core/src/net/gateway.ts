@@ -83,6 +83,7 @@ import {
   type DuelMessage,
   type TradeMessage,
   type WalletMessage,
+  type ResourcesMessage,
   type VendorAction,
   type VendorMessage,
   type AuctionMessage,
@@ -111,6 +112,7 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
+import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
@@ -1209,6 +1211,7 @@ export class Gateway {
       ...this.sendWallets(sim, tick),
       ...this.sendAuctions(sim, tick),
     ];
+    this.sendResources(sim);
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
@@ -2240,6 +2243,9 @@ export class Gateway {
         break;
       case MessageType.TileRequest:
         this.onTileRequest(s, payload);
+        break;
+      case MessageType.Gather:
+        this.onGather(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -3819,6 +3825,10 @@ export class Gateway {
     if (names) this.deliver(s, names, this.tick);
     const drops = this.dropsFor(null);
     if (drops) this.deliver(s, drops, this.tick);
+    // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
+    const gathering = this.gathering;
+    if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
+    if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     this.deliverSnapshot(
       s,
       encodeEnvelope(
@@ -4534,6 +4544,64 @@ export class Gateway {
   private sendInventory(s: ClientSession): void {
     if (!this.items || !s.welcomed) return;
     this.sendEnvelope(s, MessageType.Inventory, encodeControl(this.items.inventoryOf(this.holderOf(s))));
+  }
+
+  /** The server's gathering system (resource nodes and pouches), if it runs one. */
+  private get gathering(): GatheringSystem | undefined {
+    return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
+  }
+
+  /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
+  private sendResources(sim: SimWorld): void {
+    const nodes = this.gathering?.drainChanges(sim) ?? [];
+    if (nodes.length === 0) return;
+    const bytes = encodeControl({ kind: "resources", nodes } satisfies ResourcesMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Gather, bytes);
+  }
+
+  /**
+   * Gather once from a resource node (catalog 0x24): in-world sessions
+   * only; a bad shape is 4003, a refusal (too far, worked out, still
+   * gathering, pouch full) 4005. Shares the pickup rate limit. A gather
+   * answers with the whole pouch, naming what was added.
+   */
+  private onGather(s: ClientSession, payload: Uint8Array): void {
+    const gathering = this.gathering;
+    if (!gathering || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "gathering outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed gather");
+      return;
+    }
+    const parsed = GatherActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed gather");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) {
+      this.sendError(s, 4005, "no avatar");
+      return;
+    }
+    const wire = parseEntityArg(parsed.data.entity);
+    const holder = this.holderOf(s);
+    const result = wire === null ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, this.world.resolveWireId(wire));
+    if (!result.ok) {
+      this.sendError(s, 4005, result.error);
+      return;
+    }
+    this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
   }
 
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */

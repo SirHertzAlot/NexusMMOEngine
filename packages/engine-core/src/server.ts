@@ -182,6 +182,7 @@ import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
 import { WalletSystem } from "./economy/wallet.js";
 import { SqliteWalletStore } from "./economy/wallet-store.js";
+import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
 import { TradeSystem } from "./economy/trade.js";
 import { VendorSystem } from "./economy/vendor.js";
 import { AuctionSystem } from "./economy/auction.js";
@@ -682,6 +683,20 @@ async function main(): Promise<void> {
   // the module-built LootDropper can drop gold.
   const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
   const wallet = new WalletSystem(walletStore);
+  // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
+  // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
+  // Reach, pace, pouch size and training come from content/rules/gathering.json.
+  const gathering = new GatheringSystem({
+    reachM: game.rules.gathering.reachM,
+    cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
+    pouchMax: game.rules.gathering.pouchMax,
+    trainPerTier: game.rules.gathering.trainDifficultyPerTier,
+    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    train: (avatar, skill, difficulty, key) => {
+      const i = masteryOf().index.of(skill);
+      if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
+    },
+  });
   // Items (roadmap M3a, slice 2): the items module builds the service from
   // this config during assembly. No inline construction — see
   // modules/items/server.js.
@@ -840,6 +855,7 @@ async function main(): Promise<void> {
           },
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
+        resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -945,6 +961,7 @@ async function main(): Promise<void> {
         reloader,
         streamer,
         wallet,
+        gathering,
         trade,
         vendor,
         auction,

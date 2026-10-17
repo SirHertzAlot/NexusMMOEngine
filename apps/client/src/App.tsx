@@ -23,6 +23,7 @@ import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessag
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
 import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
 import type { DungeonMessage } from "@mmo-engine/protocol";
+import type { PouchMaterial } from "@mmo-engine/protocol";
 import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
@@ -50,6 +51,7 @@ import { GuildFrame } from "./ui/guild-frame.js";
 import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel, EMPTY_WORN, type Worn } from "./ui/bag-panel.js";
+import { PouchPanel, tierColor } from "./ui/pouch-panel.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
@@ -204,6 +206,10 @@ export function App(): React.ReactElement {
   const [worn, setWorn] = useState<Worn>(EMPTY_WORN);
   const [bagOpen, setBagOpen] = useState(false);
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
+  // Gathering (0x24): the resource node in reach (its view re-read when the nodes change) and the materials pouch.
+  const [nearResource, setNearResource] = useState<bigint | null>(null);
+  const [, setResourcesSeen] = useState(0);
+  const [pouch, setPouch] = useState<PouchMaterial[]>([]);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
   const [quests, setQuests] = useState<QuestView[] | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -303,6 +309,14 @@ export function App(): React.ReactElement {
         bagCount.current = held;
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
         setWorn({ ...EMPTY_WORN, ...inv.worn });
+      },
+      onResources: () => setResourcesSeen((n) => n + 1),
+      onPouch: (p) => {
+        setPouch(p.materials);
+        if (p.gathered) {
+          audio.playEvent("pickup");
+          setNotice({ text: t("pouch.gathered", { count: p.gathered.count, name: p.gathered.name }), at: performance.now() });
+        }
       },
       onHit: (h) => {
         const player = clientRef.current?.playerEntity ?? null;
@@ -598,6 +612,7 @@ export function App(): React.ReactElement {
   }
   if (client) {
     const entrance = nearEntrance ? client.entrances.find((e) => e.id === nearEntrance) : undefined;
+    const resource = nearResource !== null ? client.resources.get(nearResource) : undefined;
     return (
       <HudLayoutProvider layout={hudLayout}>
       <div className="relative h-full w-full">
@@ -619,6 +634,7 @@ export function App(): React.ReactElement {
           onTreat={onTreat}
           onMend={onMend}
           onNearDrop={setNearDrop}
+          onNearResource={setNearResource}
           onQuests={toggleQuests}
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
@@ -633,13 +649,24 @@ export function App(): React.ReactElement {
             {t("interact.pickUp")} <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
           </div>
         )}
-        {!nearDrop && !dialog && nearNpc && (
+        {!nearDrop && !dialog && resource && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            {t("interact.gather")} <span style={{ color: tierColor(resource.tier) }}>{resource.name}</span>{" "}
+            <span className="text-muted-foreground">
+              {resource.stock > 0
+                ? t("interact.left", { count: resource.stock })
+                : `${t("interact.workedOut")}, ${resource.regrowAt === null ? t("interact.goneForGood") : t("interact.backIn", { hours: Math.max(1, Math.ceil((resource.regrowAt - Date.now()) / 3_600_000)) })}`}
+            </span>
+          </div>
+        )}
+        {!nearDrop && !dialog && !resource && nearNpc && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.talkTo")} <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
           </div>
         )}
-        {!nearDrop && !dialog && !nearNpc && entrance && (
+        {!nearDrop && !dialog && !resource && !nearNpc && entrance && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.enter")} <span className="text-violet-300">{entrance.name}</span>
@@ -742,6 +769,8 @@ export function App(): React.ReactElement {
         />
         {bagOpen && bag && (
           <HudSlot id="bag-panel" className="z-10">
+            <div>
+            <PouchPanel materials={pouch} />
             <BagPanel
               bag={bag}
               hands={hands}
@@ -750,6 +779,7 @@ export function App(): React.ReactElement {
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
             />
+            </div>
           </HudSlot>
         )}
         {questsOpen && quests && (

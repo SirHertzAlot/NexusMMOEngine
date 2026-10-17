@@ -41,6 +41,7 @@ import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
 import { archetypeOk, landDry, LAND_MARGIN_M, STRUCTURE_MARGIN_M, surfaceAt } from "./procgen/habitat.js";
 import type { ModelBounds } from "./procgen/prop-shape.js";
 import type { ScaleResolver } from "./scale.js";
+import type { ResourceNodeSpec } from "./gathering/gathering.js";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 /** The repo's content/scenes (this file is dist/src/scene-spawn.js). */
@@ -81,6 +82,8 @@ export interface SceneSpawnDeps {
   };
   /** Quest nodes: move the quest giver's post to (x, z); null on success, else why not. */
   quests?: { place(quest: string, x: number, z: number): string | null };
+  /** Resource nodes (a Structure with a ResourceNode: tree stands, ore veins, fishing spots): `register` makes the spawned entity gatherable, keyed by scene and node id. */
+  resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
 }
 
 export interface SceneSpawnResult {
@@ -197,6 +200,9 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         const modelSized = str(structure.asset) !== "" && deps.bounds?.(asset) !== undefined;
         // A Collider with shape "none" makes it walk-through (a town gate: the road passes under it).
         const walkThrough = node.components?.Collider?.shape === "none";
+        // A fishing spot stands on the water: a gatherable node of the Fishing skill is never refused as wet.
+        const resource = node.components?.ResourceNode;
+        const onWater = resource !== undefined && str(resource.skill).toLowerCase() === "fishing";
         const collision = walkThrough ? { shape: "none" as const, motion: "static" as const } : { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
         // Ground under the whole footprint, not just its centre: the floor stands on the highest point
         // (nothing sinks into a slope), the body reaches the lowest, and a foundation slab fills the gap.
@@ -223,7 +229,7 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             const g = deps.groundHeightAt?.(sx, sz) ?? 0;
             if (g > high) high = g;
             if (g < low) low = g;
-            if (wet === null && deps.groundHeightAt) {
+            if (wet === null && deps.groundHeightAt && !onWater) {
               if (!landDry(g, surfaceAt(deps.waterAt, deps.seaLevel, sx, sz), STRUCTURE_MARGIN_M)) wet = "under water or on the shore (less than " + STRUCTURE_MARGIN_M + " m above the water)";
               else if (deps.riverAt?.(sx, sz)) wet = "on a river";
             }
@@ -234,7 +240,9 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           continue;
         }
         // On a slope the floor stands a plinth above the highest sample: the ground between samples can peak a few cm higher.
-        const floor = high - low > 0.01 ? high + PLINTH_M : high;
+        // On the water, the floor is the water's surface.
+        const surface = onWater ? surfaceAt(deps.waterAt, deps.seaLevel, x, z) : null;
+        const floor = surface !== null && surface > high ? surface : high - low > 0.01 ? high + PLINTH_M : high;
         const drop = floor - low;
         const building = spawnBody(deps, node.id, w, floor, asset, collision, "building");
         const entities = [building];
@@ -246,7 +254,19 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           const slab = { shape: "box" as const, halfExtents: [hw / f2, drop / 2 / f2, hd / f2] as [number, number, number], motion: "static" as const };
           entities.push(spawnBody(deps, `${node.id}/foundation`, w, floor - drop / 2, "structure:foundation", slab, "building"));
         }
-        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities });
+        if (resource && deps.resources) {
+          deps.resources.register(building, `${doc.name}/${node.id}`, {
+            kind,
+            material: str(resource.material),
+            tier: Number(resource.tier ?? 1),
+            skill: str(resource.skill),
+            stock: Number(resource.stock ?? 1),
+            regrowHours: Number(resource.regrowHours ?? 0),
+            halfX: hw,
+            halfZ: hd,
+          });
+        }
+        out.spawned.push({ id: node.id, what: resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
       }
       continue;
     }

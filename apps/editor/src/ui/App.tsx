@@ -23,6 +23,7 @@ import { StringsPanel } from "./strings-panel.js";
 import { ScalePanel } from "./scale-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
 import { MaterialsPanel } from "./materials-panel.js";
+import { ValgrindPanel } from "./valgrind-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -2022,7 +2023,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     requestOpenAsset("scene", name);
   };
   const t = useTree();
-  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
+  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id}>
       <TreeItem
