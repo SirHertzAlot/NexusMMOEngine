@@ -18,6 +18,8 @@ export const CONTENT_DOC_FILES = {
   vfxBudgets: "vfx/budgets.json",
   /** Server persistence settings (EG13): save cadence, snapshots kept, save log size, database query caps. */
   persistence: "server/persistence.json",
+  /** The day cycle and server-run bots (EG14); the MMO_DAY_* and MMO_BOTS* variables still win. */
+  world: "server/world.json",
 } as const;
 
 export type ContentDocName = keyof typeof CONTENT_DOC_FILES;

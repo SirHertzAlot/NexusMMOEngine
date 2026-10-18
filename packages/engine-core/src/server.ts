@@ -114,7 +114,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadPersistenceSettings } from "./server-settings.js";
+import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -255,6 +255,9 @@ const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 // Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
 const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
 if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
+// The day cycle and bots (content/server/world.json, EG14); the MMO_DAY_* and MMO_BOTS* variables still win.
+const worldSettings = loadWorldSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+if (worldSettings.problem) console.warn(`[server] world settings ignored: ${worldSettings.problem}`);
 /** The tick runs at 30 Hz (tick-loop.ts). */
 const SAVE_EVERY_TICKS = Math.max(1, Math.round(persistenceSettings.settings.saveEverySeconds * 30));
 /** Spawn-area chunk radius, always loaded (1 = 3x3), matching bake:world. */
@@ -544,7 +547,10 @@ async function main(): Promise<void> {
   // integrated Y in the same tick, before snapshot collection. Players are
   // held inside the world's edge.
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
-  const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
+  const dayClock = dayClockFromEnv(
+    process.env.MMO_DAY_SECONDS ?? String(worldSettings.settings.daySeconds),
+    process.env.MMO_DAY_OFFSET ?? String(worldSettings.settings.dayOffset),
+  );
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
@@ -608,13 +614,13 @@ async function main(): Promise<void> {
     wildlifeTable && process.env.MMO_SCENE
       ? sceneSettlements(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR))
       : [];
-  const botCount = Number(process.env.MMO_BOTS ?? 0);
-  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number);
+  const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
+  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
   const creaturesConfig = {
     rules: game.rules,
     botCount,
     botHome: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
-    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
+    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : worldSettings.settings.bots.radiusM,
     characterCatalog,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     playerAbilities,

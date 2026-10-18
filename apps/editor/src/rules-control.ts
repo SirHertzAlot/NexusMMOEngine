@@ -65,6 +65,8 @@ export type FieldKind =
   | { kind: "list" }
   /** Two integers, "min–max". */
   | { kind: "pair" }
+  /** A place on the ground, "x, z" in metres (negatives and decimals allowed). */
+  | { kind: "point" }
   /** Id to number, "legLeft: 0.35, hips: 0.15". */
   | { kind: "map" };
 
@@ -382,6 +384,7 @@ export function setAt<T>(obj: T, path: string, value: unknown): T {
 /** A field's value as the text its input shows ("" when absent). */
 export function fieldText(spec: FieldSpec, value: unknown): string {
   if (value === undefined || value === null) return "";
+  if (spec.kind === "point") return Array.isArray(value) ? value.join(", ") : "";
   if (spec.kind === "list" || spec.kind === "pair") return Array.isArray(value) ? value.join(spec.kind === "pair" ? "–" : ", ") : "";
   if (spec.kind === "map") return value !== null && typeof value === "object" ? Object.entries(value).map(([k, v]) => `${k}: ${String(v)}`).join(", ") : "";
   return String(value);
@@ -418,6 +421,11 @@ export function parseField(spec: FieldSpec, text: string): unknown {
         out[m[1]] = n;
       }
       return out;
+    }
+    case "point": {
+      const ns = t.split(/[,\s]+/).filter((s) => s !== "").map(Number);
+      if (ns.length !== 2 || !ns.every(Number.isFinite)) return { error: "two numbers, x then z, e.g. 120, -40" };
+      return ns;
     }
     case "pair": {
       const parts = t.split(/[-–,\s]+/).filter((s) => s !== "");

@@ -16,7 +16,7 @@ import { CONTENT_DOC_KEYS } from "../src/content-docs-host.js";
 import { CRAFTING_ROWS, CRAFTING_SECTIONS } from "../src/crafting-rules.js";
 import { ENTRANCE_FIELDS, RUN_SECTIONS } from "../src/dungeon-rules.js";
 import { VFX_BUDGET_SECTIONS } from "../src/vfx-budgets.js";
-import { PERSISTENCE_SECTIONS } from "../src/server-settings.js";
+import { PERSISTENCE_SECTIONS, WORLD_SECTIONS } from "../src/server-settings.js";
 import { getAt } from "../src/rules-control.js";
 
 const REPO = dirname(fileURLToPath(new URL("../../../../package.json", import.meta.url)));
@@ -157,6 +157,29 @@ describe("server persistence settings (EG13)", () => {
     const file = JSON.parse(readFileSync(join(REPO, "content", "server", "persistence.json"), "utf8")) as Record<string, unknown>;
     assert.deepEqual(fields.map((f) => f.key).sort(), Object.keys(file).sort());
     for (const f of fields) assert.equal(f.def, file[f.key], f.key);
+  });
+});
+
+describe("server world settings (EG14)", () => {
+  it("PUT writes valid settings and refuses bad ones by field, writing nothing", async () => {
+    const base = disk("world") as { bots: Record<string, unknown> };
+    const next = { ...base, daySeconds: 900, bots: { ...base.bots, count: 6, home: [120, -40] } };
+    assert.equal((await route("PUT", "world", next))?.status, 200);
+    assert.deepEqual(disk("world"), next);
+    const r = await route("PUT", "world", { ...next, dayOffset: 2, bots: { ...next.bots, radiusM: -1 } });
+    assert.equal(r?.status, 400);
+    const paths = (r?.body as { issues: Array<{ path: string }> }).issues.map((i) => i.path);
+    assert.ok(paths.includes("dayOffset") && paths.includes("bots.radiusM"), paths.join());
+    assert.deepEqual(disk("world"), next);
+    assert.equal((await route("PUT", "world", base))?.status, 200);
+  });
+
+  it("the form covers every setting, with the server's defaults as placeholders", () => {
+    const file = JSON.parse(readFileSync(join(REPO, "content", "server", "world.json"), "utf8")) as Record<string, unknown>;
+    const fields = WORLD_SECTIONS.flatMap((s) => s.fields);
+    const leaves = Object.entries(file).flatMap(([k, v]) => (v !== null && typeof v === "object" && !Array.isArray(v) ? Object.keys(v).map((c) => `${k}.${c}`) : [k]));
+    assert.deepEqual(fields.map((f) => f.key).sort(), leaves.sort());
+    for (const f of fields) assert.equal(f.def, getAt(file, f.key), f.key);
   });
 });
 
