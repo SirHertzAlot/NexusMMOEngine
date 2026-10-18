@@ -12,6 +12,8 @@ export const CONTENT_DOC_FILES = {
   instances: "dungeons/instances.json",
   /** Where in the open world a party asks for a dungeon. */
   entrances: "dungeons/entrances.json",
+  /** Crafting rules (units, fittings, reagents fallback, rune stone, skills); refining and reagents stay in the Data grids. */
+  crafting: "crafting/recipes.json",
 } as const;
 
 export type ContentDocName = keyof typeof CONTENT_DOC_FILES;

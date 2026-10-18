@@ -1,5 +1,5 @@
 /**
- * Designer settings documents (EG1): GET reads the fixed file, PUT
+ * Designer settings documents (EG1, EG3): GET reads the fixed file, PUT
  * validates with the game's own schema and writes only a valid document.
  * Writes go to a throwaway repo root, never the real content.
  */
@@ -12,6 +12,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleContentDocsRoute } from "../src/content-docs-host.js";
 import { CONTENT_DOC_FILES } from "../src/content-docs.js";
+import { CONTENT_DOC_KEYS } from "../src/content-docs-host.js";
+import { CRAFTING_ROWS, CRAFTING_SECTIONS } from "../src/crafting-rules.js";
 import { ENTRANCE_FIELDS, RUN_SECTIONS } from "../src/dungeon-rules.js";
 
 const REPO = dirname(fileURLToPath(new URL("../../../../package.json", import.meta.url)));
@@ -23,9 +25,11 @@ const route = (method: string, name: string, content?: unknown) =>
 before(() => {
   mkdirSync(join(ROOT, "content"), { recursive: true });
   cpSync(join(REPO, "content", "dungeons"), join(ROOT, "content", "dungeons"), { recursive: true });
+  cpSync(join(REPO, "content", "crafting"), join(ROOT, "content", "crafting"), { recursive: true });
   // The schemas are read from <root>/packages/engine-core/dist: borrow the real build.
   mkdirSync(join(ROOT, "packages"), { recursive: true });
   symlinkSync(join(REPO, "packages", "engine-core"), join(ROOT, "packages", "engine-core"), "junction");
+  symlinkSync(join(REPO, "packages", "crafting"), join(ROOT, "packages", "crafting"), "junction");
 });
 after(() => rmSync(ROOT, { recursive: true, force: true }));
 
@@ -68,6 +72,40 @@ describe("content docs routes", () => {
     const r = await route("PUT", "entrances", bad);
     assert.equal(r?.status, 400);
     assert.deepEqual(disk("entrances"), ok);
+  });
+});
+
+describe("crafting rules document", () => {
+  it("PUT replaces only the form's keys, keeping refining and reagents as on disk", async () => {
+    const before = disk("crafting") as Record<string, unknown>;
+    // A stale refining section in the form's copy must not undo a Data grids save.
+    const next = { ...before, refining: {}, defaultUnits: 5, units: [{ tags: ["jewel"], units: 2 }], skills: [{ tags: ["wood"], skill: "Carving" }] };
+    const r = await route("PUT", "crafting", next);
+    assert.equal(r?.status, 200);
+    assert.deepEqual(disk("crafting"), { ...before, defaultUnits: 5, units: [{ tags: ["jewel"], units: 2 }], skills: [{ tags: ["wood"], skill: "Carving" }] });
+  });
+
+  it("PUT refuses unknown materials and bad rows by field, and writes nothing", async () => {
+    const before = disk("crafting") as Record<string, unknown>;
+    const bad = { ...before, runeStone: "moon-cheese", fittings: [{ tags: [], add: { "beast-hide": 2 } }], defaultUnits: 0 };
+    const r = await route("PUT", "crafting", bad);
+    assert.equal(r?.status, 400);
+    const paths = (r?.body as { issues: Array<{ file: string; path: string }> }).issues.map((i) => i.path);
+    assert.ok(paths.includes("fittings.0.tags"), paths.join());
+    assert.ok(paths.includes("defaultUnits"), paths.join());
+    assert.deepEqual(disk("crafting"), before);
+    // Shape first: once the shape is fine the material check names the rune stone.
+    const r2 = await route("PUT", "crafting", { ...before, runeStone: "moon-cheese" });
+    assert.deepEqual((r2?.body as { issues: Array<{ path: string }> }).issues.map((i) => i.path), ["runeStone"]);
+  });
+
+  it("the form covers every key it owns", () => {
+    const covered = [...CRAFTING_SECTIONS.flatMap((s) => s.fields.map((f) => f.key)), ...CRAFTING_ROWS.map((r) => r.under)].sort();
+    assert.deepEqual(covered, [...(CONTENT_DOC_KEYS.crafting ?? [])].sort());
+    const file = Object.keys(JSON.parse(readFileSync(join(REPO, "content", "crafting", "recipes.json"), "utf8")) as object)
+      .filter((k) => !["version", "refining", "reagents"].includes(k))
+      .sort();
+    assert.deepEqual(covered, file);
   });
 });
 

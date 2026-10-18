@@ -20,6 +20,7 @@ import { DungeonPanel } from "./dungeon-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
 import { SettlementPanel } from "./settlement-panel.js";
+import { CraftingRulesPanel } from "./crafting-rules-panel.js";
 import { DungeonRulesPanel } from "./dungeon-rules-panel.js";
 import { StringsPanel } from "./strings-panel.js";
 import { ScalePanel } from "./scale-panel.js";
@@ -127,6 +128,7 @@ const WORKSPACES: Workspace[] = [
       { id: "content", label: "Content browser", icon: "folder_open", kind: "panel", panel: <ContentBrowserPanel /> },
       { id: "tables", label: "Tables", icon: "table_view", kind: "panel", panel: <TablesPanel /> },
       { id: "rules", label: "Rules", icon: "tune", kind: "panel", panel: <RulesPanel /> },
+      { id: "crafting", label: "Crafting", icon: "construction", kind: "panel", panel: <CraftingRulesPanel /> },
     ],
     leftTitle: "Tables",
   },
@@ -233,6 +235,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
   dungeons: "dungeon rooms layout",
+  crafting: "crafting recipes units fittings rune stone reagent craft skill smithing",
   runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
   towns: "towns settlements generator rules industry guilds resources",
   graphs: "picg graph nodes procedural",
@@ -2074,6 +2077,9 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
         <>
           {file("content/settlements/rules.json", "rules.json", ["dungeons", "towns"])}
         </>
+      ))}
+      {folder("crafting", "content/crafting", "folder", (
+        <>{file("content/crafting/recipes.json", "recipes.json", ["gameplay", "crafting"])}</>
       ))}
       {folder("dungeons", "content/dungeons", "folder", (
         <>

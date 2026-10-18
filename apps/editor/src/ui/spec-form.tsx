@@ -327,6 +327,65 @@ export function ListEditor(props: {
   );
 }
 
+/**
+ * An ordered list of rows with no ids (`under` is an array): each row's
+ * fields side by side, with Up, Down and Remove, and Add at the end. For
+ * lists where the first matching row wins, so order is part of the data.
+ */
+export function RowsEditor(props: {
+  file: string;
+  under: string;
+  title: string;
+  help?: string;
+  noun: string;
+  fields: readonly FieldSpec[];
+  value: unknown;
+  issues: readonly RulesIssue[];
+  lists: OptionLists;
+  newRow: () => Record<string, unknown>;
+  onChange: (next: unknown) => void;
+}): React.JSX.Element {
+  const { file, under, noun, fields, value, issues, onChange } = props;
+  const rows = (getAt(value, under) as unknown[] | undefined) ?? [];
+  const put = (next: unknown[]): void => onChange(setAt(value, under, next));
+  const move = (i: number, by: number): void => {
+    const next = [...rows];
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    put(next);
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionTitle>{props.title}</SectionTitle>
+      {props.help && <p className="text-xs text-muted-foreground">{props.help}</p>}
+      {rows.length === 0 && <p className="text-sm text-muted-foreground">No {noun}s yet.</p>}
+      {rows.map((_, i) => (
+        <div key={i} className="flex items-start gap-3 rounded-md border border-border p-3">
+          <span className="w-6 pt-7 text-right font-mono text-xs text-muted-foreground">{i + 1}</span>
+          <div className="flex-1">
+            <FieldGrid fields={fields} value={value} basePath={`${under}.${i}`} file={file} issues={issues} lists={props.lists} onChange={onChange} />
+          </div>
+          <div className="flex gap-1 pt-6">
+            <Button size="sm" variant="outline" aria-label={`Move ${noun} ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+              Up
+            </Button>
+            <Button size="sm" variant="outline" aria-label={`Move ${noun} ${i + 1} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+              Down
+            </Button>
+            <Button size="sm" variant="danger" aria-label={`Remove ${noun} ${i + 1}`} onClick={() => put(rows.filter((_, n) => n !== i))}>
+              Remove
+            </Button>
+          </div>
+        </div>
+      ))}
+      <div>
+        <Button size="sm" variant="outline" onClick={() => put([...rows, props.newRow()])}>
+          Add {noun}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function IssueList({ issues, title = "Refused — the server wouldn't load this" }: { issues: readonly RulesIssue[]; title?: string }): React.JSX.Element | null {
   if (issues.length === 0) return null;
   return (
