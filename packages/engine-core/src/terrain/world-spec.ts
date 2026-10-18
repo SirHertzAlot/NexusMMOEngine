@@ -233,6 +233,8 @@ export const WorldSpecSchema = z
         recycling: z.number().min(0).max(0.95).default(0.35),
         /** Humidity (0..1) of air blowing in over the land edges. */
         inlandHumidity: z.number().min(0).max(1).default(0.35),
+        /** Global humidity dial: scales the rain and the moisture of the air over the land (1 = as specified, 0 = a dry world). */
+        humidity: z.number().min(0).max(2).default(1),
         /** The edge the sun stands over at noon (the equator side). */
         sunFrom: Side.default("south"),
         /** Noon sun elevation over the sea edge and over the far edge, degrees. */

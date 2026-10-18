@@ -73,6 +73,9 @@ export function rainfall(
   const W = grid.width;
   const D = grid.depth;
   const wind = windVector(C.wind);
+  // The humidity dial scales the rain and the moisture of the air blowing in over the land.
+  const rainMm = C.rainMm * C.humidity;
+  const inlandHumidity = Math.min(1, C.inlandHumidity * C.humidity);
   // Two cells per step: the upwind sample's four corners then always lie
   // strictly upwind, so they are final when this cell is computed.
   const step = 2 * grid.cell;
@@ -108,7 +111,7 @@ export function rainfall(
       // Air blowing in over the world's edge: sea air is saturated, land air
       // arrives with `inlandHumidity`.
       const e = Math.min(D - 1, Math.max(0, Math.round(fv))) * W + Math.min(W - 1, Math.max(0, Math.round(fu)));
-      qIn = water(e) ? 1 : C.inlandHumidity;
+      qIn = water(e) ? 1 : inlandHumidity;
       hBack = h[e];
     } else {
       qIn = bilinear(q, fu, fv);
@@ -116,14 +119,14 @@ export function rainfall(
     }
     if (water(i)) {
       q[i] = qIn + (1 - qIn) * recharge;
-      rain[i] = C.rainMm * qIn;
+      rain[i] = rainMm * qIn;
       continue;
     }
     const climb = Math.max(0, h[i] - hBack);
     const fraction = 1 - Math.exp(-(step / C.dryDistance + C.orographic * climb));
     const fall = qIn * fraction;
     q[i] = qIn - fall * (1 - C.recycling);
-    rain[i] = (C.rainMm * fall) / flatFraction;
+    rain[i] = (rainMm * fall) / flatFraction;
   }
   // Wind lines are independent: blur across them so a range's end doesn't
   // cut a knife-edge shadow.
