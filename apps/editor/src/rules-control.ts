@@ -7,7 +7,7 @@
  * that one reads the filesystem (Node-only), this one only fetches.
  */
 
-export const TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement", "skills"] as const;
+export const TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement", "skills", "social"] as const;
 export type Table = (typeof TABLES)[number];
 
 /** One validation problem, as the rules package reports it. */
@@ -564,5 +564,54 @@ export const SKILLS_SECTIONS: FieldSectionSpec[] = [
       { key: "decay.floorOfPeak", label: "Never below (× peak)", ...share, def: 0.6 },
       { key: "decay.relearnMultiplier", label: "Relearning is faster (×)", kind: "number", min: 1, def: 3 },
     ],
+  },
+];
+
+const count = (min: number, max?: number) => ({ kind: "number", int: true, min, max }) as const;
+const secs = { kind: "number", min: 0 } as const;
+
+/** social.json (EG9): parties, guilds, chat and character slots. Hot-reloads into a running server. */
+export const SOCIAL_SECTIONS: FieldSectionSpec[] = [
+  {
+    title: "Parties",
+    fields: [
+      { key: "party.max", label: "Most members", ...count(2), def: 6, help: "The leader counts." },
+      { key: "party.inviteSeconds", label: "Invite lapses after (s)", ...secs, def: 60 },
+      { key: "party.offlineMinutes", label: "Offline member leaves after (min)", ...secs, def: 5 },
+    ],
+  },
+  {
+    title: "Guilds",
+    fields: [
+      { key: "guild.max", label: "Most members", ...count(1), def: 500 },
+      { key: "guild.inviteSeconds", label: "Invite lapses after (s)", ...secs, def: 60 },
+      { key: "guild.motdMax", label: "Message of the day, longest", ...count(1, 200), def: 200, help: "Characters, up to 200." },
+      { key: "guild.logKeep", label: "Officer log lines kept", ...count(1), def: 200 },
+    ],
+  },
+  {
+    title: "Chat",
+    help: "Lowered limits apply to new lines and blocks; nothing already sent or blocked changes.",
+    fields: [
+      { key: "chat.sayRangeM", label: "Say and emote reach (m)", kind: "number", min: 0, def: 30, help: "Yell reaches the whole region." },
+      { key: "chat.textMax", label: "Longest line (characters)", ...count(1, 500), def: 500, help: "Up to 500, the chat box's limit." },
+      { key: "chat.blockLimit", label: "Most blocked players", ...count(0), def: 200 },
+    ],
+  },
+  {
+    title: "Chat pacing",
+    help: "Seconds a player waits between two lines on each channel.",
+    fields: [
+      { key: "chat.cooldownSeconds.say", label: "Say", ...secs, def: 2 },
+      { key: "chat.cooldownSeconds.yell", label: "Yell", ...secs, def: 10 },
+      { key: "chat.cooldownSeconds.emote", label: "Emote", ...secs, def: 2 },
+      { key: "chat.cooldownSeconds.whisper", label: "Whisper", ...secs, def: 1 },
+      { key: "chat.cooldownSeconds.party", label: "Party", ...secs, def: 0.5 },
+      { key: "chat.cooldownSeconds.guild", label: "Guild", ...secs, def: 0.5 },
+    ],
+  },
+  {
+    title: "Characters",
+    fields: [{ key: "characters.slots", label: "Characters per account", ...count(1), def: 8, help: "Lowering it keeps existing characters; it only stops new ones." }],
   },
 ];

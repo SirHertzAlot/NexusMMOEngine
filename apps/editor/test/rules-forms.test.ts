@@ -19,6 +19,7 @@ import {
   CREATURE_AI_SECTIONS,
   MOVEMENT_SECTIONS,
   SKILLS_SECTIONS,
+  SOCIAL_SECTIONS,
   TECHNIQUE_FIELDS,
   fieldText,
   getAt,
@@ -68,6 +69,12 @@ describe("combat and body forms cover their files", () => {
     const d = engineDefaults().skills;
     assert.deepEqual(keysOf(SKILLS_SECTIONS), leaves(d, ["families", "skills"]).filter((k) => k !== "families" && k !== "skills").sort());
     for (const f of SKILLS_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
+  });
+
+  it("social (EG9): every value, with the engine default as its placeholder", () => {
+    const d = engineDefaults().social;
+    assert.deepEqual(keysOf(SOCIAL_SECTIONS), leaves(d, []).sort());
+    for (const f of SOCIAL_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
   });
 
   it("body (EG8): Medicine training and the treatment order show the engine defaults", () => {

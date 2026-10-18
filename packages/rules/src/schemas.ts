@@ -744,6 +744,71 @@ export const SpellsSchema = z.strictObject({
   defaultRegen: z.number().min(0).default(1),
 });
 
+// ---------------------------------------------------------------- social
+
+/** Most a chat line can be: the client's input box and the wire cap. A rules file can lower it, not raise it. */
+export const CHAT_TEXT_CEILING = 500;
+/** Most a guild message of the day can be on the wire. */
+export const GUILD_MOTD_CEILING = 200;
+
+const seconds = z.number().min(0);
+
+/**
+ * Parties, guilds, chat and character slots (EG9): sizes, how long invites
+ * and absences last, chat reach, line length and pacing, and how many
+ * characters an account keeps. The create payload cap (4 KiB) stays in code:
+ * it guards the server, it is not a design value.
+ */
+export const SocialSchema = z.strictObject({
+  party: z
+    .strictObject({
+      /** Most members, leader included. */
+      max: z.number().int().min(2).default(6),
+      /** An invite lapses after this many seconds. */
+      inviteSeconds: seconds.default(60),
+      /** A member offline this long leaves the party. */
+      offlineMinutes: seconds.default(5),
+    })
+    .prefault({}),
+  guild: z
+    .strictObject({
+      max: z.number().int().min(1).default(500),
+      inviteSeconds: seconds.default(60),
+      /** Longest message of the day. */
+      motdMax: z.number().int().min(1).max(GUILD_MOTD_CEILING).default(200),
+      /** Officer log lines kept per guild. */
+      logKeep: z.number().int().min(1).default(200),
+    })
+    .prefault({}),
+  chat: z
+    .strictObject({
+      /** Say and emote reach this many metres; yell is region-wide. */
+      sayRangeM: z.number().positive().default(30),
+      /** Longest chat line, after trimming. */
+      textMax: z.number().int().min(1).max(CHAT_TEXT_CEILING).default(500),
+      /** Most accounts one account can block. */
+      blockLimit: z.number().int().min(0).default(200),
+      /** Seconds between two lines from one player, per channel. */
+      cooldownSeconds: z
+        .strictObject({
+          say: seconds.default(2),
+          yell: seconds.default(10),
+          emote: seconds.default(2),
+          whisper: seconds.default(1),
+          party: seconds.default(0.5),
+          guild: seconds.default(0.5),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+  characters: z
+    .strictObject({
+      /** Characters one account can keep. */
+      slots: z.number().int().min(1).default(8),
+    })
+    .prefault({}),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -763,6 +828,7 @@ export const RULE_FILES = {
   spells: SpellsSchema,
   gathering: GatheringSchema,
   movement: MovementSchema,
+  social: SocialSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -789,6 +855,7 @@ export type NeedRules = z.infer<typeof NeedSchema>;
 export type IngressRules = z.infer<typeof IngressSchema>;
 export type GatheringRules = z.infer<typeof GatheringSchema>;
 export type MovementRules = z.infer<typeof MovementSchema>;
+export type SocialRules = z.infer<typeof SocialSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
 export type CreatureAiRules = z.infer<typeof CreatureAiSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
@@ -813,4 +880,5 @@ export interface Rules {
   spells: SpellsRules;
   gathering: GatheringRules;
   movement: MovementRules;
+  social: SocialRules;
 }
