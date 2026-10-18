@@ -156,9 +156,9 @@ describe("Collider component", () => {
 });
 
 describe("Structure component", () => {
-  it("is a footprint and a kind: defaults to a four-metre box, refuses a footprint with no size", () => {
+  it("is a footprint and a kind: defaults to a four-metre box with one door, refuses a footprint with no size", () => {
     let d = addComponent(sample(), "spawn", "Structure");
-    assert.deepEqual(findNode(d, "spawn")?.components?.Structure, { kind: "", asset: "", width: 4, depth: 4, height: 4 });
+    assert.deepEqual(findNode(d, "spawn")?.components?.Structure, { kind: "", asset: "", width: 4, depth: 4, height: 4, entrances: 1, capacity: 0 });
     assert.deepEqual(validateScene(d), []);
     d = setComponentField(d, "spawn", "Structure", "kind", "smithy");
     d = setComponentField(d, "spawn", "Structure", "width", 0);

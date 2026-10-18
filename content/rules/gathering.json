@@ -1,0 +1,6 @@
+{
+  "reachM": 2.5,
+  "cooldownSeconds": 1.2,
+  "pouchMax": 999,
+  "trainDifficultyPerTier": 0.2
+}

@@ -45,6 +45,16 @@ export interface Site {
   elevationM: number;
   /** Highest minus lowest ground across the town's footprint, whole metres. */
   reliefM: number;
+  /** The nearest water's kind: the sea (water at the sea's level), a lake (water above it), a river, or none. */
+  waterKind: "sea" | "lake" | "river" | "none";
+  /** Water from the edge of the town's footprint, metres (the water distance less the town's half extent); -1 with no water. */
+  shoreM: number;
+  /** The best resource biome (rules.sites.resourcePermille) within reach of the footprint, 0 to 1000. */
+  resourcePermille: number;
+  /** The walk from the spawn (else the largest connected land) to the site over walkable cells, metres; -1 when not walkable. */
+  walkM: number;
+  /** The land within reach of the footprint (its half extent plus `resourceRangeM`): each biome's share of it, permille (the town's industry reads it). */
+  biomes: Record<string, number>;
 }
 
 /** Highest (or lowest) height within `r` cells of each cell, a square window clipped to the grid; two separable passes. */
@@ -68,12 +78,21 @@ function windowExtreme(h: Float32Array, width: number, depth: number, r: number,
   return out;
 }
 
-/** Cells to the nearest water (river, lake or sea), 4-neighbour breadth-first. */
-function waterDistance(t: TerrainFields): Int32Array {
+const WATER_KINDS = ["none", "sea", "lake", "river"] as const;
+
+/** Cells to the nearest water (river, lake or sea), 4-neighbour breadth-first, and that water's kind (1 sea, 2 lake, 3 river). */
+function waterDistance(t: TerrainFields): { dist: Int32Array; kind: Uint8Array } {
   const { width, depth } = t.grid;
+  const sea = t.seaLevel ?? 0;
   const dist = new Int32Array(width * depth).fill(-1);
+  const kind = new Uint8Array(width * depth);
   const queue: number[] = [];
-  for (let i = 0; i < dist.length; i++) if (t.water[i] || t.river[i]) (dist[i] = 0), queue.push(i);
+  for (let i = 0; i < dist.length; i++) {
+    if (!t.water[i] && !t.river[i]) continue;
+    dist[i] = 0;
+    kind[i] = t.river[i] ? 3 : (t.waterLevel?.[i] ?? sea) > sea + 0.5 ? 2 : 1;
+    queue.push(i);
+  }
   for (let head = 0; head < queue.length; head++) {
     const i = queue[head]!;
     const x = i % width;
@@ -83,10 +102,10 @@ function waterDistance(t: TerrainFields): Int32Array {
       const nz = z + dz;
       if (nx < 0 || nz < 0 || nx >= width || nz >= depth) continue;
       const j = nz * width + nx;
-      if (dist[j] === -1) (dist[j] = dist[i]! + 1), queue.push(j);
+      if (dist[j] === -1) (dist[j] = dist[i]! + 1), (kind[j] = kind[i]!), queue.push(j);
     }
   }
-  return dist;
+  return { dist, kind };
 }
 
 /**
@@ -94,7 +113,7 @@ function waterDistance(t: TerrainFields): Int32Array {
  * `slopeDeg`, over any cell that is not sea or lake. Rivers and ice are walkable. The same rule as
  * `reachableLand` in the engine's terrain code (the packages don't depend on each other).
  */
-function walkable(t: TerrainFields, slopeDeg: number): Uint8Array {
+function walkable(t: TerrainFields, slopeDeg: number): { walk: Uint8Array; walkM: Float32Array } {
   const { width, depth, cell, originX, originZ } = t.grid;
   const tan = Math.tan((slopeDeg * Math.PI) / 180);
   const label = new Int32Array(width * depth);
@@ -127,13 +146,56 @@ function walkable(t: TerrainFields, slopeDeg: number): Uint8Array {
     sizes.push(tail);
   }
   let keep = sizes.indexOf(Math.max(0, ...sizes)) + 1;
+  let start = -1;
   if (t.spawn) {
     const sx = Math.round((t.spawn.x - originX) / cell);
     const sz = Math.round((t.spawn.z - originZ) / cell);
-    if (sx >= 0 && sz >= 0 && sx < width && sz < depth && label[sz * width + sx]) keep = label[sz * width + sx]!;
+    if (sx >= 0 && sz >= 0 && sx < width && sz < depth && label[sz * width + sx]) (keep = label[sz * width + sx]!), (start = sz * width + sx);
   }
   const out = new Uint8Array(width * depth);
   for (let i = 0; i < out.length; i++) out[i] = label[i] === keep ? 1 : 0;
+  // Without a spawn, the walk is measured from the kept land's middle cell (in index order).
+  if (start < 0) {
+    const cells = out.reduce<number[]>((a, v, i) => (v ? (a.push(i), a) : a), []);
+    start = cells[Math.floor(cells.length / 2)] ?? 0;
+  }
+  return { walk: out, walkM: walkDistance(t, out, tan, start) };
+}
+
+/**
+ * Metres walked from `start` to each walkable cell (8-neighbour steps, diagonals sqrt 2 cells, the same slope
+ * limit): a bucketed Dijkstra over half-cell units. Unwalkable cells are -1.
+ */
+function walkDistance(t: TerrainFields, walk: Uint8Array, tan: number, start: number): Float32Array {
+  const { width, depth, cell } = t.grid;
+  const units = new Int32Array(width * depth).fill(-1);
+  const buckets: number[][] = [];
+  const push = (i: number, d: number): void => {
+    (buckets[d] ??= []).push(i);
+  };
+  if (walk[start]) units[start] = 0, push(start, 0);
+  for (let d = 0; d < buckets.length; d++) {
+    for (const i of buckets[d] ?? []) {
+      if (units[i] !== d) continue;
+      const x = i % width;
+      const z = (i - x) / width;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if ((dx === 0 && dz === 0) || nx < 0 || nz < 0 || nx >= width || nz >= depth) continue;
+          const j = nz * width + nx;
+          if (!walk[j]) continue;
+          const diag = dx !== 0 && dz !== 0;
+          if (Math.abs(t.height[j]! - t.height[i]!) > tan * cell * (diag ? Math.SQRT2 : 1)) continue;
+          const nd = d + (diag ? 3 : 2);
+          if (units[j] === -1 || nd < units[j]!) (units[j] = nd), push(j, nd);
+        }
+      }
+    }
+  }
+  const out = new Float32Array(width * depth);
+  for (let i = 0; i < out.length; i++) out[i] = units[i]! < 0 ? -1 : (units[i]! * cell) / 2;
   return out;
 }
 
@@ -145,10 +207,14 @@ function walkable(t: TerrainFields, slopeDeg: number): Uint8Array {
 export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], count: number, extentM = 0): Site[] {
   const { width, depth, cell, originX, originZ } = t.grid;
   const sea = t.seaLevel ?? 0;
-  const dist = waterDistance(t);
-  const walk = rules.requireReachable ? walkable(t, rules.walkSlopeDeg) : undefined;
+  const { dist, kind: waterKindOf } = waterDistance(t);
+  const walked = walkable(t, rules.walkSlopeDeg);
+  const walk = rules.requireReachable ? walked.walk : undefined;
   const fertility = (i: number): number => rules.fertilityPermille[t.biomeIds[t.biome[i]!]!] ?? 0;
-  const [near, far] = rules.waterRangeM;
+  const far = rules.waterRangeM[1];
+  // Resources near the footprint: the best resource biome within its reach plus resourceRangeM.
+  const resource = new Float32Array(width * depth);
+  for (let i = 0; i < resource.length; i++) resource[i] = (rules.resourcePermille ?? {})[t.biomeIds[t.biome[i]!]!] ?? 0;
   const reach = Math.ceil(extentM / cell);
   const hi = windowExtreme(t.height, width, depth, reach, Math.max);
   const lo = windowExtreme(t.height, width, depth, reach, Math.min);
@@ -166,11 +232,12 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
     else if (t.river[i]) surface[i] = Math.max(sea, t.height[i]!);
   }
   const nearSurface = windowExtreme(surface, width, depth, reach + 1, Math.max);
+  const resourceNear = windowExtreme(resource, width, depth, Math.ceil((extentM + (rules.resourceRangeM ?? 600)) / cell), Math.max);
   const peaks = windowExtreme(t.height, width, depth, Math.ceil(rules.mountainClearanceM / cell), Math.max);
   // The footprint may rise this far above the sea: the stricter of the lowland band and the absolute cap.
   const ceilingM = Math.min(rules.lowlandBandM, rules.maxElevationM - sea);
 
-  interface Candidate extends Site {
+  interface Candidate extends Omit<Site, "biomes"> {
     cx: number;
     cz: number;
   }
@@ -191,13 +258,16 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
       if (wetNear[i]! > 0 || hi[i]! - sea > ceilingM || relief > rules.maxReliefM || peaks[i]! > rules.ridgeHeightM) continue;
       const elevFactor = 1000 - Math.round(((hi[i]! - sea) * 500) / ceilingM);
       const reliefFactor = 1000 - Math.round((relief * 500) / rules.maxReliefM);
+      // Water is measured from the footprint's edge: against it or in easy reach is best, a long walk worth less.
       const waterM = dist[i]! < 0 ? Infinity : dist[i]! * cell;
-      const waterFactor = waterM < near ? 400 : waterM <= far ? 1000 : Math.max(0, Math.round(1000 - ((waterM - far) * 1000) / (3 * far)));
+      const shoreM = Math.max(0, waterM - extentM);
+      const waterFactor = shoreM <= far ? 1000 : Math.max(0, Math.round(1000 - ((shoreM - far) * 1000) / (3 * far)));
+      const resourceFactor = 700 + Math.round((resourceNear[i]! * 300) / 1000);
       let fert = 0;
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) fert += fertility(i + dz * width + dx);
-      const pressure = Math.round((slopeFactor * waterFactor * Math.round(fert / 9) * elevFactor * reliefFactor) / 1e12);
+      const pressure = Math.round((((slopeFactor * waterFactor * Math.round(fert / 9) * elevFactor) / 1e9) * reliefFactor * resourceFactor) / 1e6);
       if (pressure < rules.minPressurePermille) continue;
-      candidates.push({ cx, cz, x: originX + cx * cell, z: originZ + cz * cell, pressurePermille: pressure, waterDistanceM: Number.isFinite(waterM) ? waterM : -1, slopePermille: slope, elevationM: Math.round(t.height[i]!), reliefM: Math.round(relief), biome: t.biomeIds[t.biome[i]!]! });
+      candidates.push({ cx, cz, x: originX + cx * cell, z: originZ + cz * cell, pressurePermille: pressure, waterDistanceM: Number.isFinite(waterM) ? waterM : -1, shoreM: Number.isFinite(waterM) ? Math.round(shoreM) : -1, resourcePermille: resourceNear[i]!, slopePermille: slope, elevationM: Math.round(t.height[i]!), reliefM: Math.round(relief), biome: t.biomeIds[t.biome[i]!]!, waterKind: dist[i]! < 0 ? "none" : WATER_KINDS[waterKindOf[i]!]!, walkM: Math.round(walked.walkM[i]!) });
     }
   }
   candidates.sort((a, b) => b.pressurePermille - a.pressurePermille || a.cz - b.cz || a.cx - b.cx);
@@ -206,5 +276,22 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
     if (chosen.length >= count) break;
     if (chosen.every((s) => Math.hypot(s.x - c.x, s.z - c.z) >= rules.minSpacingM)) chosen.push(c);
   }
-  return chosen.map(({ cx: _cx, cz: _cz, ...site }) => site);
+  // The land around each chosen site: the share of every biome within reach, over the same square of cells the resources are read from.
+  const around = Math.ceil((extentM + (rules.resourceRangeM ?? 600)) / cell);
+  const landOf = (cx: number, cz: number): Record<string, number> => {
+    const n = new Map<string, number>();
+    let total = 0;
+    for (let dz = -around; dz <= around; dz++) {
+      for (let dx = -around; dx <= around; dx++) {
+        const x = cx + dx;
+        const z = cz + dz;
+        if (x < 0 || z < 0 || x >= width || z >= depth) continue;
+        const b = t.biomeIds[t.biome[z * width + x]!]!;
+        n.set(b, (n.get(b) ?? 0) + 1);
+        total++;
+      }
+    }
+    return Object.fromEntries([...n].sort(([a], [b]) => (a < b ? -1 : 1)).map(([b, k]) => [b, Math.round((k * 1000) / total)]));
+  };
+  return chosen.map(({ cx, cz, ...site }) => ({ ...site, biomes: landOf(cx, cz) }));
 }

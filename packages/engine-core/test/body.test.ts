@@ -363,10 +363,10 @@ describe("medicine (M4)", () => {
     ...hooks,
     resolveTreatment: (i: Parameters<typeof hooks.resolveTreatment>[0]) => ({ ...hooks.resolveTreatment(i), success }),
   });
-  const world = (success: boolean, medicine: Record<number, number> = {}) => {
+  const world = (success: boolean, medicine: Record<number, number> = {}, bodyRules = rules.body) => {
     const book = skillbook(medicine);
     const w = setup(book.skills);
-    const body = new BodySystem(rules.body, sure(success), undefined, book.skills);
+    const body = new BodySystem(bodyRules, sure(success), undefined, book.skills);
     const run = (seconds: number): void => {
       const n = Math.round(seconds * 30);
       for (let i = 0; i < n; i++) {
@@ -408,6 +408,27 @@ describe("medicine (M4)", () => {
     assert.deepEqual(w.body.needs(e), { part: "handLeft", kind: "stump" });
     assert.deepEqual(w.body.needs(e, "legRight"), { part: "legRight", kind: "set" });
     assert.equal(w.body.needs(e, "head"), null);
+  });
+
+  it("the treatment order and Medicine training come from the rules (EG8)", () => {
+    const t = rules.body.treatment;
+    const custom = { ...rules.body, treatment: { ...t, trainsAbove: 0.5, failedTeaches: 0.2, priority: { ...t.priority, set: 10 } } };
+    const w = world(true, {}, custom);
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, e, "legRight", "blunt", 10); // maims
+    w.body.applyBlow(w.sim, e, "handLeft", "cut", 50); // severs
+    assert.deepEqual(w.body.needs(e), { part: "legRight", kind: "set" }, "setting ranks first here");
+    w.body.treat(w.sim, e, e);
+    w.run(t.set.seconds + 0.1);
+    assert.ok(near(w.trained[0].difficulty, t.set.difficulty + 0.5));
+    const bad = world(false, {}, custom);
+    const b = bad.make();
+    bad.body.ensure(bad.sim, b);
+    bad.body.applyBlow(bad.sim, b, "torso", "thrust", 2);
+    bad.body.treat(bad.sim, b, b);
+    bad.run(t.bandage.seconds + 0.1);
+    assert.ok(near(bad.trained[0].difficulty, t.bandage.difficulty + 0.5 + 0.2));
   });
 
   it("setting a maimed leg makes it harmed again, so it heals and walks", () => {

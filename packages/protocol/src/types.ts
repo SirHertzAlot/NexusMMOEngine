@@ -121,6 +121,14 @@ export enum MessageType {
    * inner (the TerrainTile wire form).
    */
   TileResponse = 0x23,
+  /**
+   * C→S gather from a resource node; S→C the resource nodes and the
+   * player's materials pouch (catalog 0x24, gathering). JSON. C→S
+   * `{kind:"gather", entity}`; S→C `{kind:"resources", nodes}` (all on
+   * joining, then the ones that changed) and `{kind:"pouch", materials,
+   * gathered?}` (to the owner only).
+   */
+  Gather = 0x24,
 }
 
 /**
@@ -505,7 +513,7 @@ export interface NamesMessage {
 }
 
 /** Increment when the catalog gains a message or changes a shape. */
-export const PROTOCOL_VERSION = 24; // v24 (2026-10-14): chunk-streaming tile request/response on 0x22/0x23 (0x21 was already EC1 trade). v23 (2026-10-08): EC1 economy — 0x21 trade and wallet. v22 (2026-10-08): M5 combat abilities — 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel. v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
+export const PROTOCOL_VERSION = 25; // v25 (2026-10-17): 0x24 gather, resource nodes and the materials pouch. v24 (2026-10-14): chunk-streaming tile request/response on 0x22/0x23 (0x21 was already EC1 trade). v23 (2026-10-08): EC1 economy — 0x21 trade and wallet. v22 (2026-10-08): M5 combat abilities — 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel. v21 (2026-10-03): 0x1c magic, mana and spells. v20 (2026-10-03): 0x1b skills, disarmed on 0x16 hit (M4). v19 (2026-10-03): 0x1a treat, Medicine (M4). v18 (2026-10-03): 0x19 stance, the player's technique and aim (M3). v17: 0x18 body, body parts on 0x16 hit and causes on 0x17 life (M2).
 // v15 (2026-10-03): guild chat channel, guild ops and state on 0x11, names tag column filled (S4).
 // v14 (2026-10-03): party chat channel, party ops and state on 0x11 (S3).
 // v13 (2026-10-02): 0x17 life (death/respawn, M2b).
