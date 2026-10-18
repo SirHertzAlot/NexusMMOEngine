@@ -29,11 +29,15 @@ export interface TerrainFields {
   biomeIds: readonly string[];
   /** Land below this is not buildable (default 0). */
   seaLevel?: number;
+  /** The all-green squares (engine-core `greenSquares`): when given, sites lie inside them. */
+  squares?: readonly { cx: number; cz: number; cells: number }[];
   /** Where players spawn, world metres: sites must be walkable from here (default: from the largest connected land). */
   spawn?: { x: number; z: number };
 }
 
 export interface Site {
+  /** With squares: the room the all-green square leaves round the site's centre, metres (the town's half extent may not exceed it). */
+  fitM?: number;
   /** Cell centre, world metres. */
   x: number;
   z: number;
@@ -241,11 +245,22 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
     cx: number;
     cz: number;
   }
+  // With green squares a site lies inside one, far enough from its edge for the footprint (or, in a smaller square, at its centre).
+  const edgeCells = new Int32Array(width * depth);
+  for (const q of t.squares ?? []) {
+    const need = Math.min(reach + 1, Math.ceil(q.cells / 2));
+    for (let z = q.cz; z < q.cz + q.cells; z++) {
+      for (let x = q.cx; x < q.cx + q.cells; x++) {
+        const e = Math.min(x - q.cx, q.cx + q.cells - 1 - x, z - q.cz, q.cz + q.cells - 1 - z) + 1;
+        if (e >= need) edgeCells[z * width + x] = e;
+      }
+    }
+  }
   const candidates: Candidate[] = [];
   for (let cz = 1; cz < depth - 1; cz++) {
     for (let cx = 1; cx < width - 1; cx++) {
       const i = cz * width + cx;
-      if (t.water[i] || t.river[i] || t.ice?.[i] || t.height[i]! <= sea || (walk && !walk[i])) continue;
+      if (t.water[i] || t.river[i] || t.ice?.[i] || t.height[i]! <= sea || (walk && !walk[i]) || (t.squares && !edgeCells[i])) continue;
       // Slope: the steepest rise over a cell to a neighbour, permille.
       let rise = 0;
       for (const j of [i - 1, i + 1, i - width, i + width]) rise = Math.max(rise, Math.abs(t.height[j]! - t.height[i]!));
@@ -265,9 +280,10 @@ export function selectSites(t: TerrainFields, rules: SettlementRules["sites"], c
       const resourceFactor = 700 + Math.round((resourceNear[i]! * 300) / 1000);
       let fert = 0;
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) fert += fertility(i + dz * width + dx);
-      const pressure = Math.round((((slopeFactor * waterFactor * Math.round(fert / 9) * elevFactor) / 1e9) * reliefFactor * resourceFactor) / 1e6);
+      const fitFactor = t.squares && extentM > 0 ? Math.min(1, (edgeCells[i]! * cell - cell / 2) / extentM) : 1;
+      const pressure = Math.round(fitFactor * Math.round((((slopeFactor * waterFactor * Math.round(fert / 9) * elevFactor) / 1e9) * reliefFactor * resourceFactor) / 1e6));
       if (pressure < rules.minPressurePermille) continue;
-      candidates.push({ cx, cz, x: originX + cx * cell, z: originZ + cz * cell, pressurePermille: pressure, waterDistanceM: Number.isFinite(waterM) ? waterM : -1, shoreM: Number.isFinite(waterM) ? Math.round(shoreM) : -1, resourcePermille: resourceNear[i]!, slopePermille: slope, elevationM: Math.round(t.height[i]!), reliefM: Math.round(relief), biome: t.biomeIds[t.biome[i]!]!, waterKind: dist[i]! < 0 ? "none" : WATER_KINDS[waterKindOf[i]!]!, walkM: Math.round(walked.walkM[i]!) });
+      candidates.push({ ...(t.squares ? { fitM: edgeCells[i]! * cell - cell / 2 } : {}), cx, cz, x: originX + cx * cell, z: originZ + cz * cell, pressurePermille: pressure, waterDistanceM: Number.isFinite(waterM) ? waterM : -1, shoreM: Number.isFinite(waterM) ? Math.round(shoreM) : -1, resourcePermille: resourceNear[i]!, slopePermille: slope, elevationM: Math.round(t.height[i]!), reliefM: Math.round(relief), biome: t.biomeIds[t.biome[i]!]!, waterKind: dist[i]! < 0 ? "none" : WATER_KINDS[waterKindOf[i]!]!, walkM: Math.round(walked.walkM[i]!) });
     }
   }
   candidates.sort((a, b) => b.pressurePermille - a.pressurePermille || a.cz - b.cz || a.cx - b.cx);

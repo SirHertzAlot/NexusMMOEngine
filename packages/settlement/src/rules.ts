@@ -573,6 +573,10 @@ export const SettlementRulesSchema = z.strictObject({
     lowlandBandM: z.number().positive().default(40),
     /** The lowest ground of the town's whole footprint stands at least this far above the sea (a livable tread, not a tidal flat), metres. Also at least this far above any lake or river nearby. The survey caller may raise it (`TerrainFields.safeFloorM`) so the stored tiles clear the spawner's margin. */
     minElevationM: z.number().positive().default(4),
+    /** The biomes that count as green: towns stand in all-green squares of them, and farm fields lie on them. */
+    greenBiomes: z.array(z.string()).default(["plains", "forest", "rainforest"]),
+    /** The smallest all-green square a town may stand in, survey cells. */
+    minSquareCells: z.number().int().positive().default(24),
     /** The most the ground may rise and fall across the town's whole footprint (max minus min height, from the height field, not the slope), metres. */
     maxReliefM: z.number().positive().default(3),
     /** Ground above this height is a mountain, metres. */
@@ -723,6 +727,8 @@ export const BUILTIN_RULES: SettlementRules = {
     maxElevationM: 60,
     lowlandBandM: 40,
     minElevationM: 4,
+    greenBiomes: ["plains", "forest", "rainforest"],
+    minSquareCells: 24,
     maxReliefM: 3,
     ridgeHeightM: 120,
     mountainClearanceM: 300,
