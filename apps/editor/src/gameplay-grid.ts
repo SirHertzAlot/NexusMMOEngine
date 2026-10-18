@@ -78,7 +78,7 @@ export function checkCell(col: GridColumn, value: unknown, ctx: GridContext): st
     case "bool":
       return typeof value === "boolean" ? null : "must be true or false";
     case "enum": {
-      const opts = col.optionsFrom ? ctx.options[col.optionsFrom] : col.options === "techniques" ? ctx.options.techniques : col.options;
+      const opts = col.optionsFrom ? ctx.options[col.optionsFrom] : typeof col.options === "string" ? ctx.options[col.options] : col.options;
       if (!opts || opts.length === 0) return null;
       return typeof value === "string" && opts.includes(value) ? null : `must be one of ${opts.join(", ")}`;
     }

@@ -56,7 +56,8 @@ export function createRulesControl(base = ""): RulesControl {
 export type FieldKind =
   | { kind: "number"; int?: boolean; min?: number; max?: number }
   | { kind: "bool" }
-  | { kind: "enum"; options: readonly string[] | "techniques" }
+  /** `options` as a string names a list the form is given (`"techniques"`). */
+  | { kind: "enum"; options: readonly string[] | string }
   | { kind: "text" }
   /** Comma-separated strings. */
   | { kind: "list" }
@@ -71,6 +72,10 @@ export type FieldSpec = FieldKind & {
   def?: unknown;
   /** Read once at server start: a running server needs a restart. */
   restart?: boolean;
+  /** One line a designer reads under the field: what it does, in game terms. */
+  help?: string;
+  /** An empty input stores null (the schema's "none") instead of removing the key. */
+  nullable?: boolean;
 };
 
 const share = { kind: "number", min: 0, max: 1 } as const;
@@ -191,7 +196,7 @@ export function setAt<T>(obj: T, path: string, value: unknown): T {
 
 /** A field's value as the text its input shows ("" when absent). */
 export function fieldText(spec: FieldSpec, value: unknown): string {
-  if (value === undefined) return "";
+  if (value === undefined || value === null) return "";
   if (spec.kind === "list" || spec.kind === "pair") return Array.isArray(value) ? value.join(spec.kind === "pair" ? "–" : ", ") : "";
   return String(value);
 }
@@ -204,7 +209,7 @@ export function fieldText(spec: FieldSpec, value: unknown): string {
  */
 export function parseField(spec: FieldSpec, text: string): unknown {
   const t = text.trim();
-  if (t === "") return undefined;
+  if (t === "") return spec.nullable ? null : undefined;
   switch (spec.kind) {
     case "number": {
       const n = Number(t);
@@ -233,8 +238,8 @@ export function isFieldError(v: unknown): v is { error: string } {
   return v !== null && typeof v === "object" && !Array.isArray(v) && typeof (v as { error?: unknown }).error === "string";
 }
 
-/** Issues for `table`'s file under `path` (the path itself, or a key or index below it). */
-export function issuesAt(issues: readonly RulesIssue[], table: Table, path: string): RulesIssue[] {
+/** Issues for `table`'s file (`<table>.json`) under `path` (the path itself, or a key or index below it). */
+export function issuesAt(issues: readonly RulesIssue[], table: string, path: string): RulesIssue[] {
   const file = `${table}.json`;
   return issues.filter(
     (i) => i.file === file && (i.path === path || i.path.startsWith(`${path}.`) || i.path.startsWith(`${path}[`)),

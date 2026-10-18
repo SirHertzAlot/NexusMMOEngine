@@ -22,19 +22,15 @@ import {
   LOOT_FIELDS,
   TABLES,
   createRulesControl,
-  fieldText,
   getAt,
-  isFieldError,
-  issuesAt,
   newEntry,
-  parseField,
-  setAt,
   type FieldSpec,
   type RulesIssue,
   type RulesSnapshot,
   type Table,
 } from "../rules-control.js";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, SectionTitle, Select } from "./components.js";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "./components.js";
+import { FieldGrid, IssueList, RecordEditor } from "./spec-form.js";
 import { useDocActions } from "./doc-actions.js";
 import { useTableDrafts } from "./use-table-drafts.js";
 
@@ -154,6 +150,7 @@ export function RulesPanel(): React.JSX.Element {
   const record = RECORDS[table];
   const flat = FLAT[table];
   const bases = Object.keys((getAt(drafts.items, "bases") as Record<string, unknown> | undefined) ?? {});
+  const lists = { techniques: snap.techniques };
 
   return (
     <div className="flex flex-col gap-4">
@@ -177,263 +174,25 @@ export function RulesPanel(): React.JSX.Element {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {flat.length > 0 && (
-            <FieldGrid
-              fields={flat}
-              value={draft}
-              basePath=""
-              table={table}
-              issues={issues}
-              techniques={snap.techniques}
-              onChange={edit}
-            />
+            <FieldGrid fields={flat} value={draft} basePath="" file={table} issues={issues} lists={lists} onChange={edit} />
           )}
           {record && (
             <RecordEditor
               key={table}
-              table={table}
+              file={table}
               under={record.under}
               noun={record.noun}
               fields={record.fields}
               value={draft}
               issues={issues}
-              techniques={snap.techniques}
-              bases={bases}
+              lists={lists}
+              newEntry={() => newEntry(table as "items" | "creatures", bases)}
               onChange={edit}
             />
           )}
           <IssueList issues={issues} />
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- records
-
-function RecordEditor(props: {
-  table: Table;
-  under: string;
-  noun: string;
-  fields: FieldSpec[];
-  value: unknown;
-  issues: RulesIssue[];
-  techniques: string[];
-  bases: string[];
-  onChange: (next: unknown) => void;
-}): React.JSX.Element {
-  const { table, under, noun, fields, value, issues, onChange } = props;
-  const entries = (getAt(value, under) as Record<string, unknown> | undefined) ?? {};
-  const ids = Object.keys(entries);
-  const [selected, setSelected] = React.useState<string | null>(ids[0] ?? null);
-  const [newId, setNewId] = React.useState("");
-  const current = selected !== null && selected in entries ? selected : (ids[0] ?? null);
-
-  const idError =
-    newId === "" ? null : !/^[a-z][a-z0-9_]*$/.test(newId) ? "lowercase letters, digits, _" : newId in entries ? "taken" : null;
-
-  const add = (): void => {
-    if (newId === "" || idError) return;
-    onChange(setAt(value, under, { ...entries, [newId]: newEntry(table as "items" | "creatures", props.bases) }));
-    setSelected(newId);
-    setNewId("");
-  };
-  const remove = (id: string): void => {
-    const rest = { ...entries };
-    delete rest[id];
-    onChange(setAt(value, under, rest));
-    setSelected(null);
-  };
-
-  return (
-    <div className="grid grid-cols-[12rem_1fr] gap-4">
-      <div className="flex flex-col gap-1">
-        <SectionTitle>{noun}s</SectionTitle>
-        {ids.map((id) => {
-          const bad = issuesAt(issues, table, `${under}.${id}`).length > 0;
-          return (
-            <button
-              key={id}
-              onClick={() => setSelected(id)}
-              className={
-                "flex items-center justify-between rounded-md px-2 py-1 text-left font-mono text-sm " +
-                (id === current ? "bg-accent text-accent-foreground" : "hover:bg-accent/50")
-              }
-            >
-              {id}
-              {bad && <span className="h-2 w-2 rounded-full bg-red-500" aria-label="has issues" />}
-            </button>
-          );
-        })}
-        <div className="mt-2 flex gap-1">
-          <Input
-            className="h-9 font-mono"
-            placeholder={`new ${noun} id`}
-            value={newId}
-            onChange={(e) => setNewId(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add()}
-          />
-          <Button size="sm" variant="outline" onClick={add} disabled={newId === "" || idError !== null}>
-            Add
-          </Button>
-        </div>
-        {idError && <span className="text-xs text-red-400">{idError}</span>}
-      </div>
-      <div className="flex flex-col gap-3">
-        {current === null ? (
-          <p className="text-sm text-muted-foreground">No {noun}s yet.</p>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-sm font-semibold">
-                {under}.{current}
-              </span>
-              <Button size="sm" variant="danger" onClick={() => remove(current)}>
-                Remove {noun}
-              </Button>
-            </div>
-            <FieldGrid
-              key={current}
-              fields={fields}
-              value={value}
-              basePath={`${under}.${current}`}
-              table={table}
-              issues={issues}
-              techniques={props.techniques}
-              onChange={onChange}
-            />
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- fields
-
-function FieldGrid(props: {
-  fields: FieldSpec[];
-  value: unknown;
-  basePath: string;
-  table: Table;
-  issues: RulesIssue[];
-  techniques: string[];
-  onChange: (next: unknown) => void;
-}): React.JSX.Element {
-  const { fields, value, basePath, table, issues, onChange } = props;
-  return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-3">
-      {fields.map((f) => {
-        const path = basePath === "" ? f.key : `${basePath}.${f.key}`;
-        return (
-          <Field
-            key={path}
-            spec={f}
-            value={getAt(value, path)}
-            issues={issuesAt(issues, table, path)}
-            techniques={props.techniques}
-            onChange={(v) => onChange(setAt(value, path, v))}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function Field(props: {
-  spec: FieldSpec;
-  value: unknown;
-  issues: RulesIssue[];
-  techniques: string[];
-  onChange: (v: unknown) => void;
-}): React.JSX.Element {
-  const { spec, value, issues, onChange } = props;
-  const id = React.useId();
-  const placeholder = spec.def === undefined ? "required" : `default ${fieldText(spec, spec.def) || "none"}`;
-  // Typed text the field's kind can't hold stays local until it can.
-  const [text, setText] = React.useState(fieldText(spec, value));
-  const [local, setLocal] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    setText(fieldText(spec, value));
-    setLocal(null);
-  }, [spec, value]);
-
-  const messages = [...(local ? [local] : []), ...issues.map((i) => i.message)];
-  const ring = messages.length > 0 ? "border-red-500" : "";
-
-  let control: React.JSX.Element;
-  if (spec.kind === "bool" || spec.kind === "enum") {
-    const options = spec.kind === "bool" ? ["true", "false"] : spec.options === "techniques" ? props.techniques : spec.options;
-    control = (
-      <Select size="md"
-        id={id}
-        value={value === undefined ? "" : String(value)}
-        onChange={(e) => onChange(parseField(spec, e.target.value))}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </Select>
-    );
-  } else {
-    control = (
-      <Input
-        id={id}
-        className={`h-9 ${spec.kind === "number" ? "text-right" : ""} ${ring}`}
-        inputMode={spec.kind === "number" ? "decimal" : undefined}
-        placeholder={placeholder}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          const v = parseField(spec, e.target.value);
-          if (isFieldError(v)) setLocal(v.error);
-          else {
-            setLocal(null);
-            onChange(v);
-          }
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={id} className="flex items-center gap-1">
-        {spec.label}
-        {spec.restart && (
-          <Badge tone="warn" className="px-1.5 py-0 text-[10px]">
-            restart
-          </Badge>
-        )}
-      </Label>
-      {control}
-      {messages.map((m, i) => (
-        <span key={i} className="text-xs text-red-400">
-          {m}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function IssueList({ issues }: { issues: RulesIssue[] }): React.JSX.Element | null {
-  if (issues.length === 0) return null;
-  return (
-    <div className="rounded-md border border-red-900 bg-red-950/40 p-3">
-      <SectionTitle>Refused — the server wouldn't load this</SectionTitle>
-      <ul className="mt-2 flex flex-col gap-1 font-mono text-xs">
-        {issues.map((i, n) => (
-          <li key={n}>
-            <span className="text-muted-foreground">
-              {i.file}
-              {i.path ? ` · ${i.path}` : ""}
-            </span>{" "}
-            <span className="text-red-300">{i.message}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
