@@ -252,20 +252,6 @@ labelled form with ranges and help. One PR per item.
 | EG12 | Dungeon walls and bot pacing as data (body radius, max step, wander, spar range) | ✅ | Audit row 11. Cell size stays fixed by the bake. Merged in #303 |
 | EG13 | Persistence cadence and query limits as server settings, in the editor | ✅ | Audit row 12. Save interval, snapshots kept, WAL limit, query rows and timeout. Merged in #304 |
 | EG14 | World and time settings in the editor (day length and offset, bots), env still overrides | ✅ | Audit row 13. Seed, chunk size and radius are fixed by the bake and shown read-only. Merged in #305 |
-| EG1 | Dungeon run rules and entrances form (`content/dungeons/instances.json`, `entrances.json`) | ✅ | Audit row 1. The Content browser link lands in a workspace that does not read them today |
-| EG2 | Combat and body forms (`combat.json` techniques, power, damage, precision, defence; `body.json` parts, healing, penalties, Medicine treatment) | ✅ | Audit row 6. Raw tree today |
-| EG3 | Crafting form: units, fittings, rune stone, default skill and skill map in `content/crafting/recipes.json` | ✅ | Audit row 5. Only refining and reagents have grids |
-| EG4 | Town rules in sections with labels and help (`content/settlements/rules.json`) | ✅ | Audit row 8. One generic node tree today |
-| EG5 | Movement and stamina as rules (speeds, gravity, jump, breath, drowning, flight ceiling, action costs, drains, regen) | ✅ | Audit row 2. Constants in `systems.ts`, `stamina-system.ts` |
-| EG6 | Combat resolution as rules (guard factor, arm reach, attack cone, height reach, fight difficulty, the fist) | ✅ | Audit row 3. Constants in `combat.ts` |
-| EG7 | Creature timing and ranges as rules (alert, hurt, calm, flee, territory, flank, scan, notice) | ✅ | Audit row 4. Constants in `creatures.ts` |
-| EG8 | Skill pacing and Medicine training as rules (use interval, swimming and athletics difficulty, treatment training, wound order) | ✅ | Audit row 7. Constants in `mastery-system.ts`, `body.ts` |
-| EG9 | Social and character limits as rules (party, guild, chat, block list, character slots) | ✅ | Audit row 10. Constants in `party.ts`, `guild.ts`, `chat.ts`, `characters/rules.ts` |
-| EG10 | VFX tier budgets read from `content/vfx/budgets.json`, editable | ✅ | Audit row 14. No reader of the file today |
-| EG11 | Gathering regrow cadence in `gathering.json` | ✅ | Audit row 9 |
-| EG12 | Dungeon walls and bot pacing as data (body radius, max step, wander, spar range) | ✅ | Audit row 11. Cell size stays fixed by the bake |
-| EG13 | Persistence cadence and query limits as server settings, in the editor | ✅ | Audit row 12. Save interval, snapshots kept, WAL limit, query rows and timeout |
-| EG14 | World and time settings in the editor (day length and offset, bots), env still overrides | ✅ | Audit row 13. Seed, chunk size and radius are fixed by the bake and shown read-only |
 
 ## 2. Game client: the player's interface
 
@@ -433,7 +419,6 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
-- **2026-10-18**: Designer access (EG1 to EG14) built: every audit row is now a form or a data file the editor reads and writes (dungeon run rules and entrances, combat and body and Medicine, crafting, town rules, movement, combat resolution, creature pacing, skill pacing, social limits, VFX budgets, gathering regrow, dungeon walls and bot pacing, persistence cadence, day cycle and bots). PRs #292 to #305.
 - **2026-10-18**: Designer access (1g) EG1 to EG14 done (✅, PRs #292 to #305): dungeon run rules and entrances, combat and body, crafting and town rules as forms; movement, combat resolution, creature brains, skill pacing, social limits, gathering regrow and dungeon wall/bot pacing moved from code into validated data with forms; VFX budgets now read by the client and editable; persistence settings and day cycle/bots as Live ops › Server settings (env vars still win). Everything hot-reloads except what the server reads at start.
 - **2026-10-18**: Designer access (1g) added: EG1 to EG14 from the editor gap audit (#290), which found dungeon run rules and most of crafting with no editor panel, combat, movement, creature and skill constants held in code, and combat and body rules reachable only as a raw tree.
 - **2026-10-17**: SG5 settlement town plan (🚧, PR #287): towns had taverns and bakeries scattered through housing, scattered craft and farm blocks, no wall, and wall/gate/archway models used as houses. Now: a town square with a well where the main roads cross; civic, market, entertainment and education quarters grown from it and sized by the buildings they must hold (one school and one tavern in a village; halls, theatre, library, barracks and cathedral only above a population); church life (parish church, rectory, churchyard, almshouse-hospital, monastery, apothecary); crafts and farms outside along the roads; buildings facing their streets; a towered ring wall with four walk-through gates for towns of 45+ households; wall-type models kept out of the building kinds. Rules `settlement-rules/4`, golden hash re-pinned; 60 to 4000 people x 8 seeds all generate. [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md) sums up the history and the next steps.
