@@ -27,10 +27,12 @@ export function FieldGrid(props: {
   issues: readonly RulesIssue[];
   lists: OptionLists;
   onChange: (next: unknown) => void;
+  /** At most two columns, for a narrow pane. */
+  narrow?: boolean;
 }): React.JSX.Element {
   const { fields, value, basePath, file, issues, onChange } = props;
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-3">
+    <div className={`grid grid-cols-2 gap-x-4 gap-y-3 ${props.narrow ? "" : "lg:grid-cols-3"}`}>
       {fields.map((f) => {
         const path = basePath === "" ? f.key : `${basePath}.${f.key}`;
         return (
@@ -51,10 +53,19 @@ export function FieldGrid(props: {
 /** A heading, a line of help and a field grid: one section of a long form. */
 export function FieldSection(props: React.ComponentProps<typeof FieldGrid> & { title: string; help?: string }): React.JSX.Element {
   const { title, help, ...grid } = props;
+  // A problem with the group as a whole (shares that don't add up) sits on its fields' parent.
+  const join = (k: string): string => (grid.basePath === "" ? k : `${grid.basePath}.${k}`);
+  const parents = [...new Set(grid.fields.map((f) => join(f.key).split(".").slice(0, -1).join(".")).filter((p) => p !== ""))];
+  const own = grid.issues.filter((i) => i.file === `${grid.file}.json` && parents.includes(i.path.replace(/\[(\d+)\]/g, ".$1")));
   return (
     <section className="flex flex-col gap-2">
       <SectionTitle>{title}</SectionTitle>
       {help && <p className="text-xs text-muted-foreground">{help}</p>}
+      {own.map((i, n) => (
+        <span key={n} className="text-xs text-red-400">
+          {i.message}
+        </span>
+      ))}
       <FieldGrid {...grid} />
     </section>
   );

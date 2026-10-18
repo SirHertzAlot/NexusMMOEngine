@@ -171,7 +171,7 @@ export const INGRESS_FIELDS: FieldSpec[] = [
 /** A titled group of fields with a line of help: one section of a long form. */
 export interface FieldSectionSpec {
   title: string;
-  help: string;
+  help?: string;
   fields: FieldSpec[];
 }
 
