@@ -132,6 +132,11 @@ export interface PersistenceCoreOptions {
   /** True while a game server is using the data dir. Default: never. */
   isServerRunning?: () => boolean;
   clock?: () => number;
+  /**
+   * Query rows and timeout (content/server/persistence.json, EG13), read on
+   * every query so an edit applies to the next one. Absent: the defaults.
+   */
+  queryLimits?: () => { defaultRows: number; maxRows: number; timeoutMs: number };
 }
 
 export class PersistenceCore {
@@ -242,8 +247,9 @@ export class PersistenceCore {
   ): Promise<QueryResult> {
     const text = checkSelect(sql);
     const file = this.file(db);
-    const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? QUERY_DEFAULT_ROWS)), QUERY_MAX_ROWS);
-    const timeoutMs = opts.timeoutMs ?? QUERY_DEFAULT_TIMEOUT_MS;
+    const caps = this.opts.queryLimits?.() ?? { defaultRows: QUERY_DEFAULT_ROWS, maxRows: QUERY_MAX_ROWS, timeoutMs: QUERY_DEFAULT_TIMEOUT_MS };
+    const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? caps.defaultRows)), caps.maxRows);
+    const timeoutMs = opts.timeoutMs ?? caps.timeoutMs;
     return new Promise((resolve, reject) => {
       const child = fork(fileURLToPath(new URL("./query-worker.js", import.meta.url)), [JSON.stringify({ file, sql: text, limit, params: opts.params ?? null })], {
         stdio: ["ignore", "ignore", "ignore", "ipc"],

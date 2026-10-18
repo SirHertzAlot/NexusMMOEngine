@@ -28,6 +28,7 @@ world specs, ecology plans, PCG graphs.
 |---|---|---|
 | `MMO_PORT` | `7777` | WebSocket listen port. The PCG asset service shares it (`/rpc/Pcg`). |
 | `MMO_DATA_DIR` | `./data` | The server's state folder (see [Data files](#data-files)). |
+| `MMO_SERVER_SETTINGS` | `content/server` | Server settings folder: `persistence.json` holds the save interval, snapshots kept, the save log limit and the database query caps (edited in the editor's Live ops › Server settings). |
 | `MMO_WORLD_SEED` | `1234` | Procedural seed. A baked world uses the seed recorded at bake time, and this is ignored. |
 | `MMO_CHUNK_SIZE` | `16` | Chunk size in metres. Must match the bake. |
 | `MMO_WORLD_RADIUS` | `1` | Spawn-area radius in chunks, always loaded (`1` = 3 × 3). |

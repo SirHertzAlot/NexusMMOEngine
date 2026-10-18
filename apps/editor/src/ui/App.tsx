@@ -2084,6 +2084,9 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
       {folder("vfx", "content/vfx", "folder", (
         <>{file("content/vfx/budgets.json", "budgets.json", ["artaudio", "vfx.budgets"])}</>
       ))}
+      {folder("server", "content/server", "folder", (
+        <>{file("content/server/persistence.json", "persistence.json", ["liveops", "settings"])}</>
+      ))}
       {folder("dungeons", "content/dungeons", "folder", (
         <>
           {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "runs"]))}
