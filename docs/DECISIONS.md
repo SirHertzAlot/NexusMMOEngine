@@ -2,6 +2,29 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-15 — Cell shading is a client-side component whose carrier is content, not a replicated ECS component.**
+  Cell shading was hardcoded per renderer: the character kit patched its own
+  material, and props, art-pack models and stand-in shapes each got an
+  `applyToon` call sprinkled where they were built. "Enabling it should be as
+  simple as adding a component" now holds: the client's `render/shading/`
+  holds named shading components (`toon`, the cel look; `standard`, three's own
+  PBR) and applies whichever one a *kind of thing* carries, and which kind
+  carries what is content (`content/materials/materials.json` -> `shading`,
+  validated in `packages/art`), so it is turned on and off from data and no
+  renderer knows about it. Kinds are render paths, not entity classes:
+  `model` (an art-pack or PICG model's own material), `placeholder` (a stand-in
+  shape), `prefab` (a composed entity). Not a replicated component and not a
+  wire field: the server has no business knowing how a surface is lit, and a
+  per-entity flag would ride every snapshot to say something the client alone
+  decides — the same reasoning that keeps the toon look itself in content. The
+  cost is granularity: shading is per kind, not per entity, because the shared
+  prop and atlas materials are what there is to patch (per-model shading would
+  mean splitting those materials, and waits until something needs it).
+  Modular characters are deliberately outside it: the character kit owns its
+  own style and outlines, and folding it in changes a public interface for no
+  behaviour change. `applyToon` also stopped assuming the material already has
+  an `onBeforeCompile` patch, so a plain `MeshStandardMaterial` can be shaded.
+
 - **2026-10-15 — Flat land is made by the terrain, not found by loosening the rules; a stranded flat is not a site.**
   Site selection (3 m of relief over the whole town footprint) found no site
   on the default world for 100, 300 or 600 people: erosion and the biome

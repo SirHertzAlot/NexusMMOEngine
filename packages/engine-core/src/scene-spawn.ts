@@ -14,7 +14,8 @@
  *
  * Node resolution: an `ItemSpawn` component puts an item on the ground, a
  * `QuestGiver` moves the quest giver's post, a `Structure` becomes a static box on the
- * ground carrying the kind's asset hash (settlement buildings); otherwise a `Spawner` component's
+ * ground carrying the kind's asset hash (settlement buildings; with a `Collider` of shape
+ * `none` it is walk-through, like a town gate, and gets no foundation slab); otherwise a `Spawner` component's
  * `creature`, else the node's `prefab`; a `Collider` replaces a prop's collision (shape `none`
  * makes it walk-through) or, on a node nothing else spawns, is a static box/sphere body (the whole string, then its last path
  * segment, so "camps/goblin" finds the goblin), else the `Spawner`'s `species`
@@ -40,6 +41,7 @@ import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
 import { archetypeOk, landDry, LAND_MARGIN_M, STRUCTURE_MARGIN_M, surfaceAt } from "./procgen/habitat.js";
 import type { ModelBounds } from "./procgen/prop-shape.js";
 import type { ScaleResolver } from "./scale.js";
+import type { ResourceNodeSpec } from "./gathering/gathering.js";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 /** The repo's content/scenes (this file is dist/src/scene-spawn.js). */
@@ -80,6 +82,8 @@ export interface SceneSpawnDeps {
   };
   /** Quest nodes: move the quest giver's post to (x, z); null on success, else why not. */
   quests?: { place(quest: string, x: number, z: number): string | null };
+  /** Resource nodes (a Structure with a ResourceNode: tree stands, ore veins, fishing spots): `register` makes the spawned entity gatherable, keyed by scene and node id. */
+  resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
 }
 
 export interface SceneSpawnResult {
@@ -194,7 +198,12 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         const asset = str(structure.asset) || `structure:${kind}`;
         // A named model that the catalog knows sizes the body (bounds x scale); otherwise the authored footprint.
         const modelSized = str(structure.asset) !== "" && deps.bounds?.(asset) !== undefined;
-        const collision = { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
+        // A Collider with shape "none" makes it walk-through (a town gate: the road passes under it).
+        const walkThrough = node.components?.Collider?.shape === "none";
+        // A fishing spot stands on the water: a gatherable node of the Fishing skill is never refused as wet.
+        const resource = node.components?.ResourceNode;
+        const onWater = resource !== undefined && str(resource.skill).toLowerCase() === "fishing";
+        const collision = walkThrough ? { shape: "none" as const, motion: "static" as const } : { shape: "box" as const, ...(modelSized ? {} : { halfExtents: half }), motion: "static" as const };
         // Ground under the whole footprint, not just its centre: the floor stands on the highest point
         // (nothing sinks into a slope), the body reaches the lowest, and a foundation slab fills the gap.
         const f = deps.scale?.("building", asset) ?? 1;
@@ -220,7 +229,7 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             const g = deps.groundHeightAt?.(sx, sz) ?? 0;
             if (g > high) high = g;
             if (g < low) low = g;
-            if (wet === null && deps.groundHeightAt) {
+            if (wet === null && deps.groundHeightAt && !onWater) {
               if (!landDry(g, surfaceAt(deps.waterAt, deps.seaLevel, sx, sz), STRUCTURE_MARGIN_M)) wet = "under water or on the shore (less than " + STRUCTURE_MARGIN_M + " m above the water)";
               else if (deps.riverAt?.(sx, sz)) wet = "on a river";
             }
@@ -231,11 +240,13 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           continue;
         }
         // On a slope the floor stands a plinth above the highest sample: the ground between samples can peak a few cm higher.
-        const floor = high - low > 0.01 ? high + PLINTH_M : high;
+        // On the water, the floor is the water's surface.
+        const surface = onWater ? surfaceAt(deps.waterAt, deps.seaLevel, x, z) : null;
+        const floor = surface !== null && surface > high ? surface : high - low > 0.01 ? high + PLINTH_M : high;
         const drop = floor - low;
         const building = spawnBody(deps, node.id, w, floor, asset, collision, "building");
         const entities = [building];
-        if (drop > 0) {
+        if (drop > 0 && !walkThrough) {
           // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).
           if (BodyConfig.shapeKind[building] === ShapeKind.Box) BodyConfig.halfY[building] = Math.max(BodyConfig.halfY[building]!, drop);
           // The slab: the building's footprint, from the lowest ground up to the floor.
@@ -243,7 +254,19 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           const slab = { shape: "box" as const, halfExtents: [hw / f2, drop / 2 / f2, hd / f2] as [number, number, number], motion: "static" as const };
           entities.push(spawnBody(deps, `${node.id}/foundation`, w, floor - drop / 2, "structure:foundation", slab, "building"));
         }
-        out.spawned.push({ id: node.id, what: `structure ${kind}`, entities });
+        if (resource && deps.resources) {
+          deps.resources.register(building, `${doc.name}/${node.id}`, {
+            kind,
+            material: str(resource.material),
+            tier: Number(resource.tier ?? 1),
+            skill: str(resource.skill),
+            stock: Number(resource.stock ?? 1),
+            regrowHours: Number(resource.regrowHours ?? 0),
+            halfX: hw,
+            halfZ: hd,
+          });
+        }
+        out.spawned.push({ id: node.id, what: resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
       }
       continue;
     }

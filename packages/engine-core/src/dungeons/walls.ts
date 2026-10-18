@@ -6,7 +6,7 @@
  * only if every cell it sweeps is walkable, so a fast step cannot skip a
  * thin wall and a diagonal cannot slip between two wall cells at a corner.
  * A blocked axis keeps its old value, which slides a body along a wall.
- * A jump of more than MAX_STEP metres in a tick is a teleport (respawn,
+ * A jump of more than `teleportStepM` metres in a tick is a teleport (respawn,
  * admin): accepted where it lands if that is floor.
  *
  * Props are round colliders baked with the layout (pillars, statues, chests;
@@ -21,10 +21,13 @@ import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 import { CELL_M, walkableAt, type InstanceLayout } from "./pool.js";
 
-/** A body's footprint radius against props, metres (the character capsule's). */
-const BODY_RADIUS = 0.4;
-/** Longest per-tick move that is walked rather than a teleport, metres (fly speed is 0.4 m a tick). */
-const MAX_STEP = 8;
+/** A body's footprint and the teleport threshold (instances.json, EG12). */
+export interface WallOptions {
+  /** A body's footprint radius against props, metres (the character capsule's). Default 0.4. */
+  bodyRadiusM?: number;
+  /** Longest per-tick move that is walked rather than a teleport, metres (fly speed is 0.4 m a tick). Default 8. */
+  teleportStepM?: number;
+}
 
 /** Is the row of cells z lies in walkable from x0 to x1 (or the column, swapped)? */
 function clear(l: InstanceLayout, a0: number, a1: number, b: number, alongX: boolean): boolean {
@@ -42,7 +45,16 @@ export class DungeonWallSystem implements SimSystem {
   private readonly movers = defineQuery([C.Transform, C.Velocity]);
   private readonly last = new Map<number, [number, number]>();
 
-  constructor(private readonly layout: InstanceLayout) {}
+  private readonly bodyRadius: number;
+  private readonly maxStep: number;
+
+  constructor(
+    private readonly layout: InstanceLayout,
+    opts: WallOptions = {},
+  ) {
+    this.bodyRadius = opts.bodyRadiusM ?? 0.4;
+    this.maxStep = opts.teleportStepM ?? 8;
+  }
 
   step(sim: SimWorld): void {
     const ids = this.movers(sim.ecs);
@@ -66,7 +78,7 @@ export class DungeonWallSystem implements SimSystem {
       }
       let nx = prev[0];
       let nz = prev[1];
-      if (Math.hypot(x - nx, z - nz) > MAX_STEP) {
+      if (Math.hypot(x - nx, z - nz) > this.maxStep) {
         if (walkableAt(l, x, z)) [nx, nz] = [x, z];
       } else {
         if (clear(l, nx, x, nz, true)) nx = x;
@@ -77,7 +89,7 @@ export class DungeonWallSystem implements SimSystem {
       const c = l.colliders;
       for (let k = 0; k < c.length; k += 3) {
         const dx = nx - c[k], dz = nz - c[k + 1];
-        const want = c[k + 2] + BODY_RADIUS;
+        const want = c[k + 2] + this.bodyRadius;
         const d2 = dx * dx + dz * dz;
         if (d2 >= want * want) continue;
         const d = Math.sqrt(d2);

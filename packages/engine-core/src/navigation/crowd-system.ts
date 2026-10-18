@@ -20,7 +20,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
-import { moveSpeedFactor, PLAYER_SPEED, CHARACTER_CAPSULE } from "../systems.js";
+import { moveSpeedFactor, CHARACTER_CAPSULE } from "../systems.js";
 import { Locomotion, NavAgent, NavAgentState, PlayerIntent, Transform } from "../components.js";
 import type { CrowdBackend } from "./backend.js";
 
@@ -72,7 +72,7 @@ export class CrowdSystem implements SimSystem {
       this.pos[i * 3] = Transform.px[e];
       this.pos[i * 3 + 1] = Transform.py[e];
       this.pos[i * 3 + 2] = Transform.pz[e];
-      const speed = hasComponent(sim.ecs, NavAgent, e) && NavAgent.speed[e] > 0 ? NavAgent.speed[e] : PLAYER_SPEED;
+      const speed = hasComponent(sim.ecs, NavAgent, e) && NavAgent.speed[e] > 0 ? NavAgent.speed[e] : sim.movement.walkSpeed;
       if (this.members.get(id) === speed) continue;
       this.members.set(id, speed);
       this.addIds[adds] = id;
@@ -144,7 +144,7 @@ export class CrowdSystem implements SimSystem {
       }
       // The crowd's velocity as intent: IntentSystem scales intent by the
       // walking speed (and the entity's move-speed stat), so divide it out.
-      const full = PLAYER_SPEED * moveSpeedFactor(sim, e);
+      const full = sim.movement.walkSpeed * moveSpeedFactor(sim, e);
       if (full <= 0) continue;
       const vx = this.vel[i * 3];
       const vz = this.vel[i * 3 + 2];

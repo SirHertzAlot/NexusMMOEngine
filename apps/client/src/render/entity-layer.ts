@@ -31,7 +31,7 @@
 
 import * as THREE from "three";
 import { labelSprite } from "./element-fx.js";
-import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type VelocityRow } from "@mmo-engine/protocol";
+import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
 import { parseLook, heldOf, lostOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
@@ -51,6 +51,8 @@ import { AnimationLibrary, CharacterAnimator } from "./character/character-anima
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
+import { applyShading } from "./shading/shading.js";
+import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
@@ -131,6 +133,10 @@ export class EntityLayer {
   private playerHidden = false;
   private lastPlayerWireId: bigint | null = null;
   private readonly meshes = new Map<bigint, TrackedMesh>();
+  /** Worked-out resource nodes (gathering): drawn low until they come back. */
+  private depleted: ReadonlySet<bigint> = new Set();
+  /** Their lowered rows, made once per row the server sends (the props skip unchanged rows by identity). */
+  private readonly lowRows = new Map<bigint, { from: TransformRow; fromBody: BodyConfigRow | null; t: TransformRow; b: BodyConfigRow | null }>();
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
   private readonly syntyProps: SyntyProps;
@@ -306,6 +312,25 @@ export class EntityLayer {
     tracked.plate.visible = mat.opacity > 0;
   }
 
+  /** The resource nodes worked out now (ResourceNodes.depleted): drawn at DEPLETED_HEIGHT of their height. */
+  setDepleted(ids: ReadonlySet<bigint>): void {
+    this.depleted = ids;
+  }
+
+  /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node. */
+  private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null): [TransformRow, BodyConfigRow | null] {
+    if (!this.depleted.has(wid)) {
+      this.lowRows.delete(wid);
+      return [t, b];
+    }
+    let low = this.lowRows.get(wid);
+    if (!low || low.from !== t || low.fromBody !== b) {
+      low = { from: t, fromBody: b, t: { ...t, sy: t.sy * DEPLETED_HEIGHT }, b: b ? { ...b, halfY: b.halfY * DEPLETED_HEIGHT } : null };
+      this.lowRows.set(wid, low);
+    }
+    return [low.t, low.b];
+  }
+
   /** Reconcile the layer with mirror state and advance the FX. */
   sync(
     state: MirrorState,
@@ -347,7 +372,10 @@ export class EntityLayer {
       }
       // Batched static props: follow their rows (unchanged rows cost nothing).
       if (this.props.has(wid)) {
-        if (e.transform) this.props.update(wid, e.transform, e.body ?? null);
+        if (e.transform) {
+          const [t, b] = this.shown(wid, e.transform, e.body ?? null);
+          this.props.update(wid, t, b);
+        }
         continue;
       }
       let tracked = this.meshes.get(wid);
@@ -357,7 +385,7 @@ export class EntityLayer {
         const model = this.modelFor(e.asset);
         if (!model && isStaticProp(e.body, e.asset)) {
           // Scenery: no spawn portal (a streamed ring brings hundreds at once).
-          this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
+          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null), placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
@@ -379,7 +407,7 @@ export class EntityLayer {
           detachPlate(tracked);
           this.detachWeapons(tracked);
           this.meshes.delete(wid);
-          this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
+          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null), placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
@@ -440,7 +468,7 @@ export class EntityLayer {
         );
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
-        tracked.object.scale.set(t.sx, t.sy, t.sz);
+        tracked.object.scale.set(t.sx, this.depleted.has(wid) ? t.sy * DEPLETED_HEIGHT : t.sy, t.sz);
       }
 
       const isPlayer = playerWireId !== null && wid === playerWireId;
@@ -605,11 +633,13 @@ export class EntityLayer {
   private makeBodyMesh(wid: bigint, body: BodyConfigRow | undefined, model: THREE.Object3D | null): THREE.Object3D {
     if (model) {
       colorize(model, placeholderColor(wid));
+      applyShading(model, "model");
       return model;
     }
     if (body) {
       const obj = this.assets.bodyMesh(body);
       colorize(obj, placeholderColor(wid));
+      applyShading(obj, "placeholder");
       return obj;
     }
     // Stand-in until the BodyConfig row arrives (spawned entities carry
@@ -619,6 +649,7 @@ export class EntityLayer {
       new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }),
     );
     colorize(obj, placeholderColor(wid));
+    applyShading(obj, "placeholder");
     return obj;
   }
 }

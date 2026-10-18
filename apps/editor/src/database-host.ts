@@ -137,9 +137,17 @@ export async function openDatabaseCore(repoRoot: string, dataDir: string): Promi
     throw Object.assign(new Error("persistence core not built — run: npm run build --workspace=@mmo-engine/engine-core"), { status: 500 });
   }
   const mod = (await import(pathToFileURL(file).href)) as {
-    PersistenceCore: new (o: { dataDir: string; contentDir?: string }) => DatabaseCore;
+    PersistenceCore: new (o: { dataDir: string; contentDir?: string; queryLimits?: () => { defaultRows: number; maxRows: number; timeoutMs: number } }) => DatabaseCore;
   };
-  return new mod.PersistenceCore({ dataDir, contentDir: join(repoRoot, "content") });
+  const settings = (await import(pathToFileURL(join(repoRoot, "packages", "engine-core", "dist", "src", "server-settings.js")).href)) as {
+    loadPersistenceSettings: (dir?: string) => { settings: { queryDefaultRows: number; queryMaxRows: number; queryTimeoutSeconds: number } };
+  };
+  // Query caps from content/server/persistence.json (EG13), read on every query so a saved change applies to the next one.
+  const queryLimits = () => {
+    const s = settings.loadPersistenceSettings(join(repoRoot, "content", "server")).settings;
+    return { defaultRows: s.queryDefaultRows, maxRows: s.queryMaxRows, timeoutMs: s.queryTimeoutSeconds * 1000 };
+  };
+  return new mod.PersistenceCore({ dataDir, contentDir: join(repoRoot, "content"), queryLimits });
 }
 
 /** True when something accepts connections on the game server's port. */

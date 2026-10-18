@@ -50,6 +50,10 @@ export const InstanceRulesSchema = z.strictObject({
    * result (a crash before that loses the run). The only mode so far.
    */
   commit: z.literal("on-report"),
+  /** Walls (EG12): a body's footprint against props, metres (the character capsule's). */
+  wallBodyRadiusM: z.number().min(0).max(5).default(0.4),
+  /** A move longer than this in one tick is a teleport (respawn, admin), metres; fly speed is 0.4 m a tick. */
+  teleportStepM: z.number().positive().max(100).default(8),
 });
 
 const EntranceSchema = z.strictObject({

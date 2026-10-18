@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { addComponent } from "bitecs";
 import { IntentButton } from "@mmo-engine/protocol";
-import { CreaturesSchema, type CreaturesRules } from "@mmo-engine/rules";
+import { CreatureAiSchema, CreaturesSchema, type CreaturesRules } from "@mmo-engine/rules";
 import { fnv1a32 } from "@mmo-engine/scatter";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
@@ -330,5 +330,37 @@ describe("looks: the animal model by asset hash, scaled by size", () => {
     assert.equal(C.AssetRef.assetHash[e], fnv1a32("animals/SM_Bear_01"));
     assert.equal(C.Transform.sx[e], 2.5);
     assert.ok(w.sys.weaponOf(e)!.reach > 2.5 * 0.5, "reach grows with size");
+  });
+});
+
+describe("brain pacing and ranges as rules (creatures.json ai, EG7)", () => {
+  it("the defaults are the values that were code", () => {
+    assert.deepEqual(CreatureAiSchema.parse({}), {
+      alertRadiusM: 40, hurtSearchRadiusM: 20, asleepNotice: 0.25, ambushNotice: 0.5, calmSeconds: 6, fleeCalmFactor: 1.5, territoryGiveUpFactor: 1.6,
+      flankOffsetM: 8, closeInM: 6, reachMarginM: 0.3, homeRadiusM: 1.5, repathSeconds: 1 / 3, raidRescanSeconds: 0.5, minWaterM: 0.8, waterLookAheadM: 2,
+    });
+  });
+
+  it("a shorter pack call leaves the far pack-mates out", () => {
+    const w = setup(kind({ pack: [3, 3], aggroRadius: 20, leashRadius: 300 }, { temperament: "hunt", noticeM: 20 }), { ai: CreatureAiSchema.parse({ alertRadiusM: 10 }) });
+    w.addPlayer(100, 0);
+    const ids = w.sys.spawnPack(w.sim, "beast", 0, 0, [3, 3]);
+    ids.forEach((e) => { C.Transform.px[e] = 70; });
+    C.Transform.px[ids[0]!] = 85;
+    w.run(2);
+    assert.equal(w.sys.modeOf(ids[0]!), "chase");
+    assert.ok(ids.slice(1).every((e) => w.sys.modeOf(e) !== "chase"), ids.map((e) => w.sys.modeOf(e)).join());
+  });
+
+  it("a sleeper that notices more wakes for a nearer threat, and setAi applies on the next step", () => {
+    const w = setup(kind({}, { temperament: "hunt", noticeM: 20, activity: "nocturnal" }));
+    w.addPlayer(12, 0);
+    const [d] = w.sys.spawnPack(w.sim, "beast", 0, 0, [1, 1]);
+    w.setTod(0.5);
+    w.run(5);
+    assert.equal(w.sys.modeOf(d), "idle", "asleep at noon: notices 5 m");
+    w.sys.setAi(CreatureAiSchema.parse({ asleepNotice: 0.75 }));
+    w.run(5);
+    assert.equal(w.sys.modeOf(d), "chase", "a light sleeper notices 15 m");
   });
 });

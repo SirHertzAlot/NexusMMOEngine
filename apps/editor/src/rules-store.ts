@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { parseRules, RULE_FILES, RulesError, type RuleFile, type RulesIssue } from "@mmo-engine/rules";
 
 /** The rules files the editor's tables edit. */
-export const EDITABLE_TABLES = ["items", "creatures", "loot", "death", "ingress"] as const;
+export const EDITABLE_TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement", "skills", "social"] as const;
 export type EditableTable = (typeof EDITABLE_TABLES)[number];
 
 export function isEditableTable(name: unknown): name is EditableTable {
@@ -26,6 +26,8 @@ export interface RulesTables {
   tables: Record<EditableTable, unknown>;
   /** combat.json's technique ids, for the item bases' technique choice. */
   techniques: string[];
+  /** skills.json's skill ids, for a technique's skill. */
+  skills: string[];
 }
 
 export type SaveResult = { ok: true } | { ok: false; issues: RulesIssue[] };
@@ -51,13 +53,18 @@ export function readRulesTables(dir: string): RulesTables {
   for (const t of EDITABLE_TABLES) tables[t] = all[t] ?? {};
   // The validated rules give the techniques with defaults filled in.
   let techniques: string[] = [];
+  let skills: string[] = [];
   try {
-    techniques = Object.keys(parseRules(all).combat.techniques);
+    const rules = parseRules(all);
+    techniques = Object.keys(rules.combat.techniques);
+    skills = rules.skills.skills.map((s) => s.id);
   } catch {
     const raw = all.combat as { techniques?: Record<string, unknown> } | undefined;
     techniques = Object.keys(raw?.techniques ?? {});
+    const rawSkills = all.skills as { skills?: Array<{ id?: unknown }> } | undefined;
+    skills = (rawSkills?.skills ?? []).map((s) => s.id).filter((s): s is string => typeof s === "string");
   }
-  return { tables, techniques };
+  return { tables, techniques, skills };
 }
 
 /**

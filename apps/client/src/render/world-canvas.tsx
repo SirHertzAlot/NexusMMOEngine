@@ -37,6 +37,7 @@ import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type Worl
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
+import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
@@ -151,6 +152,8 @@ export interface WorldCanvasProps {
   onMend?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** The resource node in gathering range changed (its wire id; null: none in range). */
+  onNearResource?: (node: bigint | null) => void;
   /** The quest log key (P1/U11). */
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
@@ -189,6 +192,8 @@ export interface NearDrop {
 
 /** How near a drop must be for the prompt: a little inside the server's range (rules loot.pickupRange, 2.5 m). */
 const PICKUP_PROMPT_RANGE = 2.3;
+/** How near a resource node's edge must be for the prompt: inside the server's reach (2.5 m). */
+const GATHER_PROMPT_RANGE = 2.3;
 
 installBvh();
 
@@ -302,6 +307,7 @@ interface Runtime {
   layer: EntityLayer;
   input: InputState;
   drops: DropLabels;
+  resources: ResourceNodes;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
   streaming: StreamingCoordinator;
@@ -328,6 +334,7 @@ function MirrorWorld({
   onTreat,
   onMend,
   onNearDrop,
+  onNearResource,
   onQuests,
   onNearNpc,
   onNearEntrance,
@@ -347,8 +354,8 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -361,6 +368,7 @@ function MirrorWorld({
   const loop = useRef({
     pointerMoved: false,
     nearDrop: null as bigint | null,
+    nearResource: null as bigint | null,
     nearNpc: null as string | null,
     nearEntrance: null as string | null,
     hp: NaN,
@@ -405,6 +413,7 @@ function MirrorWorld({
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
+    const resources = new ResourceNodes();
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
     // Weather: the field service (worker-advanced), cloud volumes, and rain curtain.
@@ -437,6 +446,7 @@ function MirrorWorld({
         else if (action === "mend") latest.current.onMend?.();
         else if (action === "quests") latest.current.onQuests?.();
         else if (drops.nearest !== null) client.pickup(drops.nearest);
+        else if (resources.nearest !== null) client.gather(resources.nearest);
         else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
         else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
       },
@@ -488,7 +498,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances, streaming, weather, clouds, rain, weatherFeel };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -594,6 +604,13 @@ function MirrorWorld({
     if (combat) {
       combat.prune(hasEntity, now / 1000);
       r.layer.setFlashes(combat.flashUntil);
+    }
+    // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
+    r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
+    r.layer.setDepleted(r.resources.depleted);
+    if (r.resources.nearest !== l.nearResource) {
+      l.nearResource = r.resources.nearest;
+      latest.current.onNearResource?.(l.nearResource);
     }
     r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
       tick: client.serverTick,

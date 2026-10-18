@@ -53,7 +53,8 @@
     "playtest": "node scripts/playtest.mjs --all",
     "build:native": "node scripts/build-native.mjs",
     "bake:all": "node scripts/bake-all.mjs",
-    "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --"
+    "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --",
+    "settlement:region": "npm run settlement:region --workspace=@mmo-engine/settlement --"
   },
   "version": "0.1.0",
   "workspaces": [

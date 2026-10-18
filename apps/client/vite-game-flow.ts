@@ -37,3 +37,6 @@ export const animationDoc = (file: string): Plugin => jsonModule("virtual:animat
 
 /** content/materials/materials.json as `virtual:materials-doc` (EA22). */
 export const materialsDoc = (file: string): Plugin => jsonModule("virtual:materials-doc", file);
+
+/** content/vfx/budgets.json (particle tier budgets) as `virtual:vfx-budgets` (EG10). */
+export const vfxBudgets = (file: string): Plugin => jsonModule("virtual:vfx-budgets", file);

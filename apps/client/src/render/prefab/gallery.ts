@@ -7,7 +7,7 @@
 
 import * as THREE from "three";
 import { composeCreature, composeItem, type Composition, type CreatureBase } from "@mmo-engine/compose/browser";
-import { applyToon } from "../toon/toon-material.js";
+import { applyShadingToMaterial } from "../shading/shading.js";
 import type { QuarksFx } from "../vfx/quarks-fx.js";
 import { PrefabBuilder, type PrefabInstance } from "./prefab-builder.js";
 
@@ -22,16 +22,16 @@ const ITEMS: [string, string, number][] = [
   ["shield", "epic", 9],
 ];
 
-/** A stand-in body for a composed entity: a toon capsule, or a rough shape of the item. */
+/** A stand-in body for a composed entity: a cell-shaded capsule, or a rough shape of the item. */
 export function standInFor(c: Composition): THREE.Object3D {
-  const toon = (color: number): THREE.MeshStandardMaterial => {
+  const shaded = (color: number): THREE.MeshStandardMaterial => {
     const m = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
-    applyToon(m, { row: "cloth" });
+    applyShadingToMaterial(m, "prefab");
     return m;
   };
   const g = new THREE.Group();
   const add = (geo: THREE.BufferGeometry, color: number, y = 0): void => {
-    const mesh = new THREE.Mesh(geo, toon(color));
+    const mesh = new THREE.Mesh(geo, shaded(color));
     mesh.position.y = y;
     g.add(mesh);
   };
@@ -53,7 +53,7 @@ export function standInFor(c: Composition): THREE.Object3D {
       add(new THREE.IcosahedronGeometry(0.12), 0xffffff, 1.65);
       break;
     case "shield": {
-      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.06, 24), toon(0xbbbbbb));
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.06, 24), shaded(0xbbbbbb));
       s.rotation.x = Math.PI / 2;
       s.position.y = 0.9;
       g.add(s);

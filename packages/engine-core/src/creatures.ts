@@ -31,7 +31,7 @@
 
 import { addComponent, defineQuery, entityExists, hasComponent } from "bitecs";
 import { IntentButton, LocomotionMode } from "@mmo-engine/protocol";
-import type { CreaturesRules, ItemBaseRules } from "@mmo-engine/rules";
+import { type CreaturesRules, type ItemBaseRules, CreatureAiSchema, type CreatureAiRules } from "@mmo-engine/rules";
 import { fnv1a32 } from "@mmo-engine/scatter";
 import * as C from "./components.js";
 import type { Weapon } from "./combat.js";
@@ -69,6 +69,8 @@ export interface CreatureOptions {
   settlements?: () => readonly RaidSettlement[];
   /** The art model id a kind shows as (its AssetRef hash), scaled by its `size`. */
   modelOf?: (creature: string) => string | undefined;
+  /** Brain pacing and ranges (creatures.json `ai`); default: the engine's. */
+  ai?: CreatureAiRules;
 }
 
 /** A place raiders are drawn to. */
@@ -102,35 +104,8 @@ interface Brain {
   nextScan: number;
 }
 
-/** A creature swings this far inside its weapon's reach, metres. */
-const REACH_MARGIN = 0.3;
-/** Home counts as reached inside this, metres. */
-const HOME_RADIUS = 1.5;
-/** Re-aim a steered walk this often, ticks. */
-const GIVE_EVERY = 10;
-/** A hurt creature looks for its attacker this far when the combat system doesn't say, metres. */
-const HURT_RADIUS = 20;
-/** Fleeing prey calms once the threat is beyond this many times its notice radius. */
-const FLEE_CALM = 1.5;
-/** A territorial creature gives up the chase beyond this many times its notice radius. */
-const TERRITORY_GIVE_UP = 1.6;
-/** Flankers swing out this far to the side at most, metres, and close in inside CLOSE_IN. */
-const FLANK_OFFSET = 8;
-const CLOSE_IN = 6;
-/** Pack-mates within this alert each other, metres. */
-const ALERT_RADIUS = 40;
-/** A light sleeper notices this share of its radius while asleep. */
-const ASLEEP_NOTICE = 0.25;
-/** Ambushers notice this share of their radius (they wait for what comes close). */
-const AMBUSH_NOTICE = 0.5;
-/** Seconds a creature stays calm after a warning that came to nothing. */
-const CALM_SECONDS = 6;
-/** Raiders rescan their targets this often, ticks. */
-const SCAN_EVERY = 15;
-/** Water must be this deep (metres) for an aquatic creature to be in it. */
-const MIN_WATER = 0.8;
-/** An aquatic creature looks this far ahead before it swims on, metres. */
-const LOOK_AHEAD = 2;
+/** Brain pacing and ranges (creatures.json `ai`), until the system is given the game's. */
+const DEFAULT_AI: Readonly<CreatureAiRules> = Object.freeze(CreatureAiSchema.parse({}));
 
 type Def = CreaturesRules["creatures"][string];
 type Behavior = NonNullable<Def["behavior"]>;
@@ -154,6 +129,12 @@ export class CreatureSystem implements SimSystem {
   private rngState: number;
   private readonly tickHz: number;
   private nextGroup = 1;
+  /** The world's walking speed creature speeds are shares of (rules movement.json); followed each step. */
+  private walkSpeed = PLAYER_SPEED;
+  private ai: Readonly<CreatureAiRules> = DEFAULT_AI;
+  /** The ai's re-aim and raid rescan intervals, in ticks. */
+  private repathTicks = 10;
+  private rescanTicks = 15;
 
   private readonly opts: CreatureOptions;
 
@@ -161,6 +142,14 @@ export class CreatureSystem implements SimSystem {
     this.opts = { ...opts };
     this.rngState = opts.seed ?? 20261002;
     this.tickHz = opts.tickHz ?? 30;
+    this.setAi(opts.ai ?? DEFAULT_AI);
+  }
+
+  /** Swap in reloaded brain pacing and ranges (creatures.json `ai`); applies on the next step. */
+  setAi(ai: Readonly<CreatureAiRules>): void {
+    this.ai = ai;
+    this.repathTicks = Math.max(1, Math.round(ai.repathSeconds * this.tickHz));
+    this.rescanTicks = Math.max(1, Math.round(ai.raidRescanSeconds * this.tickHz));
   }
 
   /**
@@ -174,7 +163,7 @@ export class CreatureSystem implements SimSystem {
     this.opts.bases = bases;
     for (const [e, b] of this.brains) {
       const def = creatures[b.kind];
-      if (def) C.NavAgent.speed[e] = this.runSpeed(def) * PLAYER_SPEED;
+      if (def) C.NavAgent.speed[e] = this.runSpeed(def) * this.walkSpeed;
     }
   }
 
@@ -297,7 +286,8 @@ export class CreatureSystem implements SimSystem {
     C.Locomotion.abilities[eid] = 1;
     C.Locomotion.breath[eid] = 1;
     C.Action.move[eid] = 0;
-    C.NavAgent.speed[eid] = this.runSpeed(def) * PLAYER_SPEED;
+    this.walkSpeed = sim.movement.walkSpeed;
+    C.NavAgent.speed[eid] = this.runSpeed(def) * this.walkSpeed;
     C.NavAgent.tx[eid] = NaN;
     C.NavAgent.seq[eid] = 0;
     const look = this.opts.lookOf?.(kind);
@@ -360,6 +350,11 @@ export class CreatureSystem implements SimSystem {
 
   step(sim: SimWorld): void {
     if (this.brains.size === 0) return;
+    if (sim.movement.walkSpeed !== this.walkSpeed) {
+      // A rules reload changed the walk: every creature's speed is a share of it.
+      this.walkSpeed = sim.movement.walkSpeed;
+      this.setRules(this.opts.creatures, this.opts.bases);
+    }
     const tick = sim.currentTick;
     const players = this.characters(sim.ecs);
     const tod = this.opts.timeOfDay?.(tick) ?? null;
@@ -393,8 +388,8 @@ export class CreatureSystem implements SimSystem {
       // What it notices: its radius, less while asleep (outside its hours) or lying in wait.
       let notice = beh?.noticeM ?? def.aggroRadius;
       if (beh) {
-        if (!isAwake(beh.activity, tod)) notice *= ASLEEP_NOTICE;
-        if (beh.tactics === "ambush") notice *= AMBUSH_NOTICE;
+        if (!isAwake(beh.activity, tod)) notice *= this.ai.asleepNotice;
+        if (beh.tactics === "ambush") notice *= this.ai.ambushNotice;
       }
       this.think(sim, e, b, def, beh, notice, hurt, players, tick);
       if (beh?.habitat === "water") this.swim(e, def);
@@ -407,7 +402,7 @@ export class CreatureSystem implements SimSystem {
     const ez = C.Transform.pz[e];
 
     if (b.mode === "flee") {
-      const t = this.nearestLiving(players, ex, ez, notice * FLEE_CALM);
+      const t = this.nearestLiving(players, ex, ez, notice * this.ai.fleeCalmFactor);
       if (t < 0) {
         b.mode = "return";
         b.target = -1;
@@ -424,7 +419,7 @@ export class CreatureSystem implements SimSystem {
         this.opts.cancelWarn?.(e, tick);
         b.mode = "idle";
         b.target = -1;
-        b.calmUntil = tick + Math.round(CALM_SECONDS * this.tickHz);
+        b.calmUntil = tick + Math.round(this.ai.calmSeconds * this.tickHz);
       } else {
         C.PlayerIntent.lookYaw[e] = Math.atan2(C.Transform.px[t] - ex, C.Transform.pz[t] - ez);
         this.stop(e);
@@ -433,7 +428,7 @@ export class CreatureSystem implements SimSystem {
           // A bluff: it warned, and fights only if hurt.
           b.mode = "idle";
           b.target = -1;
-          b.calmUntil = tick + Math.round(CALM_SECONDS * this.tickHz);
+          b.calmUntil = tick + Math.round(this.ai.calmSeconds * this.tickHz);
           return;
         }
         b.mode = "chase";
@@ -469,13 +464,13 @@ export class CreatureSystem implements SimSystem {
         b.mode = "raid";
       } else {
         b.target = -1;
-        b.mode = Math.hypot(ex - b.homeX, ez - b.homeZ) > HOME_RADIUS ? "return" : "idle";
+        b.mode = Math.hypot(ex - b.homeX, ez - b.homeZ) > this.ai.homeRadiusM ? "return" : "idle";
       }
     }
 
     if (b.mode === "chase") {
       const t = b.target;
-      const give = temper === "territorial" && Math.hypot(C.Transform.px[t] - ex, C.Transform.pz[t] - ez) > notice * TERRITORY_GIVE_UP;
+      const give = temper === "territorial" && Math.hypot(C.Transform.px[t] - ex, C.Transform.pz[t] - ez) > notice * this.ai.territoryGiveUpFactor;
       if (give || Math.hypot(ex - b.homeX, ez - b.homeZ) > def.leashRadius) {
         b.mode = "return";
         b.target = -1;
@@ -486,7 +481,7 @@ export class CreatureSystem implements SimSystem {
     if (b.mode === "raid") this.raid(sim, e, b, def, beh!, tick);
     if (b.mode === "return") {
       const d = this.walk(e, b, tick, b.homeX, b.homeZ);
-      if (d < HOME_RADIUS) {
+      if (d < this.ai.homeRadiusM) {
         b.mode = "idle";
         C.Health.current[e] = C.Health.max[e];
         b.lastHealth = C.Health.max[e];
@@ -512,7 +507,7 @@ export class CreatureSystem implements SimSystem {
     const ez = C.Transform.pz[e];
     for (const [m, mb] of this.brains) {
       if (m === e || mb.group !== b.group || mb.mode !== "idle" || C.Health.current[m] <= 0) continue;
-      if (Math.hypot(C.Transform.px[m] - ex, C.Transform.pz[m] - ez) > ALERT_RADIUS) continue;
+      if (Math.hypot(C.Transform.px[m] - ex, C.Transform.pz[m] - ez) > this.ai.alertRadiusM) continue;
       mb.target = b.target;
       mb.mode = "chase";
     }
@@ -521,7 +516,7 @@ export class CreatureSystem implements SimSystem {
   private attacker(sim: SimWorld, e: number, x: number, z: number, players: ArrayLike<number>): number {
     const a = this.opts.attackerOf?.(e);
     if (a !== undefined && a >= 0 && this.alive(sim, a)) return a;
-    return this.nearestLiving(players, x, z, HURT_RADIUS);
+    return this.nearestLiving(players, x, z, this.ai.hurtSearchRadiusM);
   }
 
   private alive(sim: SimWorld, t: number): boolean {
@@ -550,10 +545,10 @@ export class CreatureSystem implements SimSystem {
     const dz = tz - C.Transform.pz[e];
     const d = Math.hypot(dx, dz);
     C.PlayerIntent.lookYaw[e] = Math.atan2(dx, dz);
-    if (d > b.weapon.reach + REACH_MARGIN) {
-      if (flank && d > CLOSE_IN) {
+    if (d > b.weapon.reach + this.ai.reachMarginM) {
+      if (flank && d > this.ai.closeInM) {
         // Swing out to this flanker's side, less as it closes: the pack arrives from both flanks.
-        const off = Math.min(FLANK_OFFSET, d * 0.5) * b.side;
+        const off = Math.min(this.ai.flankOffsetM, d * 0.5) * b.side;
         this.walk(e, b, tick, tx - (dz / d) * off, tz + (dx / d) * off);
       } else {
         this.walk(e, b, tick, tx, tz);
@@ -619,17 +614,17 @@ export class CreatureSystem implements SimSystem {
     const ez = C.Transform.pz[e];
     if (b.target >= 0 && !this.alive(sim, b.target)) b.target = -1;
     if (tick >= b.nextScan) {
-      b.nextScan = tick + SCAN_EVERY + (e % SCAN_EVERY);
+      b.nextScan = tick + this.rescanTicks + (e % this.rescanTicks);
       b.target = this.pickTarget(sim, e, s, raid.weights, ex, ez);
     }
     if (b.target >= 0) {
-      const inReach = Math.hypot(C.Transform.px[b.target] - ex, C.Transform.pz[b.target] - ez) <= b.weapon.reach + REACH_MARGIN;
+      const inReach = Math.hypot(C.Transform.px[b.target] - ex, C.Transform.pz[b.target] - ez) <= b.weapon.reach + this.ai.reachMarginM;
       if (inReach) b.raidFightTicks++;
       this.chase(e, b, tick, def.attackEverySeconds);
       return;
     }
     // Nothing to fight yet: on to the settlement's heart; nothing left there and it is done.
-    if (this.walk(e, b, tick, s.x, s.z) < Math.max(HOME_RADIUS, s.radius * 0.25)) b.raidFightTicks++; // lingers among the empty houses a while, then has had enough
+    if (this.walk(e, b, tick, s.x, s.z) < Math.max(this.ai.homeRadiusM, s.radius * 0.25)) b.raidFightTicks++; // lingers among the empty houses a while, then has had enough
   }
 
   private pickTarget(sim: SimWorld, e: number, s: RaidSettlement, w: { player: number; livestock: number; structure: number }, x: number, z: number): number {
@@ -667,7 +662,7 @@ export class CreatureSystem implements SimSystem {
     const wet = this.opts.waterDepthAt;
     if (wet && (mx !== 0 || mz !== 0)) {
       const m = Math.hypot(mx, mz);
-      if (wet(x + (mx / m) * LOOK_AHEAD, z + (mz / m) * LOOK_AHEAD) < Math.max(MIN_WATER, beh.depthM?.[0] ?? 0)) {
+      if (wet(x + (mx / m) * this.ai.waterLookAheadM, z + (mz / m) * this.ai.waterLookAheadM) < Math.max(this.ai.minWaterM, beh.depthM?.[0] ?? 0)) {
         C.PlayerIntent.mx[e] = 0;
         C.PlayerIntent.mz[e] = 0;
       }
@@ -688,7 +683,7 @@ export class CreatureSystem implements SimSystem {
     if (this.opts.steer === true && C.NavAgent.state[e] !== C.NavAgentState.Invalid && def?.behavior?.habitat !== "water") {
       if (tick >= b.nextGive) {
         this.give(e, x, z);
-        b.nextGive = tick + GIVE_EVERY;
+        b.nextGive = tick + this.repathTicks;
       }
     } else if (d > 1e-3) {
       const speed = def ? this.runSpeed(def) : 0;

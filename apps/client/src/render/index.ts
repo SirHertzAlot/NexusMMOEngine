@@ -14,5 +14,6 @@ export type { PerfSample } from "./perf-stats.js";
 export { DEFAULT_BINDINGS, type Bindings } from "../input/bindings.js";
 export { httpBaseForGameUrl, PcgRpcClient } from "@mmo-engine/picg";
 export { applyGameContent, gameContent } from "./game-content.js";
+export { setParticleBudgets } from "./fx/particle-fx.js";
 export { setMoveSound } from "./entity-layer.js";
 export { groundColors, BIOME_GROUND } from "./terrain/ground.js";
