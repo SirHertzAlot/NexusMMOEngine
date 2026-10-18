@@ -103,6 +103,16 @@ describe("form helpers", () => {
     assert.equal(parseField(map, ""), undefined);
   });
 
+  it("points round-trip as `x, z` and refuse anything else", () => {
+    const pt: FieldSpec = { key: "bots.home", label: "Home", kind: "point" };
+    assert.deepEqual(parseField(pt, "120, -40.5"), [120, -40.5]);
+    assert.deepEqual(parseField(pt, "3 4"), [3, 4]);
+    assert.equal(fieldText(pt, [120, -40.5]), "120, -40.5");
+    assert.equal(fieldText(pt, null), "");
+    assert.ok(isFieldError(parseField(pt, "120")));
+    assert.ok(isFieldError(parseField(pt, "a, b")));
+  });
+
   it("setAt keeps a list a list", () => {
     const doc = { parts: [{ id: "torso", share: 0.5 }, { id: "head", share: 0.5 }] };
     const next = setAt(doc, "parts.1.share", 0.25) as typeof doc;

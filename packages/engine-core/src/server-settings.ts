@@ -1,10 +1,12 @@
 /**
  * Server settings an operator or designer tunes without a developer
- * (content/server/, roadmap EG13): how often the world is saved and how
- * much the save history and database queries may hold. Read when the
+ * (content/server/): how often the world is saved and how much the save
+ * history and database queries may hold (persistence.json, roadmap EG13),
+ * and the day cycle and server-run bots (world.json, EG14). Read when the
  * server starts; the editor's Live ops › Server settings edits them, and
  * its Database query reads the query limits on every query.
- * `MMO_SERVER_SETTINGS` overrides the folder.
+ * `MMO_SERVER_SETTINGS` overrides the folder; the MMO_DAY_* and MMO_BOTS*
+ * environment variables still win over world.json.
  */
 
 import * as fs from "node:fs";
@@ -42,13 +44,44 @@ export const DEFAULT_PERSISTENCE_SETTINGS: Readonly<PersistenceSettings> = Objec
  * so a bad edit never stops a server.
  */
 export function loadPersistenceSettings(dir: string = DEFAULT_SERVER_SETTINGS_DIR): { settings: PersistenceSettings; problem: string | null } {
-  const file = path.join(dir, "persistence.json");
-  if (!fs.existsSync(file)) return { settings: DEFAULT_PERSISTENCE_SETTINGS, problem: null };
+  return loadSettings(dir, "persistence.json", PersistenceSettingsSchema, DEFAULT_PERSISTENCE_SETTINGS);
+}
+
+function loadSettings<T>(dir: string, name: string, schema: z.ZodType<T>, defaults: T): { settings: T; problem: string | null } {
+  const file = path.join(dir, name);
+  if (!fs.existsSync(file)) return { settings: defaults, problem: null };
   try {
-    const r = PersistenceSettingsSchema.safeParse(JSON.parse(fs.readFileSync(file, "utf8")));
+    const r = schema.safeParse(JSON.parse(fs.readFileSync(file, "utf8")));
     if (r.success) return { settings: r.data, problem: null };
-    return { settings: DEFAULT_PERSISTENCE_SETTINGS, problem: `${file}: ${r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}` };
+    return { settings: defaults, problem: `${file}: ${r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}` };
   } catch (e) {
-    return { settings: DEFAULT_PERSISTENCE_SETTINGS, problem: `${file}: ${(e as Error).message}` };
+    return { settings: defaults, problem: `${file}: ${(e as Error).message}` };
   }
+}
+
+/** content/server/world.json (EG14): the day cycle and the server-run bots. The seed, chunk size and radii are the bake's, not here. */
+export const WorldSettingsSchema = z.strictObject({
+  /** Real seconds per game day; 0 turns the day cycle off. */
+  daySeconds: z.number().min(0).max(7 * 24 * 3600).default(2400),
+  /** Time of day at tick 0: 0 midnight, 0.25 dawn, 0.5 noon. */
+  dayOffset: z.number().min(0).lt(1).default(0.35),
+  bots: z
+    .strictObject({
+      /** Computer-driven characters near the spawn; two in three spar. */
+      count: z.number().int().min(0).max(1000).default(0),
+      /** Where they gather, [x, z]; null: beside the spawn point. */
+      home: z.tuple([z.number(), z.number()]).nullable().default(null),
+      /** How far from home they roam, metres. */
+      radiusM: z.number().positive().max(10_000).default(18),
+    })
+    .prefault({}),
+});
+
+export type WorldSettings = z.infer<typeof WorldSettingsSchema>;
+
+export const DEFAULT_WORLD_SETTINGS: Readonly<WorldSettings> = Object.freeze(WorldSettingsSchema.parse({}));
+
+/** world.json in `dir`, like loadPersistenceSettings: absent is the defaults, a bad file is reported and the defaults used. */
+export function loadWorldSettings(dir: string = DEFAULT_SERVER_SETTINGS_DIR): { settings: WorldSettings; problem: string | null } {
+  return loadSettings(dir, "world.json", WorldSettingsSchema, DEFAULT_WORLD_SETTINGS);
 }

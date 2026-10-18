@@ -28,7 +28,7 @@ world specs, ecology plans, PCG graphs.
 |---|---|---|
 | `MMO_PORT` | `7777` | WebSocket listen port. The PCG asset service shares it (`/rpc/Pcg`). |
 | `MMO_DATA_DIR` | `./data` | The server's state folder (see [Data files](#data-files)). |
-| `MMO_SERVER_SETTINGS` | `content/server` | Server settings folder: `persistence.json` holds the save interval, snapshots kept, the save log limit and the database query caps (edited in the editor's Live ops › Server settings). |
+| `MMO_SERVER_SETTINGS` | `content/server` | Server settings folder: `persistence.json` holds the save interval, snapshots kept, the save log limit and the database query caps; `world.json` holds the day length, the start time of day and the bots (count, home, roam radius). Both are edited in the editor's Live ops › Server settings. |
 | `MMO_WORLD_SEED` | `1234` | Procedural seed. A baked world uses the seed recorded at bake time, and this is ignored. |
 | `MMO_CHUNK_SIZE` | `16` | Chunk size in metres. Must match the bake. |
 | `MMO_WORLD_RADIUS` | `1` | Spawn-area radius in chunks, always loaded (`1` = 3 × 3). |
@@ -56,11 +56,11 @@ world specs, ecology plans, PCG graphs.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `MMO_BOTS` | `0` | Computer-driven characters near the spawn point. Two in three spar in pairs, the rest wander. Random looks from the part catalog. |
-| `MMO_BOTS_HOME` | beside the spawn point | `"x,z"`: where the bots gather. |
-| `MMO_BOTS_RADIUS` | `18` | How far from home they roam, metres. |
-| `MMO_DAY_SECONDS` | `2400` (a 40-minute day) | Real seconds per game day. `0` = no day cycle: the server sends no day clock at all, and clients fall back to their own default. |
-| `MMO_DAY_OFFSET` | `0.35` (mid-morning) | Time of day at tick 0, in 0..1 (must be `< 1`): `0` midnight, `0.25` dawn, `0.5` noon. |
+| `MMO_BOTS` | `0` (or `world.json`) | Computer-driven characters near the spawn point. Two in three spar in pairs, the rest wander. Random looks from the part catalog. |
+| `MMO_BOTS_HOME` | beside the spawn point (or `world.json`) | `"x,z"`: where the bots gather. |
+| `MMO_BOTS_RADIUS` | `18` (or `world.json`) | How far from home they roam, metres. |
+| `MMO_DAY_SECONDS` | `2400` (a 40-minute day; or `world.json`) | Real seconds per game day. `0` = no day cycle: the server sends no day clock at all, and clients fall back to their own default. |
+| `MMO_DAY_OFFSET` | `0.35` (mid-morning; or `world.json`) | Time of day at tick 0, in 0..1 (must be `< 1`): `0` midnight, `0.25` dawn, `0.5` noon. |
 
 ### Game rules
 

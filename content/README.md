@@ -21,9 +21,11 @@ Game content the engine generates from, committed with the code:
   `MMO_SETTLEMENT_RULES` overrides the path. Baked manifests
   (`<id>.settlement.json`) are written here too.
 
-- `server/` — server settings (roadmap EG13): `persistence.json` (how often
-  the world is saved, snapshots kept, the save log's size limit, and the
-  database query row caps and timeout), read when the server starts
+- `server/` — server settings (roadmap EG13, EG14): `persistence.json` (how
+  often the world is saved, snapshots kept, the save log's size limit, and
+  the database query row caps and timeout) and `world.json` (day length,
+  start time of day, and the bots' count, home and roam radius; the
+  `MMO_DAY_*` and `MMO_BOTS*` variables still win), read when the server starts
   (`packages/engine-core/src/server-settings.ts`); the editor's Live ops ›
   Server settings edits it. `MMO_SERVER_SETTINGS` overrides the path.
 
