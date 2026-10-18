@@ -144,7 +144,8 @@ export class DungeonInstance {
     this.rng = hash(opts.id.length, ...[...opts.id].map((c) => c.charCodeAt(0)));
     for (const m of opts.members) this.members.set(m.characterId, m);
     const rules = opts.game.rules;
-    this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0 });
+    this.world.movement = rules.movement;
+    this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0, ai: rules.creatures.ai });
     const stamina = new StaminaSystem();
     const weaponOf = (e: number): Weapon | null =>
       hasComponent(this.world.ecs, C.CharacterRef, e)
@@ -154,7 +155,8 @@ export class DungeonInstance {
       hasComponent(this.world.ecs, C.CharacterRef, e)
         ? (opts.armourOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e]) ?? 1)
         : 1;
-    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf });
+    const tuning = { resolution: rules.combat.resolution, unarmed: rules.items.unarmed };
+    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf, tuning: () => tuning });
     const death: DeathSystem = new DeathSystem(
       opts.game.hooks,
       30,
@@ -188,12 +190,13 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
       groundHeightAt: () => 0,
       allowRegister: false,
+      social: rules.social,
       creatures: {
         has: (k) => k in rules.creatures.creatures,
         spawnPack: (w, k, x, z) => this.creatures.spawnPack(w, k, x, z),

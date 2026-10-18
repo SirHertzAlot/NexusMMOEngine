@@ -86,3 +86,21 @@ describe("ParticleFx", () => {
     fx.dispose();
   });
 });
+
+describe("particle budgets from content (EG10)", () => {
+  it("content/vfx/budgets.json sets the tier multipliers; a bad file keeps the last good budgets", async () => {
+    const { budgetMultiplierForTier, setParticleBudgets } = await import("../src/render/fx/particle-fx.js");
+    const { readFileSync } = await import("node:fs");
+    const file = JSON.parse(readFileSync(new URL("../../../../content/vfx/budgets.json", import.meta.url), "utf8"));
+    assert.equal(setParticleBudgets(file), null);
+    assert.equal(budgetMultiplierForTier("ultra"), file.tiers.ultra.maxParticles / 8000);
+    const halved = structuredClone(file);
+    halved.tiers.low.maxParticles = 500;
+    assert.equal(setParticleBudgets(halved), null);
+    assert.equal(budgetMultiplierForTier("low"), 500 / 8000);
+    halved.tiers.medium.maxParticles = 100; // below low: not monotonic
+    assert.match(setParticleBudgets(halved) ?? "", /monotonic/);
+    assert.equal(budgetMultiplierForTier("low"), 500 / 8000);
+    assert.equal(setParticleBudgets(file), null);
+  });
+});

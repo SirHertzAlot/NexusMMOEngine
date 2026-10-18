@@ -20,9 +20,9 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-10)
+## At a glance (2026-10-18)
 
-**129 items built, 23 in progress, 10 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
+**145 items built, 30 in progress, 11 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -228,6 +228,45 @@ one propagates to every panel: audit in the project library
 | M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
 | M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
 
+## 1g. Designer access (editor gap audit)
+
+Doc: [`EDITOR-GAP-AUDIT.md`](EDITOR-GAP-AUDIT.md). Every value a designer
+tunes reaches the editor, so nobody waits on a developer to change a
+number. Values held in engine code move into validated data files first
+(the engine default stays, so an absent key changes nothing), then get a
+labelled form with ranges and help. One PR per item.
+
+| # | Item | Status | Notes |
+| --- | --- | --- | --- |
+| EG1 | Dungeon run rules and entrances form (`content/dungeons/instances.json`, `entrances.json`) | ✅ | Audit row 1. The Content browser link lands in a workspace that does not read them today. Merged in #292 |
+| EG2 | Combat and body forms (`combat.json` techniques, power, damage, precision, defence; `body.json` parts, healing, penalties, Medicine treatment) | ✅ | Audit row 6. Raw tree today. Merged in #293 |
+| EG3 | Crafting form: units, fittings, rune stone, default skill and skill map in `content/crafting/recipes.json` | ✅ | Audit row 5. Only refining and reagents have grids. Merged in #294 |
+| EG4 | Town rules in sections with labels and help (`content/settlements/rules.json`) | ✅ | Audit row 8. One generic node tree today. Merged in #295 |
+| EG5 | Movement and stamina as rules (speeds, gravity, jump, breath, drowning, flight ceiling, action costs, drains, regen) | ✅ | Audit row 2. Constants in `systems.ts`, `stamina-system.ts`. Merged in #296 |
+| EG6 | Combat resolution as rules (guard factor, arm reach, attack cone, height reach, fight difficulty, the fist) | ✅ | Audit row 3. Constants in `combat.ts`. Merged in #297 |
+| EG7 | Creature timing and ranges as rules (alert, hurt, calm, flee, territory, flank, scan, notice) | ✅ | Audit row 4. Constants in `creatures.ts`. Merged in #298 |
+| EG8 | Skill pacing and Medicine training as rules (use interval, swimming and athletics difficulty, treatment training, wound order) | ✅ | Audit row 7. Constants in `mastery-system.ts`, `body.ts`. Merged in #299 |
+| EG9 | Social and character limits as rules (party, guild, chat, block list, character slots) | ✅ | Audit row 10. Constants in `party.ts`, `guild.ts`, `chat.ts`, `characters/rules.ts`. Merged in #300 |
+| EG10 | VFX tier budgets read from `content/vfx/budgets.json`, editable | ✅ | Audit row 14. No reader of the file today. Merged in #301 |
+| EG11 | Gathering regrow cadence in `gathering.json` | ✅ | Audit row 9. Merged in #302 |
+| EG12 | Dungeon walls and bot pacing as data (body radius, max step, wander, spar range) | ✅ | Audit row 11. Cell size stays fixed by the bake. Merged in #303 |
+| EG13 | Persistence cadence and query limits as server settings, in the editor | ✅ | Audit row 12. Save interval, snapshots kept, WAL limit, query rows and timeout. Merged in #304 |
+| EG14 | World and time settings in the editor (day length and offset, bots), env still overrides | ✅ | Audit row 13. Seed, chunk size and radius are fixed by the bake and shown read-only. Merged in #305 |
+| EG1 | Dungeon run rules and entrances form (`content/dungeons/instances.json`, `entrances.json`) | ✅ | Audit row 1. The Content browser link lands in a workspace that does not read them today |
+| EG2 | Combat and body forms (`combat.json` techniques, power, damage, precision, defence; `body.json` parts, healing, penalties, Medicine treatment) | ✅ | Audit row 6. Raw tree today |
+| EG3 | Crafting form: units, fittings, rune stone, default skill and skill map in `content/crafting/recipes.json` | ✅ | Audit row 5. Only refining and reagents have grids |
+| EG4 | Town rules in sections with labels and help (`content/settlements/rules.json`) | ✅ | Audit row 8. One generic node tree today |
+| EG5 | Movement and stamina as rules (speeds, gravity, jump, breath, drowning, flight ceiling, action costs, drains, regen) | ✅ | Audit row 2. Constants in `systems.ts`, `stamina-system.ts` |
+| EG6 | Combat resolution as rules (guard factor, arm reach, attack cone, height reach, fight difficulty, the fist) | ✅ | Audit row 3. Constants in `combat.ts` |
+| EG7 | Creature timing and ranges as rules (alert, hurt, calm, flee, territory, flank, scan, notice) | ✅ | Audit row 4. Constants in `creatures.ts` |
+| EG8 | Skill pacing and Medicine training as rules (use interval, swimming and athletics difficulty, treatment training, wound order) | ✅ | Audit row 7. Constants in `mastery-system.ts`, `body.ts` |
+| EG9 | Social and character limits as rules (party, guild, chat, block list, character slots) | ✅ | Audit row 10. Constants in `party.ts`, `guild.ts`, `chat.ts`, `characters/rules.ts` |
+| EG10 | VFX tier budgets read from `content/vfx/budgets.json`, editable | ✅ | Audit row 14. No reader of the file today |
+| EG11 | Gathering regrow cadence in `gathering.json` | ✅ | Audit row 9 |
+| EG12 | Dungeon walls and bot pacing as data (body radius, max step, wander, spar range) | ✅ | Audit row 11. Cell size stays fixed by the bake |
+| EG13 | Persistence cadence and query limits as server settings, in the editor | ✅ | Audit row 12. Save interval, snapshots kept, WAL limit, query rows and timeout |
+| EG14 | World and time settings in the editor (day length and offset, bots), env still overrides | ✅ | Audit row 13. Seed, chunk size and radius are fixed by the bake and shown read-only |
+
 ## 2. Game client: the player's interface
 
 Everything here is React DOM over the world canvas, fed by the server
@@ -312,6 +351,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | SG2d | Sites above the water: `rules.sites.minElevationM` (default 4 m) over the footprint's lowest ground and above any lake or river near it, floored by the spawner's structure margin plus the world's detail amplitude (`TerrainFields.safeFloorM`); the default world's `plains.coast.marginM` is 5 m so the shore keeps sites. Zero spawner refusals at 100, 300 and 600 people | ✅ | [`SETTLEMENTS.md`](SETTLEMENTS.md) |
 | SG4b | Movers vs baked statics: creatures/crowd/bots are blocked by building boxes (tested incl. yawed), and spawn, respawn, teleport, saved-position restore and creature spawns are pushed clear of static colliders (`clearOfStatics`); ground items stay walk-through | 🚧 | PR on `feat/settlement-art`; `PropCollisionSystem` per-tick scan unchanged, valgrind:perf not run (no valgrind on Windows) |
 | SG4b | Settlements in the editor: pick archetypes and districts, preview and bake | 📋 | 〃 |
+| SG5 | Settlement town plan: a town square (village green) with a well at the crossing; civic (town hall, guards, parish church, rectory, almshouse-hospital, barracks, cathedral), market, entertainment (taverns, inns, theatre, baths, from a gate along the main road) and education (schools, library) quarters grown from it, sized by required buildings (a village gets one school and one tavern; `minPopulation`, `maxPerPopulation`); housing in the rest; the craft quarter and farms outside along the roads out, a monastery on the farmland; buildings facing their streets; a towered ring wall with four walk-through gates round towns of 45+ households; wall/gate/tower models never mapped to buildings. Research note on medieval town and church life | 🚧 | [`SETTLEMENTS.md`](SETTLEMENTS.md) "Town plan", [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md); PR #287 on `claude/project-thread-acg7d4`; rules `settlement-rules/4`, golden hash re-pinned. Follow-ups: day by the bells, market days, guild streets, parishes, inner walls, spawned roads |
 | WL1 | Wildlife, sea life and farm dressing from imported GLB packs: `npm run import:glb -w @mmo-engine/art -- <extracted dirs>` (catalog + manifest entries with licence, rescaled to natural sizes, kept across `convert:packs`); `npm run wildlife:plan` adds name-pattern layers (sea floor in water habitat with depths, shore birds, woodland fauna, critters, farm animals; static only) to a gitignored `*.local.ecology.json` (`MMO_ECOLOGY`); `DEFAULT_DRESSING_PATTERNS` for farmsteads; `content/credits.json` + `parseCredits` for the entrance screen. Moving creatures need a simulated-agent path (not built); free swimmers unplaced; farm dressing not yet used by the bake (`sites.ts`). Wildlife table `content/wildlife/wildlife.json` ([`WILDLIFE.md`](WILDLIFE.md)): per species role, group, territory, activity, temperament, danger tier; pyramid ratios per biome, danger rings and `safeRadiusM` from the spawn, livestock ring, aquatic depths; planner behind `MMO_WILDLIFE=1`. Follow-ups: creature rules + natural-weapon item bases, flee/defend/territorial brain modes, animal looks, swimming, settlement centres into the planner, wildlife view in the editor | 🚧 | PR on `feat/wildlife-import` (base `integration/terrain`); [`ART-PIPELINE.md`](ART-PIPELINE.md) |
 | WL2 | Megafauna and megaflora (`feat/megafauna`): a tier 5 "boss" on top of the wildlife table: 15 prehistoric giants (short-faced bear, sabre-tooth, dire wolf alpha, terror bird, giant monitor, giant crocodilian, giant constrictor; mammoth, woolly rhino, giant ground sloth; megalodon, raptorial whale, mosasaur, giant squid, giant eel) with body size and model scale, 2.8 to 8 trolls of health, speed over the player's sprint, `intelligence: 0` and instinct drives, weak points, loot ref, rarity per 100 km2 (world cap 4), lair and `raid` rules (settlement thresholds from 300 people, range, cooldown, approach by habitat edge or along water, targets, retreat, warning signs; never the starter safe radius unless set). `planMegafauna` places lairs (tier-5 ring from 1600 m, biome/depth/habitat, apart, leaning to groves), `raidTargets` picks settlements, `bossModels` maps name patterns with base-model fallback (`megafauna.local.json`); 6 megaflora kinds as ecology layers (`megaflora` in the table, `wildlife:plan`). Data, schema, planner and docs only: the brain modes, creature rules and flying giants wait on the creature agent. Follow-ups: boss creature rules + brain (raid state machine, stagger), megafauna/raid view in the editor, flying predator (needs an altitude habitat), warning-sign dressing spawn | 🚧 | PR on `feat/megafauna` (base `integration/terrain`); [`WILDLIFE.md`](WILDLIFE.md) |
 | BA1 | `npm run bake:all`: one command bakes everything in dependency order (build, world, loot, dungeons, settlement sites best first with `--sites`/`--auto-size`, scale-fit, wildlife plan and models, then prints the `MMO_*` block to start the server on it); idempotent, `--force`, `--only`/`--skip`, `--dry-run`; one resolved paths config (`MMO_REPO`, `MMO_DATA_DIR`, `MMO_CONTENT_DIR`, `MMO_ASSETS_DIR`, `MMO_CATALOG`, `MMO_WORLD_SPEC`, `MMO_SETTLEMENT_OUT`, `MMO_SCENES_DIR`, `MMO_SCALE_OUT`) handed to every step; the settlement CLIs and the server read the same names | 🚧 | PR on `feat/bake-all` (base `integration/terrain`); README "Baking everything" |
@@ -394,6 +434,10 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-18**: Designer access (EG1 to EG14) built: every audit row is now a form or a data file the editor reads and writes (dungeon run rules and entrances, combat and body and Medicine, crafting, town rules, movement, combat resolution, creature pacing, skill pacing, social limits, VFX budgets, gathering regrow, dungeon walls and bot pacing, persistence cadence, day cycle and bots). PRs #292 to #305.
+- **2026-10-18**: Designer access (1g) EG1 to EG14 done (✅, PRs #292 to #305): dungeon run rules and entrances, combat and body, crafting and town rules as forms; movement, combat resolution, creature brains, skill pacing, social limits, gathering regrow and dungeon wall/bot pacing moved from code into validated data with forms; VFX budgets now read by the client and editable; persistence settings and day cycle/bots as Live ops › Server settings (env vars still win). Everything hot-reloads except what the server reads at start.
+- **2026-10-18**: Designer access (1g) added: EG1 to EG14 from the editor gap audit (#290), which found dungeon run rules and most of crafting with no editor panel, combat, movement, creature and skill constants held in code, and combat and body rules reachable only as a raw tree.
+- **2026-10-17**: SG5 settlement town plan (🚧, PR #287): towns had taverns and bakeries scattered through housing, scattered craft and farm blocks, no wall, and wall/gate/archway models used as houses. Now: a town square with a well where the main roads cross; civic, market, entertainment and education quarters grown from it and sized by the buildings they must hold (one school and one tavern in a village; halls, theatre, library, barracks and cathedral only above a population); church life (parish church, rectory, churchyard, almshouse-hospital, monastery, apothecary); crafts and farms outside along the roads; buildings facing their streets; a towered ring wall with four walk-through gates for towns of 45+ households; wall-type models kept out of the building kinds. Rules `settlement-rules/4`, golden hash re-pinned; 60 to 4000 people x 8 seeds all generate. [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md) sums up the history and the next steps.
 - **2026-10-16**: WX1 weather as a field — climate sourcing (🚧): the sim no longer hardcodes its climate. `FieldService` takes a `ClimateParams` block (wind vector, sea temp, lapse rate, dry distance, orographic lift, recycling) and `world-canvas.tsx` reads it from the welcome's `WorldInfo` via an additive cast, falling back to `DEFAULT_CLIMATE` (which mirrors `default.world.json`) until the server sends a `climate` block. The two field-service tests are now real (climatology sanity + `sample()`/`step()` evolution) instead of skipping. Remaining couplings: wet look, ripples, weather audio.
 
 - **2026-10-15**: WL2 megafauna and megaflora (🚧, `feat/megafauna`): tier 5 bosses in the wildlife table (15 prehistoric species, rarity <= 2 per 100 km2, world cap 4, health 3 to 8 trolls), raid rules per boss, `planMegafauna`/`raidTargets`/`bossModels`, megaflora ecology layers; data, schema, planner and docs only.

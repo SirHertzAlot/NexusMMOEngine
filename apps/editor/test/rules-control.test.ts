@@ -53,6 +53,13 @@ describe("parseField / fieldText", () => {
     assert.ok(isFieldError(parseField(f, "1.5-3")));
   });
 
+  it("a nullable field stores null when emptied, and shows it empty", () => {
+    const f: FieldSpec = { key: "rank", label: "Rank", kind: "number", int: true, nullable: true };
+    assert.equal(parseField(f, ""), null);
+    assert.equal(parseField(f, "2"), 2);
+    assert.equal(fieldText(f, null), "");
+  });
+
   it("lists and bools", () => {
     assert.deepEqual(parseField(spec(CREATURE_FIELDS, "weapons"), "dagger, axe,,"), ["dagger", "axe"]);
     assert.equal(fieldText(spec(CREATURE_FIELDS, "weapons"), ["dagger", "axe"]), "dagger, axe");

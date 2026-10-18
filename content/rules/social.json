@@ -1,0 +1,29 @@
+{
+  "party": {
+    "max": 6,
+    "inviteSeconds": 60,
+    "offlineMinutes": 5
+  },
+  "guild": {
+    "max": 500,
+    "inviteSeconds": 60,
+    "motdMax": 200,
+    "logKeep": 200
+  },
+  "chat": {
+    "sayRangeM": 30,
+    "textMax": 500,
+    "blockLimit": 200,
+    "cooldownSeconds": {
+      "say": 2,
+      "yell": 10,
+      "emote": 2,
+      "whisper": 1,
+      "party": 0.5,
+      "guild": 0.5
+    }
+  },
+  "characters": {
+    "slots": 8
+  }
+}

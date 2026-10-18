@@ -15,6 +15,20 @@ Game content the engine generates from, committed with the code:
   (`packages/engine-core/src/quests/content.ts`); `MMO_QUESTS` overrides
   the path.
 
+- `settlements/` — `rules.json`: the town generator's rules (format:
+  `@mmo-engine/settlement` `rules.ts` `SettlementRulesSchema`), which the
+  settlement bakes read; the editor's Towns view edits and previews it.
+  `MMO_SETTLEMENT_RULES` overrides the path. Baked manifests
+  (`<id>.settlement.json`) are written here too.
+
+- `server/` — server settings (roadmap EG13, EG14): `persistence.json` (how
+  often the world is saved, snapshots kept, the save log's size limit, and
+  the database query row caps and timeout) and `world.json` (day length,
+  start time of day, and the bots' count, home and roam radius; the
+  `MMO_DAY_*` and `MMO_BOTS*` variables still win), read when the server starts
+  (`packages/engine-core/src/server-settings.ts`); the editor's Live ops ›
+  Server settings edits it. `MMO_SERVER_SETTINGS` overrides the path.
+
 - `dungeons/` — dungeon instances (roadmap D4): `instances.json` (the run
   rules: party size, time limit, re-entry, teardown, loot rolls) and
   `entrances.json` (where in the world a party asks for a run, and which

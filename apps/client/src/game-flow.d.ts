@@ -24,3 +24,8 @@ declare module "virtual:materials-doc" {
   const doc: unknown;
   export default doc;
 }
+/** The particle tier budgets (content/vfx/budgets.json), inlined by vite-game-flow.ts (raw JSON; render/fx/particle-fx.ts validates it). */
+declare module "virtual:vfx-budgets" {
+  const doc: unknown;
+  export default doc;
+}
