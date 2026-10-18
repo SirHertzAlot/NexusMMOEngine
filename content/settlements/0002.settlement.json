@@ -1,0 +1,4472 @@
+{
+  "format": "mmo-settlement/1",
+  "generatorVersion": "settlement-gen/0.8.0",
+  "rulesVersion": "settlement-rules/11",
+  "settlementId": "0002",
+  "seed": 1235,
+  "scale": 1,
+  "determinism": {
+    "rngStreams": {
+      "districts": 2710169979,
+      "mastery": 2383120391,
+      "population": 2497434169,
+      "props": 2499683688,
+      "resources": 1598996744,
+      "setting": 3396828706,
+      "structures": 2310449194
+    },
+    "sortPolicy": "id",
+    "units": "millimeters"
+  },
+  "setting": {
+    "access": "remote",
+    "densityPermille": 634,
+    "trend": "growing",
+    "capacity": 502,
+    "requestedPopulation": 100,
+    "population": 100
+  },
+  "industry": {
+    "primary": "timber",
+    "resources": {
+      "timber": 729,
+      "mining": 0,
+      "fishing": 500,
+      "farming": 355
+    },
+    "abundancePermille": 729,
+    "profession": "crafting",
+    "workplace": "sawmill",
+    "product": {
+      "material": "yew-log",
+      "tier": 2,
+      "export": "yew longbows and cabinets"
+    }
+  },
+  "guild": {
+    "profession": "crafting",
+    "hall": null,
+    "master": null,
+    "signature": "yew longbows and cabinets",
+    "ranks": [
+      {
+        "title": "Initiate",
+        "reputation": 0,
+        "tier": 1,
+        "pupil": false,
+        "recipes": [
+          "ash furniture"
+        ]
+      },
+      {
+        "title": "Journeyman",
+        "reputation": 1000,
+        "tier": 2,
+        "pupil": false,
+        "recipes": []
+      },
+      {
+        "title": "Craftsman",
+        "reputation": 3000,
+        "tier": 3,
+        "pupil": false,
+        "recipes": []
+      },
+      {
+        "title": "Pupil of a master",
+        "reputation": 6000,
+        "tier": 4,
+        "pupil": true,
+        "recipes": [
+          "yew longbows and cabinets"
+        ]
+      },
+      {
+        "title": "Master of the guild",
+        "reputation": 12000,
+        "tier": 5,
+        "pupil": true,
+        "recipes": []
+      }
+    ]
+  },
+  "demographics": {
+    "population": 100,
+    "homeless": 0,
+    "households": 23,
+    "ageCohorts": {
+      "child": 28,
+      "adolescent": 17,
+      "adult": 41,
+      "elder": 14
+    },
+    "socialClasses": {
+      "peasant": 61,
+      "artisan": 23,
+      "merchant": 10,
+      "clergy": 3,
+      "guard": 2,
+      "noble": 1
+    },
+    "laborPool": 49,
+    "dependencyRatioPermille": 724
+  },
+  "mastery": {
+    "masters": {
+      "baking": 0,
+      "crafting": 0,
+      "farming": 0,
+      "smithing": 0
+    },
+    "communities": [],
+    "grandMasters": {
+      "baking": 0,
+      "crafting": 0,
+      "farming": 0,
+      "smithing": 0
+    },
+    "discipline": null,
+    "pupils": 0,
+    "residents": 0,
+    "visitors": 0
+  },
+  "demand": {
+    "foodDemand": 0,
+    "housingDemand": 23,
+    "laborPool": 49,
+    "required": {
+      "market": 1,
+      "chapel": 1,
+      "granary": 0,
+      "mill": 1,
+      "bakery": 1,
+      "smithy": 1,
+      "tavern": 1,
+      "inn": 0,
+      "theatre": 0,
+      "bathhouse": 0,
+      "town_hall": 0,
+      "guild_hall": 0,
+      "parish_church": 0,
+      "churchyard": 1,
+      "rectory": 0,
+      "hospital": 0,
+      "cathedral": 0,
+      "monastery": 0,
+      "apothecary": 0,
+      "guardhouse": 1,
+      "watch_hq": 0,
+      "gaol": 0,
+      "barracks": 0,
+      "school": 1,
+      "library": 0,
+      "warehouse": 1,
+      "workshop": 1,
+      "mine": 0,
+      "fishery": 0,
+      "master_fishery": 0,
+      "sawmill": 1,
+      "master_farmstead": 0,
+      "master_smithy": 0,
+      "master_workshop": 0,
+      "master_bakery": 0
+    },
+    "max": {
+      "chapel": 1,
+      "granary": 1,
+      "mill": 1,
+      "bakery": 1,
+      "smithy": 1,
+      "tavern": 1,
+      "inn": 0,
+      "theatre": 0,
+      "bathhouse": 0,
+      "town_hall": 0,
+      "guild_hall": 0,
+      "parish_church": 0,
+      "churchyard": 4,
+      "rectory": 0,
+      "hospital": 0,
+      "cathedral": 0,
+      "monastery": 0,
+      "apothecary": 0,
+      "watch_hq": 0,
+      "gaol": 0,
+      "barracks": 0,
+      "school": 1,
+      "library": 0,
+      "warehouse": 1,
+      "mine": 0,
+      "fishery": 0,
+      "master_fishery": 0,
+      "sawmill": 1,
+      "master_farmstead": 0,
+      "master_smithy": 0,
+      "master_workshop": 0,
+      "master_bakery": 0
+    }
+  },
+  "roads": {
+    "nodes": [
+      {
+        "id": "junction_0002_0000_0000",
+        "x": -3000,
+        "z": -3000
+      },
+      {
+        "id": "junction_0002_0001_0000",
+        "x": 51000,
+        "z": -3000
+      },
+      {
+        "id": "junction_0002_0002_0000",
+        "x": 105000,
+        "z": -3000
+      },
+      {
+        "id": "junction_0002_0003_0000",
+        "x": 159000,
+        "z": -3000
+      },
+      {
+        "id": "junction_0002_0000_0001",
+        "x": -3000,
+        "z": 43000
+      },
+      {
+        "id": "junction_0002_0001_0001",
+        "x": 51000,
+        "z": 43000
+      },
+      {
+        "id": "junction_0002_0002_0001",
+        "x": 105000,
+        "z": 43000
+      },
+      {
+        "id": "junction_0002_0003_0001",
+        "x": 159000,
+        "z": 43000
+      },
+      {
+        "id": "junction_0002_0000_0002",
+        "x": -3000,
+        "z": 89000
+      },
+      {
+        "id": "junction_0002_0001_0002",
+        "x": 51000,
+        "z": 89000
+      },
+      {
+        "id": "junction_0002_0002_0002",
+        "x": 105000,
+        "z": 89000
+      },
+      {
+        "id": "junction_0002_0003_0002",
+        "x": 159000,
+        "z": 89000
+      },
+      {
+        "id": "junction_0002_0000_0003",
+        "x": -3000,
+        "z": 135000
+      },
+      {
+        "id": "junction_0002_0001_0003",
+        "x": 51000,
+        "z": 135000
+      },
+      {
+        "id": "junction_0002_0002_0003",
+        "x": 105000,
+        "z": 135000
+      },
+      {
+        "id": "junction_0002_0003_0003",
+        "x": 159000,
+        "z": 135000
+      },
+      {
+        "id": "roadend_0002_0000",
+        "x": -1028132,
+        "z": 89000
+      },
+      {
+        "id": "roadend_0002_0001",
+        "x": 1184132,
+        "z": 89000
+      },
+      {
+        "id": "roadend_0002_0002",
+        "x": 105000,
+        "z": -1028132
+      },
+      {
+        "id": "roadend_0002_0003",
+        "x": 105000,
+        "z": 1160132
+      }
+    ],
+    "edges": [
+      {
+        "id": "road_0002_0000",
+        "from": "junction_0002_0000_0000",
+        "to": "junction_0002_0001_0000",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0001",
+        "from": "junction_0002_0001_0000",
+        "to": "junction_0002_0002_0000",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0002",
+        "from": "junction_0002_0002_0000",
+        "to": "junction_0002_0003_0000",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0003",
+        "from": "junction_0002_0000_0001",
+        "to": "junction_0002_0001_0001",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0004",
+        "from": "junction_0002_0001_0001",
+        "to": "junction_0002_0002_0001",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0005",
+        "from": "junction_0002_0002_0001",
+        "to": "junction_0002_0003_0001",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0006",
+        "from": "junction_0002_0000_0002",
+        "to": "junction_0002_0001_0002",
+        "roadClass": "primary_town_road",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0007",
+        "from": "junction_0002_0001_0002",
+        "to": "junction_0002_0002_0002",
+        "roadClass": "primary_town_road",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0008",
+        "from": "junction_0002_0002_0002",
+        "to": "junction_0002_0003_0002",
+        "roadClass": "primary_town_road",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0009",
+        "from": "junction_0002_0000_0003",
+        "to": "junction_0002_0001_0003",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0010",
+        "from": "junction_0002_0001_0003",
+        "to": "junction_0002_0002_0003",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0011",
+        "from": "junction_0002_0002_0003",
+        "to": "junction_0002_0003_0003",
+        "roadClass": "secondary_street",
+        "lengthMm": 54000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0012",
+        "from": "junction_0002_0000_0000",
+        "to": "junction_0002_0000_0001",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0013",
+        "from": "junction_0002_0000_0001",
+        "to": "junction_0002_0000_0002",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0014",
+        "from": "junction_0002_0000_0002",
+        "to": "junction_0002_0000_0003",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0015",
+        "from": "junction_0002_0001_0000",
+        "to": "junction_0002_0001_0001",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0016",
+        "from": "junction_0002_0001_0001",
+        "to": "junction_0002_0001_0002",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0017",
+        "from": "junction_0002_0001_0002",
+        "to": "junction_0002_0001_0003",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0018",
+        "from": "junction_0002_0002_0000",
+        "to": "junction_0002_0002_0001",
+        "roadClass": "primary_town_road",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0019",
+        "from": "junction_0002_0002_0001",
+        "to": "junction_0002_0002_0002",
+        "roadClass": "primary_town_road",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0020",
+        "from": "junction_0002_0002_0002",
+        "to": "junction_0002_0002_0003",
+        "roadClass": "primary_town_road",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0021",
+        "from": "junction_0002_0003_0000",
+        "to": "junction_0002_0003_0001",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0022",
+        "from": "junction_0002_0003_0001",
+        "to": "junction_0002_0003_0002",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0023",
+        "from": "junction_0002_0003_0002",
+        "to": "junction_0002_0003_0003",
+        "roadClass": "secondary_street",
+        "lengthMm": 46000,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0024",
+        "from": "junction_0002_0000_0002",
+        "to": "roadend_0002_0000",
+        "roadClass": "country_road",
+        "lengthMm": 1025132,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0025",
+        "from": "junction_0002_0003_0002",
+        "to": "roadend_0002_0001",
+        "roadClass": "country_road",
+        "lengthMm": 1025132,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0026",
+        "from": "junction_0002_0002_0000",
+        "to": "roadend_0002_0002",
+        "roadClass": "country_road",
+        "lengthMm": 1025132,
+        "widthMm": 6000,
+        "surface": "dirt"
+      },
+      {
+        "id": "road_0002_0027",
+        "from": "junction_0002_0002_0003",
+        "to": "roadend_0002_0003",
+        "roadClass": "country_road",
+        "lengthMm": 1025132,
+        "widthMm": 6000,
+        "surface": "dirt"
+      }
+    ]
+  },
+  "districts": [
+    {
+      "id": "district_0002_0000",
+      "kind": "housing",
+      "blocks": 7,
+      "areaM2": 13440
+    },
+    {
+      "id": "district_0002_0001",
+      "kind": "agriculture",
+      "blocks": 1,
+      "areaM2": 910542.69504
+    },
+    {
+      "id": "district_0002_0002",
+      "kind": "shopping",
+      "blocks": 1,
+      "areaM2": 960
+    },
+    {
+      "id": "district_0002_0003",
+      "kind": "manufacturing",
+      "blocks": 1,
+      "areaM2": 1440
+    },
+    {
+      "id": "district_0002_0004",
+      "kind": "civic",
+      "blocks": 0,
+      "areaM2": 0
+    },
+    {
+      "id": "district_0002_0005",
+      "kind": "entertainment",
+      "blocks": 1,
+      "areaM2": 480
+    },
+    {
+      "id": "district_0002_0006",
+      "kind": "education",
+      "blocks": 1,
+      "areaM2": 480
+    }
+  ],
+  "parcels": [
+    {
+      "id": "parcel_0002_0000_0000",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 0,
+      "gz": 0,
+      "center": {
+        "x": 6000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0001",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 1,
+      "gz": 0,
+      "center": {
+        "x": 18000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0002",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 2,
+      "gz": 0,
+      "center": {
+        "x": 30000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0003",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 3,
+      "gz": 0,
+      "center": {
+        "x": 42000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0004",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 5,
+      "gz": 0,
+      "center": {
+        "x": 72000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0005",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 6,
+      "gz": 0,
+      "center": {
+        "x": 84000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0006",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 8,
+      "gz": 0,
+      "center": {
+        "x": 114000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0007",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 9,
+      "gz": 0,
+      "center": {
+        "x": 126000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0008",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 10,
+      "gz": 0,
+      "center": {
+        "x": 138000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0009",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 11,
+      "gz": 0,
+      "center": {
+        "x": 150000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0010",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 0,
+      "gz": 1,
+      "center": {
+        "x": 6000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle",
+      "post": {
+        "archetype": "empty_lot",
+        "why": "lot"
+      }
+    },
+    {
+      "id": "parcel_0002_0000_0011",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 1,
+      "gz": 1,
+      "center": {
+        "x": 18000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0012",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 2,
+      "gz": 1,
+      "center": {
+        "x": 30000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0013",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 3,
+      "gz": 1,
+      "center": {
+        "x": 42000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0014",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 5,
+      "gz": 1,
+      "center": {
+        "x": 72000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0015",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 6,
+      "gz": 1,
+      "center": {
+        "x": 84000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0016",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 8,
+      "gz": 1,
+      "center": {
+        "x": 114000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0017",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 9,
+      "gz": 1,
+      "center": {
+        "x": 126000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0018",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 10,
+      "gz": 1,
+      "center": {
+        "x": 138000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0019",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 11,
+      "gz": 1,
+      "center": {
+        "x": 150000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "low"
+    },
+    {
+      "id": "parcel_0002_0000_0020",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 0,
+      "gz": 2,
+      "center": {
+        "x": 6000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0021",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 1,
+      "gz": 2,
+      "center": {
+        "x": 18000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0022",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 2,
+      "gz": 2,
+      "center": {
+        "x": 30000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0023",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 8,
+      "gz": 2,
+      "center": {
+        "x": 114000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0024",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 9,
+      "gz": 2,
+      "center": {
+        "x": 126000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0025",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 10,
+      "gz": 2,
+      "center": {
+        "x": 138000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0026",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 11,
+      "gz": 2,
+      "center": {
+        "x": 150000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0027",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 0,
+      "gz": 3,
+      "center": {
+        "x": 6000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0028",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 1,
+      "gz": 3,
+      "center": {
+        "x": 18000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0029",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 2,
+      "gz": 3,
+      "center": {
+        "x": 30000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0030",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 8,
+      "gz": 3,
+      "center": {
+        "x": 114000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0031",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 9,
+      "gz": 3,
+      "center": {
+        "x": 126000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0032",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 10,
+      "gz": 3,
+      "center": {
+        "x": 138000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0033",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 11,
+      "gz": 3,
+      "center": {
+        "x": 150000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0034",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 0,
+      "gz": 4,
+      "center": {
+        "x": 6000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0035",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 1,
+      "gz": 4,
+      "center": {
+        "x": 18000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0036",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 2,
+      "gz": 4,
+      "center": {
+        "x": 30000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0037",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 3,
+      "gz": 4,
+      "center": {
+        "x": 42000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0038",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 4,
+      "gz": 4,
+      "center": {
+        "x": 60000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0039",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 7,
+      "gz": 4,
+      "center": {
+        "x": 96000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0040",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 8,
+      "gz": 4,
+      "center": {
+        "x": 114000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0041",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 9,
+      "gz": 4,
+      "center": {
+        "x": 126000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0042",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 10,
+      "gz": 4,
+      "center": {
+        "x": 138000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0043",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 11,
+      "gz": 4,
+      "center": {
+        "x": 150000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0044",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 0,
+      "gz": 5,
+      "center": {
+        "x": 6000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0045",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 1,
+      "gz": 5,
+      "center": {
+        "x": 18000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0046",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 2,
+      "gz": 5,
+      "center": {
+        "x": 30000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0047",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 3,
+      "gz": 5,
+      "center": {
+        "x": 42000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0048",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 4,
+      "gz": 5,
+      "center": {
+        "x": 60000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0049",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 5,
+      "gz": 5,
+      "center": {
+        "x": 72000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0050",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 6,
+      "gz": 5,
+      "center": {
+        "x": 84000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "high"
+    },
+    {
+      "id": "parcel_0002_0000_0051",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 7,
+      "gz": 5,
+      "center": {
+        "x": 96000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "high",
+      "post": {
+        "archetype": "guardhouse",
+        "why": "gate"
+      }
+    },
+    {
+      "id": "parcel_0002_0000_0052",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 8,
+      "gz": 5,
+      "center": {
+        "x": 114000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0053",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 9,
+      "gz": 5,
+      "center": {
+        "x": 126000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0054",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 10,
+      "gz": 5,
+      "center": {
+        "x": 138000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 1,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0000_0055",
+      "district": "district_0002_0000",
+      "kind": "housing",
+      "gx": 11,
+      "gz": 5,
+      "center": {
+        "x": 150000,
+        "z": 122000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2,
+      "wealth": "middle"
+    },
+    {
+      "id": "parcel_0002_0002_0000",
+      "district": "district_0002_0002",
+      "kind": "shopping",
+      "gx": 4,
+      "gz": 0,
+      "center": {
+        "x": 60000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2
+    },
+    {
+      "id": "parcel_0002_0002_0001",
+      "district": "district_0002_0002",
+      "kind": "shopping",
+      "gx": 7,
+      "gz": 0,
+      "center": {
+        "x": 96000,
+        "z": 10000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2,
+      "post": {
+        "archetype": "guardhouse",
+        "why": "gate"
+      }
+    },
+    {
+      "id": "parcel_0002_0002_0002",
+      "district": "district_0002_0002",
+      "kind": "shopping",
+      "gx": 4,
+      "gz": 1,
+      "center": {
+        "x": 60000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2
+    },
+    {
+      "id": "parcel_0002_0002_0003",
+      "district": "district_0002_0002",
+      "kind": "shopping",
+      "gx": 7,
+      "gz": 1,
+      "center": {
+        "x": 96000,
+        "z": 30000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2
+    },
+    {
+      "id": "parcel_0002_0003_0000",
+      "district": "district_0002_0003",
+      "kind": "manufacturing",
+      "gx": 0,
+      "gz": -3000,
+      "center": {
+        "x": 118000,
+        "z": -56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 270,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0003_0001",
+      "district": "district_0002_0003",
+      "kind": "manufacturing",
+      "gx": 0,
+      "gz": -7000,
+      "center": {
+        "x": 92000,
+        "z": -56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 90,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0003_0002",
+      "district": "district_0002_0003",
+      "kind": "manufacturing",
+      "gx": 1,
+      "gz": -3000,
+      "center": {
+        "x": 118000,
+        "z": -68000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 270,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0003_0003",
+      "district": "district_0002_0003",
+      "kind": "manufacturing",
+      "gx": 1,
+      "gz": -7000,
+      "center": {
+        "x": 92000,
+        "z": -68000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 90,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0003_0004",
+      "district": "district_0002_0003",
+      "kind": "manufacturing",
+      "gx": 2,
+      "gz": -3000,
+      "center": {
+        "x": 118000,
+        "z": -80000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 270,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0003_0005",
+      "district": "district_0002_0003",
+      "kind": "manufacturing",
+      "gx": 2,
+      "gz": -7000,
+      "center": {
+        "x": 92000,
+        "z": -80000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 90,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0005_0000",
+      "district": "district_0002_0005",
+      "kind": "entertainment",
+      "gx": 5,
+      "gz": 4,
+      "center": {
+        "x": 72000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0005_0001",
+      "district": "district_0002_0005",
+      "kind": "entertainment",
+      "gx": 6,
+      "gz": 4,
+      "center": {
+        "x": 84000,
+        "z": 102000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 1
+    },
+    {
+      "id": "parcel_0002_0006_0000",
+      "district": "district_0002_0006",
+      "kind": "education",
+      "gx": 3,
+      "gz": 2,
+      "center": {
+        "x": 42000,
+        "z": 56000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 180,
+      "access": 2
+    },
+    {
+      "id": "parcel_0002_0006_0001",
+      "district": "district_0002_0006",
+      "kind": "education",
+      "gx": 3,
+      "gz": 3,
+      "center": {
+        "x": 42000,
+        "z": 76000
+      },
+      "areaM2": 240,
+      "roadFrontage": true,
+      "facing": 0,
+      "access": 2
+    }
+  ],
+  "walled": false,
+  "wallOpenToWater": 0,
+  "fortifications": [],
+  "square": {
+    "center": {
+      "x": 78000,
+      "z": 66000
+    },
+    "widthMm": 48000,
+    "depthMm": 40000
+  },
+  "structures": [
+    {
+      "id": "structure_0002_0000_0000",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0000",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0001",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0001",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0002",
+      "archetype": "artisan_house",
+      "parcel": "parcel_0002_0000_0002",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0003",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0003",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0004",
+      "archetype": "churchyard",
+      "parcel": "parcel_0002_0000_0004",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0005",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0005",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0006",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0006",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0007",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0007",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0008",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0008",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0009",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0009",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0010",
+      "archetype": "empty_lot",
+      "parcel": "parcel_0002_0000_0010",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0011",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0011",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0012",
+      "archetype": "artisan_house",
+      "parcel": "parcel_0002_0000_0012",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0013",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0013",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0014",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0014",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0015",
+      "archetype": "artisan_house",
+      "parcel": "parcel_0002_0000_0015",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0016",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0016",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0017",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0017",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0018",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0018",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0019",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0019",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0020",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0020",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0021",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0021",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0022",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0022",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0023",
+      "archetype": "artisan_house",
+      "parcel": "parcel_0002_0000_0023",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0024",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0024",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0025",
+      "archetype": "churchyard",
+      "parcel": "parcel_0002_0000_0025",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0026",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0026",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0027",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0027",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0028",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0028",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0029",
+      "archetype": "churchyard",
+      "parcel": "parcel_0002_0000_0029",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0030",
+      "archetype": "artisan_house",
+      "parcel": "parcel_0002_0000_0030",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0031",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0031",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0032",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0032",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0033",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0033",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0034",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0034",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0035",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0035",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0036",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0036",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0037",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0037",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0038",
+      "archetype": "churchyard",
+      "parcel": "parcel_0002_0000_0038",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0039",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0039",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0040",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0040",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0041",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0041",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0042",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0042",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0043",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0043",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0044",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0044",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0045",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0045",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0046",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0046",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0047",
+      "archetype": "chapel",
+      "parcel": "parcel_0002_0000_0047",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0048",
+      "archetype": "garden",
+      "parcel": "parcel_0002_0000_0048",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0049",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0049",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0050",
+      "archetype": "artisan_house",
+      "parcel": "parcel_0002_0000_0050",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0051",
+      "archetype": "guardhouse",
+      "parcel": "parcel_0002_0000_0051",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0052",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0052",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0053",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0053",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0054",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0054",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0000_0055",
+      "archetype": "house",
+      "parcel": "parcel_0002_0000_0055",
+      "district": "district_0002_0000"
+    },
+    {
+      "id": "structure_0002_0002_0000",
+      "archetype": "bakery",
+      "parcel": "parcel_0002_0002_0000",
+      "district": "district_0002_0002"
+    },
+    {
+      "id": "structure_0002_0002_0001",
+      "archetype": "guardhouse",
+      "parcel": "parcel_0002_0002_0001",
+      "district": "district_0002_0002"
+    },
+    {
+      "id": "structure_0002_0002_0002",
+      "archetype": "market",
+      "parcel": "parcel_0002_0002_0002",
+      "district": "district_0002_0002"
+    },
+    {
+      "id": "structure_0002_0002_0003",
+      "archetype": "market",
+      "parcel": "parcel_0002_0002_0003",
+      "district": "district_0002_0002"
+    },
+    {
+      "id": "structure_0002_0003_0000",
+      "archetype": "mill",
+      "parcel": "parcel_0002_0003_0000",
+      "district": "district_0002_0003"
+    },
+    {
+      "id": "structure_0002_0003_0001",
+      "archetype": "workshop",
+      "parcel": "parcel_0002_0003_0001",
+      "district": "district_0002_0003"
+    },
+    {
+      "id": "structure_0002_0003_0002",
+      "archetype": "warehouse",
+      "parcel": "parcel_0002_0003_0002",
+      "district": "district_0002_0003"
+    },
+    {
+      "id": "structure_0002_0003_0003",
+      "archetype": "sawmill",
+      "parcel": "parcel_0002_0003_0003",
+      "district": "district_0002_0003"
+    },
+    {
+      "id": "structure_0002_0003_0004",
+      "archetype": "workshop",
+      "parcel": "parcel_0002_0003_0004",
+      "district": "district_0002_0003"
+    },
+    {
+      "id": "structure_0002_0003_0005",
+      "archetype": "smithy",
+      "parcel": "parcel_0002_0003_0005",
+      "district": "district_0002_0003"
+    },
+    {
+      "id": "structure_0002_0005_0000",
+      "archetype": "townhouse",
+      "parcel": "parcel_0002_0005_0000",
+      "district": "district_0002_0005"
+    },
+    {
+      "id": "structure_0002_0005_0001",
+      "archetype": "tavern",
+      "parcel": "parcel_0002_0005_0001",
+      "district": "district_0002_0005"
+    },
+    {
+      "id": "structure_0002_0006_0000",
+      "archetype": "townhouse",
+      "parcel": "parcel_0002_0006_0000",
+      "district": "district_0002_0006"
+    },
+    {
+      "id": "structure_0002_0006_0001",
+      "archetype": "school",
+      "parcel": "parcel_0002_0006_0001",
+      "district": "district_0002_0006"
+    }
+  ],
+  "occupancy": {
+    "households": [
+      {
+        "id": "household_0002_0000",
+        "home": "structure_0002_0000_0041",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0001",
+        "home": "structure_0002_0000_0050",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0002",
+        "home": "structure_0002_0000_0003",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0003",
+        "home": "structure_0002_0000_0045",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0004",
+        "home": "structure_0002_0000_0033",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0005",
+        "home": "structure_0002_0000_0046",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0006",
+        "home": "structure_0002_0000_0024",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0007",
+        "home": "structure_0002_0006_0000",
+        "size": 5
+      },
+      {
+        "id": "household_0002_0008",
+        "home": "structure_0002_0000_0015",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0009",
+        "home": "structure_0002_0000_0042",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0010",
+        "home": "structure_0002_0000_0012",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0011",
+        "home": "structure_0002_0000_0030",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0012",
+        "home": "structure_0002_0000_0054",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0013",
+        "home": "structure_0002_0005_0000",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0014",
+        "home": "structure_0002_0000_0013",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0015",
+        "home": "structure_0002_0000_0032",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0016",
+        "home": "structure_0002_0000_0002",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0017",
+        "home": "structure_0002_0000_0007",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0018",
+        "home": "structure_0002_0000_0052",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0019",
+        "home": "structure_0002_0000_0053",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0020",
+        "home": "structure_0002_0000_0034",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0021",
+        "home": "structure_0002_0000_0023",
+        "size": 4
+      },
+      {
+        "id": "household_0002_0022",
+        "home": "structure_0002_0000_0000",
+        "size": 4
+      }
+    ],
+    "npcs": [
+      {
+        "id": "npc_0002_0000_0000",
+        "household": "household_0002_0000",
+        "home": "structure_0002_0000_0041",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "sawyer",
+        "workplace": "structure_0002_0003_0003"
+      },
+      {
+        "id": "npc_0002_0000_0001",
+        "household": "household_0002_0000",
+        "home": "structure_0002_0000_0041",
+        "cohort": "adult",
+        "class": "merchant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0000_0002",
+        "household": "household_0002_0000",
+        "home": "structure_0002_0000_0041",
+        "cohort": "child",
+        "class": "noble",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0000_0003",
+        "household": "household_0002_0000",
+        "home": "structure_0002_0000_0041",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0000_0004",
+        "household": "household_0002_0000",
+        "home": "structure_0002_0000_0041",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0001_0000",
+        "household": "household_0002_0001",
+        "home": "structure_0002_0000_0050",
+        "cohort": "adult",
+        "class": "merchant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0001_0001",
+        "household": "household_0002_0001",
+        "home": "structure_0002_0000_0050",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0001_0002",
+        "household": "household_0002_0001",
+        "home": "structure_0002_0000_0050",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0001_0003",
+        "household": "household_0002_0001",
+        "home": "structure_0002_0000_0050",
+        "cohort": "elder",
+        "class": "artisan",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0001_0004",
+        "household": "household_0002_0001",
+        "home": "structure_0002_0000_0050",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "miller",
+        "workplace": "structure_0002_0003_0000"
+      },
+      {
+        "id": "npc_0002_0002_0000",
+        "household": "household_0002_0002",
+        "home": "structure_0002_0000_0003",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "teacher",
+        "workplace": "structure_0002_0006_0001"
+      },
+      {
+        "id": "npc_0002_0002_0001",
+        "household": "household_0002_0002",
+        "home": "structure_0002_0000_0003",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0002_0002",
+        "household": "household_0002_0002",
+        "home": "structure_0002_0000_0003",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0002_0003",
+        "household": "household_0002_0002",
+        "home": "structure_0002_0000_0003",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0002_0004",
+        "household": "household_0002_0002",
+        "home": "structure_0002_0000_0003",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "sawyer",
+        "workplace": "structure_0002_0003_0003"
+      },
+      {
+        "id": "npc_0002_0003_0000",
+        "household": "household_0002_0003",
+        "home": "structure_0002_0000_0045",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0003_0001",
+        "household": "household_0002_0003",
+        "home": "structure_0002_0000_0045",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0003_0002",
+        "household": "household_0002_0003",
+        "home": "structure_0002_0000_0045",
+        "cohort": "adult",
+        "class": "merchant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0003_0003",
+        "household": "household_0002_0003",
+        "home": "structure_0002_0000_0045",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "blacksmith",
+        "workplace": "structure_0002_0003_0005"
+      },
+      {
+        "id": "npc_0002_0003_0004",
+        "household": "household_0002_0003",
+        "home": "structure_0002_0000_0045",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "town guard",
+        "workplace": "structure_0002_0000_0051"
+      },
+      {
+        "id": "npc_0002_0004_0000",
+        "household": "household_0002_0004",
+        "home": "structure_0002_0000_0033",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "innkeeper",
+        "workplace": "structure_0002_0005_0001"
+      },
+      {
+        "id": "npc_0002_0004_0001",
+        "household": "household_0002_0004",
+        "home": "structure_0002_0000_0033",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0004_0002",
+        "household": "household_0002_0004",
+        "home": "structure_0002_0000_0033",
+        "cohort": "child",
+        "class": "artisan",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0004_0003",
+        "household": "household_0002_0004",
+        "home": "structure_0002_0000_0033",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0004_0004",
+        "household": "household_0002_0004",
+        "home": "structure_0002_0000_0033",
+        "cohort": "elder",
+        "class": "artisan",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0005_0000",
+        "household": "household_0002_0005",
+        "home": "structure_0002_0000_0046",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "sexton",
+        "workplace": "structure_0002_0000_0025"
+      },
+      {
+        "id": "npc_0002_0005_0001",
+        "household": "household_0002_0005",
+        "home": "structure_0002_0000_0046",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0005_0002",
+        "household": "household_0002_0005",
+        "home": "structure_0002_0000_0046",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "artisan",
+        "workplace": "structure_0002_0000_0023"
+      },
+      {
+        "id": "npc_0002_0005_0003",
+        "household": "household_0002_0005",
+        "home": "structure_0002_0000_0046",
+        "cohort": "elder",
+        "class": "artisan",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0005_0004",
+        "household": "household_0002_0005",
+        "home": "structure_0002_0000_0046",
+        "cohort": "adolescent",
+        "class": "clergy",
+        "role": "craftsman",
+        "workplace": "structure_0002_0003_0001"
+      },
+      {
+        "id": "npc_0002_0006_0000",
+        "household": "household_0002_0006",
+        "home": "structure_0002_0000_0024",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "sawyer",
+        "workplace": "structure_0002_0003_0003"
+      },
+      {
+        "id": "npc_0002_0006_0001",
+        "household": "household_0002_0006",
+        "home": "structure_0002_0000_0024",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0006_0002",
+        "household": "household_0002_0006",
+        "home": "structure_0002_0000_0024",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "artisan",
+        "workplace": "structure_0002_0000_0030"
+      },
+      {
+        "id": "npc_0002_0006_0003",
+        "household": "household_0002_0006",
+        "home": "structure_0002_0000_0024",
+        "cohort": "elder",
+        "class": "artisan",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0006_0004",
+        "household": "household_0002_0006",
+        "home": "structure_0002_0000_0024",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0007_0000",
+        "household": "household_0002_0007",
+        "home": "structure_0002_0006_0000",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "sexton",
+        "workplace": "structure_0002_0000_0038"
+      },
+      {
+        "id": "npc_0002_0007_0001",
+        "household": "household_0002_0007",
+        "home": "structure_0002_0006_0000",
+        "cohort": "child",
+        "class": "guard",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0007_0002",
+        "household": "household_0002_0007",
+        "home": "structure_0002_0006_0000",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0007_0003",
+        "household": "household_0002_0007",
+        "home": "structure_0002_0006_0000",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0007_0004",
+        "household": "household_0002_0007",
+        "home": "structure_0002_0006_0000",
+        "cohort": "adult",
+        "class": "merchant",
+        "role": "baker",
+        "workplace": "structure_0002_0002_0000"
+      },
+      {
+        "id": "npc_0002_0008_0000",
+        "household": "household_0002_0008",
+        "home": "structure_0002_0000_0015",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "craftsman",
+        "workplace": "structure_0002_0003_0001"
+      },
+      {
+        "id": "npc_0002_0008_0001",
+        "household": "household_0002_0008",
+        "home": "structure_0002_0000_0015",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0008_0002",
+        "household": "household_0002_0008",
+        "home": "structure_0002_0000_0015",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "craftsman",
+        "workplace": "structure_0002_0003_0004"
+      },
+      {
+        "id": "npc_0002_0008_0003",
+        "household": "household_0002_0008",
+        "home": "structure_0002_0000_0015",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0009_0000",
+        "household": "household_0002_0009",
+        "home": "structure_0002_0000_0042",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0009_0001",
+        "household": "household_0002_0009",
+        "home": "structure_0002_0000_0042",
+        "cohort": "elder",
+        "class": "merchant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0009_0002",
+        "household": "household_0002_0009",
+        "home": "structure_0002_0000_0042",
+        "cohort": "elder",
+        "class": "peasant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0009_0003",
+        "household": "household_0002_0009",
+        "home": "structure_0002_0000_0042",
+        "cohort": "child",
+        "class": "merchant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0010_0000",
+        "household": "household_0002_0010",
+        "home": "structure_0002_0000_0012",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "teacher",
+        "workplace": "structure_0002_0006_0001"
+      },
+      {
+        "id": "npc_0002_0010_0001",
+        "household": "household_0002_0010",
+        "home": "structure_0002_0000_0012",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "artisan",
+        "workplace": "structure_0002_0000_0015"
+      },
+      {
+        "id": "npc_0002_0010_0002",
+        "household": "household_0002_0010",
+        "home": "structure_0002_0000_0012",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0010_0003",
+        "household": "household_0002_0010",
+        "home": "structure_0002_0000_0012",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0011_0000",
+        "household": "household_0002_0011",
+        "home": "structure_0002_0000_0030",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0011_0001",
+        "household": "household_0002_0011",
+        "home": "structure_0002_0000_0030",
+        "cohort": "child",
+        "class": "artisan",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0011_0002",
+        "household": "household_0002_0011",
+        "home": "structure_0002_0000_0030",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0011_0003",
+        "household": "household_0002_0011",
+        "home": "structure_0002_0000_0030",
+        "cohort": "child",
+        "class": "artisan",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0012_0000",
+        "household": "household_0002_0012",
+        "home": "structure_0002_0000_0054",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "town guard",
+        "workplace": "structure_0002_0002_0001"
+      },
+      {
+        "id": "npc_0002_0012_0001",
+        "household": "household_0002_0012",
+        "home": "structure_0002_0000_0054",
+        "cohort": "elder",
+        "class": "peasant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0012_0002",
+        "household": "household_0002_0012",
+        "home": "structure_0002_0000_0054",
+        "cohort": "adolescent",
+        "class": "artisan",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0012_0003",
+        "household": "household_0002_0012",
+        "home": "structure_0002_0000_0054",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0013_0000",
+        "household": "household_0002_0013",
+        "home": "structure_0002_0005_0000",
+        "cohort": "adult",
+        "class": "guard",
+        "role": "sawyer",
+        "workplace": "structure_0002_0003_0003"
+      },
+      {
+        "id": "npc_0002_0013_0001",
+        "household": "household_0002_0013",
+        "home": "structure_0002_0005_0000",
+        "cohort": "elder",
+        "class": "peasant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0013_0002",
+        "household": "household_0002_0013",
+        "home": "structure_0002_0005_0000",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "priest",
+        "workplace": "structure_0002_0000_0047"
+      },
+      {
+        "id": "npc_0002_0013_0003",
+        "household": "household_0002_0013",
+        "home": "structure_0002_0005_0000",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0014_0000",
+        "household": "household_0002_0014",
+        "home": "structure_0002_0000_0013",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0014_0001",
+        "household": "household_0002_0014",
+        "home": "structure_0002_0000_0013",
+        "cohort": "elder",
+        "class": "artisan",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0014_0002",
+        "household": "household_0002_0014",
+        "home": "structure_0002_0000_0013",
+        "cohort": "child",
+        "class": "artisan",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0014_0003",
+        "household": "household_0002_0014",
+        "home": "structure_0002_0000_0013",
+        "cohort": "child",
+        "class": "artisan",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0015_0000",
+        "household": "household_0002_0015",
+        "home": "structure_0002_0000_0032",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "town guard",
+        "workplace": "structure_0002_0000_0051"
+      },
+      {
+        "id": "npc_0002_0015_0001",
+        "household": "household_0002_0015",
+        "home": "structure_0002_0000_0032",
+        "cohort": "child",
+        "class": "merchant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0015_0002",
+        "household": "household_0002_0015",
+        "home": "structure_0002_0000_0032",
+        "cohort": "adult",
+        "class": "merchant",
+        "role": "porter",
+        "workplace": "structure_0002_0003_0002"
+      },
+      {
+        "id": "npc_0002_0015_0003",
+        "household": "household_0002_0015",
+        "home": "structure_0002_0000_0032",
+        "cohort": "adolescent",
+        "class": "artisan",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0016_0000",
+        "household": "household_0002_0016",
+        "home": "structure_0002_0000_0002",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "town guard",
+        "workplace": "structure_0002_0002_0001"
+      },
+      {
+        "id": "npc_0002_0016_0001",
+        "household": "household_0002_0016",
+        "home": "structure_0002_0000_0002",
+        "cohort": "elder",
+        "class": "peasant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0016_0002",
+        "household": "household_0002_0016",
+        "home": "structure_0002_0000_0002",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0016_0003",
+        "household": "household_0002_0016",
+        "home": "structure_0002_0000_0002",
+        "cohort": "elder",
+        "class": "clergy",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0017_0000",
+        "household": "household_0002_0017",
+        "home": "structure_0002_0000_0007",
+        "cohort": "adult",
+        "class": "merchant",
+        "role": "artisan",
+        "workplace": "structure_0002_0000_0012"
+      },
+      {
+        "id": "npc_0002_0017_0001",
+        "household": "household_0002_0017",
+        "home": "structure_0002_0000_0007",
+        "cohort": "elder",
+        "class": "peasant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0017_0002",
+        "household": "household_0002_0017",
+        "home": "structure_0002_0000_0007",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0017_0003",
+        "household": "household_0002_0017",
+        "home": "structure_0002_0000_0007",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0018_0000",
+        "household": "household_0002_0018",
+        "home": "structure_0002_0000_0052",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0018_0001",
+        "household": "household_0002_0018",
+        "home": "structure_0002_0000_0052",
+        "cohort": "adult",
+        "class": "clergy",
+        "role": "artisan",
+        "workplace": "structure_0002_0000_0002"
+      },
+      {
+        "id": "npc_0002_0018_0002",
+        "household": "household_0002_0018",
+        "home": "structure_0002_0000_0052",
+        "cohort": "elder",
+        "class": "merchant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0018_0003",
+        "household": "household_0002_0018",
+        "home": "structure_0002_0000_0052",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0019_0000",
+        "household": "household_0002_0019",
+        "home": "structure_0002_0000_0053",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0019_0001",
+        "household": "household_0002_0019",
+        "home": "structure_0002_0000_0053",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0019_0002",
+        "household": "household_0002_0019",
+        "home": "structure_0002_0000_0053",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0019_0003",
+        "household": "household_0002_0019",
+        "home": "structure_0002_0000_0053",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0020_0000",
+        "household": "household_0002_0020",
+        "home": "structure_0002_0000_0034",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "artisan",
+        "workplace": "structure_0002_0000_0050"
+      },
+      {
+        "id": "npc_0002_0020_0001",
+        "household": "household_0002_0020",
+        "home": "structure_0002_0000_0034",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0020_0002",
+        "household": "household_0002_0020",
+        "home": "structure_0002_0000_0034",
+        "cohort": "adult",
+        "class": "artisan",
+        "role": "innkeeper",
+        "workplace": "structure_0002_0005_0001"
+      },
+      {
+        "id": "npc_0002_0020_0003",
+        "household": "household_0002_0020",
+        "home": "structure_0002_0000_0034",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "sexton",
+        "workplace": "structure_0002_0000_0004"
+      },
+      {
+        "id": "npc_0002_0021_0000",
+        "household": "household_0002_0021",
+        "home": "structure_0002_0000_0023",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "resident"
+      },
+      {
+        "id": "npc_0002_0021_0001",
+        "household": "household_0002_0021",
+        "home": "structure_0002_0000_0023",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "trader",
+        "workplace": "structure_0002_0002_0002"
+      },
+      {
+        "id": "npc_0002_0021_0002",
+        "household": "household_0002_0021",
+        "home": "structure_0002_0000_0023",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "craftsman",
+        "workplace": "structure_0002_0003_0004"
+      },
+      {
+        "id": "npc_0002_0021_0003",
+        "household": "household_0002_0021",
+        "home": "structure_0002_0000_0023",
+        "cohort": "child",
+        "class": "artisan",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0022_0000",
+        "household": "household_0002_0022",
+        "home": "structure_0002_0000_0000",
+        "cohort": "adult",
+        "class": "peasant",
+        "role": "trader",
+        "workplace": "structure_0002_0002_0003"
+      },
+      {
+        "id": "npc_0002_0022_0001",
+        "household": "household_0002_0022",
+        "home": "structure_0002_0000_0000",
+        "cohort": "elder",
+        "class": "peasant",
+        "role": "elder"
+      },
+      {
+        "id": "npc_0002_0022_0002",
+        "household": "household_0002_0022",
+        "home": "structure_0002_0000_0000",
+        "cohort": "child",
+        "class": "peasant",
+        "role": "child"
+      },
+      {
+        "id": "npc_0002_0022_0003",
+        "household": "household_0002_0022",
+        "home": "structure_0002_0000_0000",
+        "cohort": "adolescent",
+        "class": "peasant",
+        "role": "sexton",
+        "workplace": "structure_0002_0000_0029"
+      }
+    ],
+    "shops": [
+      {
+        "id": "shop_0002_0000",
+        "structure": "structure_0002_0002_0000",
+        "owner": "npc_0002_0007_0004"
+      },
+      {
+        "id": "shop_0002_0001",
+        "structure": "structure_0002_0002_0002",
+        "owner": "npc_0002_0021_0001"
+      },
+      {
+        "id": "shop_0002_0002",
+        "structure": "structure_0002_0002_0003",
+        "owner": "npc_0002_0022_0000"
+      },
+      {
+        "id": "shop_0002_0003",
+        "structure": "structure_0002_0003_0001",
+        "owner": "npc_0002_0005_0004"
+      },
+      {
+        "id": "shop_0002_0004",
+        "structure": "structure_0002_0003_0004",
+        "owner": "npc_0002_0008_0002"
+      },
+      {
+        "id": "shop_0002_0005",
+        "structure": "structure_0002_0003_0005",
+        "owner": "npc_0002_0003_0003"
+      },
+      {
+        "id": "shop_0002_0006",
+        "structure": "structure_0002_0005_0001",
+        "owner": "npc_0002_0004_0000"
+      }
+    ]
+  },
+  "props": [
+    {
+      "id": "prop_0002_0000",
+      "kind": "terrace",
+      "center": {
+        "x": 72000,
+        "z": 102000
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        12000,
+        20000
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0005_0000"
+    },
+    {
+      "id": "prop_0002_0001",
+      "kind": "stairs",
+      "center": {
+        "x": 72000,
+        "z": 91650
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        3000,
+        700
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0005_0000"
+    },
+    {
+      "id": "prop_0002_0002",
+      "kind": "terrace",
+      "center": {
+        "x": 42000,
+        "z": 56000
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        12000,
+        20000
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0006_0000"
+    },
+    {
+      "id": "prop_0002_0003",
+      "kind": "stairs",
+      "center": {
+        "x": 42000,
+        "z": 45650
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        3000,
+        700
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0006_0000"
+    },
+    {
+      "id": "prop_0002_0004",
+      "kind": "street_lamp",
+      "center": {
+        "x": 0,
+        "z": -500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0005",
+      "kind": "street_lamp",
+      "center": {
+        "x": 24000,
+        "z": -500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0006",
+      "kind": "street_lamp",
+      "center": {
+        "x": 78000,
+        "z": -500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0007",
+      "kind": "street_lamp",
+      "center": {
+        "x": 108000,
+        "z": -500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0008",
+      "kind": "street_lamp",
+      "center": {
+        "x": 132000,
+        "z": -500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0009",
+      "kind": "street_lamp",
+      "center": {
+        "x": 12000,
+        "z": 40500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0010",
+      "kind": "street_lamp",
+      "center": {
+        "x": 36000,
+        "z": 40500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0011",
+      "kind": "street_lamp",
+      "center": {
+        "x": 66000,
+        "z": 40500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0012",
+      "kind": "street_lamp",
+      "center": {
+        "x": 120000,
+        "z": 40500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0013",
+      "kind": "street_lamp",
+      "center": {
+        "x": 144000,
+        "z": 40500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0014",
+      "kind": "street_lamp",
+      "center": {
+        "x": 0,
+        "z": 45500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0015",
+      "kind": "street_lamp",
+      "center": {
+        "x": 24000,
+        "z": 45500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0016",
+      "kind": "street_lamp",
+      "center": {
+        "x": 108000,
+        "z": 45500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0017",
+      "kind": "street_lamp",
+      "center": {
+        "x": 132000,
+        "z": 45500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0018",
+      "kind": "street_lamp",
+      "center": {
+        "x": 12000,
+        "z": 86500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0019",
+      "kind": "street_lamp",
+      "center": {
+        "x": 120000,
+        "z": 86500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0020",
+      "kind": "street_lamp",
+      "center": {
+        "x": 144000,
+        "z": 86500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0021",
+      "kind": "street_lamp",
+      "center": {
+        "x": 0,
+        "z": 91500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0022",
+      "kind": "street_lamp",
+      "center": {
+        "x": 24000,
+        "z": 91500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0023",
+      "kind": "street_lamp",
+      "center": {
+        "x": 54000,
+        "z": 91500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0024",
+      "kind": "street_lamp",
+      "center": {
+        "x": 108000,
+        "z": 91500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0025",
+      "kind": "street_lamp",
+      "center": {
+        "x": 132000,
+        "z": 91500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0026",
+      "kind": "street_lamp",
+      "center": {
+        "x": 12000,
+        "z": 132500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0027",
+      "kind": "street_lamp",
+      "center": {
+        "x": 36000,
+        "z": 132500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0028",
+      "kind": "street_lamp",
+      "center": {
+        "x": 66000,
+        "z": 132500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0029",
+      "kind": "street_lamp",
+      "center": {
+        "x": 90000,
+        "z": 132500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0030",
+      "kind": "street_lamp",
+      "center": {
+        "x": 120000,
+        "z": 132500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0031",
+      "kind": "street_lamp",
+      "center": {
+        "x": 144000,
+        "z": 132500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0032",
+      "kind": "street_lamp",
+      "center": {
+        "x": 54000,
+        "z": -500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0033",
+      "kind": "street_lamp",
+      "center": {
+        "x": 90000,
+        "z": 40500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0034",
+      "kind": "street_lamp",
+      "center": {
+        "x": 78000,
+        "z": 91500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0035",
+      "kind": "street_lamp",
+      "center": {
+        "x": 36000,
+        "z": 86500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0036",
+      "kind": "street_lamp",
+      "center": {
+        "x": 53500,
+        "z": 45500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0037",
+      "kind": "street_lamp",
+      "center": {
+        "x": 102500,
+        "z": 45500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0038",
+      "kind": "street_lamp",
+      "center": {
+        "x": 53500,
+        "z": 86500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0039",
+      "kind": "street_lamp",
+      "center": {
+        "x": 102500,
+        "z": 86500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        300,
+        300
+      ],
+      "heightMm": 3500
+    },
+    {
+      "id": "prop_0002_0040",
+      "kind": "bench",
+      "center": {
+        "x": 62000,
+        "z": 48500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0041",
+      "kind": "bench",
+      "center": {
+        "x": 62000,
+        "z": 83500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0042",
+      "kind": "bench",
+      "center": {
+        "x": 70000,
+        "z": 48500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0043",
+      "kind": "bench",
+      "center": {
+        "x": 70000,
+        "z": 83500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0044",
+      "kind": "bench",
+      "center": {
+        "x": 78000,
+        "z": 48500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0045",
+      "kind": "bench",
+      "center": {
+        "x": 78000,
+        "z": 83500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0046",
+      "kind": "bench",
+      "center": {
+        "x": 86000,
+        "z": 48500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0047",
+      "kind": "bench",
+      "center": {
+        "x": 86000,
+        "z": 83500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0048",
+      "kind": "bench",
+      "center": {
+        "x": 94000,
+        "z": 48500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0049",
+      "kind": "bench",
+      "center": {
+        "x": 94000,
+        "z": 83500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0050",
+      "kind": "bench",
+      "center": {
+        "x": 56500,
+        "z": 54000
+      },
+      "yawDeg": 90,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0051",
+      "kind": "bench",
+      "center": {
+        "x": 99500,
+        "z": 54000
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0052",
+      "kind": "bench",
+      "center": {
+        "x": 56500,
+        "z": 62000
+      },
+      "yawDeg": 90,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0053",
+      "kind": "bench",
+      "center": {
+        "x": 99500,
+        "z": 62000
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0054",
+      "kind": "bench",
+      "center": {
+        "x": 56500,
+        "z": 70000
+      },
+      "yawDeg": 90,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0055",
+      "kind": "bench",
+      "center": {
+        "x": 99500,
+        "z": 70000
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0056",
+      "kind": "bench",
+      "center": {
+        "x": 56500,
+        "z": 78000
+      },
+      "yawDeg": 90,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0057",
+      "kind": "bench",
+      "center": {
+        "x": 99500,
+        "z": 78000
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        1800,
+        600
+      ],
+      "heightMm": 900
+    },
+    {
+      "id": "prop_0002_0058",
+      "kind": "planter",
+      "center": {
+        "x": 20000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0045"
+    },
+    {
+      "id": "prop_0002_0059",
+      "kind": "planter",
+      "center": {
+        "x": 16000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0045"
+    },
+    {
+      "id": "prop_0002_0060",
+      "kind": "planter",
+      "center": {
+        "x": 32000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0046"
+    },
+    {
+      "id": "prop_0002_0061",
+      "kind": "planter",
+      "center": {
+        "x": 28000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0046"
+    },
+    {
+      "id": "prop_0002_0062",
+      "kind": "planter",
+      "center": {
+        "x": 74000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0049"
+    },
+    {
+      "id": "prop_0002_0063",
+      "kind": "planter",
+      "center": {
+        "x": 70000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0049"
+    },
+    {
+      "id": "prop_0002_0064",
+      "kind": "planter",
+      "center": {
+        "x": 86000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0050"
+    },
+    {
+      "id": "prop_0002_0065",
+      "kind": "planter",
+      "center": {
+        "x": 82000,
+        "z": 131500
+      },
+      "yawDeg": 0,
+      "sizeMm": [
+        1200,
+        500
+      ],
+      "heightMm": 600,
+      "parcel": "parcel_0002_0000_0050"
+    },
+    {
+      "id": "prop_0002_0066",
+      "kind": "barrel",
+      "center": {
+        "x": 57000,
+        "z": 500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        700,
+        700
+      ],
+      "heightMm": 1000,
+      "parcel": "parcel_0002_0002_0000"
+    },
+    {
+      "id": "prop_0002_0067",
+      "kind": "crate",
+      "center": {
+        "x": 63000,
+        "z": 500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        900,
+        900
+      ],
+      "heightMm": 900,
+      "parcel": "parcel_0002_0002_0000"
+    },
+    {
+      "id": "prop_0002_0068",
+      "kind": "grain_sacks",
+      "center": {
+        "x": 108500,
+        "z": -53500
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        1600,
+        900
+      ],
+      "heightMm": 800,
+      "parcel": "parcel_0002_0003_0000"
+    },
+    {
+      "id": "prop_0002_0069",
+      "kind": "grain_sacks",
+      "center": {
+        "x": 108500,
+        "z": -58500
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        1600,
+        900
+      ],
+      "heightMm": 800,
+      "parcel": "parcel_0002_0003_0000"
+    },
+    {
+      "id": "prop_0002_0070",
+      "kind": "barrel",
+      "center": {
+        "x": 108500,
+        "z": -65000
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        700,
+        700
+      ],
+      "heightMm": 1000,
+      "parcel": "parcel_0002_0003_0002"
+    },
+    {
+      "id": "prop_0002_0071",
+      "kind": "crate",
+      "center": {
+        "x": 108500,
+        "z": -71000
+      },
+      "yawDeg": 270,
+      "sizeMm": [
+        900,
+        900
+      ],
+      "heightMm": 900,
+      "parcel": "parcel_0002_0003_0002"
+    },
+    {
+      "id": "prop_0002_0072",
+      "kind": "log_pile",
+      "center": {
+        "x": 101500,
+        "z": -71000
+      },
+      "yawDeg": 90,
+      "sizeMm": [
+        3000,
+        900
+      ],
+      "heightMm": 1100,
+      "parcel": "parcel_0002_0003_0003"
+    },
+    {
+      "id": "prop_0002_0073",
+      "kind": "log_pile",
+      "center": {
+        "x": 101500,
+        "z": -65000
+      },
+      "yawDeg": 90,
+      "sizeMm": [
+        3000,
+        900
+      ],
+      "heightMm": 1100,
+      "parcel": "parcel_0002_0003_0003"
+    },
+    {
+      "id": "prop_0002_0074",
+      "kind": "barrel",
+      "center": {
+        "x": 81000,
+        "z": 92500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        700,
+        700
+      ],
+      "heightMm": 1000,
+      "parcel": "parcel_0002_0005_0001"
+    },
+    {
+      "id": "prop_0002_0075",
+      "kind": "crate",
+      "center": {
+        "x": 87000,
+        "z": 92500
+      },
+      "yawDeg": 180,
+      "sizeMm": [
+        900,
+        900
+      ],
+      "heightMm": 900,
+      "parcel": "parcel_0002_0005_0001"
+    }
+  ],
+  "resources": [
+    {
+      "id": "resource_0002_0000",
+      "industry": "timber",
+      "kind": "tree_stand",
+      "skill": "Woodcutting",
+      "material": "yew-log",
+      "tier": 2,
+      "center": {
+        "x": 51002,
+        "z": 162622
+      },
+      "sizeMm": [
+        6000,
+        6000
+      ],
+      "heightMm": 9000,
+      "stock": 40,
+      "regrowHours": 72
+    },
+    {
+      "id": "resource_0002_0001",
+      "industry": "timber",
+      "kind": "tree_stand",
+      "skill": "Woodcutting",
+      "material": "yew-log",
+      "tier": 2,
+      "center": {
+        "x": 80174,
+        "z": 167781
+      },
+      "sizeMm": [
+        6000,
+        6000
+      ],
+      "heightMm": 9000,
+      "stock": 40,
+      "regrowHours": 72
+    },
+    {
+      "id": "resource_0002_0002",
+      "industry": "timber",
+      "kind": "tree_stand",
+      "skill": "Woodcutting",
+      "material": "ash-log",
+      "tier": 1,
+      "center": {
+        "x": 75794,
+        "z": -38979
+      },
+      "sizeMm": [
+        6000,
+        6000
+      ],
+      "heightMm": 9000,
+      "stock": 40,
+      "regrowHours": 72
+    },
+    {
+      "id": "resource_0002_0003",
+      "industry": "fishing",
+      "kind": "fishing_spot",
+      "skill": "Fishing",
+      "material": "sea-fish",
+      "tier": 1,
+      "center": {
+        "x": 200510,
+        "z": 42397
+      },
+      "sizeMm": [
+        4000,
+        4000
+      ],
+      "heightMm": 300,
+      "stock": 30,
+      "regrowHours": 6
+    },
+    {
+      "id": "resource_0002_0004",
+      "industry": "fishing",
+      "kind": "fishing_spot",
+      "skill": "Fishing",
+      "material": "sea-fish",
+      "tier": 1,
+      "center": {
+        "x": 202747,
+        "z": 60661
+      },
+      "sizeMm": [
+        4000,
+        4000
+      ],
+      "heightMm": 300,
+      "stock": 30,
+      "regrowHours": 6
+    },
+    {
+      "id": "resource_0002_0005",
+      "industry": "fishing",
+      "kind": "fishing_spot",
+      "skill": "Fishing",
+      "material": "sea-fish",
+      "tier": 1,
+      "center": {
+        "x": 206230,
+        "z": 112993
+      },
+      "sizeMm": [
+        4000,
+        4000
+      ],
+      "heightMm": 300,
+      "stock": 30,
+      "regrowHours": 6
+    }
+  ],
+  "validation": [
+    {
+      "gate": "demographic_validity",
+      "ok": true,
+      "detail": "100 people in 23 households"
+    },
+    {
+      "gate": "housing_capacity",
+      "ok": true,
+      "detail": "46 homes for 23 households"
+    },
+    {
+      "gate": "food_security",
+      "ok": true,
+      "detail": "feeds 0 of 0"
+    },
+    {
+      "gate": "labor_balance",
+      "ok": true,
+      "detail": "33 jobs for 49 workers"
+    },
+    {
+      "gate": "road_connectivity",
+      "ok": true,
+      "detail": "20 of 20 junctions reachable"
+    },
+    {
+      "gate": "structure_coverage",
+      "ok": true,
+      "detail": "70 structures on 70 parcels"
+    },
+    {
+      "gate": "occupancy_population",
+      "ok": true,
+      "detail": "100 people in 23 households and 0 homeless"
+    },
+    {
+      "gate": "occupancy_homes",
+      "ok": true,
+      "detail": "23 households, each in a home with room"
+    },
+    {
+      "gate": "occupancy_jobs",
+      "ok": true,
+      "detail": "24 workplaces staffed within their jobs"
+    },
+    {
+      "gate": "fortification",
+      "ok": true,
+      "detail": "an open village: no wall, farms along its roads"
+    },
+    {
+      "gate": "district_quarters",
+      "ok": true,
+      "detail": "3 quarters inside, each one connected group of blocks; the craft quarter on one road out"
+    },
+    {
+      "gate": "farm_acreage",
+      "ok": true,
+      "detail": "0 farms on 0 acres (0 needed), each alone in its fields"
+    },
+    {
+      "gate": "works_separation",
+      "ok": true,
+      "detail": "the nearest home is 66 m from the craft quarter (at least 40 m)"
+    },
+    {
+      "gate": "town_watch",
+      "ok": true,
+      "detail": "2 guard posts (the entrances, 1 in the market, 0 in the poor streets), 0 headquarters, 0 gaols"
+    },
+    {
+      "gate": "access_capacity",
+      "ok": true,
+      "detail": "markets on corner plots; church seats for 120 of 100"
+    },
+    {
+      "gate": "mastery",
+      "ok": true,
+      "detail": "no masters in this town"
+    },
+    {
+      "gate": "setting",
+      "ok": true,
+      "detail": "a growing remote town at density 634; 0 homeless (0 sheltered, 0 sleeping rough); 0 parks, 1 empty lots"
+    },
+    {
+      "gate": "props",
+      "ok": true,
+      "detail": "2 terrace, 2 stairs, 36 street_lamp, 18 bench, 8 planter, 3 barrel, 3 crate, 2 grain_sacks, 2 log_pile"
+    },
+    {
+      "gate": "industry",
+      "ok": true,
+      "detail": "timber (729), known for yew longbows and cabinets: 1 sawmill, 0 of 0 masters in crafting, capped at 502"
+    },
+    {
+      "gate": "guild",
+      "ok": true,
+      "detail": "no guild hall: no industry, or too small a town"
+    },
+    {
+      "gate": "resources",
+      "ok": true,
+      "detail": "2 yew-log tree_stand, 1 ash-log tree_stand, 3 sea-fish fishing_spot"
+    },
+    {
+      "gate": "zoning",
+      "ok": true,
+      "detail": "every structure stands in a district that allows it"
+    }
+  ],
+  "hash": "453a4a7ee94177afd3d736b04675be91c2e2d288f7ce7fef98c6a4903e18a15a"
+}
