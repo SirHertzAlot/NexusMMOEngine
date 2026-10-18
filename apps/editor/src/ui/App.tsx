@@ -2059,7 +2059,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     <div className="flex flex-col gap-0.5">
       {folder("rules", "content/rules", "folder", (
         <>
-          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement"].includes(r) ? "tables" : undefined]))}
+          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement", "skills"].includes(r) ? "tables" : undefined]))}
         </>
       ))}
       {folder("pcg", "content/pcg", "folder", (

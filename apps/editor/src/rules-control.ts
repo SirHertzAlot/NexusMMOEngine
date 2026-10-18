@@ -7,7 +7,7 @@
  * that one reads the filesystem (Node-only), this one only fetches.
  */
 
-export const TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement"] as const;
+export const TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement", "skills"] as const;
 export type Table = (typeof TABLES)[number];
 
 /** One validation problem, as the rules package reports it. */
@@ -328,6 +328,18 @@ export const BODY_SECTIONS: FieldSectionSpec[] = [
       ...treatment("stump", "Close a stump"),
       ...treatment("set", "Set a maimed part"),
       { key: "treatment.set.minHp", label: "Set: heals to at least", ...share, def: 0.1 },
+      { key: "treatment.trainsAbove", label: "Trains Medicine above difficulty", ...share, def: 0.3, help: "Easier treatments teach nothing." },
+      { key: "treatment.failedTeaches", label: "A failed treatment teaches (×)", ...share, def: 0.1, help: "Share of a success's training a failure still gives." },
+    ],
+  },
+  {
+    title: "Treatment order",
+    help: "A healer treats the highest priority first; bleeding wounds rank above healed ones of the same priority.",
+    fields: [
+      { key: "treatment.priority.stump", label: "Close a stump", kind: "number", def: 4 },
+      { key: "treatment.priority.thrust", label: "Bandage a thrust", kind: "number", def: 3 },
+      { key: "treatment.priority.bandage", label: "Bandage a cut or bruise", kind: "number", def: 2 },
+      { key: "treatment.priority.set", label: "Set a maimed part", kind: "number", def: 1 },
     ],
   },
 ];
@@ -507,6 +519,50 @@ export const CREATURE_AI_SECTIONS: FieldSectionSpec[] = [
       { key: "ai.raidRescanSeconds", label: "Raiders rescan every (s)", kind: "number", min: 0, def: 0.5 },
       { key: "ai.minWaterM", label: "Aquatic: least depth (m)", kind: "number", min: 0, def: 0.8 },
       { key: "ai.waterLookAheadM", label: "Aquatic: look ahead (m)", kind: "number", min: 0, def: 2 },
+    ],
+  },
+];
+
+/** skills.json (EG8) beside the skill list: training pace and how skills grow and fade. Pacing hot-reloads; the rest applies on the next start. */
+export const SKILLS_SECTIONS: FieldSectionSpec[] = [
+  {
+    title: "Training from moving",
+    help: "Swimming trains Swimming and running on foot trains Athletics, once per interval of effort. Changes reach a running server.",
+    fields: [
+      { key: "pacing.useEverySeconds", label: "One use every (s)", kind: "number", min: 0, def: 5 },
+      { key: "pacing.swimmingDifficulty", label: "Swimming difficulty", ...share, def: 0.4 },
+      { key: "pacing.athleticsDifficulty", label: "Running difficulty", ...share, def: 0.3 },
+    ],
+  },
+  {
+    title: "Gains",
+    help: "Skill values run 0 to the maximum. These apply when the server next starts.",
+    fields: [
+      { key: "max", label: "Maximum skill", kind: "number", min: 0, def: 100 },
+      { key: "gain.base", label: "Points per use at full challenge", kind: "number", min: 0, def: 0.5, help: "What a novice gains from a use at their level." },
+      { key: "gain.trivialBelow", label: "Trivial below (difficulty − skill)", kind: "number", max: 0, def: -0.3, help: "Easier than this teaches nothing." },
+      { key: "gain.fullAt", label: "Teaches most from (difficulty − skill)", kind: "number", def: 0 },
+      { key: "gain.topSlowdown", label: "Slowdown near the top", kind: "number", min: 0, def: 2, help: "Gains scale by (1 − skill)^this." },
+      { key: "gain.repeatFalloff", label: "Repeat on one target keeps (×)", ...share, def: 0.8 },
+      { key: "gain.repeatRecoverMinutes", label: "Repeats recover after (min)", kind: "number", min: 0, def: 60 },
+    ],
+  },
+  {
+    title: "Familiarity",
+    help: "Using one family of items makes it fit better. Applies when the server next starts.",
+    fields: [
+      { key: "familiarity.maxFitBonus", label: "Best fit bonus", ...share, def: 0.1 },
+      { key: "familiarity.perUse", label: "Familiarity per use", ...share, def: 0.002 },
+    ],
+  },
+  {
+    title: "Decay",
+    help: "Unused skills fade toward a floor and come back faster. Applies when the server next starts.",
+    fields: [
+      { key: "decay.graceDays", label: "Unused for (days) before fading", kind: "number", min: 0, def: 14 },
+      { key: "decay.ratePerWeek", label: "Lost per week", ...share, def: 0, help: "Share of the current value. 0 turns decay off." },
+      { key: "decay.floorOfPeak", label: "Never below (× peak)", ...share, def: 0.6 },
+      { key: "decay.relearnMultiplier", label: "Relearning is faster (×)", kind: "number", min: 1, def: 3 },
     ],
   },
 ];

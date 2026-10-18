@@ -802,6 +802,7 @@ async function main(): Promise<void> {
     // Movement (EG5): systems read sim.movement each step; creatures follow a changed walk.
     sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
+    masteryOf().setPacing(g.rules.skills.pacing);
     magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });

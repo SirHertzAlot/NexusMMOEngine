@@ -18,6 +18,7 @@ import {
   COMBAT_SECTIONS,
   CREATURE_AI_SECTIONS,
   MOVEMENT_SECTIONS,
+  SKILLS_SECTIONS,
   TECHNIQUE_FIELDS,
   fieldText,
   getAt,
@@ -61,6 +62,19 @@ describe("combat and body forms cover their files", () => {
     const d = engineDefaults().movement;
     assert.deepEqual(keysOf(MOVEMENT_SECTIONS), leaves(d, []).sort());
     for (const f of MOVEMENT_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
+  });
+
+  it("skills (EG8): every value beside the skill list, defaults as placeholders", () => {
+    const d = engineDefaults().skills;
+    assert.deepEqual(keysOf(SKILLS_SECTIONS), leaves(d, ["families", "skills"]).filter((k) => k !== "families" && k !== "skills").sort());
+    for (const f of SKILLS_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
+  });
+
+  it("body (EG8): Medicine training and the treatment order show the engine defaults", () => {
+    const d = engineDefaults().body;
+    for (const k of ["treatment.trainsAbove", "treatment.failedTeaches", "treatment.priority.stump", "treatment.priority.set"]) {
+      assert.equal(BODY_SECTIONS.flatMap((s) => s.fields).find((f) => f.key === k)?.def, getAt(d, k), k);
+    }
   });
 });
 
