@@ -16,6 +16,7 @@ import {
   CREATURE_FIELDS,
   DEATH_FIELDS,
   INGRESS_FIELDS,
+  GATHERING_FIELDS,
   ITEM_BASE_FIELDS,
   ITEMS_FIELDS,
   LOOT_FIELDS,
@@ -45,6 +46,7 @@ const TABLE_LABELS: Record<Table, string> = {
   loot: "Loot",
   death: "Death",
   ingress: "Ingress limits",
+  gathering: "Gathering",
 };
 
 /** Record tables: the key their entries live under, and the fields of one entry. */
@@ -60,6 +62,7 @@ const FLAT: Record<Table, FieldSpec[]> = {
   loot: LOOT_FIELDS,
   death: DEATH_FIELDS,
   ingress: INGRESS_FIELDS,
+  gathering: GATHERING_FIELDS,
 };
 
 /** A save's outcome, shown on the table it was for. */

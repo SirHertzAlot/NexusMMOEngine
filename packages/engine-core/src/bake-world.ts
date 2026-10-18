@@ -152,7 +152,7 @@ async function main(): Promise<void> {
   // What grows (see world-populator): on a spec world by biome and water.
   const biomeMap = tiles?.getMap("biome") ?? null;
   const formationTiles = new FormationTileStore(dbPath);
-  const populator = makeWorldPopulator({
+  const populator = await makeWorldPopulator({
     worldSeed,
     chunkWorldSize: chunkSize,
     seaLevel: spec?.land.seaLevel,

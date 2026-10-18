@@ -29,6 +29,11 @@ const CollisionSchema = z.object({
   shape: z.enum(["box", "sphere", "none"]),
   halfExtents: z.tuple([z.number(), z.number(), z.number()]).optional(),
   radius: z.number().positive().optional(),
+  /**
+   * Without halfExtents/radius the shape comes from the model's bounds: this
+   * share of its footprint (a trunk inside a canopy), default all of it.
+   */
+  fit: z.number().positive().max(1).optional(),
   motion: z.enum(["static", "kinematic", "dynamic"]).default("static"),
 });
 
@@ -37,9 +42,18 @@ export const SpawnArchetypeSchema = z.object({
   asset: z.string().min(1),
   /** Optional rigid-body config → BodyConfig component at spawn. */
   collision: CollisionSchema.optional(),
+  /** Kind of object for the global scale (content/scale.json); none means "prop". */
+  category: z.enum(["building", "tree", "rock", "plant", "prop"]).optional(),
   /** Optional health → Health component at spawn. */
   health: z.object({ max: z.number().positive() }).optional(),
-});
+  /**
+   * Where it may stand against the water: "land" (default) stays above the sea and lakes; "water" (coral,
+   * kelp) is the only kind placed below them, on the floor within `depthM`.
+   */
+  habitat: z.enum(["land", "water"]).optional(),
+  /** habitat "water": the depths it grows at, [shallowest, deepest] metres below the surface. */
+  depthM: z.tuple([z.number().min(0), z.number().positive()]).optional(),
+}).refine((a) => a.habitat !== "water" || a.depthM !== undefined, { message: "habitat water needs depthM (the depths it grows at)", path: ["depthM"] });
 export type SpawnArchetype = z.infer<typeof SpawnArchetypeSchema>;
 
 export const SpawnTableSchema = z.object({

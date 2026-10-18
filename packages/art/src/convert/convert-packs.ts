@@ -75,11 +75,15 @@ export interface CatalogModel {
   unit: "cm" | "m";
   /** Conversion notes (unmatched material list, missing atlas), re-reported every run. */
   notes: string[];
+  /** Imported GLB packs (import-glb-packs): animation clips in the file. */
+  animations?: number;
+  /** Imported GLB packs: who made it and under what licence, as the pack stated (name null = not stated). */
+  license?: { author: string; name: string | null; page: string | null };
 }
 
 export interface Catalog {
   converterVersion: number;
-  packs: Array<{ slug: string; source: string; models: number; textures: number }>;
+  packs: Array<{ slug: string; source: string; models: number; textures: number; /** Brought in by import-glb-packs, kept across convert runs. */ imported?: true }>;
   models: CatalogModel[];
   diagnostics: string[];
 }
@@ -522,6 +526,13 @@ export async function convertPacks(opts: ConvertOptions): Promise<Catalog> {
   if (opts.only && previous?.converterVersion === CONVERTER_VERSION) {
     catalog.packs.unshift(...previous.packs.filter((p) => p.slug !== opts.only));
     catalog.models.unshift(...previous.models.filter((m) => m.pack !== opts.only));
+  }
+  // Imported GLB packs have no FBX source: keep them whatever this run converted.
+  if (previous) {
+    for (const p of previous.packs.filter((p) => p.imported && !catalog.packs.some((c) => c.slug === p.slug))) {
+      catalog.packs.push(p);
+      catalog.models.push(...previous.models.filter((m) => m.pack === p.slug));
+    }
   }
   // The manifest is derived from the catalog, so the two never disagree.
   const manifest: AssetManifest = {

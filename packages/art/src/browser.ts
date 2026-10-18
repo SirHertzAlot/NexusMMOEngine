@@ -10,6 +10,7 @@
  */
 export * from "./manifest.js";
 export * from "./provider.js";
+export * from "./credits.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
 export * from "./character/look.js";

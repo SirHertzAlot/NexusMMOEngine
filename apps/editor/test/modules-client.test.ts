@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ModuleRegistry, loadersFromGlob, type ModulesState } from "../src/modules-client.js";
@@ -84,7 +85,7 @@ describe("EA13: migrated tool modules", () => {
     { name: "hud", workspace: "release", panel: "hud.editor" },
   ] as const;
   const repo = new URL("../../../../", import.meta.url);
-  const modDir = (n: string): string => new URL(`modules/${n}/`, repo).pathname;
+  const modDir = (n: string): string => fileURLToPath(new URL(`modules/${n}/`, repo));
 
   it("every migrated module has a valid manifest with an editor entry", async () => {
     const { validateManifest } = await import("@mmo-engine/modules");
@@ -100,7 +101,7 @@ describe("EA13: migrated tool modules", () => {
   });
   it("all six are enabled by default in content/modules.json", async () => {
     const { readEnabledSet } = await import("@mmo-engine/modules");
-    const set = readEnabledSet(new URL("content/modules.json", repo).pathname);
+    const set = readEnabledSet(fileURLToPath(new URL("content/modules.json", repo)));
     assert.deepEqual(set.problems, []);
     for (const m of MIGRATED) assert.ok(set.modules.includes(m.name), `${m.name} must be enabled by default`);
   });

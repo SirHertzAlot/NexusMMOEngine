@@ -57,6 +57,8 @@ export interface InstanceLayout {
   /** Room centres in world coordinates, for chest placement. */
   rooms: { id: number; x: number; z: number }[];
   spawns: LayoutSpawn[];
+  /** Round props that block bodies, flat [x, z, radius] in metres (baked `colliders`, grid cells). */
+  colliders: Float64Array;
 }
 
 interface DungeonFileLike {
@@ -72,6 +74,7 @@ interface DungeonFileLike {
   spawns: { x: number; y: number; tier: number; room: number }[];
   grids: { grid: string };
   dressing?: { rank: number };
+  colliders?: { x: number; y: number; r: number }[];
   population?: { spawns: { x: number; y: number; species: string }[] };
 }
 
@@ -88,6 +91,8 @@ export function readLayout(json: unknown): InstanceLayout {
   const entrance = f.rooms.find((r) => r.id === f.entrance) ?? f.rooms[0];
   const species = new Map<string, string>();
   for (const s of f.population?.spawns ?? []) species.set(`${s.x},${s.y}`, s.species);
+  const colliders = new Float64Array((f.colliders?.length ?? 0) * 3);
+  f.colliders?.forEach((c, i) => colliders.set([c.x * CELL_M, c.y * CELL_M, c.r * CELL_M], i * 3));
   return {
     id: f.id,
     name: f.name,
@@ -101,6 +106,7 @@ export function readLayout(json: unknown): InstanceLayout {
     bossRoom: f.boss,
     rooms: f.rooms.map((r) => ({ id: r.id, x: cellCentre(Math.round(r.cx)), z: cellCentre(Math.round(r.cy)) })),
     spawns: f.spawns.map((s) => ({ x: cellCentre(s.x), z: cellCentre(s.y), tier: s.tier, room: s.room, species: species.get(`${s.x},${s.y}`) ?? "" })),
+    colliders,
   };
 }
 

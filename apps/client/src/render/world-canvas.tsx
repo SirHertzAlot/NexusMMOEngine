@@ -37,6 +37,7 @@ import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type Worl
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
+import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
@@ -59,6 +60,7 @@ import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js"
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { StreamingCoordinator } from "./terrain/streaming-coordinator.js";
 import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
@@ -138,6 +140,8 @@ export interface WorldCanvasProps {
   onMend?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** The resource node in gathering range changed (its wire id; null: none in range). */
+  onNearResource?: (node: bigint | null) => void;
   /** The quest log key (P1/U11). */
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
@@ -154,6 +158,8 @@ export interface WorldCanvasProps {
   onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
+  /** Optional ref to receive the streaming coordinator for region-change notifications. */
+  streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
 }
 
 /** The player's health and the target, as the frames show them (U12a). */
@@ -172,6 +178,8 @@ export interface NearDrop {
 
 /** How near a drop must be for the prompt: a little inside the server's range (rules loot.pickupRange, 2.5 m). */
 const PICKUP_PROMPT_RANGE = 2.3;
+/** How near a resource node's edge must be for the prompt: inside the server's reach (2.5 m). */
+const GATHER_PROMPT_RANGE = 2.3;
 
 installBvh();
 
@@ -285,8 +293,10 @@ interface Runtime {
   layer: EntityLayer;
   input: InputState;
   drops: DropLabels;
+  resources: ResourceNodes;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
+  streaming: StreamingCoordinator;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -306,6 +316,7 @@ function MirrorWorld({
   onTreat,
   onMend,
   onNearDrop,
+  onNearResource,
   onQuests,
   onNearNpc,
   onNearEntrance,
@@ -317,14 +328,15 @@ function MirrorWorld({
   settings,
   screen,
   physicalSky,
+  streamingRef,
 }: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -337,6 +349,7 @@ function MirrorWorld({
   const loop = useRef({
     pointerMoved: false,
     nearDrop: null as bigint | null,
+    nearResource: null as bigint | null,
     nearNpc: null as string | null,
     nearEntrance: null as string | null,
     hp: NaN,
@@ -354,6 +367,8 @@ function MirrorWorld({
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
   // For CombatFeedback.prune, made once per client rather than every frame.
   const hasEntity = useCallback((wid: bigint) => client.state.entities.has(wid), [client]);
+  // Chunk world size for streaming (updated when world loads).
+  const chunkWorldSizeRef = useRef(client.world?.chunkWorldSize ?? 16);
 
   // Create the world's renderers and bind input; the same effect disposes
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
@@ -379,6 +394,7 @@ function MirrorWorld({
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
+    const resources = new ResourceNodes();
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
     scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group);
@@ -402,10 +418,23 @@ function MirrorWorld({
         else if (action === "mend") latest.current.onMend?.();
         else if (action === "quests") latest.current.onQuests?.();
         else if (drops.nearest !== null) client.pickup(drops.nearest);
+        else if (resources.nearest !== null) client.gather(resources.nearest);
         else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
         else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
       },
     });
+    // Chunk streaming: request tiles around the camera from the region server.
+    chunkWorldSizeRef.current = client.world?.chunkWorldSize ?? 16;
+    const streaming = new StreamingCoordinator(terrain, { radius: 6, handoffMargin: 2 });
+    streaming.attachClient(client);
+    // Expose streaming coordinator for region-change notifications from App.
+    if (streamingRef) streamingRef.current = streaming;
+    // Register the initial world as a region. The welcome includes bounds and endpoint.
+    if (world) {
+      // Use the URL the client connected to (stored in the client's socket URL).
+      const endpoint = (client as unknown as { socket?: { url?: string } }).socket?.url ?? "ws://localhost:7777";
+      streaming.addRegion("main", world.bounds, endpoint);
+    }
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       camDistance.current = clampCamDistance(camDistance.current + e.deltaY * 0.01);
@@ -441,7 +470,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -450,6 +479,7 @@ function MirrorWorld({
     }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
+      const streaming = rt.current?.streaming;
       rt.current = null;
       unbind();
       canvas.removeEventListener("wheel", onWheel);
@@ -475,6 +505,7 @@ function MirrorWorld({
       drops.dispose();
       npcs.dispose();
       entrances.dispose();
+      streaming?.streamManager.dispose();
       terrain.dispose();
       workers?.dispose();
       water.dispose();
@@ -544,6 +575,13 @@ function MirrorWorld({
       combat.prune(hasEntity, now / 1000);
       r.layer.setFlashes(combat.flashUntil);
     }
+    // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
+    r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
+    r.layer.setDepleted(r.resources.depleted);
+    if (r.resources.nearest !== l.nearResource) {
+      l.nearResource = r.resources.nearest;
+      latest.current.onNearResource?.(l.nearResource);
+    }
     r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
@@ -609,6 +647,12 @@ function MirrorWorld({
       r.layer.setPlayerHidden(false);
       followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
     }
+    // Chunk streaming: track camera position and velocity for demand + handoff prediction.
+    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
+    if (r.layer.player && me) {
+      const playerVel = me.velocity ?? { lx: 0, ly: 0, lz: 0 };
+      r.streaming.trackPlayer(camera.position.x, camera.position.z, playerVel.lx, playerVel.lz, chunkWorldSizeRef.current);
+    }
     const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
@@ -620,8 +664,10 @@ function MirrorWorld({
     r.sky.setDomeVisible(!physical);
     physical?.setSun(r.sky.sunDir);
     if (fog) {
-      fog.near = physical ? CAMERA_FAR * 10 : FOG_NEAR;
-      fog.far = physical ? CAMERA_FAR * 20 : FOG_FAR;
+      // Always use the configured fog range for culling; physical sky adds
+      // aerial perspective visually but we still need fog to limit far draws.
+      fog.near = FOG_NEAR;
+      fog.far = FOG_FAR;
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
@@ -632,7 +678,6 @@ function MirrorWorld({
     const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
     const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
     // Splashes where the player swims and moves.
-    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
     const v = me?.velocity;
     if (swimming && r.layer.player && v && Math.hypot(v.lx, v.lz) > 0.5) {

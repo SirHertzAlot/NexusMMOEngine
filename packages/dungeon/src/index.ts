@@ -7,5 +7,6 @@ export { bakeDungeons, readIndex, INDEX_FORMAT, type BakeOptions, type BakeResul
 export { dungeonPng, encodePng } from "./preview.js";
 export { dressDungeon, type DungeonDressing, type DressedProp, type Resource } from "./dress.js";
 export { BUILTIN_DRESSING, DressingSchema, loadDressing, type Dressing, type Archetype, type Content, type Vein } from "./dressing.js";
+export { dungeonColliders, LAYOUT_PROP_RADIUS, type Collider } from "./collision.js";
 export { populateDungeon, type Population, type PopulatedSpawn } from "./populate.js";
 export { dungeonShell, DUNGEON_CELL, SHELL_DEFAULTS, SHELL_PARTS, type DungeonShell, type GeometryOps, type ShellOptions, type ShellPart } from "./shell.js";

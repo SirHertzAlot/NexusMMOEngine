@@ -459,7 +459,67 @@ export const IngressSchema = z.strictObject({
   maxViolations: z.number().int().min(1).default(100),
 });
 
+// -------------------------------------------------------------- gathering
+
+/** Gathering from resource nodes (tree stands, ore veins, fishing spots): reach, pace, the pouch, training. */
+export const GatheringSchema = z.strictObject({
+  /** How far from a node's edge a player can gather, metres. */
+  reachM: z.number().min(0).default(2.5),
+  /** One gather per character this often, seconds. */
+  cooldownSeconds: z.number().min(0).default(1.2),
+  /** Most of one material a pouch holds. */
+  pouchMax: z.number().int().min(1).default(999),
+  /** A gather trains the node's skill at this difficulty per material tier (tier 2: twice it), capped at 1. */
+  trainDifficultyPerTier: z.number().min(0).max(1).default(0.2),
+});
+
 // -------------------------------------------------------------- creatures
+
+export const TEMPERAMENTS = ["flee", "defend", "territorial", "hunt", "raid"] as const;
+export const ACTIVITIES = ["diurnal", "nocturnal", "crepuscular", "cathemeral"] as const;
+
+/**
+ * How a creature acts (docs/WILDLIFE.md): what it does on noticing someone, its warning,
+ * when it is awake and where it lives. Absent: the plain `hunt` brain (a goblin's).
+ */
+export const CreatureBehaviorSchema = z.strictObject({
+  /** flee: runs; defend: fights only when hurt; territorial: warns then drives off; hunt: warns (if it does) then chases; raid: instinct-driven, goes for settlements. */
+  temperament: z.enum(TEMPERAMENTS).default("hunt"),
+  /** What it is among its kind (livestock, large_herbivore, ...): raiders pick livestock by it. */
+  role: z.string().optional(),
+  /** Metres at which it notices a player (default: `aggroRadius`). */
+  noticeM: positive.optional(),
+  /** Seconds of visible warning before it strikes; 0: none. */
+  telegraphS: z.number().min(0).default(0),
+  /** Multiple of its run speed it flees at (flee temperament). */
+  fleeSpeed: positive.default(1.4),
+  /** Run speed as a multiple of a player's walk, beating `chaseSpeed` (which is a share, at most 1). */
+  speedX: positive.optional(),
+  /** ambush: lies in wait, lunges when close; flank: pack members come in from the sides. */
+  tactics: z.enum(["none", "ambush", "flank"]).default("none"),
+  activity: z.enum(ACTIVITIES).default("cathemeral"),
+  /** water: confined to water cells, swims. */
+  habitat: z.enum(["land", "water"]).default("land"),
+  /** habitat water: depth below the surface it keeps to, [shallowest, deepest] metres. */
+  depthM: z.tuple([z.number().min(0), z.number().positive()]).optional(),
+  /** Body scale (1 = a human): scales the model, the reach of its blows. */
+  size: positive.default(1),
+  /** temperament raid: what draws it and how it behaves. */
+  raid: z
+    .strictObject({
+      /** Metres from its lair it will go for a settlement. */
+      rangeM: positive.default(1500),
+      /** A settlement qualifies with at least this many structures. */
+      minStructures: z.number().int().min(0).default(1),
+      /** Seconds from sated to hungry again. */
+      hungerSeconds: positive.default(600),
+      /** Seconds of fighting at a settlement before it is sated and goes home. */
+      satiateSeconds: positive.default(45),
+      /** Relative pull of each kind of target at a settlement (players = noise, livestock = food/scent, structures = bulk). */
+      weights: z.strictObject({ player: z.number().min(0).default(1), livestock: z.number().min(0).default(1), structure: z.number().min(0).default(0.5) }).prefault({}),
+    })
+    .optional(),
+});
 
 /** One kind of creature (docs/ALPHA-PLAN.md, decision D6). */
 export const CreatureSchema = z.strictObject({
@@ -480,6 +540,9 @@ export const CreatureSchema = z.strictObject({
   chaseSpeed: share.default(0.9),
   /** Seconds between its blows while in reach. */
   attackEverySeconds: positive.default(1.5),
+  /** Damage per blow as a multiple of the base weapon's (a goblin's is 1). */
+  damageX: positive.default(1),
+  behavior: CreatureBehaviorSchema.optional(),
   /** What it drops when killed: it rolls `rolls` times (inclusive range), each roll yields one mob-pool item with `chance`. */
   drops: z
     .strictObject({
@@ -567,6 +630,7 @@ export const RULE_FILES = {
   needs: NeedsSchema,
   ingress: IngressSchema,
   spells: SpellsSchema,
+  gathering: GatheringSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -591,6 +655,7 @@ export type LootRules = z.infer<typeof LootSchema>;
 export type NeedsRules = z.infer<typeof NeedsSchema>;
 export type NeedRules = z.infer<typeof NeedSchema>;
 export type IngressRules = z.infer<typeof IngressSchema>;
+export type GatheringRules = z.infer<typeof GatheringSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
@@ -612,4 +677,5 @@ export interface Rules {
   creatures: CreaturesRules;
   needs: NeedsRules;
   spells: SpellsRules;
+  gathering: GatheringRules;
 }

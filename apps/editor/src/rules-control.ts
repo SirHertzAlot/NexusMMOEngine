@@ -7,7 +7,7 @@
  * that one reads the filesystem (Node-only), this one only fetches.
  */
 
-export const TABLES = ["items", "creatures", "loot", "death", "ingress"] as const;
+export const TABLES = ["items", "creatures", "loot", "death", "ingress", "gathering"] as const;
 export type Table = (typeof TABLES)[number];
 
 /** One validation problem, as the rules package reports it. */
@@ -137,6 +137,14 @@ export function newEntry(table: "items" | "creatures", bases: string[]): Record<
     weapons: bases.length > 0 ? [bases[0]] : [],
   };
 }
+
+/** gathering.json's fields (resource nodes; each node's own stock and regrow time are its scene's ResourceNode). */
+export const GATHERING_FIELDS: FieldSpec[] = [
+  { key: "reachM", label: "Reach from a node's edge (m)", kind: "number", min: 0, def: 2.5 },
+  { key: "cooldownSeconds", label: "One gather every (s)", kind: "number", min: 0, def: 1.2 },
+  { key: "pouchMax", label: "Pouch holds of a material", kind: "number", int: true, min: 1, def: 999 },
+  { key: "trainDifficultyPerTier", label: "Training difficulty per tier", ...share, def: 0.2 },
+];
 
 /** ingress.json's fields (roadmap T1 rate limits). */
 export const INGRESS_FIELDS: FieldSpec[] = [
