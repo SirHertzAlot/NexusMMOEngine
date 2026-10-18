@@ -132,4 +132,16 @@ describe("disciplines and familiarity (M4)", () => {
     assert.deepEqual(back.families().map(([f]) => f).sort(), ["axe", "sword"]);
     void sys;
   });
+
+  it("training pace comes from skills.json pacing, and setPacing swaps it (EG8)", () => {
+    const { e, sys, run } = setup();
+    sys.setPacing({ ...skills.pacing, useEverySeconds: 1000 });
+    C.PlayerIntent.mx[e] = 1;
+    run(60);
+    assert.equal(sys.sheetOf(e).get("athletics"), 0, "a minute is not one use");
+    sys.setPacing({ ...skills.pacing, useEverySeconds: 1 });
+    run(5);
+    assert.ok(sys.sheetOf(e).get("athletics") > 0);
+    assert.deepEqual(skills.pacing, { useEverySeconds: 5, swimmingDifficulty: 0.4, athleticsDifficulty: 0.3 });
+  });
 });

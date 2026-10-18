@@ -1,7 +1,7 @@
 /**
  * Gameplay Tables (roadmap ED1, EG2): edit content/rules' item bases,
- * creatures, combat, body and Medicine, loot, death, ingress and
- * gathering rules as labelled forms.
+ * creatures, combat, body and Medicine, loot, death, ingress,
+ * gathering, movement and skill training rules as labelled forms.
  *
  * Each table is edited as a draft of its JSON file. An empty field
  * removes its key, so the engine default (shown as the placeholder)
@@ -19,6 +19,7 @@ import {
   COMBAT_SECTIONS,
   CREATURE_AI_SECTIONS,
   MOVEMENT_SECTIONS,
+  SKILLS_SECTIONS,
   CREATURE_FIELDS,
   TECHNIQUE_FIELDS,
   DEATH_FIELDS,
@@ -54,6 +55,7 @@ const TABLE_LABELS: Record<Table, string> = {
   ingress: "Ingress limits",
   gathering: "Gathering",
   movement: "Movement and stamina",
+  skills: "Skills and training",
 };
 
 /** Record tables: the key their entries live under, and the fields of one entry. */
@@ -74,6 +76,7 @@ const SECTIONS: Partial<Record<Table, FieldSectionSpec[]>> = {
   body: BODY_SECTIONS,
   movement: MOVEMENT_SECTIONS,
   creatures: CREATURE_AI_SECTIONS,
+  skills: SKILLS_SECTIONS,
 };
 
 /** A new record entry's starting values. */
@@ -93,6 +96,7 @@ const FLAT: Record<Table, FieldSpec[]> = {
   ingress: INGRESS_FIELDS,
   gathering: GATHERING_FIELDS,
   movement: [],
+  skills: [],
 };
 
 /** Rules ids (packages/rules schemas.ts): lower camel or kebab case. */

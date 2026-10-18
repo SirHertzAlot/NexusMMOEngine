@@ -28,6 +28,14 @@ export const SkillsSchema = z.strictObject({
   max: positive.default(100),
   families: z.array(id).default([]),
   skills: z.array(SkillSchema).default([]),
+  /** Training from moving (EG8): swimming trains Swimming, running on foot Athletics, once per `useEverySeconds` of effort. */
+  pacing: z
+    .strictObject({
+      useEverySeconds: positive.default(5),
+      swimmingDifficulty: share.default(0.4),
+      athleticsDifficulty: share.default(0.3),
+    })
+    .prefault({}),
   gain: z
     .strictObject({
       /** Points a use at full challenge gives a novice. */
@@ -256,6 +264,17 @@ export const BodySchema = z.strictObject({
       bandage: Treatment.prefault({ seconds: 4, difficulty: 0.2 }),
       stump: Treatment.prefault({ seconds: 6, difficulty: 0.4 }),
       set: Treatment.extend({ minHp: share.default(0.1) }).prefault({ seconds: 10, difficulty: 0.5 }),
+      /** A treatment trains Medicine at its difficulty plus this (EG8). */
+      trainsAbove: share.default(0.3),
+      /** A failed treatment teaches this much more on top. */
+      failedTeaches: share.default(0.1),
+      /**
+       * Which wound a healer treats first when none is named: highest wins. A thrust
+       * wound's bandage ranks `thrust`; a set breaks ties by the part's share.
+       */
+      priority: z
+        .strictObject({ stump: z.number().min(0).default(4), thrust: z.number().min(0).default(3), bandage: z.number().min(0).default(2), set: z.number().min(0).default(1) })
+        .prefault({}),
     })
     .prefault({}),
 });
