@@ -61,7 +61,9 @@ import { parseAudioBank, type Listener } from "./audio/sound-logic.js";
 import combatMovesDoc from "virtual:combat-moves";
 import animationDoc from "virtual:animation-doc";
 import materialsDoc from "virtual:materials-doc";
+import vfxBudgetsDoc from "virtual:vfx-budgets";
 import { applyGameContent } from "./render/game-content.js";
+import { setParticleBudgets } from "./render/fx/particle-fx.js";
 import {
   loadBindings,
   prettyCode,
@@ -73,6 +75,11 @@ import {
 /** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
 // The animation-side content (combat moves, locomotion graph, materials) is applied once, before any world is built.
 applyGameContent({ combat: combatMovesDoc, animation: animationDoc, materials: materialsDoc } as Parameters<typeof applyGameContent>[0]);
+// Particle tier budgets (EG10): a bad file keeps the built-in budgets.
+{
+  const problem = setParticleBudgets(vfxBudgetsDoc);
+  if (problem) console.warn(`[content] ${problem}`);
+}
 
 const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
 const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];

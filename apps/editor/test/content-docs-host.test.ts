@@ -15,6 +15,8 @@ import { CONTENT_DOC_FILES } from "../src/content-docs.js";
 import { CONTENT_DOC_KEYS } from "../src/content-docs-host.js";
 import { CRAFTING_ROWS, CRAFTING_SECTIONS } from "../src/crafting-rules.js";
 import { ENTRANCE_FIELDS, RUN_SECTIONS } from "../src/dungeon-rules.js";
+import { VFX_BUDGET_SECTIONS } from "../src/vfx-budgets.js";
+import { getAt } from "../src/rules-control.js";
 
 const REPO = dirname(fileURLToPath(new URL("../../../../package.json", import.meta.url)));
 const ROOT = join(tmpdir(), `mmo-docs-test-${process.pid}-${Math.floor(Math.random() * 1e9)}`);
@@ -26,10 +28,12 @@ before(() => {
   mkdirSync(join(ROOT, "content"), { recursive: true });
   cpSync(join(REPO, "content", "dungeons"), join(ROOT, "content", "dungeons"), { recursive: true });
   cpSync(join(REPO, "content", "crafting"), join(ROOT, "content", "crafting"), { recursive: true });
+  cpSync(join(REPO, "content", "vfx"), join(ROOT, "content", "vfx"), { recursive: true });
   // The schemas are read from <root>/packages/engine-core/dist: borrow the real build.
   mkdirSync(join(ROOT, "packages"), { recursive: true });
   symlinkSync(join(REPO, "packages", "engine-core"), join(ROOT, "packages", "engine-core"), "junction");
   symlinkSync(join(REPO, "packages", "crafting"), join(ROOT, "packages", "crafting"), "junction");
+  symlinkSync(join(REPO, "packages", "art"), join(ROOT, "packages", "art"), "junction");
 });
 after(() => rmSync(ROOT, { recursive: true, force: true }));
 
@@ -106,6 +110,31 @@ describe("crafting rules document", () => {
       .filter((k) => !["version", "refining", "reagents"].includes(k))
       .sort();
     assert.deepEqual(covered, file);
+  });
+});
+
+describe("particle budgets document (EG10)", () => {
+  it("PUT writes valid budgets and refuses a tier below the one under it, writing nothing", async () => {
+    const before = disk("vfxBudgets") as { tiers: Record<string, { maxParticles: number; maxEmitters: number }> };
+    const next = structuredClone(before);
+    next.tiers.low.maxParticles = 800;
+    assert.equal((await route("PUT", "vfxBudgets", next))?.status, 200);
+    assert.deepEqual(disk("vfxBudgets"), next);
+    const bad = structuredClone(next);
+    bad.tiers.high.maxParticles = 10;
+    bad.tiers.medium.maxEmitters = 0;
+    const r = await route("PUT", "vfxBudgets", bad);
+    assert.equal(r?.status, 400);
+    const issues = (r?.body as { issues: Array<{ file: string; path: string }> }).issues;
+    assert.ok(issues.some((i) => i.path === "tiers.medium.maxEmitters"), JSON.stringify(issues));
+    assert.deepEqual(disk("vfxBudgets"), next);
+  });
+
+  it("the form covers every tier's caps, with the built-in budgets as placeholders", () => {
+    const keys = VFX_BUDGET_SECTIONS.flatMap((s) => s.fields.map((f) => f.key)).sort();
+    const file = JSON.parse(readFileSync(join(REPO, "content", "vfx", "budgets.json"), "utf8")) as { tiers: Record<string, Record<string, number>> };
+    assert.deepEqual(keys, Object.entries(file.tiers).flatMap(([t, b]) => Object.keys(b).map((k) => `tiers.${t}.${k}`)).sort());
+    for (const f of VFX_BUDGET_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(file, f.key), f.key);
   });
 });
 

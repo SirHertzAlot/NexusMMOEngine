@@ -72,6 +72,8 @@ export const CONTENT_DOC_CHECKS: Record<ContentDocName, ContentDoc["check"]> = {
     const check = (await packageModule(repoRoot, "crafting", "index.js")).checkCraftingRules as (json: unknown) => Array<{ path: string; message: string }>;
     return check(content).map((i) => ({ file: "crafting.json", path: i.path, message: i.message }));
   },
+  // The art package's budget schema: every tier, positive counts, higher tiers never fewer particles.
+  vfxBudgets: async (repoRoot, content) => schemaIssues("vfxBudgets", (await packageModule(repoRoot, "art", "particle-budgets.js")).ParticleBudgets as Schema, content),
 };
 
 /** The keys a document's form owns, when another view edits the rest of its file. */
