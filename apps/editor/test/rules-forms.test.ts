@@ -16,6 +16,7 @@ import {
   BODY_PART_FIELDS,
   BODY_SECTIONS,
   COMBAT_SECTIONS,
+  CREATURE_AI_SECTIONS,
   MOVEMENT_SECTIONS,
   TECHNIQUE_FIELDS,
   fieldText,
@@ -48,6 +49,12 @@ describe("combat and body forms cover their files", () => {
     const want = leaves(engineDefaults().body, ["parts", "fall.parts"]).filter((k) => k !== "parts").sort();
     assert.deepEqual(keysOf(BODY_SECTIONS), want);
     assert.deepEqual(BODY_PART_FIELDS.map((f) => f.key).sort(), ["atZero", "hitMultiplier", "holds", "name", "parent", "share", "slot"]);
+  });
+
+  it("creature brains (EG7): every ai value, defaults as placeholders", () => {
+    const d = engineDefaults().creatures;
+    assert.deepEqual(keysOf(CREATURE_AI_SECTIONS), leaves(d.ai, [], "ai").sort());
+    for (const f of CREATURE_AI_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
   });
 
   it("movement (EG5): every value, with the engine default as its placeholder", () => {

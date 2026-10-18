@@ -17,6 +17,7 @@ import {
   BODY_PART_FIELDS,
   BODY_SECTIONS,
   COMBAT_SECTIONS,
+  CREATURE_AI_SECTIONS,
   MOVEMENT_SECTIONS,
   CREATURE_FIELDS,
   TECHNIQUE_FIELDS,
@@ -72,6 +73,7 @@ const SECTIONS: Partial<Record<Table, FieldSectionSpec[]>> = {
   combat: COMBAT_SECTIONS,
   body: BODY_SECTIONS,
   movement: MOVEMENT_SECTIONS,
+  creatures: CREATURE_AI_SECTIONS,
 };
 
 /** A new record entry's starting values. */

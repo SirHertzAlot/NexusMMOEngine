@@ -475,3 +475,38 @@ export const MOVEMENT_SECTIONS: FieldSectionSpec[] = [
     ],
   },
 ];
+
+/** creatures.json `ai` (EG7): brain pacing and ranges every kind shares. Hot-reloads into a running server. */
+export const CREATURE_AI_SECTIONS: FieldSectionSpec[] = [
+  {
+    title: "Noticing and alerting",
+    help: "Shared by every kind; a kind's own notice radius and leash are on its entry below.",
+    fields: [
+      { key: "ai.alertRadiusM", label: "Pack call (m)", kind: "number", min: 0, def: 40, help: "Pack-mates within this take a noticed target too." },
+      { key: "ai.hurtSearchRadiusM", label: "Hurt: look for the attacker (m)", kind: "number", min: 0, def: 20 },
+      { key: "ai.asleepNotice", label: "Asleep: notice share", ...share, def: 0.25, help: "Share of its notice radius a sleeping creature notices." },
+      { key: "ai.ambushNotice", label: "Ambusher: notice share", ...share, def: 0.5 },
+      { key: "ai.calmSeconds", label: "Calm after a warning (s)", kind: "number", min: 0, def: 6, help: "After a warning the intruder backed away from." },
+    ],
+  },
+  {
+    title: "Chasing and fighting",
+    fields: [
+      { key: "ai.fleeCalmFactor", label: "Prey calms beyond (× notice)", kind: "number", min: 1, def: 1.5 },
+      { key: "ai.territoryGiveUpFactor", label: "Territory: give up beyond (× notice)", kind: "number", min: 1, def: 1.6 },
+      { key: "ai.flankOffsetM", label: "Flank out to (m)", kind: "number", min: 0, def: 8 },
+      { key: "ai.closeInM", label: "Close in inside (m)", kind: "number", min: 0, def: 6 },
+      { key: "ai.reachMarginM", label: "Swing inside reach by (m)", kind: "number", min: 0, def: 0.3 },
+      { key: "ai.homeRadiusM", label: "Home reached inside (m)", kind: "number", min: 0, def: 1.5 },
+    ],
+  },
+  {
+    title: "Pace and water",
+    fields: [
+      { key: "ai.repathSeconds", label: "Re-aim a walk every (s)", kind: "number", min: 0, def: 1 / 3, help: "Lower is sharper steering and more work per tick." },
+      { key: "ai.raidRescanSeconds", label: "Raiders rescan every (s)", kind: "number", min: 0, def: 0.5 },
+      { key: "ai.minWaterM", label: "Aquatic: least depth (m)", kind: "number", min: 0, def: 0.8 },
+      { key: "ai.waterLookAheadM", label: "Aquatic: look ahead (m)", kind: "number", min: 0, def: 2 },
+    ],
+  },
+];

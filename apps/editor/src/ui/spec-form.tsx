@@ -81,7 +81,12 @@ export function SpecField(props: {
   const { spec, value, issues, onChange } = props;
   const id = React.useId();
   const placeholder =
-    spec.def === undefined ? (spec.nullable || spec.optional ? "none" : "required") : `default ${fieldText(spec, spec.def) || "none"}`;
+    spec.def === undefined
+      ? spec.nullable || spec.optional
+        ? "none"
+        : "required"
+      : // A default like 1/3 reads as 0.3333.
+        `default ${typeof spec.def === "number" ? String(Number(spec.def.toPrecision(4))) : fieldText(spec, spec.def) || "none"}`;
   // Typed text the field's kind can't hold stays local until it can.
   const [text, setText] = React.useState(fieldText(spec, value));
   const [local, setLocal] = React.useState<string | null>(null);

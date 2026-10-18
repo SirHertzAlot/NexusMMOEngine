@@ -793,6 +793,7 @@ async function main(): Promise<void> {
     hooks.current = g.hooks;
     if (wildlifeKinds) g.rules.creatures.creatures = withWildlife(g.rules.creatures.creatures, wildlifeKinds);
     creaturesOf().setRules(g.rules.creatures.creatures, g.rules.items.bases);
+    creaturesOf().setAi(g.rules.creatures.ai);
     dropperRef?.setCreatures(g.rules.creatures.creatures);
     dropperRef?.setTables(g.rules.loot.tables ?? {});
     itemsOf().setLoot(g.rules.loot);
