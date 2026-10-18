@@ -145,7 +145,7 @@ export class DungeonInstance {
     for (const m of opts.members) this.members.set(m.characterId, m);
     const rules = opts.game.rules;
     this.world.movement = rules.movement;
-    this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0 });
+    this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0, ai: rules.creatures.ai });
     const stamina = new StaminaSystem();
     const weaponOf = (e: number): Weapon | null =>
       hasComponent(this.world.ecs, C.CharacterRef, e)

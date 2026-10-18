@@ -46,6 +46,7 @@ export function createSystems(ctx) {
     steer: hasCrowd,
     // Wildlife (docs/WILDLIFE.md): the day clock, warnings through the telegraph system, the water, the models, the settlements.
     massPower: rules.combat.damage.massPower,
+    ai: rules.creatures.ai,
     timeOfDay: config.timeOfDay,
     warn: config.warn,
     cancelWarn: config.cancelWarn,

@@ -629,9 +629,48 @@ export const CreatureSchema = z.strictObject({
     .default({ rolls: [1, 2], chance: 0.8 }),
 });
 
+/**
+ * How every creature's brain is paced and how far it looks (EG7): the same for
+ * all kinds; a kind's own numbers (notice radius, leash, telegraph…) are its entry.
+ */
+export const CreatureAiSchema = z.strictObject({
+  /** Pack-mates within this alert each other, metres. */
+  alertRadiusM: z.number().min(0).default(40),
+  /** A hurt creature looks for its attacker this far when the combat system doesn't say, metres. */
+  hurtSearchRadiusM: z.number().min(0).default(20),
+  /** A light sleeper notices this share of its radius while asleep. */
+  asleepNotice: share.default(0.25),
+  /** Ambushers notice this share of their radius (they wait for what comes close). */
+  ambushNotice: share.default(0.5),
+  /** Seconds a creature stays calm after a warning that came to nothing. */
+  calmSeconds: z.number().min(0).default(6),
+  /** Fleeing prey calms once the threat is beyond this many times its notice radius. */
+  fleeCalmFactor: z.number().min(1).default(1.5),
+  /** A territorial creature gives up the chase beyond this many times its notice radius. */
+  territoryGiveUpFactor: z.number().min(1).default(1.6),
+  /** Flankers swing out this far to the side at most, metres. */
+  flankOffsetM: z.number().min(0).default(8),
+  /** …and close in straight inside this, metres. */
+  closeInM: z.number().min(0).default(6),
+  /** A creature swings this far inside its weapon's reach, metres. */
+  reachMarginM: z.number().min(0).default(0.3),
+  /** Home counts as reached inside this, metres. */
+  homeRadiusM: z.number().positive().default(1.5),
+  /** A steered creature re-aims its walk this often, seconds. */
+  repathSeconds: z.number().positive().default(1 / 3),
+  /** Raiders rescan their targets this often, seconds. */
+  raidRescanSeconds: z.number().positive().default(0.5),
+  /** Water must be this deep for an aquatic creature to be in it, metres. */
+  minWaterM: z.number().min(0).default(0.8),
+  /** An aquatic creature looks this far ahead before it swims on, metres. */
+  waterLookAheadM: z.number().min(0).default(2),
+});
+
 export const CreaturesSchema = z.strictObject({
   /** Creature kind id -> its numbers. */
   creatures: z.record(id, CreatureSchema).default({}),
+  /** Brain pacing and ranges every kind shares. */
+  ai: CreatureAiSchema.prefault({}),
 });
 
 // ------------------------------------------------------------------ needs
@@ -732,6 +771,7 @@ export type IngressRules = z.infer<typeof IngressSchema>;
 export type GatheringRules = z.infer<typeof GatheringSchema>;
 export type MovementRules = z.infer<typeof MovementSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
+export type CreatureAiRules = z.infer<typeof CreatureAiSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
 export type DerivedStatDef = z.infer<typeof DerivedStatSchema>;
