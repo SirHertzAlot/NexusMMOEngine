@@ -196,6 +196,7 @@ export class DungeonInstance {
       spawnPoint: opts.layout.entrance,
       groundHeightAt: () => 0,
       allowRegister: false,
+      social: rules.social,
       creatures: {
         has: (k) => k in rules.creatures.creatures,
         spawnPack: (w, k, x, z) => this.creatures.spawnPack(w, k, x, z),

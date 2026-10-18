@@ -98,7 +98,9 @@ import {
   Ability,
   LocomotionMode,
   encodeTileHeights,
+  type ChatChannel,
 } from "@mmo-engine/protocol";
+import type { SocialRules } from "@mmo-engine/rules";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
@@ -277,8 +279,13 @@ export interface GatewayOptions {
    * null/absent = structural checks only (a server without the art).
    */
   characterCatalog?: ModularCatalog | null;
-  /** Characters an account may have. Default 8. */
+  /** Characters an account may have. Default 8, or social.characters.slots; this option wins over both. */
   maxCharacters?: number;
+  /**
+   * Party, guild, chat and character slot limits (content/rules/social.json,
+   * EG9). Absent: the built-in constants. setSocial replaces them live.
+   */
+  social?: SocialRules;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -744,6 +751,7 @@ export class Gateway {
       | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
+      | "social"
       | "sessionTtlMs"
       | "sessionStore"
       | "authRateLimit"
@@ -784,7 +792,11 @@ export class Gateway {
   private readonly credentialStore: CredentialStore;
   private readonly characterStore: CharacterStore;
   private readonly characterCatalog: ModularCatalog | null;
-  private readonly maxCharacters: number;
+  private maxCharacters: number;
+  /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
+  private readonly fixedMaxCharacters: boolean;
+  /** social.json (EG9), or null for the chat module's own range and cooldowns. */
+  private social: SocialRules | null = null;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a).
    * Injected by the production server via makeDebugSource(); null →
@@ -919,6 +931,8 @@ export class Gateway {
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
+    this.fixedMaxCharacters = opts.maxCharacters !== undefined;
+    if (opts.social) this.setSocial(opts.social);
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -1091,6 +1105,26 @@ export class Gateway {
    * Set the HTTP handler (see GatewayOptions.http) before listen(): for
    * services that authenticate through this gateway's sessions.
    */
+  /**
+   * Apply social.json (EG9): party and guild sizes and timeouts, the block
+   * limit, chat reach, line length and cooldowns, and character slots. Takes
+   * effect on the next action; parties, guilds and blocks already over a
+   * lowered limit stay as they are.
+   */
+  setSocial(rules: SocialRules): void {
+    this.social = rules;
+    this.parties.setRules(rules.party);
+    this.guilds.setRules(rules.guild);
+    if ("limit" in this.blocks) (this.blocks as { limit: number }).limit = rules.chat.blockLimit;
+    if (!this.fixedMaxCharacters) this.maxCharacters = rules.characters.slots;
+  }
+
+  /** Milliseconds between two lines on `channel` from one session. */
+  private chatCooldownMs(channel: ChatChannel): number {
+    const s = this.social?.chat.cooldownSeconds[channel];
+    return s === undefined ? this.chatRules.CHAT_COOLDOWN_MS[channel] : s * 1000;
+  }
+
   setHttpHandler(handler: HttpHandler): void {
     if (this.transport) throw new Error("gateway: set the HTTP handler before listen()");
     this.httpHandler = handler;
@@ -2775,6 +2809,7 @@ export class Gateway {
       }
       const parsed = this.chatRules.ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
+      if (this.social && parsed.data.text.length > this.social.chat.textMax) throw new Error("too long");
       text = parsed.data.text;
       channel = parsed.data.channel;
       to = parsed.data.to;
@@ -2787,8 +2822,9 @@ export class Gateway {
       return;
     }
     const now = this.clock();
-    const last = s.lastChatMs[channel] ?? -this.chatRules.CHAT_COOLDOWN_MS[channel] - 1;
-    if (now - last < this.chatRules.CHAT_COOLDOWN_MS[channel]) {
+    const cooldown = this.chatCooldownMs(channel);
+    const last = s.lastChatMs[channel] ?? -cooldown - 1;
+    if (now - last < cooldown) {
       this.sendError(s, 4003, "chat too fast");
       return;
     }
@@ -2864,7 +2900,8 @@ export class Gateway {
     }
     const sx = C.Transform.px[eid];
     const sz = C.Transform.pz[eid];
-    const range2 = this.chatRules.SAY_RANGE_M * this.chatRules.SAY_RANGE_M;
+    const range = this.social?.chat.sayRangeM ?? this.chatRules.SAY_RANGE_M;
+    const range2 = range * range;
     for (const r of this.sessions.values()) {
       if (!r.welcomed || r.playerEntity === null) continue;
       const reid = this.world.resolveWireId(r.playerEntity);

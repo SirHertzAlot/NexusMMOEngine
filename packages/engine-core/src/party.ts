@@ -78,6 +78,9 @@ export class PartyBook {
   /** Display names by key. */
   private readonly names = new Map<string, string>();
 
+  /** Size and timeouts (social.json `party`, EG9); setRules swaps them on a rules reload. */
+  limits = { max: PARTY_MAX, inviteMs: INVITE_TTL_MS, offlineMs: OFFLINE_TTL_MS };
+
   constructor(
     private readonly clock: () => number = Date.now,
     private readonly store: PartyStore = memoryPartyStore(),
@@ -140,9 +143,9 @@ export class PartyBook {
     this.names.set(t, to);
     const party = this.partyFor(from);
     if (party && party.leader !== f) return { ok: false, reason: "only the leader can invite" };
-    if (party && party.members.length >= PARTY_MAX) return { ok: false, reason: "party is full" };
+    if (party && party.members.length >= this.limits.max) return { ok: false, reason: "party is full" };
     if (this.byMember.has(t)) return { ok: false, reason: "already in a party" };
-    this.invites.set(t, { party: party?.id ?? 0, from: f, expires: this.clock() + INVITE_TTL_MS });
+    this.invites.set(t, { party: party?.id ?? 0, from: f, expires: this.clock() + this.limits.inviteMs });
     return { ok: true, notify: [from, to] };
   }
 
@@ -164,7 +167,7 @@ export class PartyBook {
       this.parties.set(party.id, party);
       this.byMember.set(inv.from, party.id);
     }
-    if (party.members.length >= PARTY_MAX) return { ok: false, reason: "party is full" };
+    if (party.members.length >= this.limits.max) return { ok: false, reason: "party is full" };
     party.members.push(n);
     this.byMember.set(n, party.id);
     this.save(party);
@@ -198,6 +201,10 @@ export class PartyBook {
     return { ok: true, notify: party.members.map((m) => this.display(m)) };
   }
 
+  setRules(r: { max: number; inviteSeconds: number; offlineMinutes: number }): void {
+    this.limits = { max: r.max, inviteMs: r.inviteSeconds * 1000, offlineMs: r.offlineMinutes * 60_000 };
+  }
+
   setOnline(name: string, online: boolean): void {
     const n = key(name);
     if (!this.byMember.has(n)) return;
@@ -211,7 +218,7 @@ export class PartyBook {
     const changed: string[] = [];
     for (const [k, inv] of this.invites) if (inv.expires <= now) this.invites.delete(k);
     for (const [k, since] of [...this.offline]) {
-      if (now - since < OFFLINE_TTL_MS) continue;
+      if (now - since < this.limits.offlineMs) continue;
       const pid = this.byMember.get(k);
       if (pid !== undefined) changed.push(...this.remove(pid, k));
     }

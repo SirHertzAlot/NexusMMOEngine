@@ -100,6 +100,7 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   spells: [],
   gathering: [],
   movement: [],
+  social: [],
 };
 
 let defaults: Rules | null = null;

@@ -803,6 +803,8 @@ async function main(): Promise<void> {
     sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
     masteryOf().setPacing(g.rules.skills.pacing);
+    // Social limits (EG9): the reloader only watches after the gateway exists.
+    gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
@@ -1040,6 +1042,8 @@ async function main(): Promise<void> {
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),
+    // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
+    social: game.rules.social,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
