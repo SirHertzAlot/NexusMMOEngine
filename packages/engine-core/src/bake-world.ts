@@ -20,6 +20,14 @@
  *   MMO_TERRAIN_AMPLITUDE / MMO_TERRAIN_FREQUENCY  terrain shape; the
  *                   server must run with the same values (it warns on a
  *                   mismatch, recorded as meta "terrain_version")
+ *   MMO_BAKE_REGION=rx,rz  re-bake only this region's tiles (incremental)
+ *   MMO_BAKE_SURVEY_ONLY=1  re-run the survey and invalidate the tile cache,
+ *                   without regenerating tiles
+ *
+ * Flags:
+ *   --force          overwrite an existing world.db (same as MMO_BAKE_FORCE=1)
+ *   --region rx,rz   re-bake only this region's tiles (incremental)
+ *   --survey-only    re-run the survey and invalidate the tile cache
  *
  * With a world spec, the WHOLE world's terrain is baked once (survey,
  * erosion, rivers, biomes -> 16x16-sample chunk tiles + survey maps in
@@ -64,6 +72,17 @@ const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 const RADIUS = Number(process.env.MMO_BAKE_RADIUS ?? 1);
 const FORCE =
   process.env.MMO_BAKE_FORCE === "1" || process.argv.includes("--force");
+const SURVEY_ONLY =
+  process.env.MMO_BAKE_SURVEY_ONLY === "1" || process.argv.includes("--survey-only");
+
+function parseRegion(arg: string | undefined): [number, number] | undefined {
+  if (!arg) return undefined;
+  const m = arg.match(/^(\d+),(\d+)$/);
+  if (!m) throw new Error(`region must be "rx,rz" (got "${arg}")`);
+  return [Number(m[1]), Number(m[2])];
+}
+
+const REGION = parseRegion(process.env.MMO_BAKE_REGION ?? process.argv.find((a) => a.startsWith("--region="))?.slice("--region=".length));
 
 async function main(): Promise<void> {
   if (!Number.isInteger(RADIUS) || RADIUS < 0) {
@@ -74,16 +93,22 @@ async function main(): Promise<void> {
 
   const probe = new SnapshotStore({ dbPath });
   const existing = probe.snapshotCount();
+  const existingSurveyHash = probe.getMeta("survey_hash");
   probe.close();
-  if (existing > 0 && !FORCE) {
+
+  // Incremental mode (--region or --survey-only) works on an existing world.
+  // Full bake still refuses to overwrite without --force.
+  const incremental = REGION !== undefined || SURVEY_ONLY;
+  if (existing > 0 && !incremental && !FORCE) {
     throw new Error(
       `refusing to overwrite ${dbPath} (${existing} snapshot(s) present). ` +
         `To replace it, stop the server and run: npm run bake:world:force`,
     );
   }
-  if (existing > 0) {
-    // Remove the WAL sidecars too: a stale world.db-wal next to a fresh
-    // world.db could replay old pages into the new world.
+  // A forced FULL bake starts clean: drop the db and its WAL sidecars so a
+  // stale world.db-wal can't replay old pages into the new world. Incremental
+  // mode keeps the existing db — it updates the world in place.
+  if (existing > 0 && !incremental && FORCE) {
     for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
       try {
         fs.rmSync(f, { force: true });
@@ -114,11 +139,16 @@ async function main(): Promise<void> {
   let tiles: TerrainTileStore | null = null;
   let spawn = { x: 0, z: 0 };
   let bounds: ChunkBounds | null = null;
+  let report: Awaited<ReturnType<typeof bakeWorldTerrain>> | null = null;
   if (spec) {
-    const report = await bakeWorldTerrain(spec, {
+    report = await bakeWorldTerrain(spec, {
       dbPath,
       catalogDir: process.env.MMO_WORLD_CATALOG === "0" ? null : path.join(DATA_DIR, "surreal"),
       log: (l) => console.log(l),
+      terrainVersion: procgen.terrainVersion,
+      region: REGION,
+      surveyOnly: SURVEY_ONLY,
+      existingSurveyHash,
     });
     // The bake is the catalog's only user here; an open connection would
     // keep this process alive.
@@ -130,6 +160,12 @@ async function main(): Promise<void> {
         `erosion mean ${report.erosion.meanM.toFixed(2)} m (deepest river cut ${report.erosion.deepestCutM.toFixed(1)} m), ` +
         `peak memory ${report.peakRssMb} MB`,
     );
+    if (report.surveySkipped) {
+      console.log(`[bake] survey skipped (spec unchanged)`);
+    }
+    if (report.tilesSkipped > 0) {
+      console.log(`[bake] tiles: ${report.tilesGenerated} regenerated, ${report.tilesSkipped} unchanged (skipped)`);
+    }
     spawn = report.spawn;
     console.log(`[bake] spawn point (${spawn.x}, ${spawn.z})${report.spawn.biome ? ` in ${report.spawn.biome}` : ""}`);
     const { minChunk, maxChunk } = worldBounds(spec);
@@ -212,6 +248,9 @@ async function main(): Promise<void> {
     store.setMeta("sea_level", String(spec.land.seaLevel));
     // Biome map values index this list (clients colour the ground by it).
     store.setMeta("world_biomes", JSON.stringify(spec.biomes.map((b) => b.id)));
+    // Content-address the survey: an equal hash on re-bake means the survey
+    // (maps + catalog) is already in the db and can be skipped.
+    store.setMeta("survey_hash", report!.surveyHash);
   }
   store.close();
   if (!spec) {

@@ -2,6 +2,25 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-15 — The bake materializes the world; the tiles are a cache, and the survey is the only global pass (WX2).**
+  `npm run bake:world` writes the whole world up front: 4 km is 103 MB, 16 km
+  ~1.5 GB, 32 km ~6 GB, linear in area, and 80% of it is `terrain_tiles` — one
+  float32 heightmap per 16 m chunk. The fix is not compression but
+  *not baking what is derived*: the tiles are a cache, not a bake output.
+  Three things already in the tree make this safe — `makeTileChunkSource`
+  falls back to procgen when a tile is absent, so the server runs with no tiles;
+  navmesh tiles are already version-keyed, content-addressed blobs; and
+  `heightsFingerprint()` already hashes a heightfield. So: the survey is
+  content-addressed by a hash of the spec and skipped when the spec is
+  unchanged; tiles are keyed by `(seed, cx, cz, lod, terrainVersion,
+  surveyHash)` in a `terrain_tile_keys` table; `bake:world` gains `--region
+  rx,rz` and `--survey-only`; and the per-chunk tile loop — already independent
+  per chunk — runs across worker threads. `regionsPerSide` already partitions
+  the world square. What does NOT get cheaper is the survey: erosion is global
+  and iterative, so a spec change re-runs it. The win is that the tiles no
+  longer have to be rewritten for free — only the affected regions. Spec:
+  `docs/INCREMENTAL-BAKE.md`.
+
 - **2026-10-15 — Cell shading is a client-side component whose carrier is content, not a replicated ECS component.**
   Cell shading was hardcoded per renderer: the character kit patched its own
   material, and props, art-pack models and stand-in shapes each got an
