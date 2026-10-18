@@ -1,6 +1,7 @@
 /**
- * Gameplay Tables (roadmap ED1): edit content/rules' item bases,
- * creatures, loot and death rules.
+ * Gameplay Tables (roadmap ED1, EG2): edit content/rules' item bases,
+ * creatures, combat, body and Medicine, loot, death, ingress and
+ * gathering rules as labelled forms.
  *
  * Each table is edited as a draft of its JSON file. An empty field
  * removes its key, so the engine default (shown as the placeholder)
@@ -13,7 +14,11 @@
 import * as React from "react";
 import { DocBar } from "./doc-bar.js";
 import {
+  BODY_PART_FIELDS,
+  BODY_SECTIONS,
+  COMBAT_SECTIONS,
   CREATURE_FIELDS,
+  TECHNIQUE_FIELDS,
   DEATH_FIELDS,
   INGRESS_FIELDS,
   GATHERING_FIELDS,
@@ -24,13 +29,14 @@ import {
   createRulesControl,
   getAt,
   newEntry,
+  type FieldSectionSpec,
   type FieldSpec,
   type RulesIssue,
   type RulesSnapshot,
   type Table,
 } from "../rules-control.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "./components.js";
-import { FieldGrid, IssueList, RecordEditor } from "./spec-form.js";
+import { FieldGrid, FieldSection, IssueList, ListEditor, RecordEditor } from "./spec-form.js";
 import { useDocActions } from "./doc-actions.js";
 import { useTableDrafts } from "./use-table-drafts.js";
 
@@ -39,6 +45,8 @@ const control = createRulesControl();
 const TABLE_LABELS: Record<Table, string> = {
   items: "Item bases",
   creatures: "Creatures",
+  combat: "Combat",
+  body: "Body and Medicine",
   loot: "Loot",
   death: "Death",
   ingress: "Ingress limits",
@@ -49,17 +57,40 @@ const TABLE_LABELS: Record<Table, string> = {
 const RECORDS: Partial<Record<Table, { under: string; fields: FieldSpec[]; noun: string }>> = {
   items: { under: "bases", fields: ITEM_BASE_FIELDS, noun: "base" },
   creatures: { under: "creatures", fields: CREATURE_FIELDS, noun: "creature" },
+  combat: { under: "techniques", fields: TECHNIQUE_FIELDS, noun: "technique" },
 };
+
+/** List tables: entries in an array that carry their own id. */
+const LISTS: Partial<Record<Table, { under: string; fields: FieldSpec[]; noun: string; newEntry: (id: string) => Record<string, unknown> }>> = {
+  body: { under: "parts", fields: BODY_PART_FIELDS, noun: "part", newEntry: (id) => ({ id, name: id, parent: null, share: 0.05 }) },
+};
+
+/** Long tables, drawn in titled sections instead of one flat grid. */
+const SECTIONS: Partial<Record<Table, FieldSectionSpec[]>> = {
+  combat: COMBAT_SECTIONS,
+  body: BODY_SECTIONS,
+};
+
+/** A new record entry's starting values. */
+function newRecord(table: Table, bases: string[]): Record<string, unknown> {
+  if (table === "combat") return { property: "edge", damageKind: "cut" };
+  return newEntry(table as "items" | "creatures", bases);
+}
 
 /** Flat fields of each table (beside its records, for items). */
 const FLAT: Record<Table, FieldSpec[]> = {
   items: ITEMS_FIELDS,
   creatures: [],
+  combat: [],
+  body: [],
   loot: LOOT_FIELDS,
   death: DEATH_FIELDS,
   ingress: INGRESS_FIELDS,
   gathering: GATHERING_FIELDS,
 };
+
+/** Rules ids (packages/rules schemas.ts): lower camel or kebab case. */
+const RULES_ID = { pattern: /^[a-z][a-zA-Z0-9-]*$/, hint: "lower camel or kebab case" };
 
 /** A save's outcome, shown on the table it was for. */
 type Status = { tone: "ok" | "bad" | "info"; text: string; table?: Table } | null;
@@ -150,7 +181,10 @@ export function RulesPanel(): React.JSX.Element {
   const record = RECORDS[table];
   const flat = FLAT[table];
   const bases = Object.keys((getAt(drafts.items, "bases") as Record<string, unknown> | undefined) ?? {});
-  const lists = { techniques: snap.techniques };
+  const parts = ((getAt(drafts.body, "parts") as Array<{ id?: unknown }> | undefined) ?? []).map((p) => String(p.id ?? ""));
+  const lists = { techniques: snap.techniques, skills: snap.skills, parts };
+  const sections = SECTIONS[table];
+  const list = LISTS[table];
 
   return (
     <div className="flex flex-col gap-4">
@@ -176,6 +210,12 @@ export function RulesPanel(): React.JSX.Element {
           {flat.length > 0 && (
             <FieldGrid fields={flat} value={draft} basePath="" file={table} issues={issues} lists={lists} onChange={edit} />
           )}
+          {sections?.map((sec) => (
+            <FieldSection key={sec.title} title={sec.title} help={sec.help} fields={sec.fields} value={draft} basePath="" file={table} issues={issues} lists={lists} onChange={edit} />
+          ))}
+          {list && (
+            <ListEditor key={table} file={table} under={list.under} noun={list.noun} fields={list.fields} value={draft} issues={issues} lists={lists} newEntry={list.newEntry} onChange={edit} />
+          )}
           {record && (
             <RecordEditor
               key={table}
@@ -186,7 +226,8 @@ export function RulesPanel(): React.JSX.Element {
               value={draft}
               issues={issues}
               lists={lists}
-              newEntry={() => newEntry(table as "items" | "creatures", bases)}
+              newEntry={() => newRecord(table, bases)}
+              idRule={RULES_ID}
               onChange={edit}
             />
           )}

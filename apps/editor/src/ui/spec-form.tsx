@@ -70,7 +70,7 @@ export function SpecField(props: {
   const { spec, value, issues, onChange } = props;
   const id = React.useId();
   const placeholder =
-    spec.def === undefined ? (spec.nullable ? "none" : "required") : `default ${fieldText(spec, spec.def) || "none"}`;
+    spec.def === undefined ? (spec.nullable || spec.optional ? "none" : "required") : `default ${fieldText(spec, spec.def) || "none"}`;
   // Typed text the field's kind can't hold stays local until it can.
   const [text, setText] = React.useState(fieldText(spec, value));
   const [local, setLocal] = React.useState<string | null>(null);
@@ -236,6 +236,90 @@ export function RecordEditor(props: {
               lists={props.lists}
               onChange={onChange}
             />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A list of entries that carry their own id (`under[i].id`, e.g. body parts): pick, add, remove, and the picked entry's fields. */
+export function ListEditor(props: {
+  file: string;
+  under: string;
+  noun: string;
+  fields: readonly FieldSpec[];
+  value: unknown;
+  issues: readonly RulesIssue[];
+  lists: OptionLists;
+  /** A new entry's starting values, given its id. */
+  newEntry: (id: string) => Record<string, unknown>;
+  idRule?: { pattern: RegExp; hint: string };
+  onChange: (next: unknown) => void;
+}): React.JSX.Element {
+  const { file, under, noun, fields, value, issues, onChange } = props;
+  const idRule = props.idRule ?? { pattern: /^[a-z][a-zA-Z0-9-]*$/, hint: "lower camel or kebab case" };
+  const entries = (getAt(value, under) as Array<Record<string, unknown>> | undefined) ?? [];
+  const ids = entries.map((e) => String(e.id ?? ""));
+  const [selected, setSelected] = React.useState(0);
+  const [newId, setNewId] = React.useState("");
+  const current = selected < entries.length ? selected : entries.length - 1;
+  const idError = newId === "" ? null : !idRule.pattern.test(newId) ? idRule.hint : ids.includes(newId) ? "taken" : null;
+
+  const add = (): void => {
+    if (newId === "" || idError) return;
+    onChange(setAt(value, under, [...entries, props.newEntry(newId)]));
+    setSelected(entries.length);
+    setNewId("");
+  };
+  const remove = (i: number): void => {
+    onChange(setAt(value, under, entries.filter((_, n) => n !== i)));
+    setSelected(Math.max(0, i - 1));
+  };
+
+  return (
+    <div className="grid grid-cols-[12rem_1fr] gap-4">
+      <div className="flex flex-col gap-1">
+        <SectionTitle>{noun}s</SectionTitle>
+        {ids.map((id, i) => {
+          const bad = issuesAt(issues, file, `${under}.${i}`).length > 0;
+          return (
+            <button
+              key={`${i}:${id}`}
+              onClick={() => setSelected(i)}
+              className={
+                "flex items-center justify-between rounded-md px-2 py-1 text-left font-mono text-sm " +
+                (i === current ? "bg-accent text-accent-foreground" : "hover:bg-accent/50")
+              }
+            >
+              {id || "(no id)"}
+              {bad && <span className="h-2 w-2 rounded-full bg-red-500" aria-label="has issues" />}
+            </button>
+          );
+        })}
+        <div className="mt-2 flex gap-1">
+          <Input className="h-9 font-mono" placeholder={`new ${noun} id`} value={newId} onChange={(e) => setNewId(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+          <Button size="sm" variant="outline" onClick={add} disabled={newId === "" || idError !== null}>
+            Add
+          </Button>
+        </div>
+        {idError && <span className="text-xs text-red-400">{idError}</span>}
+      </div>
+      <div className="flex flex-col gap-3">
+        {current < 0 ? (
+          <p className="text-sm text-muted-foreground">No {noun}s yet.</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-sm font-semibold">{ids[current]}</span>
+              <Button size="sm" variant="danger" onClick={() => remove(current)}>
+                Remove {noun}
+              </Button>
+            </div>
+            {issuesAt(issues, file, `${under}.${current}.id`).map((i, n) => (
+              <span key={n} className="text-xs text-red-400">id: {i.message}</span>
+            ))}
+            <FieldGrid key={current} fields={fields} value={value} basePath={`${under}.${current}`} file={file} issues={issues} lists={props.lists} onChange={onChange} />
           </>
         )}
       </div>
