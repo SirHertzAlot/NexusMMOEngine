@@ -25,6 +25,12 @@ export interface Weather {
   kind: WeatherKind | null;
   /** 0..1 (the renderer fades toward it). */
   intensity: number;
+  /**
+   * Prevailing wind, unit XZ. The particle system emits upwind of the camera
+   * by a few metres, so precipitation visibly slants downwind.
+   */
+  windX?: number;
+  windZ?: number;
 }
 
 /** FNV-1a over a string: a stable 0..1 roll per (spell, biome). */

@@ -54,8 +54,12 @@ import { installBvh } from "./bvh.js";
 import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
 import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
-import { ParticleFx, WEATHER_RULES, budgetMultiplierForTier } from "./fx/particle-fx.js";
-import { biomeAt, weatherAt } from "./fx/weather.js";
+import { ParticleFx, budgetMultiplierForTier } from "./fx/particle-fx.js";
+import { biomeAt } from "./fx/weather.js";
+import { FieldService, type ClimateParams } from "./weather/field-service.js";
+import { overcastFromSample, type OvercastParams } from "./weather/sky-overcast.js";
+import { CloudVolume } from "./weather/cloud-volume.js";
+import { RainCurtain } from "./weather/rain-curtain.js";
 import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
@@ -78,6 +82,12 @@ const CAMERA_NEAR = 0.5;
 const CAMERA_FAR = FOG_FAR + 800;
 
 const splashAt = new THREE.Vector3();
+/** Scratch overcast params (no per-frame allocation). */
+const overcastScratch: OvercastParams = { coverage: 0, sunDim: 1, fogPull: 1, skyDarken: 1 };
+/** Scratch weather object for ParticleFx.update (no per-frame allocation). */
+const weatherScratch = { kind: null as "rain" | "snow" | "ash" | null, intensity: 0, windX: 0, windZ: 0 };
+/** Grey colour the fog lerps toward under overcast. */
+const OVERCAST_GREY = new THREE.Color(0.45, 0.45, 0.5);
 
 /** Once-a-second numbers for the HUD. */
 export interface HudData {
@@ -297,6 +307,9 @@ interface Runtime {
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
   streaming: StreamingCoordinator;
+  weather: FieldService;
+  clouds: CloudVolume;
+  rain: RainCurtain;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -397,7 +410,14 @@ function MirrorWorld({
     const resources = new ResourceNodes();
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group);
+    // Weather: the field service (worker-advanced), cloud volumes, and rain curtain.
+    const weatherMap = map ?? { cell: 8, width: 1, depth: 1, originX: 0, originZ: 0, heights: new Float32Array([0]), biome: new Uint8Array([0]), biomes: ["plains"], river: new Uint8Array([0]) };
+    // The server sends a `climate` block in the welcome's WorldInfo; fall back to defaults.
+    const worldClimate = (world as { climate?: ClimateParams } | undefined)?.climate ?? null;
+    const weather = new FieldService(weatherMap, workers ?? null, 1234, worldClimate);
+    const clouds = new CloudVolume(10);
+    const rain = new RainCurtain();
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, clouds.group, rain.mesh);
     // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
     // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
     const floor = instance ? makeFloor() : null;
@@ -470,7 +490,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -509,6 +529,8 @@ function MirrorWorld({
       terrain.dispose();
       workers?.dispose();
       water.dispose();
+      clouds.dispose();
+      rain.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
@@ -671,12 +693,26 @@ function MirrorWorld({
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
-    // Weather where the camera is, the same on every client (biome + tick),
-    // unless the server forces the sky (`weather`).
-    const tick = client.serverTick;
-    const hz = client.tickHz || 30;
-    const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
-    const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
+    const seconds = now / 1000;
+    // Weather from the field service (worker-advanced simulation).
+    r.weather.setOverride(client.weatherOverride === "auto" ? null : client.weatherOverride);
+    const wxSample = r.weather.sample(camera.position.x, camera.position.z);
+    // Overcast blend from the weather sample.
+    const overcast = overcastFromSample(wxSample, overcastScratch);
+    if (fog) {
+      fog.near = FOG_NEAR * overcast.fogPull;
+      fog.far = FOG_FAR * overcast.fogPull;
+      fog.color.lerp(OVERCAST_GREY, overcast.coverage * 0.5);
+    }
+    // Dim the sun and sky lights under overcast.
+    r.sky.sunLight.intensity *= overcast.sunDim;
+    r.sky.skyLight.intensity *= overcast.skyDarken;
+    // Cloud volumes follow the camera, driven by the field's moisture.
+    const moisture = r.weather.moistureAt(camera.position.x, camera.position.z);
+    r.clouds.update(camera.position, moisture, overcast.coverage, wxSample.windX, wxSample.windZ, delta, camera.quaternion);
+    // Rain curtain: visible only when raining.
+    const rainIntensity = wxSample.kind === "rain" ? wxSample.intensity : 0;
+    r.rain.update(seconds, wxSample.windX, wxSample.windZ, rainIntensity, camera.position);
     // Splashes where the player swims and moves.
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
     const v = me?.velocity;
@@ -684,7 +720,12 @@ function MirrorWorld({
       const surface = r.water.surfaceAt(r.layer.player.x, r.layer.player.z);
       if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
     }
-    r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+    // Pass the weather (with wind vector) to the particle system.
+    weatherScratch.kind = wxSample.kind === "clear" ? null : wxSample.kind;
+    weatherScratch.intensity = wxSample.intensity;
+    weatherScratch.windX = wxSample.windX;
+    weatherScratch.windZ = wxSample.windZ;
+    r.particles.update(Math.min(delta, 0.25), camera.position, weatherScratch);
 
     // A step sounds each stride on the ground, on the surface of the biome underfoot (content/materials).
     const onStep = latest.current.onFootstep;
@@ -697,7 +738,6 @@ function MirrorWorld({
       }
     }
 
-    const seconds = now / 1000;
     r.terrain.update(camera.position);
     r.water.update(seconds);
     updateTerrainFx(seconds);
@@ -733,7 +773,7 @@ function MirrorWorld({
         mode: me?.locomotion?.mode ?? null,
         breath: me?.locomotion?.breath ?? 1,
         time: client.day ? formatTimeOfDay(timeOfDay) : null,
-        weather: weather.intensity > 0 ? weather.kind : null,
+        weather: wxSample.intensity > 0 ? wxSample.kind : null,
         hp: me?.health?.current ?? null,
         maxHp: me?.health?.max ?? null,
         sp: me?.stamina?.current ?? null,
