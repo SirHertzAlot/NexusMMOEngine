@@ -21,6 +21,7 @@
 import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import { getAllMedia } from "../media-client.js";
+import { getContentDoc } from "../content-docs.js";
 import {
   CombatFeedback,
   DEFAULT_BINDINGS,
@@ -29,6 +30,7 @@ import {
   PlaceholderAssets,
   WorldCanvas,
   applyGameContent,
+  setParticleBudgets,
   type GpuInfo,
   type HudData,
   type QualityTier,
@@ -85,6 +87,12 @@ export function GameView({
     getAllMedia()
       .then((c) => void applyGameContent(c))
       .catch((e: unknown) => console.warn(`[editor] game content: ${e instanceof Error ? e.message : String(e)}`))
+      .then(() => getContentDoc("vfxBudgets"))
+      .then((b) => {
+        const problem = setParticleBudgets(b);
+        if (problem) console.warn(`[editor] ${problem}`);
+      })
+      .catch((e: unknown) => console.warn(`[editor] particle budgets: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => setContentReady(true));
   }, []);
   const pcg = React.useMemo(
