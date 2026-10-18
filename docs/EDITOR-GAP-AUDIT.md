@@ -96,7 +96,7 @@ a panel or grid saves the value; the depth of each form was not reviewed.
 
 ## Plan
 
-No editor panel is started until the person picks priorities. Each step below
+Each step below
 is one PR, per CLAUDE.md.
 
 **Phase 1: forms over existing data (no engine change).** These are the
@@ -124,35 +124,20 @@ separate PR, and the engine default stays so an absent key changes nothing.
 9. Social and character limits as rules (a new `content/rules/social.json`).
    Fixes row 10.
 
-**Phase 3: decisions and cleanup.**
+**Phase 3: the remaining rows.**
 
-10. VFX budgets: wire `content/vfx/budgets.json` into the particle budgets, or
-    delete it. Row 14.
-11. Operator knobs (rows 12 and 13) stay as env, documented in `CONFIGURATION.md`.
-    No editor work unless the person asks for an operator console.
-12. Dungeon geometry and bot pacing (row 11) stay code.
+10. VFX budgets: read `content/vfx/budgets.json` and make it editable. Row 14.
+11. Gathering regrow cadence into `gathering.json`. Row 9.
+12. Dungeon walls and bot pacing as data. Row 11. The dungeon cell size stays
+    fixed, because baked dungeons depend on it.
+13. Persistence cadence and query limits as server settings with a form. Row 12.
+14. World and time settings (day length and offset, bots) in a settings
+    file with a form, env still overriding. Row 13. The seed, chunk size and
+    radii must match the bake, so the editor shows them read-only.
 
-## Proposed ROADMAP rows (not edited here)
+Decided 2026-10-18: all fourteen rows are in scope, as roadmap items EG1 to
+EG14 (section 1g).
 
-`docs/ROADMAP.md` is not changed by this PR, per the coordinator note. The
-rows below are proposed for the person to accept or reject:
+## Roadmap rows
 
-- EG1 Dungeon run rules and entrances form (Phase 1, step 1)
-- EG2 Combat and body forms (Phase 1, step 2)
-- EG3 Crafting form (Phase 1, step 3)
-- EG4 Town rules sections (Phase 1, step 4)
-- EG5 Movement and stamina as rules (Phase 2, step 5)
-- EG6 Combat resolution as rules (Phase 2, step 6)
-- EG7 Creature timing as rules (Phase 2, step 7)
-- EG8 Skill pacing and medicine thresholds as rules (Phase 2, step 8)
-- EG9 Social and character limits as rules (Phase 2, step 9)
-- EG10 VFX budgets: wire or remove (Phase 3, step 10)
-
-## Open questions for the person
-
-- Priority: Phase 1 first (no engine change, visible to designers at once), or
-  Phase 2 first (more designer value, but it changes engine code).
-- Should a designer be able to change the combat and movement feel per world,
-  or only globally? This decides whether those values live in `content/rules`
-  or per scene.
-- Row 14: wire the VFX budgets file, or delete it?
+Added to `docs/ROADMAP.md` as section 1g, EG1 to EG14.
