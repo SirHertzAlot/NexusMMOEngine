@@ -1,0 +1,8 @@
+{
+  "saveEverySeconds": 10,
+  "keepSnapshots": 6,
+  "walLimitMb": 4,
+  "queryDefaultRows": 500,
+  "queryMaxRows": 5000,
+  "queryTimeoutSeconds": 2
+}

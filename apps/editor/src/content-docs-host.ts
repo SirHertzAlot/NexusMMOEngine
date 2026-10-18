@@ -73,6 +73,7 @@ export const CONTENT_DOC_CHECKS: Record<ContentDocName, ContentDoc["check"]> = {
     return check(content).map((i) => ({ file: "crafting.json", path: i.path, message: i.message }));
   },
   // The art package's budget schema: every tier, positive counts, higher tiers never fewer particles.
+  persistence: engineSchema("persistence", "server-settings.js", "PersistenceSettingsSchema"),
   vfxBudgets: async (repoRoot, content) => schemaIssues("vfxBudgets", (await packageModule(repoRoot, "art", "particle-budgets.js")).ParticleBudgets as Schema, content),
 };
 

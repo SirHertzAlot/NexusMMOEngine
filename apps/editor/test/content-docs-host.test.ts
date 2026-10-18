@@ -16,6 +16,7 @@ import { CONTENT_DOC_KEYS } from "../src/content-docs-host.js";
 import { CRAFTING_ROWS, CRAFTING_SECTIONS } from "../src/crafting-rules.js";
 import { ENTRANCE_FIELDS, RUN_SECTIONS } from "../src/dungeon-rules.js";
 import { VFX_BUDGET_SECTIONS } from "../src/vfx-budgets.js";
+import { PERSISTENCE_SECTIONS } from "../src/server-settings.js";
 import { getAt } from "../src/rules-control.js";
 
 const REPO = dirname(fileURLToPath(new URL("../../../../package.json", import.meta.url)));
@@ -29,6 +30,7 @@ before(() => {
   cpSync(join(REPO, "content", "dungeons"), join(ROOT, "content", "dungeons"), { recursive: true });
   cpSync(join(REPO, "content", "crafting"), join(ROOT, "content", "crafting"), { recursive: true });
   cpSync(join(REPO, "content", "vfx"), join(ROOT, "content", "vfx"), { recursive: true });
+  cpSync(join(REPO, "content", "server"), join(ROOT, "content", "server"), { recursive: true });
   // The schemas are read from <root>/packages/engine-core/dist: borrow the real build.
   mkdirSync(join(ROOT, "packages"), { recursive: true });
   symlinkSync(join(REPO, "packages", "engine-core"), join(ROOT, "packages", "engine-core"), "junction");
@@ -135,6 +137,26 @@ describe("particle budgets document (EG10)", () => {
     const file = JSON.parse(readFileSync(join(REPO, "content", "vfx", "budgets.json"), "utf8")) as { tiers: Record<string, Record<string, number>> };
     assert.deepEqual(keys, Object.entries(file.tiers).flatMap(([t, b]) => Object.keys(b).map((k) => `tiers.${t}.${k}`)).sort());
     for (const f of VFX_BUDGET_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(file, f.key), f.key);
+  });
+});
+
+describe("server persistence settings (EG13)", () => {
+  it("PUT writes valid settings and refuses bad ones by field, writing nothing", async () => {
+    const next = { ...(disk("persistence") as Record<string, unknown>), saveEverySeconds: 30, keepSnapshots: 12 };
+    assert.equal((await route("PUT", "persistence", next))?.status, 200);
+    assert.deepEqual(disk("persistence"), next);
+    const r = await route("PUT", "persistence", { ...next, keepSnapshots: 0, queryDefaultRows: 9000 });
+    assert.equal(r?.status, 400);
+    const paths = (r?.body as { issues: Array<{ path: string }> }).issues.map((i) => i.path);
+    assert.ok(paths.includes("keepSnapshots"), paths.join());
+    assert.deepEqual(disk("persistence"), next);
+  });
+
+  it("the form covers every setting, with the server's defaults as placeholders", () => {
+    const fields = PERSISTENCE_SECTIONS.flatMap((s) => s.fields);
+    const file = JSON.parse(readFileSync(join(REPO, "content", "server", "persistence.json"), "utf8")) as Record<string, unknown>;
+    assert.deepEqual(fields.map((f) => f.key).sort(), Object.keys(file).sort());
+    for (const f of fields) assert.equal(f.def, file[f.key], f.key);
   });
 });
 

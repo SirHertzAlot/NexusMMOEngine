@@ -114,6 +114,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadPersistenceSettings } from "./server-settings.js";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -251,7 +252,11 @@ const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
-const SAVE_EVERY_TICKS = 300;
+// Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
+const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
+/** The tick runs at 30 Hz (tick-loop.ts). */
+const SAVE_EVERY_TICKS = Math.max(1, Math.round(persistenceSettings.settings.saveEverySeconds * 30));
 /** Spawn-area chunk radius, always loaded (1 = 3x3), matching bake:world. */
 const WORLD_RADIUS = Number(process.env.MMO_WORLD_RADIUS ?? 1);
 if (!Number.isInteger(WORLD_RADIUS) || WORLD_RADIUS < 0) {
@@ -302,6 +307,8 @@ async function main(): Promise<void> {
   const store = new SnapshotStore({
     dbPath: path.join(DATA_DIR, "world.db"),
     saveEveryTicks: SAVE_EVERY_TICKS,
+    keepSnapshots: persistenceSettings.settings.keepSnapshots,
+    walSizeLimitBytes: persistenceSettings.settings.walLimitMb * 1024 * 1024,
   });
   // A world baked from a spec carries its own seed: scatter, navmesh keys,
   // and anything generated later must agree with its baked terrain.

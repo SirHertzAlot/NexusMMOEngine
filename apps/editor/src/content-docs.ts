@@ -16,6 +16,8 @@ export const CONTENT_DOC_FILES = {
   crafting: "crafting/recipes.json",
   /** Particle tier budgets (EG10): most live particles and emitters per quality tier; the game client reads them at start. */
   vfxBudgets: "vfx/budgets.json",
+  /** Server persistence settings (EG13): save cadence, snapshots kept, save log size, database query caps. */
+  persistence: "server/persistence.json",
 } as const;
 
 export type ContentDocName = keyof typeof CONTENT_DOC_FILES;
