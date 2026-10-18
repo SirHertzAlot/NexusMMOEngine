@@ -5,7 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { apportion, BUILTIN_RULES, bakeDemographics, solveDemand, SettlementRulesSchema } from "../src/index.js";
+import { apportion, BUILTIN_RULES, bakeDemographics, DEFAULT_FORTIFICATION, solveDemand, SettlementRulesSchema } from "../src/index.js";
 
 const sum = (o: Record<string, number>): number => Object.values(o).reduce((a, b) => a + b, 0);
 
@@ -46,6 +46,11 @@ describe("solveDemand", () => {
     assert.ok(big.required.bakery! > demand.required.bakery!);
     assert.ok(big.required.chapel! <= (BUILTIN_RULES.required.chapel?.max ?? Infinity));
   });
+  it("caps a kind at one per maxPerPopulation people, so a town of 600 has a few taverns, not one on every street", () => {
+    assert.equal(demand.max.tavern, Math.ceil(600 / BUILTIN_RULES.required.tavern!.maxPerPopulation!));
+    assert.ok(demand.required.tavern! <= demand.max.tavern!);
+    assert.equal(solveDemand(bakeDemographics(40, BUILTIN_RULES.demographics), BUILTIN_RULES).max.tavern, 1, "never below the minimum");
+  });
 });
 
 describe("SettlementRulesSchema", () => {
@@ -54,5 +59,9 @@ describe("SettlementRulesSchema", () => {
     const bad = structuredClone(BUILTIN_RULES);
     bad.demographics.ageShares.child = 999;
     assert.throws(() => SettlementRulesSchema.parse(bad), /1000/);
+  });
+  it("gives a rules file with no fortification the default wall", () => {
+    const { fortification: _, ...old } = structuredClone(BUILTIN_RULES);
+    assert.deepEqual(SettlementRulesSchema.parse(old).fortification, DEFAULT_FORTIFICATION);
   });
 });

@@ -10,7 +10,7 @@ import { addComponent } from "bitecs";
 import * as C from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { readLayout, walkableAt } from "../../src/dungeons/pool.js";
-import { DungeonWallSystem } from "../../src/dungeons/walls.js";
+import { DungeonWallSystem, type WallOptions } from "../../src/dungeons/walls.js";
 
 /** A W x H layout from rows of "#" (wall) and "." (floor); cell (x, y) spans [2x, 2x+2) x [2y, 2y+2) metres. */
 function layoutOf(rows: string[], colliders: { x: number; y: number; r: number }[] = []) {
@@ -34,11 +34,11 @@ function mover(sim: SimWorld, x: number, z: number): number {
 }
 const at = (e: number): [number, number] => [C.Transform.px[e], C.Transform.pz[e]];
 
-function run(rows: string[], from: [number, number], to: [number, number], colliders: { x: number; y: number; r: number }[] = []) {
+function run(rows: string[], from: [number, number], to: [number, number], colliders: { x: number; y: number; r: number }[] = [], opts: WallOptions = {}) {
   SimWorld.resetEntityCursorForTesting();
   const sim = new SimWorld();
   const layout = layoutOf(rows, colliders);
-  const walls = new DungeonWallSystem(layout);
+  const walls = new DungeonWallSystem(layout, opts);
   const e = mover(sim, ...from);
   walls.step(sim);
   C.Transform.px[e] = to[0];
@@ -103,6 +103,17 @@ describe("dungeon walls: prop colliders", () => {
   it("a pillar does not push a body out through a wall", () => {
     const { pos, layout } = run(room, [3, 3], [2.2, 3], [{ x: 1, y: 1.5, r: 0.5 }]);
     assert.ok(walkableAt(layout, ...pos));
+  });
+
+  it("the body radius and the teleport step come from the run rules (EG12)", () => {
+    const near = (o: WallOptions) => {
+      const { pos } = run(room, [3, 5], [5.6, 5], pillar, o);
+      return Math.hypot(pos[0] - 6, pos[1] - 5);
+    };
+    assert.ok(near({ bodyRadiusM: 1.2 }) >= near({}) + 0.8 - 1e-6, "a wider body stays farther from the pillar");
+    const diag = ["####", "#.##", "##.#", "####"];
+    assert.deepEqual(run(diag, [3, 3], [5, 5]).pos, [3, 3]);
+    assert.deepEqual(run(diag, [3, 3], [5, 5], [], { teleportStepM: 1 }).pos, [5, 5], "past the teleport step it lands where it was sent");
   });
 
   it("a noclip body passes through a pillar", () => {

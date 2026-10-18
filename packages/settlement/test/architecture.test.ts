@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SCALE, resolveScale } from "@mmo-engine/scene";
-import { BUILTIN_RULES, SettlementRulesSchema, buildingHeightM, fitScale, scaleReport, settlementScene, generateSettlement, type CatalogModel } from "../src/index.js";
+import { BUILTIN_RULES, SettlementRulesSchema, buildingHeightM, fitScale, scaleReport, settlementScene, generateSettlement, PROP_KINDS, type CatalogModel } from "../src/index.js";
 
 const A = BUILTIN_RULES.architecture;
 
@@ -51,7 +51,9 @@ describe("architecture rules", () => {
     if (!r.ok) throw new Error(r.error.message);
     for (const n of settlementScene(r.manifest, BUILTIN_RULES, { origin: [0, 0] }).nodes[0]!.children!) {
       const c = n.components!.Structure!;
-      assert.equal(c.height, buildingHeightM(BUILTIN_RULES.archetypes[c.kind as string]!, A));
+      const a = BUILTIN_RULES.archetypes[c.kind as string];
+      if (a) assert.equal(c.height, buildingHeightM(a, A));
+      else assert.ok(["town_wall", "wall_tower", "town_gate", "town_square", "town_well", "farm_field", "paved_road", "terrace", "stair_step", ...PROP_KINDS].includes(c.kind as string), `${String(c.kind)} is a building, a wall piece, the square, paving or a prop`);
     }
   });
 });
@@ -85,6 +87,19 @@ describe("fitScale", () => {
     // the parcel halves too, so the tall house still reaches its height? no: 6 m wide x 0.5 fits a 6 m parcel
     assert.ok(Math.abs(13 * resolveScale(doc, "building", "p/Tall_House") - house) < 1e-3);
     assert.deepEqual(doc.categories, { building: 0.5 });
+  });
+  it("brings a wall model to the wall's height within its piece, and a gate within its opening", () => {
+    const walls: CatalogModel[] = [
+      { id: "p/Castle_Wall_01", name: "Castle_Wall_01", skinned: false, size: [3, 3, 1] },
+      { id: "p/Castle_Gate_01", name: "Castle_Gate_01", skinned: false, size: [20, 8, 3] },
+    ];
+    const doc = fitScale(walls, { town_wall: ["_Wall_"], town_gate: ["_Gate_"] }, BUILTIN_RULES);
+    const F = BUILTIN_RULES.fortification;
+    assert.ok(Math.abs(3 * doc.assets["p/Castle_Wall_01"]! - F.heightM) < 1e-3, "a short wall model grows to the wall's height");
+    assert.ok(3 * doc.assets["p/Castle_Wall_01"]! <= F.pieceMm / 1000 + 1e-9, "and still fits its piece");
+    const gate = doc.assets["p/Castle_Gate_01"]!;
+    assert.ok(20 * gate <= (BUILTIN_RULES.layout.streetWidthMm + 2000) / 1000 + 1e-9, "a wide gate model shrinks to the opening");
+    assert.equal(scaleReport(walls, { town_wall: ["_Wall_"], town_gate: ["_Gate_"] }, doc, BUILTIN_RULES).filter((r) => r.overflow).length, 0);
   });
   it("leaves the report with 0 overflows", () => {
     for (const bf of [1, 0.5, 2]) {

@@ -114,6 +114,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -182,6 +183,7 @@ import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
 import { WalletSystem } from "./economy/wallet.js";
 import { SqliteWalletStore } from "./economy/wallet-store.js";
+import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
 import { TradeSystem } from "./economy/trade.js";
 import { VendorSystem } from "./economy/vendor.js";
 import { AuctionSystem } from "./economy/auction.js";
@@ -250,7 +252,14 @@ const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
-const SAVE_EVERY_TICKS = 300;
+// Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
+const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
+// The day cycle and bots (content/server/world.json, EG14); the MMO_DAY_* and MMO_BOTS* variables still win.
+const worldSettings = loadWorldSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+if (worldSettings.problem) console.warn(`[server] world settings ignored: ${worldSettings.problem}`);
+/** The tick runs at 30 Hz (tick-loop.ts). */
+const SAVE_EVERY_TICKS = Math.max(1, Math.round(persistenceSettings.settings.saveEverySeconds * 30));
 /** Spawn-area chunk radius, always loaded (1 = 3x3), matching bake:world. */
 const WORLD_RADIUS = Number(process.env.MMO_WORLD_RADIUS ?? 1);
 if (!Number.isInteger(WORLD_RADIUS) || WORLD_RADIUS < 0) {
@@ -301,6 +310,8 @@ async function main(): Promise<void> {
   const store = new SnapshotStore({
     dbPath: path.join(DATA_DIR, "world.db"),
     saveEveryTicks: SAVE_EVERY_TICKS,
+    keepSnapshots: persistenceSettings.settings.keepSnapshots,
+    walSizeLimitBytes: persistenceSettings.settings.walLimitMb * 1024 * 1024,
   });
   // A world baked from a spec carries its own seed: scatter, navmesh keys,
   // and anything generated later must agree with its baked terrain.
@@ -309,7 +320,7 @@ async function main(): Promise<void> {
   if (bakedSeed !== null && process.env.MMO_WORLD_SEED !== undefined && worldSeed !== WORLD_SEED) {
     console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
   }
-  const sim = new SimWorld({ stats: game.rules.stats });
+  const sim = new SimWorld({ stats: game.rules.stats, movement: game.rules.movement });
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
   if (!freshBoot) {
@@ -536,7 +547,10 @@ async function main(): Promise<void> {
   // integrated Y in the same tick, before snapshot collection. Players are
   // held inside the world's edge.
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
-  const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
+  const dayClock = dayClockFromEnv(
+    process.env.MMO_DAY_SECONDS ?? String(worldSettings.settings.daySeconds),
+    process.env.MMO_DAY_OFFSET ?? String(worldSettings.settings.dayOffset),
+  );
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
@@ -600,13 +614,13 @@ async function main(): Promise<void> {
     wildlifeTable && process.env.MMO_SCENE
       ? sceneSettlements(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR))
       : [];
-  const botCount = Number(process.env.MMO_BOTS ?? 0);
-  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number);
+  const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
+  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
   const creaturesConfig = {
     rules: game.rules,
     botCount,
     botHome: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
-    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
+    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : worldSettings.settings.bots.radiusM,
     characterCatalog,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     playerAbilities,
@@ -682,6 +696,22 @@ async function main(): Promise<void> {
   // the module-built LootDropper can drop gold.
   const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
   const wallet = new WalletSystem(walletStore);
+  // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
+  // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
+  // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
+  const gathering = new GatheringSystem({
+    reachM: game.rules.gathering.reachM,
+    cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
+    pouchMax: game.rules.gathering.pouchMax,
+    trainPerTier: game.rules.gathering.trainDifficultyPerTier,
+    regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
+    regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
+    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    train: (avatar, skill, difficulty, key) => {
+      const i = masteryOf().index.of(skill);
+      if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
+    },
+  });
   // Items (roadmap M3a, slice 2): the items module builds the service from
   // this config during assembly. No inline construction — see
   // modules/items/server.js.
@@ -778,12 +808,19 @@ async function main(): Promise<void> {
     hooks.current = g.hooks;
     if (wildlifeKinds) g.rules.creatures.creatures = withWildlife(g.rules.creatures.creatures, wildlifeKinds);
     creaturesOf().setRules(g.rules.creatures.creatures, g.rules.items.bases);
+    creaturesOf().setAi(g.rules.creatures.ai);
     dropperRef?.setCreatures(g.rules.creatures.creatures);
     dropperRef?.setTables(g.rules.loot.tables ?? {});
     itemsOf().setLoot(g.rules.loot);
     itemsOf().defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
+    // Movement (EG5): systems read sim.movement each step; creatures follow a changed walk.
+    sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
+    masteryOf().setPacing(g.rules.skills.pacing);
+    gathering.setRules(g.rules.gathering);
+    // Social limits (EG9): the reloader only watches after the gateway exists.
+    gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
@@ -840,6 +877,7 @@ async function main(): Promise<void> {
           },
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
+        resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -920,6 +958,8 @@ async function main(): Promise<void> {
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
+    // Blow resolution (EG6): read each strike, so a rules reload applies at once.
+    getCombatTuning: () => ({ resolution: game.rules.combat.resolution, unarmed: game.rules.items.unarmed }),
   };
   // What a blow gets through: worn armour per the rules' armourHalf;
   // (armourOf and combatDamage now live in the combat module; see combatConfig above)
@@ -945,6 +985,7 @@ async function main(): Promise<void> {
         reloader,
         streamer,
         wallet,
+        gathering,
         trade,
         vendor,
         auction,
@@ -1017,6 +1058,8 @@ async function main(): Promise<void> {
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),
+    // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
+    social: game.rules.social,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {

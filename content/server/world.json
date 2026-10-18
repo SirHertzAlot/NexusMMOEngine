@@ -1,0 +1,9 @@
+{
+  "daySeconds": 2400,
+  "dayOffset": 0.35,
+  "bots": {
+    "count": 0,
+    "home": null,
+    "radiusM": 18
+  }
+}

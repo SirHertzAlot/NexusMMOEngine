@@ -14,7 +14,7 @@ import { validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
 import { fitScale } from "./fit.js";
 import { formatScaleReport, scaleReport } from "./report.js";
-import { BUILTIN_RULES } from "./rules.js";
+import { defaultRules } from "./rules.js";
 
 const paths = settlementPaths();
 const { values: o } = parseArgs({ options: { catalog: { type: "string" }, scale: { type: "string" }, out: { type: "string" } } });
@@ -25,10 +25,11 @@ if (issues.length) {
   process.exit(1);
 }
 const models = (JSON.parse(readFileSync(fromUser(o.catalog ?? paths.catalog), "utf8")) as { models: CatalogModel[] }).models;
-const doc = fitScale(models, DEFAULT_ART_PATTERNS, BUILTIN_RULES, base as ScaleDoc);
+const rules = defaultRules(paths.rules);
+const doc = fitScale(models, DEFAULT_ART_PATTERNS, rules, base as ScaleDoc);
 const out = fromUser(o.out ?? paths.scaleOut);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(doc, null, 2) + "\n");
-const rows = scaleReport(models, DEFAULT_ART_PATTERNS, doc, BUILTIN_RULES);
+const rows = scaleReport(models, DEFAULT_ART_PATTERNS, doc, rules);
 console.log(formatScaleReport(rows));
 console.log(`[scale-fit] ${Object.keys(doc.assets).length} models fitted, ${rows.filter((r) => r.overflow).length} overflow; wrote ${out} (gitignored; MMO_SCALE=content/scale.local.json)`);

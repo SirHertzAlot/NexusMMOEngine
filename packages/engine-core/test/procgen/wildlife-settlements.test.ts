@@ -28,6 +28,12 @@ describe("settlements feed the planner", () => {
     assert.deepEqual(sceneSettlements({ ...scene, nodes: [] } as typeof scene), []);
   });
 
+  it("does not count the town wall's pieces as buildings", () => {
+    const wall = (id: string, kind: string, x: number) => ({ id, kind: "group", transform: { position: [x, 0, 500] }, components: { Structure: { ...structure, kind } } });
+    const walled = { ...scene, nodes: [...scene.nodes, wall("w", "town_wall", 0), wall("g", "town_gate", 300), wall("t2", "wall_tower", 600)] } as typeof scene;
+    assert.deepEqual(sceneSettlements(walled), sceneSettlements(scene));
+  });
+
   it("with the settlement as a centre, livestock appears round it and nothing dangerous within the safe radius", () => {
     const t = loadWildlifeTable();
     const [s] = sceneSettlements(scene);

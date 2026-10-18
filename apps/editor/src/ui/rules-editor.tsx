@@ -87,7 +87,7 @@ interface NodeProps {
   depth: number;
 }
 
-function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: NodeProps): React.JSX.Element {
+export function NodeEditor({ segments, value, onChange, onRemove, errors, depth }: NodeProps): React.JSX.Element {
   const path = formatPath(segments);
   const messages = errors.get(path);
   const [newKey, setNewKey] = React.useState("");
