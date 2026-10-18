@@ -15,6 +15,7 @@
 
 import { BUILTIN_MATERIALS } from "@mmo-engine/crafting";
 import { z } from "zod";
+import type { GatheringRules } from "@mmo-engine/rules";
 import type { PouchMaterial, PouchMessage, ResourceNodeView } from "@mmo-engine/protocol";
 import { Transform } from "../components.js";
 import type { SimSystem } from "../systems.js";
@@ -54,6 +55,10 @@ export interface GatheringOptions {
   now?: () => number;
   /** Training difficulty per material tier (capped at 1). */
   trainPerTier?: number;
+  /** Worked-out nodes are checked for regrowth this often, seconds. Default 1. */
+  regrowCheckSeconds?: number;
+  /** Real milliseconds in one of a node's regrow hours. Default an hour. */
+  regrowHourMs?: number;
   /** Train the gatherer's skill (lowercase id, e.g. "mining") at a difficulty 0..1 against a target key. */
   train?: (avatar: number, skill: string, difficulty: number, key: number) => void;
 }
@@ -75,8 +80,6 @@ export const GatherActionSchema = z.object({ kind: z.literal("gather"), entity: 
 
 const round2 = (v: number): number => Math.round(v * 100) / 100;
 const HOUR_MS = 3_600_000;
-/** Regrow checks this often, ticks (once a second at 30 Hz). */
-const REGROW_EVERY = 30;
 
 /** A material's name: the crafting material's, else its id in words ("sea-fish" -> "Sea fish"). */
 export function materialName(id: string): string {
@@ -92,16 +95,32 @@ export class GatheringSystem implements SimSystem {
   private readonly pouches = new Map<number, Map<string, number>>();
   private readonly lastGather = new Map<number, number>();
   private changed = new Set<Node>();
-  private readonly reachM: number;
-  private readonly cooldownMs: number;
-  private readonly pouchMax: number;
+  private reachM: number;
+  private cooldownMs: number;
+  private pouchMax: number;
+  private trainPerTier: number;
+  private regrowCheckSeconds: number;
+  private regrowHourMs: number;
   private readonly now: () => number;
 
   constructor(private readonly opts: GatheringOptions = {}) {
     this.reachM = opts.reachM ?? 2.5;
     this.cooldownMs = opts.cooldownMs ?? 1200;
     this.pouchMax = opts.pouchMax ?? 999;
+    this.trainPerTier = opts.trainPerTier ?? 0.2;
+    this.regrowCheckSeconds = opts.regrowCheckSeconds ?? 1;
+    this.regrowHourMs = opts.regrowHourMs ?? HOUR_MS;
     this.now = opts.now ?? Date.now;
+  }
+
+  /** Apply gathering.json on a rules reload (EG11). A node already worked out keeps the regrow time it was given. */
+  setRules(r: GatheringRules): void {
+    this.reachM = r.reachM;
+    this.cooldownMs = r.cooldownSeconds * 1000;
+    this.pouchMax = r.pouchMax;
+    this.trainPerTier = r.trainDifficultyPerTier;
+    this.regrowCheckSeconds = r.regrowCheckSeconds;
+    this.regrowHourMs = r.regrowHourSeconds * 1000;
   }
 
   /** Make entity `eid` the resource node `key`: its saved stock if it has one, else full. */
@@ -135,7 +154,7 @@ export class GatheringSystem implements SimSystem {
     if (now - (this.lastGather.get(holder) ?? -Infinity) < this.cooldownMs) return { ok: false, error: "still gathering" };
     if (node.stock <= 0) {
       if (node.regrowAt === null) return { ok: false, error: `the ${node.name.toLowerCase()} here is worked out for good` };
-      const hours = Math.max(1, Math.ceil((node.regrowAt - now) / HOUR_MS));
+      const hours = Math.max(1, Math.ceil((node.regrowAt - now) / this.regrowHourMs));
       return { ok: false, error: `worked out: it comes back in about ${hours} hour${hours === 1 ? "" : "s"}` };
     }
     const pouch = this.pouchOf(holder);
@@ -143,18 +162,18 @@ export class GatheringSystem implements SimSystem {
     if (have >= this.pouchMax) return { ok: false, error: `your pouch holds no more ${node.name.toLowerCase()}` };
     this.lastGather.set(holder, now);
     node.stock -= 1;
-    if (node.stock === 0) node.regrowAt = node.regrowHours > 0 ? now + node.regrowHours * HOUR_MS : null;
+    if (node.stock === 0) node.regrowAt = node.regrowHours > 0 ? now + node.regrowHours * this.regrowHourMs : null;
     this.opts.store?.saveNode(node.key, node.stock, node.regrowAt);
     pouch.set(node.material, have + 1);
     if (holder >= 0) this.opts.store?.savePouch(holder, node.material, have + 1);
     this.changed.add(node);
-    this.opts.train?.(avatar, node.skill.toLowerCase(), Math.min(1, node.tier * (this.opts.trainPerTier ?? 0.2)), eid);
+    this.opts.train?.(avatar, node.skill.toLowerCase(), Math.min(1, node.tier * this.trainPerTier), eid);
     return { ok: true, material: node.material, name: node.name, count: 1 };
   }
 
   /** Worked-out nodes whose time has come grow back. */
-  step(sim: SimWorld, _dt: number): void {
-    if (sim.currentTick % REGROW_EVERY !== 0) return;
+  step(sim: SimWorld, dt: number): void {
+    if (sim.currentTick % Math.max(1, Math.round(this.regrowCheckSeconds / dt)) !== 0) return;
     for (const node of this.nodes.values()) this.regrow(node);
   }
 

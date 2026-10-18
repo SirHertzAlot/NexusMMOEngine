@@ -685,12 +685,14 @@ async function main(): Promise<void> {
   const wallet = new WalletSystem(walletStore);
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
-  // Reach, pace, pouch size and training come from content/rules/gathering.json.
+  // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
   const gathering = new GatheringSystem({
     reachM: game.rules.gathering.reachM,
     cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
     pouchMax: game.rules.gathering.pouchMax,
     trainPerTier: game.rules.gathering.trainDifficultyPerTier,
+    regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
+    regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
     store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);
@@ -803,6 +805,7 @@ async function main(): Promise<void> {
     sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
     masteryOf().setPacing(g.rules.skills.pacing);
+    gathering.setRules(g.rules.gathering);
     // Social limits (EG9): the reloader only watches after the gateway exists.
     gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);

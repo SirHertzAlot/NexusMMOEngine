@@ -17,6 +17,7 @@ import {
   BODY_SECTIONS,
   COMBAT_SECTIONS,
   CREATURE_AI_SECTIONS,
+  GATHERING_FIELDS,
   MOVEMENT_SECTIONS,
   SKILLS_SECTIONS,
   SOCIAL_SECTIONS,
@@ -63,6 +64,12 @@ describe("combat and body forms cover their files", () => {
     const d = engineDefaults().movement;
     assert.deepEqual(keysOf(MOVEMENT_SECTIONS), leaves(d, []).sort());
     for (const f of MOVEMENT_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
+  });
+
+  it("gathering (EG11): every value, with the engine default as its placeholder", () => {
+    const d = engineDefaults().gathering;
+    assert.deepEqual(GATHERING_FIELDS.map((f) => f.key).sort(), leaves(d, []).sort());
+    for (const f of GATHERING_FIELDS) assert.equal(f.def, getAt(d, f.key), f.key);
   });
 
   it("skills (EG8): every value beside the skill list, defaults as placeholders", () => {

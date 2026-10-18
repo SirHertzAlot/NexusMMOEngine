@@ -14,6 +14,7 @@ import { Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { GatheringSystem, SqliteGatheringStore, materialName, type ResourceNodeSpec } from "../../src/gathering/index.js";
 import { spawnScene } from "../../src/scene-spawn.js";
+import { GatheringSchema } from "@mmo-engine/rules";
 
 const HOUR = 3_600_000;
 const TREES: ResourceNodeSpec = { kind: "tree_stand", material: "yew-log", tier: 2, skill: "Woodcutting", stock: 3, regrowHours: 72, halfX: 3, halfZ: 3 };
@@ -79,6 +80,27 @@ describe("GatheringSystem", () => {
     for (let i = 0; i < 2; i++, clock.t += 1200) assert.equal(g.gather(sim, 1, me, vein).ok, true);
     assert.deepEqual(g.gather(sim, 1, me, vein), { ok: false, error: "the silver ore here is worked out for good" });
     assert.equal(g.views(sim).find((v) => v.kind === "ore_vein")!.regrowAt, null);
+  });
+
+  it("regrow pace and every other value follow gathering.json on a reload (EG11)", () => {
+    const { g, sim, tree, me, clock } = setup();
+    g.setRules(GatheringSchema.parse({ reachM: 0.5, cooldownSeconds: 2, regrowCheckSeconds: 5, regrowHourSeconds: 60 }));
+    assert.deepEqual(g.gather(sim, 1, me, tree), { ok: false, error: "too far away" }, "reach shrank to half a metre");
+    Transform.px[me] = 3.2;
+    assert.equal(g.gather(sim, 1, me, tree).ok, true);
+    clock.t += 1200;
+    assert.deepEqual(g.gather(sim, 1, me, tree), { ok: false, error: "still gathering" }, "two seconds between gathers now");
+    for (let i = 0; i < 2; i++) assert.equal((clock.t += 2000, g.gather(sim, 1, me, tree)).ok, true);
+    const view = g.views(sim).find((v) => v.kind === "tree_stand")!;
+    assert.equal(view.regrowAt, clock.t + 72 * 60_000, "72 regrow hours of a minute each");
+    clock.t = view.regrowAt! + 1;
+    g.drainChanges(sim);
+    sim.currentTick = 30;
+    g.step(sim, 1 / 30);
+    assert.equal(g.views(sim).find((v) => v.kind === "tree_stand")!.stock, 0, "checked every 5 s, not every second");
+    sim.currentTick = 150;
+    g.step(sim, 1 / 30);
+    assert.equal(g.views(sim).find((v) => v.kind === "tree_stand")!.stock, 3);
   });
 
   it("keeps stocks and pouches across a restart", () => {

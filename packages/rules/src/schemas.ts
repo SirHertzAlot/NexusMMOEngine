@@ -516,6 +516,10 @@ export const GatheringSchema = z.strictObject({
   pouchMax: z.number().int().min(1).default(999),
   /** A gather trains the node's skill at this difficulty per material tier (tier 2: twice it), capped at 1. */
   trainDifficultyPerTier: z.number().min(0).max(1).default(0.2),
+  /** Worked-out nodes are checked for regrowth this often, seconds (EG11). */
+  regrowCheckSeconds: z.number().positive().default(1),
+  /** How long one of a node's regrow hours lasts, real seconds: 3600 is real hours, less speeds every node up (EG11). */
+  regrowHourSeconds: z.number().positive().default(3600),
 });
 
 // -------------------------------------------------------------- movement
