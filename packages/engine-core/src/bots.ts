@@ -25,7 +25,7 @@ import { addComponent, entityExists, hasComponent } from "bitecs";
 import { IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import { HAIR_COLOURS, SKIN_TONES, lookToJson, randomLook, type CharacterLook, type Gender, type ModularCatalog } from "@mmo-engine/art/character";
 import * as C from "./components.js";
-import { PLAYER_SPEED, type SimSystem } from "./systems.js";
+import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
 
@@ -136,7 +136,7 @@ export class BotSystem implements SimSystem {
         this.brains.set(eid, { kind: "wander", target: { x: C.Transform.px[eid], z: C.Transform.pz[eid] }, waitUntil: 0, given: false, checkAt: STUCK_TICKS, checkX: C.Transform.px[eid], checkZ: C.Transform.pz[eid] });
         if (this.opts.steer) {
           addComponent(sim.ecs, C.NavAgent, eid);
-          C.NavAgent.speed[eid] = WANDER_PACE * PLAYER_SPEED;
+          C.NavAgent.speed[eid] = WANDER_PACE * sim.movement.walkSpeed;
           C.NavAgent.tx[eid] = NaN;
           C.NavAgent.seq[eid] = 0;
         }

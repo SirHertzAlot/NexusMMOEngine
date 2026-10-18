@@ -7,7 +7,7 @@
  * that one reads the filesystem (Node-only), this one only fetches.
  */
 
-export const TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering"] as const;
+export const TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement"] as const;
 export type Table = (typeof TABLES)[number];
 
 /** One validation problem, as the rules package reports it. */
@@ -410,3 +410,48 @@ export function issuesAt(issues: readonly RulesIssue[], table: string, path: str
     return p === path || p.startsWith(`${path}.`);
   });
 }
+
+/** movement.json (EG5): speeds, jumping, breath and flight, and stamina costs. Hot-reloads into a running server. */
+export const MOVEMENT_SECTIONS: FieldSectionSpec[] = [
+  {
+    title: "Speeds",
+    help: "Metres a second. Creature and bot speeds are shares of the walk, so they follow it.",
+    fields: [
+      { key: "walkSpeed", label: "Walk", kind: "number", min: 0, def: 6 },
+      { key: "swimSpeed", label: "Swim", kind: "number", min: 0, def: 3 },
+      { key: "flySpeed", label: "Fly", kind: "number", min: 0, def: 12 },
+      { key: "swimVerticalSpeed", label: "Swim up and down", kind: "number", min: 0, def: 2 },
+      { key: "flyVerticalSpeed", label: "Climb and descend in flight", kind: "number", min: 0, def: 6 },
+    ],
+  },
+  {
+    title: "Jumping and falling",
+    help: "Jump height is jump speed² ÷ (2 × gravity): 8 and 22 make about 1.45 m.",
+    fields: [
+      { key: "jumpSpeed", label: "Jump speed (m/s)", kind: "number", min: 0, def: 8 },
+      { key: "gravity", label: "Gravity (m/s²)", kind: "number", min: 0, def: 22 },
+    ],
+  },
+  {
+    title: "Breath and flight",
+    fields: [
+      { key: "breathSeconds", label: "Breath (s)", kind: "number", min: 0, def: 30, help: "How long a character can stay under water." },
+      { key: "breathRecovery", label: "Breath recovery (×)", kind: "number", min: 0, def: 3, help: "Breath comes back this many times as fast as it runs out." },
+      { key: "drownDamagePerSecond", label: "Drowning damage / s", kind: "number", min: 0, def: 10, help: "Health lost a second under water with no air left." },
+      { key: "flightCeilingM", label: "Flight ceiling (m)", kind: "number", min: 0, def: 250, help: "Highest a flyer climbs above the ground." },
+    ],
+  },
+  {
+    title: "Stamina",
+    help: "What moving and fighting cost. Guards are free.",
+    fields: [
+      { key: "stamina.dodgeCost", label: "Dodge cost", kind: "number", min: 0, def: 20 },
+      { key: "stamina.attackCost", label: "Attack cost", kind: "number", min: 0, def: 10 },
+      { key: "stamina.jumpCost", label: "Jump cost", kind: "number", min: 0, def: 8 },
+      { key: "stamina.swimDrainPerSecond", label: "Swimming drain / s", kind: "number", min: 0, def: 10 },
+      { key: "stamina.runDrainPerSecond", label: "Running drain / s", kind: "number", min: 0, def: 6 },
+      { key: "stamina.regenDelaySeconds", label: "Regen delay (s)", kind: "number", min: 0, def: 1, help: "Seconds after spending before stamina comes back." },
+      { key: "stamina.regenPerSecond", label: "Regen / s", kind: "number", min: 0, def: 12, help: "Used when the stats bind no staminaRegen." },
+    ],
+  },
+];

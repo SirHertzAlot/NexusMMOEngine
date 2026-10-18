@@ -16,6 +16,7 @@ import {
   BODY_PART_FIELDS,
   BODY_SECTIONS,
   COMBAT_SECTIONS,
+  MOVEMENT_SECTIONS,
   TECHNIQUE_FIELDS,
   fieldText,
   getAt,
@@ -47,6 +48,12 @@ describe("combat and body forms cover their files", () => {
     const want = leaves(engineDefaults().body, ["parts", "fall.parts"]).filter((k) => k !== "parts").sort();
     assert.deepEqual(keysOf(BODY_SECTIONS), want);
     assert.deepEqual(BODY_PART_FIELDS.map((f) => f.key).sort(), ["atZero", "hitMultiplier", "holds", "name", "parent", "share", "slot"]);
+  });
+
+  it("movement (EG5): every value, with the engine default as its placeholder", () => {
+    const d = engineDefaults().movement;
+    assert.deepEqual(keysOf(MOVEMENT_SECTIONS), leaves(d, []).sort());
+    for (const f of MOVEMENT_SECTIONS.flatMap((s) => s.fields)) assert.equal(f.def, getAt(d, f.key), f.key);
   });
 });
 

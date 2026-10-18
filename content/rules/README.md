@@ -23,6 +23,7 @@ a bad file, naming each problem by file and field:
 | `needs.json` | Hunger and thirst: each meter's size, how fast it drains per minute, the health lost per second once it is empty, and how much faster both drain while running or swimming |
 | `spells.json` | Spells (the mana they cost, cast time, cooldown, who they can target and how far, what they do), and the mana pool and regeneration used when `stats.json` binds no `maxMana` / `manaRegen` stat |
 | `gathering.json` | Gathering from tree stands, ore veins and fishing spots: how far from a node's edge a player reaches, one gather per how many seconds, the most of one material a pouch holds, and how hard a gather trains its skill per material tier (each node's material, stock and regrow time are its scene's `ResourceNode` component) |
+| `movement.json` | How characters move: walk, swim and fly speeds (creature and bot speeds are shares of the walk), jump speed and gravity, breath and drowning, the flight ceiling, and the stamina that dodging, attacking, jumping, swimming and running cost, with the regen delay and fallback regen. Hot-reloads into a running server |
 | `loot.json` | Items on the ground and in bags: how long a drop belongs to whoever earned it, when it disappears, pickup range, bag size, the most items on the ground at once |
 
 The schemas, with every field's meaning and default, are in

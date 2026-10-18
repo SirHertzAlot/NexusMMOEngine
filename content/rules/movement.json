@@ -1,0 +1,22 @@
+{
+  "walkSpeed": 6,
+  "swimSpeed": 3,
+  "flySpeed": 12,
+  "swimVerticalSpeed": 2,
+  "flyVerticalSpeed": 6,
+  "jumpSpeed": 8,
+  "gravity": 22,
+  "breathSeconds": 30,
+  "breathRecovery": 3,
+  "drownDamagePerSecond": 10,
+  "flightCeilingM": 250,
+  "stamina": {
+    "dodgeCost": 20,
+    "attackCost": 10,
+    "jumpCost": 8,
+    "swimDrainPerSecond": 10,
+    "runDrainPerSecond": 6,
+    "regenDelaySeconds": 1,
+    "regenPerSecond": 12
+  }
+}

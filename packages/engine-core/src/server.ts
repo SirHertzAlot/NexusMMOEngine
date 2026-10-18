@@ -310,7 +310,7 @@ async function main(): Promise<void> {
   if (bakedSeed !== null && process.env.MMO_WORLD_SEED !== undefined && worldSeed !== WORLD_SEED) {
     console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
   }
-  const sim = new SimWorld({ stats: game.rules.stats });
+  const sim = new SimWorld({ stats: game.rules.stats, movement: game.rules.movement });
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
   if (!freshBoot) {
@@ -798,6 +798,8 @@ async function main(): Promise<void> {
     itemsOf().setLoot(g.rules.loot);
     itemsOf().defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
+    // Movement (EG5): systems read sim.movement each step; creatures follow a changed walk.
+    sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
     magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);

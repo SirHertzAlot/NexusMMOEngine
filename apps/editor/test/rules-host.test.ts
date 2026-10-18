@@ -55,6 +55,7 @@ describe("ruleFileNames", () => {
       "ingress",
       "spells",
       "gathering",
+      "movement",
     ]);
   });
 });
