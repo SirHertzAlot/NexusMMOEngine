@@ -38,12 +38,36 @@ export interface SurfaceMaterial {
   footstep?: string;
 }
 
+/** Shading components a surface can carry: the cel look, or three's own PBR. */
+export const SHADING_COMPONENTS = ["toon", "standard"] as const;
+export type ShadingComponentId = (typeof SHADING_COMPONENTS)[number];
+
+/** The things the client draws that carry shading components. */
+export const SHADING_KINDS = ["model", "placeholder", "prefab"] as const;
+export type ShadingKind = (typeof SHADING_KINDS)[number];
+
+/**
+ * Which shading components each kind of thing carries. Adding `toon` to a
+ * kind is what makes it cell-shaded; `standard` leaves three's own PBR.
+ * A kind named nowhere keeps the engine's default (toon).
+ *
+ * Modular characters are not here: the character kit shades its own
+ * material (CharacterStyle, character/character-kit.ts).
+ */
+export interface ShadingDoc {
+  kinds?: Partial<Record<ShadingKind, ShadingComponentId[]>>;
+  /** The toon ramp row per kind (see TOON_ROW_NAMES). Default "cloth". */
+  rows?: Partial<Record<ShadingKind, ToonRowName>>;
+}
+
 export interface MaterialsDoc {
   version: 1;
   toon: ToonMaterial;
   surfaces: Record<string, SurfaceMaterial>;
   /** Metres walked per footstep sound (default 1.7). */
   footstepStride?: number;
+  /** Who is cell-shaded, by kind of thing (default: every kind). */
+  shading?: ShadingDoc;
 }
 
 export const DEFAULT_FOOTSTEP_STRIDE = 1.7;
@@ -81,6 +105,7 @@ export function validateMaterials(doc: unknown): MediaIssue[] {
     }
   }
   if (doc.footstepStride !== undefined) c.num(doc, "footstepStride", "", 0.5, 5);
+  if (doc.shading !== undefined) validateShading(doc.shading, c);
   if (!isObj(doc.surfaces)) c.add("surfaces", "must be an object");
   else {
     for (const [id, raw] of Object.entries(doc.surfaces)) {
@@ -95,4 +120,33 @@ export function validateMaterials(doc: unknown): MediaIssue[] {
     }
   }
   return c.issues;
+}
+
+const known = (list: readonly string[], v: unknown): boolean => typeof v === "string" && list.includes(v);
+
+/** Validate the `shading` block: who carries which shading component. */
+function validateShading(shading: unknown, c: ReturnType<typeof checker>): void {
+  if (!isObj(shading)) {
+    c.add("shading", "must be an object");
+    return;
+  }
+  if (shading.kinds !== undefined) {
+    if (!isObj(shading.kinds)) c.add("shading.kinds", "must be an object");
+    else {
+      for (const [kind, ids] of Object.entries(shading.kinds)) {
+        if (!known(SHADING_KINDS, kind)) c.add(`shading.kinds.${kind}`, `unknown kind (${SHADING_KINDS.join(", ")})`);
+        else if (!Array.isArray(ids) || ids.some((id) => !known(SHADING_COMPONENTS, id)))
+          c.add(`shading.kinds.${kind}`, `must be a list of ${SHADING_COMPONENTS.join(" / ")}`);
+      }
+    }
+  }
+  if (shading.rows !== undefined) {
+    if (!isObj(shading.rows)) c.add("shading.rows", "must be an object");
+    else {
+      for (const [kind, row] of Object.entries(shading.rows)) {
+        if (!known(SHADING_KINDS, kind)) c.add(`shading.rows.${kind}`, `unknown kind (${SHADING_KINDS.join(", ")})`);
+        else if (!known(TOON_ROW_NAMES, row)) c.add(`shading.rows.${kind}`, `must be one of ${TOON_ROW_NAMES.join(", ")}`);
+      }
+    }
+  }
 }

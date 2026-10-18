@@ -51,6 +51,7 @@ import { AnimationLibrary, CharacterAnimator } from "./character/character-anima
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
+import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 
 export interface EntityLayerOptions {
@@ -632,11 +633,13 @@ export class EntityLayer {
   private makeBodyMesh(wid: bigint, body: BodyConfigRow | undefined, model: THREE.Object3D | null): THREE.Object3D {
     if (model) {
       colorize(model, placeholderColor(wid));
+      applyShading(model, "model");
       return model;
     }
     if (body) {
       const obj = this.assets.bodyMesh(body);
       colorize(obj, placeholderColor(wid));
+      applyShading(obj, "placeholder");
       return obj;
     }
     // Stand-in until the BodyConfig row arrives (spawned entities carry
@@ -646,6 +649,7 @@ export class EntityLayer {
       new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }),
     );
     colorize(obj, placeholderColor(wid));
+    applyShading(obj, "placeholder");
     return obj;
   }
 }
