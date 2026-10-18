@@ -567,6 +567,19 @@ export const MovementSchema = z.strictObject({
       regenPerSecond: z.number().min(0).default(12),
     })
     .prefault({}),
+  /** Server-run bots (MMO_BOTS, EG12): how they stroll and spar. Paces are shares of the walk. */
+  bots: z
+    .strictObject({
+      wanderPace: z.number().min(0).max(1).default(0.35),
+      /** A steered wanderer that moves less than this in `stuckSeconds` picks another spot. */
+      stuckMetres: z.number().min(0).default(0.4),
+      stuckSeconds: z.number().positive().default(2),
+      /** Arm's length for a sword fight, metres. */
+      sparRangeM: z.number().positive().default(1.9),
+      sparApproachPace: z.number().min(0).max(1).default(0.45),
+      sparBackPace: z.number().min(0).max(1).default(0.3),
+    })
+    .prefault({}),
 });
 
 // -------------------------------------------------------------- creatures

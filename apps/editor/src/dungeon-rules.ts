@@ -50,6 +50,14 @@ export const RUN_SECTIONS: readonly FieldSectionSpec[] = [
       { key: "trapTriggerRadiusM", label: "Trap trigger distance (m)", ...metres },
     ],
   },
+  {
+    title: "Walls",
+    help: "The dungeon's grid is the collider. The cell size is fixed by the baked dungeons, so it is not here.",
+    fields: [
+      { key: "wallBodyRadiusM", label: "Body radius against props (m)", kind: "number", min: 0, max: 5, def: 0.4, help: "How close a body comes to a pillar, statue or chest." },
+      { key: "teleportStepM", label: "Teleport above a step of (m)", kind: "number", min: 0, max: 100, def: 8, help: "A longer move in one tick (a respawn, an admin move) lands where it ends if that is floor." },
+    ],
+  },
 ];
 
 /** One entrance (entrances.json entrances.<id>). */

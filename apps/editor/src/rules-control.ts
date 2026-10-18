@@ -488,6 +488,18 @@ export const MOVEMENT_SECTIONS: FieldSectionSpec[] = [
       { key: "stamina.regenPerSecond", label: "Regen / s", kind: "number", min: 0, def: 12, help: "Used when the stats bind no staminaRegen." },
     ],
   },
+  {
+    title: "Bots",
+    help: "Server-run bots (started with MMO_BOTS) stroll and spar. Paces are shares of the walk.",
+    fields: [
+      { key: "bots.wanderPace", label: "Stroll pace", ...share, def: 0.35 },
+      { key: "bots.stuckMetres", label: "Stuck below (m)", kind: "number", min: 0, def: 0.4, help: "A bot that moves less than this in the stuck window picks another spot." },
+      { key: "bots.stuckSeconds", label: "Stuck window (s)", kind: "number", min: 0, def: 2 },
+      { key: "bots.sparRangeM", label: "Sparring range (m)", kind: "number", min: 0, def: 1.9, help: "Arm's length for a sword fight." },
+      { key: "bots.sparApproachPace", label: "Closing-in pace", ...share, def: 0.45 },
+      { key: "bots.sparBackPace", label: "Stepping-back pace", ...share, def: 0.3 },
+    ],
+  },
 ];
 
 /** creatures.json `ai` (EG7): brain pacing and ranges every kind shares. Hot-reloads into a running server. */
