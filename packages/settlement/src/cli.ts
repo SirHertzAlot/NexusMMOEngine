@@ -38,7 +38,7 @@ import { VERBOSITY, type Verbosity } from "./events.js";
 import { ACCESS, defaultRules, loadRules, type Access, type SettlementRules } from "./rules.js";
 import { siteAccess } from "./setting.js";
 import type { Land } from "./industry.js";
-import { townHalfExtentM } from "./layout.js";
+import { fitHouseholds, townHalfExtentM } from "./layout.js";
 import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
@@ -51,6 +51,7 @@ async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const paths = settlementPaths();
   const out = o.out ? fromUser(o.out) : paths.settlements;
+  let population = Number(o.population ?? 600);
   let origin = (o.origin ?? "0,0").split(",").map(Number);
   if (o.access && !ACCESS.includes(o.access as Access)) throw new Error(`--access must be one of ${ACCESS.join(", ")}`);
   let access = o.access as Access | undefined;
@@ -67,6 +68,14 @@ async function main(): Promise<void> {
     dry = found.dry;
     const site = found.sites[Number(o.site ?? 1) - 1];
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
+    // The town is sized by its green square: as many people as fit, up to the number asked for.
+    if (site.fitM !== undefined) {
+      const fit = fitHouseholds(households, site.fitM, rules, buildingScale);
+      if (fit < 1) throw new Error(`--site ${o.site ?? 1}: its green square (${Math.round(2 * site.fitM)} m across) holds no town`);
+      const people = Math.floor((fit * rules.demographics.householdSizeX10) / 10);
+      if (fit < households) console.log(`  [square] ${Math.round(2 * site.fitM)} m across: population capped from ${o.population ?? 600} to ${people}`);
+      population = Math.min(population, people);
+    }
     origin = [site.x, site.z];
     access ??= siteAccess(site, rules);
     land = { biomes: site.biomes, waterKind: site.waterKind, shoreM: site.shoreM };
@@ -88,7 +97,7 @@ async function main(): Promise<void> {
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population: Number(o.population ?? 600), ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population, ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
     out,
     o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
@@ -98,9 +107,10 @@ async function main(): Promise<void> {
   console.log(`[settlement:bake] ${m.settlementId}: ${m.demographics.population} people, ${m.parcels.length} parcels, ${m.structures.length} structures, hash ${m.hash.slice(0, 12)} -> ${r.file}`);
 }
 
-/** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is land the safe floor (structure margin plus detail noise) above the sea, and no lake or river. */
+/** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is green land (a green biome, no water, river or ice, the safe floor above the sea). */
 export async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
+  const { greenMask, greenSquares } = (await import(`${terrain}/green.js`)) as { greenMask(f: unknown, ids: readonly string[], green: readonly string[], floorM: number): Uint8Array; greenSquares(mask: Uint8Array, grid: unknown, minCells: number): { cx: number; cz: number; cells: number }[] };
   const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
   const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { biomes: { id: string }[] } };
   const spec = loadWorldSpec(worldFile);
@@ -111,15 +121,15 @@ export async function findSites(worldFile: string, here: string, rules: Settleme
   // The stored tiles are the survey plus detail noise of at most `detailAmplitude` metres (world-heights.ts); the spawner wants
   // STRUCTURE_MARGIN_M of dry footing under every footprint sample, so the survey must show that much plus the noise.
   const safeFloorM = STRUCTURE_MARGIN_M + (spec as unknown as { detailAmplitude: number }).detailAmplitude;
-  const fields = { ...survey, biomeIds: spec.biomes.map((b) => b.id), spawn: spawnPoint(spec, survey), safeFloorM };
+  // Green land: the preview's green. Towns stand in all-green squares of it, and the field of every farm lies on it too.
+  const biomeIds = spec.biomes.map((b) => b.id);
+  const green = greenMask(survey, biomeIds, rules.sites.greenBiomes, safeFloorM);
+  const fields = { ...survey, biomeIds, spawn: spawnPoint(spec, survey), safeFloorM, squares: greenSquares(green, survey.grid, rules.sites.minSquareCells) };
   const g = survey.grid;
-  const sea = survey.seaLevel ?? 0;
   const dry = (x: number, z: number): boolean => {
     const u = Math.round((x - g.originX) / g.cell);
     const v = Math.round((z - g.originZ) / g.cell);
-    if (u < 0 || v < 0 || u >= g.width || v >= g.depth) return false;
-    const i = v * g.width + u;
-    return !survey.water[i] && !survey.river[i] && survey.height[i]! >= sea + safeFloorM;
+    return u >= 0 && v >= 0 && u < g.width && v < g.depth && green[v * g.width + u] === 1;
   };
   return { sites: selectSites(fields, rules.sites, 20, extentM), dry };
 }

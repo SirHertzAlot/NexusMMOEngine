@@ -471,7 +471,7 @@ export function validateTown(t: Town, rules: SettlementRules, scale = 1): Gate[]
     gate("occupancy_jobs", overJob.length === 0, overJob.length ? `${overJob.length} workplaces over their jobs` : `${perJob.size} workplaces staffed within their jobs`),
     fortificationGate(t.layout),
     quartersGate(t.layout, rules),
-    acreageGate(t.layout, rules, d.population, scale),
+    acreageGate(t.layout, rules, Math.min(d.population, t.demand.foodDemand), scale),
     separationGate(t.layout, rules, scale),
     watchGate(t, rules, scale),
     accessGate(t, rules),

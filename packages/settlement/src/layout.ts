@@ -305,6 +305,21 @@ export function townHalfExtentM(households: number, rules: SettlementRules, scal
   return Math.ceil((m * Math.max(pitchX, pitchZ) + streetWidthMm + ring) / 2000);
 }
 
+/** The most households (up to `wanted`) whose town's half extent fits in `halfM` metres; 0 when not even one does. */
+export function fitHouseholds(wanted: number, halfM: number, rules: SettlementRules, scale = 1): number {
+  let lo = 0;
+  let hi = wanted;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (townHalfExtentM(mid, rules, scale) <= halfM) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/** How many holdings a farm lane may skip over wet ground to reach green land. */
+const MAX_SKIP = 6;
+
 /** `total` mm as `parts` whole lengths that add up to it exactly. */
 function split(total: number, parts: number): number[] {
   const base = Math.floor(total / parts);
@@ -313,6 +328,16 @@ function split(total: number, parts: number): number[] {
 
 /** Where on a parcel's footprint (fraction of its size from the centre) dryness is tested: a 5 x 5 grid. */
 export const FOOTPRINT_SAMPLES = [-0.5, -0.25, 0, 0.25, 0.5];
+
+/** A farm's field needs this share (permille) of its sample points on green land: a field is huge, so a strip of beach or a pond in it does not rule it out (the farmstead's own plot must be dry). */
+const FIELD_GREEN_PERMILLE = 500;
+
+/** Whether the field of `size` mm about `center` (mm, in the town's frame `centre`) is green enough. */
+export function fieldIsGreen(center: { x: number; z: number }, sizeX: number, sizeZ: number, centre: { x: number; z: number }, dry: (dx: number, dz: number) => boolean): boolean {
+  let n = 0;
+  for (const fx of FOOTPRINT_SAMPLES) for (const fz of FOOTPRINT_SAMPLES) if (dry(center.x + fx * sizeX - centre.x, center.z + fz * sizeZ - centre.z)) n++;
+  return n * 1000 >= FIELD_GREEN_PERMILLE * FOOTPRINT_SAMPLES.length ** 2;
+}
 
 /**
  * Whether a plot's whole footprint is dry: `dry` takes mm from the town's `centre`. A plot facing east or west
@@ -562,7 +587,7 @@ export function layOut(settlement: string, households: number, rules: Settlement
     const e = exits[lanes[lane]![0]]!;
     const c = onLane(lane, along, s / 2 + f.deepMm / 2);
     const [w, d] = e.dx !== 0 ? [f.frontMm, f.deepMm] : [f.deepMm, f.frontMm];
-    return wet(outsidePlot(lane, along)) || !FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => dry(c.x + fx * w - centre.x, c.z + fz * d - centre.z)));
+    return wet(outsidePlot(lane, along)) || !fieldIsGreen(c, w, d, centre, dry);
   };
   const outsideFarms: { lane: number; k: number; along: number; master?: boolean }[] = [];
   // Every farm takes the nearest free holding on any road whose ground is dry, the masters' first (they can pay
@@ -585,7 +610,16 @@ export function layOut(settlement: string, households: number, rules: Settlement
   };
   const place = (master: boolean, from: number[] = next): void => {
     const f = master ? masterField : field;
-    const spots = lanes.map((_, l) => ({ l, along: spot(l, f.frontMm, Math.max(next[l]!, from[l]!)) })).sort((x, y) => x.along - y.along || x.l - y.l);
+    // On each lane the nearest dry holding, stepping out past a strip of wet ground (up to MAX_SKIP holdings) to the green beyond.
+    const dryAlong = (l: number): number => {
+      const start = Math.max(next[l]!, from[l]!);
+      for (let k = 0; k <= (dry ? MAX_SKIP : 0); k++) {
+        const along = spot(l, f.frontMm, start + k * f.frontMm);
+        if (!fieldWet(l, along, f)) return along;
+      }
+      return spot(l, f.frontMm, start);
+    };
+    const spots = lanes.map((_, l) => ({ l, along: dryAlong(l) })).sort((x, y) => x.along - y.along || x.l - y.l);
     const pick = spots.find((c) => !fieldWet(c.l, c.along, f)) ?? spots[0]!;
     next[pick.l] = pick.along + f.frontMm / 2;
     alongs.get(pick.l)!.push(pick.along);

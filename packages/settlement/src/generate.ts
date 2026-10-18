@@ -8,10 +8,10 @@
 
 import { WfcError } from "@mmo-engine/wfc";
 import { bakeDemographics } from "./demographics.js";
-import { solveDemand } from "./demand.js";
+import { capDemand, solveDemand } from "./demand.js";
 import { EventLog, type GenerationEvent, type Verbosity } from "./events.js";
 import { contentHash } from "./hash.js";
-import { FOOTPRINT_SAMPLES, layOut, plotIsDry, scaledLayout, townCentreMm } from "./layout.js";
+import { FOOTPRINT_SAMPLES, fieldIsGreen, layOut, plotIsDry, scaledLayout, townCentreMm } from "./layout.js";
 import { drawMastery } from "./mastery.js";
 import { drawHomeless, townSetting, withDensity } from "./setting.js";
 import { townIndustry, withIndustry, type Land } from "./industry.js";
@@ -185,7 +185,7 @@ const STAGES: Stage[] = [
           const c = townCentreMm(full.roads.nodes);
           // A farm stays only if its fields are dry too.
           const dry = (p: (typeof full.parcels)[number]): boolean =>
-            plotIsDry(p, pw, pd, c, dryMm) && (!p.holding || FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => dryMm(p.holding!.center.x + fx * p.holding!.sizeXMm - c.x, p.holding!.center.z + fz * p.holding!.sizeZMm - c.z))));
+            plotIsDry(p, pw, pd, c, dryMm) && (!p.holding || fieldIsGreen(p.holding.center, p.holding.sizeXMm, p.holding.sizeZMm, c, dryMm));
           // The wall is not built in the water: a piece whose footprint is not dry is left out, and the town is open on that side.
           const dryPiece = (w: (typeof full.fortifications)[number]): boolean => {
             for (const fa of FOOTPRINT_SAMPLES) for (const fb of FOOTPRINT_SAMPLES) {
@@ -209,9 +209,35 @@ const STAGES: Stage[] = [
           const edges = full.roads.edges.map((e) => (e.surface === "paved" && !slabDry(e) ? { ...e, surface: "dirt" as const } : e));
           const kept = { ...full, roads: { ...full.roads, edges }, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length, square: squareDry ? sq : null };
           ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
+          // Too few dry farm plots: the farms and food are capped to what they hold. If even that cannot be solved (a lone master
+          // farm's workers overrun a small town's labour), the town keeps no farms and imports its food.
+          const farmless = { ...kept, parcels: kept.parcels.filter((p) => p.kind !== "agriculture") };
           try {
-            structures = placeStructures(kept, demand!, ctx.rules, ctx.rng);
-            layout = kept;
+            for (const tryLayout of kept.parcels.length === farmless.parcels.length ? [kept] : [kept, farmless]) {
+              const capped = capDemand(demand!, tryLayout.parcels, ctx.rules);
+              try {
+                if (!tryLayout.parcels.some((p) => p.kind === "housing")) throw new WfcError("no dry housing plots");
+                structures = placeStructures(tryLayout, capped.demand, ctx.rules, ctx.rng);
+              } catch (err) {
+                if (!(err instanceof WfcError) || tryLayout === farmless) throw err;
+                continue;
+              }
+              layout = tryLayout;
+              ctx.town.demand = capped.demand;
+              if (capped.importedFood > 0) {
+                ctx.events.emit("summary", "structures", "farms_capped", { farms: tryLayout.parcels.filter((p) => p.kind === "agriculture").length, importedFood: capped.importedFood, foodDemand: demand!.foodDemand });
+                // The masters the town has are the master workplaces it could build.
+                const masters = { ...ctx.town.mastery!.masters };
+                const grandMasters = { ...ctx.town.mastery!.grandMasters };
+                for (const [name, prof] of Object.entries(ctx.rules.mastery?.professions ?? {})) {
+                  const shops = structures.filter((st) => st.archetype === prof.master).length;
+                  masters[name] = Math.min(masters[name] ?? 0, shops);
+                  if (name in grandMasters) grandMasters[name] = Math.min(grandMasters[name]!, masters[name]!);
+                }
+                ctx.town.mastery = { ...ctx.town.mastery!, masters, grandMasters };
+              }
+              break;
+            }
           } catch (err) {
             if (!(err instanceof WfcError)) throw err;
             failure = `${err.message}; ${full.parcels.length - kept.parcels.length} of ${full.parcels.length} parcels are not dry`;

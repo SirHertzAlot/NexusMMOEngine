@@ -539,3 +539,20 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
 Still to do: see "Next steps" in [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)
 (a day by the bells, market days, guild streets, parishes, inner walls), plus roads
 spawned as surfaces and a wall that follows the ground.
+
+## Green squares
+
+`greenMask` / `greenSquares` (engine-core `terrain/green.ts`) read the survey grid, the data the biome preview draws: a
+cell is green when its biome is in `rules.sites.greenBiomes` (plains, forest, rainforest), it is not water, river or ice,
+and it stands `safeFloorM` over the sea. The largest all-green squares are taken greedily, none under
+`rules.sites.minSquareCells` (24 cells). `npm run preview:world -- --squares` outlines them on the biome panel and writes
+`<out>.squares.json`: each square in grid cells and in world metres.
+
+- **Sites** lie inside a square, far enough from its edge for the town's footprint (in a smaller square, at its centre);
+  a site scores by how much of the requested town fits (`Site.fitM`).
+- **Size**: `settlement:bake --world` bakes `min(requested, what fits)` people (`fitHouseholds`) and logs `[square]`.
+- **Farms**: the dry test everywhere in the bake is green land. A farm's field needs half its sample points green, and a
+  lane steps past up to six holdings of wet ground to reach it. When the plots left cannot hold the farms and food the
+  town needs, the demand is capped (`capDemand`, event `farms_capped`): the missing food is imported, the masters are the
+  workplaces that could be built, and a lone farm that overruns a small town's labour is dropped, so the town keeps no
+  farms rather than failing as "too wet".
