@@ -5,13 +5,13 @@
  * both when it starts; the panel says so once rather than on every field.
  */
 
-import type { FieldSpec } from "./rules-control.js";
+import type { FieldSectionSpec, FieldSpec } from "./rules-control.js";
 
 const count = (max: number) => ({ kind: "number", int: true, min: 0, max }) as const;
 const metres = { kind: "number", min: 0, max: 100 } as const;
 
 /** instances.json, by section. `version` and `commit` have one legal value and are left out. */
-export const RUN_SECTIONS: ReadonlyArray<{ title: string; help: string; fields: FieldSpec[] }> = [
+export const RUN_SECTIONS: readonly FieldSectionSpec[] = [
   {
     title: "Party and time",
     help: "Who may enter together, and how long a run lasts.",
