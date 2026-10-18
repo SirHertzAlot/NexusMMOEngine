@@ -53,7 +53,7 @@
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
-import type { DamageInput, PartState, RuleHooks } from "@mmo-engine/rules";
+import { engineDefaults, type CombatRules, type DamageInput, type ItemBaseRules, type PartState, type RuleHooks } from "@mmo-engine/rules";
 import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
 import type { StaminaSystem } from "./stats/stamina-system.js";
@@ -84,15 +84,27 @@ export interface HitEvent {
   disarmed?: boolean;
 }
 
-/** Fraction of a blow a facing guard lets through. */
-export const GUARD_FACTOR = 0.25;
-/** The attacking arm's own length added to the weapon's. */
-export const ARM_REACH = 0.6;
-/** cos(60 degrees): targets within 60 degrees either side of the facing. */
-const CONE_COS = 0.5;
-/** Targets further than this above or below are out of reach. */
-const MAX_DY = 2;
-const FIST: Weapon = { technique: "bludgeon", item: { mass: 0.5, edge: 0, point: 0, hardness: 0.3 }, reach: 0.8, family: "fist" };
+/**
+ * What resolving a blow takes from the rules (EG5/EG6): combat.json's
+ * `resolution` and items.json's `unarmed` (the fist). The engine defaults
+ * until a CombatDamage names the game's.
+ */
+export interface CombatTuning {
+  resolution: CombatRules["resolution"];
+  unarmed: ItemBaseRules;
+}
+const DEFAULTS = engineDefaults();
+export const DEFAULT_COMBAT_TUNING: Readonly<CombatTuning> = Object.freeze({ resolution: DEFAULTS.combat.resolution, unarmed: DEFAULTS.items.unarmed });
+
+/** Fraction of a blow a facing guard lets through (no combat skills), by default. */
+export const GUARD_FACTOR = DEFAULT_COMBAT_TUNING.resolution.guardLetsThrough;
+/** The attacking arm's own length added to the weapon's, by default. */
+export const ARM_REACH = DEFAULT_COMBAT_TUNING.resolution.armReachM;
+
+/** The weapon a bare hand is (items.json `unarmed`; reach is its length). */
+function fistOf(u: ItemBaseRules): Weapon {
+  return { technique: u.technique, item: { mass: u.mass, edge: u.edge, point: u.point, hardness: u.hardness }, reach: u.length, family: "fist" };
+}
 
 /** Combat skills (M3c): what a character knows feeds its blows, and using it trains it. */
 export interface CombatSkills {
@@ -110,8 +122,8 @@ export interface CombatSkills {
   knows?(e: number, technique: string): boolean;
 }
 
-/** How hard a fight is taken to be for training (proposed default; a creature-level rule later). */
-export const FIGHT_DIFFICULTY = 0.5;
+/** How hard a fight is taken to be for training, by default (combat.json `resolution.fightDifficulty`). */
+export const FIGHT_DIFFICULTY = DEFAULT_COMBAT_TUNING.resolution.fightDifficulty;
 
 export interface CombatDamage {
   hooks: RuleHooks;
@@ -135,6 +147,8 @@ export interface CombatDamage {
    * buffs/debuffs. Absent means 1.
    */
   damageScale?: (source: number, target: number) => number;
+  /** The rules a blow is resolved by, read each strike (a reload applies at once); absent: the engine defaults. */
+  tuning?: () => CombatTuning;
 }
 
 /** How an entity strikes (M3, catalog 0x19): its own technique and aim, or the defaults. */
@@ -156,6 +170,8 @@ export class CombatSystem implements SimSystem {
   private readonly attackers = new Map<number, number>();
   /** Chosen techniques and aims (absent: the weapon's technique, the body's root). */
   private readonly stances = new Map<number, Stance>();
+  /** The fist, rebuilt when the rules' `unarmed` changes. */
+  private fist: { from: ItemBaseRules; weapon: Weapon } | null = null;
 
   constructor(
     private readonly tickHz = 30,
@@ -273,12 +289,17 @@ export class CombatSystem implements SimSystem {
 
   private strike(sim: SimWorld, e: number, tick: number): void {
     const dmg = this.damage!;
+    const tuning = dmg.tuning?.() ?? DEFAULT_COMBAT_TUNING;
+    const res = tuning.resolution;
+    const fightDifficulty = res.fightDifficulty;
     const holding = dmg.weaponOf?.(e) ?? null;
-    const held = holding ?? FIST;
+    if (this.fist?.from !== tuning.unarmed) this.fist = { from: tuning.unarmed, weapon: fistOf(tuning.unarmed) };
+    const held = holding ?? this.fist.weapon;
     // A chosen technique (M3): any item can be swung any way; its fit for it is the item's.
     const stance = this.stances.get(e);
     const w = stance?.technique ? { ...held, technique: stance.technique } : held;
-    const reach = w.reach + ARM_REACH;
+    const reach = w.reach + res.armReachM;
+    const coneCos = Math.cos((res.coneDegrees * Math.PI) / 180);
     const yaw = Action.yaw[e];
     const fx = Math.sin(yaw);
     const fz = Math.cos(yaw);
@@ -290,8 +311,8 @@ export class CombatSystem implements SimSystem {
       const dx = Transform.px[t] - Transform.px[e];
       const dz = Transform.pz[t] - Transform.pz[e];
       const d = Math.hypot(dx, dz);
-      if (d > reach || Math.abs(Transform.py[t] - Transform.py[e]) > MAX_DY) continue;
-      if (d > 1e-4 && (dx * fx + dz * fz) / d < CONE_COS) continue;
+      if (d > reach || Math.abs(Transform.py[t] - Transform.py[e]) > res.maxHeightDifferenceM) continue;
+      if (d > 1e-4 && (dx * fx + dz * fz) / d < coneCos) continue;
       let outcome: HitEvent["outcome"] = "hit";
       let amount = 0;
       let part: string | undefined;
@@ -302,7 +323,7 @@ export class CombatSystem implements SimSystem {
       const tt = tm ? (tick - Action.started[t]) / this.tickHz : 0;
       if (tm?.iframes && tt >= tm.iframes.from && tt <= tm.iframes.to) {
         outcome = "dodged";
-        dmg.skills?.train(t, "evading", FIGHT_DIFFICULTY, e);
+        dmg.skills?.train(t, "evading", fightDifficulty, e);
       } else {
         const sk = dmg.skills;
         const weaponSkill = sk?.techniqueSkill(w.technique);
@@ -329,13 +350,13 @@ export class CombatSystem implements SimSystem {
             if (d.stopped) outcome = "blocked";
             if (d.disarms && canDisarm) disarmed = true;
             amount *= d.letsThrough;
-            sk.train(t, guard, FIGHT_DIFFICULTY, e);
+            sk.train(t, guard, fightDifficulty, e);
           } else {
             outcome = "blocked";
-            amount *= GUARD_FACTOR;
+            amount *= res.guardLetsThrough;
           }
         }
-        if (weaponSkill) sk!.train(e, weaponSkill, FIGHT_DIFFICULTY, t);
+        if (weaponSkill) sk!.train(e, weaponSkill, fightDifficulty, t);
         // Status effects (status.ts): buffs/debuffs scale the landed blow.
         amount *= dmg.damageScale?.(e, t) ?? 1;
         if (body && amount > 0) {

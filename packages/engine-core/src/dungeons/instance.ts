@@ -155,7 +155,8 @@ export class DungeonInstance {
       hasComponent(this.world.ecs, C.CharacterRef, e)
         ? (opts.armourOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e]) ?? 1)
         : 1;
-    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf });
+    const tuning = { resolution: rules.combat.resolution, unarmed: rules.items.unarmed };
+    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf, tuning: () => tuning });
     const death: DeathSystem = new DeathSystem(
       opts.game.hooks,
       30,

@@ -101,7 +101,16 @@ export const ITEM_BASE_FIELDS: FieldSpec[] = [
 ];
 
 /** items.json's own fields, beside its bases. */
-export const ITEMS_FIELDS: FieldSpec[] = [{ key: "powerScale", label: "Power scale", kind: "number", min: 0, def: 0.02 }];
+export const ITEMS_FIELDS: FieldSpec[] = [
+  { key: "powerScale", label: "Power scale", kind: "number", min: 0, def: 0.02 },
+  // The fist (EG6): what a blow with no item in hand is.
+  { key: "unarmed.technique", label: "Fists: technique", kind: "enum", options: "techniques", def: "bludgeon" },
+  { key: "unarmed.mass", label: "Fists: mass (kg)", kind: "number", min: 0, def: 0.5 },
+  { key: "unarmed.length", label: "Fists: reach (m)", kind: "number", min: 0, def: 0.8, help: "Before the arm's own reach (Combat › Resolution)." },
+  { key: "unarmed.edge", label: "Fists: edge", ...share, def: 0 },
+  { key: "unarmed.point", label: "Fists: point", ...share, def: 0 },
+  { key: "unarmed.hardness", label: "Fists: hardness", ...share, def: 0.3 },
+];
 
 /** One creature kind's fields (creatures.json creatures.<id>). */
 export const CREATURE_FIELDS: FieldSpec[] = [
@@ -228,6 +237,17 @@ export const COMBAT_SECTIONS: FieldSectionSpec[] = [
       { key: "defence.max", label: "Most chance", ...share, def: 0.95 },
       { key: "defence.failedLetsThrough", label: "Lost guard lets through", ...share, def: 0.5, help: "Share of the blow that gets past a guard that loses." },
       { key: "defence.disarmMargin", label: "Disarm margin", ...share, def: 0.3, help: "A parry disarms when the defender knows disarm and out-skills the attacker by this share." },
+    ],
+  },
+  {
+    title: "Resolution",
+    help: "How a swing finds its targets. A blow with no weapon is Item bases › Fists.",
+    fields: [
+      { key: "resolution.armReachM", label: "Arm reach (m)", kind: "number", min: 0, def: 0.6, help: "Added to the weapon's reach." },
+      { key: "resolution.coneDegrees", label: "Swing cone (°)", kind: "number", min: 1, max: 180, def: 60, help: "Targets this many degrees either side of the facing are struck." },
+      { key: "resolution.maxHeightDifferenceM", label: "Most height difference (m)", kind: "number", min: 0, def: 2 },
+      { key: "resolution.guardLetsThrough", label: "Unskilled guard lets through", ...share, def: 0.25, help: "For defenders with no combat skills (bots)." },
+      { key: "resolution.fightDifficulty", label: "Fight difficulty (training)", ...share, def: 0.5, help: "How hard a fight counts when dodges, guards, blows and dungeon kills train." },
     ],
   },
 ];
