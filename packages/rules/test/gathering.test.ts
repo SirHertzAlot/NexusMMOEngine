@@ -13,7 +13,7 @@ const OUR_RULES = fileURLToPath(new URL("../../../../content/rules", import.meta
 
 describe("gathering rules (content/rules/gathering.json)", () => {
   it("loads our file, and an absent one is the engine defaults", () => {
-    assert.deepEqual(loadRules(OUR_RULES).gathering, { reachM: 2.5, cooldownSeconds: 1.2, pouchMax: 999, trainDifficultyPerTier: 0.2 });
+    assert.deepEqual(loadRules(OUR_RULES).gathering, { reachM: 2.5, cooldownSeconds: 1.2, pouchMax: 999, trainDifficultyPerTier: 0.2, regrowCheckSeconds: 1, regrowHourSeconds: 3600 });
     assert.deepEqual(parseRules({}).gathering, engineDefaults().gathering);
   });
 

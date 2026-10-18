@@ -164,6 +164,8 @@ export const GATHERING_FIELDS: FieldSpec[] = [
   { key: "cooldownSeconds", label: "One gather every (s)", kind: "number", min: 0, def: 1.2 },
   { key: "pouchMax", label: "Pouch holds of a material", kind: "number", int: true, min: 1, def: 999 },
   { key: "trainDifficultyPerTier", label: "Training difficulty per tier", ...share, def: 0.2 },
+  { key: "regrowCheckSeconds", label: "Check for regrowth every (s)", kind: "number", min: 0, def: 1, help: "How soon a node that is due comes back." },
+  { key: "regrowHourSeconds", label: "One regrow hour lasts (s)", kind: "number", min: 0, def: 3600, help: "3600: a node's regrow hours are real hours. 60 makes a 72-hour tree stand come back in 72 minutes." },
 ];
 
 /** ingress.json's fields (roadmap T1 rate limits). */
