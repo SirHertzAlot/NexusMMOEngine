@@ -29,6 +29,7 @@ import { ShapeKind } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
 import { ensureBoundsTree } from "./bvh.js";
 import type { LodLevel } from "./lod.js";
+import { applyShadingToMaterial } from "./shading/shading.js";
 
 /** Smallest dimension drawn (a zero-size body still shows). */
 const MIN_SIZE = 0.05;
@@ -140,6 +141,10 @@ export class InstancedProps {
 
   constructor(private readonly models: PropModels | null = null) {
     this.group.name = "props";
+    // Shaded as content says (materials.json -> shading): a stand-in shape
+    // and a cooked model are different kinds of thing.
+    applyShadingToMaterial(this.placeholderMaterial, "placeholder");
+    applyShadingToMaterial(this.modelMaterial, "model");
   }
 
   /** Props on screen. */

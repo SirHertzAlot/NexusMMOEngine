@@ -4,7 +4,7 @@
  *
  *   combat     content/combat/moves.json          server + client
  *   animation  content/animation/animations.json  client (v3 manifest: the locomotion graph)
- *   materials  content/materials/materials.json   client (toon look, surface tints, footsteps)
+ *   materials  content/materials/materials.json   client (toon look, surface tints, footsteps, shading)
  *
  * Audio, particle effects and their budgets have their own documents,
  * hosts and panels (content/audio, content/vfx); references to audio
