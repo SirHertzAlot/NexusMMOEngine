@@ -2032,7 +2032,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     requestOpenAsset("scene", name);
   };
   const t = useTree();
-  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
+  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "movement", "needs", "skills", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id}>
       <TreeItem
@@ -2059,7 +2059,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     <div className="flex flex-col gap-0.5">
       {folder("rules", "content/rules", "folder", (
         <>
-          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", r === "creatures" || r === "items" ? "tables" : undefined]))}
+          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement"].includes(r) ? "tables" : undefined]))}
         </>
       ))}
       {folder("pcg", "content/pcg", "folder", (

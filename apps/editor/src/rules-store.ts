@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { parseRules, RULE_FILES, RulesError, type RuleFile, type RulesIssue } from "@mmo-engine/rules";
 
 /** The rules files the editor's tables edit. */
-export const EDITABLE_TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering"] as const;
+export const EDITABLE_TABLES = ["items", "creatures", "combat", "body", "loot", "death", "ingress", "gathering", "movement"] as const;
 export type EditableTable = (typeof EDITABLE_TABLES)[number];
 
 export function isEditableTable(name: unknown): name is EditableTable {

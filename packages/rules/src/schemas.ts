@@ -473,6 +473,53 @@ export const GatheringSchema = z.strictObject({
   trainDifficultyPerTier: z.number().min(0).max(1).default(0.2),
 });
 
+// -------------------------------------------------------------- movement
+
+/**
+ * How characters move (players, and creatures and bots, whose speeds are a
+ * share of the walk): speeds, jumping and falling, breath and drowning,
+ * flight, and what moving and fighting cost in stamina. Body geometry (the
+ * capsule, head height, swim depth) stays in code: animation and the
+ * colliders are built to it.
+ */
+export const MovementSchema = z.strictObject({
+  /** Walking speed, metres a second; creature and bot speeds are shares of it. */
+  walkSpeed: z.number().positive().default(6),
+  swimSpeed: z.number().positive().default(3),
+  flySpeed: z.number().positive().default(12),
+  /** Rising and diving in water, metres a second. */
+  swimVerticalSpeed: z.number().positive().default(2),
+  /** Climbing and descending in flight, metres a second. */
+  flyVerticalSpeed: z.number().positive().default(6),
+  /** Upward speed a jump starts with, metres a second. */
+  jumpSpeed: z.number().min(0).default(8),
+  /** Downward acceleration in the air, metres a second squared. */
+  gravity: z.number().positive().default(22),
+  /** Air in full lungs, seconds. */
+  breathSeconds: z.number().positive().default(30),
+  /** Breath comes back this many times as fast as it runs out. */
+  breathRecovery: z.number().positive().default(3),
+  /** Health lost a second underwater with no air left. */
+  drownDamagePerSecond: z.number().min(0).default(10),
+  /** Highest a flyer climbs above the ground, metres. */
+  flightCeilingM: z.number().min(0).default(250),
+  stamina: z
+    .strictObject({
+      dodgeCost: z.number().min(0).default(20),
+      attackCost: z.number().min(0).default(10),
+      jumpCost: z.number().min(0).default(8),
+      /** Stamina a second while swimming and moving. */
+      swimDrainPerSecond: z.number().min(0).default(10),
+      /** Stamina a second while running. */
+      runDrainPerSecond: z.number().min(0).default(6),
+      /** Seconds after spending before stamina starts coming back. */
+      regenDelaySeconds: z.number().min(0).default(1),
+      /** Stamina back a second when the stats bind no `staminaRegen`. */
+      regenPerSecond: z.number().min(0).default(12),
+    })
+    .prefault({}),
+});
+
 // -------------------------------------------------------------- creatures
 
 export const TEMPERAMENTS = ["flee", "defend", "territorial", "hunt", "raid"] as const;
@@ -631,6 +678,7 @@ export const RULE_FILES = {
   ingress: IngressSchema,
   spells: SpellsSchema,
   gathering: GatheringSchema,
+  movement: MovementSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -656,6 +704,7 @@ export type NeedsRules = z.infer<typeof NeedsSchema>;
 export type NeedRules = z.infer<typeof NeedSchema>;
 export type IngressRules = z.infer<typeof IngressSchema>;
 export type GatheringRules = z.infer<typeof GatheringSchema>;
+export type MovementRules = z.infer<typeof MovementSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
@@ -678,4 +727,5 @@ export interface Rules {
   needs: NeedsRules;
   spells: SpellsRules;
   gathering: GatheringRules;
+  movement: MovementRules;
 }

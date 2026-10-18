@@ -17,6 +17,7 @@ import {
   BODY_PART_FIELDS,
   BODY_SECTIONS,
   COMBAT_SECTIONS,
+  MOVEMENT_SECTIONS,
   CREATURE_FIELDS,
   TECHNIQUE_FIELDS,
   DEATH_FIELDS,
@@ -51,6 +52,7 @@ const TABLE_LABELS: Record<Table, string> = {
   death: "Death",
   ingress: "Ingress limits",
   gathering: "Gathering",
+  movement: "Movement and stamina",
 };
 
 /** Record tables: the key their entries live under, and the fields of one entry. */
@@ -69,6 +71,7 @@ const LISTS: Partial<Record<Table, { under: string; fields: FieldSpec[]; noun: s
 const SECTIONS: Partial<Record<Table, FieldSectionSpec[]>> = {
   combat: COMBAT_SECTIONS,
   body: BODY_SECTIONS,
+  movement: MOVEMENT_SECTIONS,
 };
 
 /** A new record entry's starting values. */
@@ -87,6 +90,7 @@ const FLAT: Record<Table, FieldSpec[]> = {
   death: DEATH_FIELDS,
   ingress: INGRESS_FIELDS,
   gathering: GATHERING_FIELDS,
+  movement: [],
 };
 
 /** Rules ids (packages/rules schemas.ts): lower camel or kebab case. */

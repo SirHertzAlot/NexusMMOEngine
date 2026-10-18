@@ -56,7 +56,7 @@ import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type Combat
 import type { DamageInput, PartState, RuleHooks } from "@mmo-engine/rules";
 import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
-import { ATTACK_COST, DODGE_COST, type StaminaSystem } from "./stats/stamina-system.js";
+import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 
@@ -369,7 +369,8 @@ export class CombatSystem implements SimSystem {
     // Entities without a pool (bots) fence nothing: gating is for stamina
     // bearers only, so bot behaviour is unchanged.
     if (def && this.stamina && hasComponent(sim.ecs, Stamina, e)) {
-      const cost = def.kind === "dodge" ? DODGE_COST : def.kind === "attack" ? ATTACK_COST : 0;
+      const costs = sim.movement.stamina;
+      const cost = def.kind === "dodge" ? costs.dodgeCost : def.kind === "attack" ? costs.attackCost : 0;
       if (cost > 0 && !this.stamina.spend(sim, e, cost)) return undefined;
     }
     Action.move[e] = id;

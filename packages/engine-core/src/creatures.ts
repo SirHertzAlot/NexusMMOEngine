@@ -154,6 +154,8 @@ export class CreatureSystem implements SimSystem {
   private rngState: number;
   private readonly tickHz: number;
   private nextGroup = 1;
+  /** The world's walking speed creature speeds are shares of (rules movement.json); followed each step. */
+  private walkSpeed = PLAYER_SPEED;
 
   private readonly opts: CreatureOptions;
 
@@ -174,7 +176,7 @@ export class CreatureSystem implements SimSystem {
     this.opts.bases = bases;
     for (const [e, b] of this.brains) {
       const def = creatures[b.kind];
-      if (def) C.NavAgent.speed[e] = this.runSpeed(def) * PLAYER_SPEED;
+      if (def) C.NavAgent.speed[e] = this.runSpeed(def) * this.walkSpeed;
     }
   }
 
@@ -297,7 +299,8 @@ export class CreatureSystem implements SimSystem {
     C.Locomotion.abilities[eid] = 1;
     C.Locomotion.breath[eid] = 1;
     C.Action.move[eid] = 0;
-    C.NavAgent.speed[eid] = this.runSpeed(def) * PLAYER_SPEED;
+    this.walkSpeed = sim.movement.walkSpeed;
+    C.NavAgent.speed[eid] = this.runSpeed(def) * this.walkSpeed;
     C.NavAgent.tx[eid] = NaN;
     C.NavAgent.seq[eid] = 0;
     const look = this.opts.lookOf?.(kind);
@@ -360,6 +363,11 @@ export class CreatureSystem implements SimSystem {
 
   step(sim: SimWorld): void {
     if (this.brains.size === 0) return;
+    if (sim.movement.walkSpeed !== this.walkSpeed) {
+      // A rules reload changed the walk: every creature's speed is a share of it.
+      this.walkSpeed = sim.movement.walkSpeed;
+      this.setRules(this.opts.creatures, this.opts.bases);
+    }
     const tick = sim.currentTick;
     const players = this.characters(sim.ecs);
     const tod = this.opts.timeOfDay?.(tick) ?? null;
