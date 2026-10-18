@@ -52,7 +52,7 @@ type Brain =
       waitUntil: number;
       /** Whether the crowd has this target. */
       given: boolean;
-      /** Progress check: where it was at `checkAt - STUCK_TICKS`. */
+      /** Progress check: where it was one stuck window (movement `bots.stuckSeconds`) before `checkAt`. */
       checkAt: number;
       checkX: number;
       checkZ: number;
@@ -60,13 +60,8 @@ type Brain =
   | { kind: "spar"; partner: number; attacker: boolean; swapAt: number; nextPress: number; step: number; rollAt: number };
 
 const TICK_HZ = 30;
-/** A stroll: this fraction of walking speed. */
-const WANDER_PACE = 0.35;
-/** A steered wanderer that moves less than this in STUCK_TICKS gives up on its target. */
-const STUCK_METRES = 0.4;
-const STUCK_TICKS = 2 * TICK_HZ;
-/** Arm's length for a sword fight, metres. */
-const SPAR_RANGE = 1.9;
+// Strolling and sparring pace (wander pace, stuck check, spar range) is the world's movement rules' `bots` (EG12), read each step.
+const stuckTicks = (sim: SimWorld): number => Math.max(1, Math.round(sim.movement.bots.stuckSeconds * TICK_HZ));
 
 export class BotSystem implements SimSystem {
   readonly name = "bots";
@@ -133,10 +128,10 @@ export class BotSystem implements SimSystem {
         const partner = this.bots[i ^ 1];
         this.brains.set(eid, { kind: "spar", partner, attacker: i % 2 === 0, swapAt: 0, nextPress: 0, step: 0, rollAt: 0 });
       } else {
-        this.brains.set(eid, { kind: "wander", target: { x: C.Transform.px[eid], z: C.Transform.pz[eid] }, waitUntil: 0, given: false, checkAt: STUCK_TICKS, checkX: C.Transform.px[eid], checkZ: C.Transform.pz[eid] });
+        this.brains.set(eid, { kind: "wander", target: { x: C.Transform.px[eid], z: C.Transform.pz[eid] }, waitUntil: 0, given: false, checkAt: stuckTicks(sim), checkX: C.Transform.px[eid], checkZ: C.Transform.pz[eid] });
         if (this.opts.steer) {
           addComponent(sim.ecs, C.NavAgent, eid);
-          C.NavAgent.speed[eid] = WANDER_PACE * sim.movement.walkSpeed;
+          C.NavAgent.speed[eid] = sim.movement.bots.wanderPace * sim.movement.walkSpeed;
           C.NavAgent.tx[eid] = NaN;
           C.NavAgent.seq[eid] = 0;
         }
@@ -187,13 +182,13 @@ export class BotSystem implements SimSystem {
       // Stuck (someone standing on the spot, a knot of others in the way):
       // the crowd leaves that to its caller, so give up and pick another.
       if (tick >= b.checkAt) {
-        if (Math.hypot(C.Transform.px[e] - b.checkX, C.Transform.pz[e] - b.checkZ) < STUCK_METRES) d = 0;
-        b.checkAt = tick + STUCK_TICKS;
+        if (Math.hypot(C.Transform.px[e] - b.checkX, C.Transform.pz[e] - b.checkZ) < sim.movement.bots.stuckMetres) d = 0;
+        b.checkAt = tick + stuckTicks(sim);
         b.checkX = C.Transform.px[e];
         b.checkZ = C.Transform.pz[e];
       }
     } else {
-      d = this.moveToward(e, b.target.x, b.target.z, WANDER_PACE); // a stroll
+      d = this.moveToward(e, b.target.x, b.target.z, sim.movement.bots.wanderPace); // a stroll
     }
     if (d < 0.8) {
       const radius = this.opts.radius ?? 18;
@@ -202,7 +197,7 @@ export class BotSystem implements SimSystem {
       b.target = { x: this.opts.home.x + Math.cos(a) * r, z: this.opts.home.z + Math.sin(a) * r };
       b.waitUntil = tick + Math.floor((1 + this.rand() * 3) * TICK_HZ);
       b.given = false;
-      b.checkAt = b.waitUntil + STUCK_TICKS;
+      b.checkAt = b.waitUntil + stuckTicks(sim);
       b.checkX = C.Transform.px[e];
       b.checkZ = C.Transform.pz[e];
       if (steering) this.give(e, NaN, NaN); // stand while it idles
@@ -224,10 +219,11 @@ export class BotSystem implements SimSystem {
     const dx = px - C.Transform.px[e];
     const dz = pz - C.Transform.pz[e];
     const d = Math.hypot(dx, dz);
+    const pace = sim.movement.bots;
     C.PlayerIntent.lookYaw[e] = Math.atan2(dx, dz);
-    if (d > SPAR_RANGE + 0.6) {
+    if (d > pace.sparRangeM + 0.6) {
       // Close in (the attacker walks up; the defender waits).
-      if (b.attacker) this.moveToward(e, px, pz, 0.45);
+      if (b.attacker) this.moveToward(e, px, pz, pace.sparApproachPace);
       return;
     }
     // The attacker hands over every few seconds; both then share the next swap time.
@@ -254,7 +250,7 @@ export class BotSystem implements SimSystem {
         b.step = (b.step + 1) % 3;
         b.nextPress = tick + (b.step === 0 ? Math.floor(1.6 * TICK_HZ) : 8);
       }
-      if (d < SPAR_RANGE - 0.5) this.moveToward(e, C.Transform.px[e] - dx, C.Transform.pz[e] - dz, 0.3); // step back
+      if (d < pace.sparRangeM - 0.5) this.moveToward(e, C.Transform.px[e] - dx, C.Transform.pz[e] - dz, pace.sparBackPace); // step back
     } else if (tick >= b.rollAt && tick < b.rollAt + 2) {
       // Roll aside, square to the attacker.
       C.PlayerIntent.mx[e] = dz / (d || 1);

@@ -190,7 +190,7 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
