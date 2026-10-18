@@ -123,6 +123,26 @@ export const CombatSchema = z.strictObject({
       disarmMargin: share.default(0.3),
     })
     .prefault({}),
+  /**
+   * How a swing finds its targets, and the rest of resolving a blow: what an
+   * unskilled guard lets through, the arm's length added to the weapon's
+   * reach, the cone and height a target must be inside, and how hard a fight
+   * counts for training. (A blow with no weapon is items.json's `unarmed`.)
+   */
+  resolution: z
+    .strictObject({
+      /** Share of a blow a facing guard lets through when the defender has no combat skills (bots). */
+      guardLetsThrough: share.default(0.25),
+      /** The attacking arm's length added to the weapon's reach, metres. */
+      armReachM: z.number().min(0).default(0.6),
+      /** Targets within this many degrees either side of the facing are struck. */
+      coneDegrees: z.number().min(1).max(180).default(60),
+      /** Targets further than this above or below are out of reach, metres. */
+      maxHeightDifferenceM: z.number().min(0).default(2),
+      /** How hard a fight counts for training (dodges, guards, landed blows, dungeon kills). */
+      fightDifficulty: share.default(0.5),
+    })
+    .prefault({}),
 });
 
 // ------------------------------------------------------------------ body
@@ -388,8 +408,14 @@ export const ItemsSchema = z.strictObject({
   fallback: ItemBaseRulesSchema.prefault({}),
   /** A composed item's `power` stat scales its blows: × (1 + power × powerScale). */
   powerScale: z.number().min(0).default(0.02),
-  /** Damage from a blow with no item in hand (fists), before power and parts. */
-  unarmed: ItemBaseRulesSchema.prefault({ mass: 0.6, length: 0.3, edge: 0, point: 0, hardness: 0.3, technique: "bludgeon" }),
+  /** A blow with no item in hand (fists): its physics, technique and reach (`length`, metres). */
+  unarmed: ItemBaseRulesSchema.extend({
+    mass: positive.default(0.5),
+    length: z.number().min(0).default(0.8),
+    edge: share.default(0),
+    point: share.default(0),
+    hardness: share.default(0.3),
+  }).prefault({}),
 });
 
 // ------------------------------------------------------------------ loot

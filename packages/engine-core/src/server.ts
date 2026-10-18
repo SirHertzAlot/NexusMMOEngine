@@ -938,6 +938,8 @@ async function main(): Promise<void> {
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
+    // Blow resolution (EG6): read each strike, so a rules reload applies at once.
+    getCombatTuning: () => ({ resolution: game.rules.combat.resolution, unarmed: game.rules.items.unarmed }),
   };
   // What a blow gets through: worn armour per the rules' armourHalf;
   // (armourOf and combatDamage now live in the combat module; see combatConfig above)
