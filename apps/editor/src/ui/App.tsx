@@ -20,6 +20,7 @@ import { DungeonPanel } from "./dungeon-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
 import { SettlementPanel } from "./settlement-panel.js";
+import { DungeonRulesPanel } from "./dungeon-rules-panel.js";
 import { StringsPanel } from "./strings-panel.js";
 import { ScalePanel } from "./scale-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
@@ -133,6 +134,7 @@ const WORKSPACES: Workspace[] = [
     id: "dungeons", label: "Dungeons & PCG", icon: "castle",
     views: [
       { id: "dungeons", label: "Dungeon", icon: "castle", kind: "panel", panel: <DungeonPanel /> },
+      { id: "runs", label: "Runs", icon: "timer", kind: "panel", panel: <DungeonRulesPanel /> },
       { id: "graphs", label: "PICG Graphs", icon: "graph_3", kind: "panel", panel: <GraphEditorPanel /> },
       { id: "towns", label: "Towns", icon: "location_city", kind: "panel", panel: <SettlementPanel /> },
     ],
@@ -230,7 +232,8 @@ const VIEW_KEYWORDS: Record<string, string> = {
   content: "content browser catalog assets prefabs",
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
-  dungeons: "dungeon rooms layout instances",
+  dungeons: "dungeon rooms layout",
+  runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
   towns: "towns settlements generator rules industry guilds resources",
   graphs: "picg graph nodes procedural",
   play: "play mode debugger overlays navmesh waypoints server",
@@ -2074,7 +2077,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
       ))}
       {folder("dungeons", "content/dungeons", "folder", (
         <>
-          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "dungeons"]))}
+          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "runs"]))}
         </>
       ))}
       {folder("edge", "content/edge", "folder", (
