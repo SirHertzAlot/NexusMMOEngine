@@ -21,6 +21,13 @@ describe("parseBakeArgs", () => {
     assert.equal(options.settlementId, "0001");
     assert.equal(pathFlags["data-dir"], "d");
   });
+  it("--sites defaults to max (as many as the world supports) and takes a number or max", () => {
+    assert.equal(parseBakeArgs([]).options.sites, "max");
+    assert.equal(parseBakeArgs(["--sites", "max"]).options.sites, "max");
+    assert.equal(parseBakeArgs(["--sites", "40"]).options.sites, 40);
+    assert.throws(() => parseBakeArgs(["--sites", "201"]), /--sites/);
+    assert.throws(() => parseBakeArgs(["--sites", "lots"]), /--sites/);
+  });
   it("rejects unknown steps and bad numbers", () => {
     assert.throws(() => parseBakeArgs(["--only", "nope"]), /unknown step "nope".*world/s);
     assert.throws(() => parseBakeArgs(["--skip", "x"]), /unknown step/);
@@ -38,8 +45,10 @@ describe("planSteps", () => {
     assert.deepEqual(ids(plan([]), "run"), STEP_IDS);
   });
   it("is idempotent: what exists is skipped, unless --force", () => {
-    assert.deepEqual(ids(plan([], everything), "done"), ["world", "loot", "dungeons", "settlement", "scale-fit", "wildlife-plan", "wildlife-models"]);
-    assert.deepEqual(ids(plan(["--force"], everything), "done"), []);
+    assert.deepEqual(ids(plan(["--sites", "1"], everything), "done"), ["world", "loot", "dungeons", "settlement", "scale-fit", "wildlife-plan", "wildlife-models"]);
+    // With max the count is only known after a survey, so the settlement step runs (and skips towns that exist).
+    assert.deepEqual(ids(plan([], everything), "done"), ["world", "loot", "dungeons", "scale-fit", "wildlife-plan", "wildlife-models"]);
+    assert.deepEqual(ids(plan(["--force", "--sites", "1"], everything), "done"), []);
   });
   it("settlement is done only when every requested town exists", () => {
     const some = { exists: (f) => f.includes("0001"), hasDungeons: () => true };

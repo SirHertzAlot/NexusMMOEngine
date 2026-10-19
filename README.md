@@ -151,14 +151,15 @@ does not run). Without it they are skipped with a warning and the town is
 stand-in boxes. Everything that names a licensed model is gitignored.
 
 ```sh
-npm run bake:all                                   # everything, one town of 600
+npm run bake:all                                   # everything, as many towns of 600 as the world supports
 npm run bake:all -- --dry-run                      # the plan and the commands, nothing run
 npm run bake:all -- --sites 3 --auto-size          # three towns, best sites first; 600, else 300, else 100 people
+npm run bake:all -- --sites max                    # the default: counts the sites (one survey), then bakes them all
 npm run bake:all -- --only settlement,scale-fit    # just those (the build comes along)
 npm run bake:all -- --skip dungeons,loot --force   # rebuild the rest (the world too: stop the server first)
 ```
 
-Options: `--force`, `--only a,b`, `--skip a,b`, `--dry-run`, `--sites N`,
+Options: `--force`, `--only a,b`, `--skip a,b`, `--dry-run`, `--sites N|max` (default `max`: every site the world supports with all the constraints, up to 200),
 `--population N` (600), `--auto-size`, `--seed N` (1234, +1 per extra town),
 `--settlement-id ID` (`0001`, then `0002`, ...). It stops at the first failure,
 names the step and prints the command to rerun.

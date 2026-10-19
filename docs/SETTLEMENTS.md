@@ -121,6 +121,14 @@ surveys the world (several seconds), places the town at its best site and
 writes the scene there. On the shipped 4 x 4 km world that finds two sites
 with the default 1.5 km spacing; `rules.sites` is data like the rest.
 
+`npm run bake:all` bakes as many towns as the world supports by default
+(`--sites max`; `--sites N` for a number): it asks the settlement baker
+(`--list-sites`, which prints `SITES <n>` after one survey) how many sites the
+world has for towns of that size, then bakes each. The spacing is what limits
+the count: on the 8 km continents world at 70% land there are 44 suitable spots
+but only 10 at 1.5 km spacing (17 at 1.2 km); relief, slope and square size
+barely move it.
+
 ### Flat, low land only (SG2c)
 
 Slope alone is deceptive: a gentle grade over a long distance is a big change
