@@ -155,6 +155,20 @@ describe("SidecarManager", () => {
     assert.equal(mgr.statusOf("nope"), undefined);
   });
 
+  it("starts a sidecar via exec argv (no shell) (EA11 exec kind)", async () => {
+    const port = nextPort++;
+    const mgr = tracked(new SidecarManager({ healthTimeoutMs: 8000, pollIntervalMs: 100 }));
+    // exec: [binary, ...args] — no shell involved.
+    const [report] = await mgr.start([
+      { dir, manifest: { name: "execbrain", sidecar: { exec: ["node", "stub.js", String(port)], port, health: "/health" } } },
+    ]);
+    assert.equal(report.status, "healthy");
+    assert.equal(mgr.statusOf("execbrain"), "healthy");
+    assert.ok(await portOpenSoon(port), "stub should be listening");
+    await mgr.stop();
+    assert.ok(await portClosedSoon(port), "port should be closed after stop");
+  });
+
   it("restarts a healthy sidecar that exits unexpectedly (EA11 supervision)", async () => {
     const port = nextPort++;
     // A stub that exits after 300ms — the manager should restart it.

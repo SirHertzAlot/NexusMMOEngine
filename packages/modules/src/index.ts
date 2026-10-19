@@ -56,9 +56,11 @@ export interface ModuleManifest {
   native?: { entry: string; systems: string[] };
   /**
    * Sidecar contribution (EA11). A helper process run alongside the server.
-   * `command` starts it; `health` is polled for readiness.
+   * Either `command` (a shell string) or `exec` (argv array, no shell) starts
+   * it; `health` is polled for readiness. `exec` is preferred for binaries —
+   * no shell quoting, no shell injection.
    */
-  sidecar?: { command: string; port: number; health: string };
+  sidecar?: { command: string; port: number; health: string } | { exec: string[]; port: number; health: string };
   /**
    * Edge contribution (EA12). Runs on edge nodes, discovered by clients.
    */
@@ -224,14 +226,24 @@ export function validateManifest(
   if (raw.sidecar !== undefined) {
     if (!isObj(raw.sidecar)) bad("sidecar", "must be an object");
     else {
-      only(raw.sidecar, ["command", "port", "health"], "sidecar");
+      only(raw.sidecar, ["command", "exec", "port", "health"], "sidecar");
       const s = raw.sidecar;
       const before = problems.length;
-      if (typeof s.command !== "string" || s.command.trim().length === 0) bad("sidecar.command", "must be a non-empty string");
+      const hasCommand = s.command !== undefined;
+      const hasExec = s.exec !== undefined;
+      if (hasCommand === hasExec) bad("sidecar", 'must have exactly one of "command" or "exec"');
+      if (hasCommand && (typeof s.command !== "string" || (s.command as string).trim().length === 0))
+        bad("sidecar.command", "must be a non-empty string");
+      if (hasExec) {
+        if (!Array.isArray(s.exec) || (s.exec as unknown[]).length === 0 || (s.exec as unknown[]).some((a) => typeof a !== "string" || (a as string).length === 0))
+          bad("sidecar.exec", "must be a non-empty array of non-empty strings");
+      }
       if (typeof s.port !== "number" || !Number.isInteger(s.port) || s.port < 1 || s.port > 65535) bad("sidecar.port", "must be an integer between 1 and 65535");
       if (typeof s.health !== "string" || !s.health.startsWith("/")) bad("sidecar.health", 'must be a path starting with "/"');
       if (problems.length === before) {
-        sidecar = { command: s.command as string, port: s.port as number, health: s.health as string };
+        sidecar = hasCommand
+          ? { command: s.command as string, port: s.port as number, health: s.health as string }
+          : { exec: s.exec as string[], port: s.port as number, health: s.health as string };
       }
     }
   }

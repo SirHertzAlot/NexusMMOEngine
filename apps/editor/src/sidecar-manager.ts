@@ -32,7 +32,7 @@ export interface SidecarModule {
   dir: string;
   manifest: {
     name: string;
-    sidecar?: { command: string; port: number; health: string };
+    sidecar?: { command: string; port: number; health: string } | { exec: string[]; port: number; health: string };
   };
 }
 
@@ -118,22 +118,39 @@ export class SidecarManager {
     this.stopping = false;
     this.modules.set(name, m);
     this.statuses.set(name, "starting");
-    this.log(`${tag} starting: ${sidecar.command} (health http://localhost:${sidecar.port}${sidecar.health})`);
+    // EA11: exec kind runs argv directly (no shell); command kind uses a shell.
+    const isExec = "exec" in sidecar;
+    const describe = isExec ? sidecar.exec.join(" ") : sidecar.command;
+    this.log(`${tag} starting: ${describe} (health http://localhost:${sidecar.port}${sidecar.health})`);
 
     let child: ChildProcess;
     try {
-      // shell:true so manifest commands like `node ./brain-server.js` work
-      // as written; cwd is the module dir so relative entries resolve.
-      // detached:true puts the shell + its children in their own process
-      // group, so stop() can tree-kill the real sidecar instead of only
-      // the shell wrapper (which would orphan it).
-      child = spawn(sidecar.command, {
-        cwd: m.dir,
-        shell: true,
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-        detached: true,
-      });
+      if (isExec) {
+        // exec kind: argv[0] is the binary, the rest are args. No shell —
+        // no quoting issues, no shell injection. detached still groups the
+        // process for tree-kill on stop().
+        const [bin, ...args] = sidecar.exec;
+        child = spawn(bin, args, {
+          cwd: m.dir,
+          shell: false,
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+          detached: true,
+        });
+      } else {
+        // shell:true so manifest commands like `node ./brain-server.js` work
+        // as written; cwd is the module dir so relative entries resolve.
+        // detached:true puts the shell + its children in their own process
+        // group, so stop() can tree-kill the real sidecar instead of only
+        // the shell wrapper (which would orphan it).
+        child = spawn(sidecar.command, {
+          cwd: m.dir,
+          shell: true,
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+          detached: true,
+        });
+      }
     } catch (e) {
       const reason = `failed to spawn: ${e instanceof Error ? e.message : String(e)}`;
       return this.fail(name, tag, sidecar.port, reason);
