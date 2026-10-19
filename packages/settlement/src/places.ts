@@ -49,8 +49,6 @@ export const PlaceRulesSchema = z.strictObject({
     townClearM: Metres.default(350),
     /** An inn needs a town at least this far off (a day's walk breaks here), metres. */
     innMinTownDistM: Metres.default(900),
-    /** Inns are at least this far apart, metres. */
-    innSpacingM: Metres.default(4800),
     /** An inn stands this close to its guard outpost, metres. */
     innBesideOutpostM: Metres.default(70),
     /** Shacks stand this far apart along a route, metres. */
@@ -442,10 +440,10 @@ export function planPlaces(input: { towns: PlaceTown[]; terrain: TerrainFields; 
       places.push({ id: nextId(), kind: "guard_outpost", x: at.x, z: at.z, route: r.id });
     }
   }
-  // An inn only beside an outpost, far enough from a town and from the last inn.
+  // An inn only beside an outpost and far enough from a town; how near another inn stands does not matter.
   for (const o of [...places]) {
     if (o.kind !== "guard_outpost") continue;
-    if (townDist(o.x, o.z) < R.innMinTownDistM || nearestOf(["inn"], o.x, o.z) < R.innSpacingM) continue;
+    if (townDist(o.x, o.z) < R.innMinTownDistM) continue;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const x = Math.round(o.x + dx * R.innBesideOutpostM);
       const z = Math.round(o.z + dz * R.innBesideOutpostM);
