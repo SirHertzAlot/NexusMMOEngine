@@ -228,12 +228,58 @@ export class CharacterAnimator {
     if (actions.length >= 2) {
       this.locomotionTree = new LinearBlendTree(actions);
       this.locomotionMachine = new AnimationMachine(this.locomotionTree, this.mixer);
+      // Keep the actions for footstep event tracking (EA24).
+      this.locomotionActions = actions;
     }
   }
 
   /** Set locomotion blend by normalized speed (0 = idle, 1 = sprint). */
   setLocomotionBlend(speed01: number): void {
     this.locomotionTree?.setBlend(THREE.MathUtils.clamp(speed01, 0, 1));
+  }
+
+  /**
+   * Footstep event callback (EA24). Set by the game loop; called when a foot
+   * strikes the ground based on animation time (not distance).
+   */
+  onFootstep: (() => void) | null = null;
+  /** The locomotion actions for footstep tracking. */
+  private locomotionActions: Array<{ action: THREE.AnimationAction; value: number }> = [];
+  /** Last footstep phase per action, to detect crossings. */
+  private lastStepPhase = new Map<THREE.AnimationAction, number>();
+
+  /**
+   * Check animation-driven footstep events (EA24/TS1).
+   * Called each frame; triggers onFootstep when a foot strikes.
+   * Foot strikes at 1/4 and 3/4 through each locomotion cycle.
+   */
+  private checkFootstepEvents(): void {
+    if (!this.onFootstep || !this.locomotionTree) return;
+    const blend = this.locomotionTree.blendValue;
+    // Find the dominant action (closest to the blend value).
+    let dominant: THREE.AnimationAction | null = null;
+    let bestDist = Infinity;
+    for (const { action, value } of this.locomotionActions) {
+      const d = Math.abs(value - blend);
+      if (d < bestDist) {
+        bestDist = d;
+        dominant = action;
+      }
+    }
+    if (!dominant || bestDist > 0.2) return; // Between clips; skip.
+    const clip = dominant.getClip();
+    if (!clip || clip.duration <= 0) return;
+    const phase = (dominant.time / clip.duration) % 1;
+    const last = this.lastStepPhase.get(dominant) ?? 0;
+    // Foot strikes at 0.25 and 0.75 of the cycle.
+    for (const strike of [0.25, 0.75]) {
+      const crossed = (last < strike && phase >= strike) || (last > phase && (strike >= last || strike < phase));
+      if (crossed) {
+        this.onFootstep();
+        break;
+      }
+    }
+    this.lastStepPhase.set(dominant, phase);
   }
 
   /** The action on show (null: locomotion only). */
@@ -305,6 +351,7 @@ export class CharacterAnimator {
     // Drive the animouse state machine (EA21/TS1); falls back to manual mixer when unavailable.
     if (this.locomotionMachine) {
       this.locomotionMachine.update(dt);
+      this.checkFootstepEvents();
     } else {
       this.mixer.update(dt);
     }
