@@ -37,7 +37,7 @@ export interface ItemServiceOptions {
   groundHeightAt?: (x: number, z: number) => number;
   /** Rank ids lowest first (the loot ladder), for the starter weapon. Default: none (any rank). */
   rankOrder?: readonly string[];
-  /** The item base a new character starts holding (M3b). Default "sword"; null: none. */
+  /** The item base a new character starts holding (M3b). Default null (none); the game pack opts in by naming a base. */
   starterBase?: string | null;
 }
 
@@ -68,7 +68,7 @@ export class ItemService implements SimSystem {
     this.groundHeightAt = o.groundHeightAt ?? (() => 0);
     this.store = new ItemStore(o.loot.bagSlots);
     this.rankOrder = o.rankOrder ?? [];
-    this.starterBase = o.starterBase === undefined ? "sword" : o.starterBase;
+    this.starterBase = o.starterBase ?? null;
   }
 
   /**
