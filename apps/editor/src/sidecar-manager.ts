@@ -19,6 +19,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { get } from "node:http";
 import { killProcessTree } from "./proc-tree.js";
+import { WasmSidecarHost } from "./wasm-sidecar-host.js";
 
 export type SidecarStatus = "starting" | "healthy" | "unhealthy" | "stopped";
 
@@ -32,7 +33,10 @@ export interface SidecarModule {
   dir: string;
   manifest: {
     name: string;
-    sidecar?: { command: string; port: number; health: string } | { exec: string[]; port: number; health: string };
+    sidecar?:
+      | { command: string; port: number; health: string }
+      | { exec: string[]; port: number; health: string }
+      | { wasm: string; port: number; health: string };
   };
 }
 
@@ -78,6 +82,8 @@ export class SidecarManager {
   private readonly baseBackoffMs: number;
   private readonly procs = new Map<string, ChildProcess>();
   private readonly statuses = new Map<string, SidecarStatus>();
+  /** EA11: in-process wasm sidecars, by module name. */
+  private readonly wasmHosts = new Map<string, WasmSidecarHost>();
   /** Modules by name, kept for restarts (EA11 supervision). */
   private readonly modules = new Map<string, SidecarModule>();
   /** Consecutive unexpected exits per sidecar (resets on healthy start). */
@@ -111,6 +117,43 @@ export class SidecarManager {
     return Promise.all(withSidecar.map((m) => this.startOne(m)));
   }
 
+  /**
+   * EA11: start a wasm sidecar in-process. Health is checked by calling the
+   * module's exported health() function (must return 1).
+   */
+  private async startWasm(m: SidecarModule, tag: string): Promise<SidecarReport> {
+    const name = m.manifest.name;
+    const sidecar = m.manifest.sidecar as { wasm: string; port: number; health: string };
+    this.log(`${tag} starting wasm: ${sidecar.wasm}`);
+    const host = new WasmSidecarHost(sidecar.wasm, sidecar.port, this.log);
+    try {
+      await host.start(m.dir);
+    } catch (e) {
+      const reason = `wasm load failed: ${e instanceof Error ? e.message : String(e)}`;
+      return this.fail(name, tag, sidecar.port, reason);
+    }
+    this.wasmHosts.set(name, host);
+    // Poll health() until it returns 1 or we time out.
+    const deadline = Date.now() + this.healthTimeoutMs;
+    let healthy = false;
+    while (Date.now() < deadline) {
+      if (host.healthy()) {
+        healthy = true;
+        break;
+      }
+      await sleep(this.pollIntervalMs);
+    }
+    if (healthy) {
+      this.statuses.set(name, "healthy");
+      this.restartCounts.set(name, 0);
+      this.log(`${tag} healthy (wasm)`);
+      return { name, status: "healthy", port: sidecar.port };
+    }
+    this.wasmHosts.delete(name);
+    await host.stop();
+    return this.fail(name, tag, sidecar.port, `wasm health check timed out after ${this.healthTimeoutMs}ms`);
+  }
+
   private async startOne(m: SidecarModule): Promise<SidecarReport> {
     const name = m.manifest.name;
     const sidecar = m.manifest.sidecar!;
@@ -118,9 +161,15 @@ export class SidecarManager {
     this.stopping = false;
     this.modules.set(name, m);
     this.statuses.set(name, "starting");
+
+    // EA11: wasm kind runs in-process via WasmSidecarHost (no OS process).
+    if ("wasm" in sidecar) {
+      return this.startWasm(m, tag);
+    }
+
     // EA11: exec kind runs argv directly (no shell); command kind uses a shell.
     const isExec = "exec" in sidecar;
-    const describe = isExec ? sidecar.exec.join(" ") : sidecar.command;
+    const describe = isExec ? sidecar.exec.join(" ") : (sidecar as { command: string }).command;
     this.log(`${tag} starting: ${describe} (health http://localhost:${sidecar.port}${sidecar.health})`);
 
     let child: ChildProcess;
@@ -277,6 +326,12 @@ export class SidecarManager {
     this.stopping = true;
     for (const [, timer] of this.restartTimers) clearTimeout(timer);
     this.restartTimers.clear();
+    // EA11: stop wasm sidecars in-process.
+    for (const [name, host] of this.wasmHosts) {
+      await host.stop();
+      this.statuses.set(name, "stopped");
+    }
+    this.wasmHosts.clear();
     const entries = [...this.procs.entries()];
     this.procs.clear();
     await Promise.all(
@@ -317,6 +372,8 @@ export class SidecarManager {
     this.stopping = true;
     for (const [, timer] of this.restartTimers) clearTimeout(timer);
     this.restartTimers.clear();
+    // EA11: wasm hosts are in-process; drop them (no async stop here).
+    this.wasmHosts.clear();
     for (const [, child] of this.procs) {
       killProcessTree(child.pid ?? -1, "SIGKILL");
     }
