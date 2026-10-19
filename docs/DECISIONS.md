@@ -2,6 +2,19 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-19 — Road alignment is a content-addressed Catmull-Rom spline spine over the junction graph, owned by engine-core.**
+  Settlement roads ship as mm junctions + edges (`roads.nodes`/`edges`); SG2b
+  computes their horizontal alignment in `packages/engine-core/src/terrain/roads.ts`
+  (not in the slab baker): `buildPaths` chains the graph into runs between degree-2
+  junctions, `catmullRom` smooths each spine (tension 0 = uniform), `splineRoads`
+  drapes the centerline and left/right rails onto a `heightAt(x,z)` surface, and
+  `canonicalRoads` + `roadNetworkHash` reuse the repo's sha256 content-addressed
+  cache-key pattern (`TerrainCache`/`heightsFingerprint`) so splines recompute only
+  when geometry or render density changes. mm units are preserved and scaled at
+  spawn like `Structure` nodes. Client rendering and wiring settlements into
+  scenes is a separate follow-up, deliberately out of `world-bake.ts` to avoid
+  conflicting with `feat/terrain-lazy-cache`.
+
 - **2026-10-15 — The bake materializes the world; the tiles are a cache, and the survey is the only global pass (WX2).**
   `npm run bake:world` writes the whole world up front: 4 km is 103 MB, 16 km
   ~1.5 GB, 32 km ~6 GB, linear in area, and 80% of it is `terrain_tiles` — one
