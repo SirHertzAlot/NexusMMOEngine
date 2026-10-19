@@ -17,6 +17,7 @@
  *                      and place the town at its best site (the engine must be built;
  *                      the survey takes several seconds)
  *   --site <rank>      with --world, which site, best first (default 1)
+ *   --list-sites       with --world, print how many sites there are for this population (`SITES <n>`) and stop
  *   --access <a>       how the town is reached: port | river | road | remote (caps its size and sets its
  *                      density; with --world, read off the site unless given)
  *   --catalog <file>   with --scene, an art catalog (assets/catalog.json): each structure
@@ -44,7 +45,7 @@ import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" }, access: { type: "string" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" }, access: { type: "string" }, "list-sites": { type: "boolean" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
@@ -66,6 +67,11 @@ async function main(): Promise<void> {
     const extent = townHalfExtentM(households, rules, buildingScale);
     const found = await findSites(fromUser(o.world), here, rules, extent);
     dry = found.dry;
+    if (o["list-sites"]) {
+      // How many towns of this size the world supports, for `bake:all --sites max`; the line is machine-read.
+      console.log(`SITES ${found.sites.length}`);
+      return;
+    }
     const site = found.sites[Number(o.site ?? 1) - 1];
     if (!site) throw new Error(`--site ${o.site ?? 1}: the world has fewer sites`);
     // The town is sized by its green square: as many people as fit, up to the number asked for.
@@ -107,6 +113,9 @@ async function main(): Promise<void> {
   console.log(`[settlement:bake] ${m.settlementId}: ${m.demographics.population} people, ${m.parcels.length} parcels, ${m.structures.length} structures, hash ${m.hash.slice(0, 12)} -> ${r.file}`);
 }
 
+/** The most sites one world search returns: more than any world holds at the default spacing. */
+const MAX_SITES = 500;
+
 /** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is green land (a green biome, no water, river or ice, the safe floor above the sea). */
 export async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
@@ -131,7 +140,7 @@ export async function findSites(worldFile: string, here: string, rules: Settleme
     const v = Math.round((z - g.originZ) / g.cell);
     return u >= 0 && v >= 0 && u < g.width && v < g.depth && green[v * g.width + u] === 1;
   };
-  return { sites: selectSites(fields, rules.sites, 20, extentM), dry };
+  return { sites: selectSites(fields, rules.sites, MAX_SITES, extentM), dry };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
