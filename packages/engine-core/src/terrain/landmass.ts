@@ -75,7 +75,7 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
   const D = grid.depth;
   const wander = spec.land.coast.wander / span;
   const mask = new Uint8Array(W * D);
-  if (spec.land.coast.shape === "island") {
+  if (spec.land.coast.shape !== "peninsula") {
     islandMask(spec, grid, warpA, warpT, mask);
     return tidyLandmass(mask, W, D, grid.cell, spec.land.minIslandArea);
   }
@@ -93,35 +93,104 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
   return tidyLandmass(mask, W, D, grid.cell, spec.land.minIslandArea);
 }
 
+/** A round landmass seed in half-span units: centre and radius. */
+interface Blob { x: number; z: number; r: number; p: number }
+
+/** Distance from a blob's centre in its own norm: p = 2 is round, higher is squarer (fills a world cell better). */
+const reach = (o: Blob, x: number, z: number): number => Math.pow(Math.pow(Math.abs(x - o.x), o.p) + Math.pow(Math.abs(z - o.z), o.p), 1 / o.p);
+
 /**
- * Island shape: a main island at the world's centre with open sea on every
- * side, plus `satellites` smaller islands seeded around it in the sea ring.
- * The same noise that bends the peninsula's coast wobbles each shore.
+ * Where the main landmasses sit. "island": one at the world's centre.
+ * "continents": `continents` landmasses spread apart, their sizes grown
+ * together until the land covers `continentCover` of the world, or until
+ * two would meet (a sea channel is kept between them, so the cover is a
+ * ceiling; satellites and wandering coasts add a little).
+ */
+function mainBlobs(spec: WorldSpec, rng: () => number, share: (blobs: Blob[]) => number): Blob[] {
+  const c = spec.land.coast;
+  if (c.shape === "island") return [{ x: 0, z: 0, r: c.islandRadius, p: 2 }];
+  const n = c.continents;
+  // Centres on a jittered grid (the best way to pack big round landmasses
+  // with room between them); cells beyond `n` stay empty, chosen at random.
+  const cols = Math.ceil(Math.sqrt(n));
+  const cells: Blob[] = [];
+  for (let row = 0; row < cols; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = ((col + 0.5) / cols) * 2 - 1 + (rng() - 0.5) * 0.12;
+      const z = ((row + 0.5) / cols) * 2 - 1 + (rng() - 0.5) * 0.12;
+      cells.push({ x, z, r: 0.92 + 0.16 * rng(), p: 2.6 });
+    }
+  }
+  while (cells.length > n) cells.splice(Math.floor(rng() * cells.length), 1);
+  const seeds = cells;
+  const grown = (k: number): Blob[] => seeds.map((b) => ({ ...b, r: b.r * k }));
+  // Never let two grow into each other: keep a sea channel between them.
+  const CHANNEL = 0.04;
+  let hi = 2.5;
+  for (let i = 0; i < seeds.length; i++) {
+    for (let j = i + 1; j < seeds.length; j++) {
+      const d = Math.hypot(seeds[i].x - seeds[j].x, seeds[i].z - seeds[j].z) - CHANNEL;
+      hi = Math.min(hi, d / (seeds[i].r + seeds[j].r));
+    }
+  }
+  let lo = 0.05;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    if (share(grown(mid)) < c.continentCover) lo = mid;
+    else hi = mid;
+  }
+  return grown((lo + hi) / 2);
+}
+
+/**
+ * Island and continent shapes: the main landmass(es) in open sea, plus
+ * `satellites` smaller islands scattered in the sea between and around
+ * them. The same noise that bends the peninsula's coast wobbles each shore.
  */
 function islandMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array, warpT: Float32Array, mask: Uint8Array): void {
   const b = worldBounds(spec);
   const half = (b.max - b.min) / 2;
   const cx = (b.max + b.min) / 2;
   const wander = spec.land.coast.wander / half;
-  const main = spec.land.coast.islandRadius;
   const rng = mulberry32(spec.seed ^ 0x151a4d);
-  // Satellites sit between the main shore and the world edge, clear of both.
-  const sats: Array<{ x: number; z: number; r: number }> = [];
+  const nxAt = (i: number, u: number): number => (grid.originX + u * grid.cell - cx) / half + wander * warpA[i];
+  const nzAt = (i: number, v: number): number => (grid.originZ + v * grid.cell - cx) / half + wander * warpT[i];
+  // Share of the world the blobs cover, sampled on every 4th cell.
+  const share = (bs: Blob[]): number => {
+    let land = 0;
+    let all = 0;
+    for (let v = 0; v < grid.depth; v += 4) {
+      for (let u = 0; u < grid.width; u += 4) {
+        const i = v * grid.width + u;
+        const x = nxAt(i, u);
+        const z = nzAt(i, v);
+        all++;
+        if (bs.some((o) => reach(o, x, z) < o.r)) land++;
+      }
+    }
+    return land / all;
+  };
+  const blobs = mainBlobs(spec, rng, share);
   for (let k = 0; k < spec.land.coast.satellites; k++) {
     const r = 0.04 + 0.06 * rng();
-    const angle = rng() * Math.PI * 2;
-    const room = Math.max(0, 1 - main - 2 * r);
-    const dist = main + r + room * (0.2 + 0.6 * rng());
-    sats.push({ x: Math.cos(angle) * dist, z: Math.sin(angle) * dist, r });
+    for (let tries = 0; tries < 60; tries++) {
+      const reach = 1 - r - 0.04;
+      const x = (rng() * 2 - 1) * reach;
+      const z = (rng() * 2 - 1) * reach;
+      if (blobs.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + r + 0.05)) {
+        blobs.push({ x, z, r, p: 2 });
+        break;
+      }
+    }
   }
   const W = grid.width;
   for (let v = 0; v < grid.depth; v++) {
     for (let u = 0; u < W; u++) {
       const i = v * W + u;
-      const nx = (grid.originX + u * grid.cell - cx) / half + wander * warpA[i];
-      const nz = (grid.originZ + v * grid.cell - cx) / half + wander * warpT[i];
-      let land = Math.hypot(nx, nz) < main;
-      for (let s = 0; s < sats.length && !land; s++) land = Math.hypot(nx - sats[s].x, nz - sats[s].z) < sats[s].r;
+      const nx = nxAt(i, u);
+      const nz = nzAt(i, v);
+      let land = false;
+      for (let s = 0; s < blobs.length && !land; s++) land = reach(blobs[s], nx, nz) < blobs[s].r;
       mask[i] = land ? 1 : 0;
     }
   }

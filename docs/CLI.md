@@ -36,6 +36,7 @@ npm passes flags to a script only after `--`, as in
 | `npm start -- --server` | Setup and the server only |
 | `npm start -- --no-setup` | Skip the setup checks |
 | `npm start -- --build` | Run the full `npm run build` first, then start |
+| `npm start -- --shape=continents` | Bake the first world with that shape (island, peninsula or continents) |
 | `npm run build` | Build everything: the bindings, every package, the client and editor bundles, the native addons and the modules' native entries |
 | `npm run build -- --no-native` | The same without the native steps (TypeScript and bundles only) |
 | `npm run dev` | Same as `npm start -- --dev` |
@@ -62,6 +63,7 @@ output is missing; run them yourself to rebake with other settings.
 |---|---|
 | `npm run bake:world` | Bake the world (4 × 4 km terrain survey, chunk tiles, the spawn area's entities and scatter) into `world.db`. Refuses if one exists |
 | `npm run bake:world:force` | Replace the existing world (stop the server first) |
+| `npm run bake:world -- --shape=island\|peninsula\|continents` | Pick the landmass shape (same as `MMO_BAKE_SHAPE`; add `:force` to replace a world). **continents** grows the world to at least 8 × 8 km so each continent has room (`--size-chunks=N`, or `MMO_BAKE_SIZE_CHUNKS`, sets the side explicitly). The spec used is saved as `world.spec.json` in the data folder; point `MMO_WORLD_SPEC` at it for tools that read the spec |
 | `npm run preview:world -- [spec.json] [out.png]` | Draw a world spec's biomes, rainfall, temperature and UV index to a PNG, without baking |
 | `npm run loot:bake -- [--size 10000] [--seed 1] [--ranks f] [--catalog f] [--held f] [--out dir]` | Bake the loot pool (`loot/pool.jsonl` plus reports) |
 | `npm run loot:rebake -w @mmo-engine/engine-core -- --db <world.db> --pool <pool.jsonl> [--size N] [--seed N]` | Rebake the loot pool, keeping every item players hold (stop the server first) |
