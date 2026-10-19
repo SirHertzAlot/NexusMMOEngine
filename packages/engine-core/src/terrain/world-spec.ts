@@ -142,6 +142,12 @@ export const WorldSpecSchema = z
             wander: z.number().min(0).default(300),
             /** Size of bays and headlands, metres. */
             wanderScale: z.number().positive().default(700),
+            /** "peninsula" runs off the world's far edge; "island" floats in open sea with sea on every side. */
+            shape: z.enum(["peninsula", "island"]).default("peninsula"),
+            /** Island only: radius of the main island, 0.2..1.2 of half the world; past 1 it touches the edges and only the corners stay sea. */
+            islandRadius: z.number().min(0.2).max(1.2).default(0.8),
+            /** Island only: how many smaller islands lie offshore of the main one. */
+            satellites: z.number().int().min(0).max(24).default(0),
           })
           .strict()
           .prefault({}),
@@ -468,7 +474,7 @@ export const WorldSpecSchema = z
     }
     const { waterEdge, tip } = w.land.coast;
     const sidesTurn = 1 - 2 * (waterEdge - 0.25);
-    if (waterEdge > 0.25 && tip <= sidesTurn) {
+    if (w.land.coast.shape === "peninsula" && waterEdge > 0.25 && tip <= sidesTurn) {
       ctx.addIssue({
         code: "custom",
         message: `land.coast.tip (${tip}) must reach past where the side edges turn to sea (${sidesTurn.toFixed(2)} for waterEdge ${waterEdge})`,
