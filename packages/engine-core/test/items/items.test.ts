@@ -326,3 +326,73 @@ describe("ItemService armour (U10)", () => {
     assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "first helm is back in the bag");
   });
 });
+
+describe("ItemService economy verbs (viewport authoring)", () => {
+  const defs = new ItemDefs(POOL, RULES);
+  const svc = (over: Partial<LootRules> = {}, rankOrder?: readonly string[]) =>
+    new ItemService({ defs, loot: loot(over), tickHz: 30, rankOrder });
+
+  it("defOf: a live item resolves to its def, a dead or unknown item to -1", () => {
+    const items = svc();
+    items.give(1, 0); // item 1, def 0
+    assert.equal(items.defOf(1), 0);
+    assert.equal(items.defOf(9999), -1, "never existed");
+    items.store.destroy(1);
+    assert.equal(items.defOf(1), -1, "destroyed");
+  });
+
+  it("moveItem: moves bag-to-bag, refuses when the item is not in from's bag or to's bag is full", () => {
+    const items = svc();
+    items.give(1, 0); // item 1 in char 1's bag
+    assert.equal(items.moveItem(1, 1, 2), true);
+    assert.ok(items.store.inBagOf(2, 1), "arrived in char 2's bag");
+    assert.ok(!items.store.inBagOf(1, 1), "left char 1's bag");
+    assert.equal(items.moveItem(1, 1, 2), false, "no longer in char 1's bag");
+
+    const small = svc({ bagSlots: 1 });
+    small.give(2, 0); // item 1: char 2's only slot
+    small.give(1, 1); // item 2: char 1's bag
+    assert.equal(small.moveItem(2, 1, 2), false, "char 2's bag is full");
+    assert.ok(small.store.inBagOf(1, 2), "item stayed put");
+  });
+
+  it("take: destroys the item from the character's bag, refuses items they do not hold", () => {
+    const items = svc();
+    items.give(1, 0); // item 1
+    assert.equal(items.take(1, 1), true);
+    assert.ok(!items.store.exists(1), "destroyed");
+    items.give(1, 1); // item 2
+    assert.equal(items.take(2, 2), false, "char 2 does not hold it");
+    assert.ok(items.store.exists(2), "still there");
+  });
+
+  it("countBase: counts bag items of an item base (what quests check)", () => {
+    const items = svc();
+    items.give(1, 0); // sword
+    items.give(1, 1); // sword
+    items.give(1, 2); // ring
+    assert.equal(items.countBase(1, "sword"), 2);
+    assert.equal(items.countBase(1, "ring"), 1);
+    assert.equal(items.countBase(1, "axe"), 0);
+    assert.equal(items.countBase(2, "sword"), 0, "another character's bag");
+  });
+
+  it("resolveBase: the lowest-ranked definition of a base, -1 for an unknown base", () => {
+    const items = svc({}, ["common", "rare"]);
+    assert.equal(items.resolveBase("sword"), 0, "common sword outranks rare");
+    assert.equal(items.resolveBase("axe"), -1);
+    assert.equal(svc().resolveBase("sword"), 0, "no rank order: first definition wins");
+  });
+
+  it("grantItem: one grant shape everywhere — false for an unknown def or a full bag", () => {
+    const items = svc();
+    assert.equal(items.grantItem(1, 0), true);
+    assert.ok(items.store.inBagOf(1, 1));
+    assert.equal(items.grantItem(1, -1), false);
+    assert.equal(items.grantItem(1, 999), false);
+
+    const small = svc({ bagSlots: 1 });
+    assert.equal(small.grantItem(1, 0), true);
+    assert.equal(small.grantItem(1, 1), false, "bag is full");
+  });
+});
