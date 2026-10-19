@@ -47,13 +47,22 @@ describe("island topology", () => {
     assert.notDeepEqual(mask({ islandRadius: 0.5, satellites: 8 }, 6), withSats);
   });
 
-  test("continents: several separate landmasses with most of the world as land", () => {
-    const m = landMask(make({ shape: "continents", continents: 4 }), grid, flat, flat);
+  test("continents with a sea gap stay separate landmasses", () => {
+    const m = landMask(make({ shape: "continents", continents: 4, continentGap: 0.04 }), grid, flat, flat);
     const comps = labelComponents(grid.width, grid.depth, (i) => m[i] === 1);
     const big = comps.sizes.filter((n) => n > 0.05 * grid.width * grid.depth);
     assert.equal(big.length, 4, "four continents, kept apart by sea");
     const share = count(m) / m.length;
     assert.ok(share > 0.5 && share < 0.8, `land share ${share}`);
+  });
+
+  test("by default continents are joined by land bridges and reach about 70%", () => {
+    const m = landMask(make({ shape: "continents", continents: 4 }), grid, flat, flat);
+    const comps = labelComponents(grid.width, grid.depth, (i) => m[i] === 1);
+    const big = comps.sizes.filter((n) => n > 0.05 * grid.width * grid.depth);
+    assert.ok(big.length < 4, `bridged into ${big.length} landmasses`);
+    const share = count(m) / m.length;
+    assert.ok(share > 0.65 && share < 0.85, `land share ${share}`);
   });
 
   test("continents repeat per seed and the cover dial moves the land share", () => {

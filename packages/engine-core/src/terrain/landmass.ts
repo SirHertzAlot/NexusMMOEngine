@@ -103,8 +103,9 @@ const reach = (o: Blob, x: number, z: number): number => Math.pow(Math.pow(Math.
  * Where the main landmasses sit. "island": one at the world's centre.
  * "continents": `continents` landmasses spread apart, their sizes grown
  * together until the land covers `continentCover` of the world, or until
- * two would meet (a sea channel is kept between them, so the cover is a
- * ceiling; satellites and wandering coasts add a little).
+ * neighbours are `continentGap` apart (a negative gap lets them overlap,
+ * which joins them with land bridges; satellites and wandering coasts add
+ * a little).
  */
 function mainBlobs(spec: WorldSpec, rng: () => number, share: (blobs: Blob[]) => number): Blob[] {
   const c = spec.land.coast;
@@ -124,8 +125,9 @@ function mainBlobs(spec: WorldSpec, rng: () => number, share: (blobs: Blob[]) =>
   while (cells.length > n) cells.splice(Math.floor(rng() * cells.length), 1);
   const seeds = cells;
   const grown = (k: number): Blob[] => seeds.map((b) => ({ ...b, r: b.r * k }));
-  // Never let two grow into each other: keep a sea channel between them.
-  const CHANNEL = 0.04;
+  // How far they may grow: a sea channel of `continentGap` between neighbours,
+  // or, when it is negative, that much overlap, which makes land bridges.
+  const CHANNEL = c.continentGap;
   let hi = 2.5;
   for (let i = 0; i < seeds.length; i++) {
     for (let j = i + 1; j < seeds.length; j++) {
