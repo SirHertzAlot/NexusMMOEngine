@@ -11,7 +11,7 @@
  * headlands.
  */
 
-import type { CoarseGrid } from "./survey.js";
+import { mulberry32, type CoarseGrid } from "./survey.js";
 import { distanceTo, labelComponents, sampleBilinear, smoothstep } from "./grid-ops.js";
 import { crestProfile } from "./relief.js";
 import { windVector, worldBounds, type WorldSpec } from "./world-spec.js";
@@ -75,6 +75,10 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
   const D = grid.depth;
   const wander = spec.land.coast.wander / span;
   const mask = new Uint8Array(W * D);
+  if (spec.land.coast.shape === "island") {
+    islandMask(spec, grid, warpA, warpT, mask);
+    return tidyLandmass(mask, W, D, grid.cell, spec.land.minIslandArea);
+  }
   for (let v = 0; v < D; v++) {
     const z = grid.originZ + v * grid.cell;
     for (let u = 0; u < W; u++) {
@@ -87,6 +91,40 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
     }
   }
   return tidyLandmass(mask, W, D, grid.cell, spec.land.minIslandArea);
+}
+
+/**
+ * Island shape: a main island at the world's centre with open sea on every
+ * side, plus `satellites` smaller islands seeded around it in the sea ring.
+ * The same noise that bends the peninsula's coast wobbles each shore.
+ */
+function islandMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array, warpT: Float32Array, mask: Uint8Array): void {
+  const b = worldBounds(spec);
+  const half = (b.max - b.min) / 2;
+  const cx = (b.max + b.min) / 2;
+  const wander = spec.land.coast.wander / half;
+  const main = spec.land.coast.islandRadius;
+  const rng = mulberry32(spec.seed ^ 0x151a4d);
+  // Satellites sit between the main shore and the world edge, clear of both.
+  const sats: Array<{ x: number; z: number; r: number }> = [];
+  for (let k = 0; k < spec.land.coast.satellites; k++) {
+    const r = 0.04 + 0.06 * rng();
+    const angle = rng() * Math.PI * 2;
+    const room = Math.max(0, 1 - main - 2 * r);
+    const dist = main + r + room * (0.2 + 0.6 * rng());
+    sats.push({ x: Math.cos(angle) * dist, z: Math.sin(angle) * dist, r });
+  }
+  const W = grid.width;
+  for (let v = 0; v < grid.depth; v++) {
+    for (let u = 0; u < W; u++) {
+      const i = v * W + u;
+      const nx = (grid.originX + u * grid.cell - cx) / half + wander * warpA[i];
+      const nz = (grid.originZ + v * grid.cell - cx) / half + wander * warpT[i];
+      let land = Math.hypot(nx, nz) < main;
+      for (let s = 0; s < sats.length && !land; s++) land = Math.hypot(nx - sats[s].x, nz - sats[s].z) < sats[s].r;
+      mask[i] = land ? 1 : 0;
+    }
+  }
 }
 
 /**

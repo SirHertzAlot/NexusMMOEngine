@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-10-18)
 
-**148 items built, 32 in progress, 12 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
+**149 items built, 32 in progress, 11 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -417,7 +417,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | WX1 | Weather as a field: conditions emerge, not scripts | 🚧 | Coarse moisture/temperature/wind field over the world map, advanced in a client web worker (existing `WorkerPool`), deterministic from (seed, step) so every client agrees with no messages and no replication. Grid is its own 250–500 m lattice (4k–16k cells at a 16–32 km world), not the terrain grid — simulate coarse, render fine. The baked `terrain/climate.ts` solve stays the static climatology, with a relaxation term so the field cannot drift. Client-side by design: the server has no business knowing how a surface is lit, and the existing weather already derives everything from (biome, tick). Stages: field sim core + worker handler → map/climate plumbing → sky overcast + cloud volumes + rain shader → couplings (wet look, ripples, wind, audio). Looks stay in `content/materials/materials.json`; who is shaded stays a shading component. Climate is sourced: `FieldService` takes a `ClimateParams` block and `world-canvas.tsx` reads it from the welcome's `WorldInfo` (additive — falls back to `DEFAULT_CLIMATE` until the server sends it). Remaining couplings: wet look, ripples, weather audio. |
 | WG1 | Land share: `land.coast.waterEdge` 0.4 in the default world gives about 74% land on the 4 km world (was 52% at 0.6) | ✅ | Measured with the survey alone (`bake-world --survey-only`); 0.3 is below the spec's limit; the world is rebaked with `npm run bake:world:force` (stop the server first) |
 | WG2 | Humidity dial: `climate.humidity` (0..2, default 1) scales the rain and the moisture of air over the land | ✅ | Rain scales about with the square of the dial: 0.5 gives a quarter of the default; `test/procgen/climate-humidity.test.ts` |
-| WG3 | Island topology: extra landmasses in the sea (count, size range, spacing, distance from the coast), gated by `minIslandArea` | 📋 | Next, after WG1 and WG2 |
+| WG3 | Island topology: `land.coast.shape` "island" (radius `islandRadius`, `satellites` smaller islands offshore, gated by `minIslandArea`); the default world is now an island with 6 satellites | ✅ | 73.5% land at radius 1.04; `test/procgen/island-topology.test.ts`; "peninsula" stays the schema default so other worlds and tests are unchanged |
 
 ---
 
@@ -425,6 +425,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-19**: World generation (WG3): island topology. `land.coast.shape` "island" puts one main island in open sea with optional satellites; the default world uses it (73.5% land, spawn in plains). Peninsula remains the schema default.
 - **2026-10-18**: World generation (WG1, WG2): the default coast gives about 74% land on the 4 km world (`coast.waterEdge` 0.4, was 0.6 at 52%), and a global humidity dial (`climate.humidity`) scales rain and land moisture. Islands (WG3) are next.
 - **2026-10-18**: Designer access (1g) EG1 to EG14 done (✅, PRs #292 to #305): dungeon run rules and entrances, combat and body, crafting and town rules as forms; movement, combat resolution, creature brains, skill pacing, social limits, gathering regrow and dungeon wall/bot pacing moved from code into validated data with forms; VFX budgets now read by the client and editable; persistence settings and day cycle/bots as Live ops › Server settings (env vars still win). Everything hot-reloads except what the server reads at start.
 - **2026-10-18**: Designer access (1g) added: EG1 to EG14 from the editor gap audit (#290), which found dungeon run rules and most of crafting with no editor panel, combat, movement, creature and skill constants held in code, and combat and body rules reachable only as a raw tree.
