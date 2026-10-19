@@ -13,7 +13,7 @@
  *   npm run bake:all -- --data-dir D:/bake/data --content-dir D:/bake/content --assets-dir D:/art
  *
  * Steps (see STEPS in lib/bake-plan.mjs): build, world, loot, dungeons,
- * settlement (best sites first, one id each), scale-fit, wildlife-plan,
+ * settlement (best sites first, one id each), places (routes, roadside places, homesteads), scale-fit, wildlife-plan,
  * wildlife-models (these three need the art catalog; without it they are
  * skipped with a warning and the towns are stand-in boxes), env (prints, and
  * writes <content>/bake-env.local.txt, the MMO_* block that starts the server
@@ -152,6 +152,9 @@ const IMPL = {
       }
       return baked;
     },
+  },
+  places: {
+    cmds: (c) => [node(c, "packages/settlement/dist/src/places-cli.js", ["--world", c.paths.worldSpec, "--scenes", c.paths.scenesDir, "--out", join(c.paths.settlementOut, "places.json"), "--seed", String(c.opts.seed)])],
   },
   "scale-fit": {
     cmds: (c) => [node(c, "packages/settlement/dist/src/scale-fit-cli.js", ["--catalog", c.paths.catalog, "--scale", c.paths.scaleBase, "--out", c.paths.scaleOut])],

@@ -140,12 +140,13 @@ whose outputs exist are skipped, so it is safe to run again.
 | 3 | `loot` | rank ladder | `<data>/loot/pool.jsonl` |
 | 4 | `dungeons` | themes, species | `<data>/dungeons/*.dungeon.json` |
 | 5 | `settlement` | world spec (survey, site selection), scale, catalog | `<settlements>/<id>.settlement.json`, `<scenes>/settlement-<id>.scene.json` |
-| 6 | `scale-fit` | catalog, scale | `<scale-out>` (`scale.local.json`) |
-| 7 | `wildlife-plan` | catalog, ecology plan | `<content>/ecology/wildlife.local.ecology.json` |
-| 8 | `wildlife-models` | catalog, wildlife table | `<content>/wildlife/models.local.json` |
-| 9 | `env` | the above | prints the `MMO_*` block, writes `<content>/bake-env.local.txt` |
+| 6 | `places` | world spec, the towns' scenes | `<settlements>/places.json` (routes between the towns; guard outposts, inns, shacks, camp sites along them; homesteads between) |
+| 7 | `scale-fit` | catalog, scale | `<scale-out>` (`scale.local.json`) |
+| 8 | `wildlife-plan` | catalog, ecology plan | `<content>/ecology/wildlife.local.ecology.json` |
+| 9 | `wildlife-models` | catalog, wildlife table | `<content>/wildlife/models.local.json` |
+| 10 | `env` | the above | prints the `MMO_*` block, writes `<content>/bake-env.local.txt` |
 
-Steps 6 to 8 need the art catalog (`assets/catalog.json`, built by
+Steps 7 to 9 need the art catalog (`assets/catalog.json`, built by
 `convert:packs` / `import:glb` from the licensed packs, which this command
 does not run). Without it they are skipped with a warning and the town is
 stand-in boxes. Everything that names a licensed model is gitignored.

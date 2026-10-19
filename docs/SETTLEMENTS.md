@@ -209,6 +209,16 @@ Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0
 the client logged in and walking among 288 buildings (12 kinds, all mapped),
 and the same town as stand-in boxes.
 
+## Routes, roadside places and homesteads (SG7, SG8)
+
+`planPlaces` (`src/places.ts`, run by `npm run settlement:places -- --world <spec>` and the `places` step of `bake:all`) reads the baked towns' positions from their scenes and writes `<settlements>/places.json` (format `places/1`, seeded and hashed like the town manifests; its rules are `places-rules/1`, separate from the town rules).
+
+- **Routes** join the towns: a minimum spanning tree plus each town's nearest extra neighbour (within 6 km). Each route is an A* walk over the survey (4-cell blocks), round water and slopes over 25 degrees, fording rivers at a cost, and preferring roads already made so routes share a road where the towns lie in line.
+- **Guard outposts** stand about every 2.4 km along a route. **Inns** stand only within 70 m of an outpost (the guards keep bandits, raiders, thieves and wildlife off them), 900 m from a town and 4.8 km from the last inn. **Shacks** (every 1.3 km, a little off the road) and **camp sites** (every 2.6 km, near water where the route passes it, at least 700 m from any inn or outpost) have no guard.
+- **Homesteads** are one family of 2 to 10 on a farm or ranch (ranch where the land round it is mostly plains) on flat dry green land, 3 per town as far as they fit, 700 m from towns and each other, within 1.4 km of a route.
+
+This is the plan only; building the places as scenes with their people comes later.
+
 ## Baking towns with the rest of the world
 
 `npm run bake:all` runs the world bake, site selection, `settlement:bake --world --site k --scene` for each town (`--sites N`, `--auto-size` for 600/300/100 when a size has no site) and `settlement:scale-fit`, into the folders the `MMO_*` path variables name (`MMO_CONTENT_DIR`, `MMO_SETTLEMENT_OUT`, `MMO_SCENES_DIR`, `MMO_CATALOG`, `MMO_SCALE_OUT`); the three settlement CLIs read the same variables and `settlement:bake` takes `--scenes <dir>`. See the README, "Baking everything".

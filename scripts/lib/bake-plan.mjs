@@ -16,6 +16,7 @@ export const STEPS = [
   { id: "loot", title: "loot pool -> loot/pool.jsonl", art: false },
   { id: "dungeons", title: "dungeon pool -> dungeons/*.dungeon.json", art: false },
   { id: "settlement", title: "town site selection + settlement manifest + scene", art: false },
+  { id: "places", title: "routes between the towns, roadside places, homesteads -> places.json", art: false },
   { id: "scale-fit", title: "per-model scale fit for the town's art", art: true },
   { id: "wildlife-plan", title: "wildlife ecology plan from the art", art: true },
   { id: "wildlife-models", title: "wildlife species -> model map", art: true },
@@ -116,6 +117,8 @@ export function planSteps(options, paths, fsv = realFs) {
     loot: () => fsv.exists(join(paths.dataDir, "loot", "pool.jsonl")),
     dungeons: () => fsv.hasDungeons(join(paths.dataDir, "dungeons")),
     settlement: () => ids !== null && ids.every((id) => fsv.exists(join(paths.settlementOut, `${id}.settlement.json`)) && fsv.exists(join(paths.scenesDir, `settlement-${id}.scene.json`))),
+    // The plan follows the towns, so with "max" (towns not known ahead) it is replanned each time.
+    places: () => ids !== null && fsv.exists(join(paths.settlementOut, "places.json")),
     "scale-fit": () => fsv.exists(paths.scaleOut),
     "wildlife-plan": () => fsv.exists(paths.ecologyOut),
     "wildlife-models": () => fsv.exists(paths.wildlifeModelsOut),

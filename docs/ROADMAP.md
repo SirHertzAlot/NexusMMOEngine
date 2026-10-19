@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-10-18)
 
-**152 items built, 32 in progress, 13 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
+**152 items built, 34 in progress, 11 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -421,8 +421,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | WG4 | Continents: `land.coast.shape` "continents" (4 landmasses on a jittered grid, joined by land bridges: `continentGap` negative overlaps them, positive keeps sea channels; `continentCover` 0.8; plus satellites) and `bake-world --shape=island\|peninsula\|continents` (also `MMO_BAKE_SHAPE`, `npm start -- --shape=`); continents grow the world to at least 8 km so landmasses hold content | ✅ | 70.4% land on the 8 km world (island about 73%): the 70% target; the bake saves the spec it used as `world.spec.json`; `test/procgen/island-topology.test.ts` |
 | WG5 | Pangaea: `land.coast.shape` "pangaea" (one supercontinent from a centre and four overlapping lobes, ragged coast with inland seas) and `bake-world --shape=pangaea`; 8 km world, `continentCover` 0.76 | ✅ | 71.6% land measured; one landmass; `test/procgen/island-topology.test.ts`. A settlement bake on the 70% continents world (`bake:all --only settlement --sites 8 --population 600 --auto-size`) placed 8 towns, two on each continent (430 to 738 people each) |
 | SG6 | Settlement count: `bake:all --sites N\|max` (default max: as many towns as the world supports with every constraint, up to 200); the settlement baker's `--list-sites` counts the sites; the search is no longer capped at 20 | ✅ | `scripts/test/bake-plan.test.mjs`; on the 8 km continents world there are 10 sites at the 1.5 km spacing (44 suitable spots in all), so spacing is the cap |
-| SG7 | Homesteads: one family of up to 10 on a farm or ranch by itself between the towns | 📋 | Next |
-| SG8 | Roadside places on the routes between towns: shacks, camp sites, guard outposts; an inn only beside a guard outpost (protection from bandits, raiders, thieves and wildlife) | 📋 | After SG7 |
+| SG7 | Homesteads: one family of up to 10 on a farm or ranch by itself between the towns | 🚧 | Planned by `planPlaces` into `places.json` (family 2 to 10, farm or ranch by biome, 3 per town, 700 m from towns and each other, within 1.4 km of a route). Building the farms and their families is next |
+| SG8 | Roadside places on the routes between towns: shacks, camp sites, guard outposts; an inn only beside a guard outpost (protection from bandits, raiders, thieves and wildlife) | 🚧 | Routes (A* between towns, MST plus nearest links, sharing roads) and the places along them are planned into `places.json` (`settlement:places`, a `bake:all` step); `test/places.test.ts`. Scenes, guards and keepers for them are next |
 
 ---
 
@@ -431,6 +431,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 Newest first. One line per merged PR or decision.
 
 - **2026-10-19**: Settlement count (SG6): `bake:all --sites max` is the default. SG7 homesteads and SG8 roadside places (shacks, camp sites, guard outposts, inns only beside an outpost) planned.
+- **2026-10-19**: SG7/SG8 first slice: `packages/settlement/src/places.ts` plans routes between the towns and the places along and between them; `npm run settlement:places`; `bake:all` step `places`.
 - **2026-10-19**: World generation (WG5): pangaea shape (`--shape=pangaea`, 71.6% land, one supercontinent). Town bake on the continents world: 8 sites found, 2 on each continent (the 4 km island world gave 2 to 3).
 - **2026-10-19**: World generation (WG4): continents. `land.coast.shape` "continents" gives separate large landmasses, and `bake-world` takes `--shape=island|peninsula|continents` (continents grow the world to at least 8 km a side). 70% land on the 8 km world (continents joined by land bridges).
 - **2026-10-19**: World generation (WG3): island topology. `land.coast.shape` "island" puts one main island in open sea with optional satellites; the default world uses it (73.5% land, spawn in plains). Peninsula remains the schema default.
