@@ -110,6 +110,12 @@ export async function assembleServerSystems(
    * directly (e.g. quests, dungeons). They never enter `systems`/`byName`.
    */
   extensions: Record<string, unknown>;
+  /**
+   * EA12: edge routes, keyed `local:<module>`. For each enabled module with
+   * a manifest `edge` contribution, the route carries its regions, endpoint,
+   * and capabilities. Merged into the edge routing table at boot.
+   */
+  edgeRoutes: Record<string, { regions: string[]; endpoint: string; capabilities: string[] }>;
 }> {
   const set = readEnabledSet(o.setFile);
   const found = discoverModules(o.modulesDir, ENGINE_VERSION);
@@ -177,5 +183,17 @@ export async function assembleServerSystems(
   for (const [k, v] of instances) if (v !== undefined) systemsByName[k] = v;
   const extensions: Record<string, unknown> = {};
   for (const [k, v] of extensionInstances) if (v !== undefined) extensions[k] = v;
-  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name), byName: systemsByName, extensions };
+  // EA12: merge `local:<module>` routes for enabled modules with edge contributions.
+  const edgeRoutes: Record<string, { regions: string[]; endpoint: string; capabilities: string[] }> = {};
+  for (const m of r.modules) {
+    const edge = m.manifest.edge;
+    if (edge) {
+      edgeRoutes[`local:${m.manifest.name}`] = {
+        regions: edge.regions,
+        endpoint: edge.endpoint,
+        capabilities: edge.capabilities,
+      };
+    }
+  }
+  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name), byName: systemsByName, extensions, edgeRoutes };
 }
