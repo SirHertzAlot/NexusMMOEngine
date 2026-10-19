@@ -142,11 +142,16 @@ export const WorldSpecSchema = z
             wander: z.number().min(0).default(300),
             /** Size of bays and headlands, metres. */
             wanderScale: z.number().positive().default(700),
-            /** "peninsula" runs off the world's far edge; "island" floats in open sea with sea on every side. */
-            shape: z.enum(["peninsula", "island"]).default("peninsula"),
+            /** "peninsula" runs off the world's far edge; "island" floats in open sea with sea on every side; "continents" is several large landmasses joined by land bridges or split by sea; "pangaea" is one supercontinent with ragged coasts and inland seas (its size is set by continentCover). */
+            shape: z.enum(["peninsula", "island", "continents", "pangaea"]).default("peninsula"),
             /** Island only: radius of the main island, 0.2..1.2 of half the world; past 1 it touches the edges and only the corners stay sea. */
             islandRadius: z.number().min(0.2).max(1.2).default(0.8),
-            /** Island only: how many smaller islands lie offshore of the main one. */
+            /** Continents only: how many large landmasses, and the share of the world they cover together (0.8 measures about 70% land: most chances for settlements). */
+            continents: z.number().int().min(2).max(9).default(4),
+            /** Continents only: sea between neighbours (half-world units); negative overlaps them, joining them with land bridges. */
+            continentGap: z.number().min(-0.4).max(0.4).default(-0.08),
+            continentCover: z.number().min(0.2).max(0.9).default(0.8),
+            /** Island and continents: how many smaller islands lie in the sea around the main landmass(es). */
             satellites: z.number().int().min(0).max(24).default(0),
           })
           .strict()

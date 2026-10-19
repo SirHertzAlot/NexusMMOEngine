@@ -28,6 +28,11 @@
  *   --force          overwrite an existing world.db (same as MMO_BAKE_FORCE=1)
  *   --region rx,rz   re-bake only this region's tiles (incremental)
  *   --survey-only    re-run the survey and invalidate the tile cache
+ *   --shape=island|peninsula|continents|pangaea
+ *                    the landmass shape (same as MMO_BAKE_SHAPE); continents
+ *                    and pangaea need room, so the world grows to at least
+ *                    CONTINENT_MIN_CHUNKS (500 chunks = 8 km) per side
+ *   --size-chunks=N  the world's side in chunks (same as MMO_BAKE_SIZE_CHUNKS)
  *
  * With a world spec, the WHOLE world's terrain is baked once (survey,
  * erosion, rivers, biomes -> 16x16-sample chunk tiles + survey maps in
@@ -64,7 +69,7 @@ import {
 } from "./index.js";
 import { closeWorldCatalogs } from "./persist/world-catalog.js";
 import { bakeWorldTerrain } from "./terrain/world-bake.js";
-import { loadWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
+import { loadWorldSpec, parseWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
 
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
@@ -74,6 +79,26 @@ const FORCE =
   process.env.MMO_BAKE_FORCE === "1" || process.argv.includes("--force");
 const SURVEY_ONLY =
   process.env.MMO_BAKE_SURVEY_ONLY === "1" || process.argv.includes("--survey-only");
+
+const SHAPES = ["peninsula", "island", "continents", "pangaea"] as const;
+type Shape = (typeof SHAPES)[number];
+/** Continents and pangaea worlds are at least this many chunks a side: smaller ones would only hold tiny landmasses with little to do on them. */
+const CONTINENT_MIN_CHUNKS = 500;
+/** `--name=value` on the command line; through `npm run ... -- --name=value` npm keeps the flag for itself and passes it on as npm_config_<name>. */
+const flag = (name: string): string | undefined =>
+  process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? process.env[`npm_config_${name.replace(/-/g, "_")}`];
+
+function parseShape(arg: string | undefined): Shape | undefined {
+  if (!arg) return undefined;
+  if (!(SHAPES as readonly string[]).includes(arg)) throw new Error(`shape must be one of ${SHAPES.join(", ")} (got "${arg}")`);
+  return arg as Shape;
+}
+function parseSizeChunks(arg: string | undefined): number | undefined {
+  if (!arg) return undefined;
+  const n = Number(arg);
+  if (!Number.isInteger(n) || n < 2 || n > 4096) throw new Error(`size-chunks must be an integer from 2 to 4096 (got "${arg}")`);
+  return n;
+}
 
 function parseRegion(arg: string | undefined): [number, number] | undefined {
   if (!arg) return undefined;
@@ -289,7 +314,37 @@ function resolveWorldSpec(): WorldSpec | null {
     return null;
   }
   console.log(`[bake] world spec ${path.relative(process.cwd(), file)}`);
-  return loadWorldSpec(file);
+  const shape = parseShape(process.env.MMO_BAKE_SHAPE ?? flag("shape"));
+  const size = parseSizeChunks(process.env.MMO_BAKE_SIZE_CHUNKS ?? flag("size-chunks"));
+  if (shape === undefined && size === undefined) return loadWorldSpec(file);
+  const spec = loadWorldSpec(file);
+  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  const coast: Record<string, unknown> = { ...((raw.land as { coast?: Record<string, unknown> } | undefined)?.coast ?? {}), ...(shape ? { shape } : {}) };
+  // A pangaea reaches the 70% land target with a smaller cover than the continents' bridged landmasses need.
+  if (shape === "pangaea" && coast.continentCover === undefined) coast.continentCover = 0.76;
+  raw.land = { ...(raw.land as object), coast };
+  if (shape === "continents" || shape === "pangaea") {
+    // The default spec pins its one range where the 4 km island's land is; continents get a chain on each, placed on the land they have.
+    const { center: _pinned, ...ranges } = (raw.ranges ?? {}) as Record<string, unknown>;
+    // Wide landmasses have dry interiors; more rain keeps them green.
+    const climate = (raw.climate ?? {}) as Record<string, unknown>;
+    raw.climate = { ...climate, humidity: Math.max(Number(climate.humidity ?? 1), 1.4) };
+    raw.ranges = { ...ranges, count: Math.max(Number(ranges.count ?? 1), shape === "pangaea" ? 3 : parseWorldSpec({ ...raw, land: raw.land }).land.coast.continents) };
+  }
+  const want = size ?? (shape === "continents" || shape === "pangaea" ? Math.max(spec.sizeChunks, CONTINENT_MIN_CHUNKS) : spec.sizeChunks);
+  if (want !== spec.sizeChunks) {
+    // Keep the region grid dividing the world evenly.
+    raw.sizeChunks = want;
+    raw.regionsPerSide = [spec.regionsPerSide, 2, 1].find((r) => want % r === 0) ?? 1;
+  }
+  const out = parseWorldSpec(raw);
+  const km = (out.sizeChunks * out.chunkWorldSize) / 1000;
+  console.log(`[bake] shape ${out.land.coast.shape}${want !== spec.sizeChunks ? `, world grown to ${out.sizeChunks} chunks (${km} km a side)` : ""}`);
+  // Other tools (terrain-tool, the editor) read the spec themselves: leave the one this world was baked from beside it.
+  const derived = path.join(DATA_DIR, "world.spec.json");
+  fs.writeFileSync(derived, JSON.stringify(raw, null, 2));
+  console.log(`[bake] spec used saved to ${derived} (MMO_WORLD_SPEC=${derived} for tools that read the spec)`);
+  return out;
 }
 
 main().catch((err) => {
