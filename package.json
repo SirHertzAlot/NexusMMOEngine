@@ -66,6 +66,7 @@
     "packages/addons/template",
     "packages/addons/integrate",
     "packages/addons/procgen",
+    "packages/addons/terrain-kernel",
     "packages/addons/physics",
     "packages/addons/navigation",
     "apps/client",
