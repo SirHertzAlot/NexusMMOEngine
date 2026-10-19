@@ -53,6 +53,13 @@ export interface SidecarManagerOptions {
   killTimeoutMs?: number;
   /** Lifecycle + child-output lines. Defaults to a no-op (host.ts passes the server log). */
   log?: (line: string) => void;
+  /**
+   * Restart supervision (EA11): when a healthy sidecar exits unexpectedly,
+   * restart it with exponential backoff. `maxRestarts` caps consecutive
+   * restarts (0 = never restart, default 3); `baseBackoffMs` is the first
+   * delay, doubled each time (default 1_000).
+   */
+  restartPolicy?: { maxRestarts?: number; baseBackoffMs?: number };
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -67,14 +74,26 @@ export class SidecarManager {
   private readonly pollIntervalMs: number;
   private readonly killTimeoutMs: number;
   private readonly log: (line: string) => void;
+  private readonly maxRestarts: number;
+  private readonly baseBackoffMs: number;
   private readonly procs = new Map<string, ChildProcess>();
   private readonly statuses = new Map<string, SidecarStatus>();
+  /** Modules by name, kept for restarts (EA11 supervision). */
+  private readonly modules = new Map<string, SidecarModule>();
+  /** Consecutive unexpected exits per sidecar (resets on healthy start). */
+  private readonly restartCounts = new Map<string, number>();
+  /** Pending restart timers per sidecar. */
+  private readonly restartTimers = new Map<string, NodeJS.Timeout>();
+  /** Set when stop() is called: suppresses restarts. */
+  private stopping = false;
 
   constructor(opts: SidecarManagerOptions = {}) {
     this.healthTimeoutMs = opts.healthTimeoutMs ?? 15_000;
     this.pollIntervalMs = opts.pollIntervalMs ?? 500;
     this.killTimeoutMs = opts.killTimeoutMs ?? 5_000;
     this.log = opts.log ?? (() => {});
+    this.maxRestarts = opts.restartPolicy?.maxRestarts ?? 3;
+    this.baseBackoffMs = opts.restartPolicy?.baseBackoffMs ?? 1_000;
   }
 
   /** Last known status per sidecar name; unknown names return undefined. */
@@ -96,6 +115,8 @@ export class SidecarManager {
     const name = m.manifest.name;
     const sidecar = m.manifest.sidecar!;
     const tag = `[sidecar:${name}]`;
+    this.stopping = false;
+    this.modules.set(name, m);
     this.statuses.set(name, "starting");
     this.log(`${tag} starting: ${sidecar.command} (health http://localhost:${sidecar.port}${sidecar.health})`);
 
@@ -144,7 +165,16 @@ export class SidecarManager {
 
     if (healthy) {
       this.statuses.set(name, "healthy");
+      this.restartCounts.set(name, 0);
       this.log(`${tag} healthy`);
+      // EA11: supervise the healthy sidecar — an unexpected exit restarts it.
+      child.on("exit", (code, signal) => {
+        if (this.stopping) return;
+        // If stop() already reaped it, procs won't have it.
+        if (!this.procs.has(name)) return;
+        this.procs.delete(name);
+        this.superviseRestart(name, tag, code, signal);
+      });
       return { name, status: "healthy", port: sidecar.port };
     }
     const reason = exited
@@ -152,6 +182,41 @@ export class SidecarManager {
       : `health check timed out after ${this.healthTimeoutMs}ms`;
     this.killTree(name, child);
     return this.fail(name, tag, sidecar.port, reason);
+  }
+
+  /**
+   * EA11 restart supervision: a healthy sidecar that exits unexpectedly is
+   * restarted with exponential backoff, up to maxRestarts consecutive
+   * failures. After that the module is marked unhealthy and left down —
+   * a crash loop must not spin forever.
+   */
+  private superviseRestart(name: string, tag: string, code: number | null, signal: string | null): void {
+    const count = (this.restartCounts.get(name) ?? 0) + 1;
+    this.restartCounts.set(name, count);
+    if (count > this.maxRestarts) {
+      this.statuses.set(name, "unhealthy");
+      this.log(`${tag} DISABLED after ${this.maxRestarts} restarts: exited (code ${code}, signal ${signal})`);
+      return;
+    }
+    const backoff = this.baseBackoffMs * 2 ** (count - 1);
+    this.statuses.set(name, "starting");
+    this.log(`${tag} exited (code ${code}, signal ${signal}) — restart ${count}/${this.maxRestarts} in ${backoff}ms`);
+    const timer = setTimeout(() => {
+      this.restartTimers.delete(name);
+      if (this.stopping) return;
+      const m = this.modules.get(name);
+      if (!m) return;
+      void this.startOne(m).then((report) => {
+        // A failed restart counts toward the budget via the exit handler;
+        // a report of "unhealthy" here means it never got healthy.
+        if (report.status === "unhealthy") {
+          this.log(`${tag} restart failed: ${report.reason}`);
+        }
+      });
+    }, backoff);
+    // Don't keep the host alive just for a restart timer.
+    (timer as unknown as { unref?: () => void }).unref?.();
+    this.restartTimers.set(name, timer);
   }
 
   private fail(name: string, tag: string, port: number, reason: string): SidecarReport {
@@ -192,6 +257,9 @@ export class SidecarManager {
    * after killTimeoutMs. Resolves when all are gone.
    */
   async stop(): Promise<void> {
+    this.stopping = true;
+    for (const [, timer] of this.restartTimers) clearTimeout(timer);
+    this.restartTimers.clear();
     const entries = [...this.procs.entries()];
     this.procs.clear();
     await Promise.all(
@@ -229,6 +297,9 @@ export class SidecarManager {
    * awaited. Prefers stop() everywhere else.
    */
   killNow(): void {
+    this.stopping = true;
+    for (const [, timer] of this.restartTimers) clearTimeout(timer);
+    this.restartTimers.clear();
     for (const [, child] of this.procs) {
       killProcessTree(child.pid ?? -1, "SIGKILL");
     }
