@@ -40,12 +40,12 @@ describe("parseBakeArgs", () => {
 
 describe("planSteps", () => {
   it("runs in dependency order", () => {
-    assert.deepEqual(STEP_IDS, ["build", "world", "loot", "dungeons", "settlement", "scale-fit", "wildlife-plan", "wildlife-models", "env"]);
+    assert.deepEqual(STEP_IDS, ["build", "world", "loot", "dungeons", "settlement", "places", "scale-fit", "wildlife-plan", "wildlife-models", "env"]);
     assert.deepEqual(plan([]).map((s) => s.id), STEP_IDS);
     assert.deepEqual(ids(plan([]), "run"), STEP_IDS);
   });
   it("is idempotent: what exists is skipped, unless --force", () => {
-    assert.deepEqual(ids(plan(["--sites", "1"], everything), "done"), ["world", "loot", "dungeons", "settlement", "scale-fit", "wildlife-plan", "wildlife-models"]);
+    assert.deepEqual(ids(plan(["--sites", "1"], everything), "done"), ["world", "loot", "dungeons", "settlement", "places", "scale-fit", "wildlife-plan", "wildlife-models"]);
     // With max the count is only known after a survey, so the settlement step runs (and skips towns that exist).
     assert.deepEqual(ids(plan([], everything), "done"), ["world", "loot", "dungeons", "scale-fit", "wildlife-plan", "wildlife-models"]);
     assert.deepEqual(ids(plan(["--force", "--sites", "1"], everything), "done"), []);
