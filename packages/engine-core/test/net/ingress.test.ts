@@ -157,7 +157,11 @@ describe("gateway: ingress rate limits", () => {
     assert.equal(attacker.client.closeCode, 4000, "sustained abuse disconnects the session");
 
     const stats = gw!.ingressStats();
-    assert.equal(stats.droppedIntents, 27, "every excess message is counted");
+    // The 10th violation (maxViolations) disconnects. The transport decides
+    // how many of the rest were already read off the wire: uWS stops at the
+    // close, ws still delivers what it had buffered. So: at least the limit,
+    // never more than the 27 sent past the burst.
+    assert.ok(stats.droppedIntents >= 10 && stats.droppedIntents <= 27, `excess messages are counted up to the abuse limit: ${stats.droppedIntents}`);
     assert.equal(stats.abuseDisconnects, 1);
 
     // The authority is unaffected: the victim's intent still applies and
@@ -221,7 +225,9 @@ describe("gateway: pickup rate limits", () => {
     await attacker.client.waitForClose();
     assert.equal(attacker.client.closeCode, 4000, "sustained abuse disconnects the session");
     const stats = gw!.ingressStats();
-    assert.equal(stats.droppedPickups, 18, "every excess pickup is counted");
+    // Disconnect comes at the 8th violation (maxViolations); how many of the
+    // 18 were already read depends on the transport (see the intent flood).
+    assert.ok(stats.droppedPickups >= 8 && stats.droppedPickups <= 18, `excess pickups are counted up to the abuse limit: ${stats.droppedPickups}`);
     assert.equal(stats.abuseDisconnects, 1);
 
     // Another session is unaffected.
