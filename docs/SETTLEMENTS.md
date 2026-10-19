@@ -121,6 +121,14 @@ surveys the world (several seconds), places the town at its best site and
 writes the scene there. On the shipped 4 x 4 km world that finds two sites
 with the default 1.5 km spacing; `rules.sites` is data like the rest.
 
+`npm run bake:all` bakes as many towns as the world supports by default
+(`--sites max`; `--sites N` for a number): it asks the settlement baker
+(`--list-sites`, which prints `SITES <n>` after one survey) how many sites the
+world has for towns of that size, then bakes each. The spacing is what limits
+the count: on the 8 km continents world at 70% land there are 44 suitable spots
+but only 10 at 1.5 km spacing (17 at 1.2 km); relief, slope and square size
+barely move it.
+
 ### Flat, low land only (SG2c)
 
 Slope alone is deceptive: a gentle grade over a long distance is a big change
@@ -200,6 +208,16 @@ The manifest itself holds only archetypes and can be committed.
 Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0182`,
 the client logged in and walking among 288 buildings (12 kinds, all mapped),
 and the same town as stand-in boxes.
+
+## Routes, roadside places and homesteads (SG7, SG8)
+
+`planPlaces` (`src/places.ts`, run by `npm run settlement:places -- --world <spec>` and the `places` step of `bake:all`) reads the baked towns' positions from their scenes and writes `<settlements>/places.json` (format `places/1`, seeded and hashed like the town manifests; its rules are the `places` section of the settlement rules file, `content/settlements/rules.json`, the file the towns read; `--rules` picks another and `--homesteads` overrides the per-town count).
+
+- **Routes** join the towns: a minimum spanning tree plus each town's nearest extra neighbour (within 6 km). Each route is an A* walk over the survey (4-cell blocks), round water and slopes over 25 degrees, fording rivers at a cost, and preferring roads already made so routes share a road where the towns lie in line.
+- **Guard outposts** stand about every 2.4 km along a route. **Inns** stand only within 70 m of an outpost (the guards keep bandits, raiders, thieves and wildlife off them), 900 m from a town and 4.8 km from the last inn. **Shacks** (every 1.3 km, a little off the road) and **camp sites** (every 2.6 km, near water where the route passes it, at least 700 m from any inn or outpost) have no guard.
+- **Homesteads** are one family of 2 to 10 on a farm or ranch (ranch where the land round it is mostly plains) on flat dry green land, 3 per town as far as they fit, 700 m from towns and each other, within 1.4 km of a route.
+
+This is the plan only; building the places as scenes with their people comes later.
 
 ## Baking towns with the rest of the world
 
