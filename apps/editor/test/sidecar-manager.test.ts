@@ -154,4 +154,52 @@ describe("SidecarManager", () => {
     const mgr = tracked(new SidecarManager());
     assert.equal(mgr.statusOf("nope"), undefined);
   });
+
+  it("restarts a healthy sidecar that exits unexpectedly (EA11 supervision)", async () => {
+    const port = nextPort++;
+    // A stub that exits after 300ms — the manager should restart it.
+    const crashStub = `\nconst http = require("http");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nsetTimeout(() => process.exit(1), 300);\n`;
+    writeFileSync(join(dir, "crash.js"), crashStub, "utf8");
+    const mgr = tracked(
+      new SidecarManager({
+        healthTimeoutMs: 8000,
+        pollIntervalMs: 100,
+        restartPolicy: { maxRestarts: 2, baseBackoffMs: 200 },
+      }),
+    );
+    const [report] = await mgr.start([
+      { dir, manifest: { name: "crasher", sidecar: { command: `node crash.js ${port}`, port, health: "/health" } } },
+    ]);
+    assert.equal(report.status, "healthy");
+    // Wait for the crash + restart: the sidecar should come back.
+    assert.ok(await portOpenSoon(port, 60), "sidecar should be listening after restart");
+    // Give the restart a moment to register as healthy.
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(mgr.statusOf("crasher"), "healthy");
+    await mgr.stop();
+  });
+
+  it("gives up after maxRestarts consecutive crashes (EA11 supervision)", async () => {
+    const port = nextPort++;
+    const crashStub = `\nconst http = require("http");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nsetTimeout(() => process.exit(1), 200);\n`;
+    writeFileSync(join(dir, "crash2.js"), crashStub, "utf8");
+    const lines: string[] = [];
+    const mgr = tracked(
+      new SidecarManager({
+        healthTimeoutMs: 8000,
+        pollIntervalMs: 100,
+        restartPolicy: { maxRestarts: 1, baseBackoffMs: 100 },
+        log: (l) => lines.push(l),
+      }),
+    );
+    const [report] = await mgr.start([
+      { dir, manifest: { name: "doomed", sidecar: { command: `node crash2.js ${port}`, port, health: "/health" } } },
+    ]);
+    assert.equal(report.status, "healthy");
+    // After 1 restart the budget is exhausted; the module goes unhealthy.
+    await new Promise((r) => setTimeout(r, 2500));
+    assert.equal(mgr.statusOf("doomed"), "unhealthy");
+    assert.ok(lines.some((l) => l.includes("DISABLED after 1 restarts")), "should log the give-up");
+    await mgr.stop();
+  });
 });
