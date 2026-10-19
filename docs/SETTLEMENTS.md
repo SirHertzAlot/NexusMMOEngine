@@ -217,7 +217,7 @@ and the same town as stand-in boxes.
 - **Guard outposts** stand about every 2.4 km along a route. **Inns** stand only within 70 m of an outpost (the guards keep bandits, raiders, thieves and wildlife off them), 900 m from a town and 4.8 km from the last inn. **Shacks** (every 1.3 km, a little off the road) and **camp sites** (every 2.6 km, near water where the route passes it, at least 700 m from any inn or outpost) have no guard.
 - **Homesteads** are one family of 2 to 10 on a farm or ranch (ranch where the land round it is mostly plains) on flat dry green land, 3 per town as far as they fit, 700 m from towns and each other, within 1.4 km of a route.
 
-This is the plan only; building the places as scenes with their people comes later.
+`places-scene.ts` turns the plan into one world scene, `places.scene.json` in the scenes folder (`MMO_SCENE=places`): a Structure node per place (`guard_outpost`, `roadside_inn`, `shack`, `camp_site`, `farmhouse`), a `farm_field` or `ranch_pen` beside each homestead; camp sites and fields are walk-through, and a kind with no art model stays a box. The people (the family, the outpost's guards, the innkeeper) come later; the plan already names them.
 
 ## Baking towns with the rest of the world
 
