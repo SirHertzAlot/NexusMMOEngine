@@ -17,6 +17,7 @@
  */
 
 import * as THREE from "three";
+import { AnimationMachine, LinearBlendTree } from "animouse";
 import { createGltfLoader } from "../gltf-loader.js";
 import {
   DEFAULT_LOCOMOTION, crossfadeWeights, manifestLocomotion, pickLocomotion, playhead,
@@ -173,8 +174,12 @@ class ActionLayer {
 
 export class CharacterAnimator {
   private readonly mixer: THREE.AnimationMixer;
+  /** animouse blend tree for locomotion (EA21/TS1): idle → walk → jog → sprint by speed. */
+  private locomotionTree: LinearBlendTree | null = null;
+  /** animouse state machine managing locomotion transitions. */
+  private locomotionMachine: AnimationMachine | null = null;
   private base: { name: string; action: THREE.AnimationAction } | null = null;
-  /** The base clip being left, fading out while the new one fades in. */
+  /** The base clip being left, fading out while the new one fades in (legacy path, replaced by animouse). */
   private leaving: { action: THREE.AnimationAction; elapsed: number; duration: number } | null = null;
   /** The base clip the server asked for (EA21); null: choose from the motion. */
   private serverBase: { name: string; timeScale: number; fade: number } | null = null;
@@ -199,6 +204,36 @@ export class CharacterAnimator {
       if ((o as THREE.Bone).isBone || o.name === "Hips") this.bones.push(o);
     });
     this.hips = root.getObjectByName("Hips") ?? null;
+    this.buildLocomotionTree();
+  }
+
+  /**
+   * Build the animouse locomotion blend tree (EA21/TS1).
+   * Blends idle → walk → jog → sprint by normalized speed (0..1).
+   */
+  private buildLocomotionTree(): void {
+    const clips: Array<{ name: string; value: number }> = [
+      { name: this.resolve("idle"), value: 0 },
+      { name: this.resolve("walk"), value: 0.33 },
+      { name: this.resolve("jog"), value: 0.66 },
+      { name: this.resolve("sprint"), value: 1 },
+    ];
+    const actions = [];
+    for (const { name, value } of clips) {
+      const clip = this.library.clips.get(name);
+      if (!clip) continue;
+      const action = this.mixer.clipAction(clip);
+      actions.push({ action, value });
+    }
+    if (actions.length >= 2) {
+      this.locomotionTree = new LinearBlendTree(actions);
+      this.locomotionMachine = new AnimationMachine(this.locomotionTree, this.mixer);
+    }
+  }
+
+  /** Set locomotion blend by normalized speed (0 = idle, 1 = sprint). */
+  setLocomotionBlend(speed01: number): void {
+    this.locomotionTree?.setBlend(THREE.MathUtils.clamp(speed01, 0, 1));
   }
 
   /** The action on show (null: locomotion only). */
@@ -267,7 +302,12 @@ export class CharacterAnimator {
     }
     this.chooseBase(motion, dt);
     this.fadeBase(dt);
-    this.mixer.update(dt);
+    // Drive the animouse state machine (EA21/TS1); falls back to manual mixer when unavailable.
+    if (this.locomotionMachine) {
+      this.locomotionMachine.update(dt);
+    } else {
+      this.mixer.update(dt);
+    }
     this.layer?.apply(dt);
   }
 
@@ -304,6 +344,13 @@ export class CharacterAnimator {
     let { clip: name, timeScale, fade } = pick;
     // The server's gait and rate; it never sends swimming or airborne, so those stay with the motion.
     if (this.serverBase && pick.medium === "ground") ({ name, timeScale, fade } = this.serverBase);
+    // animouse path (EA21/TS1): blend locomotion by normalized speed when on the ground
+    // with no server override. Falls back to discrete crossfades otherwise.
+    if (this.locomotionTree && !this.serverBase && pick.medium === "ground") {
+      const maxSpeed = 8; // m/s: sprint speed; tune per character
+      this.setLocomotionBlend(m.speed / maxSpeed);
+      return;
+    }
     name = this.resolve(this.library.clips.has(name) ? name : g.idle.ground);
     this.setBase(name, timeScale, fade);
   }
