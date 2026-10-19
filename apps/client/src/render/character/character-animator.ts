@@ -19,6 +19,7 @@
 import * as THREE from "three";
 import { AnimationMachine, LinearBlendTree } from "animouse";
 import { createGltfLoader } from "../gltf-loader.js";
+import { FootIk } from "./foot-ik.js";
 import {
   DEFAULT_LOCOMOTION, crossfadeWeights, manifestLocomotion, pickLocomotion, playhead,
   type AnimationClipInfo, type AnimationManifest, type ClipPlan, type LocomotionGraph,
@@ -192,6 +193,12 @@ export class CharacterAnimator {
   private readonly masked = new Map<string, THREE.AnimationClip>();
   private airTime = 0;
   private readonly female: boolean;
+  /** EA21: foot IK for planting feet on uneven ground. */
+  private readonly footIk: FootIk;
+  /** Ground height sampler, set by the world (default: y=0 plane). */
+  groundHeight: (x: number, z: number) => number = () => 0;
+  /** Foot IK weight 0..1 (0: off, e.g. swimming/flying). */
+  footIkWeight = 1;
 
   constructor(
     private readonly root: THREE.Object3D,
@@ -205,6 +212,7 @@ export class CharacterAnimator {
     });
     this.hips = root.getObjectByName("Hips") ?? null;
     this.buildLocomotionTree();
+    this.footIk = new FootIk(root);
   }
 
   /**
@@ -356,6 +364,13 @@ export class CharacterAnimator {
       this.mixer.update(dt);
     }
     this.layer?.apply(dt);
+    // EA21: foot IK after all animation, so feet plant on the ground.
+    // Skipped when not on ground (swim/fly mode, or moving vertically).
+    // LocomotionMode: 0=ground, 1=swim, 2=fly (see locomotion.ts).
+    if (this.footIk.available && this.footIkWeight > 0 && motion.mode === 0 && Math.abs(motion.vy) < 0.5) {
+      this.footIk.weight = this.footIkWeight;
+      this.footIk.update(this.groundHeight);
+    }
   }
 
   /** Take the server's clip: the base for a gait, the action layer for the rest. */
