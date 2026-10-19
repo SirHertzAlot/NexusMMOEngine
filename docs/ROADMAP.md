@@ -201,6 +201,7 @@ write the reason and park it):
 | TS5 | GLB Delivery Desk batch QA | ➖ | PR #233: No adoption (existing validators cover >50%). |
 | TS6 | Meshamorphosis batch FBX to GLB and Mixamo | ⏸️ | PR #234: Deferred (no FBX in pipeline). |
 | TS7 | lygia GLSL functions | ❌ | PR #235: REJECTED (Prosperity License). Decision: build own shader library in-house. |
+| BLD1 | Build once, in order, incrementally: `npm run build` builds each workspace once in dependency order and `tsc` skips unchanged packages | ✅ | `scripts/build.mjs` orders workspaces by their dependencies and sets `MMO_ORDERED_BUILD`, which makes the chained dependency builds (`scripts/dep-build.mjs`) no-ops; `npm run build -w <pkg>` alone still builds its dependencies. Every tsconfig is `incremental`. TypeScript-only build on Windows: 1521 s and 197 `tsc` runs before, 131 s and 27 after (117 s warm). |
 
 Parked, with the condition to revisit: Theatre.js (AGPL editor), Needle
 Inspector and Three.js DevTools (license), TSL editors (WebGPU decision),
@@ -430,6 +431,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-19**: Build speed (BLD1, ✅): `npm run build` builds each workspace once in dependency order (was 197 `tsc` runs, schema alone 22x) and every tsconfig is `incremental`; TypeScript-only build 1521 s to 131 s (117 s warm).
 - **2026-10-19**: Test repair: the gateway tests (frame cap, ingress and pickup rate limits) asserted ws-library details (close code 1009, every excess message counted) that uWebSockets, the default transport, does not share, and the server-modules tests still modelled the pre-modularity core that built every system; both now check what they were written to protect and pass on both transports. The 9 red tests on main were these, not engine bugs.
 - **2026-10-19**: Settlement count (SG6): `bake:all --sites max` is the default. SG7 homesteads and SG8 roadside places (shacks, camp sites, guard outposts, inns only beside an outpost) planned.
 - **2026-10-19**: SG7/SG8 scenes: `places-scene.ts` and `places.scene.json` build every planned place as a Structure node (farmhouse with field or pen, outposts, inns, shacks, camp sites).
