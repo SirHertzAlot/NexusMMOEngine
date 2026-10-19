@@ -5,7 +5,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_PLACE_RULES, PlaceRulesSchema, planPlaces, type TerrainFields } from "../src/index.js";
+import { validateScene } from "@mmo-engine/scene";
+import { DEFAULT_PLACE_RULES, PlaceRulesSchema, placesScene, planPlaces, type TerrainFields } from "../src/index.js";
 
 const W = 240;
 const D = 120;
@@ -29,7 +30,7 @@ const towns = [
   { id: "0001", x: 600, z: 1500 },
   { id: "0002", x: 5400, z: 1500 },
 ];
-const rules = PlaceRulesSchema.parse({ routes: {}, roadside: { outpostSpacingM: 1000, innSpacingM: 2000, innMinTownDistM: 500, shackSpacingM: 500, campSpacingM: 1200, campClearOfGuardM: 300 }, homesteads: { perTown: 4, spacingM: 400, townClearM: 400 } });
+const rules = PlaceRulesSchema.parse({ routes: {}, roadside: { outpostSpacingM: 1000, innMinTownDistM: 500, shackSpacingM: 500, campSpacingM: 1200, campClearOfGuardM: 300 }, homesteads: { perTown: 4, spacingM: 400, townClearM: 400 } });
 const t = land();
 const plan = planPlaces({ towns, terrain: t, seed: 7, rules });
 const wet = (x: number, z: number): boolean => Boolean(t.water[idx(Math.round(x / CELL), Math.round(z / CELL))]);
@@ -97,5 +98,24 @@ describe("planPlaces", () => {
     assert.equal(one.routes.length, 0);
     assert.equal(one.counts.homestead, 0);
     assert.equal(DEFAULT_PLACE_RULES.homesteads.familyMax, 10);
+  });
+});
+
+describe("placesScene", () => {
+  const scene = placesScene(plan);
+  const kids = scene.nodes[0]!.children!;
+  it("is a valid world scene with a node for every place, a field or pen beside each homestead", () => {
+    assert.deepEqual(validateScene(scene), []);
+    assert.equal(scene.name, "places");
+    const homes = plan.places.filter((p) => p.kind === "homestead").length;
+    assert.equal(kids.length, plan.places.length + homes);
+    for (const p of plan.places) assert.deepEqual(kids.find((k) => k.id === p.id)!.transform!.position, [p.x, 0, p.z]);
+    assert.equal(kids.filter((k) => k.name === "farm_field" || k.name === "ranch_pen").length, homes);
+  });
+  it("keeps camp sites and fields walk-through, and the houses solid", () => {
+    for (const k of kids) {
+      const open = k.name === "camp_site" || k.name === "farm_field";
+      assert.equal(Boolean(k.components!.Collider), open, k.name);
+    }
   });
 });
