@@ -10,7 +10,7 @@
   "regionsPerSide": 2,
   "land": {
     "seaLevel": 0,
-    "coast": { "side": "south", "waterEdge": 0.6, "tip": 0.85, "taper": 0.7, "wander": 300, "wanderScale": 700 },
+    "coast": { "side": "south", "waterEdge": 0.4, "tip": 0.85, "taper": 0.7, "wander": 300, "wanderScale": 700 },
     "shelfDepth": 40,
     "shelfWidth": 300,
     "rise": 30,
