@@ -23,7 +23,7 @@ export const STEPS = [
 ];
 export const STEP_IDS = STEPS.map((s) => s.id);
 
-const NUMBERS = { seed: [0, 0xffffffff], population: [20, 100000], sites: [1, 20] };
+const NUMBERS = { seed: [0, 0xffffffff], population: [20, 100000], sites: [1, 200] };
 
 function stepList(name, raw) {
   const ids = raw.split(",").map((s) => s.trim()).filter(Boolean);
@@ -74,7 +74,7 @@ export function parseBakeArgs(argv) {
     skip,
     seed: num("seed", 1234),
     population: num("population", 600),
-    sites: num("sites", 1),
+    sites: v.sites === undefined || v.sites === "max" ? "max" : num("sites", 1),
     settlementId: v["settlement-id"] ?? "0001",
   };
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(options.settlementId)) throw new Error(`--settlement-id must be letters, digits, - or _ (got ${options.settlementId})`);
@@ -84,8 +84,13 @@ export function parseBakeArgs(argv) {
 
 /** "0182" x 3 -> 0182, 0183, 0184 (width kept); "town" x 2 -> town, town-2. */
 export function settlementIds(base, n) {
-  const m = /^(\d+)$/.exec(base);
-  return Array.from({ length: n }, (_, i) => (m ? String(Number(base) + i).padStart(base.length, "0") : i === 0 ? base : `${base}-${i + 1}`));
+  if (n === "max") throw new Error('settlementIds: the site count is still "max" (the settlement step resolves it first)');
+  return Array.from({ length: n }, (_, i) => settlementId(base, i));
+}
+
+/** The id of town k (0-based): the first is the base, then 0183, 0184 ... (or town-2, town-3). */
+export function settlementId(base, k) {
+  return /^(\d+)$/.test(base) ? String(Number(base) + k).padStart(base.length, "0") : k === 0 ? base : `${base}-${k + 1}`;
 }
 
 /** Populations to try, largest first: the requested size, then the fixed smaller ones with --auto-size. */
@@ -104,12 +109,13 @@ export function planSteps(options, paths, fsv = realFs) {
   const chosen = options.only ? new Set(options.only) : new Set(STEP_IDS);
   // The compiled bakes are a prerequisite of every other step, so --only keeps the build unless it is skipped.
   if (options.only && options.only.some((id) => id !== "env")) chosen.add("build");
-  const ids = settlementIds(options.settlementId, options.sites);
+  // "max" is only known after a survey (the settlement step asks the world), so its outputs can't be checked ahead.
+  const ids = options.sites === "max" ? null : settlementIds(options.settlementId, options.sites);
   const done = {
     world: () => fsv.exists(join(paths.dataDir, "world.db")),
     loot: () => fsv.exists(join(paths.dataDir, "loot", "pool.jsonl")),
     dungeons: () => fsv.hasDungeons(join(paths.dataDir, "dungeons")),
-    settlement: () => ids.every((id) => fsv.exists(join(paths.settlementOut, `${id}.settlement.json`)) && fsv.exists(join(paths.scenesDir, `settlement-${id}.scene.json`))),
+    settlement: () => ids !== null && ids.every((id) => fsv.exists(join(paths.settlementOut, `${id}.settlement.json`)) && fsv.exists(join(paths.scenesDir, `settlement-${id}.scene.json`))),
     "scale-fit": () => fsv.exists(paths.scaleOut),
     "wildlife-plan": () => fsv.exists(paths.ecologyOut),
     "wildlife-models": () => fsv.exists(paths.wildlifeModelsOut),
