@@ -110,6 +110,21 @@ const reach = (o: Blob, x: number, z: number): number => Math.pow(Math.pow(Math.
 function mainBlobs(spec: WorldSpec, rng: () => number, share: (blobs: Blob[]) => number): Blob[] {
   const c = spec.land.coast;
   if (c.shape === "island") return [{ x: 0, z: 0, r: c.islandRadius, p: 2 }];
+  if (c.shape === "pangaea") {
+    // One supercontinent: a large centre and four lobes that overlap it, so the coast is ragged and inland seas and gulfs appear, grown to the cover.
+    const lobes: Blob[] = [{ x: 0, z: 0, r: 1, p: 2.3 }];
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      lobes.push({ x: sx * (0.4 + 0.1 * rng()), z: sz * (0.4 + 0.1 * rng()), r: 0.6 + 0.2 * rng(), p: 2.3 });
+    }
+    let lo = 0.05;
+    let hi = 1.6;
+    for (let i = 0; i < 16; i++) {
+      const mid = (lo + hi) / 2;
+      if (share(lobes.map((b) => ({ ...b, r: b.r * mid }))) < c.continentCover) lo = mid;
+      else hi = mid;
+    }
+    return lobes.map((b) => ({ ...b, r: b.r * ((lo + hi) / 2) }));
+  }
   const n = c.continents;
   // Centres on a jittered grid (the best way to pack big round landmasses
   // with room between them); cells beyond `n` stay empty, chosen at random.

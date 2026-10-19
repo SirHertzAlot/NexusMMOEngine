@@ -28,9 +28,9 @@
  *   --force          overwrite an existing world.db (same as MMO_BAKE_FORCE=1)
  *   --region rx,rz   re-bake only this region's tiles (incremental)
  *   --survey-only    re-run the survey and invalidate the tile cache
- *   --shape=island|peninsula|continents
+ *   --shape=island|peninsula|continents|pangaea
  *                    the landmass shape (same as MMO_BAKE_SHAPE); continents
- *                    need room, so the world grows to at least
+ *                    and pangaea need room, so the world grows to at least
  *                    CONTINENT_MIN_CHUNKS (500 chunks = 8 km) per side
  *   --size-chunks=N  the world's side in chunks (same as MMO_BAKE_SIZE_CHUNKS)
  *
@@ -80,9 +80,9 @@ const FORCE =
 const SURVEY_ONLY =
   process.env.MMO_BAKE_SURVEY_ONLY === "1" || process.argv.includes("--survey-only");
 
-const SHAPES = ["peninsula", "island", "continents"] as const;
+const SHAPES = ["peninsula", "island", "continents", "pangaea"] as const;
 type Shape = (typeof SHAPES)[number];
-/** A continents world is at least this many chunks a side: smaller ones would only hold tiny landmasses with little to do on them. */
+/** Continents and pangaea worlds are at least this many chunks a side: smaller ones would only hold tiny landmasses with little to do on them. */
 const CONTINENT_MIN_CHUNKS = 500;
 /** `--name=value` on the command line; through `npm run ... -- --name=value` npm keeps the flag for itself and passes it on as npm_config_<name>. */
 const flag = (name: string): string | undefined =>
@@ -319,16 +319,19 @@ function resolveWorldSpec(): WorldSpec | null {
   if (shape === undefined && size === undefined) return loadWorldSpec(file);
   const spec = loadWorldSpec(file);
   const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-  raw.land = { ...(raw.land as object), coast: { ...((raw.land as { coast?: object } | undefined)?.coast ?? {}), ...(shape ? { shape } : {}) } };
-  if (shape === "continents") {
+  const coast: Record<string, unknown> = { ...((raw.land as { coast?: Record<string, unknown> } | undefined)?.coast ?? {}), ...(shape ? { shape } : {}) };
+  // A pangaea reaches the 70% land target with a smaller cover than the continents' bridged landmasses need.
+  if (shape === "pangaea" && coast.continentCover === undefined) coast.continentCover = 0.76;
+  raw.land = { ...(raw.land as object), coast };
+  if (shape === "continents" || shape === "pangaea") {
     // The default spec pins its one range where the 4 km island's land is; continents get a chain on each, placed on the land they have.
     const { center: _pinned, ...ranges } = (raw.ranges ?? {}) as Record<string, unknown>;
     // Wide landmasses have dry interiors; more rain keeps them green.
     const climate = (raw.climate ?? {}) as Record<string, unknown>;
     raw.climate = { ...climate, humidity: Math.max(Number(climate.humidity ?? 1), 1.4) };
-    raw.ranges = { ...ranges, count: Math.max(Number(ranges.count ?? 1), parseWorldSpec({ ...raw, land: raw.land }).land.coast.continents) };
+    raw.ranges = { ...ranges, count: Math.max(Number(ranges.count ?? 1), shape === "pangaea" ? 3 : parseWorldSpec({ ...raw, land: raw.land }).land.coast.continents) };
   }
-  const want = size ?? (shape === "continents" ? Math.max(spec.sizeChunks, CONTINENT_MIN_CHUNKS) : spec.sizeChunks);
+  const want = size ?? (shape === "continents" || shape === "pangaea" ? Math.max(spec.sizeChunks, CONTINENT_MIN_CHUNKS) : spec.sizeChunks);
   if (want !== spec.sizeChunks) {
     // Keep the region grid dividing the world evenly.
     raw.sizeChunks = want;

@@ -72,6 +72,16 @@ describe("island topology", () => {
     assert.deepEqual(landMask(make({ shape: "continents", continents: 4, continentCover: 0.4 }), grid, flat, flat), a);
   });
 
+  test("pangaea is one supercontinent with most of the world as land", () => {
+    const m = landMask(make({ shape: "pangaea", continentCover: 0.76 }), grid, flat, flat);
+    const comps = labelComponents(grid.width, grid.depth, (i) => m[i] === 1);
+    const big = comps.sizes.filter((n) => n > 0.05 * grid.width * grid.depth);
+    assert.equal(big.length, 1, "a single landmass");
+    const share = count(m) / m.length;
+    assert.ok(share > 0.65 && share < 0.85, `land share ${share}`);
+    assert.deepEqual(landMask(make({ shape: "pangaea", continentCover: 0.76 }), grid, flat, flat), m);
+  });
+
   test("the peninsula stays the default shape", () => {
     assert.equal(parseWorldSpec({ name: "p", seed: 1, sizeChunks: 64, biomes: BIOMES }).land.coast.shape, "peninsula");
   });
