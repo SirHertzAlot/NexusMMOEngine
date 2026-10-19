@@ -180,6 +180,10 @@ export async function handleModulesRoute(
             locked: m.manifest.name === "core",
             editor: m.manifest.editor !== undefined,
             systems: (m.manifest.server?.systems ?? []).map((s) => s.name),
+            // EA10: native addon info for Build/Check buttons.
+            native: m.manifest.native
+              ? { entry: m.manifest.native.entry, systems: m.manifest.native.systems }
+              : undefined,
           }))
           .sort((a, b) => a.name.localeCompare(b.name)),
         invalid: found.invalid,
