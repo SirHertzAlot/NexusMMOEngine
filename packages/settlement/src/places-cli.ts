@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * npm run settlement:places -- --world <spec> [--scenes <dir>] [--out <file>] [--seed <n>] [--homesteads <per town>]
+ * npm run settlement:places -- --world <spec> [--scenes <dir>] [--out <file>] [--seed <n>] [--homesteads <per town>] [--rules <file>]
  *
  * Plans the routes between the baked towns and the places along them and between them (guard outposts, inns beside
  * the outposts, shacks, camp sites, homesteads), roadmap SG7/SG8. The towns are read from the root node of each
  * `settlement-*.scene.json` in the scenes folder. Writes `places.json` beside the settlement manifests
- * (MMO_SETTLEMENT_OUT) unless --out says otherwise. The engine must be built; the survey takes several seconds.
+ * (MMO_SETTLEMENT_OUT) unless --out says otherwise. The spacings and counts are the `places` section of the settlement
+ * rules file (content/settlements/rules.json, or --rules), the same file the towns read; --homesteads overrides the per-town count. The engine must be built; the survey takes several seconds.
  */
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -13,7 +14,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { fromUser, settlementPaths } from "./paths.js";
-import { DEFAULT_PLACE_RULES, PlaceRulesSchema, planPlaces, type PlaceTown } from "./places.js";
+import { DEFAULT_PLACE_RULES, planPlaces, type PlaceTown } from "./places.js";
+import { defaultRules, loadRules } from "./rules.js";
 import type { TerrainFields } from "./sites.js";
 
 /** The towns whose scenes are in `dir`, by the root node's position. */
@@ -29,7 +31,7 @@ export function readTowns(dir: string): PlaceTown[] {
 }
 
 async function main(): Promise<void> {
-  const { values: o } = parseArgs({ options: { world: { type: "string" }, scenes: { type: "string" }, out: { type: "string" }, seed: { type: "string" }, homesteads: { type: "string" } } });
+  const { values: o } = parseArgs({ options: { world: { type: "string" }, scenes: { type: "string" }, out: { type: "string" }, seed: { type: "string" }, homesteads: { type: "string" }, rules: { type: "string" } } });
   if (!o.world) throw new Error("--world <file> is required");
   const paths = settlementPaths();
   const scenes = o.scenes ? fromUser(o.scenes) : paths.scenes;
@@ -41,11 +43,14 @@ async function main(): Promise<void> {
   const { loadWorldSpec } = (await import(`${terrain}/world-spec.js`)) as { loadWorldSpec(file: string): { seed: number; biomes: { id: string }[] } };
   const spec = loadWorldSpec(fromUser(o.world));
   const survey = surveyWorld(spec);
-  const perTown = o.homesteads === undefined ? DEFAULT_PLACE_RULES.homesteads.perTown : Number(o.homesteads);
+  // The places rules are the `places` section of the settlement rules file (the one the towns read), else the defaults.
+  const town = o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules);
+  const base = town.places ?? DEFAULT_PLACE_RULES;
+  const perTown = o.homesteads === undefined ? base.homesteads.perTown : Number(o.homesteads);
   if (!Number.isInteger(perTown) || perTown < 0) throw new Error("--homesteads must be a whole number (0 for none)");
-  const rules = PlaceRulesSchema.parse({ ...DEFAULT_PLACE_RULES, homesteads: { ...DEFAULT_PLACE_RULES.homesteads, perTown } });
+  const rules = { ...base, homesteads: { ...base.homesteads, perTown } };
   const seed = (o.seed === undefined ? spec.seed : Number(o.seed)) >>> 0;
-  const plan = planPlaces({ towns, terrain: { ...survey, biomeIds: spec.biomes.map((b) => b.id) }, seed, rules });
+  const plan = planPlaces({ towns, terrain: { ...survey, biomeIds: spec.biomes.map((b) => b.id) }, seed, rules, rulesVersion: town.version });
   const out = o.out ? fromUser(o.out) : resolve(paths.settlements, "places.json");
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, `${JSON.stringify(plan, null, 2)}\n`);

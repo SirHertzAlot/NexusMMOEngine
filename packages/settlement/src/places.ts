@@ -28,7 +28,6 @@ const Pos = z.int().positive();
 const Metres = z.number().positive();
 
 export const PlaceRulesSchema = z.strictObject({
-  version: z.literal("places-rules/1"),
   routes: z.strictObject({
     /** Links beyond the spanning tree: each town also joins its nearest neighbours not yet linked to it, up to this many. */
     extraLinksPerTown: z.int().min(0).default(1),
@@ -86,7 +85,7 @@ export const PlaceRulesSchema = z.strictObject({
 });
 export type PlaceRules = z.infer<typeof PlaceRulesSchema>;
 
-export const DEFAULT_PLACE_RULES: PlaceRules = PlaceRulesSchema.parse({ version: "places-rules/1", routes: {}, roadside: {}, homesteads: {} });
+export const DEFAULT_PLACE_RULES: PlaceRules = PlaceRulesSchema.parse({ routes: {}, roadside: {}, homesteads: {} });
 
 export interface PlaceTown {
   id: string;
@@ -402,7 +401,7 @@ function links(towns: PlaceTown[], rules: PlaceRules["routes"]): Array<[number, 
 }
 
 /** Plan the routes and the places along them and between the towns. */
-export function planPlaces(input: { towns: PlaceTown[]; terrain: TerrainFields; seed: number; rules?: PlaceRules }): PlacesPlan {
+export function planPlaces(input: { towns: PlaceTown[]; terrain: TerrainFields; seed: number; rules?: PlaceRules; /** The rules file's version, recorded in the plan. */ rulesVersion?: string }): PlacesPlan {
   const rules = input.rules ?? DEFAULT_PLACE_RULES;
   const towns = [...input.towns].sort((a, b) => (a.id < b.id ? -1 : 1));
   const g = new Ground(input.terrain);
@@ -528,6 +527,6 @@ export function planPlaces(input: { towns: PlaceTown[]; terrain: TerrainFields; 
   }
 
   const counts = Object.fromEntries(PLACE_KINDS.map((k) => [k, places.filter((p) => p.kind === k).length])) as Record<PlaceKind, number>;
-  const body = { format: "places/1" as const, rulesVersion: rules.version, seed: input.seed, towns, routes, places, counts };
+  const body = { format: "places/1" as const, rulesVersion: input.rulesVersion ?? "builtin", seed: input.seed, towns, routes, places, counts };
   return { ...body, hash: contentHash(JSON.parse(canonical(body))) };
 }

@@ -29,7 +29,7 @@ const towns = [
   { id: "0001", x: 600, z: 1500 },
   { id: "0002", x: 5400, z: 1500 },
 ];
-const rules = PlaceRulesSchema.parse({ version: "places-rules/1", routes: {}, roadside: { outpostSpacingM: 1000, innSpacingM: 2000, innMinTownDistM: 500, shackSpacingM: 500, campSpacingM: 1200, campClearOfGuardM: 300 }, homesteads: { perTown: 4, spacingM: 400, townClearM: 400 } });
+const rules = PlaceRulesSchema.parse({ routes: {}, roadside: { outpostSpacingM: 1000, innSpacingM: 2000, innMinTownDistM: 500, shackSpacingM: 500, campSpacingM: 1200, campClearOfGuardM: 300 }, homesteads: { perTown: 4, spacingM: 400, townClearM: 400 } });
 const t = land();
 const plan = planPlaces({ towns, terrain: t, seed: 7, rules });
 const wet = (x: number, z: number): boolean => Boolean(t.water[idx(Math.round(x / CELL), Math.round(z / CELL))]);
