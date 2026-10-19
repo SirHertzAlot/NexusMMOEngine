@@ -63,6 +63,21 @@ export interface ModuleManifest {
    * Edge contribution (EA12). Runs on edge nodes, discovered by clients.
    */
   edge?: { regions: string[]; endpoint: string; capabilities: string[] };
+  /**
+   * Dev-tool contribution (EA13). A module wrapping a host-side tool
+   * (bake step, converter, validator — e.g. the art pipeline) names its
+   * tools here; `entry` exports `createTools(ctx)` returning one tool per
+   * name. Tools never run on the tick.
+   */
+  tools?: { entry: string; tools: string[] };
+  /**
+   * Database contribution (EA17). A module providing stored functions or
+   * materialized caches lists them here; each name maps to
+   * `<moduleDir>/db/functions/<name>.sql` / `<moduleDir>/db/caches/<name>.sql`
+   * (same `-- key: value` header format the content dir uses). The host
+   * loads them into the db-function registry alongside content files.
+   */
+  db?: { functions?: string[]; caches?: string[] };
 }
 export interface Problem {
   module: string;
@@ -107,7 +122,7 @@ export function validateManifest(
   const only = (o: Record<string, unknown>, keys: string[], at: string): void => {
     for (const k of Object.keys(o)) if (!keys.includes(k)) bad(at ? `${at}.${k}` : k, `unknown key "${k}"`);
   };
-  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native", "sidecar", "edge"], "");
+  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native", "sidecar", "edge", "tools", "db"], "");
   if (typeof raw.name !== "string" || !NAME_RE.test(raw.name)) bad("name", "must be lowercase letters, digits and dashes, starting with a letter");
   else if (raw.name !== dirName) bad("name", `must match the folder name "${dirName}"`);
   if (typeof raw.version !== "string" || !SEMVER_RE.test(raw.version)) bad("version", 'must be "major.minor.patch"');
@@ -259,6 +274,68 @@ export function validateManifest(
       if (regions && endpoint && capabilities) edge = { regions, endpoint, capabilities };
     }
   }
+  // DB object names allow underscores (character_power.sql); everything else
+  // stays dash-separated like module and system names.
+  const DB_NAME_RE = /^[a-z][a-z0-9_-]*$/;
+  let tools: ModuleManifest["tools"];
+  if (raw.tools !== undefined) {
+    if (!isObj(raw.tools)) bad("tools", "must be an object");
+    else {
+      only(raw.tools, ["entry", "tools"], "tools");
+      const e = entry(raw.tools, "tools");
+      const names: string[] = [];
+      if (raw.tools.entry === undefined) bad("tools.entry", "required");
+      if (!Array.isArray(raw.tools.tools) || raw.tools.tools.length === 0) {
+        bad("tools.tools", "must be a non-empty list of tool names");
+      } else {
+        const seen = new Set<string>();
+        raw.tools.tools.forEach((t: unknown, i: number) => {
+          if (typeof t !== "string" || !NAME_RE.test(t)) bad(`tools.tools[${i}]`, "must be lowercase letters, digits and dashes");
+          else if (seen.has(t)) bad(`tools.tools[${i}]`, `"${t}" is listed twice`);
+          else {
+            seen.add(t);
+            names.push(t);
+          }
+        });
+      }
+      if (e && names.length > 0) tools = { entry: e, tools: names };
+    }
+  }
+  let db: ModuleManifest["db"];
+  if (raw.db !== undefined) {
+    if (!isObj(raw.db)) bad("db", "must be an object");
+    else {
+      only(raw.db, ["functions", "caches"], "db");
+      const before = problems.length;
+      const names = (v: unknown, at: string): string[] | undefined => {
+        if (v === undefined) return undefined;
+        if (!Array.isArray(v) || v.length === 0) {
+          bad(at, "must be a non-empty list of names (lowercase letters, digits, dashes, underscores)");
+          return undefined;
+        }
+        const seen = new Set<string>();
+        const out: string[] = [];
+        let ok = true;
+        (v as unknown[]).forEach((n, i) => {
+          if (typeof n !== "string" || !DB_NAME_RE.test(n)) {
+            bad(`${at}[${i}]`, "must be lowercase letters, digits, dashes or underscores, starting with a letter");
+            ok = false;
+          } else if (seen.has(n)) {
+            bad(`${at}[${i}]`, `"${n}" is listed twice`);
+            ok = false;
+          } else {
+            seen.add(n);
+            out.push(n);
+          }
+        });
+        return ok ? out : undefined;
+      };
+      const functions = names(raw.db.functions, "db.functions");
+      const caches = names(raw.db.caches, "db.caches");
+      if (functions === undefined && caches === undefined) bad("db", "must declare functions and/or caches");
+      else if (problems.length === before) db = { ...(functions ? { functions } : {}), ...(caches ? { caches } : {}) };
+    }
+  }
   if (problems.length > 0) return { problems };
   return {
     manifest: {
@@ -272,6 +349,8 @@ export function validateManifest(
       ...(native ? { native } : {}),
       ...(sidecar ? { sidecar } : {}),
       ...(edge ? { edge } : {}),
+      ...(tools ? { tools } : {}),
+      ...(db ? { db } : {}),
     },
     problems,
   };

@@ -288,3 +288,60 @@ describe("validateManifest edge (EA12)", () => {
     assert.deepEqual(paths.sort(), ["edge.capabilities", "edge.endpoint", "edge.regions"]);
   });
 });
+
+describe("validateManifest: tools (EA13)", () => {
+  it("accepts a tools contribution", () => {
+    const r = validateManifest(
+      { name: "t", version: "1.0.0", tools: { entry: "tools/index.js", tools: ["gltfpack", "bake-terrain"] } },
+      "t",
+    );
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.tools, { entry: "tools/index.js", tools: ["gltfpack", "bake-terrain"] });
+  });
+  it("rejects a missing entry, an empty tool list, bad names and duplicates", () => {
+    const r1 = validateManifest({ name: "t", version: "1.0.0", tools: { tools: ["x"] } }, "t");
+    assert.ok(r1.problems.some((p) => p.path === "tools.entry"));
+    const r2 = validateManifest({ name: "t", version: "1.0.0", tools: { entry: "tools/index.js", tools: [] } }, "t");
+    assert.ok(r2.problems.some((p) => p.path === "tools.tools"));
+    const r3 = validateManifest({ name: "t", version: "1.0.0", tools: { entry: "../x.js", tools: ["Bad Name", "x", "x"] } }, "t");
+    const paths = r3.problems.map((p) => p.path);
+    assert.ok(paths.includes("tools.entry"), JSON.stringify(paths));
+    assert.ok(paths.includes("tools.tools[0]"), JSON.stringify(paths));
+    assert.ok(paths.includes("tools.tools[2]"), JSON.stringify(paths));
+    assert.equal(r3.manifest, undefined);
+  });
+  it("refuses unknown tools keys", () => {
+    const r = validateManifest({ name: "t", version: "1.0.0", tools: { entry: "tools/index.js", tools: ["x"], bogus: 1 } }, "t");
+    assert.ok(r.problems.some((p) => p.path === "tools.bogus"));
+  });
+});
+
+describe("validateManifest: db (EA17)", () => {
+  it("accepts functions and caches, underscores allowed", () => {
+    const r = validateManifest(
+      { name: "d", version: "1.0.0", db: { functions: ["character_power"], caches: ["leaderboard"] } },
+      "d",
+    );
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.db, { functions: ["character_power"], caches: ["leaderboard"] });
+  });
+  it("accepts functions-only and caches-only", () => {
+    assert.deepEqual(validateManifest({ name: "d", version: "1.0.0", db: { functions: ["f"] } }, "d").problems, []);
+    assert.deepEqual(validateManifest({ name: "d", version: "1.0.0", db: { caches: ["c"] } }, "d").problems, []);
+  });
+  it("rejects an empty db, bad names, empty lists and duplicates", () => {
+    const r1 = validateManifest({ name: "d", version: "1.0.0", db: {} }, "d");
+    assert.ok(r1.problems.some((p) => p.path === "db"));
+    const r2 = validateManifest({ name: "d", version: "1.0.0", db: { functions: ["Bad Name", "ok", "ok"] } }, "d");
+    const paths = r2.problems.map((p) => p.path);
+    assert.ok(paths.includes("db.functions[0]"), JSON.stringify(paths));
+    assert.ok(paths.includes("db.functions[2]"), JSON.stringify(paths));
+    assert.equal(r2.manifest, undefined);
+    const r3 = validateManifest({ name: "d", version: "1.0.0", db: { caches: [] } }, "d");
+    assert.ok(r3.problems.some((p) => p.path === "db.caches"));
+  });
+  it("refuses unknown db keys", () => {
+    const r = validateManifest({ name: "d", version: "1.0.0", db: { functions: ["f"], bogus: 1 } }, "d");
+    assert.ok(r.problems.some((p) => p.path === "db.bogus"));
+  });
+});

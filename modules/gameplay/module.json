@@ -1,0 +1,11 @@
+{
+  "name": "gameplay",
+  "version": "0.1.0",
+  "description": "Editor module: Gameplay data tooling: data grids, content browser, tables, rules. Disable it and the panels leave their workspaces without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

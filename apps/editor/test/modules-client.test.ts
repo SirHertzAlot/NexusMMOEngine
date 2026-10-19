@@ -83,6 +83,25 @@ describe("EA13: migrated tool modules", () => {
     { name: "audio", workspace: "artaudio", panel: "audio.panel" },
     { name: "hud", workspace: "release", panel: "hud.editor" },
   ] as const;
+  // Complete-modularity: the remaining hardcoded WORKSPACES views migrated
+  // to modules. Panel ids preserve the pre-module view ids so saved
+  // layouts keep working.
+  const MIGRATED2 = [
+    { name: "terrain", workspace: "world", panels: ["terrain"] },
+    { name: "ecs", workspace: "scene", panels: ["ecs"] },
+    { name: "gameplay", workspace: "gameplay", panels: ["grids", "content", "tables", "rules"] },
+    { name: "dungeons", workspace: "dungeons", panels: ["dungeons", "graphs"] },
+    { name: "liveops", workspace: "liveops", panels: ["overview", "console", "telemetry"] },
+    { name: "network", workspace: "network", panels: ["routes", "connections"] },
+    { name: "debug", workspace: "debug", panels: ["play"] },
+    { name: "changes", workspace: "changes", panels: ["changes"] },
+    { name: "database", workspace: "database", panels: ["grid", "query", "audit"] },
+    { name: "story", workspace: "story", panels: ["quests", "strings"] },
+    { name: "art", workspace: "artaudio", panels: ["assets", "materials"] },
+    { name: "characters", workspace: "artaudio", panels: ["animation"] },
+    { name: "release", workspace: "release", panels: ["pipeline", "playtests"] },
+    { name: "core", workspace: "modules", panels: ["modules"] },
+  ] as const;
   const repo = new URL("../../../../", import.meta.url);
   const modDir = (n: string): string => new URL(`modules/${n}/`, repo).pathname;
 
@@ -123,5 +142,36 @@ describe("EA13: migrated tool modules", () => {
     for (const m of MIGRATED) {
       assert.ok(reg.panels(m.workspace).some((p) => p.id === m.panel), `${m.panel} must reach workspace ${m.workspace}`);
     }
+  });
+
+  it("every complete-modularity panel module has a valid manifest with an editor entry", async () => {
+    const { validateManifest } = await import("@mmo-engine/modules");
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    for (const m of MIGRATED2) {
+      const raw = JSON.parse(readFileSync(join(modDir(m.name), "module.json"), "utf8"));
+      const { manifest, problems } = validateManifest(raw, m.name);
+      assert.deepEqual(problems, [], `${m.name}: ${JSON.stringify(problems)}`);
+      assert.ok(manifest!.editor, `${m.name} must contribute an editor entry`);
+      assert.ok(existsSync(join(modDir(m.name), manifest!.editor!.entry)), `${m.name}: editor entry file must exist`);
+    }
+  });
+  it("all complete-modularity panel modules are enabled by default in content/modules.json", async () => {
+    const { readEnabledSet } = await import("@mmo-engine/modules");
+    const set = readEnabledSet(new URL("content/modules.json", repo).pathname);
+    assert.deepEqual(set.problems, []);
+    for (const m of MIGRATED2) assert.ok(set.modules.includes(m.name), `${m.name} must be enabled by default`);
+  });
+  it("no workspace keeps a hardcoded panel view in App.tsx", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../../src/ui/App.tsx", import.meta.url).pathname, "utf8");
+    // The WORKSPACES table must not construct panel elements inline anymore;
+    // panels arrive through the module registry. (The tab bar below still
+    // references panel components directly — that is navigation, not the
+    // workspace view map.)
+    const table = src.slice(src.indexOf("const WORKSPACES"), src.indexOf("const OWN_VIEWS"));
+    assert.ok(!table.includes("kind: \"panel\""), "WORKSPACES must not hardcode panel views");
+    assert.ok(!table.includes("<TerrainEditorPanel"), "terrain view must come from the terrain module");
+    assert.ok(!table.includes("<DatabaseGridPanel"), "database views must come from the database module");
   });
 });
