@@ -430,6 +430,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-19**: Test repair: the gateway tests (frame cap, ingress and pickup rate limits) asserted ws-library details (close code 1009, every excess message counted) that uWebSockets, the default transport, does not share, and the server-modules tests still modelled the pre-modularity core that built every system; both now check what they were written to protect and pass on both transports. The 9 red tests on main were these, not engine bugs.
 - **2026-10-19**: Settlement count (SG6): `bake:all --sites max` is the default. SG7 homesteads and SG8 roadside places (shacks, camp sites, guard outposts, inns only beside an outpost) planned.
 - **2026-10-19**: SG7/SG8 first slice: `packages/settlement/src/places.ts` plans routes between the towns and the places along and between them; `npm run settlement:places`; `bake:all` step `places`.
 - **2026-10-19**: World generation (WG5): pangaea shape (`--shape=pangaea`, 71.6% land, one supercontinent). Town bake on the continents world: 8 sites found, 2 on each continent (the 4 km island world gave 2 to 3).
