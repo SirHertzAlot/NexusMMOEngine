@@ -709,18 +709,23 @@ export class SurrealWorldStore implements WorldStore {
     const existing = singleRow(
       await this.db.query("SELECT * FROM ONLY host_report WHERE hostId = $id LIMIT 1", { id: r.hostId }),
     );
-    const data = {
+    // shardLoad is TYPE option<float> on a SCHEMAFULL table: an absent
+    // value must be written as NONE (field omitted / explicit NONE),
+    // never as SQL NULL — v2 rejects NULL for option<> fields. Writing
+    // `r.shardLoad ?? null` here failed the live contract test.
+    const data: Record<string, unknown> = {
       hostId: r.hostId,
       cpuCores: r.cpuCores,
       ramTotalBytes: r.ramTotalBytes,
       ramFreeBytes: r.ramFreeBytes,
-      shardLoad: r.shardLoad ?? null,
       reportedAt: r.reportedAt,
     };
+    if (r.shardLoad !== undefined) data["shardLoad"] = r.shardLoad;
     if (existing !== null) {
+      const loadClause = r.shardLoad === undefined ? "shardLoad=NONE" : "shardLoad=$load";
       await this.db.query(
-        "UPDATE ONLY host_report SET cpuCores=$cores, ramTotalBytes=$total, ramFreeBytes=$free, shardLoad=$load, reportedAt=$at WHERE hostId = $id",
-        { id: r.hostId, cores: r.cpuCores, total: r.ramTotalBytes, free: r.ramFreeBytes, load: data.shardLoad, at: r.reportedAt },
+        `UPDATE ONLY host_report SET cpuCores=$cores, ramTotalBytes=$total, ramFreeBytes=$free, ${loadClause}, reportedAt=$at WHERE hostId = $id`,
+        { id: r.hostId, cores: r.cpuCores, total: r.ramTotalBytes, free: r.ramFreeBytes, load: r.shardLoad, at: r.reportedAt },
       );
     } else {
       await this.db.query("CREATE ONLY host_report CONTENT $data", { data });
