@@ -10,7 +10,7 @@
     "mmo-craft-report": "dist/src/cli.js"
   },
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/compose && npm run build --workspace=@mmo-engine/dungeon && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/dungeon && tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
     "craft:report": "npm run build && node dist/src/cli.js"
   },
