@@ -2,6 +2,94 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-19 — Road alignment is a content-addressed Catmull-Rom spline spine over the junction graph, owned by engine-core.**
+  Settlement roads ship as mm junctions + edges (`roads.nodes`/`edges`); SG2b
+  computes their horizontal alignment in `packages/engine-core/src/terrain/roads.ts`
+  (not in the slab baker): `buildPaths` chains the graph into runs between degree-2
+  junctions, `catmullRom` smooths each spine (tension 0 = uniform), `splineRoads`
+  drapes the centerline and left/right rails onto a `heightAt(x,z)` surface, and
+  `canonicalRoads` + `roadNetworkHash` reuse the repo's sha256 content-addressed
+  cache-key pattern (`TerrainCache`/`heightsFingerprint`) so splines recompute only
+  when geometry or render density changes. mm units are preserved and scaled at
+  spawn like `Structure` nodes. Client rendering and wiring settlements into
+  scenes is a separate follow-up, deliberately out of `world-bake.ts` to avoid
+  conflicting with `feat/terrain-lazy-cache`.
+
+- **2026-10-15 — The bake materializes the world; the tiles are a cache, and the survey is the only global pass (WX2).**
+  `npm run bake:world` writes the whole world up front: 4 km is 103 MB, 16 km
+  ~1.5 GB, 32 km ~6 GB, linear in area, and 80% of it is `terrain_tiles` — one
+  float32 heightmap per 16 m chunk. The fix is not compression but
+  *not baking what is derived*: the tiles are a cache, not a bake output.
+  Three things already in the tree make this safe — `makeTileChunkSource`
+  falls back to procgen when a tile is absent, so the server runs with no tiles;
+  navmesh tiles are already version-keyed, content-addressed blobs; and
+  `heightsFingerprint()` already hashes a heightfield. So: the survey is
+  content-addressed by a hash of the spec and skipped when the spec is
+  unchanged; tiles are keyed by `(seed, cx, cz, lod, terrainVersion,
+  surveyHash)` in a `terrain_tile_keys` table; `bake:world` gains `--region
+  rx,rz` and `--survey-only`; and the per-chunk tile loop — already independent
+  per chunk — runs across worker threads. `regionsPerSide` already partitions
+  the world square. What does NOT get cheaper is the survey: erosion is global
+  and iterative, so a spec change re-runs it. The win is that the tiles no
+  longer have to be rewritten for free — only the affected regions. Spec:
+  `docs/INCREMENTAL-BAKE.md`.
+
+- **2026-10-15 — Cell shading is a client-side component whose carrier is content, not a replicated ECS component.**
+  Cell shading was hardcoded per renderer: the character kit patched its own
+  material, and props, art-pack models and stand-in shapes each got an
+  `applyToon` call sprinkled where they were built. "Enabling it should be as
+  simple as adding a component" now holds: the client's `render/shading/`
+  holds named shading components (`toon`, the cel look; `standard`, three's own
+  PBR) and applies whichever one a *kind of thing* carries, and which kind
+  carries what is content (`content/materials/materials.json` -> `shading`,
+  validated in `packages/art`), so it is turned on and off from data and no
+  renderer knows about it. Kinds are render paths, not entity classes:
+  `model` (an art-pack or PICG model's own material), `placeholder` (a stand-in
+  shape), `prefab` (a composed entity). Not a replicated component and not a
+  wire field: the server has no business knowing how a surface is lit, and a
+  per-entity flag would ride every snapshot to say something the client alone
+  decides — the same reasoning that keeps the toon look itself in content. The
+  cost is granularity: shading is per kind, not per entity, because the shared
+  prop and atlas materials are what there is to patch (per-model shading would
+  mean splitting those materials, and waits until something needs it).
+  Modular characters are deliberately outside it: the character kit owns its
+  own style and outlines, and folding it in changes a public interface for no
+  behaviour change. `applyToon` also stopped assuming the material already has
+  an `onBeforeCompile` patch, so a plain `MeshStandardMaterial` can be shaded.
+
+- **2026-10-15 — Flat land is made by the terrain, not found by loosening the rules; a stranded flat is not a site.**
+  Site selection (3 m of relief over the whole town footprint) found no site
+  on the default world for 100, 300 or 600 people: erosion and the biome
+  surface left the low ground as one rolling ramp. We could have relaxed
+  `maxReliefM`, but the rule is the right one (a town on a slope is wrong), so
+  the terrain changed instead: an opt-in `plains` pass (`plains.ts`) cuts the
+  low ground into long flat treads between short risers (a strictly
+  increasing remap, so water still runs downhill), adds river and shore flats
+  and a few metres of rolling undulation, and fades out before the mountains,
+  which stay exactly as the erosion pass shaped them. It is switchable and
+  tunable in the world spec, off by default (old worlds bake byte-identically,
+  checked against the previous commit), and on in the default world (re-bake).
+  The second half is reachability: a flat ringed by cliffs is a stranded
+  object, so `selectSites` rejects a candidate that is not walkable (steps up
+  to `walkSlopeDeg`, water blocking) from the spawn, or the largest land. Not
+  done, by choice: terraces follow contours, so the risers are wide arcs
+  around the massif rather than walls; crazy placements (a keep on a crag)
+  can come later with their own constraints.
+- **2026-10-15 — New terrain relief passes are opt-in in the schema, on in the default world.**
+  The new passes (`ranges.crest`, `erosion.incision`, `erosion.rockTalusDeg`,
+  `volcano.gullies`) default to off, so any world file that does not name
+  them bakes byte-identical heights to before (checked: the default world
+  with the new keys removed hashes the same as the old code). The
+  checked-in `default.world.json` turns them on, because it is what the
+  user looked at: its mountains were rounded domes (a quartic cross-section
+  with a flat crown; the ridge noise only scaled their height), the river
+  cuts were capped near 24 m against ~300 m of relief, thermal erosion had
+  one angle for soil and rock, and the volcano was left a perfectly smooth
+  cone. The cost is that every baked default world must be re-baked and the
+  settlement site selection moves with the new slopes and water. Incision is
+  the implicit stream-power step (stable for any strength, no per-cell
+  objects), re-routed every three passes.
+
 - **2026-10-06 — Developer tooling mounts only in the editor's Play Mode
   (ROADMAP E5).** The player client no longer has a `devtools` mode or mounts
   the debugger panels. `npm run dev` starts the server and editor instead.

@@ -238,6 +238,26 @@ describe("validateManifest sidecar (EA11)", () => {
     assert.deepEqual(paths.sort(), ["sidecar.command", "sidecar.health", "sidecar.port"]);
     assert.equal(r.manifest, undefined);
   });
+  it("accepts a valid exec declaration (EA11 exec kind)", () => {
+    const exec = { exec: ["node", "./brain-server.js", "--port", "8787"], port: 8787, health: "/health" };
+    const r = validateManifest({ name: "npc-brain", version: "1.0.0", sidecar: exec }, "npc-brain");
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.manifest!.sidecar, exec);
+  });
+  it("rejects a bad exec argv", () => {
+    for (const exec of [[], [""], ["node", ""], ["node", 42], "node x.js", null]) {
+      const r = validateManifest({ name: "m", version: "1.0.0", sidecar: { exec, port: 8787, health: "/health" } }, "m");
+      assert.ok(r.problems.some((p) => p.path === "sidecar.exec"), `exec ${JSON.stringify(exec)}`);
+    }
+  });
+  it("requires exactly one of command or exec", () => {
+    const both = { command: "node x.js", exec: ["node", "x.js"], port: 8787, health: "/health" };
+    const r1 = validateManifest({ name: "m", version: "1.0.0", sidecar: both }, "m");
+    assert.ok(r1.problems.some((p) => p.path === "sidecar" && /exactly one/.test(p.message)));
+    const neither = { port: 8787, health: "/health" };
+    const r2 = validateManifest({ name: "m", version: "1.0.0", sidecar: neither }, "m");
+    assert.ok(r2.problems.some((p) => p.path === "sidecar" && /exactly one/.test(p.message)));
+  });
 });
 
 

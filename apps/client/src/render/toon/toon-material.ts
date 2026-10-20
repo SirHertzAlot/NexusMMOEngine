@@ -324,7 +324,7 @@ export function applyToon<M extends THREE.MeshStandardMaterial>(material: M, o: 
 
   const before = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
-    before.call(material, shader, renderer);
+    before?.call(material, shader, renderer);
     Object.assign(shader.uniforms, uniforms);
     const fs = shader.fragmentShader;
     for (const chunk of ["#include <lights_physical_pars_fragment>", "#include <map_fragment>", "#include <opaque_fragment>"]) {

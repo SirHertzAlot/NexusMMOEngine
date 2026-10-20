@@ -2,7 +2,7 @@
 // contributed instead of hard-wired into the shell. (Complete-modularity: the read-only
 // quest list and the strings grid joined as further contributed panels.)
 import * as React from "react";
-import { StoryEditorPanel } from "../../../apps/editor/src/ui/story-editor.js";
+import { StoryEditorPanel } from "./story-editor.js";
 import { QuestsPanel } from "../../../apps/editor/src/ui/quests-live.js";
 import { StringsPanel } from "../../../apps/editor/src/ui/strings-panel.js";
 

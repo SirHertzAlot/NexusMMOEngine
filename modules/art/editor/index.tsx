@@ -4,6 +4,7 @@
 import * as React from "react";
 import { AssetInspectorPanel } from "../../../apps/editor/src/ui/asset-inspector.js";
 import { MaterialsPanel } from "../../../apps/editor/src/ui/materials-panel.js";
+import { ScalePanel } from "../../../apps/editor/src/ui/scale-panel.js";
 
 export const panels = [
   {
@@ -19,5 +20,12 @@ export const panels = [
     title: "Materials",
     icon: "texture",
     render: () => <MaterialsPanel />,
+  },
+  {
+    id: "scale",
+    workspace: "artaudio",
+    title: "Scale",
+    icon: "straighten",
+    render: () => <ScalePanel />,
   },
 ];

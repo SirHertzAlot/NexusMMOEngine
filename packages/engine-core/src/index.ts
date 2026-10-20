@@ -39,6 +39,7 @@ export {
   Appearance,
   Action,
   WorldItem,
+  StructuralIntegrity,
 } from "./components.js";
 export * from "./items/index.js";
 
@@ -209,7 +210,8 @@ export { CrowdSystem } from "./navigation/crowd-system.js";
 export { CreatureSystem, type CreatureOptions } from "./creatures.js";
 export { NavObstacleSystem } from "./navigation/obstacle-system.js";
 export type { NavObstacleOptions } from "./navigation/obstacle-system.js";
-export { PropCollisionSystem } from "./prop-collision.js";
+export { loadScale, scaleResolver, type ScaleResolver } from "./scale.js";
+export { clearOfStatics, PropCollisionSystem } from "./prop-collision.js";
 export type { NavigationSystemOptions } from "./navigation/system.js";
 
 export {
@@ -319,3 +321,4 @@ export {
 export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
 export type { GatewayTick } from "./net/gateway.js";
 export { backupWorld, discardBackup, hasBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
+export * from "./server-settings.js";

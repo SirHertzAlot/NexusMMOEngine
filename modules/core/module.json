@@ -9,6 +9,9 @@
       },
       {
         "name": "streamer"
+      },
+      {
+        "name": "gathering"
       }
     ]
   },

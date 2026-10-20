@@ -41,6 +41,7 @@
  "layers": [
   {
    "id": "stoneCircles",
+   "category": "rock",
    "place": {
     "kind": "formation",
     "spacing": 8,
@@ -202,16 +203,13 @@
    ],
    "collision": {
     "shape": "box",
-    "halfExtents": [
-     1.0,
-     0.8,
-     1.0
-    ],
+    "fit": 0.8,
     "motion": "static"
    }
   },
   {
    "id": "trees",
+   "category": "tree",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -506,16 +504,13 @@
    ],
    "collision": {
     "shape": "box",
-    "halfExtents": [
-     0.4,
-     2.5,
-     0.4
-    ],
+    "fit": 0.35,
     "motion": "static"
    }
   },
   {
    "id": "loneTrees",
+   "category": "tree",
    "place": {
     "kind": "field",
     "spacing": 16
@@ -667,11 +662,7 @@
    ],
    "collision": {
     "shape": "box",
-    "halfExtents": [
-     0.4,
-     2.5,
-     0.4
-    ],
+    "fit": 0.35,
     "motion": "static"
    },
    "avoid": {
@@ -680,6 +671,7 @@
   },
   {
    "id": "deadfall",
+   "category": "tree",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -739,16 +731,13 @@
    ],
    "collision": {
     "shape": "box",
-    "halfExtents": [
-     0.35,
-     2.2,
-     0.35
-    ],
+    "fit": 0.6,
     "motion": "static"
    }
   },
   {
    "id": "understory",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "trees",
@@ -835,6 +824,7 @@
   },
   {
    "id": "edgeShrubs",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -1014,6 +1004,7 @@
   },
   {
    "id": "outcrops",
+   "category": "rock",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -1137,16 +1128,13 @@
    ],
    "collision": {
     "shape": "box",
-    "halfExtents": [
-     1.0,
-     0.8,
-     1.0
-    ],
+    "fit": 0.8,
     "motion": "static"
    }
   },
   {
    "id": "scree",
+   "category": "rock",
    "place": {
     "kind": "around",
     "parent": "outcrops",
@@ -1202,16 +1190,13 @@
    ],
    "collision": {
     "shape": "box",
-    "halfExtents": [
-     0.45,
-     0.35,
-     0.45
-    ],
+    "fit": 0.8,
     "motion": "static"
    }
   },
   {
    "id": "rockGrass",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "outcrops",
@@ -1260,6 +1245,7 @@
   },
   {
    "id": "pebbles",
+   "category": "rock",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -1339,6 +1325,7 @@
   },
   {
    "id": "meadowPatch",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 8
@@ -1384,6 +1371,7 @@
   },
   {
    "id": "wildflowers",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "meadowPatch",
@@ -1532,6 +1520,7 @@
   },
   {
    "id": "strayFlowers",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -1668,6 +1657,7 @@
   },
   {
    "id": "grass",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 2
@@ -1720,6 +1710,8 @@
   },
   {
    "id": "reedbed",
+   "habitat": "shore",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4
@@ -1743,6 +1735,8 @@
   },
   {
    "id": "reeds",
+   "habitat": "shore",
+   "category": "plant",
    "place": {
     "kind": "around",
     "parent": "reedbed",
@@ -1786,6 +1780,8 @@
   },
   {
    "id": "lilies",
+   "habitat": "water",
+   "category": "plant",
    "place": {
     "kind": "field",
     "spacing": 4

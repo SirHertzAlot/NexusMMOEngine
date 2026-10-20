@@ -141,6 +141,12 @@ export async function assembleServerSystems(
    * skipped silently.
    */
   disposeModules: () => Promise<void>;
+  /**
+   * EA12: edge routes, keyed `local:<module>`. For each enabled module with
+   * a manifest `edge` contribution, the route carries its regions, endpoint,
+   * and capabilities. Merged into the edge routing table at boot.
+   */
+  edgeRoutes: Record<string, { regions: string[]; endpoint: string; capabilities: string[] }>;
 }> {
   // Complete-modularity: modules publish domain stores here during
   // createSystems (economy → wallet, character → characters, ...).
@@ -217,12 +223,25 @@ export async function assembleServerSystems(
   const extensions: Record<string, unknown> = {};
   for (const [k, v] of extensionInstances) if (v !== undefined) extensions[k] = v;
   const orderedDisposers = [...disposers].reverse();
+  // EA12: merge `local:<module>` routes for enabled modules with edge contributions.
+  const edgeRoutes: Record<string, { regions: string[]; endpoint: string; capabilities: string[] }> = {};
+  for (const m of r.modules) {
+    const edge = m.manifest.edge;
+    if (edge) {
+      edgeRoutes[`local:${m.manifest.name}`] = {
+        regions: edge.regions,
+        endpoint: edge.endpoint,
+        capabilities: edge.capabilities,
+      };
+    }
+  }
   return {
     systems: order.map((s) => instances.get(s.name)!),
     order,
     modules: r.modules.map((m) => m.manifest.name),
     byName: systemsByName,
     extensions,
+    edgeRoutes,
     disposeModules: async (): Promise<void> => {
       const failures: string[] = [];
       for (const d of orderedDisposers) {

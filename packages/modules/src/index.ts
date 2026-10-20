@@ -56,9 +56,16 @@ export interface ModuleManifest {
   native?: { entry: string; systems: string[] };
   /**
    * Sidecar contribution (EA11). A helper process run alongside the server.
-   * `command` starts it; `health` is polled for readiness.
+   * Three kinds:
+   * - `command`: a shell string (e.g. "node ./brain-server.js")
+   * - `exec`: argv array, no shell (e.g. ["node", "./brain-server.js"])
+   * - `wasm`: path to a .wasm file, run in-process by the wasm host
+   * `health` is polled for readiness (HTTP for command/exec; function call for wasm).
    */
-  sidecar?: { command: string; port: number; health: string };
+  sidecar?:
+    | { command: string; port: number; health: string }
+    | { exec: string[]; port: number; health: string }
+    | { wasm: string; port: number; health: string };
   /**
    * Edge contribution (EA12). Runs on edge nodes, discovered by clients.
    */
@@ -239,14 +246,30 @@ export function validateManifest(
   if (raw.sidecar !== undefined) {
     if (!isObj(raw.sidecar)) bad("sidecar", "must be an object");
     else {
-      only(raw.sidecar, ["command", "port", "health"], "sidecar");
+      only(raw.sidecar, ["command", "exec", "wasm", "port", "health"], "sidecar");
       const s = raw.sidecar;
       const before = problems.length;
-      if (typeof s.command !== "string" || s.command.trim().length === 0) bad("sidecar.command", "must be a non-empty string");
+      const kinds = [s.command !== undefined, s.exec !== undefined, s.wasm !== undefined].filter(Boolean).length;
+      if (kinds !== 1) bad("sidecar", 'must have exactly one of "command", "exec", or "wasm"');
+      if (s.command !== undefined && (typeof s.command !== "string" || (s.command as string).trim().length === 0))
+        bad("sidecar.command", "must be a non-empty string");
+      if (s.exec !== undefined) {
+        if (!Array.isArray(s.exec) || (s.exec as unknown[]).length === 0 || (s.exec as unknown[]).some((a) => typeof a !== "string" || (a as string).length === 0))
+          bad("sidecar.exec", "must be a non-empty array of non-empty strings");
+      }
+      if (s.wasm !== undefined) {
+        if (typeof s.wasm !== "string" || !(s.wasm as string).endsWith(".wasm"))
+          bad("sidecar.wasm", "must be a path to a .wasm file");
+      }
       if (typeof s.port !== "number" || !Number.isInteger(s.port) || s.port < 1 || s.port > 65535) bad("sidecar.port", "must be an integer between 1 and 65535");
       if (typeof s.health !== "string" || !s.health.startsWith("/")) bad("sidecar.health", 'must be a path starting with "/"');
       if (problems.length === before) {
-        sidecar = { command: s.command as string, port: s.port as number, health: s.health as string };
+        const base = { port: s.port as number, health: s.health as string };
+        sidecar = s.command !== undefined
+          ? { ...base, command: s.command as string }
+          : s.exec !== undefined
+            ? { ...base, exec: s.exec as string[] }
+            : { ...base, wasm: s.wasm as string };
       }
     }
   }

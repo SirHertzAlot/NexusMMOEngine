@@ -4,6 +4,7 @@
 import * as React from "react";
 import { PipelineView } from "../../../apps/editor/src/ui/pipeline-view.js";
 import { PlaytestsPanel } from "../../../apps/editor/src/ui/playtests-live.js";
+import { ValgrindPanel } from "../../../apps/editor/src/ui/valgrind-panel.js";
 
 export const panels = [
   {
@@ -19,5 +20,12 @@ export const panels = [
     title: "Playtests",
     icon: "science",
     render: () => <PlaytestsPanel />,
+  },
+  {
+    id: "valgrind",
+    workspace: "release",
+    title: "Valgrind",
+    icon: "memory",
+    render: () => <ValgrindPanel />,
   },
 ];

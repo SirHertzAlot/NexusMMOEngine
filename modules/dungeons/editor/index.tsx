@@ -4,6 +4,8 @@
 import * as React from "react";
 import { DungeonPanel } from "../../../apps/editor/src/ui/dungeon-view.js";
 import { GraphEditorPanel } from "../../../apps/editor/src/ui/graph-editor.js";
+import { DungeonRulesPanel } from "../../../apps/editor/src/ui/dungeon-rules-panel.js";
+import { SettlementPanel } from "../../../apps/editor/src/ui/settlement-panel.js";
 
 export const panels = [
   {
@@ -19,5 +21,19 @@ export const panels = [
     title: "PICG Graphs",
     icon: "graph_3",
     render: () => <GraphEditorPanel />,
+  },
+  {
+    id: "runs",
+    workspace: "dungeons",
+    title: "Runs",
+    icon: "timer",
+    render: () => <DungeonRulesPanel />,
+  },
+  {
+    id: "towns",
+    workspace: "dungeons",
+    title: "Towns",
+    icon: "location_city",
+    render: () => <SettlementPanel />,
   },
 ];

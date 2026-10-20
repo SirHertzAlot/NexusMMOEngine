@@ -17,6 +17,8 @@ export interface ModuleInfo {
   locked: boolean;
   editor: boolean;
   systems: string[];
+  /** EA10: present when the module has a native addon. */
+  native?: { entry: string; systems: string[] };
 }
 import { IssuesError, invalidMessage, requestJson } from "./api.js";
 
@@ -127,3 +129,11 @@ export const saveEnabled = (enabled: string[], base = ""): Promise<void> => call
 
 /** Restart the owned play server with the saved set (no-op when none is running). */
 export const applyModules = (base = ""): Promise<{ restarted: boolean }> => call(`${base}/api/editor/modules/apply`, "apply failed", "POST");
+
+/** EA10: build a module's native addon via node-gyp. */
+export const buildNative = (name: string, base = ""): Promise<{ ok: boolean; built: boolean; path: string | null; stdout: string; stderr: string }> =>
+  call(`${base}/api/editor/modules/${encodeURIComponent(name)}/build`, "native build failed", "POST");
+
+/** EA10: check whether a module's native addon is built. */
+export const checkNative = (name: string, base = ""): Promise<{ ok: boolean; built: boolean; path: string | null }> =>
+  call(`${base}/api/editor/modules/${encodeURIComponent(name)}/check`, "native check failed");

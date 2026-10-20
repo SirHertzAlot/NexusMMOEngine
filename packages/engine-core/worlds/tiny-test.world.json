@@ -1,0 +1,65 @@
+{
+  "name": "tiny-test",
+  "seed": 42,
+  "sizeChunks": 8,
+  "chunkWorldSize": 16,
+  "coarseCell": 8,
+  "regionsPerSide": 1,
+  "land": {
+    "seaLevel": 0,
+    "coast": {
+      "side": "south",
+      "waterEdge": 0.5,
+      "tip": 0.85,
+      "taper": 0.7,
+      "wander": 100,
+      "wanderScale": 200
+    },
+    "shelfDepth": 20,
+    "shelfWidth": 100,
+    "rise": 15,
+    "riseDistance": 400,
+    "relief": 10,
+    "reliefScale": 300,
+    "minIslandArea": 5000
+  },
+  "ranges": {
+    "count": 1,
+    "height": 100,
+    "width": 300,
+    "length": 800,
+    "spurs": 1,
+    "spurLength": 400,
+    "spurScale": 0.75,
+    "ridgeScale": 200,
+    "ridges": 0.45,
+    "coastClearance": 100
+  },
+  "climate": {
+    "wind": "south-west",
+    "seaTempC": 20,
+    "inlandCoolingC": 5,
+    "rainMm": 800,
+    "dryDistance": 1500
+  },
+  "erosion": {
+    "droplets": 5000,
+    "strength": 0.3,
+    "thermalPasses": 5,
+    "fluvialPasses": 3
+  },
+  "biomes": [
+    {
+      "id": "plains",
+      "when": { "water": "land", "height": { "min": 0, "max": 80 } },
+      "surface": { "shape": "rolling", "relief": 3, "scale": 50 },
+      "roughness": 0.3
+    },
+    {
+      "id": "catch-all",
+      "surface": { "shape": "rolling", "relief": 5, "scale": 80 },
+      "roughness": 0.5
+    }
+  ],
+  "minBiomeArea": 500
+}

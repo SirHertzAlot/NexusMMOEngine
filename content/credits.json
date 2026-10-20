@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "thirdPartyArt": [
+    {
+      "author": "Poly by Google",
+      "source": "https://poly.pizza/u/Poly%20by%20Google",
+      "licence": "CC-BY 3.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "text": "3D models by Poly by Google, via poly.pizza, licensed CC-BY 3.0.",
+      "confirmed": false,
+      "todo": "Confirm the exact attribution wording and whether the credit must also say the models were adapted (rescaled, origin moved); the importer rescales every model to a natural size."
+    }
+  ]
+}

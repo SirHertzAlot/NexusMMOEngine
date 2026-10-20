@@ -52,6 +52,9 @@ export class BlockList {
   /** blocker account → blocked account → name as blocked, in block order. */
   private readonly blocks = new Map<string, Map<string, string>>();
 
+  /** Blocks per account (social.json `chat.blockLimit`, EG9). */
+  limit = BLOCK_LIMIT;
+
   /** Writes through to `store` (SQLite in the server, S2c), so blocks survive a restart. */
   constructor(private readonly store: SocialStore = memorySocialStore()) {
     for (const r of store.loadBlocks()) {
@@ -73,7 +76,7 @@ export class BlockList {
     let set = this.blocks.get(b);
     if (!set) this.blocks.set(b, (set = new Map()));
     if (set.has(t)) return true;
-    if (set.size >= BLOCK_LIMIT) return false;
+    if (set.size >= this.limit) return false;
     set.set(t, name);
     this.store.addBlock(b, t, name);
     return true;

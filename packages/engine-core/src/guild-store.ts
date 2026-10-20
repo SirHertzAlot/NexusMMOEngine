@@ -95,14 +95,14 @@ export class SqliteGuildStore implements GuildStore {
     this.db.prepare("DELETE FROM guilds WHERE id = ?").run(id);
   }
 
-  appendLog(guild: number, at: number, text: string): void {
+  appendLog(guild: number, at: number, text: string, keep: number = GUILD_LOG_KEEP): void {
     this.db.prepare("INSERT INTO guild_log (guild, at, text) VALUES (?, ?, ?)").run(guild, at, text);
     this.db
       .prepare(
         "DELETE FROM guild_log WHERE guild = ? AND seq <= " +
           "(SELECT seq FROM guild_log WHERE guild = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)",
       )
-      .run(guild, guild, GUILD_LOG_KEEP);
+      .run(guild, guild, keep);
   }
 
   close(): void {

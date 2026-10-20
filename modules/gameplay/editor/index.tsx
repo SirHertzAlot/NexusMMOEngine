@@ -5,6 +5,7 @@ import * as React from "react";
 import { GameplayGridsPanel, ContentBrowserPanel } from "../../../apps/editor/src/ui/gameplay-grids.js";
 import { RulesPanel as TablesPanel } from "../../../apps/editor/src/ui/rules-panel.js";
 import { RulesPanel } from "../../../apps/editor/src/ui/rules-editor.js";
+import { CraftingRulesPanel } from "../../../apps/editor/src/ui/crafting-rules-panel.js";
 
 export const panels = [
   {
@@ -34,5 +35,12 @@ export const panels = [
     title: "Rules",
     icon: "tune",
     render: () => <RulesPanel />,
+  },
+  {
+    id: "crafting",
+    workspace: "gameplay",
+    title: "Crafting",
+    icon: "construction",
+    render: () => <CraftingRulesPanel />,
   },
 ];

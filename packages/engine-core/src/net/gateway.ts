@@ -83,6 +83,7 @@ import {
   type DuelMessage,
   type TradeMessage,
   type WalletMessage,
+  type ResourcesMessage,
   type VendorAction,
   type VendorMessage,
   type AuctionMessage,
@@ -97,7 +98,9 @@ import {
   Ability,
   LocomotionMode,
   encodeTileHeights,
+  type ChatChannel,
 } from "@mmo-engine/protocol";
+import type { SocialRules } from "@mmo-engine/rules";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
@@ -111,6 +114,7 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
+import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
@@ -149,7 +153,9 @@ import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
 // Fallback during migration; removed once all bootstraps inject chatRules.
 import * as builtInChat from "../chat.js";
-import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { clearOfStatics } from "../prop-collision.js";
+import type { ScaleResolver } from "../scale.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
 import { AbilitySystem } from "../abilities.js";
@@ -273,8 +279,13 @@ export interface GatewayOptions {
    * null/absent = structural checks only (a server without the art).
    */
   characterCatalog?: ModularCatalog | null;
-  /** Characters an account may have. Default 8. */
+  /** Characters an account may have. Default 8, or social.characters.slots; this option wins over both. */
   maxCharacters?: number;
+  /**
+   * Party, guild, chat and character slot limits (content/rules/social.json,
+   * EG9). Absent: the built-in constants. setSocial replaces them live.
+   */
+  social?: SocialRules;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -308,6 +319,8 @@ export interface GatewayOptions {
    * table in tests.
    */
   spawnTable?: SpawnTable;
+  /** The global scale for admin-spawned props (default: none). */
+  scale?: ScaleResolver;
   /**
    * Region chat text filter (roadmap S1): return false to reject a line.
    * Default allows everything that passes shape limits; a profanity or
@@ -738,6 +751,7 @@ export class Gateway {
       | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
+      | "social"
       | "sessionTtlMs"
       | "sessionStore"
       | "authRateLimit"
@@ -761,6 +775,7 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "scale"
       | "extensions"
       | "items"
     >
@@ -777,7 +792,11 @@ export class Gateway {
   private readonly credentialStore: CredentialStore;
   private readonly characterStore: CharacterStore;
   private readonly characterCatalog: ModularCatalog | null;
-  private readonly maxCharacters: number;
+  private maxCharacters: number;
+  /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
+  private readonly fixedMaxCharacters: boolean;
+  /** social.json (EG9), or null for the chat module's own range and cooldowns. */
+  private social: SocialRules | null = null;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a).
    * Injected by the production server via makeDebugSource(); null →
@@ -858,6 +877,7 @@ export class Gateway {
    * first use so addon-less boots never pay for it.
    */
   private spawnTable: SpawnTable | null = null;
+  private readonly scale: ScaleResolver | undefined;
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
@@ -911,6 +931,8 @@ export class Gateway {
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.characterCatalog = opts.characterCatalog ?? null;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
+    this.fixedMaxCharacters = opts.maxCharacters !== undefined;
+    if (opts.social) this.setSocial(opts.social);
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -927,6 +949,7 @@ export class Gateway {
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
+    this.scale = opts.scale;
     this.textFilter = opts.textFilter ?? this.chatRules.allowAllText;
     for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
@@ -1082,6 +1105,26 @@ export class Gateway {
    * Set the HTTP handler (see GatewayOptions.http) before listen(): for
    * services that authenticate through this gateway's sessions.
    */
+  /**
+   * Apply social.json (EG9): party and guild sizes and timeouts, the block
+   * limit, chat reach, line length and cooldowns, and character slots. Takes
+   * effect on the next action; parties, guilds and blocks already over a
+   * lowered limit stay as they are.
+   */
+  setSocial(rules: SocialRules): void {
+    this.social = rules;
+    this.parties.setRules(rules.party);
+    this.guilds.setRules(rules.guild);
+    if ("limit" in this.blocks) (this.blocks as { limit: number }).limit = rules.chat.blockLimit;
+    if (!this.fixedMaxCharacters) this.maxCharacters = rules.characters.slots;
+  }
+
+  /** Milliseconds between two lines on `channel` from one session. */
+  private chatCooldownMs(channel: ChatChannel): number {
+    const s = this.social?.chat.cooldownSeconds[channel];
+    return s === undefined ? this.chatRules.CHAT_COOLDOWN_MS[channel] : s * 1000;
+  }
+
   setHttpHandler(handler: HttpHandler): void {
     if (this.transport) throw new Error("gateway: set the HTTP handler before listen()");
     this.httpHandler = handler;
@@ -1202,6 +1245,7 @@ export class Gateway {
       ...this.sendWallets(sim, tick),
       ...this.sendAuctions(sim, tick),
     ];
+    this.sendResources(sim);
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
@@ -1795,9 +1839,10 @@ export class Gateway {
     if (!st || !(st.health > 0)) return;
     if (!this.spawnOverridden) {
       const T = C.Transform;
-      T.px[eid] = st.x;
-      T.pz[eid] = st.z;
-      T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+      const at = clearOfStatics(this.world, st.x, st.z, CHARACTER_CAPSULE.radius);
+      T.px[eid] = at.x;
+      T.pz[eid] = at.z;
+      T.py[eid] = this.groundHeightAt?.(at.x, at.z) ?? st.y;
     }
     C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
     C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
@@ -1818,7 +1863,7 @@ export class Gateway {
     if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
     const x = this.spawnPoint.x;
     const z = this.spawnPoint.z;
-    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ? this.groundHeightAt(x, z) : null);
+    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ?? null);
     return r.ok;
   }
 
@@ -2233,6 +2278,9 @@ export class Gateway {
       case MessageType.TileRequest:
         this.onTileRequest(s, payload);
         break;
+      case MessageType.Gather:
+        this.onGather(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -2611,7 +2659,7 @@ export class Gateway {
     }
     const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
-    const eid = spawnScatterEntity(this.world, built);
+    const eid = spawnScatterEntity(this.world, built, undefined, this.scale);
     return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
   }
 
@@ -2628,8 +2676,7 @@ export class Gateway {
       }
       const target = this.resolveTarget(s, parsed.data.entity);
       if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
-      const ground = this.groundHeightAt ? this.groundHeightAt(parsed.data.x, parsed.data.z) : null;
-      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, ground);
+      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, this.groundHeightAt ?? null);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
       return { kind: "admin", command, ok: true, message: r.message };
     }
@@ -2762,6 +2809,7 @@ export class Gateway {
       }
       const parsed = this.chatRules.ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
+      if (this.social && parsed.data.text.length > this.social.chat.textMax) throw new Error("too long");
       text = parsed.data.text;
       channel = parsed.data.channel;
       to = parsed.data.to;
@@ -2774,8 +2822,9 @@ export class Gateway {
       return;
     }
     const now = this.clock();
-    const last = s.lastChatMs[channel] ?? -this.chatRules.CHAT_COOLDOWN_MS[channel] - 1;
-    if (now - last < this.chatRules.CHAT_COOLDOWN_MS[channel]) {
+    const cooldown = this.chatCooldownMs(channel);
+    const last = s.lastChatMs[channel] ?? -cooldown - 1;
+    if (now - last < cooldown) {
       this.sendError(s, 4003, "chat too fast");
       return;
     }
@@ -2851,7 +2900,8 @@ export class Gateway {
     }
     const sx = C.Transform.px[eid];
     const sz = C.Transform.pz[eid];
-    const range2 = this.chatRules.SAY_RANGE_M * this.chatRules.SAY_RANGE_M;
+    const range = this.social?.chat.sayRangeM ?? this.chatRules.SAY_RANGE_M;
+    const range2 = range * range;
     for (const r of this.sessions.values()) {
       if (!r.welcomed || r.playerEntity === null) continue;
       const reid = this.world.resolveWireId(r.playerEntity);
@@ -3812,6 +3862,10 @@ export class Gateway {
     if (names) this.deliver(s, names, this.tick);
     const drops = this.dropsFor(null);
     if (drops) this.deliver(s, drops, this.tick);
+    // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
+    const gathering = this.gathering;
+    if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
+    if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     this.deliverSnapshot(
       s,
       encodeEnvelope(
@@ -4529,6 +4583,64 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Inventory, encodeControl(this.items.inventoryOf(this.holderOf(s))));
   }
 
+  /** The server's gathering system (resource nodes and pouches), if it runs one. */
+  private get gathering(): GatheringSystem | undefined {
+    return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
+  }
+
+  /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
+  private sendResources(sim: SimWorld): void {
+    const nodes = this.gathering?.drainChanges(sim) ?? [];
+    if (nodes.length === 0) return;
+    const bytes = encodeControl({ kind: "resources", nodes } satisfies ResourcesMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Gather, bytes);
+  }
+
+  /**
+   * Gather once from a resource node (catalog 0x24): in-world sessions
+   * only; a bad shape is 4003, a refusal (too far, worked out, still
+   * gathering, pouch full) 4005. Shares the pickup rate limit. A gather
+   * answers with the whole pouch, naming what was added.
+   */
+  private onGather(s: ClientSession, payload: Uint8Array): void {
+    const gathering = this.gathering;
+    if (!gathering || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "gathering outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed gather");
+      return;
+    }
+    const parsed = GatherActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed gather");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) {
+      this.sendError(s, 4005, "no avatar");
+      return;
+    }
+    const wire = parseEntityArg(parsed.data.entity);
+    const holder = this.holderOf(s);
+    const result = wire === null ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, this.world.resolveWireId(wire));
+    if (!result.ok) {
+      this.sendError(s, 4005, result.error);
+      return;
+    }
+    this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+  }
+
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */
   private dropsFor(only: readonly bigint[] | null): Uint8Array | null {
     if (!this.items) return null;
@@ -4794,8 +4906,10 @@ export class Gateway {
     C.Locomotion.breath[eid] = 1;
     const T = C.Transform;
     const i = this.playerSeq++;
-    T.px[eid] = this.spawnPoint.x + (i % 8) * 4 - 14;
-    T.pz[eid] = this.spawnPoint.z + Math.floor(i / 8) * 4 - 14;
+    // Clear of baked buildings: the spawn point can sit inside a generated town.
+    const at = clearOfStatics(sim, this.spawnPoint.x + (i % 8) * 4 - 14, this.spawnPoint.z + Math.floor(i / 8) * 4 - 14, CHARACTER_CAPSULE.radius);
+    T.px[eid] = at.x;
+    T.pz[eid] = at.z;
     T.py[eid] = this.groundHeightAt?.(T.px[eid], T.pz[eid]) ?? 0;
     T.qx[eid] = 0; T.qy[eid] = 0; T.qz[eid] = 0; T.qw[eid] = 1;
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;
