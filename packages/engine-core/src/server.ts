@@ -35,9 +35,11 @@
  *                  ecology when the art is on this machine, else pcg.
  *   MMO_ECOLOGY    an ecology plan file (default: content/ecology/wilds.ecology.json)
  *   MMO_QUESTS     quest and dialog content dir (default: the repo's
- *                  content/quests); quest logs live in <data>/quests.db
+ *                  content/quests); a missing dir means no quests, not a boot
+ *                  failure. Quest logs live in <data>/quests.db
  *   MMO_DUNGEONS   dungeon instance rules and entrances dir (default: the
- *                  repo's content/dungeons); layouts come from the pool at
+ *                  repo's content/dungeons); a missing dir means no dungeons,
+ *                  not a boot failure. Layouts come from the pool at
  *                  <data>/dungeons (npm run dungeon:bake), runs are kept in
  *                  <data>/instances.db
  *   MMO_INSTANCE_HOST host clients reach instances at (default localhost;
@@ -66,8 +68,9 @@
  *                  MMO_PREFABS the prefab files (content/prefabs)
  *   MMO_SPECIES    the species overlay file (default content/species/species.json),
  *                  merged over the built-in roster; a bad file stops the boot
- *   MMO_CRAFTING   the crafting rules (default content/crafting/recipes.json); a bad file
- *                  stops the boot
+ *   MMO_CRAFTING   the crafting rules (default content/crafting/recipes.json);
+ *                  a missing file means no crafting, not a boot failure; a bad
+ *                  file stops the boot
  *   MMO_BOTS       computer-driven characters near the spawn point (default 0):
  *                  sparring pairs and wanderers, with random looks
  *   MMO_BOTS_HOME  "x,z" where they gather (default: beside the spawn point)
@@ -196,6 +199,7 @@ import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/resu
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
+import { assertEngineSkillContract } from "./rules/skill-contract.js";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { landDry, riverAtFromMap, surfaceAt } from "./procgen/habitat.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
@@ -284,13 +288,22 @@ async function main(): Promise<void> {
     throw err;
   }
   console.log(`[server] ${game.summary}`);
+  // The engine's skill contract: systems name content-defined skill and
+  // technique ids. A pack that declares skills must declare every one the
+  // engine needs — fail loud here, never silent 0s mid-game.
+  try {
+    assertEngineSkillContract(game.rules, game.dir);
+  } catch (err) {
+    console.error(`[server] ${(err as Error).message}`);
+    process.exit(1);
+  }
   // The wildlife table's species become creature kinds (docs/WILDLIFE.md), under any the rules define.
   const wildlifeTable = process.env.MMO_WILDLIFE ? loadWildlifeTable(process.env.MMO_WILDLIFE === "1" ? DEFAULT_WILDLIFE_TABLE : process.env.MMO_WILDLIFE) : null;
   const wildlifeKinds = wildlifeTable ? wildlifeCreatures(wildlifeTable, loadNaturalWeapons()) : null;
   if (wildlifeKinds) game.rules.creatures.creatures = withWildlife(game.rules.creatures.creatures, wildlifeKinds);
   // Authored data beyond the rules: the species roster and the crafting rules.
   let speciesRoster: ServerRoster;
-  let crafting: CraftingRules;
+  let crafting: CraftingRules | null;
   try {
     speciesRoster = loadServerRoster();
     crafting = loadCraftingRules(process.env.MMO_CRAFTING || undefined);
@@ -299,7 +312,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   console.log(`[${speciesRoster.summary}]`);
-  console.log(`[crafting: ${Object.keys(crafting.refining).length} refining recipe(s), ${Object.keys(crafting.reagents).length} element reagent(s)]`);
+  console.log(
+    crafting
+      ? `[crafting: ${Object.keys(crafting.refining).length} refining recipe(s), ${Object.keys(crafting.reagents).length} element reagent(s)]`
+      : `[crafting: no crafting content]`,
+  );
   // The combat moves (content/combat/moves.json, MMO_COMBAT): timing, chaining and travel the fight runs on.
   const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
   if (combatLine) console.log(`[server] ${combatLine}`);

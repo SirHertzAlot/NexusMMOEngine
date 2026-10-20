@@ -251,7 +251,7 @@ describe("ItemService", () => {
 describe("ItemService held weapons (M3b)", () => {
   const defs = new ItemDefs(POOL, RULES);
   const held = (tickHz = 30): ItemService =>
-    new ItemService({ defs, loot: loot(), tickHz, rankOrder: ["common", "rare"] });
+    new ItemService({ defs, loot: loot(), tickHz, rankOrder: ["common", "rare"], starterBase: "sword" });
 
   it("equips into the hand, swapping what was there back to the bag", () => {
     const items = held();
