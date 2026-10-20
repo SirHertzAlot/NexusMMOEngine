@@ -5,12 +5,20 @@
  *    DUNGEONS-AND-LOOT.md §10's open questions (party size, time limit,
  *    re-entry, what a crash does), kept as data so they change without code;
  *  - entrances.json: where in the open world a party asks for a dungeon,
- *    and which pool layouts that entrance draws from (rank, themes).
+ *    and which pool layouts that entrance draws from (rank, themes);
+ *  - props.json: what each baked prop kind (pillar, brazier, barrel, torch…)
+ *    spawns as: the world's spawn table (asset, collision box, category) keyed
+ *    by asset id, `dungeon:<kind>`, plus `lift` (by kind), the height a wall- or ceiling-mounted kind hangs at.
+ *    Sizes follow the world's convention: a standing kind's box is centred on
+ *    the floor with halfY its full height (the lower half buried); a kind with a
+ *    `lift` hangs centred there, halfY half its height.
+ *    A kind with no entry is not spawned (decals wait for art).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SpawnTableSchema, type SpawnTable } from "@mmo-engine/scatter";
 import { z } from "zod";
 
 const id = z.string().regex(/^[a-z][a-z0-9-]*$/, "lowercase id (a-z, 0-9, -)");
@@ -73,27 +81,35 @@ export const EntrancesSchema = z.strictObject({
   entrances: z.record(id, EntranceSchema),
 });
 
+/** The prop table: a spawn table keyed `dungeon:<kind>` by asset id, and the heights mounted kinds hang at (by kind; metres, the body's centre). */
+export const DungeonPropsSchema = SpawnTableSchema.extend({ lift: z.record(z.string(), z.number().min(0).max(30)).default({}) });
+export type DungeonProps = z.infer<typeof DungeonPropsSchema> & { archetypes: SpawnTable["archetypes"] };
+
 export type InstanceRules = z.infer<typeof InstanceRulesSchema>;
 export type Entrance = z.infer<typeof EntranceSchema>;
 
 export interface DungeonContent {
   rules: InstanceRules;
   entrances: Record<string, Entrance>;
+  /** What each baked prop kind spawns as (empty: instances spawn no props). */
+  props: DungeonProps;
 }
 
 export const DEFAULT_DUNGEON_CONTENT = fileURLToPath(new URL("../../../../../content/dungeons", import.meta.url));
 
-export function parseDungeonContent(rules: unknown, entrances: unknown): DungeonContent {
+export function parseDungeonContent(rules: unknown, entrances: unknown, props?: unknown): DungeonContent {
   const problems: string[] = [];
   const r = InstanceRulesSchema.safeParse(rules);
   if (!r.success) for (const i of r.error.issues) problems.push(`instances.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
   const e = EntrancesSchema.safeParse(entrances);
   if (!e.success) for (const i of e.error.issues) problems.push(`entrances.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
-  if (!r.success || !e.success) throw new Error(`dungeon content: ${problems.join("; ")}`);
-  return { rules: r.data, entrances: e.data.entrances };
+  const p = props === undefined ? { success: true as const, data: { version: 1 as const, archetypes: {}, lift: {} } } : DungeonPropsSchema.safeParse(props);
+  if (!p.success) for (const i of p.error.issues) problems.push(`props.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
+  if (!r.success || !e.success || !p.success) throw new Error(`dungeon content: ${problems.join("; ")}`);
+  return { rules: r.data, entrances: e.data.entrances, props: p.data };
 }
 
 export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT): DungeonContent {
   const read = (f: string): unknown => JSON.parse(readFileSync(join(dir, f), "utf8"));
-  return parseDungeonContent(read("instances.json"), read("entrances.json"));
+  return parseDungeonContent(read("instances.json"), read("entrances.json"), existsSync(join(dir, "props.json")) ? read("props.json") : undefined);
 }
