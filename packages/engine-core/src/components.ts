@@ -20,7 +20,7 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * StructuralIntegrity=18) for future compact wire formats; the current
+ * StructuralIntegrity=21) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -172,7 +172,7 @@ export const COMPONENT_IDS = {
   God: 15,
   Noclip: 16,
   Animation: 17,
-  StructuralIntegrity: 18,
+  StructuralIntegrity: 21,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -370,7 +370,7 @@ export const Animation = defineSABComponent({
 });
 
 // ---------------------------------------------------------------------------
-// StructuralIntegrity (ComponentId 18): how much punishment a built
+// StructuralIntegrity (ComponentId 21): how much punishment a built
 // structure (wall, gate, building) can still take — current / max,
 // following Health's shape. Set at construction from the build material;
 // damage (siege, decay, sabotage) drains current, and at 0 the structure
