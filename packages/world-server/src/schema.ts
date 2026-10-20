@@ -27,16 +27,49 @@ export const ChunkRangeSchema = z
     message: "chunk range must have positive area",
   });
 
+const HOST_ID = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9_.-]+$/);
+
 export const RegisterRegionSchema = z
   .object({
     regionId: REGION_ID,
-    chunkRange: ChunkRangeSchema,
+    // Explicit mode (P5: optional — assignment mode omits it).
+    chunkRange: ChunkRangeSchema.optional(),
+    // Assignment mode (P5): the host whose reports size the range.
+    hostId: HOST_ID.optional(),
     endpoint: ENDPOINT,
     capacity: z.number().int().min(1).max(1_000_000),
     apiKey: z.string().min(8).max(256),
     opId: OP_ID,
   })
-  .strict();
+  .strict()
+  .refine((r) => r.chunkRange !== undefined || r.hostId !== undefined, {
+    message: "registration requires chunkRange (explicit) or hostId (assignment)",
+  });
+
+/**
+ * A host resource report (persistence P5): the sidecar's periodic
+ * upsert. Bootstrap-authenticated by apiKey, like RegisterRegion —
+ * the sidecar holds no lease token. reportedAt is server-stamped and
+ * never accepted from the wire.
+ */
+export const ReportHostResourcesSchema = z
+  .object({
+    hostId: HOST_ID,
+    cpuCores: z.number().int().min(1).max(100_000),
+    ramTotalBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    ramFreeBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    shardLoad: z.number().min(0).max(1_000_000).optional(),
+    apiKey: z.string().min(8).max(256),
+  })
+  .strict()
+  .refine((r) => r.ramFreeBytes <= r.ramTotalBytes, {
+    message: "ramFreeBytes cannot exceed ramTotalBytes",
+    path: ["ramFreeBytes"],
+  });
 
 export const HeartbeatSchema = z
   .object({

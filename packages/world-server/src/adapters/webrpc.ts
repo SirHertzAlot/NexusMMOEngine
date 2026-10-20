@@ -39,6 +39,7 @@ import {
   QueryPresenceSchema,
   RegisterRegionSchema,
   ReleaseCharacterLockSchema,
+  ReportHostResourcesSchema,
   SetPresenceSchema,
   SnapshotReportSchema,
 } from "../schema.js";
@@ -86,6 +87,20 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       const input = RegisterRegionSchema.parse(req.body?.input);
       const lease = await core.registerRegion(input);
       res.json({ lease });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  // -- ReportHostResources (P5): bootstrap auth via apiKey in the body --
+  // The host sidecar is not a region and holds no lease token, so —
+  // like RegisterRegion — it authenticates with the pre-shared key;
+  // the core verifies it before storing anything.
+  r.post("/rpc/World/ReportHostResources", async (req, res) => {
+    try {
+      const input = ReportHostResourcesSchema.parse(req.body?.input);
+      const report = await core.reportHostResources(input);
+      res.json({ report });
     } catch (err) {
       sendError(res, err);
     }

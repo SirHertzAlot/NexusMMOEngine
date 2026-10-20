@@ -32,7 +32,19 @@ export function rangeKeyFor(range: ChunkRange): string {
 
 export interface RegisterRegionInput {
   regionId: string;
-  chunkRange: ChunkRange;
+  /**
+   * The region's chunk range (explicit mode). Omit for assignment
+   * mode (persistence P5): the world core assigns a range sized by
+   * the host's reported resources — supply `hostId` instead.
+   */
+  chunkRange?: ChunkRange;
+  /**
+   * Assignment mode (P5): the host this region runs on. The core
+   * looks up the host's fresh resource report (see
+   * ReportHostResources) and assigns a range via the assignment
+   * policy. Ignored when `chunkRange` is present (explicit wins).
+   */
+  hostId?: string;
   endpoint: string;
   capacity: number;
   /** Pre-shared bootstrap key (never stored; compared against argon2 hash). */
@@ -43,6 +55,12 @@ export interface RegisterRegionInput {
 
 export interface RegionLease {
   regionId: string;
+  /**
+   * The chunk range this lease grants (persistence P5): the explicit
+   * range in explicit mode, the policy-assigned range in assignment
+   * mode. The shard learns its range from here in fleet boot.
+   */
+  chunkRange: ChunkRange;
   heartbeatIntervalMs: number;
   registryVersion: number;
   /** Opaque bearer token for subsequent calls. */
@@ -290,6 +308,57 @@ export interface GetCharacterLockInput {
   characterId: number;
 }
 
+/**
+ * A host resource report as stored (persistence P5): one per host,
+ * replaced on every report, TTL'd like heartbeats and reaped when
+ * stale. `reportedAt` is stamped by the world core at ingestion
+ * (server clock, like a region's lastHeartbeat) — never trusted from
+ * the reporter.
+ */
+export interface HostResourceReport {
+  hostId: string;
+  cpuCores: number;
+  ramTotalBytes: number;
+  ramFreeBytes: number;
+  /** Co-located shard load when the sidecar can measure it; absent otherwise. */
+  shardLoad?: number;
+  reportedAt: number; // epoch ms, server-stamped
+}
+
+/**
+ * Report a host's resources (the sidecar's periodic upsert, P5).
+ * Auth rides the bootstrap apiKey, exactly like RegisterRegion: the
+ * sidecar is not a region and holds no lease token. State, not an
+ * event — like presence/heartbeats this takes no opId: a re-report
+ * simply replaces the stored report.
+ */
+export interface ReportHostResourcesInput {
+  hostId: string;
+  cpuCores: number;
+  ramTotalBytes: number;
+  ramFreeBytes: number;
+  shardLoad?: number;
+  /** Pre-shared bootstrap key (never stored; compared against argon2 hash). */
+  apiKey: string;
+}
+
+/** A chunk range held by a live lease (the assignment policy's view). */
+export interface LiveLeaseRange {
+  regionId: string;
+  chunkRange: ChunkRange;
+}
+
+/**
+ * The assignment policy's inputs, exactly (persistence spec, P5):
+ * host reports + the total world chunk space + live leases. The
+ * requesting shard is identified by the hostId passed alongside.
+ */
+export interface AssignmentPolicyInput {
+  hostReports: HostResourceReport[];
+  totalWorldChunkSpace: ChunkRange;
+  liveLeases: LiveLeaseRange[];
+}
+
 /** A region as other regions see it (ListRegions): no secrets. */
 export interface RegionInfo {
   regionId: string;
@@ -414,6 +483,14 @@ export interface WorldStore {
    * even after a release, so a previous session's writes stay fenced.
    */
   issueCharacterLockEpoch(characterId: number): Promise<number>;
+
+  // -- host reports (persistence P5) --
+  /** Store a host's latest resource report (one per hostId, replaced). */
+  upsertHostReport(r: HostResourceReport): Promise<void>;
+  getHostReport(hostId: string): Promise<HostResourceReport | null>;
+  listHostReports(): Promise<HostResourceReport[]>;
+  /** Delete reports older than cutoffMs (reportedAt < cutoff); return hostIds. */
+  reapStaleHostReports(cutoffMs: number): Promise<string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +573,16 @@ export interface WorldCore {
   releaseCharacterLock(caller: string, input: ReleaseCharacterLockInput): Promise<void>;
   /** A character's current session lock; null when unheld. */
   getCharacterLock(caller: string, input: GetCharacterLockInput): Promise<CharacterSessionLock | null>;
+
+  // -- persistence P5: host reports + resource-aware assignment --
+  /**
+   * Ingest a host resource report (the sidecar's periodic upsert).
+   * Bootstrap-authenticated by the apiKey in the input, like
+   * registration. Returns the stored report (server-stamped
+   * reportedAt included). No opId: state, not an event — mirrors
+   * presence/heartbeat semantics.
+   */
+  reportHostResources(input: ReportHostResourcesInput): Promise<HostResourceReport>;
 }
 
 export interface WorldCoreOptions {
@@ -508,4 +595,18 @@ export interface WorldCoreOptions {
   migrationTimeoutMs?: number;
   /** How long a resolved migration keeps appearing in heartbeat acks (default 60000). */
   outcomeRetentionMs?: number;
+  /**
+   * The total world chunk space assignments are carved from
+   * (persistence P5). Default: the engine's long-standing world
+   * extent {x0: 0, x1: 4096, z0: 0, z1: 4096}.
+   */
+  totalWorldChunkSpace?: ChunkRange;
+  /** How long a host report stays fresh for assignment (default: heartbeatTimeoutMs). */
+  hostReportTimeoutMs?: number;
+  /**
+   * The chunk-assignment policy (persistence P5): a pure, swappable
+   * function behind this interface (see assignment.ts). Default:
+   * DefaultChunkAssignmentPolicy.
+   */
+  assignmentPolicy?: import("./assignment.js").ChunkAssignmentPolicy;
 }

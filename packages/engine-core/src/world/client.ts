@@ -47,7 +47,18 @@ export class WorldTransportError extends Error {
 export interface WorldClientOptions {
   transport: WorldTransport;
   regionId: string;
-  chunkRange: ChunkRange;
+  /**
+   * The region's chunk range (explicit mode). Omit for assignment
+   * mode (persistence P5): the client registers with `hostId`
+   * instead, and the range arrives in the lease the world grants.
+   */
+  chunkRange?: ChunkRange;
+  /**
+   * Assignment mode (P5): the host this region runs on, whose
+   * reported resources size the range the world assigns. Required
+   * when `chunkRange` is omitted; ignored otherwise.
+   */
+  hostId?: string;
   /** Where this region's game gateway listens. */
   endpoint: string;
   capacity: number;
@@ -69,8 +80,12 @@ function newOpId(): string {
 export class WorldClient {
   private readonly transport: WorldTransport;
   private readonly opts: WorldClientOptions;
-  /** State-plane key for this region's chunk range (persistence spec). */
-  private readonly rangeKeyStr: string;
+  /**
+   * The region's effective chunk range: the configured range in
+   * explicit mode; in assignment mode, the range from the granted
+   * lease (null until the first registration lands).
+   */
+  private effectiveRange: ChunkRange | null;
   private lease: RegionLease | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -78,11 +93,20 @@ export class WorldClient {
   constructor(opts: WorldClientOptions) {
     this.transport = opts.transport;
     this.opts = opts;
-    this.rangeKeyStr = rangeKeyFor(opts.chunkRange);
+    this.effectiveRange = opts.chunkRange ?? null;
   }
 
   get currentLease(): RegionLease | null {
     return this.lease;
+  }
+
+  /**
+   * The chunk range this region owns: the explicit range, or the
+   * world-assigned range once registered (P5). Null only for an
+   * unassigned client that has not (yet) registered.
+   */
+  get chunkRange(): ChunkRange | null {
+    return this.effectiveRange;
   }
 
   /**
@@ -94,9 +118,20 @@ export class WorldClient {
     return this.lease?.epoch ?? null;
   }
 
-  /** The state-plane key (`rangeKeyFor(chunkRange)`) for this region. */
+  /**
+   * The state-plane key (`rangeKeyFor(chunkRange)`) for this region.
+   * In assignment mode it exists only after registration granted a
+   * range; every state-plane caller runs post-registration, so a
+   * throw here is a boot-ordering bug, never a runtime condition.
+   */
   get rangeKey(): string {
-    return this.rangeKeyStr;
+    if (this.effectiveRange === null) {
+      throw new WorldTransportError(
+        0,
+        "no chunk range yet: the world has not granted a lease (assignment mode)",
+      );
+    }
+    return rangeKeyFor(this.effectiveRange);
   }
 
   get registered(): boolean {
@@ -129,17 +164,27 @@ export class WorldClient {
 
   private async register(): Promise<void> {
     try {
-      const res = await this.transport.call("RegisterRegion", {
-        input: {
-          regionId: this.opts.regionId,
-          chunkRange: this.opts.chunkRange,
-          endpoint: this.opts.endpoint,
-          capacity: this.opts.capacity,
-          apiKey: this.opts.apiKey,
-          opId: newOpId(),
-        },
-      });
+      // Explicit mode sends the fixed range; assignment mode (P5)
+      // sends the hostId instead and adopts the range the world
+      // grants in the lease — from here on the shipper, recall, and
+      // character sync all key off that range through this client.
+      const input: Record<string, unknown> = {
+        regionId: this.opts.regionId,
+        endpoint: this.opts.endpoint,
+        capacity: this.opts.capacity,
+        apiKey: this.opts.apiKey,
+        opId: newOpId(),
+      };
+      if (this.opts.chunkRange !== undefined) {
+        input["chunkRange"] = this.opts.chunkRange;
+      } else {
+        input["hostId"] = this.opts.hostId;
+      }
+      const res = await this.transport.call("RegisterRegion", { input });
       this.lease = res["lease"] as RegionLease;
+      if (this.lease?.chunkRange) {
+        this.effectiveRange = this.lease.chunkRange;
+      }
     } catch (err) {
       this.fail(err, "register");
     }
@@ -232,7 +277,7 @@ export class WorldClient {
         {
           input: {
             regionId: this.opts.regionId,
-            rangeKey: this.rangeKeyStr,
+            rangeKey: this.rangeKey,
             epoch: this.lease.epoch,
             opId: newOpId(),
             events: [...events],
@@ -265,7 +310,7 @@ export class WorldClient {
         {
           input: {
             regionId: this.opts.regionId,
-            rangeKey: this.rangeKeyStr,
+            rangeKey: this.rangeKey,
             tick: snapshot.tick,
             epoch: this.lease.epoch,
             digest: snapshot.digest,
@@ -294,7 +339,7 @@ export class WorldClient {
   async getShardSnapshot(): Promise<ShardSnapshotRecord | null> {
     const res = await this.transport.call(
       "GetShardSnapshot",
-      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKeyStr } },
+      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKey } },
       this.token(),
     );
     return (res["snapshot"] as ShardSnapshotRecord | null) ?? null;
@@ -307,7 +352,7 @@ export class WorldClient {
       {
         input: {
           regionId: this.opts.regionId,
-          rangeKey: this.rangeKeyStr,
+          rangeKey: this.rangeKey,
           afterSeq,
         },
       },
@@ -320,7 +365,7 @@ export class WorldClient {
   async getLedgerHead(): Promise<number> {
     const res = await this.transport.call(
       "GetLedgerHead",
-      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKeyStr } },
+      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKey } },
       this.token(),
     );
     return res["ackedSeq"] as number;

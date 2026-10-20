@@ -5,6 +5,7 @@
 import type {
   CharacterSessionLock,
   CharacterStateRecord,
+  HostResourceReport,
   LedgerEvent,
   MigrationRecord,
   MigrationState,
@@ -227,5 +228,33 @@ export class MemoryWorldStore implements WorldStore {
     const next = (this.characterLockEpochs.get(characterId) ?? 0) + 1;
     this.characterLockEpochs.set(characterId, next);
     return next;
+  }
+
+  // -- host reports (persistence P5) --
+
+  private hostReports = new Map<string, HostResourceReport>();
+
+  async upsertHostReport(r: HostResourceReport): Promise<void> {
+    this.hostReports.set(r.hostId, { ...r });
+  }
+
+  async getHostReport(hostId: string): Promise<HostResourceReport | null> {
+    const r = this.hostReports.get(hostId);
+    return r ? { ...r } : null;
+  }
+
+  async listHostReports(): Promise<HostResourceReport[]> {
+    return [...this.hostReports.values()].map((r) => ({ ...r }));
+  }
+
+  async reapStaleHostReports(cutoffMs: number): Promise<string[]> {
+    const reaped: string[] = [];
+    for (const [id, r] of this.hostReports) {
+      if (r.reportedAt < cutoffMs) {
+        this.hostReports.delete(id);
+        reaped.push(id);
+      }
+    }
+    return reaped;
   }
 }

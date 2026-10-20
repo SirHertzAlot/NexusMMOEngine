@@ -67,6 +67,15 @@ service World
   - ReleaseCharacterLock(input: ReleaseCharacterLockInput) => ()
   - GetCharacterLock(input: GetCharacterLockInput) => (lock: CharacterSessionLock)
 
+  # Persistence P5: resource-aware chunk assignment. Host sidecars
+  # report host capacity (bootstrap apiKey auth, like RegisterRegion —
+  # the sidecar holds no lease token; state, not an event: no opId).
+  # RegisterRegion gains an assignment mode: omit chunkRange and send
+  # hostId instead, and the lease's chunkRange is the range the world
+  # assigned, sized by the host's fresh report. Explicit registrations
+  # (chunkRange present) are unchanged.
+  - ReportHostResources(input: ReportHostResourcesInput) => (report: HostResourceReport)
+
 struct ChunkRange
   - x0: int32
   - x1: int32
@@ -75,7 +84,14 @@ struct ChunkRange
 
 struct RegisterRegionInput
   - regionId: string
+  # The region's chunk range (explicit mode). In assignment mode (P5)
+  # this field is OMITTED on the wire and hostId is sent instead; the
+  # hand-authored adapter treats it as optional for exactly that case.
   - chunkRange: ChunkRange
+  # Assignment mode (P5): the host this region runs on, whose fresh
+  # resource report sizes the assigned range. Ignored when chunkRange
+  # is present.
+  - hostId: string
   # Where the region's game gateway listens (for future region->region links)
   - endpoint: string
   - capacity: uint32
@@ -86,6 +102,9 @@ struct RegisterRegionInput
 
 struct RegionLease
   - regionId: string
+  # The granted chunk range (P5): the explicit range, or the range
+  # the world assigned in assignment mode
+  - chunkRange: ChunkRange
   - heartbeatIntervalMs: uint64
   - registryVersion: uint64
   # Opaque bearer token for subsequent calls (rotated on re-register)
@@ -93,6 +112,26 @@ struct RegionLease
   # Fencing epoch for this grant of the region's chunk range (P1);
   # state-plane writes must carry it, and a re-grant fences older ones
   - epoch: uint64
+
+struct ReportHostResourcesInput
+  - hostId: string
+  - cpuCores: uint32
+  - ramTotalBytes: uint64
+  - ramFreeBytes: uint64
+  # Co-located shard load when the sidecar can measure it; omitted otherwise
+  - shardLoad: float64
+  # Pre-shared bootstrap key, as in RegisterRegionInput
+  - apiKey: string
+
+struct HostResourceReport
+  - hostId: string
+  - cpuCores: uint32
+  - ramTotalBytes: uint64
+  - ramFreeBytes: uint64
+  - shardLoad: float64
+  # Server-stamped at ingestion (epoch ms); reports are TTL'd and
+  # reaped like heartbeats
+  - reportedAt: uint64
 
 struct HeartbeatInput
   - regionId: string

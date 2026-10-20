@@ -100,8 +100,12 @@
  *   WORLD_URL          world server base URL (unset = standalone region)
  *   WORLD_API_KEY      bootstrap key matching the world's WORLD_API_KEY
  *   REGION_ID          this region's id (default "region-1")
- *   REGION_CHUNK_RANGE "x0,z0,x1,z1" owned chunk bounds (default "0,0,4096,4096";
- *                      when set, the streamer loads only inside it)
+ *   REGION_CHUNK_RANGE "x0,z0,x1,z1" owned chunk bounds; when set, the
+ *                      streamer loads only inside it. When WORLD_URL is
+ *                      set and this is NOT set, the shard boots
+ *                      unassigned (persistence P5): the world assigns a
+ *                      range sized by the host's reported resources.
+ *   MMO_HOST_ID        host id for assignment mode (default: hostname)
  *   REGION_ENDPOINT    advertised gateway URL (default ws://localhost:<MMO_PORT>)
  *   REGION_CAPACITY    max entities for load reporting (default 1000)
  *
@@ -144,6 +148,7 @@ import {
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
+  planFleetBoot,
   MigrationCoordinator,
   waterSurfaceFromMaps,
   type ChunkBounds,
@@ -343,17 +348,24 @@ async function main(): Promise<void> {
   const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
   let worldClient: WorldClient | null = null;
   let migrationCoordinator: MigrationCoordinator | null = null;
-  const regionChunkRange = ((): { x0: number; z0: number; x1: number; z1: number } => {
-    const parts = (process.env.REGION_CHUNK_RANGE ?? "0,0,4096,4096")
-      .split(",")
-      .map(Number);
-    return { x0: parts[0], z0: parts[1], x1: parts[2], z1: parts[3] };
-  })();
-  if (WORLD_URL) {
+  // Persistence P5: the boot mode is planned from the env alone.
+  // Standalone (no WORLD_URL) constructs no client and makes no world
+  // calls. Explicit (REGION_CHUNK_RANGE set) is the P3 path verbatim.
+  // Assigned (WORLD_URL set, no explicit range): the shard boots
+  // unassigned, registers with its hostId, and the lease grants its
+  // range + epoch — recall below then runs for the assigned range.
+  const bootPlan = planFleetBoot(process.env);
+  // The range this shard effectively owns, once known: the explicit
+  // range, or the assigned range after registration. The streamer
+  // bounds below clamp to it exactly as they clamped to the env range.
+  let fleetChunkRange: { x0: number; x1: number; z0: number; z1: number } | null =
+    bootPlan.mode === "explicit" ? bootPlan.chunkRange : null;
+  if (bootPlan.mode !== "standalone") {
     worldClient = new WorldClient({
-      transport: new WebrpcWorldTransport(WORLD_URL),
+      transport: new WebrpcWorldTransport(WORLD_URL!),
       regionId: REGION_ID,
-      chunkRange: regionChunkRange,
+      chunkRange: bootPlan.mode === "explicit" ? bootPlan.chunkRange : undefined,
+      hostId: bootPlan.mode === "assigned" ? bootPlan.hostId : undefined,
       endpoint: process.env.REGION_ENDPOINT ?? `ws://localhost:${PORT}`,
       capacity: REGION_CAPACITY,
       apiKey: process.env.WORLD_API_KEY ?? "",
@@ -375,8 +387,15 @@ async function main(): Promise<void> {
     });
     await worldClient.start();
     if (worldClient.registered) {
+      // In assignment mode the granted range arrives with the lease;
+      // the P2 shipper and P4 character sync read it from this same
+      // client, so they pick it up unchanged.
+      fleetChunkRange = worldClient.chunkRange ?? fleetChunkRange;
       console.log(
-        `[server] registered with world at ${WORLD_URL} as ${REGION_ID} (epoch ${worldClient.epoch})`,
+        `[server] registered with world at ${WORLD_URL} as ${REGION_ID} (epoch ${worldClient.epoch})` +
+          (bootPlan.mode === "assigned" && fleetChunkRange
+            ? ` — assigned range ${fleetChunkRange.x0},${fleetChunkRange.z0}..${fleetChunkRange.x1},${fleetChunkRange.z1} via host ${bootPlan.hostId}`
+            : ""),
       );
       // Recall completes here, before the restore below and long
       // before the gateway starts ticking: the ordering invariant.
@@ -484,9 +503,10 @@ async function main(): Promise<void> {
   } else {
     bounds = { minCx: scx - WORLD_RADIUS, minCz: scz - WORLD_RADIUS, maxCx: scx + WORLD_RADIUS, maxCz: scz + WORLD_RADIUS };
   }
-  if (process.env.REGION_CHUNK_RANGE) {
-    // A region streams only the chunks it owns.
-    const [x0, z0, x1, z1] = process.env.REGION_CHUNK_RANGE.split(",").map(Number);
+  if (fleetChunkRange) {
+    // A region streams only the chunks it owns: the explicit
+    // REGION_CHUNK_RANGE, or (P5) the range the world assigned.
+    const { x0, z0, x1, z1 } = fleetChunkRange;
     bounds = {
       minCx: Math.max(bounds.minCx, x0),
       minCz: Math.max(bounds.minCz, z0),
@@ -1219,7 +1239,10 @@ async function main(): Promise<void> {
   let migrationTimer: NodeJS.Timeout | null = null;
   let presenceTimer: NodeJS.Timeout | null = null;
   if (WORLD_URL && worldClient) {
-    const chunkRange = regionChunkRange;
+    // The range migration treats as ours: the explicit range, or the
+    // world-assigned range (P5); the long-standing default when an
+    // assigned shard's registration failed and no range was granted.
+    const chunkRange = fleetChunkRange ?? { x0: 0, x1: 4096, z0: 0, z1: 4096 };
     // Border hand-offs (WORLD-SERVER-SPEC §6): players walking into another
     // live region's chunks are handed to it; off the tick, 4 times a second.
     const migration = new MigrationCoordinator({

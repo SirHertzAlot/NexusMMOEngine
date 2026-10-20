@@ -8,6 +8,10 @@
 import * as argon2 from "argon2";
 import * as crypto from "node:crypto";
 import {
+  DefaultChunkAssignmentPolicy,
+  type ChunkAssignmentPolicy,
+} from "./assignment.js";
+import {
   WorldCore,
   WorldCoreOptions,
   WorldError,
@@ -25,6 +29,8 @@ import {
   type GetCharacterStateInput,
   type GetLedgerEventsInput,
   type GetLedgerHeadInput,
+  type HostResourceReport,
+  type LiveLeaseRange,
   type MigrationRecord,
   type PutCharacterStateInput,
   type PutShardSnapshotInput,
@@ -35,6 +41,7 @@ import {
   type RegionLease,
   type RegionRecord,
   type RegisterRegionInput,
+  type ReportHostResourcesInput,
   type ReleaseCharacterLockInput,
   type ReportDungeonResultsInput,
   type SetPresenceInput,
@@ -58,12 +65,23 @@ export function randomToken(): string {
 /** Final migrations are kept this long for lookups, then pruned. */
 const MIGRATION_HISTORY_MS = 24 * 60 * 60 * 1000;
 
+/** The engine's long-standing world extent, when nothing configures the total chunk space (P5). */
+export const DEFAULT_TOTAL_WORLD_CHUNK_SPACE: ChunkRange = {
+  x0: 0,
+  x1: 4096,
+  z0: 0,
+  z1: 4096,
+};
+
 export class WorldCoreImpl implements WorldCore {
   private readonly store: WorldStore;
   private readonly heartbeatTimeoutMs: number;
   private readonly heartbeatIntervalMs: number;
   private readonly migrationTimeoutMs: number;
   private readonly outcomeRetentionMs: number;
+  private readonly totalWorldChunkSpace: ChunkRange;
+  private readonly hostReportTimeoutMs: number;
+  private readonly assignmentPolicy: ChunkAssignmentPolicy;
   /** argon2id hash of the bootstrap API key (null = registration disabled). */
   private readonly apiKeyHash: string | null;
 
@@ -73,6 +91,12 @@ export class WorldCoreImpl implements WorldCore {
     this.heartbeatIntervalMs = opts.heartbeatIntervalMs;
     this.migrationTimeoutMs = opts.migrationTimeoutMs ?? 10_000;
     this.outcomeRetentionMs = opts.outcomeRetentionMs ?? 60_000;
+    this.totalWorldChunkSpace =
+      opts.totalWorldChunkSpace ?? DEFAULT_TOTAL_WORLD_CHUNK_SPACE;
+    this.hostReportTimeoutMs =
+      opts.hostReportTimeoutMs ?? opts.heartbeatTimeoutMs;
+    this.assignmentPolicy =
+      opts.assignmentPolicy ?? new DefaultChunkAssignmentPolicy();
     this.apiKeyHash = opts.apiKeyHash ?? null;
   }
 
@@ -89,6 +113,20 @@ export class WorldCoreImpl implements WorldCore {
     return r.regionId;
   }
 
+  /** The bootstrap-key check shared by registration and host reports. */
+  private async verifyApiKey(apiKey: string): Promise<void> {
+    if (this.apiKeyHash === null) {
+      throw new WorldError(403, "registration disabled");
+    }
+    let keyOk = false;
+    try {
+      keyOk = await argon2.verify(this.apiKeyHash, apiKey);
+    } catch {
+      keyOk = false;
+    }
+    if (!keyOk) throw new WorldError(401, "invalid api key");
+  }
+
   async registerRegion(input: RegisterRegionInput): Promise<RegionLease> {
     // Registration is naturally idempotent: upsert by regionId. A
     // retried register (client timed out, server already processed)
@@ -96,24 +134,23 @@ export class WorldCoreImpl implements WorldCore {
     // one, so the fresh token is the correct one. opId dedup matters
     // for the queue adapter's at-least-once delivery (slice B+ ops),
     // not here.
-    if (this.apiKeyHash === null) {
-      throw new WorldError(403, "registration disabled");
-    }
-    let keyOk = false;
-    try {
-      keyOk = await argon2.verify(this.apiKeyHash, input.apiKey);
-    } catch {
-      keyOk = false;
-    }
-    if (!keyOk) throw new WorldError(401, "invalid api key");
+    await this.verifyApiKey(input.apiKey);
 
     const now = Date.now();
     const live = await this.store.listRegions();
+    // The granted range: explicit mode uses the requested range
+    // verbatim (unchanged behaviour); assignment mode (P5, no
+    // chunkRange) asks the policy for a range sized by the host's
+    // reported resources. The returned lease carries the granted
+    // range either way, so a fleet shard learns its range here.
+    const chunkRange =
+      input.chunkRange ??
+      (await this.assignChunkRange(input, live, now));
     for (const r of live) {
       if (
         r.regionId !== input.regionId &&
         now - r.lastHeartbeat < this.heartbeatTimeoutMs &&
-        rangesOverlap(r.chunkRange, input.chunkRange)
+        rangesOverlap(r.chunkRange, chunkRange)
       ) {
         throw new WorldError(
           409,
@@ -127,10 +164,10 @@ export class WorldCoreImpl implements WorldCore {
     // Every grant of a range issues its next fencing epoch (persistence
     // P1): re-registering rotates the token AND bumps the epoch, so a
     // previous holder's state-plane writes are fenced out from here on.
-    const epoch = await this.store.issueRangeEpoch(rangeKeyFor(input.chunkRange));
+    const epoch = await this.store.issueRangeEpoch(rangeKeyFor(chunkRange));
     const record: RegionRecord = {
       regionId: input.regionId,
-      chunkRange: input.chunkRange,
+      chunkRange,
       endpoint: input.endpoint,
       capacity: input.capacity,
       epoch,
@@ -139,7 +176,7 @@ export class WorldCoreImpl implements WorldCore {
       entityCount: existing?.entityCount ?? 0,
       lastTick: existing?.lastTick ?? 0,
       lastHeartbeat: now,
-      apiKeyHash: this.apiKeyHash,
+      apiKeyHash: this.apiKeyHash!,
       tokenHash: sha256Hex(token),
       tokenIssuedAt: now,
     };
@@ -147,12 +184,81 @@ export class WorldCoreImpl implements WorldCore {
     await this.store.bumpRegistryVersion();
     const lease: RegionLease = {
       regionId: input.regionId,
+      chunkRange,
       heartbeatIntervalMs: this.heartbeatIntervalMs,
       registryVersion: await this.store.getRegistryVersion(),
       token,
       epoch,
     };
     return lease;
+  }
+
+  /**
+   * Assignment mode (P5): the range for a shard that registered with
+   * a hostId instead of a fixed range. A region that already holds a
+   * live lease keeps its range (a re-register rotates its token, it
+   * does not consume a second assignment); otherwise the policy
+   * decides from fresh host reports, the configured total chunk
+   * space, and the ranges held by live leases — a live range is
+   * never assigned to another shard.
+   */
+  private async assignChunkRange(
+    input: RegisterRegionInput,
+    live: RegionRecord[],
+    now: number,
+  ): Promise<ChunkRange> {
+    if (!input.hostId) {
+      throw new WorldError(
+        400,
+        "registration requires a chunkRange (explicit mode) or a hostId (assignment mode)",
+      );
+    }
+    const existing = live.find((r) => r.regionId === input.regionId);
+    if (existing && now - existing.lastHeartbeat < this.heartbeatTimeoutMs) {
+      return existing.chunkRange;
+    }
+    const hostReports = (await this.store.listHostReports()).filter(
+      (r) => now - r.reportedAt < this.hostReportTimeoutMs,
+    );
+    const liveLeases: LiveLeaseRange[] = live
+      .filter(
+        (r) =>
+          r.regionId !== input.regionId &&
+          now - r.lastHeartbeat < this.heartbeatTimeoutMs,
+      )
+      .map((r) => ({ regionId: r.regionId, chunkRange: r.chunkRange }));
+    const assigned = this.assignmentPolicy.assign(input.hostId, {
+      hostReports,
+      totalWorldChunkSpace: this.totalWorldChunkSpace,
+      liveLeases,
+    });
+    if (assigned === null) {
+      throw new WorldError(409, "no unassigned chunk space available");
+    }
+    return assigned;
+  }
+
+  /**
+   * Ingest a host resource report (P5): the sidecar's periodic
+   * upsert, keyed by hostId, server-stamped, replacing the previous
+   * report. Bootstrap-authenticated like registration. State, not an
+   * event (mirrors presence/heartbeats): no opId dedup — a re-report
+   * writes the same-shaped row again and only reportedAt moves.
+   */
+  async reportHostResources(
+    input: ReportHostResourcesInput,
+  ): Promise<HostResourceReport> {
+    await this.verifyApiKey(input.apiKey);
+    const report: HostResourceReport = {
+      hostId: input.hostId,
+      cpuCores: input.cpuCores,
+      ramTotalBytes: input.ramTotalBytes,
+      ramFreeBytes: input.ramFreeBytes,
+      reportedAt: Date.now(),
+    };
+    if (input.shardLoad !== undefined) report.shardLoad = input.shardLoad;
+    await this.store.upsertHostReport(report);
+    return report;
   }
 
   async heartbeat(input: HeartbeatInput): Promise<HeartbeatAck> {
@@ -198,9 +304,15 @@ export class WorldCoreImpl implements WorldCore {
   }
 
   async reapStale(): Promise<string[]> {
+    const now = Date.now();
     const reaped = await this.store.reapStaleRegions(
-      Date.now() - this.heartbeatTimeoutMs,
+      now - this.heartbeatTimeoutMs,
     );
+    // Host reports (P5) ride the same sweep and the same discipline:
+    // a report older than its TTL is deleted here and stops
+    // influencing assignment (assignment also freshness-filters, so a
+    // stale report is inert even between sweeps).
+    await this.store.reapStaleHostReports(now - this.hostReportTimeoutMs);
     if (reaped.length > 0) await this.store.bumpRegistryVersion();
     return reaped;
   }

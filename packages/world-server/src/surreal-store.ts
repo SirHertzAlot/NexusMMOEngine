@@ -20,6 +20,7 @@ import { Surreal } from "surrealdb";
 import type {
   CharacterSessionLock,
   CharacterStateRecord,
+  HostResourceReport,
   LedgerEvent,
   MigrationRecord,
   MigrationState,
@@ -86,6 +87,15 @@ DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
 DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
+-- Persistence P5: host resource reports (sidecar upserts, TTL'd).
+DEFINE TABLE IF NOT EXISTS host_report SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS hostId ON host_report TYPE string;
+DEFINE FIELD IF NOT EXISTS cpuCores ON host_report TYPE int;
+DEFINE FIELD IF NOT EXISTS ramTotalBytes ON host_report TYPE int;
+DEFINE FIELD IF NOT EXISTS ramFreeBytes ON host_report TYPE int;
+DEFINE FIELD IF NOT EXISTS shardLoad ON host_report TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS reportedAt ON host_report TYPE int;
+DEFINE INDEX IF NOT EXISTS idx_host_report_id ON host_report FIELDS hostId UNIQUE;
 `;
 
 /** First (only) statement's result. */
@@ -501,5 +511,61 @@ export class SurrealWorldStore implements WorldStore {
 
   async deleteCharacterLock(characterId: number): Promise<void> {
     await this.db.query("DELETE character_lock WHERE characterId = $id", { id: characterId });
+  }
+
+  // -- host reports (persistence P5) --
+
+  async upsertHostReport(r: HostResourceReport): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY host_report WHERE hostId = $id LIMIT 1", { id: r.hostId }),
+    );
+    const data = {
+      hostId: r.hostId,
+      cpuCores: r.cpuCores,
+      ramTotalBytes: r.ramTotalBytes,
+      ramFreeBytes: r.ramFreeBytes,
+      shardLoad: r.shardLoad ?? null,
+      reportedAt: r.reportedAt,
+    };
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY host_report SET cpuCores=$cores, ramTotalBytes=$total, ramFreeBytes=$free, shardLoad=$load, reportedAt=$at WHERE hostId = $id",
+        { id: r.hostId, cores: r.cpuCores, total: r.ramTotalBytes, free: r.ramFreeBytes, load: data.shardLoad, at: r.reportedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY host_report CONTENT $data", { data });
+    }
+  }
+
+  async getHostReport(hostId: string): Promise<HostResourceReport | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY host_report WHERE hostId = $id LIMIT 1", { id: hostId }),
+    );
+    if (row === null) return null;
+    const r = stripId<HostResourceReport>(row);
+    // SCHEMAFULL stores an absent shardLoad as null; the domain type omits it.
+    if (r.shardLoad === null) delete r.shardLoad;
+    return r;
+  }
+
+  async listHostReports(): Promise<HostResourceReport[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM host_report"),
+    );
+    return rows.map((row) => {
+      const r = stripId<HostResourceReport>(row);
+      if (r.shardLoad === null) delete r.shardLoad;
+      return r;
+    });
+  }
+
+  async reapStaleHostReports(cutoffMs: number): Promise<string[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query(
+        "DELETE host_report WHERE reportedAt < $cutoff RETURN BEFORE",
+        { cutoff: cutoffMs },
+      ),
+    );
+    return rows.map((r) => r["hostId"] as string);
   }
 }

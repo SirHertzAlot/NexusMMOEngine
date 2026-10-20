@@ -243,6 +243,12 @@ export {
 export type { WorldTransport, WorldClientOptions } from "./world/client.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
 export {
+  planFleetBoot,
+  parseChunkRangeEnv,
+  DEFAULT_CHUNK_RANGE,
+} from "./world/fleet-boot.js";
+export type { FleetBootPlan, FleetBootEnv } from "./world/fleet-boot.js";
+export {
   ShardStateShipper,
   LEDGER_BATCH_MAX_EVENTS,
   LEDGER_BATCH_MAX_BYTES,
