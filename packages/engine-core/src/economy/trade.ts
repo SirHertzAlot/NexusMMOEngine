@@ -159,6 +159,49 @@ export class TradeSystem implements SimSystem {
     return true;
   }
 
+  /**
+   * A read-only snapshot of an open trade (slice A2): the fleet-mode
+   * commit path inspects the deal before routing its settlement
+   * through the world tier. Null when the trade is not open.
+   */
+  pending(id: number): (Trade & { id: number }) | null {
+    const t = this.trades.get(id);
+    return t ? { id, ...t, aItems: [...t.aItems], bItems: [...t.bItems] } : null;
+  }
+
+  /**
+   * Finalise a trade whose settlement the world tier has committed
+   * (slice A2, fleet mode): both sides are marked accepted, the trade
+   * closes as settled, and the settled event drains as usual — but NO
+   * gold or items move here; the world record is the commit point and
+   * the local caches have already reconciled to its settled outcome.
+   * False when the trade is no longer open (expired mid-commit: the
+   * world outcome still stands, the local trade is simply gone).
+   */
+  settleFromWorld(id: number, tick: number): boolean {
+    const t = this.trades.get(id);
+    if (!t) return false;
+    t.aAccepted = true;
+    t.bAccepted = true;
+    this.trades.delete(id);
+    this.byChar.delete(t.a);
+    this.byChar.delete(t.b);
+    this.emit(tick, id, t, "settled");
+    return true;
+  }
+
+  /**
+   * Abort a trade whose world-tier commit was refused or never
+   * landed (slice A2, fleet mode): the same end state as a failed
+   * local settlement — the trade cancels and nothing has moved.
+   */
+  failSettlement(id: number, tick: number): boolean {
+    const t = this.trades.get(id);
+    if (!t) return false;
+    this.drop(id, t, tick, "cancelled");
+    return true;
+  }
+
   /** Cancel the trade (either party, any time before settlement). */
   cancel(id: number, char: number, tick: number): boolean {
     const t = this.trades.get(id);

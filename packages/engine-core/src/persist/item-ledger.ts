@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS item_events (
   z REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS item_events_item ON item_events (item_id, seq);
+-- EA17: materialized latest-state cache. Updated on every flush; load()
+-- reads this table instead of the O(n^2) MAX(seq) subquery over item_events.
+CREATE TABLE IF NOT EXISTS item_latest (
+  item_id INTEGER PRIMARY KEY,
+  tick INTEGER NOT NULL,
+  kind INTEGER NOT NULL,
+  def INTEGER NOT NULL,
+  owner REAL NOT NULL,
+  slot INTEGER NOT NULL,
+  durability REAL NOT NULL,
+  x REAL NOT NULL,
+  z REAL NOT NULL
+);
 `;
 
 /** What an event says the item became. */
@@ -48,6 +61,26 @@ export const LedgerKind = {
   Destroy: 4,
 } as const;
 export type LedgerKindCode = (typeof LedgerKind)[keyof typeof LedgerKind];
+
+/**
+ * One flushed event as stored, `seq` included. `seq` is the table's own
+ * PRIMARY KEY — the ledger's natural ordering — and is the sequence the
+ * world store dedups on when events are streamed uphill (persistence
+ * P2): no parallel counter exists that could drift from it.
+ */
+export interface LedgerEventRow {
+  seq: number;
+  itemId: number;
+  tick: number;
+  committedAt: number;
+  kind: LedgerKindCode;
+  def: number;
+  owner: number;
+  slot: number;
+  durability: number;
+  x: number;
+  z: number;
+}
 
 /** An item as of its latest event. */
 export interface ItemRow {
@@ -76,7 +109,16 @@ export class ItemLedger {
   private readonly liveStmt: Database.Statement;
   private readonly maxIdStmt: Database.Statement;
   private readonly countStmt: Database.Statement;
+  private readonly eventsAfterStmt: Database.Statement;
+  private readonly importStmt: Database.Statement;
   private readonly flushTx: (n: number, at: number) => void;
+  private readonly importTx: (rows: readonly LedgerEventRow[]) => number;
+  /** EA17: upsert into item_latest (INSERT OR REPLACE by item_id). */
+  private readonly latestUpsertStmt: Database.Statement;
+  /** EA17: remove a tombstoned item from item_latest. */
+  private readonly latestDeleteStmt: Database.Statement;
+  /** The max-seq event row for one item; used to re-derive item_latest after an import. */
+  private readonly maxSeqRowStmt: Database.Statement;
 
   private capacity = INITIAL_EVENTS;
   private n = 0;
@@ -110,13 +152,89 @@ export class ItemLedger {
       "INSERT INTO item_events (item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     this.liveStmt = this.db.prepare(
-      `SELECT item_id AS id, kind, def, owner, slot, durability, x, z FROM item_events e
-       WHERE kind != ${LedgerKind.Destroy}
-         AND seq = (SELECT MAX(seq) FROM item_events WHERE item_id = e.item_id)
-       ORDER BY item_id`,
+      `SELECT item_id AS id, kind, def, owner, slot, durability, x, z FROM item_latest ORDER BY item_id`,
     );
     this.maxIdStmt = this.db.prepare("SELECT COALESCE(MAX(item_id), 0) AS id FROM item_events");
     this.countStmt = this.db.prepare("SELECT COUNT(*) AS n FROM item_events");
+    // EA17: keep item_latest in sync on every flush.
+    this.latestUpsertStmt = this.db.prepare(
+      `INSERT INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(item_id) DO UPDATE SET
+         tick = excluded.tick, kind = excluded.kind, def = excluded.def,
+         owner = excluded.owner, slot = excluded.slot, durability = excluded.durability,
+         x = excluded.x, z = excluded.z`,
+    );
+    this.latestDeleteStmt = this.db.prepare("DELETE FROM item_latest WHERE item_id = ?");
+    this.maxSeqRowStmt = this.db.prepare(
+      `SELECT kind, tick, def, owner, slot, durability, x, z FROM item_events
+       WHERE item_id = ? ORDER BY seq DESC LIMIT 1`,
+    );
+    // EA17: backfill item_latest from item_events on open (existing DBs).
+    this.db.exec(`
+      INSERT OR IGNORE INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z)
+      SELECT e.item_id, e.tick, e.kind, e.def, e.owner, e.slot, e.durability, e.x, e.z
+      FROM item_events e
+      WHERE e.kind != ${LedgerKind.Destroy}
+        AND e.seq = (SELECT MAX(seq) FROM item_events WHERE item_id = e.item_id)
+    `);
+    this.eventsAfterStmt = this.db.prepare(
+      `SELECT seq, item_id AS itemId, tick, committed_at AS committedAt, kind, def, owner, slot, durability, x, z
+       FROM item_events WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
+    );
+    this.importStmt = this.db.prepare(
+      "INSERT OR IGNORE INTO item_events (seq, item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    );
+    this.importTx = this.db.transaction((rows: readonly LedgerEventRow[]): number => {
+      let inserted = 0;
+      const affected = new Set<number>();
+      for (const row of rows) {
+        const info = this.importStmt.run(
+          row.seq,
+          row.itemId,
+          row.tick,
+          row.committedAt,
+          row.kind,
+          row.def,
+          row.owner,
+          row.slot,
+          row.durability,
+          row.x,
+          row.z,
+        );
+        if (Number(info.changes) > 0) {
+          inserted += Number(info.changes);
+          affected.add(row.itemId);
+        }
+      }
+      // EA17 × P3: imported rows land directly in item_events, bypassing
+      // flush(), so item_latest would miss them — and load() reads
+      // item_latest now. Re-derive the cache row for every item an
+      // inserted event touched, from that item's max-seq event (which is
+      // not necessarily the imported one: a newer local event wins).
+      for (const itemId of affected) {
+        const latest = this.maxSeqRowStmt.get(itemId) as
+          | { kind: LedgerKindCode; tick: number; def: number; owner: number; slot: number; durability: number; x: number; z: number }
+          | undefined;
+        if (!latest) continue;
+        if (latest.kind === LedgerKind.Destroy) {
+          this.latestDeleteStmt.run(itemId);
+        } else {
+          this.latestUpsertStmt.run(
+            itemId,
+            latest.tick,
+            latest.kind,
+            latest.def,
+            latest.owner,
+            latest.slot,
+            latest.durability,
+            latest.x,
+            latest.z,
+          );
+        }
+      }
+      return inserted;
+    });
     this.flushTx = this.db.transaction((count: number, at: number) => {
       for (let i = 0; i < count; i++) {
         this.insertStmt.run(
@@ -131,6 +249,22 @@ export class ItemLedger {
           this.xs[i],
           this.zs[i],
         );
+        // EA17: mirror the latest state into item_latest.
+        if (this.kinds[i] === LedgerKind.Destroy) {
+          this.latestDeleteStmt.run(this.ids[i]);
+        } else {
+          this.latestUpsertStmt.run(
+            this.ids[i],
+            this.ticks[i],
+            this.kinds[i],
+            this.defs[i],
+            this.owners[i],
+            this.slots[i],
+            this.durs[i],
+            this.xs[i],
+            this.zs[i],
+          );
+        }
       }
     });
   }
@@ -181,6 +315,32 @@ export class ItemLedger {
   /** Highest item id ever written, destroyed ones included (ids are never reused). */
   maxItemId(): number {
     return (this.maxIdStmt.get() as { id: number }).id;
+  }
+
+  /**
+   * Import events recalled from the world store (persistence P3),
+   * preserving each row's own `seq` — the sequence is the event's
+   * identity on both tiers, so an import is idempotent: a seq already
+   * present locally keeps its first-written row (INSERT OR IGNORE) and
+   * is never duplicated, and later locally-flushed events continue
+   * after the highest imported seq. Returns how many rows were new.
+   * Nothing is recorded in the pending buffer; imported rows are
+   * durable immediately, the EA17 item_latest cache is re-derived for
+   * every item they touch, and `load()` collapses them exactly like
+   * locally-written rows.
+   */
+  importEvents(rows: readonly LedgerEventRow[]): number {
+    if (rows.length === 0) return 0;
+    return this.importTx(rows);
+  }
+
+  /**
+   * Flushed events with `seq > afterSeq`, oldest first, at most `limit`.
+   * The uphill shipper (persistence P2) reads the batch it just flushed
+   * back through here so the seq it ships is the row's own identity.
+   */
+  eventsAfter(afterSeq: number, limit: number): LedgerEventRow[] {
+    return this.eventsAfterStmt.all(afterSeq, limit) as LedgerEventRow[];
   }
 
   /** Events written. */

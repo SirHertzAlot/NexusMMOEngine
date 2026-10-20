@@ -16,7 +16,7 @@ const MODULES = join(REPO, "modules");
  * that own them (combat, creatures, physics, ...), each building its own
  * systems; core only holds what server.ts still builds for the whole host.
  */
-const CORE_ORDER = ["reloader", "streamer", "wallet", "gathering", "trade", "vendor", "auction"];
+const CORE_ORDER = ["reloader", "streamer", "gathering"];
 
 const fake = (name: string): SimSystem => ({ name, step() {} });
 const coreProvided = (skip: string[] = []): Record<string, SimSystem | undefined> =>
@@ -108,7 +108,7 @@ describe("server modules: refusals", () => {
   const mod = (extra: object) => ({ name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x", ...extra }] } });
 
   it("a cycle stops the boot and names it", async () => {
-    const root = temp({ m: mod({ after: "auction", before: "reloader" }) }, { m: sys });
+    const root = temp({ m: mod({ after: "gathering", before: "reloader" }) }, { m: sys });
     await assert.rejects(assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }), /cycle/);
   });
   it("an unknown id stops the boot and names it", async () => {
@@ -276,5 +276,249 @@ describe("server modules: optional systems", () => {
       assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }),
       /does not provide "x"/,
     );
+  });
+});
+
+describe("server modules: dispose() lifecycle", () => {
+  const temp = (manifests: Record<string, unknown>, entries: Record<string, string>): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-dispose-"));
+    const all: Record<string, unknown> = {
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      ...manifests,
+    };
+    for (const n of Object.keys(all)) {
+      const m = all[n] as Record<string, unknown>;
+      mkdirSync(join(root, n), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+      if (entries[n]) {
+        mkdirSync(join(root, n, "server"), { recursive: true });
+        writeFileSync(join(root, n, "server", "index.js"), entries[n]);
+      }
+    }
+    return root;
+  };
+
+  it("runs dispose in reverse dependency order", async () => {
+    const order: string[] = [];
+    const root = temp(
+      {
+        a: { name: "a", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "s-a" }] } },
+        b: { name: "b", version: "0.1.0", dependsOn: ["a"], server: { entry: "server/index.js", systems: [{ name: "s-b" }] } },
+      },
+      {
+        a: `export function createSystems(){ return { "s-a": { name: "s-a", step(){} } }; }\nexport function dispose(){ globalThis.__disposeOrder.push("a"); }`,
+        b: `export function createSystems(){ return { "s-b": { name: "s-b", step(){} } }; }\nexport async function dispose(){ globalThis.__disposeOrder.push("b"); }`,
+      },
+    );
+    (globalThis as Record<string, unknown>).__disposeOrder = order;
+    const r = await assembleServerSystems({ modulesDir: root, setFile: setFile(["a", "b"]), provided: { core: {} }, ctx });
+    assert.deepEqual(r.modules, ["core", "a", "b"]);
+    await r.disposeModules();
+    assert.deepEqual(order, ["b", "a"]);
+    delete (globalThis as Record<string, unknown>).__disposeOrder;
+  });
+
+  it("skips modules without a dispose export and keeps going past a failure", async () => {
+    const calls: string[] = [];
+    const root = temp(
+      {
+        a: { name: "a", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "s-a" }] } },
+        b: { name: "b", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "s-b" }] } },
+        c: { name: "c", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "s-c" }] } },
+      },
+      {
+        a: `export function createSystems(){ return { "s-a": { name: "s-a", step(){} } }; }`,
+        b: `export function createSystems(){ return { "s-b": { name: "s-b", step(){} } }; }\nexport function dispose(){ globalThis.__calls.push("b"); throw new Error("boom"); }`,
+        c: `export function createSystems(){ return { "s-c": { name: "s-c", step(){} } }; }\nexport function dispose(){ globalThis.__calls.push("c"); }`,
+      },
+    );
+    (globalThis as Record<string, unknown>).__calls = calls;
+    const r = await assembleServerSystems({ modulesDir: root, setFile: setFile(["a", "b", "c"]), provided: { core: {} }, ctx });
+    await assert.rejects(r.disposeModules(), /b: boom/);
+    // c (later in dependency order) still ran despite b throwing.
+    assert.deepEqual(calls, ["c", "b"]);
+    delete (globalThis as Record<string, unknown>).__calls;
+  });
+
+  it("disposeModules resolves fine when no module disposes", async () => {
+    const root = temp(
+      { m: { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x" }] } } },
+      { m: `export function createSystems(){ return { x: { name: "x", step(){} } }; }` },
+    );
+    const r = await assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: {} }, ctx });
+    await r.disposeModules();
+  });
+});
+
+describe("economy module", () => {
+  it("assembles wallet/trade/vendor/auction from the real modules dir", async () => {
+    const ctx: { sim: never; log: () => void; stores?: Record<string, unknown> } = { sim: null as never, log: () => {} };
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["economy"]),
+      provided: { core: {} },
+      ctx,
+    });
+    assert.deepEqual(r.modules, ["core", "economy"]);
+    for (const name of ["wallet", "trade", "vendor", "auction"]) {
+      assert.ok(r.byName[name], `${name} must be assembled`);
+      assert.equal(r.byName[name].name, name);
+    }
+    // The wallet is published for downstream modules (items/LootDropper).
+    assert.equal(ctx.stores!.wallet, r.byName["wallet"]);
+    assert.ok(ctx.stores!.walletStore, "walletStore must be published");
+    await r.disposeModules();
+    assert.equal(ctx.stores!.wallet, undefined, "dispose clears the published wallet");
+  });
+
+  it("items can declare a dependency on economy", async () => {
+    const { validateManifest } = await import("@mmo-engine/modules");
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const raw = JSON.parse(readFileSync(join(MODULES, "items", "module.json"), "utf8"));
+    const { problems, manifest } = validateManifest(raw, "items");
+    assert.deepEqual(problems, []);
+    assert.ok(manifest!.dependsOn!.includes("economy"), "items must depend on economy");
+  });
+});
+
+describe("domain stores move to modules (character/social/dungeons)", () => {
+  const storeCtx = (config: Record<string, Record<string, unknown>>): { sim: never; log: () => void; config: Record<string, Record<string, unknown>>; stores?: Record<string, unknown> } => ({
+    sim: null as never,
+    log: () => {},
+    config,
+  });
+  const tmpDataDir = (): string => mkdtempSync(join(tmpdir(), "mmo-stores-"));
+  const rules = { skills: { skills: [] }, disciplines: { disciplines: [] } };
+  const storeName = (s: unknown): string => (s as { constructor: { name: string } }).constructor.name;
+
+  it("character module publishes characterStore on ctx.stores", async () => {
+    const ctx = storeCtx({ character: { dataDir: tmpDataDir(), rules } });
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["character"]), provided: { core: {} }, ctx });
+    assert.ok(ctx.stores!.characterStore, "characterStore must be published");
+    assert.equal(storeName(ctx.stores!.characterStore), "SqliteCharacterStore");
+    await r.disposeModules();
+    assert.equal(ctx.stores!.characterStore, undefined, "dispose clears characterStore");
+  });
+
+  it("social module publishes guild/social/party stores despite declaring no systems", async () => {
+    const ctx = storeCtx({ social: { dataDir: tmpDataDir() } });
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["social"]), provided: { core: {} }, ctx });
+    assert.deepEqual(r.systems, [], "a gateway-only module contributes no tick systems");
+    assert.deepEqual(
+      [storeName(ctx.stores!.guildStore), storeName(ctx.stores!.socialStore), storeName(ctx.stores!.partyStore)],
+      ["SqliteGuildStore", "SqliteSocialStore", "SqlitePartyStore"],
+    );
+    await r.disposeModules();
+    for (const key of ["guildStore", "socialStore", "partyStore"]) {
+      assert.equal(ctx.stores![key], undefined, `dispose clears ${key}`);
+    }
+  });
+
+  it("dungeons module publishes instanceResults and reads characterStore from ctx.stores", async () => {
+    const ctx = storeCtx({
+      character: { dataDir: tmpDataDir(), rules },
+      dungeons: { dataDir: tmpDataDir(), getGame: () => ({}), credentialStore: null },
+    });
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["character", "dungeons"]), provided: { core: {} }, ctx });
+    // dungeons dependsOn character, so the character store exists when the
+    // dungeons entry builds the InstanceManager.
+    assert.ok(r.modules.indexOf("character") < r.modules.indexOf("dungeons"));
+    assert.ok(ctx.stores!.instanceResults, "instanceResults must be published");
+    assert.equal(storeName(ctx.stores!.instanceResults), "SqliteInstanceResultStore");
+    assert.ok(r.extensions["dungeons"], "the dungeons gateway extension still assembles");
+    await r.disposeModules();
+    assert.equal(ctx.stores!.instanceResults, undefined, "dispose clears instanceResults");
+  });
+
+  it("dungeons without the character module is refused", async () => {
+    const ctx = storeCtx({ dungeons: { dataDir: tmpDataDir() } });
+    await assert.rejects(
+      assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["dungeons"]), provided: { core: {} }, ctx }),
+      /requires "character"/,
+    );
+  });
+
+  it("server.ts no longer constructs the moved stores", async () => {
+    const src = readFileSync(join(REPO, "packages/engine-core/src/server.ts"), "utf8");
+    for (const name of ["SqliteCharacterStore", "SqliteGuildStore", "SqliteSocialStore", "SqlitePartyStore", "SqliteInstanceResultStore"]) {
+      assert.ok(!new RegExp(`new ${name}\\(`).test(src), `server.ts must not construct ${name}`);
+    }
+    for (const key of ["characterStore", "guildStore", "socialStore", "partyStore", "instanceResults"]) {
+      assert.ok(src.includes(`stores!.${key}`), `server.ts must read ${key} from moduleCtx.stores`);
+    }
+  });
+});
+
+describe("server modules: edge routes (EA12)", () => {
+  const temp = (mods: Record<string, unknown>): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-edge-"));
+    for (const [n, m] of Object.entries(mods)) {
+      mkdirSync(join(root, n), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+    }
+    return root;
+  };
+
+  it("merges local:<module> routes for enabled modules with edge contributions", async () => {
+    const root = temp({
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      chat: {
+        name: "chat",
+        version: "0.1.0",
+        server: { systems: [] },
+        edge: { regions: ["us-east"], endpoint: "http://localhost:9001", capabilities: ["chat-relay"] },
+      },
+      quests: {
+        name: "quests",
+        version: "0.1.0",
+        server: { systems: [] },
+        edge: { regions: ["us-east", "eu-west"], endpoint: "http://localhost:9002", capabilities: ["quest-sync", "dialog"] },
+      },
+      plain: { name: "plain", version: "0.1.0", server: { systems: [] } },
+    });
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["core", "chat", "quests", "plain"]),
+      provided: {},
+      ctx,
+    });
+    assert.deepEqual(r.edgeRoutes, {
+      "local:chat": { regions: ["us-east"], endpoint: "http://localhost:9001", capabilities: ["chat-relay"] },
+      "local:quests": { regions: ["us-east", "eu-west"], endpoint: "http://localhost:9002", capabilities: ["quest-sync", "dialog"] },
+    });
+  });
+
+  it("omits edge routes for disabled modules", async () => {
+    const root = temp({
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      chat: {
+        name: "chat",
+        version: "0.1.0",
+        server: { systems: [] },
+        edge: { regions: ["us-east"], endpoint: "http://localhost:9001", capabilities: ["chat-relay"] },
+      },
+    });
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["core"]),
+      provided: {},
+      ctx,
+    });
+    assert.deepEqual(r.edgeRoutes, {});
+  });
+
+  it("returns empty edgeRoutes when no module has an edge contribution", async () => {
+    const root = temp({
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      plain: { name: "plain", version: "0.1.0", server: { systems: [] } },
+    });
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["core", "plain"]),
+      provided: {},
+      ctx,
+    });
+    assert.deepEqual(r.edgeRoutes, {});
   });
 });

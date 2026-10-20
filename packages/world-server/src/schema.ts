@@ -27,16 +27,49 @@ export const ChunkRangeSchema = z
     message: "chunk range must have positive area",
   });
 
+const HOST_ID = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9_.-]+$/);
+
 export const RegisterRegionSchema = z
   .object({
     regionId: REGION_ID,
-    chunkRange: ChunkRangeSchema,
+    // Explicit mode (P5: optional — assignment mode omits it).
+    chunkRange: ChunkRangeSchema.optional(),
+    // Assignment mode (P5): the host whose reports size the range.
+    hostId: HOST_ID.optional(),
     endpoint: ENDPOINT,
     capacity: z.number().int().min(1).max(1_000_000),
     apiKey: z.string().min(8).max(256),
     opId: OP_ID,
   })
-  .strict();
+  .strict()
+  .refine((r) => r.chunkRange !== undefined || r.hostId !== undefined, {
+    message: "registration requires chunkRange (explicit) or hostId (assignment)",
+  });
+
+/**
+ * A host resource report (persistence P5): the sidecar's periodic
+ * upsert. Bootstrap-authenticated by apiKey, like RegisterRegion —
+ * the sidecar holds no lease token. reportedAt is server-stamped and
+ * never accepted from the wire.
+ */
+export const ReportHostResourcesSchema = z
+  .object({
+    hostId: HOST_ID,
+    cpuCores: z.number().int().min(1).max(100_000),
+    ramTotalBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    ramFreeBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    shardLoad: z.number().min(0).max(1_000_000).optional(),
+    apiKey: z.string().min(8).max(256),
+  })
+  .strict()
+  .refine((r) => r.ramFreeBytes <= r.ramTotalBytes, {
+    message: "ramFreeBytes cannot exceed ramTotalBytes",
+    path: ["ramFreeBytes"],
+  });
 
 export const HeartbeatSchema = z
   .object({
@@ -151,5 +184,233 @@ export const DungeonResultsReportSchema = z
   .object({
     regionId: REGION_ID,
     results: z.array(DungeonRunResultSchema).max(512),
+  })
+  .strict();
+
+/** Persistence P1 state plane: epoch-fenced writes, opaque payloads. */
+
+/** rangeKey as derived by rangeKeyFor: "<x0>:<x1>:<z0>:<z1>". */
+const RANGE_KEY = z
+  .string()
+  .min(3)
+  .max(64)
+  .regex(/^-?\d+:-?\d+:-?\d+:-?\d+$/);
+const EPOCH = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+const CHARACTER_ID = z.number().int().min(0).max(4294967295);
+const UINT = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+
+/** Snapshot payload budget: the engine's own snapshot store caps at ~4 MiB. */
+export const MAX_SNAPSHOT_PAYLOAD_BYTES = 4 * 1024 * 1024;
+export const MAX_LEDGER_BATCH_BYTES = 1024 * 1024;
+export const MAX_CHARACTER_STATE_BYTES = 256 * 1024;
+
+function jsonBytes(v: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(v) ?? "");
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+const opaque = (max: number, label: string) =>
+  z.unknown().refine((v) => jsonBytes(v) <= max, { message: `${label} over ${max} bytes` });
+
+export const PutShardSnapshotSchema = z
+  .object({
+    regionId: REGION_ID,
+    rangeKey: RANGE_KEY,
+    tick: UINT,
+    epoch: EPOCH,
+    digest: DIGEST,
+    payload: opaque(MAX_SNAPSHOT_PAYLOAD_BYTES, "payload"),
+    opId: OP_ID,
+  })
+  .strict();
+
+export const GetShardSnapshotSchema = z
+  .object({ regionId: REGION_ID, rangeKey: RANGE_KEY })
+  .strict();
+
+const LedgerEventSchema = z
+  .object({
+    seq: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    tick: UINT,
+    payload: z.unknown(),
+  })
+  .strict();
+
+export const AppendLedgerEventsSchema = z
+  .object({
+    regionId: REGION_ID,
+    rangeKey: RANGE_KEY,
+    epoch: EPOCH,
+    opId: OP_ID,
+    events: z.array(LedgerEventSchema).max(1024),
+  })
+  .strict()
+  .refine((m) => jsonBytes(m.events) <= MAX_LEDGER_BATCH_BYTES, {
+    message: `ledger batch over ${MAX_LEDGER_BATCH_BYTES} bytes`,
+    path: ["events"],
+  });
+
+export const GetLedgerEventsSchema = z
+  .object({ regionId: REGION_ID, rangeKey: RANGE_KEY, afterSeq: UINT })
+  .strict();
+
+export const GetLedgerHeadSchema = z
+  .object({ regionId: REGION_ID, rangeKey: RANGE_KEY })
+  .strict();
+
+export const PutCharacterStateSchema = z
+  .object({
+    regionId: REGION_ID,
+    characterId: CHARACTER_ID,
+    epoch: EPOCH,
+    state: opaque(MAX_CHARACTER_STATE_BYTES, "state"),
+    opId: OP_ID,
+  })
+  .strict();
+
+export const GetCharacterStateSchema = z
+  .object({ regionId: REGION_ID, characterId: CHARACTER_ID })
+  .strict();
+
+export const AcquireCharacterLockSchema = z
+  .object({
+    regionId: REGION_ID,
+    characterId: CHARACTER_ID,
+    ttlMs: z.number().int().min(1).max(86_400_000),
+    opId: OP_ID,
+  })
+  .strict();
+
+export const ReleaseCharacterLockSchema = z
+  .object({ regionId: REGION_ID, characterId: CHARACTER_ID, epoch: EPOCH, opId: OP_ID })
+  .strict();
+
+export const GetCharacterLockSchema = z
+  .object({ regionId: REGION_ID, characterId: CHARACTER_ID })
+  .strict();
+
+/** Atomic operations (slice A1): value-moving exchanges, Zod-strict. */
+
+const FENCE = z
+  .object({ characterId: CHARACTER_ID, epoch: EPOCH, expectedVersion: UINT })
+  .strict();
+const INSTANCE_ID = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/);
+const GOLD_AMOUNT = z.number().int().min(0).max(1_000_000_000);
+const ITEM_DEF = z.number().int().min(0).max(10_000_000);
+const SLOT = z.number().int().min(0).max(4095);
+const STACK_COUNT = z.number().int().min(1).max(1_000_000);
+/** Payload budget per operation, in the spirit of the existing edges. */
+export const MAX_ATOMIC_ITEMS_PER_OP = 64;
+
+export const TradeCommitSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    a: FENCE,
+    b: FENCE,
+    aGivesGold: GOLD_AMOUNT,
+    bGivesGold: GOLD_AMOUNT,
+    aGivesItems: z.array(INSTANCE_ID).max(MAX_ATOMIC_ITEMS_PER_OP),
+    bGivesItems: z.array(INSTANCE_ID).max(MAX_ATOMIC_ITEMS_PER_OP),
+  })
+  .strict();
+
+export const VendorTransactSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    vendorId: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9_-]+$/),
+    direction: z.enum(["buy", "sell"]),
+    def: ITEM_DEF,
+    price: GOLD_AMOUNT,
+    instanceId: INSTANCE_ID,
+    slot: SLOT.optional(),
+  })
+  .strict();
+
+export const AuctionSettleSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    buyer: FENCE,
+    seller: FENCE,
+    instanceId: INSTANCE_ID,
+    price: GOLD_AMOUNT,
+  })
+  .strict();
+
+export const CraftExecuteSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    consumes: z
+      .array(z.object({ instanceId: INSTANCE_ID, count: STACK_COUNT }).strict())
+      .max(MAX_ATOMIC_ITEMS_PER_OP),
+    goldFee: GOLD_AMOUNT,
+    outputs: z
+      .array(
+        z
+          .object({
+            instanceId: INSTANCE_ID,
+            def: ITEM_DEF,
+            slot: SLOT.optional(),
+            count: STACK_COUNT.optional(),
+          })
+          .strict(),
+      )
+      .max(MAX_ATOMIC_ITEMS_PER_OP),
+  })
+  .strict();
+
+export const LootGrantSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    sourceId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9:_.-]+$/),
+    instanceId: INSTANCE_ID,
+    def: ITEM_DEF,
+    slot: SLOT.optional(),
+    count: STACK_COUNT.optional(),
+  })
+  .strict();
+
+const InventoryMutationSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("move"), instanceId: INSTANCE_ID, toSlot: SLOT }).strict(),
+  z
+    .object({ kind: z.literal("swap"), aInstanceId: INSTANCE_ID, bInstanceId: INSTANCE_ID })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("merge"),
+      fromInstanceId: INSTANCE_ID,
+      intoInstanceId: INSTANCE_ID,
+    })
+    .strict(),
+]);
+
+export const InventoryMutateSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    mutations: z.array(InventoryMutationSchema).min(1).max(MAX_ATOMIC_ITEMS_PER_OP),
   })
   .strict();

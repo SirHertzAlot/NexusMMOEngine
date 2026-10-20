@@ -69,6 +69,19 @@ export class WalletSystem implements SimSystem {
     return true;
   }
 
+  /**
+   * Reconcile `charId`'s balance to `balance` (slice A2): the world
+   * tier settled an operation and its record is truth, so the local
+   * cache adopts it exactly. A no-op when the balance already matches.
+   * Only the fleet-mode settled-outcome path calls this; local gold
+   * movement stays grant/spend/transfer.
+   */
+  reconcile(charId: number, balance: number, tick: number): void {
+    if (!Number.isInteger(balance) || balance < 0) return;
+    if (this.balanceOf(charId) === balance) return;
+    this.set(charId, balance, tick);
+  }
+
   /** Move `amount` gold from one character to another, atomically. */
   transfer(from: number, to: number, amount: number, tick: number): boolean {
     if (from === to) return false;

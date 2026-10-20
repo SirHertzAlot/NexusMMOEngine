@@ -1,0 +1,9 @@
+{
+  "description": "Social domain stores: guilds, friends/blocks, and parties (SQLite-backed). Gateway-only, no tick systems: server.ts reads the stores off ctx.stores post-assembly for gateway wiring.",
+  "name": "social",
+  "server": {
+    "entry": "server.js",
+    "systems": []
+  },
+  "version": "0.1.0"
+}

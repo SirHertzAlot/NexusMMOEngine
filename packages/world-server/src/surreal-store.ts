@@ -17,7 +17,38 @@
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
 import { Surreal } from "surrealdb";
-import type { MigrationRecord, MigrationState, RegionRecord, StoredDungeonRun, WorldStore } from "./types.js";
+import {
+  applyAuctionSettle,
+  applyCraftExecute,
+  applyInventoryMutate,
+  applyLootGrant,
+  applyTradeCommit,
+  applyVendorTransact,
+  type AtomicContext,
+  type AtomicOutcome,
+} from "./atomic.js";
+import type {
+  AtomicLedgerEntry,
+  AtomicOpKind,
+  AtomicOpResult,
+  AuctionSettleInput,
+  CharacterSessionLock,
+  CharacterStateRecord,
+  CraftExecuteInput,
+  HostResourceReport,
+  InventoryMutateInput,
+  LedgerEvent,
+  LootGrantInput,
+  MigrationRecord,
+  MigrationState,
+  RegionRecord,
+  ShardSnapshotRecord,
+  StoredDungeonRun,
+  StoredLedgerEvent,
+  TradeCommitInput,
+  VendorTransactInput,
+  WorldStore,
+} from "./types.js";
 
 export interface SurrealStoreOptions {
   url: string;
@@ -42,6 +73,7 @@ DEFINE FIELD IF NOT EXISTS tickJitterMs ON region TYPE float;
 DEFINE FIELD IF NOT EXISTS entityCount ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS lastTick ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS lastHeartbeat ON region TYPE int;
+DEFINE FIELD IF NOT EXISTS epoch ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS apiKeyHash ON region TYPE string;
 DEFINE FIELD IF NOT EXISTS tokenHash ON region TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS tokenIssuedAt ON region TYPE option<int>;
@@ -61,6 +93,35 @@ DEFINE INDEX IF NOT EXISTS idx_dungeon_run_region ON dungeon_run FIELDS regionId
 -- Slice S2: online character names per region (replaced on every report).
 DEFINE TABLE IF NOT EXISTS presence SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_presence_region ON presence FIELDS regionId UNIQUE;
+-- Persistence P1: the state plane. Schemaless: payloads/state are opaque.
+-- Epoch counters (key: "range:<rangeKey>" | "character:<characterId>").
+DEFINE TABLE IF NOT EXISTS epoch_counter SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_epoch_counter_key ON epoch_counter FIELDS key UNIQUE;
+DEFINE TABLE IF NOT EXISTS shard_snapshot SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_shard_snapshot_range ON shard_snapshot FIELDS rangeKey UNIQUE;
+DEFINE TABLE IF NOT EXISTS ledger_event SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_ledger_event_range_seq ON ledger_event FIELDS rangeKey, seq UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_ledger_event_range ON ledger_event FIELDS rangeKey;
+DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
+DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
+-- Persistence P5: host resource reports (sidecar upserts, TTL'd).
+DEFINE TABLE IF NOT EXISTS host_report SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS hostId ON host_report TYPE string;
+DEFINE FIELD IF NOT EXISTS cpuCores ON host_report TYPE int;
+DEFINE FIELD IF NOT EXISTS ramTotalBytes ON host_report TYPE int;
+DEFINE FIELD IF NOT EXISTS ramFreeBytes ON host_report TYPE int;
+DEFINE FIELD IF NOT EXISTS shardLoad ON host_report TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS reportedAt ON host_report TYPE int;
+DEFINE INDEX IF NOT EXISTS idx_host_report_id ON host_report FIELDS hostId UNIQUE;
+-- Atomic operations (A1): the world item ledger the six value-moving
+-- operations append to inside the same transaction as the state
+-- change, plus its seq counter (single row, atomic_meta:ledger).
+DEFINE TABLE IF NOT EXISTS atomic_ledger SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_atomic_ledger_seq ON atomic_ledger FIELDS seq UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_atomic_ledger_op ON atomic_ledger FIELDS opId;
+DEFINE TABLE IF NOT EXISTS atomic_meta SCHEMALESS;
 `;
 
 /** First (only) statement's result. */
@@ -98,6 +159,11 @@ function dungeonRun(record: Record<string, unknown>): StoredDungeonRun {
   return rest as unknown as StoredDungeonRun;
 }
 
+function stripId<T>(record: Record<string, unknown>): T {
+  const { id, ...rest } = record;
+  return rest as T;
+}
+
 export class SurrealWorldStore implements WorldStore {
   private db = new Surreal();
   private readonly opts: SurrealStoreOptions;
@@ -127,6 +193,12 @@ export class SurrealWorldStore implements WorldStore {
     if (meta === null) {
       await this.db.query("CREATE meta:registry CONTENT { version: 0 }");
     }
+    const atomicMeta = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY atomic_meta WHERE id = atomic_meta:ledger"),
+    );
+    if (atomicMeta === null) {
+      await this.db.query("CREATE atomic_meta:ledger CONTENT { seq: 0 }");
+    }
   }
 
   async close(): Promise<void> {
@@ -149,13 +221,14 @@ export class SurrealWorldStore implements WorldStore {
       entityCount: r.entityCount,
       lastTick: r.lastTick,
       lastHeartbeat: r.lastHeartbeat,
+      epoch: r.epoch,
       apiKeyHash: r.apiKeyHash,
       tokenHash: r.tokenHash,
       tokenIssuedAt: r.tokenIssuedAt,
     };
     if (existing !== null) {
       await this.db.query(
-        "UPDATE ONLY region SET chunkRange=$cr, endpoint=$ep, capacity=$cap, load=$load, tickJitterMs=$jit, entityCount=$ec, lastTick=$tick, lastHeartbeat=$hb, apiKeyHash=$akh, tokenHash=$th, tokenIssuedAt=$tia WHERE regionId = $id",
+        "UPDATE ONLY region SET chunkRange=$cr, endpoint=$ep, capacity=$cap, load=$load, tickJitterMs=$jit, entityCount=$ec, lastTick=$tick, lastHeartbeat=$hb, epoch=$epoch, apiKeyHash=$akh, tokenHash=$th, tokenIssuedAt=$tia WHERE regionId = $id",
         {
           id: r.regionId,
           cr: r.chunkRange,
@@ -166,6 +239,7 @@ export class SurrealWorldStore implements WorldStore {
           ec: r.entityCount,
           tick: r.lastTick,
           hb: r.lastHeartbeat,
+          epoch: r.epoch,
           akh: r.apiKeyHash,
           th: r.tokenHash,
           tia: r.tokenIssuedAt,
@@ -335,5 +409,373 @@ export class SurrealWorldStore implements WorldStore {
       }
     }
     return new Map(names.map((n) => [n, found.get(n) ?? null]));
+  }
+
+  // -- state plane (persistence P1) --
+
+  /** Shared counter behind both epoch kinds, following the check-then-write pattern of recordDungeonRun. */
+  private async issueEpoch(key: string): Promise<number> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
+    );
+    const next = (row === null ? 0 : Number(row["value"] ?? 0)) + 1;
+    if (row === null) {
+      await this.db.query("CREATE ONLY epoch_counter CONTENT { key: $key, value: $value }", { key, value: next });
+    } else {
+      await this.db.query("UPDATE ONLY epoch_counter SET value = $value WHERE key = $key", { key, value: next });
+    }
+    return next;
+  }
+
+  private async currentEpoch(key: string): Promise<number> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
+    );
+    return row === null ? 0 : Number(row["value"] ?? 0);
+  }
+
+  async issueRangeEpoch(rangeKey: string): Promise<number> {
+    return this.issueEpoch(`range:${rangeKey}`);
+  }
+
+  async getRangeEpoch(rangeKey: string): Promise<number> {
+    return this.currentEpoch(`range:${rangeKey}`);
+  }
+
+  async issueCharacterLockEpoch(characterId: number): Promise<number> {
+    return this.issueEpoch(`character:${characterId}`);
+  }
+
+  async putShardSnapshot(s: ShardSnapshotRecord): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY shard_snapshot WHERE rangeKey = $rk LIMIT 1", { rk: s.rangeKey }),
+    );
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY shard_snapshot SET regionId=$region, tick=$tick, epoch=$epoch, digest=$digest, payload=$payload, storedAt=$storedAt WHERE rangeKey = $rk",
+        { rk: s.rangeKey, region: s.regionId, tick: s.tick, epoch: s.epoch, digest: s.digest, payload: s.payload, storedAt: s.storedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY shard_snapshot CONTENT $data", { data: { ...s } });
+    }
+  }
+
+  async getLatestShardSnapshot(rangeKey: string): Promise<ShardSnapshotRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY shard_snapshot WHERE rangeKey = $rk LIMIT 1", { rk: rangeKey }),
+    );
+    return row === null ? null : stripId<ShardSnapshotRecord>(row);
+  }
+
+  async appendLedgerEvents(rangeKey: string, events: LedgerEvent[]): Promise<number> {
+    for (const e of events) {
+      // Idempotent on (rangeKey, seq): the first-written event wins.
+      const existing = singleRow(
+        await this.db.query("SELECT * FROM ONLY ledger_event WHERE rangeKey = $rk AND seq = $seq LIMIT 1", { rk: rangeKey, seq: e.seq }),
+      );
+      if (existing === null) {
+        await this.db.query("CREATE ONLY ledger_event CONTENT $data", { data: { ...e, rangeKey } });
+      }
+    }
+    return this.getLedgerHead(rangeKey);
+  }
+
+  async getLedgerEvents(rangeKey: string, afterSeq: number): Promise<StoredLedgerEvent[]> {
+    // The seq predicate is applied in JS, not in the query — on
+    // purpose. Measured against SurrealDB 2.7.0 (durability
+    // verification slice): the compound form
+    // `WHERE rangeKey = $rk AND seq > $after` silently drops a row
+    // once the result set grows past ~500 — appending seqs 1..512 and
+    // reading them back returned 511 rows with seq 501 missing,
+    // deterministically, while the row itself was intact (visible to
+    // count() and to a point query) and the contiguous-head query saw
+    // all 512. The equality-only form returns the whole stream; the
+    // fake store filters and sorts in memory the same way, so the two
+    // stores stay semantically identical. Covered by the long-stream
+    // case in the state-plane store contract (600 events).
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ledger_event WHERE rangeKey = $rk", { rk: rangeKey }),
+    );
+    return rows
+      .map((r) => stripId<StoredLedgerEvent>(r))
+      .filter((e) => e.seq > afterSeq)
+      .sort((a, b) => a.seq - b.seq);
+  }
+
+  async getLedgerHead(rangeKey: string): Promise<number> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT seq FROM ledger_event WHERE rangeKey = $rk ORDER BY seq ASC", { rk: rangeKey }),
+    );
+    let head = 0;
+    for (const r of rows) {
+      if (Number(r["seq"]) !== head + 1) break;
+      head += 1;
+    }
+    return head;
+  }
+
+  async getCharacterState(characterId: number): Promise<CharacterStateRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1", { id: characterId }),
+    );
+    return row === null ? null : stripId<CharacterStateRecord>(row);
+  }
+
+  async putCharacterState(r: CharacterStateRecord): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1", { id: r.characterId }),
+    );
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY character_state SET state=$state, version=$version, epoch=$epoch, regionId=$region, updatedAt=$updatedAt WHERE characterId = $id",
+        { id: r.characterId, state: r.state, version: r.version, epoch: r.epoch, region: r.regionId, updatedAt: r.updatedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY character_state CONTENT $data", { data: { ...r } });
+    }
+  }
+
+  async getCharacterLock(characterId: number): Promise<CharacterSessionLock | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY character_lock WHERE characterId = $id LIMIT 1", { id: characterId }),
+    );
+    return row === null ? null : stripId<CharacterSessionLock>(row);
+  }
+
+  async putCharacterLock(l: CharacterSessionLock): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY character_lock WHERE characterId = $id LIMIT 1", { id: l.characterId }),
+    );
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY character_lock SET regionId=$region, epoch=$epoch, expiresAt=$expiresAt WHERE characterId = $id",
+        { id: l.characterId, region: l.regionId, epoch: l.epoch, expiresAt: l.expiresAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY character_lock CONTENT $data", { data: { ...l } });
+    }
+  }
+
+  async deleteCharacterLock(characterId: number): Promise<void> {
+    await this.db.query("DELETE character_lock WHERE characterId = $id", { id: characterId });
+  }
+
+  // -- atomic operations (slice A1) --
+  //
+  // Semantics come from src/atomic.ts, shared with the fake store:
+  // the records and locks are read in ONE query, the pure transition
+  // validates everything and computes the commit, and the commit —
+  // character records plus item-ledger entries — is persisted in ONE
+  // transaction. Every record write is version-guarded
+  // (WHERE version = <the version the transition read>) and the
+  // ledger seq counter is guarded the same way; a guard tripping
+  // THROWs inside the transaction, SurrealDB cancels it, and nothing
+  // commits — the caller sees a VERSION_CONFLICT rejection instead.
+  // A business rejection never opens a transaction at all.
+
+  /** One statement's single-row value from a multi-statement query result. */
+  private static rowValue(v: unknown): Record<string, unknown> | null {
+    if (v == null) return null;
+    if (Array.isArray(v)) return (v[0] as Record<string, unknown> | undefined) ?? null;
+    return v as Record<string, unknown>;
+  }
+
+  private async runAtomic(
+    op: AtomicOpKind,
+    opId: string,
+    regionId: string,
+    participantIds: number[],
+    apply: (ctx: AtomicContext) => AtomicOutcome,
+  ): Promise<AtomicOpResult> {
+    const readStmts: string[] = [];
+    const readParams: Record<string, unknown> = {};
+    participantIds.forEach((id, i) => {
+      readParams[`c${i}`] = id;
+      readStmts.push(`SELECT * FROM ONLY character_state WHERE characterId = $c${i} LIMIT 1`);
+      readStmts.push(`SELECT * FROM ONLY character_lock WHERE characterId = $c${i} LIMIT 1`);
+    });
+    readStmts.push("SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger");
+    const results = (await this.db.query(readStmts.join(";\n"), readParams)) as unknown[];
+
+    const records = new Map<number, CharacterStateRecord | null>();
+    const locks = new Map<number, CharacterSessionLock | null>();
+    participantIds.forEach((id, i) => {
+      const recRow = SurrealWorldStore.rowValue(results[2 * i]);
+      const lockRow = SurrealWorldStore.rowValue(results[2 * i + 1]);
+      records.set(id, recRow === null ? null : stripId<CharacterStateRecord>(recRow));
+      locks.set(id, lockRow === null ? null : stripId<CharacterSessionLock>(lockRow));
+    });
+    const counterRow = SurrealWorldStore.rowValue(results[results.length - 1]);
+    const baseSeq = counterRow === null ? 0 : Number(counterRow["seq"] ?? 0);
+
+    const now = Date.now();
+    const outcome = apply({ regionId, now, records, locks });
+    if (!outcome.ok) {
+      return { ok: false, opId, op, rejection: outcome.rejection, message: outcome.message };
+    }
+
+    const entries: AtomicLedgerEntry[] = outcome.commit.ledger.map((d, j) => ({
+      ...d,
+      seq: baseSeq + j + 1,
+      at: now,
+    }));
+    const txParams: Record<string, unknown> = {
+      baseSeq,
+      newSeq: baseSeq + entries.length,
+    };
+    const tx: string[] = ["BEGIN TRANSACTION"];
+    // The seq counter is the transaction's optimistic lock: if a
+    // concurrent operation committed first, this aborts untouched.
+    tx.push("LET $ctr = (SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger)");
+    tx.push('IF $ctr = NONE OR $ctr.seq != $baseSeq { THROW "VERSION_CONFLICT" }');
+    tx.push("UPDATE ONLY atomic_meta SET seq = $newSeq WHERE id = atomic_meta:ledger");
+    outcome.commit.records.forEach((r, i) => {
+      txParams[`cid${i}`] = r.characterId;
+      txParams[`st${i}`] = r.state;
+      txParams[`ver${i}`] = r.version;
+      txParams[`ep${i}`] = r.epoch;
+      txParams[`rg${i}`] = r.regionId;
+      txParams[`up${i}`] = r.updatedAt;
+      txParams[`ev${i}`] = r.version - 1;
+      if ((records.get(r.characterId) ?? null) !== null) {
+        tx.push(
+          `LET $u${i} = (UPDATE ONLY character_state SET state = $st${i}, version = $ver${i}, epoch = $ep${i}, regionId = $rg${i}, updatedAt = $up${i} WHERE characterId = $cid${i} AND version = $ev${i} RETURN AFTER)`,
+        );
+        tx.push(`IF $u${i} = NONE { THROW "VERSION_CONFLICT" }`);
+      } else {
+        // The characterId unique index makes a raced create fail the
+        // whole transaction rather than overwrite a fresher record.
+        tx.push(
+          `CREATE ONLY character_state CONTENT { characterId: $cid${i}, state: $st${i}, version: $ver${i}, epoch: $ep${i}, regionId: $rg${i}, updatedAt: $up${i} }`,
+        );
+      }
+    });
+    entries.forEach((e, j) => {
+      txParams[`led${j}`] = { ...e };
+      tx.push(`CREATE ONLY atomic_ledger CONTENT $led${j}`);
+    });
+    tx.push("COMMIT TRANSACTION");
+    try {
+      await this.db.query(tx.join(";\n"), txParams);
+    } catch (err) {
+      // A guard tripped or an index raced: the transaction was
+      // cancelled and nothing committed.
+      return {
+        ok: false,
+        opId,
+        op,
+        rejection: "VERSION_CONFLICT",
+        message: `atomic commit aborted, nothing applied: ${(err as Error).message}`,
+      };
+    }
+    return { ok: true, opId, op, characters: outcome.commit.records, ledger: entries };
+  }
+
+  async tradeCommit(input: TradeCommitInput): Promise<AtomicOpResult> {
+    return this.runAtomic("tradeCommit", input.opId, input.regionId, [input.a.characterId, input.b.characterId], (ctx) =>
+      applyTradeCommit(ctx, input),
+    );
+  }
+
+  async vendorTransact(input: VendorTransactInput): Promise<AtomicOpResult> {
+    return this.runAtomic("vendorTransact", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyVendorTransact(ctx, input),
+    );
+  }
+
+  async auctionSettle(input: AuctionSettleInput): Promise<AtomicOpResult> {
+    return this.runAtomic(
+      "auctionSettle",
+      input.opId,
+      input.regionId,
+      [input.buyer.characterId, input.seller.characterId],
+      (ctx) => applyAuctionSettle(ctx, input),
+    );
+  }
+
+  async craftExecute(input: CraftExecuteInput): Promise<AtomicOpResult> {
+    return this.runAtomic("craftExecute", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyCraftExecute(ctx, input),
+    );
+  }
+
+  async lootGrant(input: LootGrantInput): Promise<AtomicOpResult> {
+    return this.runAtomic("lootGrant", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyLootGrant(ctx, input),
+    );
+  }
+
+  async inventoryMutate(input: InventoryMutateInput): Promise<AtomicOpResult> {
+    return this.runAtomic("inventoryMutate", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyInventoryMutate(ctx, input),
+    );
+  }
+
+  async getAtomicLedger(): Promise<AtomicLedgerEntry[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM atomic_ledger ORDER BY seq ASC"),
+    );
+    return rows.map((r) => stripId<AtomicLedgerEntry>(r));
+  }
+
+  // -- host reports (persistence P5) --
+
+  async upsertHostReport(r: HostResourceReport): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY host_report WHERE hostId = $id LIMIT 1", { id: r.hostId }),
+    );
+    // shardLoad is TYPE option<float> on a SCHEMAFULL table: an absent
+    // value must be written as NONE (field omitted / explicit NONE),
+    // never as SQL NULL — v2 rejects NULL for option<> fields. Writing
+    // `r.shardLoad ?? null` here failed the live contract test.
+    const data: Record<string, unknown> = {
+      hostId: r.hostId,
+      cpuCores: r.cpuCores,
+      ramTotalBytes: r.ramTotalBytes,
+      ramFreeBytes: r.ramFreeBytes,
+      reportedAt: r.reportedAt,
+    };
+    if (r.shardLoad !== undefined) data["shardLoad"] = r.shardLoad;
+    if (existing !== null) {
+      const loadClause = r.shardLoad === undefined ? "shardLoad=NONE" : "shardLoad=$load";
+      await this.db.query(
+        `UPDATE ONLY host_report SET cpuCores=$cores, ramTotalBytes=$total, ramFreeBytes=$free, ${loadClause}, reportedAt=$at WHERE hostId = $id`,
+        { id: r.hostId, cores: r.cpuCores, total: r.ramTotalBytes, free: r.ramFreeBytes, load: r.shardLoad, at: r.reportedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY host_report CONTENT $data", { data });
+    }
+  }
+
+  async getHostReport(hostId: string): Promise<HostResourceReport | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY host_report WHERE hostId = $id LIMIT 1", { id: hostId }),
+    );
+    if (row === null) return null;
+    const r = stripId<HostResourceReport>(row);
+    // SCHEMAFULL stores an absent shardLoad as null; the domain type omits it.
+    if (r.shardLoad === null) delete r.shardLoad;
+    return r;
+  }
+
+  async listHostReports(): Promise<HostResourceReport[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM host_report"),
+    );
+    return rows.map((row) => {
+      const r = stripId<HostResourceReport>(row);
+      if (r.shardLoad === null) delete r.shardLoad;
+      return r;
+    });
+  }
+
+  async reapStaleHostReports(cutoffMs: number): Promise<string[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query(
+        "DELETE host_report WHERE reportedAt < $cutoff RETURN BEFORE",
+        { cutoff: cutoffMs },
+      ),
+    );
+    return rows.map((r) => r["hostId"] as string);
   }
 }

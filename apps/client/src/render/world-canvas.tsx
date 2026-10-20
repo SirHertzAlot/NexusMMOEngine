@@ -33,7 +33,7 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Effect } from "postprocessing";
 import { PerformanceMonitor } from "@react-three/drei";
-import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type WorldMap } from "@mmo-engine/protocol";
+import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type DungeonLook, type WorldMap } from "@mmo-engine/protocol";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
@@ -41,6 +41,7 @@ import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
+import { DungeonAmbience } from "./dungeon-look.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
@@ -158,8 +159,10 @@ export interface WorldCanvasProps {
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
   onNearNpc?: (npc: string | null) => void;
-  /** Inside a dungeon instance (D4): draw a stand-in floor, since the walls aren't on the wire yet. Read on mount. */
+  /** Inside a dungeon instance (D4): a stand-in floor under the shell, and the run's look applies. Read on mount. */
   instance?: boolean;
+  /** The run's look (the server's `look`, sent on entering; null: none yet): dark fantasy lighting and matte stone. Read each frame. */
+  getLook?: () => DungeonLook | null;
   /** The dungeon entrance the player stands in changed (an entrance id; null: none). */
   onNearEntrance?: (entrance: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
@@ -315,6 +318,8 @@ interface Runtime {
   clouds: CloudVolume;
   rain: RainCurtain;
   weatherFeel: WeatherFeel;
+  /** Inside a dungeon run: its look (lights, fog, matte stone). */
+  ambience: DungeonAmbience | null;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -339,6 +344,7 @@ function MirrorWorld({
   onNearNpc,
   onNearEntrance,
   instance,
+  getLook,
   combat,
   onCombat,
   view: viewProp,
@@ -405,7 +411,10 @@ function MirrorWorld({
     const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16, workers);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
-    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers });
+    // A dungeon run's look: hides what a run has no use for, and colours the shell's material slots (matte stone).
+    const ambience = instance ? new DungeonAmbience(scene) : null;
+    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers, ...(ambience ? { materialFor: ambience.materialFor } : {}) });
+    if (ambience) layer.matte();
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -426,8 +435,10 @@ function MirrorWorld({
     const weatherFeel = new WeatherFeel();
     weatherFeel.setAudio(audio ?? null);
     scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, clouds.group, rain.mesh);
-    // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
-    // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
+    ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
+    // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
+    // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
+    // floors, ceilings) arrives as an ordinary asset entity and draws over it.
     const floor = instance ? makeFloor() : null;
     if (floor) scene.add(floor);
 
@@ -498,7 +509,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -539,6 +550,7 @@ function MirrorWorld({
       water.dispose();
       clouds.dispose();
       rain.dispose();
+      ambience?.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
@@ -721,6 +733,11 @@ function MirrorWorld({
     // Rain curtain: visible only when raining.
     const rainIntensity = wxSample.kind === "rain" ? wxSample.intensity : 0;
     r.rain.update(seconds, wxSample.windX, wxSample.windZ, rainIntensity, camera.position);
+    // A dungeon run's look wins over the sky: hidden sky and weather, near-black fog, torchlight on the nearest torches.
+    if (r.ambience) {
+      r.ambience.apply(getLook?.() ?? null);
+      r.ambience.update(camera.position, r.layer.emitterPositions(r.ambience.emitterHashes), seconds);
+    }
     // WX1 couplings: wet look, water ripples, and rain audio.
     r.weatherFeel.update(wxSample, delta, r.water, r.terrain);
     // Splashes where the player swims and moves.
@@ -796,10 +813,11 @@ function MirrorWorld({
   return null;
 }
 
-/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across. */
+/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across, 6 cm under the shell's own floor (no z-fighting). */
 function makeFloor(): THREE.Group {
   const g = new THREE.Group();
   g.name = "instance-floor";
+  g.position.y = -0.06;
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 }));
   plane.rotation.x = -Math.PI / 2;
   const grid = new THREE.GridHelper(400, 200, 0x4a4038, 0x3a332c);
