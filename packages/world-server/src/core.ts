@@ -543,10 +543,31 @@ export class WorldCoreImpl implements WorldCore {
     if (lock.expiresAt <= Date.now()) {
       throw new WorldError(409, `character lock for ${input.characterId} has expired`);
     }
+    // Fleet auction parity: drain any pending credits into the world
+    // record FIRST (one store-level fold), then build this put on top
+    // of it — the payload's gold is the region's pre-credit balance,
+    // so the drained total is added back here and the put never
+    // overwrites a credit that landed since the payload was built.
+    const drained = await this.store.applyPendingCredits(input.characterId);
     const existing = await this.store.getCharacterState(input.characterId);
+    let state = input.state;
+    if (
+      drained.total > 0 &&
+      state !== null &&
+      typeof state === "object" &&
+      !Array.isArray(state)
+    ) {
+      const carried = (state as Record<string, unknown>)["gold"];
+      state = {
+        ...(state as Record<string, unknown>),
+        gold:
+          (typeof carried === "number" && Number.isFinite(carried) ? carried : 0) +
+          drained.total,
+      };
+    }
     const record: CharacterStateRecord = {
       characterId: input.characterId,
-      state: input.state,
+      state,
       version: (existing?.version ?? 0) + 1,
       epoch: input.epoch,
       regionId: caller,
@@ -603,6 +624,11 @@ export class WorldCoreImpl implements WorldCore {
       expiresAt: now + input.ttlMs,
     };
     await this.store.putCharacterLock(lock);
+    // Fleet auction parity: a fresh holder starts from a drained
+    // record — pending credits fold in here, before any put, so the
+    // login seed already carries them. (A refused acquire throws
+    // above, before the lock write, and never reaches this drain.)
+    await this.store.applyPendingCredits(input.characterId);
     await this.store.storeOpResult(input.opId, lock);
     return lock;
   }

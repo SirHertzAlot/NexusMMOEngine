@@ -41,6 +41,7 @@ import type {
   LootGrantInput,
   MigrationRecord,
   MigrationState,
+  PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
   StoredDungeonRun,
@@ -147,6 +148,11 @@ DEFINE TABLE IF NOT EXISTS atomic_ledger SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_atomic_ledger_seq ON atomic_ledger FIELDS seq UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_atomic_ledger_op ON atomic_ledger FIELDS opId;
 DEFINE TABLE IF NOT EXISTS atomic_meta SCHEMALESS;
+-- Fleet auction parity: gold credits owed to sellers who were not
+-- payable directly at settle time, drained by applyPendingCredits.
+DEFINE TABLE IF NOT EXISTS pending_credit SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_pending_credit_op ON pending_credit FIELDS opId UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_pending_credit_char ON pending_credit FIELDS characterId;
 `;
 
 /** First (only) statement's result. */
@@ -719,6 +725,10 @@ export class SurrealWorldStore implements WorldStore {
       txParams[`led${j}`] = { ...e };
       tx.push(`CREATE ONLY atomic_ledger CONTENT $led${j}`);
     });
+    (outcome.commit.pendingCredits ?? []).forEach((c, j) => {
+      txParams[`pc${j}`] = { ...c, createdAt: now };
+      tx.push(`CREATE ONLY pending_credit CONTENT $pc${j}`);
+    });
     tx.push("COMMIT TRANSACTION");
     try {
       await this.db.query(tx.join(";\n"), txParams);
@@ -781,6 +791,88 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM atomic_ledger ORDER BY seq ASC"),
     );
     return rows.map((r) => stripId<AtomicLedgerEntry>(r));
+  }
+
+  // -- pending credits (fleet auction parity) --
+  //
+  // NOT live-verified yet (no SurrealDB binary in the dev sandbox;
+  // slice 3's gate): built only from constructs this file already
+  // uses live-proven — one read query, a pure JS fold, then ONE
+  // BEGIN…COMMIT transaction with a version-guarded record update
+  // (THROW on NONE, the runAtomic shape) and per-credit DELETEs.
+
+  async listPendingCredits(characterId: number): Promise<PendingCredit[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM pending_credit WHERE characterId = $id", {
+        id: characterId,
+      }),
+    );
+    return rows
+      .map((r) => stripId<PendingCredit>(r))
+      .sort((a, b) => a.createdAt - b.createdAt || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0));
+  }
+
+  async applyPendingCredits(
+    characterId: number,
+  ): Promise<{ total: number; record: CharacterStateRecord | null }> {
+    const results = (await this.db.query(
+      [
+        "SELECT * FROM pending_credit WHERE characterId = $id",
+        "SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1",
+      ].join(";\n"),
+      { id: characterId },
+    )) as unknown[];
+    const creditRows = results[0];
+    const credits: PendingCredit[] = (
+      creditRows == null ? [] : Array.isArray(creditRows) ? creditRows : [creditRows]
+    ).map((r) => stripId<PendingCredit>(r as Record<string, unknown>));
+    const recRow = SurrealWorldStore.rowValue(results[1]);
+    const current =
+      recRow === null ? null : stripId<CharacterStateRecord>(recRow);
+    if (current === null) return { total: 0, record: null };
+    const state =
+      current.state !== null && typeof current.state === "object" && !Array.isArray(current.state)
+        ? (current.state as Record<string, unknown>)
+        : null;
+    const gold = state?.["gold"];
+    if (credits.length === 0 || state === null || typeof gold !== "number" || !Number.isFinite(gold)) {
+      return { total: 0, record: current };
+    }
+    const total = credits.reduce((sum, c) => sum + c.amount, 0);
+    const now = Date.now();
+    const newState = { ...state, gold: gold + total };
+    const updated: CharacterStateRecord = {
+      ...current,
+      state: newState,
+      version: current.version + 1,
+      updatedAt: now,
+    };
+    const txParams: Record<string, unknown> = {
+      id: characterId,
+      newState,
+      newVersion: updated.version,
+      readVersion: current.version,
+      now,
+    };
+    const tx: string[] = ["BEGIN TRANSACTION"];
+    tx.push(
+      "LET $u = (UPDATE ONLY character_state SET state = $newState, version = $newVersion, updatedAt = $now WHERE characterId = $id AND version = $readVersion RETURN AFTER)",
+    );
+    tx.push('IF $u = NONE { THROW "VERSION_CONFLICT" }');
+    credits.forEach((c, j) => {
+      txParams[`op${j}`] = c.opId;
+      tx.push(`DELETE pending_credit WHERE opId = $op${j}`);
+    });
+    tx.push("COMMIT TRANSACTION");
+    try {
+      await this.db.query(tx.join(";\n"), txParams);
+    } catch {
+      // The version guard tripped (a concurrent write landed first):
+      // the transaction was cancelled, no credit was consumed, and
+      // the caller retries the drain at its next cycle.
+      return { total: 0, record: null };
+    }
+    return { total, record: updated };
   }
 
   // -- host reports (persistence P5) --
