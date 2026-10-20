@@ -17,6 +17,11 @@
  * reconnects, slow consumers, and later interest filtering have
  * somewhere to live.
  *
+ * Fan-out (Phase 5, Part A): the once-encoded delta is published once
+ * per occupied sector topic (see ./sector.ts) instead of one send per
+ * socket; snapshot ticks and resyncing sessions stay per-socket. Same
+ * bytes, zero client changes.
+ *
  * Reconnect semantics (auth slice): the server-issued SESSION TOKEN
  * doubles as the client identity. Reconnecting with the same token inside
  * the disconnect grace period re-attaches the SAME player entity (fresh
@@ -114,6 +119,7 @@ import { parseEntityArg, type ItemService } from "../items/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
+import { sectorTopicFor } from "./sector.js";
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -431,6 +437,15 @@ export interface GatewayOptions {
    * when they enter and leave (see ./extension.ts).
    */
   extensions?: GatewayExtension[];
+  /**
+   * Per-tick deltas fan out via sector-topic publish (Phase 5, Part A):
+   * one publish per occupied sector topic instead of one send per
+   * socket, with identical FlatBuffers bytes. Default true; false keeps
+   * the per-socket send loop (e.g. when a transport's publish is
+   * suspected). Snapshot ticks and resyncing sessions always use the
+   * per-socket path either way.
+   */
+  sectorBroadcast?: boolean;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -759,6 +774,7 @@ export class Gateway {
       | "spawnTable"
       | "extensions"
       | "items"
+      | "sectorBroadcast"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -857,6 +873,8 @@ export class Gateway {
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
+  /** Per-tick deltas fan out via sector-topic publish (Phase 5, Part A). Default true. */
+  private readonly sectorBroadcast: boolean;
   private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -928,6 +946,7 @@ export class Gateway {
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
+    this.sectorBroadcast = opts.sectorBroadcast ?? true;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -1722,6 +1741,7 @@ export class Gateway {
       character: st.character ? { id: st.character.id, name: st.character.name } : null,
       isAdmin: this.devServer || this.admins.has(st.username),
       lastChatMs: {},
+      sectorTopic: null,
     };
     this.authSessions.rebind(s.token, s.clientId);
     const auth = this.authSessions.get(s.token);
@@ -1820,12 +1840,36 @@ export class Gateway {
         encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }),
       ));
 
+    // Phase 5, Part A: on delta ticks, sessions with a sector
+    // subscription get the once-encoded delta via one publish per
+    // occupied sector topic instead of one send per socket. Snapshot
+    // ticks and resyncing sessions stay on the per-socket path: a
+    // snapshot is a per-session baseline, and a resyncing session must
+    // not receive a delta it has no baseline for. Without a live
+    // transport (tests driving frame() before listen()) there is no
+    // publish target, so everything falls back to per-socket sends.
+    const usePublish = !isSnapshotTick && this.sectorBroadcast && this.transport !== null;
+    const publishSectors = new Map<string, ClientSession[]>();
+
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
       if (namesEnv) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (isSnapshotTick || s.needsResync) {
+        // Leave the sector topic while resyncing: the next delta tick
+        // re-subscribes once the snapshot baseline is in place.
+        this.clearSectorSubscription(s);
         this.deliverSnapshot(s, snapshotFor(), tick);
+      } else if (usePublish) {
+        this.syncSectorSubscription(s);
+        if (s.sectorTopic) {
+          const members = publishSectors.get(s.sectorTopic);
+          if (members) members.push(s);
+          else publishSectors.set(s.sectorTopic, [s]);
+        } else {
+          // No sector (no player entity yet): per-socket, as before.
+          this.deliver(s, deltaEnv, tick);
+        }
       } else {
         this.deliver(s, deltaEnv, tick);
       }
@@ -1833,6 +1877,51 @@ export class Gateway {
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendMana(s, tick);
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
+    }
+
+    // One publish per occupied sector topic. Per-session messages
+    // (names/drops above) already flushed each member's queue through
+    // deliver(), so the published delta cannot overtake them.
+    for (const [topic, members] of publishSectors) {
+      this.transport!.publish(topic, deltaEnv);
+      for (const s of members) s.lastAckedTick = BigInt(tick);
+    }
+  }
+
+  /**
+   * The sector topic for a session's avatar, or null when the session
+   * has no avatar in the world yet (its deltas go per-socket).
+   */
+  private sectorTopicOf(s: ClientSession): string | null {
+    if (s.playerEntity === null) return null;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) return null;
+    return sectorTopicFor(C.Transform.px[eid], C.Transform.pz[eid]);
+  }
+
+  /**
+   * Move a session's subscription onto its avatar's current sector
+   * (no-op when it hasn't crossed a boundary). Called on delta ticks
+   * only — snapshot ticks and resyncs go through deliverSnapshot.
+   */
+  private syncSectorSubscription(s: ClientSession): void {
+    if (!s.socket || !s.socket.isOpen) return;
+    const topic = this.sectorTopicOf(s);
+    if (topic === s.sectorTopic) return;
+    if (s.sectorTopic) s.socket.unsubscribe(s.sectorTopic);
+    s.sectorTopic = topic;
+    if (topic) s.socket.subscribe(topic);
+  }
+
+  /** Leave the subscribed sector topic, if any, and forget it. */
+  private clearSectorSubscription(s: ClientSession): void {
+    if (s.sectorTopic) {
+      try {
+        s.socket?.unsubscribe(s.sectorTopic);
+      } catch {
+        /* a dying socket's subscription dies with it */
+      }
+      s.sectorTopic = null;
     }
   }
 
@@ -2098,6 +2187,7 @@ export class Gateway {
       character: null,
       isAdmin: false,
       lastChatMs: {},
+      sectorTopic: null,
     };
     this.sessions.set(s.clientId, s);
     this.route(s, socket);
@@ -2122,6 +2212,7 @@ export class Gateway {
     }
     // Park the session: the player entity survives the grace period so a
     // quick reconnect re-attaches seamlessly.
+    this.clearSectorSubscription(s); // the closing socket's subscription dies with it
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
@@ -3604,6 +3695,10 @@ export class Gateway {
    */
   private attachSocket(s: ClientSession, socket: WireSocket): void {
     const old = s.socket;
+    // The old socket holds the sector subscription (if any): leave the
+    // topic before it is replaced, so the new socket re-subscribes
+    // cleanly on the next delta tick.
+    if (old) this.clearSectorSubscription(s);
     s.socket = socket;
     s.disconnectedAtMs = null;
     s.missedHeartbeats = 0;

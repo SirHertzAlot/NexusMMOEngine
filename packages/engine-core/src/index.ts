@@ -86,10 +86,12 @@ export {
   encodeDelta,
   encodeSnapshotFromSim,
   encodeDeltaFromSim,
+  encodeFastDeltaFromSim,
   encodeSnapshotSoA,
   encodeDeltaSoA,
   decodeSnapshot,
   decodeDelta,
+  decodeFastDelta,
   DeltaTracker,
 } from "./snapshot.js";
 export type {
