@@ -54,9 +54,18 @@
  *   MMO_WILD_CREATURES=1 spawns the registry's packs as chunks load (on a
  *                  baked world with biomes; default off). Only kinds with
  *                  creature rules spawn.
+ *   MMO_WILDLIFE   with MMO_WILD_CREATURES=1: also plan the wildlife table
+ *                  (1 = content/wildlife/wildlife.json, or a file): trophic
+ *                  ratios, danger ramping with distance from the spawn,
+ *                  safe radius (docs/WILDLIFE.md), and turn the table's
+ *                  species into creature kinds with a brain (flee, defend,
+ *                  territorial, hunt, raid). The boot scene's structures are
+ *                  the settlements (livestock ring, safe radius, raids).
+ *                  MMO_WILDLIFE_LOG=1 logs each pack spawned.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
  *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
- *                  overrides the scenes dir, MMO_PREFABS the prefab files (content/prefabs)
+ *                  overrides the scenes dir (alias MMO_SCENES_DIR, as bake:all names it),
+ *                  MMO_PREFABS the prefab files (content/prefabs)
  *   MMO_SPECIES    the species overlay file (default content/species/species.json),
  *                  merged over the built-in roster; a bad file stops the boot
  *   MMO_CRAFTING   the crafting rules (default content/crafting/recipes.json);
@@ -108,6 +117,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -143,7 +153,7 @@ import {
   SqlitePartyStore,
   SqliteSocialStore,
 } from "./index.js";
-import { Ability, type DayClock } from "@mmo-engine/protocol";
+import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { healthHttpHandler } from "./net/health.js";
@@ -176,6 +186,7 @@ import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
 import { WalletSystem } from "./economy/wallet.js";
 import { SqliteWalletStore } from "./economy/wallet-store.js";
+import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
 import { TradeSystem } from "./economy/trade.js";
 import { VendorSystem } from "./economy/vendor.js";
 import { AuctionSystem } from "./economy/auction.js";
@@ -190,16 +201,25 @@ import { editedPack, loadServerRoster, type ServerRoster } from "./species-roste
 import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { assertEngineSkillContract } from "./rules/skill-contract.js";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
+import { landDry, riverAtFromMap, surfaceAt } from "./procgen/habitat.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
 import { SqliteGuildStore } from "./guild-store.js";
 import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
-import { makeWorldPopulator } from "./procgen/world-populator.js";
+import { ART_CATALOG, makeWorldPopulator } from "./procgen/world-populator.js";
+import { catalogBounds } from "./procgen/prop-shape.js";
+import { loadScale } from "./scale.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
+import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./procgen/wildlife-table.js";
+import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
+import { sceneSettlements } from "./procgen/wildlife-settlements.js";
+import type { RaidSettlement } from "./creatures.js";
+import type { TelegraphSystem } from "./telegraph.js";
+import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
@@ -236,7 +256,14 @@ const PORT = Number(process.env.MMO_PORT ?? 7777);
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
-const SAVE_EVERY_TICKS = 300;
+// Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
+const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
+// The day cycle and bots (content/server/world.json, EG14); the MMO_DAY_* and MMO_BOTS* variables still win.
+const worldSettings = loadWorldSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+if (worldSettings.problem) console.warn(`[server] world settings ignored: ${worldSettings.problem}`);
+/** The tick runs at 30 Hz (tick-loop.ts). */
+const SAVE_EVERY_TICKS = Math.max(1, Math.round(persistenceSettings.settings.saveEverySeconds * 30));
 /** Spawn-area chunk radius, always loaded (1 = 3x3), matching bake:world. */
 const WORLD_RADIUS = Number(process.env.MMO_WORLD_RADIUS ?? 1);
 if (!Number.isInteger(WORLD_RADIUS) || WORLD_RADIUS < 0) {
@@ -270,6 +297,10 @@ async function main(): Promise<void> {
     console.error(`[server] ${(err as Error).message}`);
     process.exit(1);
   }
+  // The wildlife table's species become creature kinds (docs/WILDLIFE.md), under any the rules define.
+  const wildlifeTable = process.env.MMO_WILDLIFE ? loadWildlifeTable(process.env.MMO_WILDLIFE === "1" ? DEFAULT_WILDLIFE_TABLE : process.env.MMO_WILDLIFE) : null;
+  const wildlifeKinds = wildlifeTable ? wildlifeCreatures(wildlifeTable, loadNaturalWeapons()) : null;
+  if (wildlifeKinds) game.rules.creatures.creatures = withWildlife(game.rules.creatures.creatures, wildlifeKinds);
   // Authored data beyond the rules: the species roster and the crafting rules.
   let speciesRoster: ServerRoster;
   let crafting: CraftingRules | null;
@@ -296,6 +327,8 @@ async function main(): Promise<void> {
   const store = new SnapshotStore({
     dbPath: path.join(DATA_DIR, "world.db"),
     saveEveryTicks: SAVE_EVERY_TICKS,
+    keepSnapshots: persistenceSettings.settings.keepSnapshots,
+    walSizeLimitBytes: persistenceSettings.settings.walLimitMb * 1024 * 1024,
   });
   // A world baked from a spec carries its own seed: scatter, navmesh keys,
   // and anything generated later must agree with its baked terrain.
@@ -304,7 +337,7 @@ async function main(): Promise<void> {
   if (bakedSeed !== null && process.env.MMO_WORLD_SEED !== undefined && worldSeed !== WORLD_SEED) {
     console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
   }
-  const sim = new SimWorld({ stats: game.rules.stats });
+  const sim = new SimWorld({ stats: game.rules.stats, movement: game.rules.movement });
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
   if (!freshBoot) {
@@ -457,8 +490,11 @@ async function main(): Promise<void> {
     const kinds = [...Object.keys(game.rules.creatures.creatures), ...Object.keys(speciesRoster.roster)];
     for (const p of checkBiomeRegistry(biomes, { worldBiomes: JSON.parse(worldBiomes) as string[], kinds })) console.warn(`[biomes] ${p} (${biomesFile})`);
   }
+  // The global scale (content/scale.json, MMO_SCALE): a bad file refuses to boot.
+  const scale = loadScale();
   // What grows on new chunks (see world-populator: ecology or PCG).
-  const populator = makeWorldPopulator({
+  const populator = await makeWorldPopulator({
+    scale,
     worldSeed,
     chunkWorldSize: CHUNK_SIZE,
     seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
@@ -528,7 +564,10 @@ async function main(): Promise<void> {
   // integrated Y in the same tick, before snapshot collection. Players are
   // held inside the world's edge.
   const playerAbilities = playerAbilitiesFromEnv(process.env.MMO_PLAYER_ABILITIES);
-  const dayClock = dayClockFromEnv(process.env.MMO_DAY_SECONDS, process.env.MMO_DAY_OFFSET);
+  const dayClock = dayClockFromEnv(
+    process.env.MMO_DAY_SECONDS ?? String(worldSettings.settings.daySeconds),
+    process.env.MMO_DAY_OFFSET ?? String(worldSettings.settings.dayOffset),
+  );
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
@@ -575,25 +614,64 @@ async function main(): Promise<void> {
   // Creatures domain (AI1, slice 6): the creatures module builds bots, crowd,
   // creatures, and needs from this config during assembly.
   // See modules/creatures/server.js.
-  const botCount = Number(process.env.MMO_BOTS ?? 0);
-  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number);
+  // Wildlife: the animal models (gitignored local species -> catalog ids, `npm run wildlife:models`) and the towns of the boot scene.
+  const wildlifeModels: Record<string, string[]> = (() => {
+    const f = new URL("../../content/wildlife/models.local.json", import.meta.url);
+    try { return wildlifeTable && fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, "utf8")) as Record<string, string[]>) : {}; } catch { return {}; }
+  })();
+  const modelPick = new Map<string, number>();
+  const wildlifeModelOf = (kind: string): string | undefined => {
+    const ids = wildlifeModels[kind];
+    if (!ids?.length) return undefined;
+    const n = modelPick.get(kind) ?? 0;
+    modelPick.set(kind, n + 1);
+    return ids[n % ids.length];
+  };
+  const wildlifeSettlements: RaidSettlement[] =
+    wildlifeTable && process.env.MMO_SCENE
+      ? sceneSettlements(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR))
+      : [];
+  const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
+  const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
   const creaturesConfig = {
     rules: game.rules,
     botCount,
     botHome: botHome && botHome.length === 2 ? { x: botHome[0], z: botHome[1] } : { x: spawn.x + 6, z: spawn.z + 10 },
-    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : undefined,
+    botRadius: process.env.MMO_BOTS_RADIUS ? Number(process.env.MMO_BOTS_RADIUS) : worldSettings.settings.bots.radiusM,
     characterCatalog,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     playerAbilities,
     // hasCrowd/crowdBackend now come from ctx.shared.navBackend (physics module)
+    // Wildlife (docs/WILDLIFE.md): the day clock, the warning cones, who hurt a creature, the water, the animal models, the towns raiders go for.
+    timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
+    warn: (e: number, x: number, z: number, yaw: number, range: number, ms: number, tick: number) => {
+      const tg = (assembled.byName["telegraphs"] as unknown as TelegraphSystem | undefined);
+      tg?.cast(sim, { source: e, shape: { kind: "cone", x, z, yaw, range, halfAngle: 0.7 }, warnMs: ms, amount: 0 }, tick);
+    },
+    cancelWarn: (e: number, tick: number) => { (assembled.byName["telegraphs"] as unknown as TelegraphSystem | undefined)?.cancelFrom(e, tick); },
+    attackerOf: (e: number) => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    waterSurfaceAt: water ? (x: number, z: number) => surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z) : undefined,
+    waterDepthAt: water ? (x: number, z: number) => { const s = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return s === null ? 0 : Math.max(0, s - characterOf().groundHeight(x, z)); } : undefined,
+    modelOf: wildlifeModelOf,
+    settlements: () => wildlifeSettlements,
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
+  let startWild: (() => void) | null = null;
   if (process.env.MMO_WILD_CREATURES === "1") {
     if (!biomeAt) {
       console.warn("[biomes] MMO_WILD_CREATURES=1 but this world has no biome map: no wild packs");
     } else {
       const wild = new WildCreatures({
         registry: biomes,
+        log: process.env.MMO_WILDLIFE_LOG === "1" ? (l) => console.log(l) : undefined,
+        extraPlan: wildlifeTable
+          ? (cx, cz) => planWildlifeChunk(wildlifeTable, {
+              seed: ecologySeed32(worldSeed), cx, cz, chunkWorldSize: CHUNK_SIZE, biomeAt,
+              centres: [{ x: spawn.x, z: spawn.z, kind: "spawn" }, ...wildlifeSettlements.map((s) => ({ x: s.x, z: s.z, kind: "settlement" as const }))],
+              depthAt: water ? (x, z) => { const w = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return w === null ? null : w - characterOf().groundHeight(x, z); } : undefined,
+              spawnable: (k) => creaturesOf().has(k),
+            })
+          : undefined,
         // A species the overlay edits sets its pack size where the biome table doesn't.
         spawner: {
           has: (k) => creaturesOf().has(k),
@@ -603,16 +681,28 @@ async function main(): Promise<void> {
         seed: ecologySeed32(worldSeed),
         chunkWorldSize: CHUNK_SIZE,
         biomeAt,
-        // No packs in the water.
-        blocked: water ? (x, z) => (water(x, z) ?? -Infinity) > characterOf().groundHeight(x, z) : undefined,
+        // No packs in the water, nor on ground at or below the sea (the lake lookup finds no water near a low dry basin).
+        blocked: water
+          ? (x, z, aquatic) => {
+              const ground = characterOf().groundHeight(x, z);
+              const surface = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z);
+              // Aquatic packs need deep enough water to swim in; land packs need dry ground.
+              return aquatic ? surface === null || surface - ground < 1 : !landDry(ground, surface, 0);
+            }
+          : (_x, _z, aquatic) => aquatic,
       });
-      streamer.attachContents(sim, wild);
-      const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
-      const waiting = [...kinds].filter((k) => !creaturesOf().has(k));
-      console.log(
-        `[biomes] wild packs on: ${wild.stats().packs} pack(s) round the spawn area` +
-          (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
-      );
+      // The chunks already loaded spawn their packs on attach, which needs the creature system: that is
+      // assembled below, so the hook goes on once it is (startWild).
+      startWild = () => {
+        streamer.attachContents(sim, wild);
+        const kinds = new Set(Object.values(biomes.biomes).flatMap((b) => b.creatures.table.map((c) => c.kind)));
+        const waiting = [...kinds].filter((k) => !(k in game.rules.creatures.creatures));
+        const st = wild.stats();
+        console.log(
+          `[biomes] wild packs on: ${st.packs} pack(s), ${st.creatures} creature(s) round the spawn area` +
+            (waiting.length > 0 ? `; no creature rules yet for ${waiting.join(", ")}` : ""),
+        );
+      };
     }
   }
   // Stamina gating (slice 5): the combat module builds it; see combatConfig below.
@@ -623,6 +713,22 @@ async function main(): Promise<void> {
   // the module-built LootDropper can drop gold.
   const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
   const wallet = new WalletSystem(walletStore);
+  // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
+  // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
+  // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
+  const gathering = new GatheringSystem({
+    reachM: game.rules.gathering.reachM,
+    cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
+    pouchMax: game.rules.gathering.pouchMax,
+    trainPerTier: game.rules.gathering.trainDifficultyPerTier,
+    regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
+    regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
+    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    train: (avatar, skill, difficulty, key) => {
+      const i = masteryOf().index.of(skill);
+      if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
+    },
+  });
   // Items (roadmap M3a, slice 2): the items module builds the service from
   // this config during assembly. No inline construction — see
   // modules/items/server.js.
@@ -717,13 +823,21 @@ async function main(): Promise<void> {
   const reloader = new RulesReloader(game.dir, (g) => {
     game = g;
     hooks.current = g.hooks;
+    if (wildlifeKinds) g.rules.creatures.creatures = withWildlife(g.rules.creatures.creatures, wildlifeKinds);
     creaturesOf().setRules(g.rules.creatures.creatures, g.rules.items.bases);
+    creaturesOf().setAi(g.rules.creatures.ai);
     dropperRef?.setCreatures(g.rules.creatures.creatures);
     dropperRef?.setTables(g.rules.loot.tables ?? {});
     itemsOf().setLoot(g.rules.loot);
     itemsOf().defs.applyRules(g.rules);
     bodyRef?.setRules(sim, g.rules.body, g.rules.appearance);
+    // Movement (EG5): systems read sim.movement each step; creatures follow a changed walk.
+    sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
+    masteryOf().setPacing(g.rules.skills.pacing);
+    gathering.setRules(g.rules.gathering);
+    // Social limits (EG9): the reloader only watches after the gateway exists.
+    gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);
     console.log(`[rules] reloaded: ${g.summary}`);
   });
@@ -753,9 +867,10 @@ async function main(): Promise<void> {
     },
   };
   // A scene's nodes spawn through the creature, prop, item and quest paths (EA6, data-driven entities).
-  // After items and quests exist, so item and quest nodes have somewhere to go.
+  // After items and quests exist, so item and quest nodes have somewhere to go: this runs once the systems are assembled.
+  const spawnBootScene = (): void => {
   if (process.env.MMO_SCENE) {
-    const scene = loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const scene = loadSceneFile(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
     const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
     const r = spawnSceneOnBoot(
       scene,
@@ -763,7 +878,13 @@ async function main(): Promise<void> {
         sim,
         creatures: creaturesOf(),
         table: () => loadScatterContent().table,
+        scale,
+        bounds: fs.existsSync(ART_CATALOG) ? catalogBounds(ART_CATALOG) : undefined,
         groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
+        // Buildings and land props refuse to stand in the water (habitat.ts).
+        seaLevel: seaLevelMeta === null ? undefined : Number(seaLevelMeta),
+        waterAt: water ?? undefined,
+        riverAt: tiles.getMap("river") ? riverAtFromMap(tiles.getMap("river")!) : undefined,
         prefabs,
         species: (id) => speciesRoster.roster[id],
         items: {
@@ -773,6 +894,7 @@ async function main(): Promise<void> {
           },
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
+        resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -793,6 +915,7 @@ async function main(): Promise<void> {
         (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
     );
   }
+  };
   // Dungeon instances (D4): the gateway's "dungeon" extension starts a
   // sandbox gateway per run from the prebaked pool and commits its result.
   // Slice 3: the dungeons module builds the pool and InstanceManager from
@@ -852,6 +975,8 @@ async function main(): Promise<void> {
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
+    // Blow resolution (EG6): read each strike, so a rules reload applies at once.
+    getCombatTuning: () => ({ resolution: game.rules.combat.resolution, unarmed: game.rules.items.unarmed }),
   };
   // What a blow gets through: worn armour per the rules' armourHalf;
   // (armourOf and combatDamage now live in the combat module; see combatConfig above)
@@ -877,6 +1002,7 @@ async function main(): Promise<void> {
         reloader,
         streamer,
         wallet,
+        gathering,
         trade,
         vendor,
         auction,
@@ -915,6 +1041,7 @@ async function main(): Promise<void> {
     bots: (assembled.byName["bots"] as unknown as import("./bots.js").BotSystem) ?? null,
     crowd: (assembled.byName["crowd"] as unknown as import("./navigation/crowd-system.js").CrowdSystem) ?? null,
   };
+  (startWild as (() => void) | null)?.();
   // Physics domain (slice 8).
   physicsRef = assembled.byName["physics"] as unknown as { terrainColliders(s: number): (...a: unknown[]) => unknown };
   // Character domain (slice 7).
@@ -922,6 +1049,7 @@ async function main(): Promise<void> {
     character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
     mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
   };
+  spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
   // above). Contents attached earlier (attachContents) still reach these
@@ -942,10 +1070,13 @@ async function main(): Promise<void> {
   // only run once players are around, long after.
   const gw: Gateway = new Gateway({
     port: PORT,
+    scale,
     sessionStore,
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),
+    // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
+    social: game.rules.social,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
@@ -994,6 +1125,8 @@ async function main(): Promise<void> {
     // 16x16 heights to chunk rows on network snapshots/deltas. The
     // persistence path never sees them (SnapshotStore collects separately).
     chunkSource: procgen,
+    // On-demand chunk tiles (0x22/0x23) are generated from this seed.
+    worldSeed,
     // Editor-only debug (protocol v3, 0x0a): read-only answers composed
     // from the live sim. The gateway only validates/authenticates and
     // encodes — all sim knowledge lives behind this interface.

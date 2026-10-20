@@ -55,6 +55,8 @@ export interface TerrainUniforms {
   uSurfTint: THREE.IUniform<THREE.Vector3[]>;
   uSurfRock: THREE.IUniform<number>;
   uSurfSnow: THREE.IUniform<number>;
+  /** Wetness 0..1 (WX1): darkens and glosses the ground in the rain. */
+  uWetness: THREE.IUniform<number>;
 }
 
 /** How far the far map sinks next to loaded chunks, metres (the coarse/fine gap is ~2-3 m). */
@@ -98,6 +100,7 @@ const VERTEX_BODY = /* glsl */ `
 const FRAGMENT_HEAD = /* glsl */ `
   varying vec3 vTerrainPos;
   varying vec3 vTerrainNormal;
+  uniform float uWetness;
   uniform sampler2D uGround;
   uniform vec4 uGroundRect;
   uniform float uHasGround;
@@ -244,6 +247,13 @@ const ROUGHNESS_BODY = /* glsl */ `
 #ifdef TERRAIN_SURFACES
   roughnessFactor = clamp(tSurfProps.z, 0.6, 1.0);
 #endif
+  // Wet look (WX1): rain makes the ground glossier.
+  roughnessFactor = mix(roughnessFactor, 0.12, uWetness);
+`;
+
+// Wet look (WX1): rain darkens the albedo.
+const WETNESS_BODY = /* glsl */ `
+  diffuseColor.rgb *= 1.0 - uWetness * 0.35;
 `;
 const NORMAL_BODY = /* glsl */ `
 #ifdef TERRAIN_SURFACES
@@ -276,6 +286,7 @@ export function createTerrainUniforms(): TerrainUniforms {
     uSurfTint: { value: Array.from({ length: MAX_SURFACE_LAYERS }, () => new THREE.Vector3(1, 1, 1)) },
     uSurfRock: { value: 0 },
     uSurfSnow: { value: 0 },
+    uWetness: { value: 0 },
   };
 }
 
@@ -293,7 +304,7 @@ export function createTerrainMaterial(uniforms: TerrainUniforms, far = false): T
       .replace("#include <begin_vertex>", `#include <begin_vertex>\n${VERTEX_BODY}`);
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}`)
-      .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_BODY}`)
+      .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_BODY}\n${WETNESS_BODY}`)
       .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${ROUGHNESS_BODY}`)
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${NORMAL_BODY}`);
   };

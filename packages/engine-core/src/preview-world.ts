@@ -3,7 +3,7 @@
  * written but the picture. For tuning a spec: change a number, look.
  *
  * Usage (from packages/engine-core, after `npm run build`):
- *   npm run preview:world -- [spec.json] [out.png]
+ *   npm run preview:world -- [spec.json] [out.png] [--squares]
  *
  * Defaults: worlds/default.world.json -> world-preview.png. Four panels,
  * north up: biomes (hillshaded; rivers blue, range axes dotted, spawn
@@ -16,8 +16,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as zlib from "node:zlib";
+import { GREEN_BIOMES, GREEN_MIN_CELLS, greenMask, greenSquares } from "./terrain/green.js";
 import { LAND, surveyWorld, type Survey } from "./terrain/survey.js";
 import { biomeShares, spawnPoint } from "./terrain/world-bake.js";
+import { STRUCTURE_MARGIN_M } from "./procgen/habitat.js";
 import { loadWorldSpec, windVector } from "./terrain/world-spec.js";
 
 type RGB = [number, number, number];
@@ -129,14 +131,29 @@ export function drawSurvey(s: Survey): { width: number; height: number; rgb: Uin
   return { width, height: D, rgb };
 }
 
+/** Dry footing a settlement needs over the sea: the spawner's structure margin plus the world's detail noise. */
+const GREEN_FLOOR_M = (spec: { detailAmplitude: number }): number => STRUCTURE_MARGIN_M + spec.detailAmplitude;
+
 function main(): void {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const specFile = path.resolve(process.argv[2] ?? path.join(here, "../../worlds/default.world.json"));
-  const out = path.resolve(process.argv[3] ?? "world-preview.png");
+  const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  const specFile = path.resolve(args[0] ?? path.join(here, "../../worlds/default.world.json"));
+  const out = path.resolve(args[1] ?? "world-preview.png");
   const spec = loadWorldSpec(specFile);
   const t0 = performance.now();
   const survey = surveyWorld(spec);
   const { width, height, rgb } = drawSurvey(survey);
+  if (process.argv.includes("--squares")) {
+    const squares = greenSquares(greenMask(survey, spec.biomes.map((b) => b.id), GREEN_BIOMES, GREEN_FLOOR_M(spec)), survey.grid, GREEN_MIN_CELLS);
+    for (const q of squares) {
+      for (let k = 0; k < q.cells; k++) {
+        for (const [u, v] of [[q.cx + k, q.cz], [q.cx + k, q.cz + q.cells - 1], [q.cx, q.cz + k], [q.cx + q.cells - 1, q.cz + k]] as const) rgb.fill(255, (v * width + u) * 3, (v * width + u) * 3 + 3);
+      }
+    }
+    const file = out.replace(/\.png$/, "") + ".squares.json";
+    fs.writeFileSync(file, JSON.stringify({ cell: survey.grid.cell, originX: survey.grid.originX, originZ: survey.grid.originZ, squares }, null, 1));
+    console.log(`[preview] ${squares.length} green square(s), largest ${squares[0] ? `${squares[0].cells} cells (${squares[0].cells * survey.grid.cell} m) at x ${squares[0].x0}..${squares[0].x1}, z ${squares[0].z0}..${squares[0].z1}` : "none"}; wrote ${file}`);
+  }
   fs.writeFileSync(out, png(width, height, rgb));
   const sp = spawnPoint(spec, survey);
   console.log(`[preview] ${path.basename(specFile)}: survey ${((performance.now() - t0) / 1000).toFixed(1)} s`);

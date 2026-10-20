@@ -95,8 +95,8 @@ describe("ecology placement", () => {
 
   it("reeds keep to the water line; lily pads float on the shallows", () => {
     const p = plan([
-      { id: "reeds", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-0.4, 0.4], assets: A("reed"), scale: [1, 1] },
-      { id: "lilies", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-1.5, -0.4], onWater: true, assets: A("lily"), scale: [1, 1] },
+      { id: "reeds", habitat: "shore", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-0.4, 0.4], assets: A("reed"), scale: [1, 1] },
+      { id: "lilies", habitat: "water", place: { kind: "field", spacing: 2 }, chance: 1, aboveWater: [-1.5, -0.4], onWater: true, assets: A("lily"), scale: [1, 1] },
     ]);
     // Ground rising from 2 m under the water (x = 0) to 3 m above it (x = 16); the surface at 10.
     const ground = (x: number): number => 8 + (x / W) * 5;
@@ -127,5 +127,30 @@ describe("ecology placement", () => {
   it("rejects a plan whose layers reference what doesn't come before them", () => {
     assert.throws(() => plan([{ id: "a", place: { kind: "around", parent: "b", chance: 1, count: [1, 1], radius: [0, 1] }, assets: A("x"), scale: [1, 1] }]), /must come before/);
     assert.throws(() => plan([{ id: "a", place: { kind: "field", spacing: 4 }, density: [{ field: "nope", ramp: [0, 1] }], assets: A("x"), scale: [1, 1] }]), /unknown field/);
+  });
+});
+
+describe("ecology categories (global scale)", () => {
+  it("a layer's category rides on its spawns' archetype; none means the archetype has none (prop)", () => {
+    const p = plan([
+      { id: "trees", category: "tree", place: { kind: "field", spacing: 4 }, chance: 1, assets: A("t"), scale: [1, 1] },
+      { id: "misc", place: { kind: "field", spacing: 4 }, chance: 1, assets: A("m"), scale: [1, 1] },
+    ]);
+    const pts = planChunk(p, ctx(0, 0));
+    assert.ok(pts.some((x) => x.assetId === "t") && pts.some((x) => x.assetId === "m"));
+    for (const pt of pts) assert.equal(pt.archetype.category, pt.assetId === "t" ? "tree" : undefined);
+  });
+
+  it("the shipped plan's trees, rocks and plants are categorised", () => {
+    const file = fileURLToPath(new URL("../../../content/ecology/wilds.ecology.json", import.meta.url));
+    const { plan: wilds } = loadEcologyPlan(file);
+    const cat = (id: string) => wilds.layers.find((l) => l.id === id)?.category;
+    assert.equal(cat("trees"), "tree");
+    assert.equal(cat("outcrops"), "rock");
+    assert.equal(cat("grass"), "plant");
+  });
+
+  it("an unknown category is refused", () => {
+    assert.throws(() => plan([{ id: "x", category: "boulder", place: { kind: "field", spacing: 4 }, chance: 1, assets: A("x"), scale: [1, 1] }]), /category/);
   });
 });

@@ -37,16 +37,30 @@ import System, {
 } from "three-nebula";
 import presets from "./particles.json" with { type: "json" };
 import type { Weather, WeatherKind, WeatherRules } from "./weather.js";
-import { budgetForTier, DEFAULT_PARTICLE_BUDGETS, type QualityTier } from "@mmo-engine/art/browser";
+import { budgetForTier, DEFAULT_PARTICLE_BUDGETS, ParticleBudgets, type QualityTier } from "@mmo-engine/art/browser";
 
 /** nebula multiplies forces by this (pixels); our data is in metres. */
 const NEBULA_FORCE_SCALE = 100;
 const MAX_PARTICLES = 8000;
 /** Emission step: nebula emits `count` particles every `EMIT_EVERY` seconds. */
 const EMIT_EVERY = 0.05;
+/** How far upwind of the camera the weather is emitted, so it slants downwind. */
+const WIND_EMIT_OFFSET = 3;
 
-/** The tier budgets, validated at load. */
-const BUDGETS = DEFAULT_PARTICLE_BUDGETS;
+/** The tier budgets: content/vfx/budgets.json once setParticleBudgets has it (EG10), else the built-in ones. */
+let BUDGETS: ParticleBudgets = DEFAULT_PARTICLE_BUDGETS;
+
+/**
+ * Use the content's tier budgets (content/vfx/budgets.json, EG10). A file
+ * that fails its checks is skipped and the built-in budgets stay; returns
+ * the problem, or null when applied. Quality changes after this use them.
+ */
+export function setParticleBudgets(raw: unknown): string | null {
+  const r = ParticleBudgets.safeParse(raw);
+  if (!r.success) return `vfx/budgets.json: ${r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`;
+  BUDGETS = r.data;
+  return null;
+}
 
 /**
  * The emission multiplier for a quality tier, from the budget file.
@@ -220,7 +234,10 @@ export class ParticleFx {
         w.count = count;
         w.emitter.setRate(new Rate(new Span(count, count), new Span(EMIT_EVERY)));
       }
-      w.emitter.setPosition({ x: cameraPos.x, y: cameraPos.y + 6, z: cameraPos.z });
+      // Emit upwind of the camera so the precipitation slants downwind.
+      const wx = weather.windX ?? 0;
+      const wz = weather.windZ ?? 0;
+      w.emitter.setPosition({ x: cameraPos.x - wx * WIND_EMIT_OFFSET, y: cameraPos.y + 6, z: cameraPos.z - wz * WIND_EMIT_OFFSET });
     }
     this.splashCooldown = Math.max(0, this.splashCooldown - dt);
     void this.system.update(dt);

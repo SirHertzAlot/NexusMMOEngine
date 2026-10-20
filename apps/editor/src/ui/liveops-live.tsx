@@ -5,6 +5,7 @@
  * server's answer; with no server the gate says so and offers Start.
  */
 import * as React from "react";
+import { ServerSettingsPanel } from "./server-settings-panel.js";
 import { createHostServerControl } from "../server-control.js";
 import { formatUptime, parseConsoleLine, parseHelp, parseTimeOfDay, parseWeather, timeArgs, WEATHERS, type Weather } from "../liveops-model.js";
 import { Badge, Button, Input, KvTable, notify } from "./components.js";
@@ -341,5 +342,6 @@ export function LiveOpsViews(): Array<{ id: string; label: string; icon: string;
     { id: "overview", label: "Server & world", icon: "groups", kind: "panel", panel: <LiveOpsOverview /> },
     { id: "console", label: "Admin console", icon: "terminal", kind: "panel", panel: <LiveOpsConsole /> },
     { id: "telemetry", label: "Telemetry", icon: "monitoring", kind: "panel", panel: <LiveOpsTelemetryView /> },
+    { id: "settings", label: "Server settings", icon: "settings", kind: "panel", panel: <ServerSettingsPanel /> },
   ];
 }

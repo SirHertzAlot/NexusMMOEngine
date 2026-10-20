@@ -44,6 +44,17 @@ export function createSystems(ctx) {
     bases: rules.items.bases,
     groundHeightAt: config.groundHeightAt,
     steer: hasCrowd,
+    // Wildlife (docs/WILDLIFE.md): the day clock, warnings through the telegraph system, the water, the models, the settlements.
+    massPower: rules.combat.damage.massPower,
+    ai: rules.creatures.ai,
+    timeOfDay: config.timeOfDay,
+    warn: config.warn,
+    cancelWarn: config.cancelWarn,
+    attackerOf: config.attackerOf,
+    waterDepthAt: config.waterDepthAt,
+    waterSurfaceAt: config.waterSurfaceAt,
+    modelOf: config.modelOf,
+    settlements: config.settlements,
   });
 
   const needs = new NeedsSystem(rules.needs);

@@ -70,6 +70,7 @@ stages under `packages/engine-core/src/terrain/`:
    the drainage, melt with warmth and sunshine, grind U-shaped valleys, calve
    at the sea and drop terminal moraines; stream-power river incision weighted
    by rain and meltwater; droplet erosion where it rains, leaving deltas.
+   The relief passes below sharpen what this produces.
 3. **Water** (`hydrology.ts`) — the sea is everything below sea level and open
    to it; lakes form in hollows that are deep, large and wet enough; rivers
    come from rain-weighted drainage, with depressions filled so every cell
@@ -99,6 +100,91 @@ is a `when` clause over the climate and water fields plus a `roughness`:
 
 **Biomes are not capped or counted.** They emerge from climate and water, so
 a change to rainfall or temperature changes where they are.
+
+### Relief passes (sharp peaks, carved valleys)
+
+Four switchable passes, all off unless the world file names them (a world
+without them bakes exactly as before). `worlds/default.world.json` turns them
+on, so re-bake it (`npm run bake:world:force`); towns' site selection moves
+with the new slopes.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `ranges.crest.sharpness` | `0` | 0..1: blends the range cross-section from the rounded quartic dome toward a pointed ridge (`(1-r)^1.6`), so a crest is a line, not a crown |
+| `ranges.crest.detailOctaves` / `detailStrength` | `0` / `0.5` | 1..5 octaves of domain-warped ridged multifractal (Musgrave) over the range, each octave weighted by the last so detail gathers on crests; strength is the share of the range height it modulates |
+| `erosion.incision.passes` / `k` / `areaExponent` / `maxCutM` | `0` / `0.0012` / `0.5` / `40` | implicit stream-power incision, `h = (h + F·h_receiver)/(1+F)`, `F = k·area^m/distance`, outlet-first so it is stable for any `k`; summits (no drainage area) stay, trunk valleys deepen; no cell is cut more than `maxCutM` in total; flow is re-routed every 3 passes |
+| `erosion.rockTalusDeg` / `rockFromM` / `rockSpanM` | unset / `150` / `100` | bare rock holds a steeper angle than scree: the thermal angle rises from `talusDeg` to `rockTalusDeg` over `rockSpanM` above `rockFromM`, so crests stay sharp while the slopes below weather to scree; unset = one angle |
+| `volcano.gullies` | `0` | 0..1: radial gullies between spur ridges on the cone's flanks (the cone is raised after erosion, so without this it stays perfectly smooth) |
+
+Cost: the default world's survey goes from about 9.6 s to 13.5 s (the
+incision's flow re-routing). The passes work on the coarse grid in typed
+arrays, same seed, same bytes.
+
+### Plains and terraces (land to build on)
+
+One more switchable pass, `plains` (`plains.ts`), off unless the world file
+sets `plains.enabled`. The erosion and surface passes leave low ground as one
+continuous ramp from the shore to the hills, rolling by several metres, so
+there is nowhere flat for a few hundred metres at a time; a town cannot stand
+on that (and a house on a jutting slope nobody can walk up to is a stranded
+object, not a home). The pass runs after the biome surface and before the
+river beds are cut, deterministically, on typed arrays. `worlds/default.world.json`
+opts in: re-bake it (`npm run bake:world:force`). A world without the key bakes
+byte-identically to before.
+
+- **Terraces.** The low land is smoothed (`smoothM`, only over low, dry land so
+  the sea floor and the hills do not pull it) and remapped through a strictly
+  increasing curve of steps: a long tread that keeps `tilt` of the land's climb
+  (so it drains) and a short riser that takes the rest. The step height follows
+  the climb at that altitude, so a tread is about `treadWidthM` wide on a gentle
+  slope and a steeper one alike (bounded by `stepMinM`..`stepMaxM`). Because the
+  map only increases, water still runs downhill; any hollow the pass does open
+  (the undulation) is filled to its spill level, so no new sinks appear.
+- **Ramps and steepness.** Noise dissolves the steps back into the plain slope
+  over `rampShare` of the land, so risers have somewhere to walk up, and where
+  the land's own climb would make a riser steeper than `maxRiserDeg` the step
+  fades back toward the plain slope.
+- **Rolling plains.** `undulationM` (± metres) of long-wavelength noise
+  (`undulationScaleM`), left off the river and shore flats.
+- **Floodplain and shelf.** Within `floodplain.widthM` of a river and
+  `coast.widthM` of the sea or a lake the ground is blended toward a surface
+  graded gently (`gradient`, rise over run) up from the bed or water level, so
+  valleys and coasts are flat; ground more than `riseM` off that surface is valley
+  wall and keeps its shape. Rivers are carved afterwards, into the flattened land.
+- **Mountain safety.** Everything fades out between `fadeFromM` and `fadeToM`
+  above the sea and on ground steeper than `slopeFromPct`..`slopeToPct`; above
+  `fadeToM` not a single cell changes (tested), so the ridges and the volcano
+  keep the shape the erosion pass gave them.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `plains.enabled` | `false` | the switch |
+| `smoothM` | `300` | smoothing the treads are cut from (about one standard deviation), metres |
+| `fadeFromM` / `fadeToM` | `45` / `100` | height above the sea where the pass fades out / is gone |
+| `slopeFromPct` / `slopeToPct` | `6` / `12` | climb (%) where steep ground starts to keep its shape / keeps it |
+| `undulationM` / `undulationScaleM` | `1.5` / `1200` | rolling plains: amplitude and wavelength |
+| `treads.treadWidthM` | `1000` | wanted tread width; the step height follows the climb |
+| `treads.stepMinM` / `stepMaxM` | `2` / `24` | step height bounds |
+| `treads.treadShare` / `tilt` | `0.9` / `0.05` | share of a step that is tread / the climb a tread keeps |
+| `treads.rampShare` / `maxRiserDeg` | `0.15` / `22` | land where steps dissolve into ramps / steepest riser |
+| `floodplain.widthM` / `gradient` / `riseM` | `500` / `0.003` / `3` | river flats |
+| `coast.widthM` / `gradient` / `marginM` / `riseM` | `800` / `0.003` / `0.8` / `3` | shore flats; the plain starts `marginM` above the water |
+
+Reachability: `reachableLand(heights, grid, slopeLimitDeg, from, blocked)`
+(`reach.ts`) flood-fills the walkable cells (8 neighbours, no step steeper than
+the limit, water blocks). A test bakes the default world and checks that the
+flat land is walkable from the spawn wherever the land is connected at all
+(99.9%; the rest of the flat land is on separate islands). Site selection
+applies the same rule (see `SETTLEMENTS.md`).
+
+On the default world (seed 1234) the share of land within 0 to 30 m of the sea
+that is under 2 degrees rose from 14% to 53%, and the strict site rules (3 m of
+relief over the whole town) went from finding no site for 100, 300 or 600
+people to 2, 2 and 1 sites, the nearest within 500 m of the spawn for each size. The
+survey costs about 6% more. What the pass does not do: it cannot make room the
+coast and mountains leave out (a 600-person town needs 324 m of dry flat ground
+300 m from any peak), and a tread boundary is a contour, so the risers read as
+wide concentric scarps around the massif rather than as hand-made field walls.
 
 ## Baking
 
@@ -178,6 +264,24 @@ There are three kinds of layer:
   plan opens with exactly this: `stoneCircles` puts at most one `centre` per
   tile, six or more `stone`s within 6.5 m of it, and no two centres within
   45 m.
+
+**Sea level and habitat.** Below the water (the sea, a lake) is for aquatic
+content only. A layer's `habitat` says where it may stand: `"land"` (the
+default) needs its ground at least the plan's `landMarginM` (default 0.3 m,
+`LAND_MARGIN_M` in `procgen/habitat.ts`) above the water surface, wherever the
+water lookup finds no water too (the sea level is the floor); `"shore"` keeps to
+its `aboveWater` band round the water line (reeds, ground a little under to a
+little over the surface); `"water"` is aquatic (coral, kelp, lily pads), the only
+kind placed below the water, on the floor between the depths of its `aboveWater`
+range (negative metres; `onWater: true` floats it on the surface instead).
+`parseEcologyPlan` refuses a shore layer without a band and a water layer
+without a depth range. The same rule runs in the PCG path (a spawn-table
+archetype takes `habitat: "water"` with `depthM: [shallowest, deepest]`) and in the
+scene spawner, which refuses (and lists under `skipped`) a land prop in the water
+and a building whose footprint is not at least `STRUCTURE_MARGIN_M` (1 m) above
+it or lies on a river cell. One source of the water: the world's sea level
+(`sea_level` meta, from the spec) and the surface lookup built from the bake's
+`water_level` map.
 
 A layer also carries `assets` (weighted, with per-asset scale) and
 `biomeAssets` overrides — pines on the cold heights, broadleaves below — and

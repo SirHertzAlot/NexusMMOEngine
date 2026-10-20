@@ -110,6 +110,34 @@ Everything here stays under `assets/`, which is gitignored. **Run it from the
 repo root**; `convert:packs` builds the art package first, but the other two
 need `npm run build -w @mmo-engine/art` beforehand.
 
+## Importing ready-made GLB packs
+
+Packs that arrive as GLBs (a folder of `.glb` and a `manifest.json` of
+`{ title, publicID, licence, file?, page }`, as Poly Pizza zips do) skip the FBX
+converter. Unzip each into its own folder, then:
+
+```bash
+npm run build -w @mmo-engine/art
+npm run import:glb -w @mmo-engine/art -- <dir>... [--assets <dir>]
+```
+
+Per model it copies the GLB to `models/glb/<slug>/<Category>/`, **rescales it to
+a natural size** (the packs' units are arbitrary: the same pack holds a rabbit
+2 units long and a sheep 766; `natural-size.ts` maps whole name words to metres)
+with the base centre at the origin, and adds `catalog.json` / `manifest.json`
+entries carrying `license` (author, licence name, page), `animations` and
+`skinned`. Re-running a pack replaces its entries; `convert:packs` keeps them.
+Models with no known size keep their units and are listed in the catalog
+diagnostics.
+
+What to do with them is data: `npm run wildlife:plan` (engine-core) writes a
+gitignored `content/ecology/wildlife.local.ecology.json` (the wilds plan plus
+name-pattern layers: sea floor with `habitat: "water"` and depths, shore birds,
+woodland fauna, critters, farm animals; static, skinned models excluded; run
+with `MMO_ECOLOGY`). `DEFAULT_DRESSING_PATTERNS` (settlement `art.ts`) names
+farm produce, crops, tools and yard pieces for farmsteads. A creature that
+moves needs a simulated agent, which is not built.
+
 ## The character rig
 
 Two more converters prepare the modular character:
@@ -191,6 +219,95 @@ node rogue-packages/sirhertzalot/mmo-editor/src/import-art-pack.mjs \
 Models land in `Assets/Models/mmo/` and textures in `Assets/Textures/mmo/`,
 with an index manifest for `RE.Model.fetch()`.
 
+## Animals: procedural movement for static meshes
+
+The imported animals (woodland fauna, farm animals) are static meshes with no
+skeleton and no clips. They move through `apps/client/src/render/animal/`:
+the client cuts the mesh into parts, adds an eleven-bone skeleton (body, head,
+tail and four two-segment legs) to a copy of its geometry and poses it from the server's velocity. No clip files are made
+or needed, so every static quadruped moves the day it is imported.
+
+**Decision.** The idea came from
+[threejs-procedural-animals](https://github.com/majidmanzarpour/threejs-procedural-animals)
+(MIT, Majid Manzarpour). We took option C of three:
+
+- **A, use the library for its species:** rejected. It builds its own SDF
+  animals (24 species) and cannot move another mesh; using it would replace
+  our animals, and the project decision is to use our own.
+- **B, drive our meshes with its gait/IK solver:** rejected. Its locomotion
+  (`src/core/motion/quadruped.js`, about 180 KB, plus `rig/` and
+  `render/dqs.js`) is welded to its own generated rig: it reads joint chains,
+  paw/hoof bones and dual-quaternion skin from `data.joints`, which our meshes
+  do not have. Faking that rig for 480 arbitrary meshes costs more than the
+  motion is worth.
+- **C, our own small rig and gait inspired by its concepts:** chosen. We took
+  the ideas (a gait is a table of per-leg touchdown phase offsets and a duty
+  factor, rows blended by speed, speeds compared by Froude number so a wolf
+  and a bear change gait at the same effort, one-shots layered over
+  locomotion) and wrote them for our own eleven-bone rig. **No code from the library
+  is vendored**, so there is no licence text to carry and no
+  `content/credits.json` entry; the concept credit is this paragraph. If you
+  vendor any of its files later, copy its `LICENSE` and copyright notice next
+  to them and add a credits entry (project, author, MIT, repository URL,
+  `confirmed: false`).
+
+**How it works.**
+
+- `segment.ts` (pure, no three.js): the longest horizontal axis is the spine;
+  the head end is the one held higher off the ground (the rear reaches down
+  with hind legs; right on the seven tried: deer, bear, fox, cougar, wolf, pig, goat; vertex count is only the
+  tiebreak); the belly is where a height slice's footprint fills in; smooth
+  region weights give head, tail, body and four legs, each leg an upper bone
+  (hip/shoulder) and a lower bone (knee/hock), four influences per vertex.
+  The knee is found as the narrowest leg slice in the middle band of the leg
+  (clamped to 42 to 58 percent of the hip height, else halfway), blended over
+  a band 28 percent of the leg wide so the joint bends smoothly. A mesh that is not four-legged (length under 0.7 of height, snakes,
+  birds, upright shapes) returns null and stays a static prop.
+- `gait.ts` (pure): walk, trot, gallop rows blended by speed (Froude), duty
+  factor, stride, peak knee flexion, bob, the attack windup/strike pose and
+  the death fall. The upper leg swings from the hip through an arc symmetric
+  about vertical (plus and minus 27 degrees at a walk, 40 at a trot, capped
+  at 43 at a gallop: the range real dogs, deer and horses use), with `sin`
+  of the angle linear through stance so the foot moves back at body speed and
+  does not slide. The knee flexes only in swing, peaking at about 40 percent
+  of it (about 40 degrees at a walk, 65 at a trot, 80 at a gallop), and is
+  straight at touchdown. The front knee folds the foot backward, the hind
+  hock the opposite way (forward). The hip drops with the swing angle, and
+  rises just enough in late swing, so a planted foot stays on the ground and
+  a swinging one clears it. The body bobs twice per cycle, twists and rolls
+  slightly in walk and trot, the head counter-rotates and nods, and the tail
+  follows with a lag.
+- `animal-rig.ts`: `AnimalTemplate` (one per model: skinned geometry copy) and
+  `AnimalRig` (one per animal: `SkinnedMesh`, bones, state). `update` allocates
+  nothing. The material is the model cache's, shared with the scenery, and is
+  never disposed or tinted per animal.
+- `EntityLayer` gives a moving entity with an `AssetRef` to a loaded art model
+  the rig (`dressAsAnimal`), then feeds it the mirrored velocity, the Action
+  row (`combatMove`: windup until `hitAt` is the telegraph, strike after) and
+  health (zero: lies down). Animals farther than `ANIMAL_LOD_RADIUS` (45 m)
+  hold the rest pose and cost no CPU.
+
+**Add a species.** Import the GLB (`npm run import:glb`), give the creature
+rules an entity with that model's `AssetRef`; it rigs itself. If the head is
+picked wrong or the belly height is off, pass `SegmentHints`
+(`headSign`, `legTop`) where the template is built. Megafauna (giant
+predators) rig the same way; their stride scales with leg length (Froude).
+Sea giants, birds and snakes need their own cut (fin and tail wave, wings,
+spine wave): not built.
+
+**Known artifacts.** Legs are two rigid pieces blended over the belly and
+across the knee, so there is some skin stretch at the hip and a visible kink
+at the knee on thick legs (elk, bear), and no pastern or hoof/paw roll. The
+rest hock is straight (a real hind leg stands bent). Short-legged animals
+(bear) look crouched at trot because the flexion is not scaled by leg length.
+The stance foot still slides up to about 0.07 m over a 0.36 m stance on the
+test animal (body twist and pitch), and more at gallop where the hip swing is
+capped. Wide antlers or
+tusks clip the ground when the body lies down. Only a dozen models were tried;
+the head and belly heuristics may need a hint for others. A far animal is posed at
+rest, not drawn from the instanced prop batch. Developer views of the rig
+(bone layout, weights) belong in the editor and are not built.
+
 ## Licensing and attribution
 
 Two different licences are in play and they must not be confused:
@@ -200,6 +317,12 @@ Two different licences are in play and they must not be confused:
   to grant. The animation sources' licences are declared in
   `ANIMATION_SOURCES`; check them before redistributing anything built from
   them.
+- **Third-party art that needs attribution** (the CC-BY packs) is credited in
+  `content/credits.json`, typed by `parseCredits` (`@mmo-engine/art/browser`):
+  an author, a licence name and the line to show, never a model. The game's
+  entrance / credits screen should read it
+  (`import credits from ".../content/credits.json"`). Entries marked
+  `confirmed: false` have wording still to be checked against the licence.
 - **The vendored C++ libraries and the CC0 surface textures are open**, with
   their own notices. `packages/dungeon/THIRD_PARTY_NOTICES.md` is the model for
   how a ported or vendored dependency is attributed — it names the upstream

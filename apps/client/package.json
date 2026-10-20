@@ -36,21 +36,23 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.6.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vite-plugin-compression": "^0.5.1"
   },
   "name": "@mmo-engine/client",
   "private": true,
   "scripts": {
     "build": "npm run build:deps && npm run build:lib && vite build",
-    "build:deps": "npm run build --workspace=@mmo-engine/scene && npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/compose",
+    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/compose",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",
     "preview": "vite preview",
     "pretest": "npm run build:deps",
     "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",
+    "bench:sab-assets": "npm run build:lib && node scripts/bench-sab-assets.mjs",
     "surfaces:fetch": "node scripts/fetch-surfaces.mjs",
-    "models:generate": "gltfjsx --types public/models --output src/render/generated --transform"
+    "models:generate": "gltfjsx --types --output src/render/generated --transform"
   },
   "type": "module",
   "version": "0.1.0"
