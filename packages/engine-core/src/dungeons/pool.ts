@@ -29,6 +29,8 @@ export interface PoolEntry {
   rooms: number;
   width: number;
   height: number;
+  /** The prebaked shell (`dungeon:bake` without --no-shell): a PCGM mesh file beside the layout. */
+  shell?: { file: string };
 }
 
 export interface LayoutSpawn {
@@ -59,6 +61,8 @@ export interface InstanceLayout {
   spawns: LayoutSpawn[];
   /** Round props that block bodies, flat [x, z, radius] in metres (baked `colliders`, grid cells). */
   colliders: Float64Array;
+  /** Absolute path of the baked shell mesh (absent: the dungeon was baked without one). */
+  shell?: string;
 }
 
 interface DungeonFileLike {
@@ -141,6 +145,7 @@ export class DungeonPool {
     const list = this.matching(rank, themes);
     if (list.length === 0) return null;
     const e = list[(seed >>> 0) % list.length];
-    return readLayout(JSON.parse(readFileSync(join(this.dir, e.file), "utf8")));
+    const layout = readLayout(JSON.parse(readFileSync(join(this.dir, e.file), "utf8")));
+    return e.shell ? { ...layout, shell: join(this.dir, e.shell.file) } : layout;
   }
 }

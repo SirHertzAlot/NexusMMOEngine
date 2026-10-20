@@ -12,7 +12,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addComponent } from "bitecs";
+import { addComponent, defineQuery } from "bitecs";
+import { encodePcgMesh, fnv1a32 } from "@mmo-engine/picg";
 import { decodeControl, encodeControl, MessageType, PROTOCOL_VERSION } from "@mmo-engine/protocol";
 import * as C from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
@@ -70,6 +71,8 @@ afterEach(async () => {
 });
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** Every entity of `sim` that has component `c`. */
+const queryEntities = (sim: SimWorld, c: object): Iterable<number> => defineQuery([c])(sim.ecs);
 async function until(pred: () => boolean, ms = 3000): Promise<void> {
   const end = Date.now() + ms;
   while (!pred()) {
@@ -183,6 +186,66 @@ describe("dungeon instance", () => {
     assert.equal(ctl(c).find((m) => m.op === "ended")!.outcome, "cleared");
     await sleep(100);
     assert.equal(results.length, 1, "reported once");
+  });
+
+  it("serves its baked shell as an ordinary asset: an AssetRef entity and the Pcg service on its own port", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const shell = encodePcgMesh({ positions: new Float32Array([0, 0, 0, 8, 0, 0, 8, 0, 8]), indices: new Uint32Array([0, 1, 2]) });
+    const dir = mkdtempSync(join(tmpdir(), "shell-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "grim-abc.shell.pcgm"), shell);
+    // The SoA stores are process-wide and a recycled slot keeps its dead entity's data: poison them,
+    // so a shell entity that left any field unwritten (the position, the variant) shows up below.
+    for (const a of [C.Transform.px, C.Transform.py, C.Transform.pz, C.Transform.qx, C.Transform.sx, C.AssetRef.variant]) a.fill(77);
+    closers.push(async () => {
+      for (const a of [C.Transform.px, C.Transform.py, C.Transform.pz, C.Transform.qx, C.Transform.sx, C.AssetRef.variant]) a.fill(0);
+    });
+    const inst = new DungeonInstance({
+      id: "run-shell", entrance: "barrow-gate", layout: { ...readLayout(fixture()), shell: join(dir, "grim-abc.shell.pcgm") }, rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const hash = fnv1a32("dungeon:grim-abc");
+    const holders = [...queryEntities(inst.world, C.AssetRef)].filter((e) => C.AssetRef.assetHash[e] === hash);
+    assert.equal(holders.length, 1, "one static entity carries the shell's asset hash");
+    const [shellEid] = holders;
+    assert.deepEqual([C.Transform.px[shellEid], C.Transform.py[shellEid], C.Transform.pz[shellEid]], [0, 0, 0], "at the origin, where the shell's own coordinates start");
+    assert.equal(C.Transform.qx[shellEid], 0);
+    assert.equal(C.Transform.sx[shellEid], 1);
+    assert.equal(C.AssetRef.variant[shellEid], 0);
+    // A client in the run asks the instance's own Pcg service, with its session token, and gets the baked bytes.
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+    const base = `http://127.0.0.1:${port}`;
+    const ask = await fetch(`${base}/rpc/Pcg/GetAssetMesh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` },
+      body: JSON.stringify({ assetHash: hash, variant: 0 }),
+    });
+    assert.equal(ask.status, 200);
+    const { mesh } = (await ask.json()) as { mesh: { url: string; triangleCount: number; lods: unknown[] } };
+    assert.equal(mesh.triangleCount, 1);
+    assert.deepEqual(mesh.lods, []);
+    const bytes = new Uint8Array(await (await fetch(`${base}${mesh.url}`, { headers: { Authorization: `Bearer ${welcome.session_token}` } })).arrayBuffer());
+    assert.deepEqual(bytes, shell, "the client downloads exactly what was baked");
+  });
+
+  it("runs as before when the dungeon was baked without a shell", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const inst = new DungeonInstance({
+      id: "run-bare", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+      onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    await inst.start();
+    closers.push(() => inst.close());
+    assert.equal([...queryEntities(inst.world, C.AssetRef)].length, 0, "no shell entity");
   });
 
   it("places chests per run and opens the nearest one into the result loot", async () => {

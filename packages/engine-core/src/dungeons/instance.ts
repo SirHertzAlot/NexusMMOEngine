@@ -19,7 +19,8 @@
  * anywhere else until the region commits that batch.
  */
 
-import { hasComponent } from "bitecs";
+import { readFileSync } from "node:fs";
+import { addComponent, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
@@ -34,6 +35,8 @@ import { SimWorld } from "../world.js";
 import { Gateway } from "../net/gateway.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
+import { PcgAssetLibrary } from "../pcg/asset-library.js";
+import { mountPcgService } from "../pcg/boot.js";
 import { hash } from "../procgen/ecology.js";
 import type { InstanceRules } from "./content.js";
 import type { InstanceLayout } from "./pool.js";
@@ -207,7 +210,35 @@ export class DungeonInstance {
       ...(opts.clock ? { clock: opts.clock } : opts.now ? { clock: opts.now } : {}),
       ...(opts.transport ? { transport: opts.transport } : {}),
     });
+    this.mountShell();
     this.populate();
+  }
+
+  /**
+   * The baked shell (walls, floors, ceilings) reaches clients as an ordinary
+   * asset, the way scattered props do: one static entity at the origin carrying
+   * its AssetRef (the generic snapshot replicates it), and the Pcg service on
+   * this gateway serving the mesh. No dungeon-specific message, no client code.
+   * A dungeon baked without a shell runs as before.
+   */
+  private mountShell(): void {
+    const { layout } = this.opts;
+    if (!layout.shell) return;
+    const library = PcgAssetLibrary.empty();
+    const asset = library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name);
+    mountPcgService(this.gateway, library);
+    // Every field is written: the SoA stores are process-wide and a recycled slot still holds
+    // the entity that died there (a scatter prop's position, say), which would shift the shell.
+    const eid = this.world.spawn();
+    addComponent(this.world.ecs, C.Transform, eid);
+    const T = C.Transform;
+    T.px[eid] = T.py[eid] = T.pz[eid] = 0;
+    T.qx[eid] = T.qy[eid] = T.qz[eid] = 0;
+    T.qw[eid] = 1;
+    T.sx[eid] = T.sy[eid] = T.sz[eid] = 1;
+    addComponent(this.world.ecs, C.AssetRef, eid);
+    C.AssetRef.assetHash[eid] = asset.assetHash;
+    C.AssetRef.variant[eid] = 0;
   }
 
   /** Bind the port and start the tick. Returns the port. */
