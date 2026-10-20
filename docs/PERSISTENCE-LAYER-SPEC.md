@@ -108,8 +108,27 @@ inventory pattern; D2R's lock discipline):
   change.
 - **Idempotency.** Every new mutating core op takes an `opId` and uses
   the existing `getOpResult`/`storeOpResult` dedup.
-- **Edge validation.** New adapter inputs are Zod-stric
-...[truncated 2221 chars]
+- **Edge validation.** New adapter inputs are Zod-strict with payload
+  caps (snapshot size, ledger batch length), like every existing edge.
+- **Tests per slice**, failure sets diffed against the pristine
+  baseline — never just counts compared.
+
+## Slices
+
+- **P1 — world state store** (world-server): WorldStore sections for
+  shard snapshots, ledger batches, character records + session locks;
+  core ops with epoch fencing; webrpc adapter + ridl; fake + Surreal
+  stores.
+- **P2 — region write-through** (engine-core): ledger shipping +
+  snapshot upload on the save cycle via WorldClient, ack-tracked with
+  retry; standalone behaviour unchanged.
+- **P3 — boot recall + takeover** (engine-core): newer-wins restore
+  from the world copy on boot; replacement shards recall a dead shard's
+  range after lease expiry.
+- **P4 — global characters** (engine-core + world-server): character
+  load/save through the world tier with session locks; final commit on
+  logout/migration; local cache + standalone fallback.
+
 ## Single source of truth & resource-aware assignment
 
 (Amendment, Joey-directed 2026-10-20. This section refines the framing
