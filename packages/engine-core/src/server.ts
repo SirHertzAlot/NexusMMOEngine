@@ -154,6 +154,7 @@ import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { ShardStateShipper } from "./world/state-shipper.js";
+import { WorldCharacterSync } from "./world/character-sync.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
@@ -1120,10 +1121,24 @@ async function main(): Promise<void> {
   // where friends play; without a world client both are inert. `worldClient`
   // was assigned during the fleet boot block when WORLD_URL is set; these closures
   // only run once players are around, long after.
+  // Persistence P4: global characters at the world tier. Only in
+  // fleet mode and only when this boot's registration landed (the
+  // sync rides the same single WorldClient as recall, the shipper
+  // and the migration coordinator; its character ops need the lease).
+  // Standalone mode passes nothing and is byte-identical.
+  const worldCharacters =
+    worldClient?.registered
+      ? new WorldCharacterSync({
+          client: worldClient,
+          store: characterStore,
+          log: (line) => console.log(`[server] ${line}`),
+        })
+      : null;
   const gw: Gateway = new Gateway({
     port: PORT,
     scale,
     sessionStore,
+    worldCharacters: worldCharacters ?? undefined,
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),

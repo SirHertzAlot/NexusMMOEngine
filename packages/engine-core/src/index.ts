@@ -252,6 +252,19 @@ export type {
   ShardStateShipperOptions,
 } from "./world/state-shipper.js";
 export {
+  WorldCharacterSync,
+  parseWorldCharacterState,
+  seedLocalCharacter,
+  worldCharacterPayload,
+  CHARACTER_LOCK_TTL_MS,
+} from "./world/character-sync.js";
+export type {
+  CharacterWorldClient,
+  CharacterLoginResult,
+  WorldCharacterState,
+  WorldCharacterSyncOptions,
+} from "./world/character-sync.js";
+export {
   recallShardState,
   unwrapShardSnapshotPayload,
 } from "./world/state-recall.js";

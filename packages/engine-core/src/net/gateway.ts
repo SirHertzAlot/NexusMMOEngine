@@ -170,6 +170,7 @@ import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
+import type { WorldCharacterSync } from "../world/character-sync.js";
 import type { MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
 import { Mana, type MagicSystem } from "../magic.js";
@@ -263,6 +264,16 @@ export interface GatewayOptions {
    * production server passes a SqliteCharacterStore.
    */
   characterStore?: CharacterStore;
+  /**
+   * Persistence P4: world-tier character records + session locks
+   * (fleet mode). When present, a character's login acquires its world
+   * session lock and seeds the local store from the world record
+   * before the avatar spawns, working saves also write uphill, and
+   * logout (grace expiry, shutdown, migration commit) commits finally
+   * and releases the lock. Absent: local-only behaviour, unchanged
+   * (standalone mode never passes one).
+   */
+  worldCharacters?: WorldCharacterSync;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
   /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
@@ -778,6 +789,7 @@ export class Gateway {
       | "scale"
       | "extensions"
       | "items"
+      | "worldCharacters"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -791,6 +803,8 @@ export class Gateway {
   private readonly rateLimiter: AuthRateLimiter;
   private readonly credentialStore: CredentialStore;
   private readonly characterStore: CharacterStore;
+  /** Persistence P4 world-tier character sync (fleet mode); null standalone. */
+  private readonly worldCharacters: WorldCharacterSync | null;
   private readonly characterCatalog: ModularCatalog | null;
   private maxCharacters: number;
   /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
@@ -929,6 +943,7 @@ export class Gateway {
     this.presence = opts.presence ?? null;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
+    this.worldCharacters = opts.worldCharacters ?? null;
     this.characterCatalog = opts.characterCatalog ?? null;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.fixedMaxCharacters = opts.maxCharacters !== undefined;
@@ -1082,6 +1097,22 @@ export class Gateway {
     if (this.tickTimer) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
+    }
+    // Fleet mode (P4): shutdown is a logout for every character in
+    // the world — final commit uphill + lock release, awaited but
+    // never blocking teardown on a dead world (the sync logs and the
+    // lock expires on its own). Standalone closes are unchanged.
+    if (this.worldCharacters) {
+      const departing: Promise<boolean>[] = [];
+      for (const s of this.sessions.values()) {
+        if (s.playerEntity === null || !s.character) continue;
+        // A hand-off arrival not yet arrived holds no lock here and
+        // its state is not ours to commit.
+        if (this.handoffArrivals.has(s.clientId)) continue;
+        this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+        departing.push(this.worldCharacters.logout(s.character.id));
+      }
+      await Promise.allSettled(departing);
     }
     for (const s of this.sessions.values()) {
       try {
@@ -1633,6 +1664,11 @@ export class Gateway {
       if (s.playerEntity === null || !s.character) continue;
       this.saveAvatar(this.world.resolveWireId(s.playerEntity));
       n++;
+      // Persistence P4: the same cadence writes uphill to the world
+      // tier, fenced by the session lock. Fire-and-forget: the sync
+      // never throws, and a fenced or failed write only degrades
+      // durability (logged there), never this save cycle.
+      if (this.worldCharacters) void this.worldCharacters.save(s.character.id);
     }
     return n;
   }
@@ -1717,10 +1753,23 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Bye, encodeControl(bye));
   }
 
-  /** The target region took the player: remove the avatar here, unsaved (it isn't ours to save). */
+  /**
+   * The target region took the player: remove the avatar here. (The
+   * entity state itself travels in the migration record.) In fleet
+   * mode (P4) this is also the migration commit point for the
+   * character's session lock: the avatar's final state is staged
+   * into the local store, committed uphill, and the lock releases
+   * here — so the destination can acquire it (fresh epoch) before
+   * the character is playable there. Fire-and-forget like the rest
+   * of the commit path; a failed release leaves the lock to expire.
+   */
   private handoffDrop(entityId: string): void {
     const s = this.handoffSession(entityId);
     if (!s || s.playerEntity === null) return;
+    if (this.worldCharacters && s.character) {
+      this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+      void this.worldCharacters.logout(s.character.id);
+    }
     const eid = this.world.resolveWireId(s.playerEntity);
     this.mastery?.forget(eid);
     this.world.despawn(parseWireEntityId(s.playerEntity).slot);
@@ -1815,6 +1864,18 @@ export class Gateway {
       const a = this.handoffArrivals.get(s.clientId);
       if (!a || a.migrationId !== migrationId) continue;
       if (a.ticketHash !== hash) return null;
+      // Fleet mode (P4): the lock moves with the character. The
+      // destination acquires it (fresh epoch) and seeds its local
+      // cache from the world record here — after the migration
+      // commit, before the character is playable (this hello is what
+      // makes it playable). Refused (the source's release has not
+      // landed yet, or the world is unreachable): the hello fails
+      // like any other auth failure and the arrival stays parked,
+      // so a retry can complete the move.
+      if (this.worldCharacters && s.character) {
+        const res = await this.worldCharacters.login(s.character.id);
+        if (!res.ok) return null;
+      }
       this.handoffArrivals.delete(s.clientId);
       return s.token;
     }
@@ -2088,6 +2149,14 @@ export class Gateway {
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
         this.world.despawn(slot);
+      }
+      // The grace period is over: this is the logout. Fleet mode
+      // (P4) commits the just-saved state uphill and releases the
+      // character's session lock — fire-and-forget, never blocking
+      // the sweep (an unreachable world leaves the local record as
+      // the fallback truth and the lock to expire on its own).
+      if (this.worldCharacters && s.character) {
+        void this.worldCharacters.logout(s.character.id);
       }
       this.tokenToClient.delete(s.token);
       this.sessions.delete(s.clientId);
@@ -3374,6 +3443,10 @@ export class Gateway {
     s.isAdmin = this.devServer || this.admins.has(auth.username);
     // A session that already entered as a character re-enters as it.
     if (auth.character) {
+      if (!(await this.prepareCharacterEntry(auth.character))) {
+        this.sendErrorAndClose(s, 4002, "auth failed");
+        return;
+      }
       this.enterWorld(s, auth.character);
       return;
     }
@@ -3385,7 +3458,12 @@ export class Gateway {
     // No choice asked for: the account's first character, if any.
     const [first] = await this.characterStore.list(s.username);
     if (!this.sessions.has(s.clientId)) return;
-    this.enterWorld(s, first ? this.remember(s, first) : null);
+    const chosen = first ? this.remember(s, first) : null;
+    if (!(await this.prepareCharacterEntry(chosen))) {
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    this.enterWorld(s, chosen);
   }
 
   /** Record `c` as the character of the session's token (see AuthSession.character). */
@@ -3394,6 +3472,21 @@ export class Gateway {
     const auth = this.authSessions.get(s.token);
     if (auth) auth.character = character;
     return character;
+  }
+
+  /**
+   * Persistence P4 (fleet mode): acquire the character's world
+   * session lock and seed the local store from the world record —
+   * both BEFORE the character is playable (enterWorld). True when
+   * the character may enter (always true standalone, and for sessions
+   * without a character). On refusal the caller answers through the
+   * join path's existing error semantics (4002 on a hello, 4005 on
+   * enter_world) — there is no parallel auth path.
+   */
+  private async prepareCharacterEntry(character: { id: number } | null): Promise<boolean> {
+    if (!character || !this.worldCharacters) return true;
+    const res = await this.worldCharacters.login(character.id);
+    return res.ok;
   }
 
   /**
@@ -3543,6 +3636,14 @@ export class Gateway {
       this.sendError(s, 4005, "no such character");
       return;
     }
+    // Fleet mode (P4): the world session lock gates entry; a live
+    // holder elsewhere refuses here, in character selection, so the
+    // player can pick another character.
+    if (!(await this.prepareCharacterEntry(record))) {
+      this.sendError(s, 4005, "that character is already in the world elsewhere");
+      return;
+    }
+    if (!this.sessions.has(s.clientId) || !s.choosingCharacter) return;
     this.enterWorld(s, this.remember(s, record));
   }
 
