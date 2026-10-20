@@ -11,6 +11,9 @@
  *                           durable); "ws://..." -> SurrealDB server
  *                           (durable). Default "mem:".
  *   WORLD_DB_NS / WORLD_DB_DB / WORLD_DB_USER / WORLD_DB_PASS
+ *   WORLD_DB_CONNECT_TIMEOUT_MS  bound on the SurrealDB connect
+ *                                handshake (default 10000; unset or
+ *                                not a positive finite number = default)
  *   WORLD_API_KEY           bootstrap key regions register with.
  *                           Unset = registration disabled.
  *   WORLD_HEARTBEAT_INTERVAL_MS  lease interval (default 5000)
@@ -58,6 +61,12 @@ const TOTAL_WORLD_CHUNK_SPACE = (() => {
 const HOST_REPORT_TIMEOUT_MS = process.env.WORLD_HOST_REPORT_TIMEOUT_MS
   ? Number(process.env.WORLD_HOST_REPORT_TIMEOUT_MS)
   : undefined;
+const DB_CONNECT_TIMEOUT_MS = (() => {
+  const raw = process.env.WORLD_DB_CONNECT_TIMEOUT_MS;
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+})();
 
 async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<void> }> {
   if (DB_URL === "mem:" || DB_URL === "") {
@@ -71,6 +80,7 @@ async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<vo
     database: process.env.WORLD_DB_DB ?? "world",
     username: process.env.WORLD_DB_USER,
     password: process.env.WORLD_DB_PASS,
+    connectTimeoutMs: DB_CONNECT_TIMEOUT_MS,
   });
   await store.connect();
   console.log(`[world] store=surrealdb url=${DB_URL}`);

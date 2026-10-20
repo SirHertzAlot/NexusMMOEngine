@@ -56,6 +56,31 @@ export interface SurrealStoreOptions {
   database: string;
   username?: string;
   password?: string;
+  /** Max time `connect()` waits for the SDK handshake before giving up. */
+  connectTimeoutMs?: number;
+}
+
+/** Default bound on `SurrealWorldStore.connect()`'s SDK handshake. */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+
+/**
+ * Thrown when the SurrealDB SDK's `connect()` does not settle within
+ * the configured timeout. The SDK can pend indefinitely on an
+ * unreachable server (the promise never settles and no handles
+ * remain), which would otherwise hang process boot forever.
+ */
+export class WorldStoreConnectTimeoutError extends Error {
+  readonly url: string;
+  readonly timeoutMs: number;
+
+  constructor(url: string, timeoutMs: number) {
+    super(
+      `timed out connecting to SurrealDB at ${url} after ${timeoutMs} ms`,
+    );
+    this.name = "WorldStoreConnectTimeoutError";
+    this.url = url;
+    this.timeoutMs = timeoutMs;
+  }
 }
 
 const SCHEMA = `
@@ -173,7 +198,47 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async connect(): Promise<void> {
-    await this.db.connect(this.opts.url);
+    // Race the SDK handshake against a timeout: on an unreachable
+    // server `db.connect()` can pend indefinitely (observed live —
+    // the promise never settles), hanging boot with no error to act
+    // on. On timeout, close the half-open client best-effort (itself
+    // raced, so a pending close can't hang the error path), swap in a
+    // fresh client so the store is not poisoned for a retry, and
+    // throw the typed timeout error.
+    const timeoutMs =
+      this.opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.db.connect(this.opts.url),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new WorldStoreConnectTimeoutError(this.opts.url, timeoutMs),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      if (err instanceof WorldStoreConnectTimeoutError) {
+        const halfOpen = this.db;
+        this.db = new Surreal();
+        let closeTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          halfOpen.close().catch(() => undefined),
+          new Promise<void>((resolve) => {
+            closeTimer = setTimeout(resolve, 1_000);
+          }),
+        ]).finally(() => {
+          if (closeTimer) clearTimeout(closeTimer);
+        });
+      }
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     // Sign in before `use`: on SurrealDB 3.2 selecting a namespace that
     // doesn't exist yet fails unless the session may create it.
     if (this.opts.username) {
