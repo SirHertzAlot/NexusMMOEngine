@@ -199,6 +199,7 @@ import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/resu
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
+import { CraftingService } from "./crafting/crafting-service.js";
 import { assertEngineSkillContract } from "./rules/skill-contract.js";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { landDry, riverAtFromMap, surfaceAt } from "./procgen/habitat.js";
@@ -772,6 +773,41 @@ async function main(): Promise<void> {
     move: (item, from, to) => itemsOf().moveItem(item, from, to),
     nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
   });
+  // Crafting (gateway execution): the "craft" GatewayExtension validates
+  // incoming craft/recipe messages with Zod at the boundary and executes
+  // through the @mmo-engine/crafting rules — recipe derivation, mastery
+  // check, material consumption, item grant. The service owns no storage:
+  // mastery reads the MasterySystem's sheets, the crafted item resolves to
+  // a loot-pool def by (base, rank), and raw materials live in a
+  // per-character pouch. The pouch is in-memory for this slice; persisting
+  // it (a SqliteMaterialStore beside SqliteQuestStore) is the follow-up —
+  // the countMaterial/takeMaterial seam makes that swap mechanical.
+  // Gathering (which fills the pouch) is a later slice.
+  const materialPouch = new Map<number, Map<string, number>>();
+  const pouchOf = (character: number): Map<string, number> => {
+    let p = materialPouch.get(character);
+    if (!p) materialPouch.set(character, (p = new Map()));
+    return p;
+  };
+  const craftingService = new CraftingService({
+    rules: crafting,
+    masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
+    countMaterial: (character, material) => pouchOf(character).get(material) ?? 0,
+    takeMaterial: (character, material, qty) => {
+      const p = pouchOf(character);
+      const have = p.get(material) ?? 0;
+      if (have < qty) return false;
+      if (have === qty) p.delete(material);
+      else p.set(material, have - qty);
+      return true;
+    },
+    hasBagRoom: (character) => itemsOf().store.hasRoom(character),
+    grantItem: (character, item, rank) => {
+      const d = itemsOf().defs;
+      const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
+      return def >= 0 && itemsOf().give(character, def).ok;
+    },
+  });
   // What a blow gets through: worn armour per the rules' armourHalf;
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
@@ -1074,7 +1110,7 @@ async function main(): Promise<void> {
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: assembled.systems,
-    extensions: [quests, dungeons],
+    extensions: [quests, dungeons, craftingService],
     items: itemsOf(),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
