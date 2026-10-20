@@ -206,9 +206,16 @@ vertical profile, drainage, earthwork and junction-as-editor come after):
 
 Units stay in settlement mm and are scaled at spawn like `Structure` nodes, so roads
 follow buildings without a wire-format change. A standalone render of settlement
-`0003` (44 junctions / 68 edges) draped over a survey is in the PR. Client rendering
-of the ribbons and splicing the splines into settlement scenes are a follow-up PR, in
-part so nothing touches `world-bake.ts` while `feat/terrain-lazy-cache` bakes.
+`0003` (44 junctions / 68 edges) draped over a survey is in the PR. The vertical
+profile is the next slice: `road-router.ts` walks each edge with A* over the
+heightfield (mirroring `planPlaces`'s `walkRoute`), blocking cells at or below the
+water level and steering around steps steeper than a cart grade (`maxGrade`, default
+8%), so a road bends around a lake or a mountain face instead of cutting through it —
+and falls back to the straight spine only when no gradeable route exists within the
+detour budget. The terrain version is part of the content key, so a re-baked survey
+invalidates the cached draped ribbons. Client rendering of the ribbons and splicing
+the splines into settlement scenes are a follow-up PR, in part so nothing touches
+`world-bake.ts` while `feat/terrain-lazy-cache` bakes.
 
 ## Showing the town: art models with a box fallback (SG4a)
 

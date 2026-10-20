@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS item_events (
   z REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS item_events_item ON item_events (item_id, seq);
+-- EA17: materialized latest-state cache. Updated on every flush; load()
+-- reads this table instead of the O(n^2) MAX(seq) subquery over item_events.
+CREATE TABLE IF NOT EXISTS item_latest (
+  item_id INTEGER PRIMARY KEY,
+  tick INTEGER NOT NULL,
+  kind INTEGER NOT NULL,
+  def INTEGER NOT NULL,
+  owner REAL NOT NULL,
+  slot INTEGER NOT NULL,
+  durability REAL NOT NULL,
+  x REAL NOT NULL,
+  z REAL NOT NULL
+);
 `;
 
 /** What an event says the item became. */
@@ -77,6 +90,10 @@ export class ItemLedger {
   private readonly maxIdStmt: Database.Statement;
   private readonly countStmt: Database.Statement;
   private readonly flushTx: (n: number, at: number) => void;
+  /** EA17: upsert into item_latest (INSERT OR REPLACE by item_id). */
+  private readonly latestUpsertStmt: Database.Statement;
+  /** EA17: remove a tombstoned item from item_latest. */
+  private readonly latestDeleteStmt: Database.Statement;
 
   private capacity = INITIAL_EVENTS;
   private n = 0;
@@ -110,13 +127,28 @@ export class ItemLedger {
       "INSERT INTO item_events (item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     this.liveStmt = this.db.prepare(
-      `SELECT item_id AS id, kind, def, owner, slot, durability, x, z FROM item_events e
-       WHERE kind != ${LedgerKind.Destroy}
-         AND seq = (SELECT MAX(seq) FROM item_events WHERE item_id = e.item_id)
-       ORDER BY item_id`,
+      `SELECT item_id AS id, kind, def, owner, slot, durability, x, z FROM item_latest ORDER BY item_id`,
     );
     this.maxIdStmt = this.db.prepare("SELECT COALESCE(MAX(item_id), 0) AS id FROM item_events");
     this.countStmt = this.db.prepare("SELECT COUNT(*) AS n FROM item_events");
+    // EA17: keep item_latest in sync on every flush.
+    this.latestUpsertStmt = this.db.prepare(
+      `INSERT INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(item_id) DO UPDATE SET
+         tick = excluded.tick, kind = excluded.kind, def = excluded.def,
+         owner = excluded.owner, slot = excluded.slot, durability = excluded.durability,
+         x = excluded.x, z = excluded.z`,
+    );
+    this.latestDeleteStmt = this.db.prepare("DELETE FROM item_latest WHERE item_id = ?");
+    // EA17: backfill item_latest from item_events on open (existing DBs).
+    this.db.exec(`
+      INSERT OR IGNORE INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z)
+      SELECT e.item_id, e.tick, e.kind, e.def, e.owner, e.slot, e.durability, e.x, e.z
+      FROM item_events e
+      WHERE e.kind != ${LedgerKind.Destroy}
+        AND e.seq = (SELECT MAX(seq) FROM item_events WHERE item_id = e.item_id)
+    `);
     this.flushTx = this.db.transaction((count: number, at: number) => {
       for (let i = 0; i < count; i++) {
         this.insertStmt.run(
@@ -131,6 +163,22 @@ export class ItemLedger {
           this.xs[i],
           this.zs[i],
         );
+        // EA17: mirror the latest state into item_latest.
+        if (this.kinds[i] === LedgerKind.Destroy) {
+          this.latestDeleteStmt.run(this.ids[i]);
+        } else {
+          this.latestUpsertStmt.run(
+            this.ids[i],
+            this.ticks[i],
+            this.kinds[i],
+            this.defs[i],
+            this.owners[i],
+            this.slots[i],
+            this.durs[i],
+            this.xs[i],
+            this.zs[i],
+          );
+        }
       }
     });
   }

@@ -12,9 +12,12 @@ import {
   ModuleRegistry,
   ModulesError,
   applyModules,
+  buildNative,
+  checkNative,
   fetchModules,
   loadersFromGlob,
   saveEnabled,
+  type ModuleInfo,
   type ModuleProblem,
 } from "../modules-client.js";
 import { Button, MIcon, SectionTitle, Switch, notify } from "./components.js";
@@ -36,6 +39,74 @@ export function useModuleRegistry(): ModuleRegistry {
 }
 
 const sameOrder = (a: string[] | null, b: string[] | null): boolean => a !== null && b !== null && a.join(" ") === b.join(" ");
+
+/**
+ * EA10: Build/Check buttons for a module's native addon.
+ * Check reports whether the .node file exists; Build runs node-gyp.
+ */
+function NativeButtons({ module }: { module: ModuleInfo }): React.JSX.Element {
+  const [built, setBuilt] = React.useState<boolean | null>(null);
+  const [building, setBuilding] = React.useState(false);
+  const [log, setLog] = React.useState<string | null>(null);
+
+  async function check(): Promise<void> {
+    try {
+      const r = await checkNative(module.name);
+      setBuilt(r.built);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function build(): Promise<void> {
+    setBuilding(true);
+    setLog(null);
+    try {
+      const r = await buildNative(module.name);
+      setBuilt(r.built);
+      if (!r.built) setLog(`Build finished but ${module.native?.entry} not found.\n${r.stderr}`);
+      else setLog(null);
+    } catch (e) {
+      setLog(e instanceof Error ? e.message : String(e));
+      setBuilt(false);
+    } finally {
+      setBuilding(false);
+    }
+  }
+
+  // Check on mount.
+  React.useEffect(() => {
+    void check();
+  }, [module.name]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-xs">
+        <Tag>{`native · ${module.native?.systems.length ?? 0} system${(module.native?.systems.length ?? 0) === 1 ? "" : "s"}`}</Tag>
+        {built === null ? (
+          <span style={{ color: "var(--m3-on-surface-variant)" }}>checking…</span>
+        ) : built ? (
+          <span style={{ color: "var(--m3-primary)" }}>built ✓</span>
+        ) : (
+          <span style={{ color: "var(--m3-error)" }}>not built</span>
+        )}
+        <span className="ml-auto flex gap-1">
+          <Button size="sm" onClick={() => void check()} disabled={building}>
+            Check
+          </Button>
+          <Button size="sm" onClick={() => void build()} disabled={building}>
+            {building ? "Building…" : "Build"}
+          </Button>
+        </span>
+      </div>
+      {log && (
+        <pre className="max-h-32 overflow-auto rounded p-2 text-[11px]" style={{ background: "var(--m3-surface-2)" }}>
+          {log}
+        </pre>
+      )}
+    </div>
+  );
+}
 
 export function ModulesPanel(): React.JSX.Element {
   const reg = useModuleRegistry();
@@ -134,6 +205,7 @@ export function ModulesPanel(): React.JSX.Element {
               ))}
               {m.editor && reg.errors[m.name] && <Tag>{`editor entry failed: ${reg.errors[m.name]}`}</Tag>}
             </div>
+            {m.native && <NativeButtons module={m} />}
           </div>
         ))}
         {state.invalid.map((m) => (
