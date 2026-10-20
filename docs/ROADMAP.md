@@ -224,7 +224,7 @@ one propagates to every panel: audit in the project library
 | M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | ✅ | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
 | M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | ✅ | #207, in main with #209; flow gained Undo and Redo |
 | M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | ✅ | #210: `useTableDrafts` for the rules tables and gameplay grids, plus `sameValue` |
-| M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 📋 | Audit first, then a shared hook |
+| M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 🚧 | Audit done; added a uniform `create` route to `files-host.ts` (POST /api/editor/files/:kind {name}, template-driven + validated, refused on conflict/invalid — no more hand-rolled `PUT {name}`). 10/10 files-host tests green, editor tsc clean. Remaining stragglers: import/export (missing `doc-io.ts`) and the client `useDocumentLifecycle` (new/import/export/load/retry) hook. |
 | M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
 | M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
 
