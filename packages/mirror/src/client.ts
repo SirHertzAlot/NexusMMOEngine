@@ -220,6 +220,13 @@ export class MirrorClient {
   private socket: SocketLike | null = null;
   /** The server this client talks to, and the name it gave in its hello (for a region redirect). */
   private url: string | null = null;
+  /**
+   * The gateway this client talks to: the region, or a dungeon instance's own port.
+   * Where its Pcg service is (null until it joins).
+   */
+  get endpoint(): string | null {
+    return this.url;
+  }
   private clientName = "";
   /** A region redirect is in progress: socket closes are part of it, not the end. */
   private handingOff = false;

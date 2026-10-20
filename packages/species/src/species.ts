@@ -1,22 +1,29 @@
 /**
  * Species: who lives in the world and where, as data (docs/DUNGEONS-AND-LOOT.md §4).
  *
- *  - kind: organic (goblins, orcs, trolls: living needs, the open world),
- *    beast, undead and otherworldly (mostly dungeons), demon (manifests
- *    only in dungeons, where emotion and lifeforce are to be had);
- *  - habitat: how well each open-world biome suits it, and which dungeon
- *    themes and depths it haunts;
+ *  - kind: organic (the open world's living creatures), beast, undead and
+ *    otherworldly (mostly dungeons), demon (manifests only in dungeons,
+ *    where emotion and lifeforce are to be had);
+ *  - habitat: which dungeon themes and depths it haunts (open-world
+ *    placement is needs-driven now — see needs.ts — not biome tables);
+ *  - needs: what the species requires, as rows in the need catalog
+ *    (content/species/needs.json), scored by suitability();
  *  - what keeps it alive, how many come together, which spawn tiers it
  *    can fill (1 rank and file, 3 elite), the lowest dungeon rank it
  *    appears at, and room archetypes that draw it (a ritual chamber, for
  *    a demon).
  *
- * The engine ships our game's roster; a game adds or replaces species with
- * a JSON file of the same shape (`loadSpecies`).
+ * The engine ships no species rows in code. The sample pack lives in
+ * content/species/ (marked as sample in its README); a game adds or
+ * replaces species with a JSON file of the same shape (`loadSpecies`),
+ * or points MMO_SPECIES_DIR at its own species directory.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { SpeciesNeedsSchema, toNeedCatalog, type NeedCatalog, type NeedCatalogFile } from "./needs.js";
 
 export const KINDS = ["organic", "beast", "undead", "demon", "otherworldly"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -31,7 +38,11 @@ export const SpeciesSchema = z.strictObject({
   tags: z.array(z.string()).default([]),
   habitat: z
     .strictObject({
-      /** Biome id -> how well it suits (0 or absent: never there). */
+      /**
+       * Legacy biome weights, kept for games that still author them. New
+       * content uses `needs` + suitability() instead; the sample pack
+       * carries no world table.
+       */
       world: weights.default({}),
       /** Where it lives underground. */
       dungeon: z
@@ -46,6 +57,8 @@ export const SpeciesSchema = z.strictObject({
     .prefault({}),
   /** What keeps it alive (drives behaviour and where it gathers). */
   sustenance: z.array(z.enum(SUSTENANCE)).min(1),
+  /** What the species requires, scored by suitability(). No habitat tables. */
+  needs: SpeciesNeedsSchema,
   /** How many come together, [min, max]. */
   pack: z.tuple([z.number().int().min(1), z.number().int().min(1)]).default([1, 1]),
   /** Spawn tiers it can fill, [min, max] of 1 (rank and file) … 3 (elite). */
@@ -75,112 +88,112 @@ export function kindsCoexist(a: Kind, b: Kind): boolean {
   return !HOSTILE_KINDS.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 }
 
-const s = (x: z.input<typeof SpeciesSchema>): Species => SpeciesSchema.parse(x);
+/**
+ * The species directory: MMO_SPECIES_DIR when set, else the repo's
+ * content/species found by walking up from this module. Throws loudly
+ * when there is no species data at all — the engine never invents a
+ * roster.
+ */
+export function defaultSpeciesDir(): string {
+  const env = process.env.MMO_SPECIES_DIR;
+  if (env) {
+    if (!existsSync(join(env, "species.json"))) throw new Error(`MMO_SPECIES_DIR: no species.json in ${env}`);
+    return env;
+  }
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    const cand = join(dir, "content", "species");
+    if (existsSync(join(cand, "species.json"))) return cand;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error("species: no content/species/species.json found above this module (set MMO_SPECIES_DIR to point at one)");
+}
 
-/** Our game's roster. */
-export const BUILTIN_SPECIES: Roster = {
-  // Organics: the open world, by biome; living needs.
-  goblin: s({
-    name: "Goblin", kind: "organic", sustenance: ["food", "water", "rest"], pack: [3, 6], tier: [1, 3],
-    habitat: { world: { forest: 2, swamp: 2, plains: 1, mountains: 1 }, dungeon: { themes: { verdant: 1, ancient: 0.5 }, depth: [0, 0.5] } },
-    drawnTo: { storeroom: 2, barracks: 2 },
-  }),
-  orc: s({
-    name: "Orc", kind: "organic", sustenance: ["food", "water", "rest"], pack: [2, 4], tier: [1, 3],
-    habitat: { world: { plains: 2, mountains: 2, desert: 1, volcanic: 1 }, dungeon: { themes: { molten: 1, ancient: 0.5 }, depth: [0, 0.6] } },
-    drawnTo: { armoury: 2, barracks: 2, forge: 1.5 },
-  }),
-  troll: s({
-    name: "Troll", kind: "organic", sustenance: ["food", "rest"], pack: [1, 2], tier: [2, 3], boss: true, minRank: 2,
-    habitat: { world: { mountains: 2, tundra: 2, swamp: 1, snow: 1 }, dungeon: { themes: { frost: 1, verdant: 0.5 }, depth: [0.3, 1] } },
-    drawnTo: { grotto: 2, icehall: 2 },
-  }),
-  ogre: s({
-    name: "Ogre", kind: "organic", sustenance: ["food", "rest"], pack: [1, 1], tier: [3, 3], boss: true,
-    habitat: { world: { mountains: 1, swamp: 1 }, dungeon: { themes: { verdant: 2, molten: 1, frost: 1, ancient: 1 }, depth: [0.6, 1] } },
-    drawnTo: { throne: 2, storeroom: 1.5 },
-  }),
-  // Beasts: the open world's wildlife.
-  wolf: s({ name: "Wolf", kind: "beast", sustenance: ["food", "water"], pack: [3, 6], tier: [1, 2], habitat: { world: { forest: 2, tundra: 2, snow: 1, plains: 1 } } }),
-  bear: s({ name: "Bear", kind: "beast", sustenance: ["food", "water", "rest"], pack: [1, 1], tier: [2, 3], habitat: { world: { forest: 2, mountains: 1, tundra: 1 } } }),
-  boar: s({ name: "Boar", kind: "beast", sustenance: ["food", "water"], pack: [2, 4], tier: [1, 1], habitat: { world: { forest: 2, plains: 1, rainforest: 1 } } }),
-  "giant-spider": s({
-    name: "Giant spider", kind: "beast", sustenance: ["food"], pack: [2, 5], tier: [1, 2],
-    habitat: { world: { rainforest: 2, swamp: 1 }, dungeon: { themes: { verdant: 2, grim: 1, ancient: 1 }, depth: [0, 0.7] } },
-    drawnTo: { grotto: 2, storeroom: 1.5 },
-  }),
-  // Undead: dungeons, mostly grim and ancient; tireless.
-  skeleton: s({
-    name: "Skeleton", kind: "undead", sustenance: ["necromancy"], pack: [2, 6], tier: [1, 2],
-    habitat: { dungeon: { themes: { grim: 3, ancient: 2, frost: 1 }, depth: [0, 0.8] } }, drawnTo: { crypt: 2, armoury: 1.5 },
-  }),
-  ghoul: s({
-    name: "Ghoul", kind: "undead", sustenance: ["lifeforce"], pack: [2, 4], tier: [1, 3],
-    habitat: { dungeon: { themes: { grim: 3, frost: 1 }, depth: [0.1, 0.9] } }, drawnTo: { crypt: 2, storeroom: 1.5 },
-  }),
-  wraith: s({
-    name: "Wraith", kind: "undead", sustenance: ["lifeforce", "emotion"], pack: [1, 3], tier: [2, 3], minRank: 2,
-    habitat: { dungeon: { themes: { grim: 2, ancient: 2, frost: 2 }, depth: [0.4, 1] } }, drawnTo: { chapel: 2, library: 2 },
-  }),
-  "bone-champion": s({
-    name: "Bone champion", kind: "undead", sustenance: ["necromancy"], pack: [1, 1], tier: [3, 3], boss: true,
-    habitat: { dungeon: { themes: { grim: 2, ancient: 2, frost: 2 }, depth: [0.6, 1] } }, drawnTo: { throne: 2, crypt: 2 },
-  }),
-  lich: s({
-    name: "Lich", kind: "undead", sustenance: ["necromancy"], pack: [1, 1], tier: [3, 3], boss: true, minRank: 3,
-    habitat: { dungeon: { themes: { grim: 3, ancient: 2, frost: 1 }, depth: [0.7, 1] } }, drawnTo: { throne: 3, library: 2, ritual: 2 },
-  }),
-  // Demons: manifest only in dungeons, feeding on emotion and lifeforce.
-  imp: s({
-    name: "Imp", kind: "demon", sustenance: ["emotion"], pack: [3, 6], tier: [1, 1],
-    habitat: { dungeon: { themes: { molten: 3, grim: 1, ancient: 1 }, depth: [0, 0.7] } }, drawnTo: { ritual: 3, forge: 2 },
-  }),
-  fiend: s({
-    name: "Fiend", kind: "demon", sustenance: ["emotion", "lifeforce"], pack: [1, 3], tier: [2, 3], minRank: 2,
-    habitat: { dungeon: { themes: { molten: 3, grim: 2 }, depth: [0.3, 1] } }, drawnTo: { ritual: 3, chapel: 2 },
-  }),
-  "infernal-brute": s({
-    name: "Infernal brute", kind: "demon", sustenance: ["lifeforce"], pack: [1, 1], tier: [3, 3], boss: true,
-    habitat: { dungeon: { themes: { molten: 3, grim: 1 }, depth: [0.6, 1] } }, drawnTo: { throne: 2, forge: 2 },
-  }),
-  "pit-lord": s({
-    name: "Pit lord", kind: "demon", sustenance: ["lifeforce"], pack: [1, 1], tier: [3, 3], boss: true, minRank: 4,
-    habitat: { dungeon: { themes: { molten: 3, grim: 1 }, depth: [0.7, 1] } }, drawnTo: { throne: 3, ritual: 3 },
-  }),
-  // Otherworldly: the deep dwellers.
-  "elemental-shard": s({
-    name: "Elemental shard", kind: "otherworldly", sustenance: ["none"], pack: [1, 3], tier: [1, 3],
-    habitat: { dungeon: { themes: { molten: 2, frost: 3, ancient: 1 }, depth: [0.2, 1] } }, drawnTo: { icehall: 2, forge: 2 },
-  }),
-  "void-watcher": s({
-    name: "Void watcher", kind: "otherworldly", sustenance: ["emotion"], pack: [1, 1], tier: [3, 3], boss: true, minRank: 3,
-    habitat: { dungeon: { themes: { ancient: 2, verdant: 1, frost: 1 }, depth: [0.8, 1] } }, drawnTo: { throne: 2, library: 2 },
-  }),
-};
-
-/** Our roster with a game's file merged over it (by id). Throws with every problem listed. */
-export function loadSpecies(file?: string): Roster {
-  if (!file) return BUILTIN_SPECIES;
+function readJsonFile(file: string): unknown {
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(file, "utf8"));
   } catch (e) {
     throw new Error(`${file}: ${(e as Error).message}`);
   }
-  const parsed = RosterSchema.safeParse(raw);
+  return raw;
+}
+
+function parseRosterFile(file: string): Roster {
+  const parsed = RosterSchema.safeParse(readJsonFile(file));
   if (!parsed.success) throw new Error(`${file}:\n${parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")}`);
-  const roster = { ...BUILTIN_SPECIES, ...parsed.data };
+  return parsed.data;
+}
+
+/** The need catalog (content/species/needs.json). Throws with every problem listed. */
+export function loadNeedCatalog(dir: string = defaultSpeciesDir()): NeedCatalog {
+  const file = join(dir, "needs.json");
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(file, "utf8"));
+  } catch (e) {
+    throw new Error(`${file}: ${(e as Error).message}`);
+  }
+  try {
+    return toNeedCatalog(raw as NeedCatalogFile);
+  } catch (e) {
+    const issues = (e as { issues?: { path: (string | number)[]; message: string }[] }).issues;
+    if (issues) throw new Error(`${file}:\n${issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")}`);
+    throw e;
+  }
+}
+
+function checkRoster(roster: Roster, catalog: NeedCatalog | undefined, label: string): void {
   const problems: string[] = [];
   for (const [id, sp] of Object.entries(roster)) {
+    if (sp.needs.speciesId !== id) problems.push(`${id}.needs.speciesId: ${sp.needs.speciesId} does not match the roster key`);
     if (sp.pack[0] > sp.pack[1]) problems.push(`${id}.pack: min above max`);
     if (sp.tier[0] > sp.tier[1]) problems.push(`${id}.tier: min above max`);
     if (sp.kind === "demon" && Object.values(sp.habitat.world).some((w) => w > 0)) problems.push(`${id}: demons manifest only in dungeons (habitat.world must be empty)`);
+    if (catalog) {
+      for (const needId of Object.keys(sp.needs.needs)) {
+        if (!catalog.byId.has(needId)) problems.push(`${id}.needs: unknown need id ${needId}`);
+      }
+    }
   }
-  if (problems.length) throw new Error(`${file}:\n${problems.map((p) => `  ${p}`).join("\n")}`);
+  if (problems.length) throw new Error(`${label}:\n${problems.map((p) => `  ${p}`).join("\n")}`);
+}
+
+/**
+ * The sample pack's roster (content/species/species.json), or a game's file
+ * merged over it (by id). Throws with every problem listed. Pass a catalog
+ * to also validate that every referenced need id exists.
+ */
+export function loadSpecies(file?: string, catalog?: NeedCatalog): Roster {
+  const base = parseRosterFile(join(defaultSpeciesDir(), "species.json"));
+  if (!file) {
+    checkRoster(base, catalog, "species.json");
+    return base;
+  }
+  const overlay = parseRosterFile(file);
+  const roster = { ...base, ...overlay };
+  checkRoster(roster, catalog, file);
   return roster;
 }
 
-/** The open world's spawn table for a biome: species that live there, by weight. */
+/**
+ * The sample pack as one validated unit: roster + need catalog, with every
+ * species' referenced need ids checked against the catalog. This is the
+ * boot path for needs-driven placement.
+ */
+export function loadSpeciesPack(dir: string = defaultSpeciesDir()): { roster: Roster; catalog: NeedCatalog } {
+  const catalog = loadNeedCatalog(dir);
+  const roster = loadSpecies(undefined, catalog);
+  return { roster, catalog };
+}
+
+/**
+ * Legacy open-world spawn table for a biome: species that still carry
+ * habitat.world weights. Superseded by suitability() for needs-driven
+ * content; kept so games' existing world tables keep working.
+ */
 export function worldSpawnTable(roster: Roster, biome: string): { id: string; weight: number }[] {
   return Object.entries(roster)
     .flatMap(([id, sp]) => {

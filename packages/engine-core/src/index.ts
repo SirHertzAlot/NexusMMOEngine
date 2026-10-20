@@ -39,6 +39,7 @@ export {
   Appearance,
   Action,
   WorldItem,
+  StructuralIntegrity,
 } from "./components.js";
 export * from "./items/index.js";
 
@@ -265,8 +266,6 @@ export type {
 export { CraftingService } from "./crafting/crafting-service.js";
 export type {
   AtomicCraftExecutor,
-  CraftRequest,
-  CraftResult,
   CraftingServiceOptions,
 } from "./crafting/crafting-service.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";

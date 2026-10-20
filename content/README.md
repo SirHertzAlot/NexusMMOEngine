@@ -1,3 +1,42 @@
+# content/ — the sample game pack
+
+This directory is the engine's **sample game pack**: a complete, playable set
+of game content that ships with the engine so it boots and runs out of the box.
+It is not the engine. A real game ships its own content directory and points
+the engine at it with the `MMO_*` environment seams — no engine code changes,
+no forking.
+
+**Engine/game split:** the engine owns code, schemas, loaders, systems and
+verbs (generics). Content owns the operating criteria: every number, name and
+table in this directory is a game decision, not an engine default. The engine
+boots with content missing or empty — an empty quest set, no dungeons, no
+crafting file, and skill-less rules are all valid states. The one hard
+requirement is the engine's skill contract: a pack that declares skills must
+declare every id the engine's systems read (named in
+`packages/engine-core/src/rules/skill-contract.ts`), or boot fails loud.
+
+**Pointing at your own pack** (any seam left at default reads this sample pack;
+a missing file/dir at a seam means "that system has no content", never a boot
+failure; a present-but-invalid file still stops the boot with every problem
+named):
+
+| Env var        | Content                              | Default                           |
+| -------------- | ------------------------------------ | --------------------------------- |
+| `MMO_RULES`    | rules folder (skills, items, combat…) | `content/rules`                   |
+| `MMO_CRAFTING` | crafting recipes file                | `content/crafting/recipes.json`   |
+| `MMO_QUESTS`   | quest + dialog content dir           | `content/quests`                  |
+| `MMO_DUNGEONS` | dungeon rules + entrances dir        | `content/dungeons`                |
+| `MMO_COMBAT`   | combat moves file                    | `content/combat/moves.json`       |
+| `MMO_SPECIES`  | species overlay file                 | `content/species/species.json`    |
+| `MMO_MODULES`  | enabled module set document          | `content/modules.json`           |
+| `MMO_SCENE`    | boot scene file                      | (none)                            |
+| `MMO_SCENES` / `MMO_PREFABS` | scene dirs / prefab files | `content/scenes`, `content/prefabs` |
+| `MMO_BIOMES`   | biome registry                       | `content/biomes.json`             |
+| `MMO_ECOLOGY`  | ecology plan file                    | `content/ecology/wilds.ecology.json` |
+| `MMO_PCG_ASSETS` | procgen art                        | `content/pcg`                     |
+
+---
+
 # content/
 
 Game content the engine generates from, committed with the code:
@@ -61,7 +100,7 @@ Game content the engine generates from, committed with the code:
   Not to be confused with the single material definitions beside it
   (`materials/<name>.json`). Edited in the Materials view of Art & audio.
 
-- `crafting/recipes.json` — crafting costs (refining, element reagents, fittings, units, skills); checked at server boot (`MMO_CRAFTING` overrides) and read by `npm run craft:report`.
+- `crafting/recipes.json` — crafting costs (refining, element reagents, fittings, units, skills); checked at server boot (`MMO_CRAFTING` overrides); a missing file means no crafting. Read by `npm run craft:report`.
 
 - `species/species.json` — optional overlay merged over the built-in species roster (`MMO_SPECIES` overrides); the editor's Species grid writes it.
 

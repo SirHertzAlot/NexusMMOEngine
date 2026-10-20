@@ -28,7 +28,25 @@ const RETRY_MS = 30_000;
 export function buildPcgGeometry(mesh: PcgResultPayload): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(mesh.position, 3));
-  geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+  // A mesh with material slots (a dungeon shell) draws as one group per slot, the triangles sorted so each slot's are
+  // contiguous: the material array is indexed by slot, and the slot names ride along for the caller to pick materials by.
+  if (mesh.materials && mesh.materials.length > 1 && mesh.triangleMaterial && mesh.triangleMaterial.length * 3 === mesh.index.length) {
+    const slots = mesh.materials.length;
+    const counts = new Uint32Array(slots);
+    for (const s of mesh.triangleMaterial) counts[s]++;
+    const starts = new Uint32Array(slots);
+    for (let s = 1; s < slots; s++) starts[s] = starts[s - 1] + counts[s - 1] * 3;
+    const fill = starts.slice();
+    const sorted = new Uint32Array(mesh.index.length);
+    for (let t = 0; t < mesh.triangleMaterial.length; t++) {
+      const s = mesh.triangleMaterial[t];
+      sorted.set(mesh.index.subarray(t * 3, t * 3 + 3), fill[s]);
+      fill[s] += 3;
+    }
+    geometry.setIndex(new THREE.BufferAttribute(sorted, 1));
+    for (let s = 0; s < slots; s++) if (counts[s] > 0) geometry.addGroup(starts[s], counts[s] * 3, s);
+    geometry.userData.slots = mesh.materials;
+  } else geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
   if (mesh.normal) geometry.setAttribute("normal", new THREE.BufferAttribute(mesh.normal, 3));
   else geometry.computeVertexNormals();
   const n = mesh.position.length / 3;
@@ -64,6 +82,8 @@ export class PcgMeshes implements PropModels {
     private readonly now: () => number = () => performance.now(),
     /** Decode meshes and build their BVHs off the main thread. */
     private readonly workers?: WorkerRequester,
+    /** Materials for a mesh with material slots, by slot name (a dungeon shell's palette); absent: its vertex colours. */
+    private readonly materialFor?: (slots: readonly string[]) => THREE.Material[] | undefined,
   ) {}
 
   /** Download, decode (worker or inline) and, with workers, give it a BVH. */
@@ -80,7 +100,7 @@ export class PcgMeshes implements PropModels {
     return this.ready.size;
   }
 
-  model(assetHash: number, variant: number): { key: string; geometry: THREE.BufferGeometry; lods: LodLevel[] } | null {
+  model(assetHash: number, variant: number): { key: string; geometry: THREE.BufferGeometry; material?: THREE.Material[]; lods: LodLevel[] } | null {
     if (this.disposed) return null;
     if (!this.assets) {
       this.list();
@@ -91,7 +111,11 @@ export class PcgMeshes implements PropModels {
     const vi = (variant >>> 0) % Math.max(1, info.variants);
     const key = `${info.assetHash}:${vi}:${info.revision}`;
     const ready = this.ready.get(key);
-    if (ready) return { key, ...ready };
+    if (ready) {
+      const slots = ready.geometry.userData.slots as string[] | undefined;
+      const material = slots ? this.materialFor?.(slots) : undefined;
+      return { key, ...ready, ...(material ? { material } : {}) };
+    }
     this.fetchMesh(key, info.assetHash, vi);
     return null;
   }

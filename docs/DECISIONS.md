@@ -2,6 +2,21 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-20 — Road vertical profile is terrain-conformant A* routing over the heightfield, owned by engine-core.**
+  A straight spline between two junctions will cut through a lake or carve a
+  mountainside. The road router (`packages/engine-core/src/terrain/road-router.ts`)
+  walks each edge with A* over a heightfield grid, mirroring the route walker in
+  `@mmo-engine/settlement`'s `planPlaces` (`walkRoute`): cells at or below the water
+  level (or flagged wet) are blocked, and steps steeper than a cart grade (`maxGrade`,
+  default 8%) are avoided so a road bends around a water body or ridge instead of
+  through it, and falls back to the straight spine only when no gradeable route exists
+  within the detour budget. The grid is corridor-bounded and coarsened per edge so the
+  search stays bounded on 16–32 km worlds; 8-connected with no cutting past a blocked
+  cell, Douglas-Peucker simplified. The terrain version (survey hash) is part of the
+  content key, so a re-baked terrain invalidates cached draped ribbons. Water, sea level,
+  cart grade and detour are `RouteOptions` (data-driven), so a world's rules tune grades
+  without code. `splineRoads` (the smooth spine, PR #326) stays for the gradeable case.
+
 - **2026-10-19 — Road alignment is a content-addressed Catmull-Rom spline spine over the junction graph, owned by engine-core.**
   Settlement roads ship as mm junctions + edges (`roads.nodes`/`edges`); SG2b
   computes their horizontal alignment in `packages/engine-core/src/terrain/roads.ts`

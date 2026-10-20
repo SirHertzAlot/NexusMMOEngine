@@ -1,0 +1,11 @@
+{
+  "name": "liveops",
+  "version": "0.1.0",
+  "description": "Editor module: Live operations: server & world overview, admin console, telemetry. Disable it and the panels leave their workspaces without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

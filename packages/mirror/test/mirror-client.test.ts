@@ -151,6 +151,13 @@ describe("MirrorClient handshake", () => {
     assert.equal(welcome.session_token, "ab".repeat(32));
   });
 
+  it("reports the gateway it joined (where its Pcg service is), not yet joined: null", async () => {
+    const client = new MirrorClient(() => new FakeSocket(), { onWelcome() {}, onState() {}, onError() {}, onClose() {} });
+    assert.equal(client.endpoint, null);
+    const joined = await connectClient({ token: "tok".padEnd(64, "0") });
+    assert.equal(joined.client.endpoint, "ws://localhost:7777");
+  });
+
   it("sends a token hello for reconnects", async () => {
     const { socket } = await connectClient({ token: "tok".padEnd(64, "0") });
     const hello = decodeControl<HelloMessage>(

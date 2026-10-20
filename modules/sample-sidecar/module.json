@@ -1,0 +1,11 @@
+{
+  "name": "sample-sidecar",
+  "version": "0.1.0",
+  "description": "Sample sidecar module (EA11): a tiny HTTP health-check server demonstrating the sidecar lifecycle.",
+  "engine": "0.1.0",
+  "sidecar": {
+    "command": "node sidecar.js",
+    "port": 49876,
+    "health": "/health"
+  }
+}

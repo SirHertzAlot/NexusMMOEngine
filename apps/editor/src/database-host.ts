@@ -41,6 +41,8 @@ export interface DatabaseCore {
   /** EA17: snapshot caches. */
   listDbCaches(): unknown;
   refreshDbCache(name: string): Promise<unknown>;
+  /** EA17: performance diagnostics per database. */
+  dbPerformance(db: string): Promise<unknown>;
 }
 
 export interface DatabaseRequest {
@@ -49,6 +51,8 @@ export interface DatabaseRequest {
   route: string;
   contentType?: string;
   body: unknown;
+  /** URL query parameters (for GET routes). */
+  query?: Record<string, string>;
 }
 export interface DatabaseDeps {
   core: DatabaseCore;
@@ -70,6 +74,12 @@ export async function handleDatabase(deps: DatabaseDeps, req: DatabaseRequest): 
     if (req.method === "GET" && req.route === "log") return ok({ log: deps.core.log(200) });
     if (req.method === "GET" && req.route === "functions") return ok({ functions: deps.core.listDbFunctions() });
     if (req.method === "GET" && req.route === "caches") return ok({ caches: deps.core.listDbCaches() });
+    // EA17: GET /api/editor/database/performance?db=<name>
+    if (req.method === "GET" && req.route === "performance") {
+      const db = (req.query as Record<string, string> | undefined)?.db;
+      if (typeof db !== "string" || db.length === 0) return bad("need ?db=<name>");
+      return ok({ performance: await deps.core.dbPerformance(db) });
+    }
     if (req.method !== "POST") return { status: 404, body: { ok: false, error: "not found" } };
     if (!/^application\/json\b/i.test(req.contentType ?? "")) {
       return { status: 415, body: { ok: false, error: "send application/json" } };
