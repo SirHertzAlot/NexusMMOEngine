@@ -183,6 +183,33 @@ What is still a plain grid: the roads (SG2b brings engineered alignments,
 profiles and drainage, spec §28) and the layout does not yet bend to a river
 or a slope; each building stands on the highest ground under its footprint at spawn.
 
+## §28 Road horizontal alignment (SG2b)
+
+Roads arrive in a settlement manifest as a graph: `roads.nodes` (junctions, `x`/`z`
+in mm) and `roads.edges` (`from`/`to` with `roadClass`, `widthMm`, `surface`). Until
+this slice they are baked as straight `paved_road` slabs along each edge. SG2b turns
+that graph into a smooth, terrain-draped alignment in
+`packages/engine-core/src/terrain/roads.ts` (the horizontal-alignment spine; the
+vertical profile, drainage, earthwork and junction-as-editor come after):
+
+- `buildPaths` chains the graph into runs through degree-2 junctions — long straight
+  streets stay one spline; chains end at corners, T-junctions and crossings. Edges of
+  a different `roadClass` or `widthMm` end a chain, so each ribbon is a single class.
+- `catmullRom` samples each spine at a caller-chosen density with a tension knob
+  (0 = uniform smooth, 1 = linear); endpoints are exact; open curves use mirrored
+  endpoint tangents.
+- `splineRoads` drapes the centerline and left/right rails onto a `heightAt(x,z)`
+  surface (world mm) into a ribbon mesh the renderer draws.
+- `canonicalRoads` + `roadNetworkHash` (sha256) give the baker the same
+  content-addressed key as `TerrainCache`/`heightsFingerprint`: recompute the spline
+  data only when road geometry or render density changes.
+
+Units stay in settlement mm and are scaled at spawn like `Structure` nodes, so roads
+follow buildings without a wire-format change. A standalone render of settlement
+`0003` (44 junctions / 68 edges) draped over a survey is in the PR. Client rendering
+of the ribbons and splicing the splines into settlement scenes are a follow-up PR, in
+part so nothing touches `world-bake.ts` while `feat/terrain-lazy-cache` bakes.
+
 ## Showing the town: art models with a box fallback (SG4a)
 
 A `Structure` node may name an art model (`asset`, a catalog id). The server
