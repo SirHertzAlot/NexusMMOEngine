@@ -113,3 +113,71 @@ not by exit code alone. That discipline mattered twice:
 changes were needed anywhere — the gap was purely that fresh checkouts
 never get their `build/` outputs.
 
+## Step 3 — Boot smoke (2026-10-20)
+
+Two repeatable scripts, committed with this section:
+
+- `scripts/boot-smoke.mjs` — standalone region (no `WORLD_URL`).
+- `scripts/boot-smoke-fleet.mjs` — SurrealDB + world server + a region
+  that registers with the world.
+
+Both boot the real entrypoint (`packages/engine-core/dist/src/server.js`),
+seed a login with the repo's own `seed-user` tool, drive the wire
+protocol with the repo's own `HeadlessClient`
+(hello → welcome → snapshot → delta), then SIGTERM and verify the exit
+and that the ports are free.
+
+One wrinkle worth knowing: `npm run server` chains `npm run build && node
+dist/src/server.js`, and the build's final `tsc` step exits non-zero on
+main's 5 pre-existing type errors (3× `src/dungeons/content.ts` TS2739
+missing `props`/`looks`/`wallBodyRadiusM`/`teleportStepM`; 2×
+crafting-rules `| null` TS2322 in `src/server.ts` and
+`test/crafting-service.test.ts`). tsc still emits the full dist, so the
+smokes run the emitted server — the same JS the chain would have run.
+Fixing those 5 errors is main's own cleanup (see the follow-ups list).
+
+### Standalone — PASS (two consecutive runs)
+
+- Readiness: **4,550 ms** (run 1), **3,854 ms** (run 2) from spawn to the
+  server's own readiness line:
+  `[server] listening on ws://0.0.0.0:7917 via uWebSockets.js (+ webrpc http://0.0.0.0:7917/rpc/Pcg)`
+  — the native uWS transport is the one serving (transport "auto" picked
+  it because its binary loads).
+- Native addons live in the boot log, not just loadable:
+  `[server] 3 PCG asset(s) (oak, birch, pine) from .../content/pcg; cooking with pcg-core 0.1.2 (bmesh-tier1)`
+  and `[server] fresh boot | seed 1234 | chunk 16u | terrain amp 2 freq 0.02 (v3354354370) | spawn (0, 0) | navmesh 0 tile(s) | water none | players can swim | a day lasts 2400 s`.
+- Login: `[gateway] hello client="smoke" via=password` → welcome with
+  `player_entity=51` and a session token issued.
+- Snapshot: **17,376 bytes** on the wire (tick 11, 43 transform rows,
+  9 chunk rows); a live delta followed (880 bytes run 1, 464 bytes run 2).
+- Shutdown: `[server] shutdown save on SIGTERM: tick 13` — exit code 0
+  ~101 ms after SIGTERM, port 7917 verified free, no orphans.
+
+### Fleet — PASS (two consecutive runs)
+
+Stack: SurrealDB **2.7.0** (`surreal version` → `2.7.0 for linux on
+x86_64`; the binary already present in this sandbox from the
+durability-verification slice, passed to the script as `SURREAL_BIN`)
+on 127.0.0.1:8001 with scratch rocksdb in-worktree → world server
+(`WORLD_DB_URL=ws://127.0.0.1:8001/rpc`, `WORLD_API_KEY` set) on :7780 →
+region with `WORLD_URL=http://127.0.0.1:7780`.
+
+- Surreal port open after **408 ms**.
+- World: `[world] store=surrealdb url=ws://127.0.0.1:8001/rpc`, then
+  `[world] listening on :7780 (webrpc /rpc/World/*)`.
+- Region registration + P5 assignment, verbatim from the region log:
+  `[server] registered with world at http://127.0.0.1:7780 as region-1 (epoch 1) — assigned range 0,0..4096,4096 via host htch-runtime`
+- Region listening **4,134 ms** after spawn; handshake completed against
+  the fleet-backed region (welcome `player_entity=25`, token issued,
+  snapshot 8,584 bytes at tick 11 with 22 transform rows, delta live).
+- Shutdown inside-out: region, world, Surreal each exited code 0 ~100 ms
+  after SIGTERM; ports 7917/7780/8001 all verified free; no orphans.
+
+**The full stack — native addons, real server, real SurrealDB, fleet
+registration, wire handshake — boots and shuts down cleanly in this
+sandbox.** What this does not prove: sustained load, multi-client
+behaviour, or a second region migrating a character (the crash drills on
+`arlo/durability-verification`, already on main, cover kill/recovery at
+the service level; a two-region live migration smoke is still unbuilt).
+
+
