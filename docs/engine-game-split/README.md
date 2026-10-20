@@ -44,3 +44,51 @@ extraction landed separately on `arlo/needs-schema`).
 - Boot-sequence check: 12/12 scenarios — sample pack loads and passes the
   contract; content-free boot works; a broken pack fails loud naming the
   missing skill IDs.
+
+## Region / world servers: communication and ownership
+
+![Region/world topology](region-world-topology.png)
+
+The architecture the split operates inside — and does not change:
+
+- A **region server** (an `engine-core` `server.ts` instance) is the
+  authoritative simulator for exactly one chunk range
+  (`REGION_CHUNK_RANGE`). It owns its entities, its tick, its client gateway
+  (WebSocket, 30 Hz deltas) and its own SQLite `world.db`. Clients connect
+  directly to a region; no client traffic passes through the world server.
+- The **world server** (`packages/world-server`) is coordination only: region
+  registry and leases, a stale-region reaper, cross-region presence, and
+  migration routing, backed by SurrealDB. It never simulates and holds no
+  game state.
+- Regions talk to the world server over WebRPC (register, heartbeat,
+  snapshot/load reports), and **all of it runs off the tick loop** — a slow or
+  dead world server must never stall a region's sim. Border hand-offs are
+  checked 4×/second: a player crossing into a neighbouring live region's
+  chunks is migrated to it, coordinated through world-server acks. A region
+  with `WORLD_URL` unset simply runs standalone.
+
+![What the split touched](split-blast-radius.png)
+
+**Why no networking overhaul follows from the split:** the split is a
+boot-time change (what content loads, from where, validated how); region/world
+communication and ownership are runtime concerns, and the two share no code
+paths. Verified on the branch: the split's diff touches **zero files** under
+`net/`, `world/`, `world-server/` or `protocol/`, and its `server.ts` hunks
+sit entirely in the boot/content section — the region registration block is
+byte-identical.
+
+Two operational consequences, neither of them protocol changes:
+
+1. **Pack consistency is now configuration discipline.** Every region must be
+   pointed at the same game pack (the same `MMO_*` env). Before, the content
+   rode along in the repo, so consistency was automatic; mismatched packs
+   would still speak the same wire protocol, but the world would be
+   incoherent (different items, skills, species per region).
+2. **The boot contract is fleet safety.** The skill-contract check runs at
+   every region's boot, so a misconfigured region now dies at startup —
+   visible immediately — instead of registering and silently degrading.
+
+Work that *does* change data flow is separate and already tracked: SAB
+phases 2–5 (sector pub/sub fan-out and the fast-path codec, inside a region's
+client fan-out) and the possible C++ sim backend (the sim↔Node boundary
+inside one server). Neither is part of, or required by, this split.
