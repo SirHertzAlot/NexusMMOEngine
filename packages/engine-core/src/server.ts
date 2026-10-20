@@ -753,24 +753,14 @@ async function main(): Promise<void> {
   const trade = new TradeSystem(wallet, {
     owns: (c, item) => itemsOf().store.inBagOf(c, item),
     freeSlots: (c) => itemsOf().store.emptySlots(c),
-    move: (item, from, to) => {
-      if (!itemsOf().store.inBagOf(from, item)) return false;
-      return itemsOf().store.putInBag(to, item) >= 0;
-    },
+    move: (item, from, to) => itemsOf().moveItem(item, from, to),
   });
   // Vendors (EC1): NPC shops. Templates are defined here; attaching them
   // to NPC entities is content work (the `vendor` admin command attaches).
   const vendor = new VendorSystem(wallet, {
-    give: (c, def) => itemsOf().give(c, def).ok,
-    take: (c, item) => {
-      if (!itemsOf().store.inBagOf(c, item)) return false;
-      itemsOf().store.destroy(item);
-      return true;
-    },
-    defOf: (item) => {
-      const slot = itemsOf().store.slot(item);
-      return slot < 0 ? -1 : itemsOf().store.defs[slot];
-    },
+    give: (c, def) => itemsOf().grantItem(c, def),
+    take: (c, item) => itemsOf().take(c, item),
+    defOf: (item) => itemsOf().defOf(item),
     nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
   });
   // Auction house (EC1): listings keep the item in the seller's bag (no
@@ -778,14 +768,8 @@ async function main(): Promise<void> {
   const auction = new AuctionSystem(wallet, {
     owns: (c, item) => itemsOf().store.inBagOf(c, item),
     freeSlots: (c) => itemsOf().store.emptySlots(c),
-    defOf: (item) => {
-      const slot = itemsOf().store.slot(item);
-      return slot < 0 ? -1 : itemsOf().store.defs[slot];
-    },
-    move: (item, from, to) => {
-      if (!itemsOf().store.inBagOf(from, item)) return false;
-      return itemsOf().store.putInBag(to, item) >= 0;
-    },
+    defOf: (item) => itemsOf().defOf(item),
+    move: (item, from, to) => itemsOf().moveItem(item, from, to),
     nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
   });
   // What a blow gets through: worn armour per the rules' armourHalf;
@@ -851,16 +835,10 @@ async function main(): Promise<void> {
     dataDir: DATA_DIR,
     getSpeciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
     getItemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemsOf().defs.ofBase(b).length > 0),
-    countInBag: (character: number, base: string) => {
-      let n = 0;
-      for (const item of itemsOf().store.bag(character)) {
-        if (item !== 0 && itemsOf().defs.bases[itemsOf().store.defs[itemsOf().store.slot(item)]] === base) n++;
-      }
-      return n;
-    },
+    countInBag: (character: number, base: string) => itemsOf().countBase(character, base),
     grantItem: (character: number, base: string) => {
-      const def = itemsOf().defs.starter(base, rankOrder);
-      return def >= 0 && itemsOf().give(character, def).ok;
+      const def = itemsOf().resolveBase(base);
+      return def >= 0 && itemsOf().grantItem(character, def);
     },
     grantGold: (character: number, amount: number) => {
       wallet.grant(character, amount, sim.currentTick);
@@ -939,7 +917,7 @@ async function main(): Promise<void> {
     getArmourOf: (character: number) => wornFactor(character),
     getLootPool: () => itemsOf().defs.ofSource("mob"),
     getChestPool: () => itemsOf().defs.ofSource("chest"),
-    grantItem: (character: number, def: number) => itemsOf().give(character, def).ok,
+    grantItem: (character: number, def: number) => itemsOf().grantItem(character, def),
     train: (character: number, skill: string, difficulty: number, key: number) => {
       const i = masteryOf().index.of(skill);
       if (i < 0) return;
