@@ -25,4 +25,4 @@ export type {
 } from "./navmesh.js";
 export { TerrainTileStore, SERVER_PID_FILE, runningServerPid } from "./terrain-tiles.js";
 export { ItemLedger, LedgerKind } from "./item-ledger.js";
-export type { ItemRow, LedgerKindCode } from "./item-ledger.js";
+export type { ItemRow, LedgerEventRow, LedgerKindCode } from "./item-ledger.js";

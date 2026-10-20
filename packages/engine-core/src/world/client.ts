@@ -7,12 +7,16 @@
  * WebrpcWorldTransport (webrpc JSON over HTTP) now; queue or embedded
  * stub later — the client doesn't care.
  */
-import type {
-  ChunkRange,
-  HeartbeatAck,
-  MigrationRecord,
-  RegionInfo,
-  RegionLease,
+import {
+  rangeKeyFor,
+  type CharacterSessionLock,
+  type CharacterStateRecord,
+  type ChunkRange,
+  type HeartbeatAck,
+  type LedgerEvent,
+  type MigrationRecord,
+  type RegionInfo,
+  type RegionLease,
 } from "@mmo-engine/world-server";
 import type { InstanceResult } from "../dungeons/instance.js";
 
@@ -63,6 +67,8 @@ function newOpId(): string {
 export class WorldClient {
   private readonly transport: WorldTransport;
   private readonly opts: WorldClientOptions;
+  /** State-plane key for this region's chunk range (persistence spec). */
+  private readonly rangeKeyStr: string;
   private lease: RegionLease | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -70,10 +76,25 @@ export class WorldClient {
   constructor(opts: WorldClientOptions) {
     this.transport = opts.transport;
     this.opts = opts;
+    this.rangeKeyStr = rangeKeyFor(opts.chunkRange);
   }
 
   get currentLease(): RegionLease | null {
     return this.lease;
+  }
+
+  /**
+   * The fencing epoch from the current lease (persistence P1); null
+   * while unregistered. Every state-plane write carries it, and the
+   * world rejects writes from a stale epoch — a re-register rotates it.
+   */
+  get epoch(): number | null {
+    return this.lease?.epoch ?? null;
+  }
+
+  /** The state-plane key (`rangeKeyFor(chunkRange)`) for this region. */
+  get rangeKey(): string {
+    return this.rangeKeyStr;
   }
 
   get registered(): boolean {
@@ -186,6 +207,79 @@ export class WorldClient {
     }
   }
 
+  // -------------------------------------------- persistence P2: state plane
+  // Tier 1 + Tier 2 uploads (PERSISTENCE-LAYER-SPEC). Like reportSnapshot
+  // these are best-effort and never throw into the save cycle: a failure
+  // surfaces through onError and the caller retries on its next cycle —
+  // a dead world degrades durability, never simulation.
+
+  /**
+   * Stream one batch of ledger events uphill (Tier 1). Returns the
+   * world's contiguous acked head seq, or null when the batch was not
+   * acked (unregistered, stopped, empty, or the call failed) — the
+   * caller keeps the events unshipped and retries them next cycle.
+   * The world dedups on (rangeKey, seq), so a retried batch is safe.
+   */
+  async appendLedgerEvents(
+    events: readonly LedgerEvent[],
+  ): Promise<number | null> {
+    if (this.stopped || !this.lease || events.length === 0) return null;
+    try {
+      const res = await this.transport.call(
+        "AppendLedgerEvents",
+        {
+          input: {
+            regionId: this.opts.regionId,
+            rangeKey: this.rangeKeyStr,
+            epoch: this.lease.epoch,
+            opId: newOpId(),
+            events: [...events],
+          },
+        },
+        this.lease.token,
+      );
+      return res["ackedSeq"] as number;
+    } catch (err) {
+      this.fail(err, "appendLedgerEvents");
+      return null;
+    }
+  }
+
+  /**
+   * Upload one shard checkpoint (Tier 2): the snapshot payload under
+   * {rangeKey, tick, epoch, digest}. Returns whether the world stored
+   * it; false means retry on a later cycle (or drop it when a fresher
+   * checkpoint has superseded it — the shipper decides).
+   */
+  async putShardSnapshot(snapshot: {
+    tick: number;
+    digest: string;
+    payload: unknown;
+  }): Promise<boolean> {
+    if (this.stopped || !this.lease) return false;
+    try {
+      await this.transport.call(
+        "PutShardSnapshot",
+        {
+          input: {
+            regionId: this.opts.regionId,
+            rangeKey: this.rangeKeyStr,
+            tick: snapshot.tick,
+            epoch: this.lease.epoch,
+            digest: snapshot.digest,
+            payload: snapshot.payload,
+            opId: newOpId(),
+          },
+        },
+        this.lease.token,
+      );
+      return true;
+    } catch (err) {
+      this.fail(err, "putShardSnapshot");
+      return false;
+    }
+  }
+
   // ---------------------------------------------------------- slice B
   // Unlike heartbeats these throw: the migration coordinator decides
   // what a failure means for the entity.
@@ -269,6 +363,88 @@ export class WorldClient {
       this.token(),
     );
     return res["online"] as Record<string, string | null>;
+  }
+
+  // ------------------------------------- persistence P4 contract (world tier)
+  // Thin mirrors of the P1 character ops; slice P4 wires their gateway
+  // usage. Like the migration ops these throw on transport failure:
+  // the caller (login/save path) decides what a failure means.
+
+  /** A character's world-tier record, or null when none exists yet. */
+  async getCharacterState(
+    characterId: number,
+  ): Promise<CharacterStateRecord | null> {
+    const res = await this.transport.call(
+      "GetCharacterState",
+      { input: { regionId: this.opts.regionId, characterId } },
+      this.token(),
+    );
+    return (res["character"] as CharacterStateRecord | null) ?? null;
+  }
+
+  /**
+   * Write a character's state at the world tier. Fenced by the session
+   * lock: `epoch` must be the epoch of the lock this region holds for
+   * the character (see acquireCharacterLock).
+   */
+  async putCharacterState(
+    characterId: number,
+    epoch: number,
+    state: unknown,
+  ): Promise<CharacterStateRecord> {
+    const res = await this.transport.call(
+      "PutCharacterState",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          characterId,
+          epoch,
+          state,
+          opId: newOpId(),
+        },
+      },
+      this.token(),
+    );
+    return res["character"] as CharacterStateRecord;
+  }
+
+  /**
+   * Acquire a character's session lock (refused while another region
+   * holds it unexpired; an expired lock is stolen with an epoch bump).
+   */
+  async acquireCharacterLock(
+    characterId: number,
+    ttlMs: number,
+  ): Promise<CharacterSessionLock> {
+    const res = await this.transport.call(
+      "AcquireCharacterLock",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          characterId,
+          ttlMs,
+          opId: newOpId(),
+        },
+      },
+      this.token(),
+    );
+    return res["lock"] as CharacterSessionLock;
+  }
+
+  /** Release a character's session lock; `epoch` must match the held lock. */
+  async releaseCharacterLock(characterId: number, epoch: number): Promise<void> {
+    await this.transport.call(
+      "ReleaseCharacterLock",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          characterId,
+          epoch,
+          opId: newOpId(),
+        },
+      },
+      this.token(),
+    );
   }
 
   /** Stop heartbeats and best-effort deregister. Never throws. */

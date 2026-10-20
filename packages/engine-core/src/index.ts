@@ -242,6 +242,15 @@ export {
 } from "./world/client.js";
 export type { WorldTransport, WorldClientOptions } from "./world/client.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
+export {
+  ShardStateShipper,
+  LEDGER_BATCH_MAX_EVENTS,
+  LEDGER_BATCH_MAX_BYTES,
+} from "./world/state-shipper.js";
+export type {
+  StatePlaneClient,
+  ShardStateShipperOptions,
+} from "./world/state-shipper.js";
 export { MigrationCoordinator } from "./world/migration.js";
 export type {
   EntityPosition,

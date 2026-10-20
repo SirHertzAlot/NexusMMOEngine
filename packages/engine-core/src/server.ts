@@ -153,6 +153,7 @@ import {
 import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
+import { ShardStateShipper } from "./world/state-shipper.js";
 import { healthHttpHandler } from "./net/health.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
@@ -1198,6 +1199,18 @@ async function main(): Promise<void> {
     }
   }
 
+  // Persistence P2: write-through to the world store (ledger streaming +
+  // snapshot upload), riding the save timer below. Exists only with a
+  // world client; standalone mode has no shipper and is unchanged.
+  const stateShipper = worldClient
+    ? new ShardStateShipper({
+        client: worldClient,
+        ledger: itemLedger,
+        snapshotIntervalTicks: SAVE_EVERY_TICKS,
+        log: (line) => console.log(`[server] ${line}`),
+      })
+    : null;
+
   // A slow or dead world server must never stall the region: dungeon
   // reports never overlap (no pile-up of in-flight POSTs) and never
   // touch the tick loop (this timer only).
@@ -1222,6 +1235,12 @@ async function main(): Promise<void> {
           sim.liveEntityCount,
           digest,
         );
+        // Persistence P2 (Tier 2): offer the checkpoint just saved to
+        // the shipper, with the same digest and the exact bytes
+        // saveWorld persisted. The shipper uploads it at this range's
+        // phase offset inside the checkpoint interval — not now — and
+        // skips it entirely if the content is unchanged.
+        stateShipper?.offerSnapshot(result.tick, digest, result.snapshotBytes);
         // Dungeon runs (D4): fold the committed batch into the next world
         // report. Rows stay unreported until the world confirms them
         // ingested, so a failed flush retries on the next save. Skipped
@@ -1241,6 +1260,14 @@ async function main(): Promise<void> {
         }
       }
       nextSaveTick += SAVE_EVERY_TICKS;
+    }
+    // Persistence P2 (Tier 1 + due Tier 2): after the local flush above,
+    // ship the ledger outbox uphill and any snapshot whose phase slot
+    // has arrived. Fire-and-forget like the dungeon report: the shipper
+    // coalesces overlapping pumps and never throws, so a dead world
+    // costs durability lag, never simulation time.
+    if (stateShipper && worldClient?.registered) {
+      void stateShipper.pump(gw.serverTick);
     }
   }, 1000);
   saveTimer.unref();

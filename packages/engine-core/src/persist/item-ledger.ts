@@ -49,6 +49,26 @@ export const LedgerKind = {
 } as const;
 export type LedgerKindCode = (typeof LedgerKind)[keyof typeof LedgerKind];
 
+/**
+ * One flushed event as stored, `seq` included. `seq` is the table's own
+ * PRIMARY KEY — the ledger's natural ordering — and is the sequence the
+ * world store dedups on when events are streamed uphill (persistence
+ * P2): no parallel counter exists that could drift from it.
+ */
+export interface LedgerEventRow {
+  seq: number;
+  itemId: number;
+  tick: number;
+  committedAt: number;
+  kind: LedgerKindCode;
+  def: number;
+  owner: number;
+  slot: number;
+  durability: number;
+  x: number;
+  z: number;
+}
+
 /** An item as of its latest event. */
 export interface ItemRow {
   id: number;
@@ -76,6 +96,7 @@ export class ItemLedger {
   private readonly liveStmt: Database.Statement;
   private readonly maxIdStmt: Database.Statement;
   private readonly countStmt: Database.Statement;
+  private readonly eventsAfterStmt: Database.Statement;
   private readonly flushTx: (n: number, at: number) => void;
 
   private capacity = INITIAL_EVENTS;
@@ -117,6 +138,10 @@ export class ItemLedger {
     );
     this.maxIdStmt = this.db.prepare("SELECT COALESCE(MAX(item_id), 0) AS id FROM item_events");
     this.countStmt = this.db.prepare("SELECT COUNT(*) AS n FROM item_events");
+    this.eventsAfterStmt = this.db.prepare(
+      `SELECT seq, item_id AS itemId, tick, committed_at AS committedAt, kind, def, owner, slot, durability, x, z
+       FROM item_events WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
+    );
     this.flushTx = this.db.transaction((count: number, at: number) => {
       for (let i = 0; i < count; i++) {
         this.insertStmt.run(
@@ -181,6 +206,15 @@ export class ItemLedger {
   /** Highest item id ever written, destroyed ones included (ids are never reused). */
   maxItemId(): number {
     return (this.maxIdStmt.get() as { id: number }).id;
+  }
+
+  /**
+   * Flushed events with `seq > afterSeq`, oldest first, at most `limit`.
+   * The uphill shipper (persistence P2) reads the batch it just flushed
+   * back through here so the seq it ships is the row's own identity.
+   */
+  eventsAfter(afterSeq: number, limit: number): LedgerEventRow[] {
+    return this.eventsAfterStmt.all(afterSeq, limit) as LedgerEventRow[];
   }
 
   /** Events written. */
