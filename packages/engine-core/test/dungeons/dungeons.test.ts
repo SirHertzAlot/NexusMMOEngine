@@ -291,6 +291,44 @@ describe("dungeon instance", () => {
     assert.throws(() => parseDungeonContent(content.rules, { version: 1, entrances: {} }, { version: 1, archetypes: { "dungeon:pillar": { asset: "" } } }), /props\.json/);
   });
 
+  it("sends the run's look when a member enters (the layout's theme), and nothing without looks.json", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const run = async (looks: typeof content.looks): Promise<Ctl[]> => {
+      const inst = new DungeonInstance({
+        id: "run-look", entrance: "barrow-gate", layout: readLayout(fixture("grim-look", "grim")), rules: content.rules, game,
+        ...(looks ? { looks } : {}),
+        members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+        onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+      });
+      const port = await inst.start();
+      closers.push(() => inst.close());
+      const c = new HeadlessClient();
+      closers.push(() => c.close());
+      await c.connect(`ws://127.0.0.1:${port}`);
+      await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+      await until(() => ctl(c).some((m) => m.kind === "dungeon" && m.op === "state"));
+      return ctl(c);
+    };
+    const withLooks = await run(content.looks);
+    const look = withLooks.find((m) => m.op === "look")?.look as { theme: string; palette: Record<string, string>; emitters: string[]; maxLights: number; label?: unknown } | undefined;
+    assert.ok(look, "a look arrived");
+    assert.equal(look.theme, "grim");
+    assert.deepEqual(Object.keys(look.palette).sort(), ["basin", "ceiling", "floor", "wall"]);
+    assert.ok(look.emitters.includes("dungeon:torch") && look.maxLights > 0);
+    assert.equal(look.label, undefined, "the label is for the editor, not the client");
+    assert.ok(withLooks.findIndex((m) => m.op === "look") < withLooks.findIndex((m) => m.op === "state"), "the look comes before the first state");
+    assert.equal((await run(null)).some((m) => m.op === "look"), false, "no looks.json: the client keeps the open world's look");
+  });
+
+  it("loads and validates looks.json: every theme a palette of colours, a bad colour refuses the content", () => {
+    assert.ok(content.looks && Object.keys(content.looks.themes).length >= 5, "the shipped looks load");
+    for (const [theme, l] of Object.entries(content.looks!.themes)) assert.ok(l.torch.range > 0 && /^#[0-9a-f]{6}$/i.test(l.palette.floor ?? ""), `${theme}: a floor colour`);
+    const bad = { version: 1, emitters: [], maxLights: 4, themes: { grim: { ...content.looks!.themes.grim, background: "black" } } };
+    assert.throws(() => parseDungeonContent(content.rules, { version: 1, entrances: {} }, undefined, bad), /looks\.json/);
+  });
+
   it("runs as before when the dungeon was baked without a shell", async () => {
     SimWorld.resetEntityCursorForTesting();
     const inst = new DungeonInstance({

@@ -194,6 +194,23 @@ export class InstancedProps {
     return this.slots.keys();
   }
 
+  /** Where the props showing any of these assets (by AssetRef hash) stand: [x, y, z] each. */
+  positionsOf(hashes: ReadonlySet<number>): [number, number, number][] {
+    const out: [number, number, number][] = [];
+    for (const slot of this.slots.values()) {
+      if (slot.asset && hashes.has(slot.asset.assetHash >>> 0)) out.push([slot.transform.px, slot.transform.py, slot.transform.pz]);
+    }
+    return out;
+  }
+
+  /** Matte surfaces: nothing shiny or reflective (a dungeon's stand-ins and models). */
+  matte(): void {
+    for (const m of [this.placeholderMaterial, this.modelMaterial]) {
+      m.roughness = 1;
+      m.metalness = 0;
+    }
+  }
+
   /** Add a prop (or refresh it if already here). */
   add(wireId: bigint, transform: TransformRow, body: BodyConfigRow | null, color: THREE.Color, asset: PropAsset | null = null): void {
     const existing = this.slots.get(wireId);

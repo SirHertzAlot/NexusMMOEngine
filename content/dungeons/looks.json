@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "emitters": [
+    "dungeon:torch",
+    "dungeon:brazier",
+    "dungeon:candles",
+    "dungeon:candle"
+  ],
+  "maxLights": 8,
+  "themes": {
+    "ancient": {
+      "label": "ANCIENT",
+      "background": "#050608",
+      "fog": {
+        "color": "#060609",
+        "density": 0.004
+      },
+      "hemisphere": {
+        "sky": "#2d333e",
+        "ground": "#0b0b0e",
+        "intensity": 0.5
+      },
+      "dir": {
+        "color": "#928c84",
+        "intensity": 0.22
+      },
+      "palette": {
+        "floor": "#494a4d",
+        "wall": "#404247",
+        "ceiling": "#3d3f42",
+        "basin": "#323235"
+      },
+      "torch": {
+        "color": "#ff8c3a",
+        "intensity": 75,
+        "range": 14.2,
+        "flicker": 0.22
+      }
+    },
+    "molten": {
+      "label": "MOLTEN",
+      "background": "#070504",
+      "fog": {
+        "color": "#110a07",
+        "density": 0.0053
+      },
+      "hemisphere": {
+        "sky": "#4e3326",
+        "ground": "#110806",
+        "intensity": 0.5
+      },
+      "dir": {
+        "color": "#8f8479",
+        "intensity": 0.22
+      },
+      "palette": {
+        "floor": "#3b3733",
+        "wall": "#322b29",
+        "ceiling": "#342d29",
+        "basin": "#282322"
+      },
+      "torch": {
+        "color": "#ff7326",
+        "intensity": 80,
+        "range": 14.9,
+        "flicker": 0.22
+      }
+    },
+    "frost": {
+      "label": "FROST",
+      "background": "#05070a",
+      "fog": {
+        "color": "#0c1017",
+        "density": 0.0046
+      },
+      "hemisphere": {
+        "sky": "#3e4d60",
+        "ground": "#0d0e13",
+        "intensity": 0.5
+      },
+      "dir": {
+        "color": "#82888f",
+        "intensity": 0.22
+      },
+      "palette": {
+        "floor": "#4e5156",
+        "wall": "#474b56",
+        "ceiling": "#474b51",
+        "basin": "#35393b"
+      },
+      "torch": {
+        "color": "#6fc4ff",
+        "intensity": 50,
+        "range": 14.2,
+        "flicker": 0.22
+      }
+    },
+    "grim": {
+      "label": "GRIM",
+      "background": "#050705",
+      "fog": {
+        "color": "#0a0e0a",
+        "density": 0.0057
+      },
+      "hemisphere": {
+        "sky": "#2b352d",
+        "ground": "#080908",
+        "intensity": 0.5
+      },
+      "dir": {
+        "color": "#777e73",
+        "intensity": 0.22
+      },
+      "palette": {
+        "floor": "#41423e",
+        "wall": "#363a34",
+        "ceiling": "#353734",
+        "basin": "#2b2d29"
+      },
+      "torch": {
+        "color": "#77d94a",
+        "intensity": 70,
+        "range": 13.4,
+        "flicker": 0.22
+      }
+    },
+    "verdant": {
+      "label": "VERDANT",
+      "background": "#050807",
+      "fog": {
+        "color": "#0a0f0d",
+        "density": 0.0044
+      },
+      "hemisphere": {
+        "sky": "#354a40",
+        "ground": "#0b110e",
+        "intensity": 0.5
+      },
+      "dir": {
+        "color": "#868c81",
+        "intensity": 0.22
+      },
+      "palette": {
+        "floor": "#464944",
+        "wall": "#3c403a",
+        "ceiling": "#393d37",
+        "basin": "#2f322d"
+      },
+      "torch": {
+        "color": "#4ad98e",
+        "intensity": 70,
+        "range": 13.4,
+        "flicker": 0.22
+      }
+    }
+  }
+}

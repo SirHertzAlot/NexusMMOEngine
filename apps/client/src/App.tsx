@@ -22,7 +22,7 @@ import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState,
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
 import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
-import type { DungeonMessage } from "@mmo-engine/protocol";
+import type { DungeonLook, DungeonMessage } from "@mmo-engine/protocol";
 import type { PouchMaterial } from "@mmo-engine/protocol";
 import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
@@ -229,6 +229,8 @@ export function App(): React.ReactElement {
   const [run, setRun] = useState<DungeonRun | null>(null);
   const runRef = useRef<DungeonRun | null>(null);
   runRef.current = run;
+  // How the run looks (the server's `look`, sent on entering): the canvas reads it each frame; every hop clears it.
+  const lookRef = useRef<DungeonLook | null>(null);
   const [nearEntrance, setNearEntrance] = useState<string | null>(null);
   const regionRef = useRef<{ url: string; token: string } | null>(null);
   // The server and name as of this render, for socket callbacks made in an earlier one
@@ -365,6 +367,7 @@ export function App(): React.ReactElement {
   /** Dungeon messages (D4): a transfer moves the player in; state and the end update the run. */
   const onDungeon = (d: DungeonMessage): void => {
     if (d.op === "transfer") void hop(d.endpoint, d.token, { phase: "entering", dungeon: d.dungeon });
+    else if (d.op === "look") lookRef.current = d.look;
     else if (d.op === "state") setRun((prev) => (prev && prev.phase !== "leaving" ? { phase: "in", dungeon: d.dungeon, state: d, at: performance.now() } : prev));
     else if (d.op === "ended") setRun((prev) => ({ phase: "ended", dungeon: prev?.dungeon ?? "", result: d }));
   };
@@ -377,6 +380,7 @@ export function App(): React.ReactElement {
    */
   const hop = async (endpoint: string, token: string, transit: Extract<DungeonRun, { phase: "entering" | "leaving" }>): Promise<void> => {
     if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url: urlRef.current, token: sessionTokenRef.current };
+    lookRef.current = null;
     setRun(transit);
     setDialog(null);
     setNearDrop(null);
@@ -647,6 +651,7 @@ export function App(): React.ReactElement {
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
           instance={run !== null}
+          getLook={() => lookRef.current}
           combat={combat}
           onCombat={setCombatView}
           streamingRef={streamingRef}
