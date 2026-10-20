@@ -155,6 +155,60 @@ DEFINE INDEX IF NOT EXISTS idx_pending_credit_op ON pending_credit FIELDS opId U
 DEFINE INDEX IF NOT EXISTS idx_pending_credit_char ON pending_credit FIELDS characterId;
 `;
 
+/**
+ * Slice 3: the six atomic ops commit through stored SurrealQL
+ * functions — one `fn::<op>` per operation, all six bodies generated
+ * from this ONE template (the ops differ only in name; the semantics
+ * still live in src/atomic.ts, whose commit the store serializes into
+ * the call). The body mirrors statement-for-statement the
+ * BEGIN…COMMIT transaction string this replaced: the ledger seq
+ * counter is the optimistic lock (guarded read, THROW on mismatch,
+ * then the bump), every pre-existing record write is
+ * version-guarded, new records go through CREATE (the characterId
+ * unique index races a concurrent create to failure), and the ledger
+ * entries + pending credits are created inside the same invocation.
+ * A THROW anywhere in the body aborts the whole invocation —
+ * verified live against SurrealDB 2.7.0 by
+ * test/define-functions.test.ts: a bad version guard on the second
+ * record leaves records, ledger, and counter byte-identical.
+ *
+ * Definition form: plain `DEFINE FUNCTION` errors on re-definition
+ * ("already exists"), so connect() ships the `IF NOT EXISTS` form —
+ * verified accepted by 2.7.0 and idempotent across reconnects.
+ */
+const ATOMIC_FN_NAMES: Record<AtomicOpKind, string> = {
+  tradeCommit: "trade_commit",
+  vendorTransact: "vendor_transact",
+  auctionSettle: "auction_settle",
+  craftExecute: "craft_execute",
+  lootGrant: "loot_grant",
+  inventoryMutate: "inventory_mutate",
+};
+
+function defineAtomicFn(name: string): string {
+  return `
+DEFINE FUNCTION IF NOT EXISTS fn::${name}($base_seq: int, $new_seq: int, $records: array, $entries: array, $credits: array) {
+  LET $ctr = (SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger);
+  IF $ctr = NONE OR $ctr.seq != $base_seq { THROW "VERSION_CONFLICT"; };
+  UPDATE ONLY atomic_meta SET seq = $new_seq WHERE id = atomic_meta:ledger;
+  FOR $r IN $records {
+    IF $r.existed {
+      LET $u = (UPDATE ONLY character_state SET state = $r.state, version = $r.version, epoch = $r.epoch, regionId = $r.regionId, updatedAt = $r.updatedAt WHERE characterId = $r.characterId AND version = $r.expectedVersion RETURN AFTER);
+      IF $u = NONE { THROW "VERSION_CONFLICT"; };
+    } ELSE {
+      CREATE ONLY character_state CONTENT { characterId: $r.characterId, state: $r.state, version: $r.version, epoch: $r.epoch, regionId: $r.regionId, updatedAt: $r.updatedAt };
+    };
+  };
+  FOR $e IN $entries { CREATE ONLY atomic_ledger CONTENT $e; };
+  FOR $c IN $credits { CREATE ONLY pending_credit CONTENT $c; };
+  RETURN true;
+};`;
+}
+
+const DEFINE_ATOMIC_FUNCTIONS = Object.values(ATOMIC_FN_NAMES)
+  .map(defineAtomicFn)
+  .join("\n");
+
 /** First (only) statement's result. */
 function stmt(result: unknown): unknown {
   return Array.isArray(result) ? result[0] : result;
@@ -258,6 +312,7 @@ export class SurrealWorldStore implements WorldStore {
       database: this.opts.database,
     });
     await this.db.query(SCHEMA);
+    await this.db.query(DEFINE_ATOMIC_FUNCTIONS);
     const meta = singleRow<Record<string, unknown>>(
       await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
     );
@@ -636,13 +691,14 @@ export class SurrealWorldStore implements WorldStore {
   // Semantics come from src/atomic.ts, shared with the fake store:
   // the records and locks are read in ONE query, the pure transition
   // validates everything and computes the commit, and the commit —
-  // character records plus item-ledger entries — is persisted in ONE
-  // transaction. Every record write is version-guarded
+  // character records plus item-ledger entries — is persisted by ONE
+  // invocation of the op's stored SurrealQL function (fn::<op>,
+  // defined in connect()). Every record write is version-guarded
   // (WHERE version = <the version the transition read>) and the
   // ledger seq counter is guarded the same way; a guard tripping
-  // THROWs inside the transaction, SurrealDB cancels it, and nothing
-  // commits — the caller sees a VERSION_CONFLICT rejection instead.
-  // A business rejection never opens a transaction at all.
+  // THROWs inside the function, SurrealDB aborts the invocation, and
+  // nothing commits — the caller sees a VERSION_CONFLICT rejection
+  // instead. A business rejection never invokes the function at all.
 
   /** One statement's single-row value from a multi-statement query result. */
   private static rowValue(v: unknown): Record<string, unknown> | null {
@@ -690,51 +746,38 @@ export class SurrealWorldStore implements WorldStore {
       seq: baseSeq + j + 1,
       at: now,
     }));
-    const txParams: Record<string, unknown> = {
-      baseSeq,
-      newSeq: baseSeq + entries.length,
-    };
-    const tx: string[] = ["BEGIN TRANSACTION"];
-    // The seq counter is the transaction's optimistic lock: if a
-    // concurrent operation committed first, this aborts untouched.
-    tx.push("LET $ctr = (SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger)");
-    tx.push('IF $ctr = NONE OR $ctr.seq != $baseSeq { THROW "VERSION_CONFLICT" }');
-    tx.push("UPDATE ONLY atomic_meta SET seq = $newSeq WHERE id = atomic_meta:ledger");
-    outcome.commit.records.forEach((r, i) => {
-      txParams[`cid${i}`] = r.characterId;
-      txParams[`st${i}`] = r.state;
-      txParams[`ver${i}`] = r.version;
-      txParams[`ep${i}`] = r.epoch;
-      txParams[`rg${i}`] = r.regionId;
-      txParams[`up${i}`] = r.updatedAt;
-      txParams[`ev${i}`] = r.version - 1;
-      if ((records.get(r.characterId) ?? null) !== null) {
-        tx.push(
-          `LET $u${i} = (UPDATE ONLY character_state SET state = $st${i}, version = $ver${i}, epoch = $ep${i}, regionId = $rg${i}, updatedAt = $up${i} WHERE characterId = $cid${i} AND version = $ev${i} RETURN AFTER)`,
-        );
-        tx.push(`IF $u${i} = NONE { THROW "VERSION_CONFLICT" }`);
-      } else {
-        // The characterId unique index makes a raced create fail the
-        // whole transaction rather than overwrite a fresher record.
-        tx.push(
-          `CREATE ONLY character_state CONTENT { characterId: $cid${i}, state: $st${i}, version: $ver${i}, epoch: $ep${i}, regionId: $rg${i}, updatedAt: $up${i} }`,
-        );
-      }
-    });
-    entries.forEach((e, j) => {
-      txParams[`led${j}`] = { ...e };
-      tx.push(`CREATE ONLY atomic_ledger CONTENT $led${j}`);
-    });
-    (outcome.commit.pendingCredits ?? []).forEach((c, j) => {
-      txParams[`pc${j}`] = { ...c, createdAt: now };
-      tx.push(`CREATE ONLY pending_credit CONTENT $pc${j}`);
-    });
-    tx.push("COMMIT TRANSACTION");
+    // Serialize the commit for the stored function: each record
+    // carries whether it existed at read time and the version the
+    // function's write must be guarded on (the value the replaced
+    // transaction string built as its per-record guard).
+    const fnRecords = outcome.commit.records.map((r) => ({
+      characterId: r.characterId,
+      state: r.state,
+      version: r.version,
+      epoch: r.epoch,
+      regionId: r.regionId,
+      updatedAt: r.updatedAt,
+      existed: (records.get(r.characterId) ?? null) !== null,
+      expectedVersion: r.version - 1,
+    }));
+    const fnCredits = (outcome.commit.pendingCredits ?? []).map((c) => ({
+      ...c,
+      createdAt: now,
+    }));
     try {
-      await this.db.query(tx.join(";\n"), txParams);
+      await this.db.query(
+        `RETURN fn::${ATOMIC_FN_NAMES[op]}($baseSeq, $newSeq, $records, $entries, $credits);`,
+        {
+          baseSeq,
+          newSeq: baseSeq + entries.length,
+          records: fnRecords,
+          entries,
+          credits: fnCredits,
+        },
+      );
     } catch (err) {
-      // A guard tripped or an index raced: the transaction was
-      // cancelled and nothing committed.
+      // A guard tripped or an index raced: the function invocation
+      // was aborted and nothing committed.
       return {
         ok: false,
         opId,
