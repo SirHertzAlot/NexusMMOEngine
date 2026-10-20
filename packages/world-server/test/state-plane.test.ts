@@ -445,6 +445,18 @@ async function statePlaneStoreContract(store: WorldStore): Promise<void> {
   assert.equal(await store.getLedgerHead(key), 4);
   assert.equal(await store.getLedgerHead("9:10:9:10"), 0);
 
+  // Long streams read back whole, at any offset — the recovery path
+  // replays a range's full stream, so a store that silently drops
+  // rows from large reads loses committed items. (This is the case
+  // SurrealDB 2.7.0's compound range scan fails: 512 events appended,
+  // 511 returned, seq 501 dropped deterministically.)
+  const longKey = "5:6:5:6";
+  const longSeqs = Array.from({ length: 600 }, (_, i) => i + 1);
+  assert.equal(await store.appendLedgerEvents(longKey, longSeqs.map(ev)), 600);
+  assert.deepEqual((await store.getLedgerEvents(longKey, 0)).map((e) => e.seq), longSeqs);
+  assert.deepEqual((await store.getLedgerEvents(longKey, 250)).map((e) => e.seq), longSeqs.slice(250));
+  assert.equal(await store.getLedgerHead(longKey), 600);
+
   // Characters: versioned record round-trips; lock epochs are never
   // reused, even across a release (the counter is not the lock row).
   assert.equal(await store.getCharacterState(7), null);

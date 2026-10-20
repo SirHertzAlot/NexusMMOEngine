@@ -481,10 +481,25 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async getLedgerEvents(rangeKey: string, afterSeq: number): Promise<StoredLedgerEvent[]> {
+    // The seq predicate is applied in JS, not in the query — on
+    // purpose. Measured against SurrealDB 2.7.0 (durability
+    // verification slice): the compound form
+    // `WHERE rangeKey = $rk AND seq > $after` silently drops a row
+    // once the result set grows past ~500 — appending seqs 1..512 and
+    // reading them back returned 511 rows with seq 501 missing,
+    // deterministically, while the row itself was intact (visible to
+    // count() and to a point query) and the contiguous-head query saw
+    // all 512. The equality-only form returns the whole stream; the
+    // fake store filters and sorts in memory the same way, so the two
+    // stores stay semantically identical. Covered by the long-stream
+    // case in the state-plane store contract (600 events).
     const rows = rowList<Record<string, unknown>>(
-      await this.db.query("SELECT * FROM ledger_event WHERE rangeKey = $rk AND seq > $after ORDER BY seq ASC", { rk: rangeKey, after: afterSeq }),
+      await this.db.query("SELECT * FROM ledger_event WHERE rangeKey = $rk", { rk: rangeKey }),
     );
-    return rows.map((r) => stripId<StoredLedgerEvent>(r));
+    return rows
+      .map((r) => stripId<StoredLedgerEvent>(r))
+      .filter((e) => e.seq > afterSeq)
+      .sort((a, b) => a.seq - b.seq);
   }
 
   async getLedgerHead(rangeKey: string): Promise<number> {
