@@ -27,7 +27,7 @@ export {
   type RetargetResult,
   type SkeletonDef,
   type ValidationResult,
-  type CompressResult as AnimationCompressResult,
+  type ClipCompressResult as AnimationCompressResult,
 } from "./animation-bake.js";
 export * from "./transform-gltf.js";
 export * from "./character/modular-catalog.js";
