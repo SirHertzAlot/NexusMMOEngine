@@ -160,6 +160,7 @@ import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { ShardStateShipper } from "./world/state-shipper.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
+import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
@@ -805,6 +806,12 @@ async function main(): Promise<void> {
   // Items (roadmap M3a, slice 2): the items module builds the service from
   // this config during assembly. No inline construction — see
   // modules/items/server.js.
+  // Atomic operations A2: with a world client, the grant path's commit
+  // executor delegates to the atomic-ops coordinator; the coordinator
+  // itself is built after assembly (it fences through the character
+  // sync), so the executor resolves it lazily through this ref. In
+  // standalone mode the executor is absent and grants stay local.
+  const atomicOpsRef: { ops: WorldAtomicOps | null } = { ops: null };
   const itemsConfig = {
     dataDir: DATA_DIR,
     rules: game.rules,
@@ -814,6 +821,20 @@ async function main(): Promise<void> {
     ledger: itemLedger,
     kindOf: (e: number) => creaturesOf().kindOf(e),
     wallet,
+    ...(worldClient
+      ? {
+          atomicGrant: {
+            loot: async (character: number, sourceId: string, instanceId: string, def: number) => {
+              const ops = atomicOpsRef.ops;
+              if (!ops) throw new Error("atomic ops not wired");
+              const r = await ops.loot({ character, sourceId, instanceId, def });
+              return r.ok
+                ? { ok: true as const }
+                : { ok: false as const, message: `grant refused by the world (${r.rejection}: ${r.message})` };
+            },
+          },
+        }
+      : {}),
   };
   // Economy (EC1): player-to-player trades, NPC vendors, auction house.
   // Items move bag-to-bag through the ItemStore; held/worn gear stays out
@@ -1146,19 +1167,38 @@ async function main(): Promise<void> {
   // sync rides the same single WorldClient as recall, the shipper
   // and the migration coordinator; its character ops need the lease).
   // Standalone mode passes nothing and is byte-identical.
+  // Atomic operations A2: with a registered client, the character
+  // sync also carries the economy projection (wallet + bags) so the
+  // world record holds gold + inventory, and the atomic-ops
+  // coordinator routes trade/vendor/auction/grant commits through
+  // the world ops, fenced by the sync's session locks. Standalone
+  // mode constructs neither (byte-identical).
+  const economyView = worldClient?.registered
+    ? new LocalEconomyView({
+        wallet,
+        store: itemsOf().store,
+        durabilityOf: (def) => itemsOf().defs.durability[def] ?? 100,
+      })
+    : null;
   const worldCharacters =
     worldClient?.registered
       ? new WorldCharacterSync({
           client: worldClient,
           store: characterStore,
+          economy: economyView ?? undefined,
           log: (line) => console.log(`[server] ${line}`),
         })
       : null;
+  const atomicOps = worldCharacters && worldClient?.registered
+    ? new WorldAtomicOps({ client: worldClient, fences: worldCharacters })
+    : null;
+  if (atomicOps) atomicOpsRef.ops = atomicOps;
   const gw: Gateway = new Gateway({
     port: PORT,
     scale,
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
+    atomicOps: atomicOps ?? undefined,
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),

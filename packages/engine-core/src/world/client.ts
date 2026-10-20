@@ -9,16 +9,23 @@
  */
 import {
   rangeKeyFor,
+  type AtomicOpResult,
+  type AuctionSettleInput,
   type CharacterSessionLock,
   type CharacterStateRecord,
   type ChunkRange,
+  type CraftExecuteInput,
   type HeartbeatAck,
+  type InventoryMutateInput,
   type LedgerEvent,
+  type LootGrantInput,
   type MigrationRecord,
   type RegionInfo,
   type RegionLease,
   type ShardSnapshotRecord,
   type StoredLedgerEvent,
+  type TradeCommitInput,
+  type VendorTransactInput,
 } from "@mmo-engine/world-server";
 import type { InstanceResult } from "../dungeons/instance.js";
 
@@ -43,6 +50,20 @@ export class WorldTransportError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * A region-side atomic-operation request (slice A2): the A1 wire input
+ * without `regionId` (the client always sends its own — a caller naming
+ * another region is a bug, not a choice) and with `opId` optional (the
+ * client mints one when the caller does not supply its own idempotency
+ * key).
+ */
+export type TradeCommitRequest = Omit<TradeCommitInput, "regionId" | "opId"> & { opId?: string };
+export type VendorTransactRequest = Omit<VendorTransactInput, "regionId" | "opId"> & { opId?: string };
+export type AuctionSettleRequest = Omit<AuctionSettleInput, "regionId" | "opId"> & { opId?: string };
+export type CraftExecuteRequest = Omit<CraftExecuteInput, "regionId" | "opId"> & { opId?: string };
+export type LootGrantRequest = Omit<LootGrantInput, "regionId" | "opId"> & { opId?: string };
+export type InventoryMutateRequest = Omit<InventoryMutateInput, "regionId" | "opId"> & { opId?: string };
 
 export interface WorldClientOptions {
   transport: WorldTransport;
@@ -536,6 +557,73 @@ export class WorldClient {
       },
       this.token(),
     );
+  }
+
+  /** A character's current session lock; null when unheld. */
+  async getCharacterLock(
+    characterId: number,
+  ): Promise<CharacterSessionLock | null> {
+    const res = await this.transport.call(
+      "GetCharacterLock",
+      { input: { regionId: this.opts.regionId, characterId } },
+      this.token(),
+    );
+    return (res["lock"] as CharacterSessionLock | null) ?? null;
+  }
+
+  // -------------------------------------------- atomic operations (slice A2)
+  // The six value-moving operations (ATOMIC-OPERATIONS-SPEC). Like the
+  // migration and character ops above these THROW WorldTransportError
+  // on transport failure — an outage at the commit step is not an
+  // outcome, and the caller must be able to tell it apart from a
+  // settled rejection. A settled outcome — success OR a typed business
+  // rejection — is returned as a value (AtomicOpResult): on success the
+  // caller applies `characters` (the new world records) to its live
+  // session state; on rejection nothing applied anywhere. Each method
+  // is exactly one transport call: one operation = one WorldStore
+  // call = one DB transaction at the world tier.
+
+  async tradeCommit(input: TradeCommitRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("TradeCommit", input);
+  }
+
+  async vendorTransact(input: VendorTransactRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("VendorTransact", input);
+  }
+
+  async auctionSettle(input: AuctionSettleRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("AuctionSettle", input);
+  }
+
+  async craftExecute(input: CraftExecuteRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("CraftExecute", input);
+  }
+
+  async lootGrant(input: LootGrantRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("LootGrant", input);
+  }
+
+  async inventoryMutate(input: InventoryMutateRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("InventoryMutate", input);
+  }
+
+  private async atomicCall(
+    method: string,
+    input: { opId?: string },
+  ): Promise<AtomicOpResult> {
+    const { opId, ...rest } = input;
+    const res = await this.transport.call(
+      method,
+      {
+        input: {
+          regionId: this.opts.regionId,
+          opId: opId ?? newOpId(),
+          ...rest,
+        },
+      },
+      this.token(),
+    );
+    return res["result"] as AtomicOpResult;
   }
 
   /** Stop heartbeats and best-effort deregister. Never throws. */

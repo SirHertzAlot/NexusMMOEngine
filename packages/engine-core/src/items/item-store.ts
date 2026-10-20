@@ -178,6 +178,27 @@ export class ItemStore {
     return free;
   }
 
+  /**
+   * Put an item in a character's bag at an exact slot (slice A2: the
+   * settled-outcome reconciler places items where the world record
+   * says they are). Returns false — moving nothing — when the slot is
+   * out of range or already holds a different item.
+   */
+  putInBagAt(character: number, id: number, at: number): boolean {
+    const slot = this.slotOf.get(id);
+    if (slot === undefined) return false;
+    if (!Number.isInteger(at) || at < 0 || at >= this.bagSlots) return false;
+    const bag = this.bag(character);
+    if (bag[at] !== 0 && bag[at] !== id) return false;
+    if (bag[at] === id) return true;
+    this.takeFromWherever(slot, id);
+    bag[at] = id;
+    this.where[slot] = ItemWhere.Bag;
+    this.owner[slot] = character;
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, at, this.durability[slot]);
+    return true;
+  }
+
   /** Put an item in a character's hand (taken from wherever it was). */
   hold(character: number, id: number, hand: number): void {
     const slot = this.mustSlot(id);

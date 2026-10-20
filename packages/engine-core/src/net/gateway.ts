@@ -171,7 +171,8 @@ import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
 import type { WorldCharacterSync } from "../world/character-sync.js";
-import type { MigrationRecord } from "@mmo-engine/world-server";
+import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
+import type { AtomicOpResult, MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
 import { Mana, type MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
@@ -274,6 +275,18 @@ export interface GatewayOptions {
    * (standalone mode never passes one).
    */
   worldCharacters?: WorldCharacterSync;
+  /**
+   * Atomic operations (slice A2, fleet mode): the world-tier commit
+   * path for the economy trade/vendor/auction settlements and the
+   * item grant path. When present, a completing trade accept, a
+   * vendor buy/sell, an auction buyout, and an admin `give` route
+   * their commit step through the world tier and apply the settled
+   * outcome; negotiation, validation, and rate limits stay in the
+   * region handlers. A world rejection or outage fails the operation
+   * closed (4005, nothing committed locally). Absent: every path is
+   * the local one, unchanged (standalone mode never passes one).
+   */
+  atomicOps?: WorldAtomicOps;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
   /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
@@ -790,6 +803,7 @@ export class Gateway {
       | "extensions"
       | "items"
       | "worldCharacters"
+      | "atomicOps"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -805,6 +819,8 @@ export class Gateway {
   private readonly characterStore: CharacterStore;
   /** Persistence P4 world-tier character sync (fleet mode); null standalone. */
   private readonly worldCharacters: WorldCharacterSync | null;
+  /** Atomic operations commit path (slice A2, fleet mode); null standalone. */
+  private readonly atomicOps: WorldAtomicOps | null;
   private readonly characterCatalog: ModularCatalog | null;
   private maxCharacters: number;
   /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
@@ -944,6 +960,7 @@ export class Gateway {
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
     this.worldCharacters = opts.worldCharacters ?? null;
+    this.atomicOps = opts.atomicOps ?? null;
     this.characterCatalog = opts.characterCatalog ?? null;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.fixedMaxCharacters = opts.maxCharacters !== undefined;
@@ -2491,6 +2508,11 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "give" && this.atomicOps) {
+      // Slice A2 (fleet mode): the grant's commit is async (world
+      // tier); the handler answers and logs like the sync path does.
+      this.contain(s, "give", this.runItemGiveFleet(s, cmd.args));
+      return;
     } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot" || cmd.command === "gold") {
       res = this.runItemCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
@@ -4211,9 +4233,346 @@ export class Gateway {
       this.sendError(s, 4003, "malformed trade");
       return;
     }
-    if (kind === "vendor") this.onVendor(s, payload);
-    else if (kind === "auction") this.onAuction(s, payload);
-    else this.onTrade(s, payload);
+    // Slice A2 (fleet mode): the commit actions (a completing trade
+    // accept, a vendor buy/sell, an auction buyout) go through the
+    // async world-tier handlers; every other action is handled by
+    // the ordinary synchronous handlers, exactly as standalone.
+    if (kind === "vendor") {
+      if (this.atomicOps) this.contain(s, "vendor", this.onVendorFleet(s, payload));
+      else this.onVendor(s, payload);
+    } else if (kind === "auction") {
+      if (this.atomicOps) this.contain(s, "auction", this.onAuctionFleet(s, payload));
+      else this.onAuction(s, payload);
+    } else {
+      if (this.atomicOps) this.contain(s, "trade", this.onTradeFleet(s, payload));
+      else this.onTrade(s, payload);
+    }
+  }
+
+  /**
+   * The refusal text for a settled world rejection (slice A2): the
+   * typed rejection surfaces through the gateway's existing 4005
+   * refusal semantics, in the vocabulary the local paths use where
+   * one exists.
+   */
+  private atomicRefusal(result: AtomicOpResult & { ok: false }): string {
+    switch (result.rejection) {
+      case "INSUFFICIENT_FUNDS":
+        return "not enough gold";
+      case "ITEM_NOT_PRESENT":
+        return "that item is not there";
+      default:
+        return `refused by the world (${result.rejection}: ${result.message})`;
+    }
+  }
+
+  /**
+   * Trade in fleet mode (slice A2): open/offer/cancel and a
+   * non-completing accept are region-side negotiation and run
+   * through the ordinary handler. A COMPLETING accept routes the
+   * settlement through the world-tier `tradeCommit`: on success the
+   * trade closes as settled (its event and the wallet changes drain
+   * on the next tick as usual) with the local caches already
+   * reconciled to the world records; on a rejection or an outage
+   * the trade cancels — the existing failed-settlement semantics —
+   * and nothing has moved anywhere.
+   */
+  private async onTradeFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    if (!trade || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "trade outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    const parsed = TradeActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action !== "accept" || parsed.data.id === undefined) {
+      this.onTrade(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    const id = parsed.data.id;
+    const t = trade.pending(id);
+    if (!t || (me !== t.a && me !== t.b)) {
+      this.sendError(s, 4005, "nothing to accept");
+      return;
+    }
+    const otherAccepted = me === t.a ? t.bAccepted : t.aAccepted;
+    if (!otherAccepted) {
+      // Not the completing accept: record it locally, as standalone.
+      trade.accept(id, me, tick);
+      return;
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.trade({
+        a: t.a,
+        b: t.b,
+        aGivesGold: t.aGold,
+        bGivesGold: t.bGold,
+        aGivesItems: t.aItems.map(itemInstanceId),
+        bGivesItems: t.bItems.map(itemInstanceId),
+      });
+    } catch {
+      trade.failSettlement(id, tick);
+      this.sendError(s, 4005, "trade refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      trade.failSettlement(id, tick);
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    trade.settleFromWorld(id, tick);
+    this.sendInventory(s);
+    const other = this.sessionOf(me === t.a ? t.b : t.a);
+    if (other) this.sendInventory(other);
+  }
+
+  /**
+   * Vendor in fleet mode (slice A2): `list` is region-side and runs
+   * through the ordinary handler. Buy and sell validate region-side
+   * (the system's terms checks, the wallet balance, bag room), then
+   * route the value movement through the world-tier
+   * `vendorTransact`; the settled outcome reconciles the buyer's
+   * gold and bag before the usual vendor/inventory messages go out.
+   * A rejection or an outage refuses with 4005 and moves nothing —
+   * the pre-allocated purchase item is destroyed, never bagged.
+   */
+  private async onVendorFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "vendor outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    const parsed = VendorActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action === "list") {
+      this.onVendor(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const me = sim.resolveWireId(s.playerEntity);
+    if (me < 0) return;
+    const meChar = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.vendor === undefined) {
+      this.sendError(s, 4003, "vendor action needs a vendor");
+      return;
+    }
+    let vEntity = -1;
+    try {
+      vEntity = sim.resolveWireId(BigInt(parsed.data.vendor));
+    } catch {
+      vEntity = -1;
+    }
+    if (vEntity < 0) {
+      this.sendError(s, 4005, "no such vendor");
+      return;
+    }
+    const wire = parsed.data.vendor;
+    const wallet = this.systems.find((x): x is WalletSystem => x instanceof WalletSystem);
+    if (parsed.data.action === "buy") {
+      if (parsed.data.def === undefined) {
+        this.sendError(s, 4003, "buy needs a def");
+        return;
+      }
+      const def = parsed.data.def;
+      const terms = vendor.buyTerms(sim, me, vEntity, def);
+      if ("error" in terms) {
+        this.sendError(s, 4005, terms.error);
+        return;
+      }
+      if (!wallet || wallet.balanceOf(meChar) < terms.price) {
+        this.sendError(s, 4005, "not enough gold");
+        return;
+      }
+      if (!this.items || !this.items.store.hasRoom(meChar)) {
+        this.sendError(s, 4005, "your bag is full");
+        return;
+      }
+      // Allocate the purchased item's identity locally (Free state,
+      // in no bag): the world grant and the local item share it, and
+      // a failed commit destroys it without ever bagging it.
+      const item = this.items.store.create(def, this.items.defs.durability[def]);
+      let result: AtomicOpResult;
+      try {
+        result = await this.atomicOps!.vendor({
+          character: meChar,
+          vendorId: terms.vendorId,
+          direction: "buy",
+          def,
+          price: terms.price,
+          instanceId: itemInstanceId(item),
+        });
+      } catch {
+        this.items.store.destroy(item);
+        this.sendError(s, 4005, "vendor refused: the world tier is unreachable");
+        return;
+      }
+      if (!result.ok) {
+        this.items.store.destroy(item);
+        this.sendError(s, 4005, this.atomicRefusal(result));
+        return;
+      }
+      vendor.commitBuyStock(terms.vendorId, def);
+      const m: VendorMessage = {
+        kind: "vendor",
+        tick,
+        vendor: wire,
+        state: "bought",
+        def,
+        price: terms.price,
+      };
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+      this.sendInventory(s);
+      return;
+    }
+    // sell
+    if (parsed.data.item === undefined) {
+      this.sendError(s, 4003, "sell needs an item");
+      return;
+    }
+    const item = parsed.data.item;
+    const terms = vendor.sellTerms(sim, me, vEntity, item);
+    if ("error" in terms) {
+      this.sendError(s, 4005, terms.error);
+      return;
+    }
+    if (!this.items || !this.items.store.inBagOf(meChar, item)) {
+      this.sendError(s, 4005, "you don't have that");
+      return;
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.vendor({
+        character: meChar,
+        vendorId: terms.vendorId,
+        direction: "sell",
+        def: terms.def,
+        price: terms.price,
+        instanceId: itemInstanceId(item),
+      });
+    } catch {
+      this.sendError(s, 4005, "vendor refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    const m: VendorMessage = {
+      kind: "vendor",
+      tick,
+      vendor: wire,
+      state: "sold",
+      item,
+    };
+    this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    this.sendInventory(s);
+  }
+
+  /**
+   * Auction in fleet mode (slice A2): browse/list/bid/cancel are
+   * region-side negotiation and run through the ordinary handler.
+   * A buyout validates region-side, then routes the settlement
+   * through the world-tier `auctionSettle` (buyer pays the full
+   * price, seller receives it — the world tier conserves gold
+   * exactly, so the local 5% house cut does not apply to a
+   * world-settled sale). When the buyer is their own top bidder,
+   * their escrow is first released locally and the made-whole
+   * balance uploaded, so the world charges the full price exactly
+   * once. A rejection or an outage refuses with 4005; the listing
+   * stays live and no value has moved.
+   */
+  private async onAuctionFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    if (!auction || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "auction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    const parsed = AuctionActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action !== "buyout") {
+      this.onAuction(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.listing === undefined) {
+      this.sendError(s, 4003, "buyout needs a listing");
+      return;
+    }
+    const terms = auction.buyoutTerms(me, parsed.data.listing, tick);
+    if ("error" in terms) {
+      this.sendError(s, 4005, terms.error);
+      return;
+    }
+    const l = terms.listing;
+    if (l.topBidder === me && l.topBid > 0) {
+      auction.releaseEscrow(l.id, tick);
+      if (this.worldCharacters) await this.worldCharacters.save(me);
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.auction({
+        buyer: me,
+        seller: l.seller,
+        instanceId: itemInstanceId(l.item),
+        price: l.buyout,
+      });
+    } catch {
+      this.sendError(s, 4005, "auction refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    auction.settleFromWorld(l.id, me, tick);
+    const tell = (m: AuctionMessage): void => {
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    };
+    tell({ kind: "auction", tick, state: "sold", listing: undefined });
+    this.sendInventory(s);
+    const seller = this.sessionOf(l.seller);
+    if (seller) this.sendInventory(seller);
   }
 
   /**
@@ -4806,6 +5165,35 @@ export class Gateway {
     }
     const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
     return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
+  }
+
+  /**
+   * The admin `give` command in fleet mode (slice A2): same pick and
+   * answers as the sync path, but the grant itself routes through
+   * ItemService.giveGranted — the world-tier `lootGrant` commits it,
+   * and a refusal or outage answers 4003 having granted nothing.
+   */
+  private async runItemGiveFleet(s: ClientSession, args: unknown): Promise<void> {
+    const fail = (message: string): void => {
+      this.logAdmin(s.username, "give", false);
+      this.sendError(s, 4003, message);
+    };
+    const items = this.items;
+    if (!items) return fail("no items on this server");
+    if (s.playerEntity === null) return fail("no player entity (not in the world)");
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return fail("avatar is gone");
+    const a = ItemPickArgsSchema.safeParse(args ?? {});
+    if (!a.success) return fail("usage: give {def? | base?, rank?, source?}");
+    const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
+    const def = pickDef(items.defs, a.data, seed);
+    if (def < 0) return fail("no items match");
+    const r = await items.giveGranted(this.holderOf(s), def);
+    if (!r.ok) return fail(r.error);
+    this.sendInventory(s);
+    this.logAdmin(s.username, "give", true);
+    const res: AdminResult = { kind: "admin", command: "give", ok: true, message: r.message };
+    this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
   }
 
   /**

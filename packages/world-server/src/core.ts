@@ -91,6 +91,14 @@ export class WorldCoreImpl implements WorldCore {
   private readonly assignmentPolicy: ChunkAssignmentPolicy;
   /** argon2id hash of the bootstrap API key (null = registration disabled). */
   private readonly apiKeyHash: string | null;
+  /**
+   * In-flight character-lock acquisitions, by character (slice A2):
+   * acquisition is check-then-act across store calls, so concurrent
+   * acquisitions for the SAME character are serialized through this
+   * chain — exactly one owner is a load-bearing invariant (P4), and
+   * two regions racing a login must not both pass the held check.
+   */
+  private readonly lockAcquisitions = new Map<number, Promise<unknown>>();
 
   constructor(opts: WorldCoreOptions & { apiKeyHash?: string | null }) {
     this.store = opts.store;
@@ -560,6 +568,26 @@ export class WorldCoreImpl implements WorldCore {
    * its epoch bumped, fencing out the previous holder's writes.
    */
   async acquireCharacterLock(caller: string, input: AcquireCharacterLockInput): Promise<CharacterSessionLock> {
+    // Serialized per character (see lockAcquisitions): the held
+    // check and the lock write must not interleave with another
+    // acquisition for the same character, or two racing logins
+    // would both pass the check and hold the character at once.
+    const prior = this.lockAcquisitions.get(input.characterId) ?? Promise.resolve();
+    const run = prior.then(() => this.acquireCharacterLockOnce(caller, input));
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.lockAcquisitions.set(input.characterId, tail);
+    void tail.then(() => {
+      if (this.lockAcquisitions.get(input.characterId) === tail) {
+        this.lockAcquisitions.delete(input.characterId);
+      }
+    });
+    return run;
+  }
+
+  private async acquireCharacterLockOnce(caller: string, input: AcquireCharacterLockInput): Promise<CharacterSessionLock> {
     await this.knownRegion(caller, input.regionId);
     const prior = await this.store.getOpResult(input.opId);
     if (prior !== null) return prior as CharacterSessionLock;

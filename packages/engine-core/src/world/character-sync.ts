@@ -36,6 +36,16 @@
  *                 and login() on the destination (fresh epoch before
  *                 the character is playable there).
  *
+ * Slice A2: this sync is also the fencing source for the world-tier
+ * atomic operations. It tracks each held character's world record
+ * version (login read, accepted puts, settled atomic outcomes) and
+ * hands out ParticipantFences (held lock epoch + expected version)
+ * through `fence()`; `applySettled()` records a settled operation's
+ * records and reconciles the local economy caches to them. When the
+ * server wires an economy view, payloads also carry the character's
+ * gold + bag (the atomic operations' fields), so the two layers share
+ * one world record instead of overwriting each other's halves.
+ *
  * Lock renewal: the world offers no refresh op (acquire is refused
  * while a lock is held, even by its holder), so when a held lock
  * reaches its expiry a working save first tries to re-acquire. An
@@ -47,8 +57,11 @@
  */
 
 import type {
+  AtomicOpResult,
   CharacterSessionLock,
   CharacterStateRecord,
+  InventoryItem,
+  ParticipantFence,
 } from "@mmo-engine/world-server";
 import type { CharacterState, CharacterStore } from "../characters/store.js";
 import type { SkillSave } from "../stats/mastery.js";
@@ -78,10 +91,71 @@ export interface CharacterWorldClient {
  */
 export const CHARACTER_LOCK_TTL_MS = 10 * 60_000;
 
+/**
+ * The character's economy at the world tier (slice A2): the same
+ * `gold` + `inventory` fields the world-tier atomic operations read
+ * and write on the character record. The sync carries them in its
+ * payload (and seeds/reconciles them locally) when the server wires
+ * an economy view, so a working save never wipes the fields an atomic
+ * operation settled, and an atomic operation never starts from a
+ * stale balance the region forgot to upload. Absent (no economy view
+ * wired): the payload is exactly the P4 shape.
+ */
+export interface CharacterEconomyView {
+  /** The character's local gold balance (the wallet's working cache). */
+  goldOf(characterId: number): number;
+  /** The character's bag at the world tier: one entry per bag item. */
+  inventoryOf(characterId: number): InventoryItem[];
+  /**
+   * Apply the world's settled gold + inventory to the local caches:
+   * the world record is truth, the local state reconciles to it.
+   */
+  reconcile(characterId: number, gold: number, inventory: InventoryItem[]): void;
+  /**
+   * Optional batch form (slice A2): reconcile every participant of
+   * one settled operation together, so an item moving between two
+   * participants is moved, never destroyed-and-recreated by the
+   * first participant's pass before the second's runs. When present,
+   * applySettled prefers it over per-character reconcile.
+   */
+  reconcileAll?(
+    settled: Array<{ characterId: number; gold: number; inventory: InventoryItem[] }>,
+  ): void;
+}
+
 /** The opaque world-tier payload: exactly what the local store keeps. */
 export interface WorldCharacterState {
   state: CharacterState | null;
   skills: SkillSave | null;
+  /** Slice A2: present when the world record carries economy fields. */
+  gold?: number;
+  inventory?: InventoryItem[];
+}
+
+/** The economy fields of a world record's state, when present and well-formed. */
+export function economyOfState(
+  state: unknown,
+): { gold: number; inventory: InventoryItem[] } | null {
+  if (state === null || typeof state !== "object") return null;
+  const p = state as Record<string, unknown>;
+  const gold = p["gold"];
+  const inventory = p["inventory"];
+  if (typeof gold !== "number" || !Number.isFinite(gold) || gold < 0) return null;
+  if (!isInventory(inventory)) return null;
+  return { gold: Math.floor(gold), inventory };
+}
+
+function isInventory(v: unknown): v is InventoryItem[] {
+  if (!Array.isArray(v)) return false;
+  return v.every(
+    (i) =>
+      i !== null &&
+      typeof i === "object" &&
+      typeof (i as InventoryItem).instanceId === "string" &&
+      typeof (i as InventoryItem).def === "number" &&
+      typeof (i as InventoryItem).slot === "number" &&
+      typeof (i as InventoryItem).count === "number",
+  );
 }
 
 function isCharacterState(v: unknown): v is CharacterState {
@@ -117,18 +191,33 @@ export function parseWorldCharacterState(
   if (st !== null && !isCharacterState(st)) return null;
   if (sk !== null && !isSkillSave(sk)) return null;
   if (st === null && sk === null) return null;
-  return { state: st, skills: sk };
+  const out: WorldCharacterState = { state: st, skills: sk };
+  // Slice A2 economy fields: carried only when present and well-formed;
+  // a corrupt economy field makes the record unusable, like any other.
+  if (p["gold"] !== undefined || p["inventory"] !== undefined) {
+    const eco = economyOfState(p);
+    if (eco === null) return null;
+    out.gold = eco.gold;
+    out.inventory = eco.inventory;
+  }
+  return out;
 }
 
 /** The world-tier payload for a character, read from the local store. */
 export function worldCharacterPayload(
   store: CharacterStore,
   characterId: number,
+  economy?: CharacterEconomyView,
 ): WorldCharacterState {
-  return {
+  const out: WorldCharacterState = {
     state: store.loadState?.(characterId) ?? null,
     skills: store.loadSkills?.(characterId) ?? null,
   };
+  if (economy) {
+    out.gold = economy.goldOf(characterId);
+    out.inventory = economy.inventoryOf(characterId);
+  }
+  return out;
 }
 
 /** Seed the local working cache from a world-tier payload. */
@@ -136,10 +225,14 @@ export function seedLocalCharacter(
   store: CharacterStore,
   characterId: number,
   payload: WorldCharacterState,
+  economy?: CharacterEconomyView,
 ): void {
   if (payload.state && store.saveState) store.saveState(characterId, payload.state);
   if (payload.skills && store.saveSkills) {
     store.saveSkills(characterId, payload.skills);
+  }
+  if (economy && payload.gold !== undefined && payload.inventory !== undefined) {
+    economy.reconcile(characterId, payload.gold, payload.inventory);
   }
 }
 
@@ -147,6 +240,12 @@ export interface WorldCharacterSyncOptions {
   client: CharacterWorldClient;
   /** The local character store: the working cache this sync seeds and reads. */
   store: CharacterStore;
+  /**
+   * Slice A2: the region's economy view (wallet + bag). When wired,
+   * payloads carry gold + inventory and settled atomic outcomes
+   * reconcile the local caches. Absent: P4 behaviour exactly.
+   */
+  economy?: CharacterEconomyView;
   /** Session-lock lifetime per acquire (default CHARACTER_LOCK_TTL_MS). */
   lockTtlMs?: number;
   now?: () => number;
@@ -165,12 +264,20 @@ interface HeldLock {
 export class WorldCharacterSync {
   private readonly client: CharacterWorldClient;
   private readonly store: CharacterStore;
+  private readonly economy: CharacterEconomyView | null;
   private readonly lockTtlMs: number;
   private readonly now: () => number;
   private readonly log: (line: string) => void;
 
   /** Locks this region currently holds, by character id. */
   private readonly held = new Map<number, HeldLock>();
+  /**
+   * The world record version last seen per character (slice A2): read
+   * at login, advanced by every accepted put and by every settled
+   * atomic operation. This is the expected-version half of every
+   * atomic operation's fence — the P4 plumbing is the only source.
+   */
+  private readonly versions = new Map<number, number>();
   /**
    * Characters whose lock was lost (stolen after expiry, or expired
    * and re-acquire refused): uphill writes stop until a fresh login.
@@ -182,6 +289,7 @@ export class WorldCharacterSync {
   constructor(opts: WorldCharacterSyncOptions) {
     this.client = opts.client;
     this.store = opts.store;
+    this.economy = opts.economy ?? null;
     this.lockTtlMs = opts.lockTtlMs ?? CHARACTER_LOCK_TTL_MS;
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
@@ -190,6 +298,56 @@ export class WorldCharacterSync {
   /** The epoch of the lock held for a character, or null (tests/diagnostics). */
   lockEpoch(characterId: number): number | null {
     return this.held.get(characterId)?.epoch ?? null;
+  }
+
+  /** The world record version last seen for a character, or null. */
+  worldVersion(characterId: number): number | null {
+    return this.versions.get(characterId) ?? null;
+  }
+
+  /**
+   * The atomic-operation fence for a character this region holds
+   * (slice A2): the held lock's epoch (renewed first when it has
+   * reached expiry, exactly like a working save) plus the record
+   * version last seen. Null when this region holds no lock for the
+   * character or has been fenced out of it — the caller fails the
+   * operation closed rather than inventing a fence.
+   */
+  async fence(characterId: number): Promise<ParticipantFence | null> {
+    if (this.fenced.has(characterId)) return null;
+    const lock = await this.ensureLock(characterId);
+    if (lock === null) return null;
+    return {
+      characterId,
+      epoch: lock.epoch,
+      expectedVersion: this.versions.get(characterId) ?? 0,
+    };
+  }
+
+  /**
+   * Record a settled atomic operation (slice A2): advance each
+   * participating character's known version to the world's, and
+   * reconcile the local economy caches to the settled records — the
+   * world's version is truth, never the reverse. A rejection settles
+   * nothing and changes nothing here.
+   */
+  applySettled(result: AtomicOpResult): void {
+    if (!result.ok) return;
+    const settled: Array<{ characterId: number; gold: number; inventory: InventoryItem[] }> = [];
+    for (const record of result.characters) {
+      // Only characters this region holds are tracked or reconciled:
+      // a cross-shard participant's caches live on its own region.
+      if (!this.held.has(record.characterId)) continue;
+      this.versions.set(record.characterId, record.version);
+      if (this.economy) {
+        const eco = economyOfState(record.state);
+        if (eco !== null) settled.push({ characterId: record.characterId, ...eco });
+      }
+    }
+    if (this.economy && settled.length > 0) {
+      if (this.economy.reconcileAll) this.economy.reconcileAll(settled);
+      else for (const s of settled) this.economy.reconcile(s.characterId, s.gold, s.inventory);
+    }
   }
 
   /** True once this region has been fenced out of a character's writes. */
@@ -231,11 +389,20 @@ export class WorldCharacterSync {
     try {
       const record = await this.client.getCharacterState(characterId);
       if (record !== null) {
+        // The version this login saw is the fence baseline for every
+        // atomic operation until a save or a settled op advances it.
+        this.versions.set(characterId, record.version);
         const payload = parseWorldCharacterState(record.state);
         if (payload !== null) {
-          seedLocalCharacter(this.store, characterId, payload);
+          seedLocalCharacter(this.store, characterId, payload, this.economy ?? undefined);
           seeded = true;
         } else {
+          // A record with economy fields but no usable character
+          // payload still seeds the economy caches from the world.
+          if (this.economy) {
+            const eco = economyOfState(record.state);
+            if (eco !== null) this.economy.reconcile(characterId, eco.gold, eco.inventory);
+          }
           this.log(
             `character ${characterId}: world record v${record.version} is not a usable character state; keeping the local record`,
           );
@@ -264,10 +431,39 @@ export class WorldCharacterSync {
     try {
       const lock = await this.ensureLock(characterId);
       if (lock === null) return false;
-      const payload = worldCharacterPayload(this.store, characterId);
+      if (this.economy) {
+        // Slice A2: another region may have settled an atomic
+        // operation against this character since our last save (the
+        // cross-shard case — e.g. our character was the seller in an
+        // auction settled elsewhere). The payload below carries the
+        // local economy cache uphill, so a version drift means that
+        // cache is stale: reconcile it to the world's settled
+        // outcome BEFORE writing, never the reverse. A failed
+        // refresh aborts the save (retried next cycle) rather than
+        // risk overwriting the settled outcome.
+        const known = this.versions.get(characterId);
+        if (known !== undefined) {
+          let current: CharacterStateRecord | null;
+          try {
+            current = await this.client.getCharacterState(characterId);
+          } catch (err) {
+            this.log(
+              `character ${characterId}: pre-save refresh failed (${(err as Error).message}); save deferred`,
+            );
+            return false;
+          }
+          if (current !== null && current.version !== known) {
+            const eco = economyOfState(current.state);
+            if (eco !== null) this.economy.reconcile(characterId, eco.gold, eco.inventory);
+            this.versions.set(characterId, current.version);
+          }
+        }
+      }
+      const payload = worldCharacterPayload(this.store, characterId, this.economy ?? undefined);
       if (payload.state === null && payload.skills === null) return false;
       try {
-        await this.client.putCharacterState(characterId, lock.epoch, payload);
+        const record = await this.client.putCharacterState(characterId, lock.epoch, payload);
+        this.versions.set(characterId, record.version);
         return true;
       } catch (err) {
         if (isFencingRejection(err)) {
@@ -298,6 +494,7 @@ export class WorldCharacterSync {
     const committed = await this.save(characterId);
     const lock = this.held.get(characterId);
     this.held.delete(characterId);
+    this.versions.delete(characterId);
     if (lock && !this.fenced.has(characterId)) {
       try {
         await this.client.releaseCharacterLock(characterId, lock.epoch);

@@ -240,7 +240,35 @@ export {
   WorldClient,
   WorldTransportError,
 } from "./world/client.js";
-export type { WorldTransport, WorldClientOptions } from "./world/client.js";
+export type {
+  WorldTransport,
+  WorldClientOptions,
+  TradeCommitRequest,
+  VendorTransactRequest,
+  AuctionSettleRequest,
+  CraftExecuteRequest,
+  LootGrantRequest,
+  InventoryMutateRequest,
+} from "./world/client.js";
+export {
+  WorldAtomicOps,
+  LocalEconomyView,
+  itemInstanceId,
+  parseItemInstanceId,
+} from "./world/atomic-ops.js";
+export type {
+  AtomicWorldClient,
+  AtomicFenceSource,
+  WorldAtomicOpsOptions,
+  LocalEconomyViewOptions,
+} from "./world/atomic-ops.js";
+export { CraftingService } from "./crafting/crafting-service.js";
+export type {
+  AtomicCraftExecutor,
+  CraftRequest,
+  CraftResult,
+  CraftingServiceOptions,
+} from "./crafting/crafting-service.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
 export {
   planFleetBoot,
@@ -262,6 +290,7 @@ export {
   parseWorldCharacterState,
   seedLocalCharacter,
   worldCharacterPayload,
+  economyOfState,
   CHARACTER_LOCK_TTL_MS,
 } from "./world/character-sync.js";
 export type {
@@ -269,6 +298,7 @@ export type {
   CharacterLoginResult,
   WorldCharacterState,
   WorldCharacterSyncOptions,
+  CharacterEconomyView,
 } from "./world/character-sync.js";
 export {
   recallShardState,

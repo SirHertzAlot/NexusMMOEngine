@@ -29,6 +29,23 @@ import { ARMOUR_SLOTS, ArmourSlot, HandSlot, ItemStore, ItemWhere, type ArmourSl
 /** Height above the ground a lying item rests at, metres. */
 const REST_HEIGHT = 0.06;
 
+/**
+ * The fleet-mode grant executor (slice A2): routes one grant's commit
+ * through the world-tier `lootGrant` operation. Supplied by the
+ * server's fleet wiring (a WorldAtomicOps over the region's
+ * WorldClient); absent in standalone mode, when grants are local.
+ * Returns the settled outcome: a rejection is a value, an outage
+ * throws — the grant path fails closed on both.
+ */
+export interface AtomicGrantExecutor {
+  loot(
+    character: number,
+    sourceId: string,
+    instanceId: string,
+    def: number,
+  ): Promise<{ ok: true } | { ok: false; message: string }>;
+}
+
 export interface ItemServiceOptions {
   defs: ItemDefs;
   loot: LootRules;
@@ -39,6 +56,11 @@ export interface ItemServiceOptions {
   rankOrder?: readonly string[];
   /** The item base a new character starts holding (M3b). Default "sword"; null: none. */
   starterBase?: string | null;
+  /**
+   * Slice A2 (fleet mode): the world-tier grant executor used by
+   * `giveGranted`. Absent: `giveGranted` is exactly `give`.
+   */
+  atomicGrant?: AtomicGrantExecutor;
 }
 
 export type ItemResult = { ok: true; message: string } | { ok: false; error: string };
@@ -58,6 +80,7 @@ export class ItemService implements SimSystem {
   private readonly groundOrder: number[] = [];
   private readonly rankOrder: readonly string[];
   private readonly starterBase: string | null;
+  private readonly atomicGrant: AtomicGrantExecutor | null;
   /** Characters already given their starter weapon this run. */
   private readonly outfitted = new Set<number>();
 
@@ -69,6 +92,7 @@ export class ItemService implements SimSystem {
     this.store = new ItemStore(o.loot.bagSlots);
     this.rankOrder = o.rankOrder ?? [];
     this.starterBase = o.starterBase === undefined ? "sword" : o.starterBase;
+    this.atomicGrant = o.atomicGrant ?? null;
   }
 
   /**
@@ -291,6 +315,50 @@ export class ItemService implements SimSystem {
     if (!this.store.hasRoom(character)) return { ok: false, error: "the bag is full" };
     const item = this.store.create(def, this.defs.durability[def]);
     this.store.putInBag(character, item);
+    return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
+  }
+
+  /**
+   * The grant path (slice A2): like `give`, but in fleet mode the
+   * grant's commit routes through the world-tier `lootGrant`
+   * operation and the settled outcome is applied to the local bag
+   * (the coordinator's reconciliation materialises the item under
+   * its world identity). Standalone (no executor wired) this is
+   * exactly `give`. Fail closed: a world rejection or an outage
+   * grants nothing — the pre-allocated local item is destroyed and
+   * the refusal surfaces as the result's error.
+   */
+  async giveGranted(character: number, def: number): Promise<ItemResult> {
+    if (!this.atomicGrant) return this.give(character, def);
+    if (def < 0 || def >= this.defs.count) return { ok: false, error: "no such item" };
+    if (!this.store.hasRoom(character)) return { ok: false, error: "the bag is full" };
+    // Allocate the item's identity locally first (it exists nowhere
+    // yet: created in the Free state, in no bag) so the world grant
+    // and the local item share one instance id.
+    const item = this.store.create(def, this.defs.durability[def]);
+    try {
+      const settled = await this.atomicGrant.loot(
+        character,
+        "system:grant",
+        `item-${item}`,
+        def,
+      );
+      if (!settled.ok) {
+        this.store.destroy(item);
+        return { ok: false, error: settled.message };
+      }
+    } catch (err) {
+      this.store.destroy(item);
+      return {
+        ok: false,
+        error: `grant refused: the world tier is unreachable (${(err as Error).message})`,
+      };
+    }
+    // The settled outcome reconciled the item into the bag; confirm
+    // it landed before reporting success.
+    if (!this.store.inBagOf(character, item)) {
+      return { ok: false, error: "grant refused: the settled outcome did not land" };
+    }
     return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
   }
 
