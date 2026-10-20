@@ -54,3 +54,62 @@ addons already have a `build/Release/*.node` (all but
 `addon-terrain-kernel`). A fresh worktree has **none** — `build/` is
 gitignored — which is why test runs from fresh worktrees report the
 native-addon failure class. Step 2 builds them here, in this worktree.
+
+## Step 2 — Toolchain + addon builds (2026-10-20)
+
+Toolchain in this sandbox (recorded verbatim):
+
+- gcc / g++: Ubuntu 13.3.0
+- GNU Make 4.3
+- Python 3.12.3
+- cmake 3.28.3
+- node v24.20.0, npm 10.9.4, node-gyp v12.4.0/v13.1.0 (npx)
+
+Dependencies were installed with `npm install --ignore-scripts` (682
+packages) so the addon builds below are individually attributable; the
+prebuilt native npm deps were then verified loading from this worktree:
+`better-sqlite3` OK, `argon2` OK, `uWebSockets.js` OK, `@surrealdb/node`
+OK via ESM import (a bare CJS `require()` fails with "No exports main
+defined" — it is an ESM-only package, and its consumers import it).
+
+Each addon was built with the repo's own build command — the same
+`npx node-gyp rebuild -j max` that `scripts/build.mjs` runs per addon
+folder — and **verified by artifact on disk + a `require()` load test**,
+not by exit code alone. That discipline mattered twice:
+
+1. A first background loop over all ten addons *reported* exit 0 and a
+   `.node` name for every addon, but the artifacts for the last five did
+   not exist on disk afterwards (their /tmp build logs were gone too —
+   this sandbox reaps /tmp, and memory pressure is real: 7.9 GB total,
+   ~1.2 GB free while compiling). Only geometry, integrate, navigation,
+   perf-probe and physics were actually built by that pass. The five
+   missing addons were rebuilt individually with disk verification
+   after each.
+2. `addon-picg`'s rebuild exited **7** *after* succeeding:
+   `SOLINK_MODULE(target) Release/obj.target/picg.node` and
+   `COPY Release/picg.node` completed, then node-gyp crashed in a
+   post-build step — `gyp ERR! stack Error: ENOENT: no such file or
+   directory, lstat '.../packages/addons/picg/build/node_gyp_bins'`.
+   The artifact is good: the addon loads and reports
+   `pcg-core 0.1.2 (bmesh-tier1)`. Exit code alone would have lied in
+   both directions today.
+
+### Per-addon verdicts (final state, all verified by load test)
+
+| Addon | Artifact | Verdict |
+|---|---|---|
+| `@mmo-engine/addon-geometry` | `build/Release/geometry.node` | Builds, loads |
+| `@mmo-engine/addon-integrate` | `build/Release/integrate.node` | Builds, loads |
+| `@mmo-engine/addon-navigation` | `build/Release/navigation.node` | Builds, loads |
+| `@mmo-engine/addon-perf-probe` | `build/Release/perf_probe.node` | Builds, loads |
+| `@mmo-engine/addon-physics` | `build/Release/physics.node` | Builds, loads (Jolt; the long compile, ~7 min) |
+| `@mmo-engine/addon-picg` | `build/Release/picg.node` | Builds, loads; node-gyp exit 7 post-build `node_gyp_bins` ENOENT (see above) |
+| `@mmo-engine/addon-procgen` | `build/Release/procgen.node` | Builds, loads; `generateChunk(1234n,0,0,0)` produces heights |
+| `@mmo-engine/addon-scatter` | `build/Release/scatter.node` | Builds, loads; exports `scatterChunk` |
+| `@mmo-engine/addon-template` | `build/Release/addon.node` | Builds, loads |
+| `@mmo-engine/addon-terrain-kernel` | `build/Release/terrain_kernel.node` | Builds, loads (the one addon the main checkout had never built) |
+
+**All 10 workspace addons build and load in this sandbox.** No source
+changes were needed anywhere — the gap was purely that fresh checkouts
+never get their `build/` outputs.
+
