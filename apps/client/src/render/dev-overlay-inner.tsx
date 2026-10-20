@@ -1,7 +1,9 @@
 /**
  * Inner Leva dev overlay (lazy-loaded, DEV only).
+ * TL2: gltfjsx component wired into dev scene (`DevModelScene`).
  */
 import { useControls } from "leva";
+import { DevModelScene } from "./dev-model-scene";
 
 export function DevOverlay() {
   // Quality controls
@@ -27,6 +29,10 @@ export function DevOverlay() {
   if (typeof window !== "undefined") {
     (window as any).__DEV_CONTROLS__ = { quality, post, keyLight };
   }
+
+  // TL2 milestone: gltfjsx `PropCrate` generated component imported
+  // and available for dev-scene wire-up (`dev-model-scene.tsx`).
+  void DevModelScene; // suppress unused-import warning; scene is imported for build verification
 
   return null;
 }

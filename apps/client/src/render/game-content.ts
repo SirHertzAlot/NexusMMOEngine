@@ -12,6 +12,7 @@ import { setCombatMoves } from "@mmo-engine/protocol";
 import { setLocomotion } from "./character/character-animator.js";
 import { setSurfaceMaterials } from "./terrain/surfaces.js";
 import { setToonContent } from "./toon/toon-material.js";
+import { setShadingContent } from "./shading/shading.js";
 
 let current: GameContent = {};
 
@@ -45,6 +46,7 @@ export function applyGameContent(c: GameContent): { applied: MediaDocName[]; pro
   if (ok("materials")) {
     setToonContent(c.materials!.toon);
     setSurfaceMaterials(c.materials!.surfaces);
+    setShadingContent(c.materials!.shading);
     good.materials = c.materials;
     applied.push("materials");
   }

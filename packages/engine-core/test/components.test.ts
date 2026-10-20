@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 import { createWorld, addEntity, addComponent } from "bitecs";
 import {
   AssetRef,
+  AudioEmitter,
   COMPONENT_IDS,
   StructuralIntegrity,
+  FlowRef,
   Transform,
+  VfxEmitter,
 } from "../src/components.js";
 
 test("AssetRef is registered as component id 8, Locomotion as 9, Appearance as 10", () => {
@@ -52,4 +55,47 @@ test("StructuralIntegrity stores current/max (f32) on an entity, SAB-backed like
   // SAB-backed: the field stores are SharedArrayBuffer views.
   assert.ok(StructuralIntegrity.current.buffer instanceof SharedArrayBuffer);
   assert.ok(StructuralIntegrity.max.buffer instanceof SharedArrayBuffer);
+});
+
+test("FlowRef is registered as component id 18, VfxEmitter as 19, AudioEmitter as 20", () => {
+  assert.equal(COMPONENT_IDS.FlowRef, 18);
+  assert.equal(COMPONENT_IDS.VfxEmitter, 19);
+  assert.equal(COMPONENT_IDS.AudioEmitter, 20);
+});
+
+test("FlowRef stores graph (u32 hash) + enabled (u8) on an entity", () => {
+  const world = createWorld();
+  const eid = addEntity(world);
+  addComponent(world, FlowRef, eid);
+  FlowRef.graph[eid] = 0xdeadbeef;
+  FlowRef.enabled[eid] = 1;
+  assert.equal(FlowRef.graph[eid], 0xdeadbeef);
+  assert.equal(FlowRef.enabled[eid], 1);
+  // zero-initialized: unbound graph id, disabled by default
+  const eid2 = addEntity(world);
+  addComponent(world, FlowRef, eid2);
+  assert.equal(FlowRef.graph[eid2], 0);
+  assert.equal(FlowRef.enabled[eid2], 0);
+});
+
+test("VfxEmitter stores template (u32 hash) + intensity (f32) on an entity", () => {
+  const world = createWorld();
+  const eid = addEntity(world);
+  addComponent(world, VfxEmitter, eid);
+  addComponent(world, Transform, eid);
+  VfxEmitter.template[eid] = 0x12345678;
+  VfxEmitter.intensity[eid] = 1.5;
+  assert.equal(VfxEmitter.template[eid], 0x12345678);
+  assert.equal(VfxEmitter.intensity[eid], 1.5);
+});
+
+test("AudioEmitter stores clip (u32 hash) + radius (f32) on an entity", () => {
+  const world = createWorld();
+  const eid = addEntity(world);
+  addComponent(world, AudioEmitter, eid);
+  addComponent(world, Transform, eid);
+  AudioEmitter.clip[eid] = 0x9abcdef0;
+  AudioEmitter.radius[eid] = 12.25;
+  assert.equal(AudioEmitter.clip[eid], 0x9abcdef0);
+  assert.equal(AudioEmitter.radius[eid], 12.25);
 });

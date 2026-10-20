@@ -186,10 +186,9 @@ export class TerrainRenderer {
    */
   ensureChunk(wireId: bigint, chunk: ChunkRow): void {
     const known = this.keyOfWire.get(wireId);
-    if (known !== undefined) {
-      const c = this.chunks.get(known)!;
-      if (c.displaced || chunk.heights === null) return;
-    }
+    // A wire id can outlive its chunk (a newer entity took the cell, then went): rebuild it then.
+    const c = known === undefined ? undefined : this.chunks.get(known);
+    if (c && (c.displaced || chunk.heights === null)) return;
     const { cx, cz } = chunkCoords(chunk.chunkId);
     const k = key(cx, cz);
     const displaced = chunk.heights !== null && chunk.heights.length === SIDE * SIDE;
@@ -262,6 +261,11 @@ export class TerrainRenderer {
   setWireframe(on: boolean): void {
     this.nearMaterial.wireframe = on;
     this.farMaterial.wireframe = on;
+  }
+
+  /** Wet look (WX1): 0 = dry, 1 = soaked. Driven by the weather field. */
+  setWetness(v: number): void {
+    this.uniforms.uWetness.value = v;
   }
 
   /** The loaded chunk under world (x, z), or null (tests, tools). */

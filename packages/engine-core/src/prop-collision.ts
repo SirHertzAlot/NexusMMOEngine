@@ -141,74 +141,114 @@ export class PropCollisionSystem implements SimSystem {
           sy1 = oy + hy;
         }
         if (my1 <= sy0 || sy1 <= my0) continue;
-        if (kind === ShapeKind.Box) this.resolveBox(e, o, rm);
-        else this.resolveDisc(e, o, rm, BodyConfig.radius[o]);
+        const hit = kind === ShapeKind.Box ? boxPush(o, Transform.px[e], Transform.pz[e], rm, PUSH) : discPush(o, Transform.px[e], Transform.pz[e], rm, PUSH);
+        if (hit) {
+          Transform.px[e] += PUSH.x;
+          Transform.pz[e] += PUSH.z;
+        }
       }
     }
   }
+}
 
-  /** Push a mover's XZ circle out of a yaw-rotated static box. */
-  private resolveBox(e: number, o: number, rm: number): void {
-    const hx = BodyConfig.halfX[o];
-    const hz = BodyConfig.halfZ[o];
-    if (!(hx > 0) || !(hz > 0)) return;
-    const dx = Transform.px[e] - Transform.px[o];
-    const dz = Transform.pz[e] - Transform.pz[o];
-    // Bounding-circle reject before any trigonometry.
-    const bound = Math.sqrt(hx * hx + hz * hz) + rm;
-    if (dx > bound || dx < -bound || dz > bound || dz < -bound) return;
-    const yaw = yawOf(o);
-    const c = Math.cos(yaw);
-    const s = Math.sin(yaw);
-    // World -> box-local (inverse of the +Y rotation the body carries).
-    const lx = dx * c - dz * s;
-    const lz = dx * s + dz * c;
-    const qx = Math.max(-hx, Math.min(hx, lx));
-    const qz = Math.max(-hz, Math.min(hz, lz));
-    let pushLx: number;
-    let pushLz: number;
-    if (qx === lx && qz === lz) {
-      // Centre inside (or on) the box: leave along the least-penetrating axis.
-      const penX = hx + rm - Math.abs(lx);
-      const penZ = hz + rm - Math.abs(lz);
-      if (penX <= 0 || penZ <= 0) return;
-      if (penX <= penZ) {
-        pushLx = lx >= 0 ? penX : -penX;
-        pushLz = 0;
-      } else {
-        pushLx = 0;
-        pushLz = lz >= 0 ? penZ : -penZ;
-      }
+/** Scratch for the push helpers (no allocation per pair). */
+const PUSH = { x: 0, z: 0 };
+const statics = defineQuery([Transform, BodyConfig]);
+
+/** The XZ push that frees a circle of radius `rm` at (px, pz) from yaw-rotated static box `o`, into `out`. False if clear. */
+function boxPush(o: number, px: number, pz: number, rm: number, out: { x: number; z: number }): boolean {
+  const hx = BodyConfig.halfX[o];
+  const hz = BodyConfig.halfZ[o];
+  if (!(hx > 0) || !(hz > 0)) return false;
+  const dx = px - Transform.px[o];
+  const dz = pz - Transform.pz[o];
+  // Bounding-circle reject before any trigonometry.
+  const bound = Math.sqrt(hx * hx + hz * hz) + rm;
+  if (dx > bound || dx < -bound || dz > bound || dz < -bound) return false;
+  const yaw = yawOf(o);
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  // World -> box-local (inverse of the +Y rotation the body carries).
+  const lx = dx * c - dz * s;
+  const lz = dx * s + dz * c;
+  const qx = Math.max(-hx, Math.min(hx, lx));
+  const qz = Math.max(-hz, Math.min(hz, lz));
+  let pushLx: number;
+  let pushLz: number;
+  if (qx === lx && qz === lz) {
+    // Centre inside (or on) the box: leave along the least-penetrating axis.
+    const penX = hx + rm - Math.abs(lx);
+    const penZ = hz + rm - Math.abs(lz);
+    if (penX <= 0 || penZ <= 0) return false;
+    if (penX <= penZ) {
+      pushLx = lx >= 0 ? penX : -penX;
+      pushLz = 0;
     } else {
-      const ex = lx - qx;
-      const ez = lz - qz;
-      const dist = Math.sqrt(ex * ex + ez * ez);
-      if (dist >= rm || dist === 0) return;
-      const push = (rm - dist) / dist;
-      pushLx = ex * push;
-      pushLz = ez * push;
+      pushLx = 0;
+      pushLz = lz >= 0 ? penZ : -penZ;
     }
-    // Box-local -> world.
-    Transform.px[e] += pushLx * c + pushLz * s;
-    Transform.pz[e] += -pushLx * s + pushLz * c;
+  } else {
+    const ex = lx - qx;
+    const ez = lz - qz;
+    const dist = Math.sqrt(ex * ex + ez * ez);
+    if (dist >= rm || dist === 0) return false;
+    const push = (rm - dist) / dist;
+    pushLx = ex * push;
+    pushLz = ez * push;
   }
+  // Box-local -> world.
+  out.x = pushLx * c + pushLz * s;
+  out.z = -pushLx * s + pushLz * c;
+  return true;
+}
 
-  /** Push a mover's XZ circle out of a static sphere/capsule disc. */
-  private resolveDisc(e: number, o: number, rm: number, r: number): void {
-    if (!(r > 0)) return;
-    const dx = Transform.px[e] - Transform.px[o];
-    const dz = Transform.pz[e] - Transform.pz[o];
-    const want = r + rm;
-    if (dx > want || dx < -want || dz > want || dz < -want) return;
-    const distSq = dx * dx + dz * dz;
-    if (distSq >= want * want) return;
-    if (distSq === 0) {
-      Transform.px[e] += want;
-      return;
-    }
-    const dist = Math.sqrt(distSq);
-    const push = (want - dist) / dist;
-    Transform.px[e] += dx * push;
-    Transform.pz[e] += dz * push;
+/** Same for a static sphere/capsule disc. */
+function discPush(o: number, px: number, pz: number, rm: number, out: { x: number; z: number }): boolean {
+  const r = BodyConfig.radius[o];
+  if (!(r > 0)) return false;
+  const dx = px - Transform.px[o];
+  const dz = pz - Transform.pz[o];
+  const want = r + rm;
+  if (dx > want || dx < -want || dz > want || dz < -want) return false;
+  const distSq = dx * dx + dz * dz;
+  if (distSq >= want * want) return false;
+  if (distSq === 0) {
+    out.x = want;
+    out.z = 0;
+    return true;
   }
+  const dist = Math.sqrt(distSq);
+  const push = (want - dist) / dist;
+  out.x = dx * push;
+  out.z = dz * push;
+  return true;
+}
+
+/**
+ * Where a character of `radius` placed at (x, z) ends up clear of every
+ * static body: pushed out of boxes (yaw-aware) and discs, up to a few
+ * passes so leaving one box does not land in the next. For spawn, respawn,
+ * teleport and creature placement, so nothing starts inside a building.
+ * Ignores height (conservative: any static, however high, pushes).
+ * Not for the tick loop. ponytail: linear scan over statics, fine for
+ * spawn-rate calls; add a grid if it ever runs per tick.
+ */
+export function clearOfStatics(sim: SimWorld, x: number, z: number, radius: number): { x: number; z: number } {
+  const all = statics(sim.ecs);
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (let k = 0; k < all.length; k++) {
+      const o = all[k] as number;
+      if (BodyConfig.motionType[o] !== MotionType.Static) continue;
+      const kind = BodyConfig.shapeKind[o];
+      const hit = kind === ShapeKind.Box ? boxPush(o, x, z, radius, PUSH) : kind === ShapeKind.Sphere || kind === ShapeKind.Capsule ? discPush(o, x, z, radius, PUSH) : false;
+      if (hit) {
+        x += PUSH.x;
+        z += PUSH.z;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return { x, z };
 }

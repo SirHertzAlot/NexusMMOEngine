@@ -126,6 +126,16 @@ export function FlowNote(): React.JSX.Element {
   );
 }
 
+export function ScaleNote(): React.JSX.Element {
+  return (
+    <Note title="Scale">
+      <p>One dial for how big the world is: the final size of an object is global × its category (building, tree, rock, plant, prop) × its own asset correction. The server applies it where baked objects spawn, so what is drawn and what collides always agree.</p>
+      <p>The gauge sizes the local art catalog under the current factors next to a 1.8 m character and flags a category whose typical height is outside its band (building 3-14 m, tree 4-30 m, rock 0.3-8 m, plant 0.1-4 m).</p>
+      <p>Save writes content/scale.json. A factor outside 0.05-20, an unknown category or a non-number is refused, and nothing is written; the same checks show in the Problems tab.</p>
+    </Note>
+  );
+}
+
 export function DatabaseNote(): React.JSX.Element {
   return (
     <Note title="Database">

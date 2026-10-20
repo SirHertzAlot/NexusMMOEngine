@@ -5,7 +5,8 @@
     "@mmo-engine/schema": "0.1.0",
     "@three.ez/instanced-mesh": "^0.3.16",
     "three": "^0.186.1",
-    "zod": "^4.6.5"
+    "three.quarks": "^0.17.1",
+    "zod": "^4.6.7"
   },
   "description": "Art asset pipeline contract: manifest schema + validation, pack directory scanning, and a manifest-backed THREE.js AssetProvider with placeholder fallback",
   "devDependencies": {
@@ -17,9 +18,10 @@
   "name": "@mmo-engine/art",
   "private": true,
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/schema && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/schema && tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
     "convert:packs": "node dist/src/convert/convert-packs.js",
+    "import:glb": "node dist/src/convert/import-glb-packs.js",
     "convert:modular": "node dist/src/convert/convert-modular.js",
     "convert:animations": "node dist/src/convert/convert-animations.js"
   },

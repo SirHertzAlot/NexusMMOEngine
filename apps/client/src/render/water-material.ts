@@ -49,6 +49,7 @@ uniform float uHasDepth;
 uniform vec3 uShallow;
 uniform vec3 uDeep;
 uniform vec3 uFoam;
+uniform float uRainIntensity; // 0..1, from the weather field
 varying vec3 vWorld;
 #include <fog_pars_fragment>
 
@@ -95,6 +96,14 @@ vec2 waveSlope(vec2 p, float t, float detail) {
   vec2 dE = rotate2(dA, -1.3);
   s += detail * (dD * 1.9 * 0.012 * cos(dot(p, dD) * 1.9 + t * 2.6)
                + dE * 3.1 * 0.007 * cos(dot(p, dE) * 3.1 - t * 3.4));
+  // Rain ripples (WX1): high-frequency, small-amplitude, driven by the field.
+  float rain = uRainIntensity;
+  if (rain > 0.001) {
+    vec2 dR1 = rotate2(dA, 1.7);
+    vec2 dR2 = rotate2(dA, -0.9);
+    s += rain * (dR1 * 8.0 * 0.004 * cos(dot(p, dR1) * 8.0 + t * 5.2)
+               + dR2 * 12.0 * 0.003 * cos(dot(p, dR2) * 12.0 - t * 6.1));
+  }
   return s;
 }
 
@@ -187,6 +196,7 @@ export function createWaterMaterial(sky: SkyUniforms): { material: THREE.ShaderM
     uShallow: { value: new THREE.Color(0.1, 0.42, 0.44) },
     uDeep: { value: new THREE.Color(0.012, 0.07, 0.11) },
     uFoam: { value: new THREE.Color(0.9, 0.95, 1.0) },
+    uRainIntensity: { value: 0 },
   };
   const uniforms: WaterUniforms = { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...sky, ...own };
   const material = new THREE.ShaderMaterial({

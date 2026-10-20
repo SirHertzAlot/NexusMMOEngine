@@ -84,7 +84,7 @@ function Cell(props: { col: GridColumn; value: unknown; error: string | null; ct
     return <input type="checkbox" aria-label={label} title={label} checked={value === true || (value === undefined && col.def === true)} onChange={(e) => onCommit(e.target.checked)} />;
   }
   if (col.kind === "enum") {
-    const opts = col.optionsFrom ? ctx.options[col.optionsFrom] : col.options === "techniques" ? ctx.options.techniques : col.options;
+    const opts = col.optionsFrom ? ctx.options[col.optionsFrom] : typeof col.options === "string" ? ctx.options[col.options] : col.options;
     return (
       <Select size="xs" invalid={!!shown} className="w-full font-mono" aria-label={label} title={label} value={typeof value === "string" ? value : ""} onChange={(e) => onCommit(e.target.value === "" ? undefined : e.target.value)}>
         <option value="">{col.def !== undefined ? `(${String(col.def)})` : ""}</option>

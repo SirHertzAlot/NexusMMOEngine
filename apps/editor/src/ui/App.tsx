@@ -19,10 +19,14 @@ import { GraphEditorPanel } from "./graph-editor.js";
 import { DungeonPanel } from "./dungeon-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { RulesPanel } from "./rules-editor.js";
-import { ValgrindPanel } from "./valgrind-panel.js";
+import { SettlementPanel } from "./settlement-panel.js";
+import { CraftingRulesPanel } from "./crafting-rules-panel.js";
+import { DungeonRulesPanel } from "./dungeon-rules-panel.js";
 import { StringsPanel } from "./strings-panel.js";
+import { ScalePanel } from "./scale-panel.js";
 import { AnimationPanel } from "./animation-panel.js";
 import { MaterialsPanel } from "./materials-panel.js";
+import { ValgrindPanel } from "./valgrind-panel.js";
 import { ChangesPanel } from "./vcs-panel.js";
 import { RulesPanel as TablesPanel } from "./rules-panel.js";
 import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
@@ -38,7 +42,7 @@ import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.j
 import { requestOpenAsset } from "./open-asset.js";
 import { loadCatalog } from "../gameplay-client.js";
 import { BakesPane, OutputPane, ProblemsPane, problemCount, useDiskProblems, useDocProblems, useServerOutput, type DiskProblems, type ServerOutput } from "./dock-panes.js";
-import { DatabaseNote, FlowNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
+import { DatabaseNote, FlowNote, ScaleNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
 import { OwnedFiles } from "./owned-files.js";
 import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
@@ -82,19 +86,6 @@ type WorkspaceId =
   | "release"
   | "modules";
 
-type Tab = "ecs" | "play" | "terrain" | "graphs" | "dungeons" | "assets" | "tables" | "rules" | "characters" | "valgrind";
-
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "ecs", label: "ECS Inspector" },
-  { id: "play", label: "Play Mode" },
-  { id: "terrain", label: "Terrain" },
-  { id: "graphs", label: "PICG Graphs" },
-  { id: "dungeons", label: "Dungeons" },
-  { id: "tables", label: "Gameplay Tables" },
-  { id: "assets", label: "Art Assets" },
-  { id: "rules", label: "Rules" },
-  { id: "characters", label: "Characters" },
-  { id: "valgrind", label: "Valgrind" },
 interface Workspace {
   id: WorkspaceId;
   label: string;
@@ -137,6 +128,7 @@ const WORKSPACES: Workspace[] = [
       { id: "content", label: "Content browser", icon: "folder_open", kind: "panel", panel: <ContentBrowserPanel /> },
       { id: "tables", label: "Tables", icon: "table_view", kind: "panel", panel: <TablesPanel /> },
       { id: "rules", label: "Rules", icon: "tune", kind: "panel", panel: <RulesPanel /> },
+      { id: "crafting", label: "Crafting", icon: "construction", kind: "panel", panel: <CraftingRulesPanel /> },
     ],
     leftTitle: "Tables",
   },
@@ -144,7 +136,9 @@ const WORKSPACES: Workspace[] = [
     id: "dungeons", label: "Dungeons & PCG", icon: "castle",
     views: [
       { id: "dungeons", label: "Dungeon", icon: "castle", kind: "panel", panel: <DungeonPanel /> },
+      { id: "runs", label: "Runs", icon: "timer", kind: "panel", panel: <DungeonRulesPanel /> },
       { id: "graphs", label: "PICG Graphs", icon: "graph_3", kind: "panel", panel: <GraphEditorPanel /> },
+      { id: "towns", label: "Towns", icon: "location_city", kind: "panel", panel: <SettlementPanel /> },
     ],
     leftTitle: "Library",
   },
@@ -194,6 +188,7 @@ const WORKSPACES: Workspace[] = [
       { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
       { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
       { id: "materials", label: "Materials", icon: "texture", kind: "panel", panel: <MaterialsPanel /> },
+      { id: "scale", label: "Scale", icon: "straighten", kind: "panel", panel: <ScalePanel /> },
     ], // VFX and audio panels contributed by the vfx/audio modules
     leftTitle: "Library",
   },
@@ -202,6 +197,7 @@ const WORKSPACES: Workspace[] = [
     views: [
       { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
       { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
+      { id: "valgrind", label: "Valgrind", icon: "memory", kind: "panel", panel: <ValgrindPanel /> },
     ], // HUD layout editor contributed by the hud module (modules/hud/editor)
     leftTitle: "Profiles",
   },
@@ -238,7 +234,10 @@ const VIEW_KEYWORDS: Record<string, string> = {
   content: "content browser catalog assets prefabs",
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
-  dungeons: "dungeon rooms layout instances",
+  dungeons: "dungeon rooms layout",
+  crafting: "crafting recipes units fittings rune stone reagent craft skill smithing",
+  runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
+  towns: "towns settlements generator rules industry guilds resources",
   graphs: "picg graph nodes procedural",
   play: "play mode debugger overlays navmesh waypoints server",
   changes: "git commit diff merge locks version control",
@@ -247,6 +246,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   audit: "database audit log undo",
   "story-editor": "quest dialog npc story graph",
   assets: "art assets models textures import",
+  scale: "scale size factor global buildings trees rocks height meters gauge",
   modules: "modules enable disable apply",
 };
 
@@ -1802,27 +1802,6 @@ function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
             Ctrl K
           </kbd>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        {tab === "ecs" && <EcsInspectorPanel />}
-        {tab === "play" && <PlayModePanel />}
-        {tab === "terrain" && <TerrainEditorPanel />}
-        {tab === "graphs" && <GraphEditorPanel />}
-        {tab === "dungeons" && <DungeonPanel />}
-        {tab === "tables" && <TablesPanel />}
-        {tab === "assets" && <AssetInspectorPanel />}
-        {tab === "rules" && <RulesPanel />}
-        {tab === "characters" && <CharacterRecordPanel />}
-        {tab === "valgrind" && <ValgrindPanel />}
-      </main>
-
-      <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-muted-foreground">
-        Server stays authoritative — the editor inspects live state and never
-        edits a running simulation; terrain edits apply to the stored world, and
-        saved gameplay tables are validated first, then picked up by a running server. Docs:{" "}
-        <span className="font-mono">docs/EDITOR.md</span>
-      </footer>
         <ul className="m3-scroll max-h-80 overflow-y-auto p-2">
           {hits.map((h, i) => (
             <li key={h.id}>
@@ -2053,7 +2032,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     requestOpenAsset("scene", name);
   };
   const t = useTree();
-  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
+  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "movement", "needs", "skills", "social", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id}>
       <TreeItem
@@ -2080,7 +2059,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     <div className="flex flex-col gap-0.5">
       {folder("rules", "content/rules", "folder", (
         <>
-          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", r === "creatures" || r === "items" ? "tables" : undefined]))}
+          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement", "skills", "social"].includes(r) ? "tables" : undefined]))}
         </>
       ))}
       {folder("pcg", "content/pcg", "folder", (
@@ -2094,9 +2073,23 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
           {["quests.json", "steps.json", "npcs.json", "dialogs.json"].map((f) => file(`content/quests/${f}`, f, ["story", "quests"]))}
         </>
       ))}
+      {folder("settlements", "content/settlements", "folder", (
+        <>
+          {file("content/settlements/rules.json", "rules.json", ["dungeons", "towns"])}
+        </>
+      ))}
+      {folder("crafting", "content/crafting", "folder", (
+        <>{file("content/crafting/recipes.json", "recipes.json", ["gameplay", "crafting"])}</>
+      ))}
+      {folder("vfx", "content/vfx", "folder", (
+        <>{file("content/vfx/budgets.json", "budgets.json", ["artaudio", "vfx.budgets"])}</>
+      ))}
+      {folder("server", "content/server", "folder", (
+        <>{["persistence.json", "world.json"].map((f) => file(`content/server/${f}`, f, ["liveops", "settings"]))}</>
+      ))}
       {folder("dungeons", "content/dungeons", "folder", (
         <>
-          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "dungeons"]))}
+          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "runs"]))}
         </>
       ))}
       {folder("edge", "content/edge", "folder", (
@@ -2168,6 +2161,7 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow") return <FlowNote />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
+  if (workspace === "artaudio" && view === "scale") return <ScaleNote />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {

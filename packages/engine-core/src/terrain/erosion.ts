@@ -16,8 +16,19 @@
 import type { CoarseGrid } from "./survey.js";
 import { accumulate, drainage, fillDepressions } from "./hydrology.js";
 
-/** Collapse slopes steeper than `talusDeg`, `passes` times. */
-export function thermalErosion(h: Float32Array, grid: CoarseGrid, talusDeg: number, passes: number): void {
+/** Bare rock holds a steeper angle: from `fromM` it rises to `deg` over `spanM`. */
+export interface RockTalus {
+  deg: number;
+  fromM: number;
+  spanM: number;
+}
+
+/**
+ * Collapse slopes steeper than `talusDeg`, `passes` times. With `rock`, the
+ * angle a cell holds rises with its height, so crests and cliffs of bare
+ * rock stay sharp while scree below them settles at `talusDeg`.
+ */
+export function thermalErosion(h: Float32Array, grid: CoarseGrid, talusDeg: number, passes: number, rock?: RockTalus): void {
   const W = grid.width;
   const D = grid.depth;
   const tan = Math.tan((talusDeg * Math.PI) / 180);
@@ -30,6 +41,14 @@ export function thermalErosion(h: Float32Array, grid: CoarseGrid, talusDeg: numb
     for (let v = 1; v < D - 1; v++) {
       for (let u = 1; u < W - 1; u++) {
         const i = v * W + u;
+        let lim0 = limit[0];
+        let lim1 = limit[1];
+        if (rock && h[i] > rock.fromM) {
+          const x = Math.min(1, (h[i] - rock.fromM) / rock.spanM);
+          const t = Math.tan(((talusDeg + (rock.deg - talusDeg) * x * x * (3 - 2 * x)) * Math.PI) / 180) * grid.cell;
+          lim0 = t;
+          lim1 = t * Math.SQRT2;
+        }
         let n = 0;
         let sum = 0;
         let max = 0;
@@ -37,7 +56,7 @@ export function thermalErosion(h: Float32Array, grid: CoarseGrid, talusDeg: numb
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dz === 0) continue;
             const j = i + dz * W + dx;
-            const e = h[i] - h[j] - limit[dx !== 0 && dz !== 0 ? 1 : 0];
+            const e = h[i] - h[j] - (dx !== 0 && dz !== 0 ? lim1 : lim0);
             if (e > 0) {
               excess[n] = e;
               nbr[n++] = j;
@@ -82,6 +101,53 @@ export function fluvialErosion(
       const slope = Math.max(0, h[i] - h[r]) / flow.distance[i];
       const cut = Math.min(MAX_CUT_PER_PASS, strength * Math.sqrt(acc[i]) * slope, Math.max(0, h[i] - h[r] - 0.01));
       h[i] -= cut;
+    }
+  }
+  let deepest = 0;
+  for (let i = 0; i < h.length; i++) deepest = Math.max(deepest, before[i] - h[i]);
+  return deepest;
+}
+
+/**
+ * Stream-power incision, implicit and detachment-limited (Braun & Willgoose;
+ * as in Cordonnier et al. 2016): each pass relaxes every land cell toward the
+ * cell it drains into, h = (h + F * h_receiver) / (1 + F) with
+ * F = k * area^m / distance, taken from the outlet upstream so it is stable
+ * for any k. Summits (no upstream area) barely move; trunk valleys deepen.
+ * No cell is cut more than `maxCutM` in total or below the shore. Flow is
+ * re-routed every few passes. `areaWeight` weights each cell's area (rain
+ * share). Returns the deepest cut, metres.
+ */
+export function streamPowerIncision(
+  h: Float32Array,
+  grid: CoarseGrid,
+  seaLevel: number,
+  areaWeight: Float32Array,
+  passes: number,
+  k: number,
+  m: number,
+  maxCutM: number,
+): number {
+  if (passes <= 0 || k <= 0) return 0;
+  const before = Float32Array.from(h);
+  const floor = seaLevel + 0.3;
+  let flow = drainage(fillDepressions(h, grid), grid);
+  let acc = accumulate(flow, grid, (i) => areaWeight[i]);
+  for (let p = 0; p < passes; p++) {
+    if (p > 0 && p % 3 === 0) {
+      flow = drainage(fillDepressions(h, grid), grid);
+      acc = accumulate(flow, grid, (i) => areaWeight[i]);
+    }
+    const { receiver, distance, order } = flow;
+    // order runs high to low: walk it backwards so receivers update first.
+    for (let n = order.length - 1; n >= 0; n--) {
+      const i = order[n];
+      const r = receiver[i];
+      if (r < 0 || h[i] <= floor || h[i] <= h[r]) continue;
+      const f = (k * (m === 0.5 ? Math.sqrt(acc[i]) : Math.pow(acc[i], m))) / distance[i];
+      let next = (h[i] + f * h[r]) / (1 + f);
+      next = Math.max(next, before[i] - maxCutM, Math.min(h[i], floor));
+      if (next < h[i]) h[i] = next;
     }
   }
   let deepest = 0;
