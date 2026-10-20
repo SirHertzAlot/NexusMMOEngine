@@ -40,7 +40,7 @@ import { PcgAssetLibrary } from "../pcg/asset-library.js";
 import { mountPcgService } from "../pcg/boot.js";
 import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
-import type { DungeonProps, InstanceRules } from "./content.js";
+import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout } from "./pool.js";
 import { DungeonWallSystem } from "./walls.js";
 
@@ -93,6 +93,8 @@ export interface DungeonInstanceOptions {
   rules: InstanceRules;
   /** What each baked prop kind spawns as (props.json); absent: the run spawns no props. */
   props?: DungeonProps;
+  /** How the run looks per theme (looks.json); absent: the client keeps the open world's look. */
+  looks?: DungeonLooks;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -385,7 +387,17 @@ export class DungeonInstance {
       C.Transform.pz[e] = this.opts.layout.entrance.z;
       C.Transform.py[e] = 0;
     }
+    this.pushLook(p);
     this.pushState(p);
+  }
+
+  /** The run's look for the member's client (once, on entering): the layout's theme's entry of looks.json. */
+  private pushLook(p: ExtensionPlayer): void {
+    const looks = this.opts.looks;
+    const theme = looks?.themes[this.opts.layout.theme];
+    if (!looks || !theme) return;
+    const { label: _label, ...look } = theme;
+    p.send({ kind: "dungeon", op: "look", look: { theme: this.opts.layout.theme, ...look, emitters: looks.emitters, maxLights: looks.maxLights } });
   }
 
   private onDeath(sim: SimWorld, ev: LifeEvent): void {

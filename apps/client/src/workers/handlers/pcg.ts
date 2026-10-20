@@ -25,6 +25,7 @@ export function decodePcg(bytes: ArrayBuffer): PcgResultPayload {
     normal: m.normals ?? undefined,
     uv: m.uvs ?? undefined,
     color,
+    ...(m.materials.length > 0 && m.triangleMaterials ? { materials: m.materials, triangleMaterial: m.triangleMaterials } : {}),
     bbox,
   };
 }

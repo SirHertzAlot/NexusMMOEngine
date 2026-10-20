@@ -12,7 +12,10 @@
  *    Sizes follow the world's convention: a standing kind's box is centred on
  *    the floor with halfY its full height (the lower half buried); a kind with a
  *    `lift` hangs centred there, halfY half its height.
- *    A kind with no entry is not spawned (decals wait for art).
+ *    A kind with no entry is not spawned (decals wait for art);
+ *  - looks.json: how a run looks per theme (dark fantasy: near-black fog, a dim
+ *    ambient, matte shell colours per material slot, the torch light), sent to
+ *    the client when a member enters. A theme with no entry looks as the open world.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -76,6 +79,31 @@ const EntranceSchema = z.strictObject({
   themes: z.array(z.string()).default([]),
 });
 
+const colour = z.string().regex(/^#[0-9a-fA-F]{6}$/, "a colour, #rrggbb");
+
+/** content/dungeons/looks.json: one entry per dungeon theme, the lights shared by all. */
+export const DungeonLooksSchema = z.strictObject({
+  version: z.literal(1),
+  /** Asset ids that give light (dungeon:torch…). */
+  emitters: z.array(z.string().min(1)),
+  /** Real point lights at once (the nearest emitters). */
+  maxLights: z.number().int().min(0).max(32),
+  themes: z.record(
+    id,
+    z.strictObject({
+      label: z.string().min(1),
+      background: colour,
+      fog: z.strictObject({ color: colour, density: z.number().min(0).max(0.1) }),
+      hemisphere: z.strictObject({ sky: colour, ground: colour, intensity: z.number().min(0).max(4) }),
+      dir: z.strictObject({ color: colour, intensity: z.number().min(0).max(4) }),
+      /** The shell's material slots (floor, wall, ceiling, basin): matte colours. */
+      palette: z.record(z.string().min(1), colour),
+      torch: z.strictObject({ color: colour, intensity: z.number().min(0).max(2000), range: z.number().positive().max(100), flicker: z.number().min(0).max(1) }),
+    }),
+  ),
+});
+export type DungeonLooks = z.infer<typeof DungeonLooksSchema>;
+
 export const EntrancesSchema = z.strictObject({
   version: z.literal(1),
   entrances: z.record(id, EntranceSchema),
@@ -93,11 +121,13 @@ export interface DungeonContent {
   entrances: Record<string, Entrance>;
   /** What each baked prop kind spawns as (empty: instances spawn no props). */
   props: DungeonProps;
+  /** How a run looks per theme (null: runs look as the open world does). */
+  looks: DungeonLooks | null;
 }
 
 export const DEFAULT_DUNGEON_CONTENT = fileURLToPath(new URL("../../../../../content/dungeons", import.meta.url));
 
-export function parseDungeonContent(rules: unknown, entrances: unknown, props?: unknown): DungeonContent {
+export function parseDungeonContent(rules: unknown, entrances: unknown, props?: unknown, looks?: unknown): DungeonContent {
   const problems: string[] = [];
   const r = InstanceRulesSchema.safeParse(rules);
   if (!r.success) for (const i of r.error.issues) problems.push(`instances.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
@@ -105,11 +135,13 @@ export function parseDungeonContent(rules: unknown, entrances: unknown, props?: 
   if (!e.success) for (const i of e.error.issues) problems.push(`entrances.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
   const p = props === undefined ? { success: true as const, data: { version: 1 as const, archetypes: {}, lift: {} } } : DungeonPropsSchema.safeParse(props);
   if (!p.success) for (const i of p.error.issues) problems.push(`props.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
-  if (!r.success || !e.success || !p.success) throw new Error(`dungeon content: ${problems.join("; ")}`);
-  return { rules: r.data, entrances: e.data.entrances, props: p.data };
+  const lk = looks === undefined ? { success: true as const, data: null } : DungeonLooksSchema.safeParse(looks);
+  if (!lk.success) for (const i of lk.error.issues) problems.push(`looks.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
+  if (!r.success || !e.success || !p.success || !lk.success) throw new Error(`dungeon content: ${problems.join("; ")}`);
+  return { rules: r.data, entrances: e.data.entrances, props: p.data, looks: lk.data };
 }
 
 export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT): DungeonContent {
   const read = (f: string): unknown => JSON.parse(readFileSync(join(dir, f), "utf8"));
-  return parseDungeonContent(read("instances.json"), read("entrances.json"), existsSync(join(dir, "props.json")) ? read("props.json") : undefined);
+  return parseDungeonContent(read("instances.json"), read("entrances.json"), existsSync(join(dir, "props.json")) ? read("props.json") : undefined, existsSync(join(dir, "looks.json")) ? read("looks.json") : undefined);
 }
