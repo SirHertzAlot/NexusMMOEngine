@@ -241,9 +241,9 @@ describe("CraftingService.onMessage", () => {
 
 describe("CraftingService defaults", () => {
   it("derives a real recipe through the compose + crafting packages", async () => {
-    const { loadCraftingRules } = await import("@mmo-engine/crafting");
+    const { loadCraftingRules, EMPTY_CRAFTING_RULES } = await import("@mmo-engine/crafting");
     const svc = new CraftingService({
-      rules: loadCraftingRules(),
+      rules: loadCraftingRules() ?? EMPTY_CRAFTING_RULES,
       masteryOf: () => 1,
       countMaterial: () => 99,
       takeMaterial: () => true,

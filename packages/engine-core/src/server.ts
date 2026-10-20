@@ -200,7 +200,7 @@ import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
-import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
+import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { CraftingService } from "./crafting/crafting-service.js";
 import { assertEngineSkillContract } from "./rules/skill-contract.js";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
@@ -864,7 +864,7 @@ async function main(): Promise<void> {
     return p;
   };
   const craftingService = new CraftingService({
-    rules: crafting,
+    rules: crafting ?? EMPTY_CRAFTING_RULES,
     masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
     countMaterial: (character, material) => pouchOf(character).get(material) ?? 0,
     takeMaterial: (character, material, qty) => {
