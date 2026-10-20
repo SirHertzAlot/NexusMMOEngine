@@ -278,3 +278,76 @@ describe("server modules: optional systems", () => {
     );
   });
 });
+
+describe("server modules: edge routes (EA12)", () => {
+  const temp = (mods: Record<string, unknown>): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-edge-"));
+    for (const [n, m] of Object.entries(mods)) {
+      mkdirSync(join(root, n), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+    }
+    return root;
+  };
+
+  it("merges local:<module> routes for enabled modules with edge contributions", async () => {
+    const root = temp({
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      chat: {
+        name: "chat",
+        version: "0.1.0",
+        server: { systems: [] },
+        edge: { regions: ["us-east"], endpoint: "http://localhost:9001", capabilities: ["chat-relay"] },
+      },
+      quests: {
+        name: "quests",
+        version: "0.1.0",
+        server: { systems: [] },
+        edge: { regions: ["us-east", "eu-west"], endpoint: "http://localhost:9002", capabilities: ["quest-sync", "dialog"] },
+      },
+      plain: { name: "plain", version: "0.1.0", server: { systems: [] } },
+    });
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["core", "chat", "quests", "plain"]),
+      provided: {},
+      ctx,
+    });
+    assert.deepEqual(r.edgeRoutes, {
+      "local:chat": { regions: ["us-east"], endpoint: "http://localhost:9001", capabilities: ["chat-relay"] },
+      "local:quests": { regions: ["us-east", "eu-west"], endpoint: "http://localhost:9002", capabilities: ["quest-sync", "dialog"] },
+    });
+  });
+
+  it("omits edge routes for disabled modules", async () => {
+    const root = temp({
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      chat: {
+        name: "chat",
+        version: "0.1.0",
+        server: { systems: [] },
+        edge: { regions: ["us-east"], endpoint: "http://localhost:9001", capabilities: ["chat-relay"] },
+      },
+    });
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["core"]),
+      provided: {},
+      ctx,
+    });
+    assert.deepEqual(r.edgeRoutes, {});
+  });
+
+  it("returns empty edgeRoutes when no module has an edge contribution", async () => {
+    const root = temp({
+      core: { name: "core", version: "0.1.0", server: { systems: [] } },
+      plain: { name: "plain", version: "0.1.0", server: { systems: [] } },
+    });
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["core", "plain"]),
+      provided: {},
+      ctx,
+    });
+    assert.deepEqual(r.edgeRoutes, {});
+  });
+});

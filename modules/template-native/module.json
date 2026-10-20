@@ -1,0 +1,14 @@
+{
+  "name": "template-native",
+  "version": "0.1.0",
+  "description": "Template native module (EA10): proves the N-API toolchain builds and loads. Copy this to start a new native module.",
+  "engine": "0.1.0",
+  "native": {
+    "entry": "native/addon.node",
+    "systems": ["template-probe"]
+  },
+  "server": {
+    "entry": "server.js",
+    "systems": [{ "name": "template-probe", "optional": true }]
+  }
+}
