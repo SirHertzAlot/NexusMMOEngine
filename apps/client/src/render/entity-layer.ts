@@ -59,6 +59,8 @@ export interface EntityLayerOptions {
   pcg?: PcgRpcClient;
   /** Decode PCG meshes and build their BVHs off the main thread. */
   workers?: WorkerRequester;
+  /** Materials for a PCG mesh with material slots, by slot name (a dungeon shell's palette). */
+  materialFor?: (slots: readonly string[]) => THREE.Material[] | undefined;
 }
 
 interface TrackedMesh {
@@ -172,7 +174,7 @@ export class EntityLayer {
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
   ) {
-    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers) : null;
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers, opts.materialFor) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
@@ -494,6 +496,16 @@ export class EntityLayer {
     this.fx.update(dt, now);
     this.showcase.update(now, dt);
     this.vfx.update(dt);
+  }
+
+  /** Where the static props showing any of these assets stand (a dungeon's torches give light there). */
+  emitterPositions(hashes: ReadonlySet<number>): [number, number, number][] {
+    return this.props.positionsOf(hashes);
+  }
+
+  /** Matte stand-ins and models (nothing shiny). */
+  matte(): void {
+    this.props.matte();
   }
 
   dispose(): void {

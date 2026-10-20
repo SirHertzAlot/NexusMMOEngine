@@ -81,6 +81,9 @@ export interface PcgResultPayload {
   normal?: Float32Array;
   uv?: Float32Array;
   color?: Float32Array;
+  /** Material slot names (a dungeon shell: floor, wall, ceiling, basin) and each triangle's slot. */
+  materials?: string[];
+  triangleMaterial?: Uint32Array;
   bbox: Float32Array;
 }
 

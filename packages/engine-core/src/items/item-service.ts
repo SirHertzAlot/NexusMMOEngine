@@ -54,7 +54,7 @@ export interface ItemServiceOptions {
   groundHeightAt?: (x: number, z: number) => number;
   /** Rank ids lowest first (the loot ladder), for the starter weapon. Default: none (any rank). */
   rankOrder?: readonly string[];
-  /** The item base a new character starts holding (M3b). Default "sword"; null: none. */
+  /** The item base a new character starts holding (M3b). Default null (none); the game pack opts in by naming a base. */
   starterBase?: string | null;
   /**
    * Slice A2 (fleet mode): the world-tier grant executor used by
@@ -91,7 +91,7 @@ export class ItemService implements SimSystem {
     this.groundHeightAt = o.groundHeightAt ?? (() => 0);
     this.store = new ItemStore(o.loot.bagSlots);
     this.rankOrder = o.rankOrder ?? [];
-    this.starterBase = o.starterBase === undefined ? "sword" : o.starterBase;
+    this.starterBase = o.starterBase ?? null;
     this.atomicGrant = o.atomicGrant ?? null;
   }
 
@@ -360,6 +360,55 @@ export class ItemService implements SimSystem {
       return { ok: false, error: "grant refused: the settled outcome did not land" };
     }
     return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
+  }
+
+  /**
+   * Give a new item straight into a bag (quest rewards, dungeon loot,
+   * admin `give`): one grant shape everywhere. False for an unknown
+   * definition or a full bag.
+   */
+  grantItem(character: number, def: number): boolean {
+    return this.give(character, def).ok;
+  }
+
+  /** Definition of an item wherever it lives, or -1 when it is not a live item. */
+  defOf(item: number): number {
+    const slot = this.store.slot(item);
+    return slot < 0 ? -1 : this.store.defs[slot];
+  }
+
+  /**
+   * Move an item from one character's bag to another's (trade and auction
+   * settlement). False when the item is not in `from`'s bag or `to`'s
+   * bag is full (the item is left where it was).
+   */
+  moveItem(item: number, from: number, to: number): boolean {
+    if (!this.store.inBagOf(from, item)) return false;
+    return this.store.putInBag(to, item) >= 0;
+  }
+
+  /**
+   * Take an item out of a character's bag and destroy it (vendor sales,
+   * quest hand-ins). False when the item is not in the character's bag.
+   */
+  take(character: number, item: number): boolean {
+    if (!this.store.inBagOf(character, item)) return false;
+    this.store.destroy(item);
+    return true;
+  }
+
+  /** How many items of an item base a character carries in their bag (quest checks). */
+  countBase(character: number, base: string): number {
+    let n = 0;
+    for (const item of this.store.bag(character)) {
+      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) n++;
+    }
+    return n;
+  }
+
+  /** The lowest-ranked definition of an item base (quest rewards grant the starter). */
+  resolveBase(base: string): number {
+    return this.defs.starter(base, this.rankOrder);
   }
 
   /** Expire ground items whose time is up. */

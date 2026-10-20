@@ -66,8 +66,10 @@ export class LootDropper {
       ? C.CharacterRef.idHi[ev.killer] * 4294967296 + C.CharacterRef.idLo[ev.killer]
       : 0;
     // Gold first: the killer pockets it straight into their wallet.
-    if (owner !== 0 && this.opts.wallet && rules.gold) {
-      const [glo, ghi] = rules.gold;
+    // (rules.gold is optional in the schema; the inferred type omits it.)
+    const gold = (rules as { gold?: [number, number] }).gold;
+    if (owner !== 0 && this.opts.wallet && gold) {
+      const [glo, ghi] = gold;
       const amount = glo + Math.floor(this.rand() * (Math.max(ghi, glo) - glo + 1));
       if (amount > 0) this.opts.wallet.grant(owner, amount, sim.currentTick);
     }

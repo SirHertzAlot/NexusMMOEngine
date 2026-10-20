@@ -74,6 +74,9 @@ import { VendorSystem } from "../src/economy/vendor.js";
 import { AuctionSystem } from "../src/economy/auction.js";
 import { ItemDefs, ItemService, type PoolItemLike } from "../src/items/index.js";
 import { CraftingService } from "../src/crafting/crafting-service.js";
+import type { CraftingRules, Recipe } from "@mmo-engine/crafting";
+import type { EntityBundle } from "@mmo-engine/compose";
+import type { ExtensionPlayer } from "../src/net/extension.js";
 import { HeadlessClient, type HelloAuth } from "./net/headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./net/auth-harness.js";
 
@@ -513,41 +516,143 @@ test("craft execution in fleet mode commits via craftExecute; standalone crafts 
   await clientA.start();
   defer(() => clientA.stop());
   const a = makeRig(clientA);
-  const [mat1, mat2] = await seedCharacter(a, 7, 100, [0, 0]);
+  const [bystander] = await seedCharacter(a, 7, 100, [0]);
 
-  const fleet = new CraftingService({
-    wallet: a.wallet,
-    items: a.items,
-    atomicCraft: {
-      craft: async (character, consumes, goldFee, outputs) => {
-        const r = await a.ops.craft({ character, consumes, goldFee, outputs });
-        return r.ok ? { ok: true as const } : { ok: false as const, message: `craft refused by the world (${r.rejection}: ${r.message})` };
+  // The merged CraftingService is main's gateway extension: a recipe's
+  // inputs are pouch materials (region-side state the world record does
+  // not hold, so they are not the world-tier movement), and in fleet
+  // mode the produced item's creation is what commits through
+  // craftExecute. Recipe derivation is faked, as in
+  // test/crafting-service.test.ts; the defs resolve ring -> def 2.
+  const CRAFT_RULES: CraftingRules = {
+    version: 1, refining: {}, reagents: {}, fallbackReagent: "arcane-dust",
+    runeStone: "rune-stone", fittings: [], units: [], defaultUnits: 1,
+    skills: [], defaultSkill: "Smithing",
+  };
+  const CRAFT_RECIPE: Recipe = {
+    item: "ring", skill: "Smithing", mastery: 0, inputs: { "iron-ore": 2 }, tier: 1,
+  };
+  const BUNDLE = {
+    Identity: { id: "ring", name: "Ring", base: "ring", kind: "item" },
+  } as unknown as EntityBundle;
+
+  interface CraftRig {
+    svc: CraftingService;
+    sent: object[];
+    pouch: Map<string, number>;
+    allocated: () => number;
+  }
+  function craftRig(fleetMode: boolean): CraftRig {
+    const sent: object[] = [];
+    const pouch = new Map<string, number>([["iron-ore", 2]]);
+    let allocatedId = -1;
+    const svc = new CraftingService({
+      rules: CRAFT_RULES,
+      composeItem: () => BUNDLE,
+      deriveRecipe: () => CRAFT_RECIPE,
+      masteryOf: () => 1,
+      countMaterial: (_c, material) => pouch.get(material) ?? 0,
+      takeMaterial: (_c, material, qty) => {
+        const have = pouch.get(material) ?? 0;
+        if (have < qty) return false;
+        if (have === qty) pouch.delete(material);
+        else pouch.set(material, have - qty);
+        return true;
       },
+      hasBagRoom: (c) => a.items.store.hasRoom(c),
+      grantItem: (c) => {
+        const id = a.items.store.create(2, a.defs.durability[2]);
+        return a.items.store.putInBag(c, id) >= 0;
+      },
+      ...(fleetMode
+        ? {
+            atomicCraft: {
+              craft: async (character: number, consumes: Array<{ instanceId: string; count: number }>, goldFee: number, outputs: Array<{ instanceId: string; def: number }>) => {
+                const r = await a.ops.craft({ character, consumes, goldFee, outputs });
+                return r.ok ? { ok: true as const } : { ok: false as const, message: `craft refused by the world (${r.rejection}: ${r.message})` };
+              },
+            },
+            defOfItem: () => 2,
+            allocateItem: (def: number) => {
+              allocatedId = a.items.store.create(def, a.defs.durability[def]);
+              return allocatedId;
+            },
+            discardItem: (item: number) => a.items.store.destroy(item),
+            itemInBag: (c: number, item: number) => a.items.store.inBagOf(c, item),
+          }
+        : {}),
+    });
+    return { svc, sent, pouch, allocated: () => allocatedId };
+  }
+  const playerFor = (sent: object[], characterId: number): ExtensionPlayer => ({
+    characterId,
+    username: "tester",
+    name: "Tester",
+    entity: () => 42,
+    send: (msg) => {
+      sent.push(msg as object);
     },
+    refreshInventory: () => {},
   });
-  const crafted = await fleet.craft(7, { consumes: [mat1], goldFee: 10, outputs: [2] }, 2);
-  assert.equal(crafted.ok, true, JSON.stringify(crafted));
-  const produced = crafted.ok ? crafted.produced[0] : -1;
-  assert.equal(a.items.store.inBagOf(7, mat1), false, "the consumed input left the bag");
-  assert.equal(a.items.store.exists(mat1), false, "the consumed input was destroyed by the settled outcome");
-  assert.equal(a.items.store.inBagOf(7, mat2), true, "the other input is untouched");
+  const CRAFT_MSG = { kind: "craft", op: "craft", item: "ring", rank: "common" };
+
+  // Fleet: the craft commits via craftExecute and the settled outcome
+  // materialises the produced item in the bag.
+  const fleet = craftRig(true);
+  fleet.svc.onMessage(playerFor(fleet.sent, 7), CRAFT_MSG);
+  await until(
+    () => fleet.sent.some((m) => (m as { op?: string }).op === "crafted"),
+    "the fleet craft to settle",
+  );
+  const produced = fleet.allocated();
+  assert.ok(produced >= 0, "the output was allocated");
   assert.equal(a.items.store.inBagOf(7, produced), true, "the output materialised in the bag");
-  assert.equal(a.wallet.balanceOf(7), 90, "the fee was charged exactly once");
+  assert.equal(a.items.store.inBagOf(7, bystander), true, "the unrelated bag item is untouched");
+  assert.equal(fleet.pouch.get("iron-ore") ?? 0, 0, "the pouch inputs were consumed after the commit");
+  assert.equal(a.wallet.balanceOf(7), 100, "gateway recipes carry no gold fee; the wallet is untouched");
   const world = await worldEconomy(worldStore, 7);
-  assert.equal(world?.gold, 90);
+  assert.equal(world?.gold, 100);
   assert.deepEqual(
     world?.inventory.map((i) => i.instanceId).sort(),
-    [itemInstanceId(mat2), itemInstanceId(produced)].sort(),
+    [itemInstanceId(bystander), itemInstanceId(produced)].sort(),
   );
+  const ledger = await worldStore.getAtomicLedger();
+  assert.ok(ledger.some((e) => e.op === "craftExecute"), "the craft is in the world item ledger");
+
+  // Fleet outage at the commit step: fail closed — pouch untouched,
+  // the pre-allocated output destroyed, no crafted reply.
+  transport.failAtomic = true;
+  const refused = craftRig(true);
+  const sizeBefore = a.items.store.size;
+  refused.svc.onMessage(playerFor(refused.sent, 7), CRAFT_MSG);
+  await until(
+    () => refused.sent.some((m) => (m as { text?: string }).text === "crafting failed"),
+    "the refused craft to answer",
+  );
+  assert.equal(refused.pouch.get("iron-ore"), 2, "an outage consumes nothing");
+  assert.equal(a.items.store.size, sizeBefore, "the pre-allocated output was destroyed");
+  assert.equal(
+    refused.sent.some((m) => (m as { op?: string }).op === "crafted"),
+    false,
+    "no crafted reply on a refused craft",
+  );
+  transport.failAtomic = false;
 
   // Standalone: no executor — the same service crafts locally and
   // the world record does not move.
-  const [mat3] = await seedCharacter(a, 8, 50, [0]);
+  await seedCharacter(a, 8, 50, []);
   const versionBefore = (await worldStore.getCharacterState(8))!.version;
-  const local = new CraftingService({ wallet: a.wallet, items: a.items });
-  const done = await local.craft(8, { consumes: [mat3], goldFee: 5, outputs: [2] }, 3);
-  assert.equal(done.ok, true);
-  assert.equal(a.wallet.balanceOf(8), 45);
+  const local = craftRig(false);
+  local.svc.onMessage(playerFor(local.sent, 8), CRAFT_MSG);
+  assert.ok(
+    local.sent.some((m) => (m as { op?: string }).op === "crafted"),
+    "the standalone craft completes synchronously",
+  );
+  assert.equal(local.pouch.get("iron-ore") ?? 0, 0, "the pouch inputs were consumed");
+  const bag8 = [...a.items.store.bag(8)].filter((id) => id !== 0);
+  assert.equal(bag8.length, 1, "the output was granted locally");
+  assert.equal(a.items.store.defs[a.items.store.slot(bag8[0]!)], 2, "the granted item is the recipe's def");
+  assert.equal(a.wallet.balanceOf(8), 50);
   assert.equal((await worldStore.getCharacterState(8))!.version, versionBefore, "no world call, no world write");
 });
 
