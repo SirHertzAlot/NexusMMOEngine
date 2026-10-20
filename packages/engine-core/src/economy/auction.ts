@@ -210,10 +210,12 @@ export class AuctionSystem implements SimSystem {
 
   /**
    * Release the top bidder's escrow back to their wallet and clear
-   * the bid (slice A2): the fleet buyout path settles the FULL price
-   * at the world tier, so when the buyer is their own top bidder the
-   * escrow comes back first (region-side negotiation state) and the
-   * world charges the whole price against the made-whole balance.
+   * the bid (slice A2): the fleet buyout path settles at the world
+   * tier — the buyer is charged the full price there and the seller
+   * receives it net of the same 5% house cut as a local settle — so
+   * when the buyer is their own top bidder the escrow comes back
+   * first (region-side negotiation state) and the world charges the
+   * whole price against the made-whole balance.
    * Returns the released amount (0: no escrow was held).
    */
   releaseEscrow(listingId: number, tick: number): number {
@@ -228,12 +230,15 @@ export class AuctionSystem implements SimSystem {
 
   /**
    * Finalise a listing whose settlement the world tier has committed
-   * (slice A2, fleet mode): the item and the price have already moved
-   * in the world records and the local caches have reconciled to
-   * them, so NO gold or items move here — except the outbid party's
-   * escrow, which is region-side negotiation state and is refunded
-   * locally. The listing closes as sold, with the usual event.
-   * False when the listing is no longer live.
+   * (slice A2, fleet mode): the item has already moved in the world
+   * records, the buyer has been charged the full price, and the
+   * seller has been credited the price net of the same house cut a
+   * local settle takes (directly, or as a pending credit when the
+   * seller is elsewhere) — the local caches reconcile to the world
+   * records, so NO gold or items move here, except the outbid
+   * party's escrow, which is region-side negotiation state and is
+   * refunded locally. The listing closes as sold, with the usual
+   * event. False when the listing is no longer live.
    */
   settleFromWorld(listingId: number, buyer: number, tick: number): boolean {
     const l = this.listings.get(listingId);
