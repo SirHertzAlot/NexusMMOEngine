@@ -35,10 +35,12 @@ import { SimWorld } from "../world.js";
 import { Gateway } from "../net/gateway.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
+import { buildSpawn } from "../admin/spawn.js";
 import { PcgAssetLibrary } from "../pcg/asset-library.js";
 import { mountPcgService } from "../pcg/boot.js";
 import { hash } from "../procgen/ecology.js";
-import type { InstanceRules } from "./content.js";
+import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
+import type { DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout } from "./pool.js";
 import { DungeonWallSystem } from "./walls.js";
 
@@ -89,6 +91,8 @@ export interface DungeonInstanceOptions {
   entrance: string;
   layout: InstanceLayout;
   rules: InstanceRules;
+  /** What each baked prop kind spawns as (props.json); absent: the run spawns no props. */
+  props?: DungeonProps;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -211,6 +215,7 @@ export class DungeonInstance {
       ...(opts.transport ? { transport: opts.transport } : {}),
     });
     this.mountShell();
+    this.spawnProps();
     this.populate();
   }
 
@@ -239,6 +244,39 @@ export class DungeonInstance {
     addComponent(this.world.ecs, C.AssetRef, eid);
     C.AssetRef.assetHash[eid] = asset.assetHash;
     C.AssetRef.variant[eid] = 0;
+  }
+
+  /** Prop kinds the bake placed that props.json has no entry for (so nothing spawned): kind -> count. */
+  readonly unspawnedProps = new Map<string, number>();
+
+  /**
+   * The baked props (pillars, furniture, torches…) stand in the run as ordinary
+   * scatter entities: the world's spawn table (`props.json`, keyed by kind) says what
+   * each is (asset, collision box), `buildSpawn` and `spawnScatterEntity` make it, and
+   * the generic snapshot replicates it. A standing kind rests on the floor (the world's
+   * convention: its body is centred there, halfY its full height); a mounted kind hangs
+   * centred at its table `lift`. A dressing prop's own footprint sizes its box.
+   * A kind with no entry is counted, not spawned (decals wait for art).
+   */
+  private spawnProps(): void {
+    const table = this.opts.props;
+    if (!table) return;
+    for (const p of this.opts.layout.props) {
+      const asset = `dungeon:${p.kind}`; // the table is keyed by asset id, as the world's spawn tables are (cf. structure:<kind>)
+      const archetype = table.archetypes[asset];
+      if (!archetype) {
+        this.unspawnedProps.set(p.kind, (this.unspawnedProps.get(p.kind) ?? 0) + 1);
+        continue;
+      }
+      const half = archetype.collision?.halfExtents ?? [0.5, 0.5, 0.5];
+      const lift = table.lift[p.kind];
+      const built = buildSpawn(table, asset, p.x, lift ?? 0, p.z, p.yaw);
+      if ("error" in built) continue;
+      built.sx = built.sy = built.sz = p.scale;
+      // The bake's own footprint beats the table's default one.
+      if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
+      spawnScatterEntity(this.world, built);
+    }
   }
 
   /** Bind the port and start the tick. Returns the port. */
