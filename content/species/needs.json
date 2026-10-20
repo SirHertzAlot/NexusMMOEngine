@@ -1,0 +1,707 @@
+{
+  "description": "Sample need catalog shipped with the engine. Games ship their own needs.json; need ids are referenced by content/species/species.json.",
+  "needs": [
+    {
+      "actions": [
+        "drink",
+        "seek-water",
+        "migrate"
+      ],
+      "category": "water",
+      "conditionFields": [
+        "water.fresh",
+        "water.salinity"
+      ],
+      "decayPerHour": 0.08,
+      "id": "need:hydration.fresh",
+      "provenance": {
+        "author": "design",
+        "script": "needs/water.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              1
+            ],
+            [
+              0.05,
+              0.9
+            ],
+            [
+              0.2,
+              0.2
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "field": "water.salinity",
+          "hardBounds": [
+            0,
+            0.05
+          ]
+        },
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.3,
+              0.5
+            ],
+            [
+              0.7,
+              1
+            ]
+          ],
+          "field": "water.fresh"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "forage",
+        "hunt",
+        "migrate"
+      ],
+      "category": "food",
+      "conditionFields": [
+        "soil.fertility",
+        "forage.abundance"
+      ],
+      "decayPerHour": 0.05,
+      "id": "need:forage.general",
+      "provenance": {
+        "author": "design",
+        "script": "needs/forage.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0.3
+            ],
+            [
+              0.4,
+              0.7
+            ],
+            [
+              0.8,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "field": "soil.fertility"
+        },
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.3,
+              0.5
+            ],
+            [
+              0.7,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "field": "forage.abundance"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "forage",
+        "migrate"
+      ],
+      "category": "food",
+      "conditionFields": [
+        "water.fresh",
+        "water.shoreDist"
+      ],
+      "decayPerHour": 0.05,
+      "id": "need:forage.shallows",
+      "provenance": {
+        "author": "design",
+        "script": "needs/water.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.4,
+              0.6
+            ],
+            [
+              0.8,
+              1
+            ]
+          ],
+          "field": "water.fresh"
+        },
+        {
+          "anchors": [
+            [
+              -8,
+              0.3
+            ],
+            [
+              -2,
+              1
+            ],
+            [
+              0.5,
+              0.8
+            ],
+            [
+              6,
+              0.1
+            ]
+          ],
+          "field": "water.shoreDist"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "forage",
+        "migrate"
+      ],
+      "category": "food",
+      "conditionFields": [
+        "soil.fertility",
+        "temperature",
+        "forest.density"
+      ],
+      "decayPerHour": 0.04,
+      "id": "need:forage.lichen",
+      "provenance": {
+        "author": "design",
+        "script": "needs/forage.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              1
+            ],
+            [
+              0.3,
+              0.8
+            ],
+            [
+              0.7,
+              0.3
+            ],
+            [
+              1,
+              0.1
+            ]
+          ],
+          "field": "soil.fertility"
+        },
+        {
+          "anchors": [
+            [
+              0,
+              1
+            ],
+            [
+              0.3,
+              0.7
+            ],
+            [
+              0.6,
+              0
+            ]
+          ],
+          "field": "temperature",
+          "hardBounds": [
+            0,
+            0.55
+          ]
+        },
+        {
+          "anchors": [
+            [
+              0,
+              1
+            ],
+            [
+              0.4,
+              0.5
+            ],
+            [
+              0.8,
+              0.1
+            ]
+          ],
+          "field": "forest.density"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "seek-shade",
+        "seek-warmth",
+        "migrate"
+      ],
+      "category": "temperature",
+      "conditionFields": [
+        "temperature"
+      ],
+      "decayPerHour": 0.03,
+      "id": "need:thermal.temperate",
+      "provenance": {
+        "author": "design",
+        "script": "needs/thermal.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.2,
+              0.4
+            ],
+            [
+              0.45,
+              1
+            ],
+            [
+              0.7,
+              0.6
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "field": "temperature",
+          "hardBounds": [
+            0.05,
+            0.95
+          ]
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "seek-cold",
+        "migrate"
+      ],
+      "category": "temperature",
+      "conditionFields": [
+        "temperature"
+      ],
+      "decayPerHour": 0.04,
+      "id": "need:thermal.arctic",
+      "provenance": {
+        "author": "design",
+        "script": "needs/thermal.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              1
+            ],
+            [
+              0.15,
+              1
+            ],
+            [
+              0.3,
+              0.4
+            ],
+            [
+              0.5,
+              0
+            ]
+          ],
+          "field": "temperature",
+          "hardBounds": [
+            0,
+            0.4
+          ]
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "seek-cold",
+        "seek-shade",
+        "migrate"
+      ],
+      "category": "temperature",
+      "conditionFields": [
+        "temperature"
+      ],
+      "decayPerHour": 0.035,
+      "id": "need:thermal.cool",
+      "provenance": {
+        "author": "design",
+        "script": "needs/thermal.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0.7
+            ],
+            [
+              0.12,
+              1
+            ],
+            [
+              0.3,
+              0.7
+            ],
+            [
+              0.5,
+              0.3
+            ],
+            [
+              0.7,
+              0
+            ]
+          ],
+          "field": "temperature",
+          "hardBounds": [
+            0,
+            0.65
+          ]
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "seek-warmth",
+        "seek-shade",
+        "migrate"
+      ],
+      "category": "temperature",
+      "conditionFields": [
+        "temperature"
+      ],
+      "decayPerHour": 0.035,
+      "id": "need:thermal.warm",
+      "provenance": {
+        "author": "design",
+        "script": "needs/thermal.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.2,
+              0.25
+            ],
+            [
+              0.45,
+              0.8
+            ],
+            [
+              0.7,
+              1
+            ],
+            [
+              1,
+              0.6
+            ]
+          ],
+          "field": "temperature",
+          "hardBounds": [
+            0.15,
+            1
+          ]
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "rest",
+        "seek-shelter"
+      ],
+      "category": "shelter",
+      "conditionFields": [
+        "forest.density",
+        "water.shoreDist"
+      ],
+      "decayPerHour": 0.03,
+      "id": "need:rest.shelter",
+      "provenance": {
+        "author": "design",
+        "script": "needs/shelter.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0.2
+            ],
+            [
+              0.3,
+              1
+            ],
+            [
+              0.8,
+              0.8
+            ]
+          ],
+          "field": "forest.density"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "haunt",
+        "migrate"
+      ],
+      "category": "custom",
+      "conditionFields": [
+        "dungeon.essence"
+      ],
+      "decayPerHour": 0.02,
+      "id": "need:essence.necromancy",
+      "provenance": {
+        "author": "design",
+        "script": "needs/essence.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.01,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "field": "dungeon.essence"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "hunt",
+        "migrate"
+      ],
+      "category": "custom",
+      "conditionFields": [
+        "dungeon.essence"
+      ],
+      "decayPerHour": 0.02,
+      "id": "need:essence.lifeforce",
+      "provenance": {
+        "author": "design",
+        "script": "needs/essence.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.01,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "field": "dungeon.essence"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "lurk",
+        "migrate"
+      ],
+      "category": "custom",
+      "conditionFields": [
+        "dungeon.essence"
+      ],
+      "decayPerHour": 0.02,
+      "id": "need:essence.emotion",
+      "provenance": {
+        "author": "design",
+        "script": "needs/essence.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.01,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "field": "dungeon.essence"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    },
+    {
+      "actions": [
+        "dwell"
+      ],
+      "category": "custom",
+      "conditionFields": [
+        "dungeon.essence"
+      ],
+      "decayPerHour": 0.02,
+      "id": "need:essence.none",
+      "provenance": {
+        "author": "design",
+        "script": "needs/essence.scm"
+      },
+      "requirement": [
+        {
+          "anchors": [
+            [
+              0,
+              0
+            ],
+            [
+              0.01,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "field": "dungeon.essence"
+        }
+      ],
+      "schemaVersion": 1,
+      "thresholds": {
+        "critical": 0.15,
+        "uneasy": 0.6,
+        "urgent": 0.35
+      }
+    }
+  ],
+  "pack": "sample",
+  "schemaVersion": 1
+}

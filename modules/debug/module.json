@@ -1,0 +1,11 @@
+{
+  "name": "debug",
+  "version": "0.1.0",
+  "description": "Editor module: Debug: play-mode viewport. Disable it and the panels leave their workspaces without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

@@ -8,7 +8,7 @@
  *    and which pool layouts that entrance draws from (rank, themes).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -76,6 +76,35 @@ export const EntrancesSchema = z.strictObject({
 export type InstanceRules = z.infer<typeof InstanceRulesSchema>;
 export type Entrance = z.infer<typeof EntranceSchema>;
 
+const DUNGEON_FILES = ["instances.json", "entrances.json"] as const;
+
+/**
+ * Fallback instance rules when no dungeon content exists. Inert while
+ * entrances is empty: no entrance means no run can start, so no run ever
+ * reads these values. Mirrors the sample pack's instances.json.
+ */
+export const DEFAULT_INSTANCE_RULES: InstanceRules = {
+  version: 1,
+  partySize: [1, 5],
+  timeLimitMinutes: 45,
+  reentry: true,
+  emptyTeardownSeconds: 120,
+  maxInstances: 8,
+  fallbackCreature: "goblin",
+  lootRollsPerKill: [0, 1],
+  bossLootRolls: [2, 3],
+  trapsPerRun: 2,
+  trapHarm: 10,
+  trapTriggerRadiusM: 2,
+  chestsPerRun: 3,
+  chestLootRolls: [1, 2],
+  chestOpenRadiusM: 3,
+  commit: "on-report",
+};
+
+/** Valid empty dungeon content: no entrances, so no runs. */
+export const EMPTY_DUNGEON_CONTENT: DungeonContent = { rules: DEFAULT_INSTANCE_RULES, entrances: {} };
+
 export interface DungeonContent {
   rules: InstanceRules;
   entrances: Record<string, Entrance>;
@@ -94,6 +123,11 @@ export function parseDungeonContent(rules: unknown, entrances: unknown): Dungeon
 }
 
 export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT): DungeonContent {
+  const missing = DUNGEON_FILES.filter((f) => !existsSync(join(dir, f)));
+  if (missing.length === DUNGEON_FILES.length) return { rules: DEFAULT_INSTANCE_RULES, entrances: {} };
+  if (missing.length > 0) {
+    throw new Error(`dungeon content: ${missing.join(", ")}: no such file (dungeon content is both files or none)`);
+  }
   const read = (f: string): unknown => JSON.parse(readFileSync(join(dir, f), "utf8"));
   return parseDungeonContent(read("instances.json"), read("entrances.json"));
 }

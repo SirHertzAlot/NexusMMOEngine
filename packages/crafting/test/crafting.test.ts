@@ -131,6 +131,6 @@ describe("the rules file (content/crafting/recipes.json)", () => {
     assert.throws(() => loadCraftingRules(file), /defaultUnits/);
     writeFileSync(file, "{nope");
     assert.throws(() => loadCraftingRules(file), /not valid JSON/);
-    assert.throws(() => loadCraftingRules(join(dir, "none.json")), /no such file/);
+    assert.equal(loadCraftingRules(join(dir, "none.json")), null, "a missing file means no crafting, not a boot failure");
   });
 });

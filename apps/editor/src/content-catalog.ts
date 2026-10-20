@@ -40,7 +40,7 @@ export async function buildCatalog(repoRoot: string): Promise<Catalog> {
   try {
     const sp = await loadSpeciesModule(repoRoot);
     const file = join(repoRoot, "content", "species", "species.json");
-    const roster = (existsSync(file) ? sp.loadSpecies(file) : sp.BUILTIN_SPECIES) as Record<string, { name: string; kind: string }>;
+    const roster = (existsSync(file) ? sp.loadSpecies(file) : sp.loadSpecies()) as Record<string, { name: string; kind: string }>;
     const creatureIds = new Set(keysOf((json(join(repoRoot, "content", "rules", "creatures.json")) ?? {}).creatures));
     for (const [id, s] of Object.entries(roster)) {
       add("species", id, s.name, creatureIds.has(id) ? s.kind : `${s.kind} (no creature rules: placing it spawns nothing yet)`, {
