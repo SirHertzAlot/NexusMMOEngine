@@ -386,6 +386,8 @@ export const Animation = defineSABComponent({
 export const StructuralIntegrity = defineSABComponent({
   current: Types.f32,
   max: Types.f32,
+});
+
 // Per-object flow/vfx/audio markers (viewport authoring, code-first cut).
 //
 // Set by the designer in the viewport authoring tool; no tick logic —

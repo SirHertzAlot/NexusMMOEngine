@@ -11,20 +11,11 @@
         "name": "streamer"
       },
       {
-        "name": "wallet"
-      },
-      {
         "name": "gathering"
-      },
-      {
-        "name": "trade"
-      },
-      {
-        "name": "vendor"
-      },
-      {
-        "name": "auction"
       }
     ]
+  },
+  "editor": {
+    "entry": "editor/index.tsx"
   }
 }

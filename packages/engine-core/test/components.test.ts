@@ -23,13 +23,14 @@ test("AssetRef is registered as component id 8, Locomotion as 9, Appearance as 1
   assert.equal(COMPONENT_IDS.Noclip, 16);
   assert.equal(COMPONENT_IDS.Animation, 17);
   assert.equal(COMPONENT_IDS.StructuralIntegrity, 21);
-  // ids remain unique; 18/19/20 are held by the viewport branch's markers
-  // (FlowRef/VfxEmitter/AudioEmitter) and fill in when the branches merge
+  // ids remain unique; 18/19/20 are the viewport branch's markers
+  // (FlowRef/VfxEmitter/AudioEmitter) — with all branches merged the
+  // registry is dense 0–21
   const ids = Object.values(COMPONENT_IDS);
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(
     [...ids].sort((a, b) => a - b),
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
   );
 });
 

@@ -1,0 +1,11 @@
+{
+  "name": "ecs",
+  "version": "0.1.0",
+  "description": "Editor module: ECS inspector viewport for the Scene workspace. Disable it and the panels leave their workspaces without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

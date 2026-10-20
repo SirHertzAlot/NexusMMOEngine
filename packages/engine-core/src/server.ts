@@ -150,8 +150,6 @@ import {
   MigrationCoordinator,
   waterSurfaceFromMaps,
   type ChunkBounds,
-  SqlitePartyStore,
-  SqliteSocialStore,
 } from "./index.js";
 import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
@@ -161,7 +159,7 @@ import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
-import { assembleServerSystems } from "./modules.js";
+import { assembleServerSystems, type ServerModuleContext } from "./modules.js";
 const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 
 /**
@@ -184,18 +182,13 @@ import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
-import { WalletSystem } from "./economy/wallet.js";
-import { SqliteWalletStore } from "./economy/wallet-store.js";
 import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
-import { TradeSystem } from "./economy/trade.js";
-import { VendorSystem } from "./economy/vendor.js";
-import { AuctionSystem } from "./economy/auction.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
-import { SqliteInstanceResultStore, flushInstanceResults } from "./dungeons/results.js";
+import { flushInstanceResults } from "./dungeons/results.js";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
@@ -205,8 +198,7 @@ import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { landDry, riverAtFromMap, surfaceAt } from "./procgen/habitat.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
-import { SqliteGuildStore } from "./guild-store.js";
-import { loadCharacterCatalog, SqliteCharacterStore } from "./characters/index.js";
+import { loadCharacterCatalog } from "./characters/index.js";
 import { ART_CATALOG, makeWorldPopulator } from "./procgen/world-populator.js";
 import { catalogBounds } from "./procgen/prop-shape.js";
 import { loadScale } from "./scale.js";
@@ -546,10 +538,10 @@ async function main(): Promise<void> {
   const credentialStore = new CsvCredentialStore(
     process.env.MMO_USERS_CSV ?? path.join(DATA_DIR, "users.csv"),
   );
-  const characterStore = new SqliteCharacterStore(path.join(DATA_DIR, "characters.db"));
-  const guildStore = new SqliteGuildStore(path.join(DATA_DIR, "guilds.db"));
-  const socialStore = new SqliteSocialStore(path.join(DATA_DIR, "social.db"));
-  const partyStore = new SqlitePartyStore(path.join(DATA_DIR, "parties.db"));
+  // Domain stores (characters, guilds, social, parties, instance results)
+  // are built by their modules during assembly and published on
+  // moduleCtx.stores; server.ts reads them back post-assembly below.
+  // credentialStore stays here: auth is irreducible core.
   // The licensed modular pack is only on machines that have the art
   // (assets/ is never committed): elsewhere looks are checked structurally.
   const catalogFile =
@@ -602,6 +594,7 @@ async function main(): Promise<void> {
     chunkSource: procgen,
     worldSeed,
     chunkSize: CHUNK_SIZE,
+    dataDir: DATA_DIR,
     bounds: {
       minX: bounds.minCx * CHUNK_SIZE,
       minZ: bounds.minCz * CHUNK_SIZE,
@@ -709,11 +702,12 @@ async function main(): Promise<void> {
   // Stamina gating (slice 5): the combat module builds it; see combatConfig below.
   // (needs now comes from the creatures module; see creaturesConfig above)
   // (mastery now comes from the character module; see characterConfig above)
-  // Economy (EC1): gold wallets (SQLite-backed). The wallet is built here
-  // (before assembly) and handed to the items module via itemsConfig so
-  // the module-built LootDropper can drop gold.
-  const walletStore = new SqliteWalletStore(path.join(DATA_DIR, "economy.db"));
-  const wallet = new WalletSystem(walletStore);
+  // Economy (EC1): the economy module builds the wallet, trade, vendor and
+  // auction systems during assembly (see modules/economy/server.js). The
+  // wallet holder is filled post-assembly for pre-assembly configs that
+  // need it (quests grantGold); the items module reads ctx.stores.wallet
+  // directly since economy is its dependency.
+  const walletHolder: { current: import("./economy/wallet.js").WalletSystem | null } = { current: null };
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
   // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
@@ -741,38 +735,7 @@ async function main(): Promise<void> {
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
     ledger: itemLedger,
     kindOf: (e: number) => creaturesOf().kindOf(e),
-    wallet,
   };
-  // Economy (EC1): player-to-player trades, NPC vendors, auction house.
-  // Items move bag-to-bag through the ItemStore; held/worn gear stays out
-  // of trades in v1. Trade/vendor/auction resolve items lazily via
-  // itemsOf() since the items service comes from the items module during
-  // assembly; they join the tick via provided.core below (the core
-  // manifest lists them), so the gateway finds them in assembled.systems.
-  // The ledger startup sequence (clear strays, restore, attach) moved into
-  // the items module — see modules/items/server.js.
-  const trade = new TradeSystem(wallet, {
-    owns: (c, item) => itemsOf().store.inBagOf(c, item),
-    freeSlots: (c) => itemsOf().store.emptySlots(c),
-    move: (item, from, to) => itemsOf().moveItem(item, from, to),
-  });
-  // Vendors (EC1): NPC shops. Templates are defined here; attaching them
-  // to NPC entities is content work (the `vendor` admin command attaches).
-  const vendor = new VendorSystem(wallet, {
-    give: (c, def) => itemsOf().grantItem(c, def),
-    take: (c, item) => itemsOf().take(c, item),
-    defOf: (item) => itemsOf().defOf(item),
-    nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
-  });
-  // Auction house (EC1): listings keep the item in the seller's bag (no
-  // escrow limbo on restart); settlement moves it bag-to-bag.
-  const auction = new AuctionSystem(wallet, {
-    owns: (c, item) => itemsOf().store.inBagOf(c, item),
-    freeSlots: (c) => itemsOf().store.emptySlots(c),
-    defOf: (item) => itemsOf().defOf(item),
-    move: (item, from, to) => itemsOf().moveItem(item, from, to),
-    nameOf: (def) => itemsOf().defs.names[def] ?? `item ${def}`,
-  });
   // Crafting (gateway execution): the "craft" GatewayExtension validates
   // incoming craft/recipe messages with Zod at the boundary and executes
   // through the @mmo-engine/crafting rules — recipe derivation, mastery
@@ -835,7 +798,7 @@ async function main(): Promise<void> {
     };
   };
   // Creature drops (L2): the items module builds the dropper during assembly.
-  // It receives the wallet via itemsConfig so creature kills can drop gold (EC1).
+  // It receives the wallet via ctx.stores (published by the economy module) so creature kills can drop gold (EC1).
   // Rules hot reload (ED1): combat and death hold the delegate, and a
   // reload (validated off the tick, applied first thing in one) swaps the
   // hooks behind it and pushes the new tables into the systems.
@@ -877,7 +840,7 @@ async function main(): Promise<void> {
       return def >= 0 && itemsOf().grantItem(character, def);
     },
     grantGold: (character: number, amount: number) => {
-      wallet.grant(character, amount, sim.currentTick);
+      walletHolder.current?.grant(character, amount, sim.currentTick);
     },
   };
   // A scene's nodes spawn through the creature, prop, item and quest paths (EA6, data-driven entities).
@@ -932,17 +895,17 @@ async function main(): Promise<void> {
   };
   // Dungeon instances (D4): the gateway's "dungeon" extension starts a
   // sandbox gateway per run from the prebaked pool and commits its result.
-  // Slice 3: the dungeons module builds the pool and InstanceManager from
-  // this config during assembly. See modules/dungeons/server.js.
-  const instanceResults = new SqliteInstanceResultStore(path.join(DATA_DIR, "instances.db"));
+  // Slice 3: the dungeons module builds the pool, the InstanceManager, and
+  // the instance-result store from this config during assembly. See
+  // modules/dungeons/server.js. The character and instance-result stores
+  // now live on moduleCtx.stores (built by the character/dungeons modules);
+  // train reads the character store lazily — it only runs during live runs.
   const dungeonsConfig = {
     dungeonDir: process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT,
     dataDir: DATA_DIR,
     instanceHost: process.env.MMO_INSTANCE_HOST || "localhost",
-    instanceResults,
     getGame: () => game,
     credentialStore,
-    characterStore,
     getGateway: () => gw,
     getWeaponOf: (character: number) => {
       const def = itemsOf().mainHandDef(character);
@@ -958,10 +921,10 @@ async function main(): Promise<void> {
       const i = masteryOf().index.of(skill);
       if (i < 0) return;
       const sheet = new SkillSheet(masteryOf().index);
-      const saved = characterStore.loadSkills?.(character);
+      const saved = characterStore?.loadSkills?.(character);
       if (saved) sheet.load(saved);
       sheet.train(i, difficulty, key, Date.now());
-      characterStore.saveSkills?.(character, sheet.save());
+      characterStore?.saveSkills?.(character, sheet.save());
     },
   };
   const combatSkills: CombatSkills = {
@@ -1008,6 +971,15 @@ async function main(): Promise<void> {
   // The tick's systems (roadmap EA9): the core module's instances in the order
   // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
   // set (unknown id, cycle) stops the boot with every problem listed.
+  // The module context outlives the assembly call: modules publish domain
+  // stores on ctx.stores during createSystems (character, social, dungeons,
+  // economy), and server.ts reads them back post-assembly below.
+  const moduleCtx: ServerModuleContext = {
+    sim,
+    log: (m) => console.log(m),
+    // Slices 2-6: modules read their bootstrap config from here.
+    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR } },
+  };
   const assembled = await assembleServerSystems({
     modulesDir: path.join(REPO_ROOT, "modules"),
     setFile: process.env.MMO_MODULES || path.join(REPO_ROOT, "content", "modules.json"),
@@ -1015,19 +987,10 @@ async function main(): Promise<void> {
       core: {
         reloader,
         streamer,
-        wallet,
         gathering,
-        trade,
-        vendor,
-        auction,
       },
     },
-    ctx: {
-      sim,
-      log: (m) => console.log(m),
-      // Slices 2-6: modules read their bootstrap config from here.
-      config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig },
-    },
+    ctx: moduleCtx,
   }).catch((err: Error) => {
     console.error(`[server] ${err.message}`);
     process.exit(1);
@@ -1035,6 +998,8 @@ async function main(): Promise<void> {
   // Slices 2-5: items, dropper, dungeons, quests, and the combat cluster
   // come from their modules.
   itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
+  // The economy module owns the wallet; pre-assembly configs use it lazily.
+  walletHolder.current = assembled.byName["wallet"] as import("./economy/wallet.js").WalletSystem;
   dropperRef = assembled.extensions["dropper"] as unknown as {
     onDeath(s: unknown, ev: unknown): void;
     setCreatures(c: unknown): void;
@@ -1063,6 +1028,15 @@ async function main(): Promise<void> {
     character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
     mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
   };
+  // Domain stores, built by their modules during assembly and published on
+  // moduleCtx.stores: the gateway consumes them below. Undefined when the
+  // owning module is disabled — the gateway falls back to its in-memory
+  // defaults, and the dungeon reporter skips when the dungeons module is off.
+  const characterStore = moduleCtx.stores!.characterStore as import("./characters/index.js").SqliteCharacterStore | undefined;
+  const guildStore = moduleCtx.stores!.guildStore as import("./guild-store.js").SqliteGuildStore | undefined;
+  const socialStore = moduleCtx.stores!.socialStore as import("./index.js").SqliteSocialStore | undefined;
+  const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
+  const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
   spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
@@ -1257,7 +1231,8 @@ async function main(): Promise<void> {
         // report. Rows stay unreported until the world confirms them
         // ingested, so a failed flush retries on the next save. Skipped
         // while one is in flight: a hung world must not stack up POSTs.
-        if (!dungeonFlushInFlight) {
+        // instanceResults is absent when the dungeons module is disabled.
+        if (!dungeonFlushInFlight && instanceResults) {
           dungeonFlushInFlight = true;
           void flushInstanceResults(instanceResults, (results) => worldClient.reportDungeonResults(results)).then(
             ({ reported }) => {
