@@ -140,10 +140,12 @@ export const DEFAULT_INSTANCE_RULES: InstanceRules = {
   chestLootRolls: [1, 2],
   chestOpenRadiusM: 3,
   commit: "on-report",
+  wallBodyRadiusM: 0.4,
+  teleportStepM: 8,
 };
 
 /** Valid empty dungeon content: no entrances, so no runs. */
-export const EMPTY_DUNGEON_CONTENT: DungeonContent = { rules: DEFAULT_INSTANCE_RULES, entrances: {} };
+export const EMPTY_DUNGEON_CONTENT: DungeonContent = { rules: DEFAULT_INSTANCE_RULES, entrances: {}, props: { version: 1, archetypes: {}, lift: {} }, looks: null };
 
 export interface DungeonContent {
   rules: InstanceRules;
@@ -172,7 +174,7 @@ export function parseDungeonContent(rules: unknown, entrances: unknown, props?: 
 
 export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT): DungeonContent {
   const missing = DUNGEON_FILES.filter((f) => !existsSync(join(dir, f)));
-  if (missing.length === DUNGEON_FILES.length) return { rules: DEFAULT_INSTANCE_RULES, entrances: {} };
+  if (missing.length === DUNGEON_FILES.length) return EMPTY_DUNGEON_CONTENT;
   if (missing.length > 0) {
     throw new Error(`dungeon content: ${missing.join(", ")}: no such file (dungeon content is both files or none)`);
   }
