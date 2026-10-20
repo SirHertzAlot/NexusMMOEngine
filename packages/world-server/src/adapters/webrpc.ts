@@ -21,14 +21,24 @@ import { z } from "zod";
 import { WorldCoreImpl } from "../core.js";
 import {
   AbortMigrationSchema,
+  AcquireCharacterLockSchema,
+  AppendLedgerEventsSchema,
   BeginMigrationSchema,
   CommitMigrationSchema,
   DeregisterSchema,
   DungeonResultsReportSchema,
+  GetCharacterLockSchema,
+  GetCharacterStateSchema,
+  GetLedgerEventsSchema,
+  GetLedgerHeadSchema,
   GetMigrationSchema,
+  GetShardSnapshotSchema,
   HeartbeatSchema,
+  PutCharacterStateSchema,
+  PutShardSnapshotSchema,
   QueryPresenceSchema,
   RegisterRegionSchema,
+  ReleaseCharacterLockSchema,
   SetPresenceSchema,
   SnapshotReportSchema,
 } from "../schema.js";
@@ -210,6 +220,102 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return core.queryPresence(regionId, input);
+    }),
+  );
+
+  // -- Persistence P1: the state plane ------------------------------------
+  // Epoch-fenced writes (snapshots, ledger, character state) and the
+  // unfenced reads a booting shard recalls from. The core checks the
+  // fence and the session lock; this adapter only validates the edge.
+
+  r.post("/rpc/World/PutShardSnapshot", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = PutShardSnapshotSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { snapshot: await core.putShardSnapshot(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/GetShardSnapshot", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetShardSnapshotSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { snapshot: await core.getShardSnapshot(regionId, input.rangeKey) };
+    }),
+  );
+
+  r.post("/rpc/World/AppendLedgerEvents", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = AppendLedgerEventsSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.appendLedgerEvents(regionId, input);
+    }),
+  );
+
+  r.post("/rpc/World/GetLedgerEvents", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetLedgerEventsSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.getLedgerEvents(regionId, input);
+    }),
+  );
+
+  r.post("/rpc/World/GetLedgerHead", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetLedgerHeadSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return core.getLedgerHead(regionId, input);
+    }),
+  );
+
+  r.post("/rpc/World/PutCharacterState", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = PutCharacterStateSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { character: await core.putCharacterState(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/GetCharacterState", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetCharacterStateSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { character: await core.getCharacterState(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/AcquireCharacterLock", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = AcquireCharacterLockSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { lock: await core.acquireCharacterLock(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/ReleaseCharacterLock", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = ReleaseCharacterLockSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      await core.releaseCharacterLock(regionId, input);
+      return {};
+    }),
+  );
+
+  r.post("/rpc/World/GetCharacterLock", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetCharacterLockSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { lock: await core.getCharacterLock(regionId, input) };
     }),
   );
 

@@ -12,11 +12,22 @@ import {
   WorldCoreOptions,
   WorldError,
   WorldStore,
+  rangeKeyFor,
   type AbortMigrationInput,
+  type AcquireCharacterLockInput,
+  type AppendLedgerEventsInput,
   type BeginMigrationInput,
+  type CharacterSessionLock,
+  type CharacterStateRecord,
   type ChunkRange,
   type CommitMigrationInput,
+  type GetCharacterLockInput,
+  type GetCharacterStateInput,
+  type GetLedgerEventsInput,
+  type GetLedgerHeadInput,
   type MigrationRecord,
+  type PutCharacterStateInput,
+  type PutShardSnapshotInput,
   type RegionInfo,
   type HeartbeatAck,
   type HeartbeatInput,
@@ -24,9 +35,12 @@ import {
   type RegionLease,
   type RegionRecord,
   type RegisterRegionInput,
+  type ReleaseCharacterLockInput,
   type ReportDungeonResultsInput,
   type SetPresenceInput,
+  type ShardSnapshotRecord,
   type SnapshotReportInput,
+  type StoredLedgerEvent,
 } from "./types.js";
 
 function rangesOverlap(a: ChunkRange, b: ChunkRange): boolean {
@@ -110,11 +124,16 @@ export class WorldCoreImpl implements WorldCore {
 
     const token = randomToken();
     const existing = await this.store.getRegion(input.regionId);
+    // Every grant of a range issues its next fencing epoch (persistence
+    // P1): re-registering rotates the token AND bumps the epoch, so a
+    // previous holder's state-plane writes are fenced out from here on.
+    const epoch = await this.store.issueRangeEpoch(rangeKeyFor(input.chunkRange));
     const record: RegionRecord = {
       regionId: input.regionId,
       chunkRange: input.chunkRange,
       endpoint: input.endpoint,
       capacity: input.capacity,
+      epoch,
       load: existing?.load ?? 0,
       tickJitterMs: existing?.tickJitterMs ?? 0,
       entityCount: existing?.entityCount ?? 0,
@@ -131,6 +150,7 @@ export class WorldCoreImpl implements WorldCore {
       heartbeatIntervalMs: this.heartbeatIntervalMs,
       registryVersion: await this.store.getRegistryVersion(),
       token,
+      epoch,
     };
     return lease;
   }
@@ -314,6 +334,176 @@ export class WorldCoreImpl implements WorldCore {
     const online: Record<string, string | null> = {};
     for (const [name, region] of await this.store.queryPresence(input.names)) online[name] = region;
     return { online };
+  }
+
+  // ------------------------------------------------------------ persistence P1: state plane
+
+  /**
+   * Store a shard checkpoint at the world tier (Tier 2): keyed by
+   * rangeKey, carrying the opaque payload a replacement shard recalls
+   * from. The write is fenced by the range's current epoch.
+   */
+  async putShardSnapshot(caller: string, input: PutShardSnapshotInput): Promise<ShardSnapshotRecord> {
+    const region = await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as ShardSnapshotRecord;
+    await this.fenceRangeWrite(region, input.rangeKey, input.epoch);
+    const record: ShardSnapshotRecord = {
+      rangeKey: input.rangeKey,
+      regionId: input.regionId,
+      tick: input.tick,
+      epoch: input.epoch,
+      digest: input.digest,
+      payload: input.payload,
+      storedAt: Date.now(),
+    };
+    await this.store.putShardSnapshot(record);
+    await this.store.storeOpResult(input.opId, record);
+    return record;
+  }
+
+  /** The range's latest checkpoint; reads are unfenced (boot recall precedes a fresh grant). */
+  async getShardSnapshot(caller: string, rangeKey: string): Promise<ShardSnapshotRecord | null> {
+    await this.knownRegion(caller, caller);
+    return this.store.getLatestShardSnapshot(rangeKey);
+  }
+
+  /**
+   * Stream ledger events uphill (Tier 1, outbox semantics): the region
+   * retries unacked batches on its save cycle; the world acks only the
+   * contiguous head, and a re-appended (rangeKey, seq) never stores
+   * twice. Fenced by the range's current epoch.
+   */
+  async appendLedgerEvents(caller: string, input: AppendLedgerEventsInput): Promise<{ ackedSeq: number }> {
+    const region = await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as { ackedSeq: number };
+    await this.fenceRangeWrite(region, input.rangeKey, input.epoch);
+    const result = { ackedSeq: await this.store.appendLedgerEvents(input.rangeKey, input.events) };
+    await this.store.storeOpResult(input.opId, result);
+    return result;
+  }
+
+  async getLedgerEvents(caller: string, input: GetLedgerEventsInput): Promise<{ events: StoredLedgerEvent[] }> {
+    await this.knownRegion(caller, input.regionId);
+    return { events: await this.store.getLedgerEvents(input.rangeKey, input.afterSeq) };
+  }
+
+  async getLedgerHead(caller: string, input: GetLedgerHeadInput): Promise<{ ackedSeq: number }> {
+    await this.knownRegion(caller, input.regionId);
+    return { ackedSeq: await this.store.getLedgerHead(input.rangeKey) };
+  }
+
+  /**
+   * Write a character's state at the world tier (P4 contract): the
+   * caller must hold the character's session lock, unexpired, and
+   * carry its epoch. The stored version increments per accepted put.
+   */
+  async putCharacterState(caller: string, input: PutCharacterStateInput): Promise<CharacterStateRecord> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as CharacterStateRecord;
+    const lock = await this.store.getCharacterLock(input.characterId);
+    if (lock === null) {
+      throw new WorldError(409, `character ${input.characterId} is not locked`);
+    }
+    if (lock.regionId !== caller) {
+      throw new WorldError(403, `character ${input.characterId} is locked by region ${lock.regionId}`);
+    }
+    if (lock.epoch !== input.epoch) {
+      throw new WorldError(409, `stale lock epoch ${input.epoch} for character ${input.characterId} (current ${lock.epoch})`);
+    }
+    if (lock.expiresAt <= Date.now()) {
+      throw new WorldError(409, `character lock for ${input.characterId} has expired`);
+    }
+    const existing = await this.store.getCharacterState(input.characterId);
+    const record: CharacterStateRecord = {
+      characterId: input.characterId,
+      state: input.state,
+      version: (existing?.version ?? 0) + 1,
+      epoch: input.epoch,
+      regionId: caller,
+      updatedAt: Date.now(),
+    };
+    await this.store.putCharacterState(record);
+    await this.store.storeOpResult(input.opId, record);
+    return record;
+  }
+
+  async getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null> {
+    await this.knownRegion(caller, input.regionId);
+    return this.store.getCharacterState(input.characterId);
+  }
+
+  /**
+   * Acquire a character's session lock: refused while a lock is held
+   * and unexpired (whoever holds it); an expired lock is stolen and
+   * its epoch bumped, fencing out the previous holder's writes.
+   */
+  async acquireCharacterLock(caller: string, input: AcquireCharacterLockInput): Promise<CharacterSessionLock> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as CharacterSessionLock;
+    const now = Date.now();
+    const held = await this.store.getCharacterLock(input.characterId);
+    if (held !== null && held.expiresAt > now) {
+      throw new WorldError(409, `character ${input.characterId} is locked by region ${held.regionId}`);
+    }
+    const lock: CharacterSessionLock = {
+      characterId: input.characterId,
+      regionId: caller,
+      epoch: await this.store.issueCharacterLockEpoch(input.characterId),
+      expiresAt: now + input.ttlMs,
+    };
+    await this.store.putCharacterLock(lock);
+    await this.store.storeOpResult(input.opId, lock);
+    return lock;
+  }
+
+  /** Release a character's session lock: holder only, at the lock's epoch. */
+  async releaseCharacterLock(caller: string, input: ReleaseCharacterLockInput): Promise<void> {
+    await this.knownRegion(caller, input.regionId);
+    if ((await this.store.getOpResult(input.opId)) !== null) return;
+    const lock = await this.store.getCharacterLock(input.characterId);
+    if (lock === null) throw new WorldError(404, `character ${input.characterId} is not locked`);
+    if (lock.regionId !== caller) {
+      throw new WorldError(403, `character ${input.characterId} is locked by region ${lock.regionId}`);
+    }
+    if (lock.epoch !== input.epoch) {
+      throw new WorldError(409, `stale lock epoch ${input.epoch} for character ${input.characterId} (current ${lock.epoch})`);
+    }
+    await this.store.deleteCharacterLock(input.characterId);
+    await this.store.storeOpResult(input.opId, { ok: true });
+  }
+
+  async getCharacterLock(caller: string, input: GetCharacterLockInput): Promise<CharacterSessionLock | null> {
+    await this.knownRegion(caller, input.regionId);
+    return this.store.getCharacterLock(input.characterId);
+  }
+
+  /** The caller's own region record: 403 on a foreign regionId, 404 when unknown. */
+  private async knownRegion(caller: string, regionId: string): Promise<RegionRecord> {
+    if (caller !== regionId) throw new WorldError(403, "regionId does not match token");
+    const region = await this.store.getRegion(regionId);
+    if (region === null) throw new WorldError(404, "unknown region");
+    return region;
+  }
+
+  /**
+   * The fencing check on every range-keyed state-plane write: the key
+   * must be the writer's own registered range, and the carried epoch
+   * must be the range's current epoch. Anything else — a zombie from
+   * a previous grant, or an epoch never issued — is refused with 409
+   * (the D2R rule: stale state never overwrites newer state).
+   */
+  private async fenceRangeWrite(region: RegionRecord, rangeKey: string, epoch: number): Promise<void> {
+    if (rangeKeyFor(region.chunkRange) !== rangeKey) {
+      throw new WorldError(400, `rangeKey ${rangeKey} is not region ${region.regionId}'s chunk range`);
+    }
+    const current = await this.store.getRangeEpoch(rangeKey);
+    if (epoch !== current) {
+      throw new WorldError(409, `stale epoch ${epoch} for range ${rangeKey} (current ${current})`);
+    }
   }
 
   /** The migration, if `caller` is its source or target. */

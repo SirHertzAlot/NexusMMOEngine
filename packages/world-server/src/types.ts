@@ -21,6 +21,15 @@ export interface ChunkRange {
   z1: number;
 }
 
+/**
+ * The state-plane key for a chunk range (persistence layer spec):
+ * state is keyed by rangeKey, never by regionId alone, so it survives
+ * the replacement of the region process that wrote it.
+ */
+export function rangeKeyFor(range: ChunkRange): string {
+  return `${range.x0}:${range.x1}:${range.z0}:${range.z1}`;
+}
+
 export interface RegisterRegionInput {
   regionId: string;
   chunkRange: ChunkRange;
@@ -38,6 +47,14 @@ export interface RegionLease {
   registryVersion: number;
   /** Opaque bearer token for subsequent calls. */
   token: string;
+  /**
+   * Fencing epoch for the region's chunk range (persistence P1):
+   * issued by the world core at every grant, monotonically increasing
+   * per range. State-plane writes must carry this epoch; a re-grant
+   * (replacement region, re-register) bumps it and fences out every
+   * earlier holder.
+   */
+  epoch: number;
 }
 
 export interface HeartbeatInput {
@@ -139,6 +156,140 @@ export interface QueryPresenceInput {
   names: string[];
 }
 
+// ---------------------------------------------------------------------------
+// State plane (persistence layer P1): shard snapshots, ledger stream,
+// character records + session locks — all epoch-fenced
+// ---------------------------------------------------------------------------
+
+/** Upload one shard checkpoint (Tier 2) to the world store. */
+export interface PutShardSnapshotInput {
+  regionId: string;
+  /** Key derived from the writer's chunk range (see rangeKeyFor). */
+  rangeKey: string;
+  tick: number;
+  /** The writer's fencing epoch (from its lease). */
+  epoch: number;
+  digest: string;
+  /** Opaque serialized snapshot payload, stored verbatim for recall. */
+  payload: unknown;
+  opId: string;
+}
+
+/** A shard checkpoint as stored at the world tier, payload included. */
+export interface ShardSnapshotRecord {
+  rangeKey: string;
+  /** The region that wrote it (provenance; the key is the range). */
+  regionId: string;
+  tick: number;
+  epoch: number;
+  digest: string;
+  payload: unknown;
+  storedAt: number; // epoch ms
+}
+
+export interface GetShardSnapshotInput {
+  regionId: string;
+  rangeKey: string;
+}
+
+/**
+ * One streamed ledger event (Tier 1). `seq` is the source ledger's
+ * per-range sequence (starting at 1); `payload` is the opaque event
+ * the region's ledger recorded, stored verbatim for replay.
+ */
+export interface LedgerEvent {
+  seq: number;
+  tick: number;
+  payload: unknown;
+}
+
+/** A ledger event as stored: which range's stream it belongs to. */
+export interface StoredLedgerEvent extends LedgerEvent {
+  rangeKey: string;
+}
+
+export interface AppendLedgerEventsInput {
+  regionId: string;
+  rangeKey: string;
+  /** The writer's fencing epoch (from its lease). */
+  epoch: number;
+  opId: string;
+  events: LedgerEvent[];
+}
+
+export interface GetLedgerEventsInput {
+  regionId: string;
+  rangeKey: string;
+  /** Return events with seq > afterSeq, in seq order. */
+  afterSeq: number;
+}
+
+export interface GetLedgerHeadInput {
+  regionId: string;
+  rangeKey: string;
+}
+
+/** A character record as stored at the world tier (slice P4 contract). */
+export interface CharacterStateRecord {
+  characterId: number;
+  /** Opaque serialized character state, stored verbatim. */
+  state: unknown;
+  /** Assigned by the world: 1 for the first put, +1 per accepted put. */
+  version: number;
+  /** The session-lock epoch the accepted write was fenced by. */
+  epoch: number;
+  /** The region that wrote this version. */
+  regionId: string;
+  updatedAt: number; // epoch ms
+}
+
+export interface PutCharacterStateInput {
+  regionId: string;
+  characterId: number;
+  /** The caller's session-lock epoch (see AcquireCharacterLock). */
+  epoch: number;
+  state: unknown;
+  opId: string;
+}
+
+export interface GetCharacterStateInput {
+  regionId: string;
+  characterId: number;
+}
+
+/**
+ * A character session lock (slice P4 contract): while held and
+ * unexpired no other region may acquire it; after expiry it may be
+ * stolen, which bumps `epoch` and fences out the previous holder.
+ */
+export interface CharacterSessionLock {
+  characterId: number;
+  regionId: string;
+  epoch: number;
+  expiresAt: number; // epoch ms
+}
+
+export interface AcquireCharacterLockInput {
+  regionId: string;
+  characterId: number;
+  /** Lock lifetime; the lock is stealable once this elapses. */
+  ttlMs: number;
+  opId: string;
+}
+
+export interface ReleaseCharacterLockInput {
+  regionId: string;
+  characterId: number;
+  /** Must match the held lock's epoch. */
+  epoch: number;
+  opId: string;
+}
+
+export interface GetCharacterLockInput {
+  regionId: string;
+  characterId: number;
+}
+
 /** A region as other regions see it (ListRegions): no secrets. */
 export interface RegionInfo {
   regionId: string;
@@ -153,6 +304,8 @@ export interface RegionRecord {
   chunkRange: ChunkRange;
   endpoint: string;
   capacity: number;
+  /** Fencing epoch issued at the latest grant of this record's range. */
+  epoch: number;
   load: number;
   tickJitterMs: number;
   entityCount: number;
@@ -225,6 +378,42 @@ export interface WorldStore {
   setPresence(regionId: string, names: string[]): Promise<void>;
   /** Region per name for characters online now; null when nowhere. */
   queryPresence(names: string[]): Promise<Map<string, string | null>>;
+
+  // -- state plane (persistence P1) --
+  /**
+   * Issue the next fencing epoch for a range: strictly greater than
+   * every epoch issued for it before (the store remembers across
+   * region records, deregistration included).
+   */
+  issueRangeEpoch(rangeKey: string): Promise<number>;
+  /** The latest epoch issued for a range; 0 when never issued. */
+  getRangeEpoch(rangeKey: string): Promise<number>;
+  /** Store a shard checkpoint as the range's latest (one per rangeKey). */
+  putShardSnapshot(s: ShardSnapshotRecord): Promise<void>;
+  getLatestShardSnapshot(rangeKey: string): Promise<ShardSnapshotRecord | null>;
+  /**
+   * Append events to a range's ledger stream, idempotent on
+   * (rangeKey, seq): an already-stored seq keeps its first-written
+   * event and is never duplicated. Returns the contiguous acked head:
+   * the greatest seq N such that 1..N are all stored.
+   */
+  appendLedgerEvents(rangeKey: string, events: LedgerEvent[]): Promise<number>;
+  /** Stored events with seq > afterSeq, in ascending seq order. */
+  getLedgerEvents(rangeKey: string, afterSeq: number): Promise<StoredLedgerEvent[]>;
+  /** The contiguous acked head seq for a range; 0 when none. */
+  getLedgerHead(rangeKey: string): Promise<number>;
+  getCharacterState(characterId: number): Promise<CharacterStateRecord | null>;
+  /** Store a character record verbatim (the core assigns its version). */
+  putCharacterState(r: CharacterStateRecord): Promise<void>;
+  /** The character's session lock as stored, or null when unheld. */
+  getCharacterLock(characterId: number): Promise<CharacterSessionLock | null>;
+  putCharacterLock(l: CharacterSessionLock): Promise<void>;
+  deleteCharacterLock(characterId: number): Promise<void>;
+  /**
+   * Issue the next session-lock epoch for a character. Never reused,
+   * even after a release, so a previous session's writes stay fenced.
+   */
+  issueCharacterLockEpoch(characterId: number): Promise<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +455,47 @@ export interface WorldCore {
    * offline names map to null. `caller` must be a known region.
    */
   queryPresence(caller: string, input: QueryPresenceInput): Promise<{ online: Record<string, string | null> }>;
+
+  // -- persistence P1: state plane (`caller` must match input.regionId) --
+  /**
+   * Store a shard checkpoint at the world tier (Tier 2). Fenced: the
+   * caller's lease epoch must be the range's current epoch, and the
+   * rangeKey must be the caller's registered range. Idempotent on opId.
+   */
+  putShardSnapshot(caller: string, input: PutShardSnapshotInput): Promise<ShardSnapshotRecord>;
+  /** The range's latest stored checkpoint, payload included; null when none. Reads are unfenced (boot recall). */
+  getShardSnapshot(caller: string, rangeKey: string): Promise<ShardSnapshotRecord | null>;
+  /**
+   * Stream ledger events uphill (Tier 1). Fenced like snapshots and
+   * idempotent on both opId and (rangeKey, seq). Returns the
+   * contiguous acked head seq the region may mark flushed.
+   */
+  appendLedgerEvents(caller: string, input: AppendLedgerEventsInput): Promise<{ ackedSeq: number }>;
+  /** Stored ledger events after `afterSeq` (recall/replay reads). */
+  getLedgerEvents(caller: string, input: GetLedgerEventsInput): Promise<{ events: StoredLedgerEvent[] }>;
+  /** The contiguous acked head seq for a range. */
+  getLedgerHead(caller: string, input: GetLedgerHeadInput): Promise<{ ackedSeq: number }>;
+  /**
+   * Write a character's state (slice P4 contract). Fenced by the
+   * session lock: the caller must hold the character's unexpired lock
+   * and carry its epoch. Idempotent on opId.
+   */
+  putCharacterState(caller: string, input: PutCharacterStateInput): Promise<CharacterStateRecord>;
+  /** A character's stored record, version included; null when none. */
+  getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null>;
+  /**
+   * Acquire a character's session lock. Refused (409) while a lock is
+   * held and unexpired; after expiry the lock is stolen with its epoch
+   * bumped. Idempotent on opId.
+   */
+  acquireCharacterLock(caller: string, input: AcquireCharacterLockInput): Promise<CharacterSessionLock>;
+  /**
+   * Release a character's session lock: only the holder, carrying the
+   * lock's epoch. Idempotent on opId.
+   */
+  releaseCharacterLock(caller: string, input: ReleaseCharacterLockInput): Promise<void>;
+  /** A character's current session lock; null when unheld. */
+  getCharacterLock(caller: string, input: GetCharacterLockInput): Promise<CharacterSessionLock | null>;
 }
 
 export interface WorldCoreOptions {

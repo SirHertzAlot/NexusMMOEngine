@@ -47,6 +47,26 @@ service World
   - SetPresence(input: SetPresenceInput) => ()
   - QueryPresence(input: QueryPresenceInput) => (online: map<string,string>)
 
+  # Persistence P1: the state plane. Every registration re-issues the
+  # range's fencing epoch (RegionLease.epoch, monotonically increasing
+  # per chunk range); the writes below carry the writer's epoch and
+  # the world rejects a stale one with 409. State is keyed by rangeKey
+  # ("<x0>:<x1>:<z0>:<z1>", derived from the chunk range), never by
+  # regionId alone. Reads are unfenced: boot recall precedes a grant.
+  # Snapshot/character/lock outputs are null on the wire when absent.
+  - PutShardSnapshot(input: PutShardSnapshotInput) => (snapshot: ShardSnapshot)
+  - GetShardSnapshot(input: GetShardSnapshotInput) => (snapshot: ShardSnapshot)
+  - AppendLedgerEvents(input: AppendLedgerEventsInput) => (ackedSeq: uint64)
+  - GetLedgerEvents(input: GetLedgerEventsInput) => (events: []StoredLedgerEvent)
+  - GetLedgerHead(input: GetLedgerHeadInput) => (ackedSeq: uint64)
+  # Slice P4 contract, defined in P1: versioned character records and
+  # session locks. Character writes are fenced by the lock epoch.
+  - PutCharacterState(input: PutCharacterStateInput) => (character: CharacterState)
+  - GetCharacterState(input: GetCharacterStateInput) => (character: CharacterState)
+  - AcquireCharacterLock(input: AcquireCharacterLockInput) => (lock: CharacterSessionLock)
+  - ReleaseCharacterLock(input: ReleaseCharacterLockInput) => ()
+  - GetCharacterLock(input: GetCharacterLockInput) => (lock: CharacterSessionLock)
+
 struct ChunkRange
   - x0: int32
   - x1: int32
@@ -70,6 +90,9 @@ struct RegionLease
   - registryVersion: uint64
   # Opaque bearer token for subsequent calls (rotated on re-register)
   - token: string
+  # Fencing epoch for this grant of the region's chunk range (P1);
+  # state-plane writes must carry it, and a re-grant fences older ones
+  - epoch: uint64
 
 struct HeartbeatInput
   - regionId: string
@@ -161,3 +184,106 @@ struct DungeonDeath
 struct DungeonLoot
   - characterId: uint64
   - def: uint64
+
+struct PutShardSnapshotInput
+  - regionId: string
+  # "<x0>:<x1>:<z0>:<z1>" of the caller's registered chunk range
+  - rangeKey: string
+  - tick: uint64
+  # The writer's fencing epoch (from its lease)
+  - epoch: uint64
+  - digest: string
+  # Opaque snapshot payload (serialized world state); the world's
+  # business is storing it verbatim for recall, never interpreting it
+  - payload: map<string,any>
+  - opId: string
+
+struct ShardSnapshot
+  - rangeKey: string
+  # Region that wrote it (provenance; the key is the range)
+  - regionId: string
+  - tick: uint64
+  - epoch: uint64
+  - digest: string
+  - payload: map<string,any>
+  - storedAt: uint64
+
+struct GetShardSnapshotInput
+  - regionId: string
+  - rangeKey: string
+
+struct LedgerEvent
+  # Source ledger sequence for the range (from 1, contiguous at the head)
+  - seq: uint64
+  - tick: uint64
+  # Opaque ledger event payload, stored verbatim for replay
+  - payload: map<string,any>
+
+struct StoredLedgerEvent
+  - rangeKey: string
+  - seq: uint64
+  - tick: uint64
+  - payload: map<string,any>
+
+struct AppendLedgerEventsInput
+  - regionId: string
+  - rangeKey: string
+  - epoch: uint64
+  - opId: string
+  - events: []LedgerEvent
+
+struct GetLedgerEventsInput
+  - regionId: string
+  - rangeKey: string
+  # Return stored events with seq > afterSeq, in seq order
+  - afterSeq: uint64
+
+struct GetLedgerHeadInput
+  - regionId: string
+  - rangeKey: string
+
+struct PutCharacterStateInput
+  - regionId: string
+  - characterId: uint64
+  # The caller's session-lock epoch
+  - epoch: uint64
+  # Opaque serialized character state, stored verbatim
+  - state: map<string,any>
+  - opId: string
+
+struct CharacterState
+  - characterId: uint64
+  - state: map<string,any>
+  # Assigned by the world: 1 for the first put, +1 per accepted put
+  - version: uint64
+  - epoch: uint64
+  - regionId: string
+  - updatedAt: uint64
+
+struct GetCharacterStateInput
+  - regionId: string
+  - characterId: uint64
+
+struct AcquireCharacterLockInput
+  - regionId: string
+  - characterId: uint64
+  # Lock lifetime in ms; the lock is stealable once this elapses
+  - ttlMs: uint64
+  - opId: string
+
+struct CharacterSessionLock
+  - characterId: uint64
+  - regionId: string
+  - epoch: uint64
+  - expiresAt: uint64
+
+struct ReleaseCharacterLockInput
+  - regionId: string
+  - characterId: uint64
+  # Must match the held lock's epoch
+  - epoch: uint64
+  - opId: string
+
+struct GetCharacterLockInput
+  - regionId: string
+  - characterId: uint64

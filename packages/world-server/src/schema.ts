@@ -153,3 +153,108 @@ export const DungeonResultsReportSchema = z
     results: z.array(DungeonRunResultSchema).max(512),
   })
   .strict();
+
+/** Persistence P1 state plane: epoch-fenced writes, opaque payloads. */
+
+/** rangeKey as derived by rangeKeyFor: "<x0>:<x1>:<z0>:<z1>". */
+const RANGE_KEY = z
+  .string()
+  .min(3)
+  .max(64)
+  .regex(/^-?\d+:-?\d+:-?\d+:-?\d+$/);
+const EPOCH = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+const CHARACTER_ID = z.number().int().min(0).max(4294967295);
+const UINT = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+
+/** Snapshot payload budget: the engine's own snapshot store caps at ~4 MiB. */
+export const MAX_SNAPSHOT_PAYLOAD_BYTES = 4 * 1024 * 1024;
+export const MAX_LEDGER_BATCH_BYTES = 1024 * 1024;
+export const MAX_CHARACTER_STATE_BYTES = 256 * 1024;
+
+function jsonBytes(v: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(v) ?? "");
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+const opaque = (max: number, label: string) =>
+  z.unknown().refine((v) => jsonBytes(v) <= max, { message: `${label} over ${max} bytes` });
+
+export const PutShardSnapshotSchema = z
+  .object({
+    regionId: REGION_ID,
+    rangeKey: RANGE_KEY,
+    tick: UINT,
+    epoch: EPOCH,
+    digest: DIGEST,
+    payload: opaque(MAX_SNAPSHOT_PAYLOAD_BYTES, "payload"),
+    opId: OP_ID,
+  })
+  .strict();
+
+export const GetShardSnapshotSchema = z
+  .object({ regionId: REGION_ID, rangeKey: RANGE_KEY })
+  .strict();
+
+const LedgerEventSchema = z
+  .object({
+    seq: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    tick: UINT,
+    payload: z.unknown(),
+  })
+  .strict();
+
+export const AppendLedgerEventsSchema = z
+  .object({
+    regionId: REGION_ID,
+    rangeKey: RANGE_KEY,
+    epoch: EPOCH,
+    opId: OP_ID,
+    events: z.array(LedgerEventSchema).max(1024),
+  })
+  .strict()
+  .refine((m) => jsonBytes(m.events) <= MAX_LEDGER_BATCH_BYTES, {
+    message: `ledger batch over ${MAX_LEDGER_BATCH_BYTES} bytes`,
+    path: ["events"],
+  });
+
+export const GetLedgerEventsSchema = z
+  .object({ regionId: REGION_ID, rangeKey: RANGE_KEY, afterSeq: UINT })
+  .strict();
+
+export const GetLedgerHeadSchema = z
+  .object({ regionId: REGION_ID, rangeKey: RANGE_KEY })
+  .strict();
+
+export const PutCharacterStateSchema = z
+  .object({
+    regionId: REGION_ID,
+    characterId: CHARACTER_ID,
+    epoch: EPOCH,
+    state: opaque(MAX_CHARACTER_STATE_BYTES, "state"),
+    opId: OP_ID,
+  })
+  .strict();
+
+export const GetCharacterStateSchema = z
+  .object({ regionId: REGION_ID, characterId: CHARACTER_ID })
+  .strict();
+
+export const AcquireCharacterLockSchema = z
+  .object({
+    regionId: REGION_ID,
+    characterId: CHARACTER_ID,
+    ttlMs: z.number().int().min(1).max(86_400_000),
+    opId: OP_ID,
+  })
+  .strict();
+
+export const ReleaseCharacterLockSchema = z
+  .object({ regionId: REGION_ID, characterId: CHARACTER_ID, epoch: EPOCH, opId: OP_ID })
+  .strict();
+
+export const GetCharacterLockSchema = z
+  .object({ regionId: REGION_ID, characterId: CHARACTER_ID })
+  .strict();

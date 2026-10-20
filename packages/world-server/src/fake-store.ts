@@ -2,7 +2,18 @@
  * In-memory WorldStore. Used by unit tests and by `WORLD_DB_URL=mem:`
  * dev runs. Production uses SurrealWorldStore (src/surreal-store.ts).
  */
-import type { MigrationRecord, MigrationState, RegionRecord, StoredDungeonRun, WorldStore } from "./types.js";
+import type {
+  CharacterSessionLock,
+  CharacterStateRecord,
+  LedgerEvent,
+  MigrationRecord,
+  MigrationState,
+  RegionRecord,
+  ShardSnapshotRecord,
+  StoredDungeonRun,
+  StoredLedgerEvent,
+  WorldStore,
+} from "./types.js";
 
 export class MemoryWorldStore implements WorldStore {
   private regions = new Map<string, RegionRecord>();
@@ -130,5 +141,91 @@ export class MemoryWorldStore implements WorldStore {
       for (const n of names) if (online.has(n) && !found.has(n)) found.set(n, regionId);
     }
     return new Map(names.map((n) => [n, found.get(n) ?? null]));
+  }
+
+  // -- state plane (persistence P1) --
+
+  private rangeEpochs = new Map<string, number>();
+  private shardSnapshots = new Map<string, ShardSnapshotRecord>();
+  private ledger = new Map<string, Map<number, StoredLedgerEvent>>();
+  private ledgerHeads = new Map<string, number>();
+  private characterStates = new Map<number, CharacterStateRecord>();
+  private characterLocks = new Map<number, CharacterSessionLock>();
+  private characterLockEpochs = new Map<number, number>();
+
+  async issueRangeEpoch(rangeKey: string): Promise<number> {
+    const next = (this.rangeEpochs.get(rangeKey) ?? 0) + 1;
+    this.rangeEpochs.set(rangeKey, next);
+    return next;
+  }
+
+  async getRangeEpoch(rangeKey: string): Promise<number> {
+    return this.rangeEpochs.get(rangeKey) ?? 0;
+  }
+
+  async putShardSnapshot(s: ShardSnapshotRecord): Promise<void> {
+    this.shardSnapshots.set(s.rangeKey, { ...s });
+  }
+
+  async getLatestShardSnapshot(rangeKey: string): Promise<ShardSnapshotRecord | null> {
+    const s = this.shardSnapshots.get(rangeKey);
+    return s ? { ...s } : null;
+  }
+
+  async appendLedgerEvents(rangeKey: string, events: LedgerEvent[]): Promise<number> {
+    let stream = this.ledger.get(rangeKey);
+    if (!stream) {
+      stream = new Map();
+      this.ledger.set(rangeKey, stream);
+    }
+    for (const e of events) {
+      // Idempotent on (rangeKey, seq): the first-written event wins.
+      if (!stream.has(e.seq)) stream.set(e.seq, { ...e, rangeKey });
+    }
+    let head = this.ledgerHeads.get(rangeKey) ?? 0;
+    while (stream.has(head + 1)) head += 1;
+    this.ledgerHeads.set(rangeKey, head);
+    return head;
+  }
+
+  async getLedgerEvents(rangeKey: string, afterSeq: number): Promise<StoredLedgerEvent[]> {
+    const stream = this.ledger.get(rangeKey);
+    if (!stream) return [];
+    return [...stream.values()]
+      .filter((e) => e.seq > afterSeq)
+      .sort((a, b) => a.seq - b.seq)
+      .map((e) => ({ ...e }));
+  }
+
+  async getLedgerHead(rangeKey: string): Promise<number> {
+    return this.ledgerHeads.get(rangeKey) ?? 0;
+  }
+
+  async getCharacterState(characterId: number): Promise<CharacterStateRecord | null> {
+    const r = this.characterStates.get(characterId);
+    return r ? { ...r } : null;
+  }
+
+  async putCharacterState(r: CharacterStateRecord): Promise<void> {
+    this.characterStates.set(r.characterId, { ...r });
+  }
+
+  async getCharacterLock(characterId: number): Promise<CharacterSessionLock | null> {
+    const l = this.characterLocks.get(characterId);
+    return l ? { ...l } : null;
+  }
+
+  async putCharacterLock(l: CharacterSessionLock): Promise<void> {
+    this.characterLocks.set(l.characterId, { ...l });
+  }
+
+  async deleteCharacterLock(characterId: number): Promise<void> {
+    this.characterLocks.delete(characterId);
+  }
+
+  async issueCharacterLockEpoch(characterId: number): Promise<number> {
+    const next = (this.characterLockEpochs.get(characterId) ?? 0) + 1;
+    this.characterLockEpochs.set(characterId, next);
+    return next;
   }
 }

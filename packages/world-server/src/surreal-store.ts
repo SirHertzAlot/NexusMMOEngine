@@ -17,7 +17,18 @@
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
 import { Surreal } from "surrealdb";
-import type { MigrationRecord, MigrationState, RegionRecord, StoredDungeonRun, WorldStore } from "./types.js";
+import type {
+  CharacterSessionLock,
+  CharacterStateRecord,
+  LedgerEvent,
+  MigrationRecord,
+  MigrationState,
+  RegionRecord,
+  ShardSnapshotRecord,
+  StoredDungeonRun,
+  StoredLedgerEvent,
+  WorldStore,
+} from "./types.js";
 
 export interface SurrealStoreOptions {
   url: string;
@@ -42,6 +53,7 @@ DEFINE FIELD IF NOT EXISTS tickJitterMs ON region TYPE float;
 DEFINE FIELD IF NOT EXISTS entityCount ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS lastTick ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS lastHeartbeat ON region TYPE int;
+DEFINE FIELD IF NOT EXISTS epoch ON region TYPE int;
 DEFINE FIELD IF NOT EXISTS apiKeyHash ON region TYPE string;
 DEFINE FIELD IF NOT EXISTS tokenHash ON region TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS tokenIssuedAt ON region TYPE option<int>;
@@ -61,6 +73,19 @@ DEFINE INDEX IF NOT EXISTS idx_dungeon_run_region ON dungeon_run FIELDS regionId
 -- Slice S2: online character names per region (replaced on every report).
 DEFINE TABLE IF NOT EXISTS presence SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_presence_region ON presence FIELDS regionId UNIQUE;
+-- Persistence P1: the state plane. Schemaless: payloads/state are opaque.
+-- Epoch counters (key: "range:<rangeKey>" | "character:<characterId>").
+DEFINE TABLE IF NOT EXISTS epoch_counter SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_epoch_counter_key ON epoch_counter FIELDS key UNIQUE;
+DEFINE TABLE IF NOT EXISTS shard_snapshot SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_shard_snapshot_range ON shard_snapshot FIELDS rangeKey UNIQUE;
+DEFINE TABLE IF NOT EXISTS ledger_event SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_ledger_event_range_seq ON ledger_event FIELDS rangeKey, seq UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_ledger_event_range ON ledger_event FIELDS rangeKey;
+DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
+DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
 `;
 
 /** First (only) statement's result. */
@@ -96,6 +121,11 @@ function migration(record: Record<string, unknown>): MigrationRecord {
 function dungeonRun(record: Record<string, unknown>): StoredDungeonRun {
   const { id, ...rest } = record;
   return rest as unknown as StoredDungeonRun;
+}
+
+function stripId<T>(record: Record<string, unknown>): T {
+  const { id, ...rest } = record;
+  return rest as T;
 }
 
 export class SurrealWorldStore implements WorldStore {
@@ -149,13 +179,14 @@ export class SurrealWorldStore implements WorldStore {
       entityCount: r.entityCount,
       lastTick: r.lastTick,
       lastHeartbeat: r.lastHeartbeat,
+      epoch: r.epoch,
       apiKeyHash: r.apiKeyHash,
       tokenHash: r.tokenHash,
       tokenIssuedAt: r.tokenIssuedAt,
     };
     if (existing !== null) {
       await this.db.query(
-        "UPDATE ONLY region SET chunkRange=$cr, endpoint=$ep, capacity=$cap, load=$load, tickJitterMs=$jit, entityCount=$ec, lastTick=$tick, lastHeartbeat=$hb, apiKeyHash=$akh, tokenHash=$th, tokenIssuedAt=$tia WHERE regionId = $id",
+        "UPDATE ONLY region SET chunkRange=$cr, endpoint=$ep, capacity=$cap, load=$load, tickJitterMs=$jit, entityCount=$ec, lastTick=$tick, lastHeartbeat=$hb, epoch=$epoch, apiKeyHash=$akh, tokenHash=$th, tokenIssuedAt=$tia WHERE regionId = $id",
         {
           id: r.regionId,
           cr: r.chunkRange,
@@ -166,6 +197,7 @@ export class SurrealWorldStore implements WorldStore {
           ec: r.entityCount,
           tick: r.lastTick,
           hb: r.lastHeartbeat,
+          epoch: r.epoch,
           akh: r.apiKeyHash,
           th: r.tokenHash,
           tia: r.tokenIssuedAt,
@@ -335,5 +367,139 @@ export class SurrealWorldStore implements WorldStore {
       }
     }
     return new Map(names.map((n) => [n, found.get(n) ?? null]));
+  }
+
+  // -- state plane (persistence P1) --
+
+  /** Shared counter behind both epoch kinds, following the check-then-write pattern of recordDungeonRun. */
+  private async issueEpoch(key: string): Promise<number> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
+    );
+    const next = (row === null ? 0 : Number(row["value"] ?? 0)) + 1;
+    if (row === null) {
+      await this.db.query("CREATE ONLY epoch_counter CONTENT { key: $key, value: $value }", { key, value: next });
+    } else {
+      await this.db.query("UPDATE ONLY epoch_counter SET value = $value WHERE key = $key", { key, value: next });
+    }
+    return next;
+  }
+
+  private async currentEpoch(key: string): Promise<number> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
+    );
+    return row === null ? 0 : Number(row["value"] ?? 0);
+  }
+
+  async issueRangeEpoch(rangeKey: string): Promise<number> {
+    return this.issueEpoch(`range:${rangeKey}`);
+  }
+
+  async getRangeEpoch(rangeKey: string): Promise<number> {
+    return this.currentEpoch(`range:${rangeKey}`);
+  }
+
+  async issueCharacterLockEpoch(characterId: number): Promise<number> {
+    return this.issueEpoch(`character:${characterId}`);
+  }
+
+  async putShardSnapshot(s: ShardSnapshotRecord): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY shard_snapshot WHERE rangeKey = $rk LIMIT 1", { rk: s.rangeKey }),
+    );
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY shard_snapshot SET regionId=$region, tick=$tick, epoch=$epoch, digest=$digest, payload=$payload, storedAt=$storedAt WHERE rangeKey = $rk",
+        { rk: s.rangeKey, region: s.regionId, tick: s.tick, epoch: s.epoch, digest: s.digest, payload: s.payload, storedAt: s.storedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY shard_snapshot CONTENT $data", { data: { ...s } });
+    }
+  }
+
+  async getLatestShardSnapshot(rangeKey: string): Promise<ShardSnapshotRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY shard_snapshot WHERE rangeKey = $rk LIMIT 1", { rk: rangeKey }),
+    );
+    return row === null ? null : stripId<ShardSnapshotRecord>(row);
+  }
+
+  async appendLedgerEvents(rangeKey: string, events: LedgerEvent[]): Promise<number> {
+    for (const e of events) {
+      // Idempotent on (rangeKey, seq): the first-written event wins.
+      const existing = singleRow(
+        await this.db.query("SELECT * FROM ONLY ledger_event WHERE rangeKey = $rk AND seq = $seq LIMIT 1", { rk: rangeKey, seq: e.seq }),
+      );
+      if (existing === null) {
+        await this.db.query("CREATE ONLY ledger_event CONTENT $data", { data: { ...e, rangeKey } });
+      }
+    }
+    return this.getLedgerHead(rangeKey);
+  }
+
+  async getLedgerEvents(rangeKey: string, afterSeq: number): Promise<StoredLedgerEvent[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ledger_event WHERE rangeKey = $rk AND seq > $after ORDER BY seq ASC", { rk: rangeKey, after: afterSeq }),
+    );
+    return rows.map((r) => stripId<StoredLedgerEvent>(r));
+  }
+
+  async getLedgerHead(rangeKey: string): Promise<number> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT seq FROM ledger_event WHERE rangeKey = $rk ORDER BY seq ASC", { rk: rangeKey }),
+    );
+    let head = 0;
+    for (const r of rows) {
+      if (Number(r["seq"]) !== head + 1) break;
+      head += 1;
+    }
+    return head;
+  }
+
+  async getCharacterState(characterId: number): Promise<CharacterStateRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1", { id: characterId }),
+    );
+    return row === null ? null : stripId<CharacterStateRecord>(row);
+  }
+
+  async putCharacterState(r: CharacterStateRecord): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1", { id: r.characterId }),
+    );
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY character_state SET state=$state, version=$version, epoch=$epoch, regionId=$region, updatedAt=$updatedAt WHERE characterId = $id",
+        { id: r.characterId, state: r.state, version: r.version, epoch: r.epoch, region: r.regionId, updatedAt: r.updatedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY character_state CONTENT $data", { data: { ...r } });
+    }
+  }
+
+  async getCharacterLock(characterId: number): Promise<CharacterSessionLock | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY character_lock WHERE characterId = $id LIMIT 1", { id: characterId }),
+    );
+    return row === null ? null : stripId<CharacterSessionLock>(row);
+  }
+
+  async putCharacterLock(l: CharacterSessionLock): Promise<void> {
+    const existing = singleRow(
+      await this.db.query("SELECT * FROM ONLY character_lock WHERE characterId = $id LIMIT 1", { id: l.characterId }),
+    );
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY character_lock SET regionId=$region, epoch=$epoch, expiresAt=$expiresAt WHERE characterId = $id",
+        { id: l.characterId, region: l.regionId, epoch: l.epoch, expiresAt: l.expiresAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY character_lock CONTENT $data", { data: { ...l } });
+    }
+  }
+
+  async deleteCharacterLock(characterId: number): Promise<void> {
+    await this.db.query("DELETE character_lock WHERE characterId = $id", { id: characterId });
   }
 }
