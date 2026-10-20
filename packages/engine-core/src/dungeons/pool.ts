@@ -33,6 +33,19 @@ export interface PoolEntry {
   shell?: { file: string };
 }
 
+/** A baked prop to stand in the run (props.json says which kinds spawn). Metres, in the instance's space. */
+export interface LayoutProp {
+  /** The kind (pillar, brazier, barrel, torch…): a props.json key. */
+  kind: string;
+  x: number;
+  z: number;
+  /** Turn about the vertical axis, radians (a wall-mounted kind faces out of its wall). */
+  yaw: number;
+  scale: number;
+  /** Footprint radius the bake gave a dressing prop; 0: the table's own. */
+  radius: number;
+}
+
 export interface LayoutSpawn {
   x: number;
   z: number;
@@ -63,6 +76,8 @@ export interface InstanceLayout {
   colliders: Float64Array;
   /** Absolute path of the baked shell mesh (absent: the dungeon was baked without one). */
   shell?: string;
+  /** Everything baked to stand in the rooms: layout props, the dressing's furniture, torches. */
+  props: LayoutProp[];
 }
 
 interface DungeonFileLike {
@@ -77,7 +92,9 @@ interface DungeonFileLike {
   boss: number;
   spawns: { x: number; y: number; tier: number; room: number }[];
   grids: { grid: string };
-  dressing?: { rank: number };
+  dressing?: { rank: number; props?: { kind: string; x: number; y: number; rot?: number; radius?: number }[] };
+  props?: { kind: string; x: number; y: number; rot?: number; scale?: number; dx?: number; dy?: number }[];
+  torches?: { x: number; y: number; dx: number; dy: number }[];
   colliders?: { x: number; y: number; r: number }[];
   population?: { spawns: { x: number; y: number; species: string }[] };
 }
@@ -97,6 +114,14 @@ export function readLayout(json: unknown): InstanceLayout {
   for (const s of f.population?.spawns ?? []) species.set(`${s.x},${s.y}`, s.species);
   const colliders = new Float64Array((f.colliders?.length ?? 0) * 3);
   f.colliders?.forEach((c, i) => colliders.set([c.x * CELL_M, c.y * CELL_M, c.r * CELL_M], i * 3));
+  // Grid cells are continuous (cell (i, j) spans [i, i+1)), so a prop at (x, y) stands at x * CELL_M: the colliders' convention.
+  // A kind with a wall to face (dx, dy) turns to face out of it; the rest keep the bake's own turn.
+  const facing = (p: { rot?: number; dx?: number; dy?: number }): number => (p.dx !== undefined && p.dy !== undefined ? Math.atan2(p.dx, p.dy) : (p.rot ?? 0));
+  const props: LayoutProp[] = [
+    ...(f.props ?? []).map((p) => ({ kind: p.kind, x: p.x * CELL_M, z: p.y * CELL_M, yaw: facing(p), scale: p.scale ?? 1, radius: 0 })),
+    ...(f.dressing?.props ?? []).map((p) => ({ kind: p.kind, x: p.x * CELL_M, z: p.y * CELL_M, yaw: p.rot ?? 0, scale: 1, radius: (p.radius ?? 0) * CELL_M })),
+    ...(f.torches ?? []).map((t) => ({ kind: "torch", x: t.x * CELL_M, z: t.y * CELL_M, yaw: facing(t), scale: 1, radius: 0 })),
+  ];
   return {
     id: f.id,
     name: f.name,
@@ -111,6 +136,7 @@ export function readLayout(json: unknown): InstanceLayout {
     rooms: f.rooms.map((r) => ({ id: r.id, x: cellCentre(Math.round(r.cx)), z: cellCentre(Math.round(r.cy)) })),
     spawns: f.spawns.map((s) => ({ x: cellCentre(s.x), z: cellCentre(s.y), tier: s.tier, room: s.room, species: species.get(`${s.x},${s.y}`) ?? "" })),
     colliders,
+    props,
   };
 }
 
