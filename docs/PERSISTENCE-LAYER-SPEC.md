@@ -110,3 +110,62 @@ inventory pattern; D2R's lock discipline):
   the existing `getOpResult`/`storeOpResult` dedup.
 - **Edge validation.** New adapter inputs are Zod-stric
 ...[truncated 2221 chars]
+## Single source of truth & resource-aware assignment
+
+(Amendment, Joey-directed 2026-10-20. This section refines the framing
+of the Recovery section above for fleet mode; the mechanics it builds on
+— tiers, fencing, recall, locks — are unchanged.)
+
+### Single source of truth
+
+The world DB (SurrealDB, behind the world server) is the **single
+source of truth** for shard state. Consequences:
+
+- When `WORLD_URL` is set, hot-loading state FROM the world DB is the
+  **normal boot path**, not a crash-recovery branch. A shard boots by
+  recalling its range's snapshot + ledger tail from the world store
+  (slice P3), then simulates. Local disk is a **working cache** (and
+  the Tier 1 outbox source), never a competing authority.
+- P3's `(epoch, tick)` newer-wins comparison against the local store
+  remains only as a **divergence safety** — e.g. a shard that ran
+  standalone or through a long world outage — not the fleet-mode
+  default. In fleet mode the world copy wins by definition; the
+  comparison exists to catch and surface divergence, not to arbitrate
+  routine boots.
+- Standalone mode (no `WORLD_URL`) is unchanged: local disk is the
+  only store and the only authority, byte-identical to today.
+
+### Resource-aware chunk assignment (slice P5, after P4)
+
+Fixed `REGION_CHUNK_RANGE` assignment wastes heterogeneous hosts: a
+big host idles, a small host drowns. Instead, chunk ranges are
+**assigned by the world core, sized by reported host resources**.
+
+- **Host resource sidecar.** A small separate process per host (never
+  in the tick loop, never simulates) reports host capacity and live
+  load — CPU cores, RAM total/free, co-located shard load when
+  available — to the world server on an interval. Reports land in a
+  new WorldStore section + core op keyed by `hostId`, TTL'd like
+  heartbeats and reaped when stale.
+- **Assignment.** The world core computes chunk-range assignments for
+  requesting shards from reported resources, the total world chunk
+  space, and live leases. A range held by a live lease is never
+  stolen. The sizing algorithm is simple and deterministic, sits
+  behind a narrow policy interface (swappable without touching the
+  core op or the store), and its policy inputs/outputs are exactly:
+  host reports + world chunk space + live leases → range per shard.
+- **Delivery.** Assignment rides the existing lease/registration path:
+  the shard receives its range together with its epoch grant (P1
+  fencing applies from the first write).
+- **Fleet boot flow.** A shard starts unassigned → registers its
+  host's capability (via the sidecar's reports) → receives an
+  assignment → hot-loads that range's state via P3 recall → only then
+  simulates.
+- `REGION_CHUNK_RANGE` remains the standalone/dev override. With no
+  `WORLD_URL`, nothing in this section engages and behaviour is
+  byte-identical.
+
+P5 acceptance: sidecar report ingestion + staleness reaping;
+assignment sizing (a bigger host receives a bigger range); no
+double-assignment of a live range; an unassigned shard receives its
+range and recalls its state before simulating.
