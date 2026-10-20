@@ -291,3 +291,126 @@ export const ReleaseCharacterLockSchema = z
 export const GetCharacterLockSchema = z
   .object({ regionId: REGION_ID, characterId: CHARACTER_ID })
   .strict();
+
+/** Atomic operations (slice A1): value-moving exchanges, Zod-strict. */
+
+const FENCE = z
+  .object({ characterId: CHARACTER_ID, epoch: EPOCH, expectedVersion: UINT })
+  .strict();
+const INSTANCE_ID = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/);
+const GOLD_AMOUNT = z.number().int().min(0).max(1_000_000_000);
+const ITEM_DEF = z.number().int().min(0).max(10_000_000);
+const SLOT = z.number().int().min(0).max(4095);
+const STACK_COUNT = z.number().int().min(1).max(1_000_000);
+/** Payload budget per operation, in the spirit of the existing edges. */
+export const MAX_ATOMIC_ITEMS_PER_OP = 64;
+
+export const TradeCommitSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    a: FENCE,
+    b: FENCE,
+    aGivesGold: GOLD_AMOUNT,
+    bGivesGold: GOLD_AMOUNT,
+    aGivesItems: z.array(INSTANCE_ID).max(MAX_ATOMIC_ITEMS_PER_OP),
+    bGivesItems: z.array(INSTANCE_ID).max(MAX_ATOMIC_ITEMS_PER_OP),
+  })
+  .strict();
+
+export const VendorTransactSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    vendorId: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9_-]+$/),
+    direction: z.enum(["buy", "sell"]),
+    def: ITEM_DEF,
+    price: GOLD_AMOUNT,
+    instanceId: INSTANCE_ID,
+    slot: SLOT.optional(),
+  })
+  .strict();
+
+export const AuctionSettleSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    buyer: FENCE,
+    seller: FENCE,
+    instanceId: INSTANCE_ID,
+    price: GOLD_AMOUNT,
+  })
+  .strict();
+
+export const CraftExecuteSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    consumes: z
+      .array(z.object({ instanceId: INSTANCE_ID, count: STACK_COUNT }).strict())
+      .max(MAX_ATOMIC_ITEMS_PER_OP),
+    goldFee: GOLD_AMOUNT,
+    outputs: z
+      .array(
+        z
+          .object({
+            instanceId: INSTANCE_ID,
+            def: ITEM_DEF,
+            slot: SLOT.optional(),
+            count: STACK_COUNT.optional(),
+          })
+          .strict(),
+      )
+      .max(MAX_ATOMIC_ITEMS_PER_OP),
+  })
+  .strict();
+
+export const LootGrantSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    sourceId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9:_.-]+$/),
+    instanceId: INSTANCE_ID,
+    def: ITEM_DEF,
+    slot: SLOT.optional(),
+    count: STACK_COUNT.optional(),
+  })
+  .strict();
+
+const InventoryMutationSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("move"), instanceId: INSTANCE_ID, toSlot: SLOT }).strict(),
+  z
+    .object({ kind: z.literal("swap"), aInstanceId: INSTANCE_ID, bInstanceId: INSTANCE_ID })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("merge"),
+      fromInstanceId: INSTANCE_ID,
+      intoInstanceId: INSTANCE_ID,
+    })
+    .strict(),
+]);
+
+export const InventoryMutateSchema = z
+  .object({
+    regionId: REGION_ID,
+    opId: OP_ID,
+    participant: FENCE,
+    mutations: z.array(InventoryMutationSchema).min(1).max(MAX_ATOMIC_ITEMS_PER_OP),
+  })
+  .strict();

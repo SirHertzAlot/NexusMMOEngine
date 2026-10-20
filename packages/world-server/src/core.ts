@@ -20,7 +20,14 @@ import {
   type AbortMigrationInput,
   type AcquireCharacterLockInput,
   type AppendLedgerEventsInput,
+  type AtomicOpResult,
+  type AuctionSettleInput,
   type BeginMigrationInput,
+  type CraftExecuteInput,
+  type InventoryMutateInput,
+  type LootGrantInput,
+  type TradeCommitInput,
+  type VendorTransactInput,
   type CharacterSessionLock,
   type CharacterStateRecord,
   type ChunkRange,
@@ -591,6 +598,58 @@ export class WorldCoreImpl implements WorldCore {
   async getCharacterLock(caller: string, input: GetCharacterLockInput): Promise<CharacterSessionLock | null> {
     await this.knownRegion(caller, input.regionId);
     return this.store.getCharacterLock(input.characterId);
+  }
+
+  // ------------------------------------------------------------ atomic operations (A1)
+
+  /**
+   * The six value-moving operations. Each one follows the same shape,
+   * dictated by the governing invariant (one operation = one
+   * WorldStore call = one DB transaction): verify the caller, answer
+   * an opId replay from the dedup store, then execute the exchange
+   * with EXACTLY ONE store call — the store validates the fences
+   * (lock epoch per participant + expected record version), moves the
+   * value, and appends the item-ledger entries inside the same
+   * transaction. The settled outcome (success or typed rejection) is
+   * stored for replays; a replay never re-applies.
+   */
+  async tradeCommit(caller: string, input: TradeCommitInput): Promise<AtomicOpResult> {
+    return this.atomicOp(caller, input.regionId, input.opId, () => this.store.tradeCommit(input));
+  }
+
+  async vendorTransact(caller: string, input: VendorTransactInput): Promise<AtomicOpResult> {
+    return this.atomicOp(caller, input.regionId, input.opId, () => this.store.vendorTransact(input));
+  }
+
+  async auctionSettle(caller: string, input: AuctionSettleInput): Promise<AtomicOpResult> {
+    return this.atomicOp(caller, input.regionId, input.opId, () => this.store.auctionSettle(input));
+  }
+
+  async craftExecute(caller: string, input: CraftExecuteInput): Promise<AtomicOpResult> {
+    return this.atomicOp(caller, input.regionId, input.opId, () => this.store.craftExecute(input));
+  }
+
+  async lootGrant(caller: string, input: LootGrantInput): Promise<AtomicOpResult> {
+    return this.atomicOp(caller, input.regionId, input.opId, () => this.store.lootGrant(input));
+  }
+
+  async inventoryMutate(caller: string, input: InventoryMutateInput): Promise<AtomicOpResult> {
+    return this.atomicOp(caller, input.regionId, input.opId, () => this.store.inventoryMutate(input));
+  }
+
+  /** The shared core shape of every atomic operation (see above). */
+  private async atomicOp(
+    caller: string,
+    regionId: string,
+    opId: string,
+    execute: () => Promise<AtomicOpResult>,
+  ): Promise<AtomicOpResult> {
+    await this.knownRegion(caller, regionId);
+    const prior = await this.store.getOpResult(opId);
+    if (prior !== null) return prior as AtomicOpResult;
+    const result = await execute();
+    await this.store.storeOpResult(opId, result);
+    return result;
   }
 
   /** The caller's own region record: 403 on a foreign regionId, 404 when unknown. */

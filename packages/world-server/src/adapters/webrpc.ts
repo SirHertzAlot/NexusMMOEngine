@@ -23,8 +23,10 @@ import {
   AbortMigrationSchema,
   AcquireCharacterLockSchema,
   AppendLedgerEventsSchema,
+  AuctionSettleSchema,
   BeginMigrationSchema,
   CommitMigrationSchema,
+  CraftExecuteSchema,
   DeregisterSchema,
   DungeonResultsReportSchema,
   GetCharacterLockSchema,
@@ -34,6 +36,8 @@ import {
   GetMigrationSchema,
   GetShardSnapshotSchema,
   HeartbeatSchema,
+  InventoryMutateSchema,
+  LootGrantSchema,
   PutCharacterStateSchema,
   PutShardSnapshotSchema,
   QueryPresenceSchema,
@@ -42,6 +46,8 @@ import {
   ReportHostResourcesSchema,
   SetPresenceSchema,
   SnapshotReportSchema,
+  TradeCommitSchema,
+  VendorTransactSchema,
 } from "../schema.js";
 import { WorldError } from "../types.js";
 
@@ -331,6 +337,67 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return { lock: await core.getCharacterLock(regionId, input) };
+    }),
+  );
+
+  // -- Atomic operations (slice A1) ---------------------------------------
+  // The six value-moving exchanges. The settled outcome (success or
+  // typed rejection) is the response body: a rejection is a 200 with
+  // { result: { ok: false, rejection, ... } } — the operation visibly
+  // didn't happen, and nothing partially applied. Malformed input is
+  // still a 400 and a foreign regionId a 403, like every other edge.
+
+  r.post("/rpc/World/TradeCommit", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = TradeCommitSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { result: await core.tradeCommit(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/VendorTransact", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = VendorTransactSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { result: await core.vendorTransact(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/AuctionSettle", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = AuctionSettleSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { result: await core.auctionSettle(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/CraftExecute", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = CraftExecuteSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { result: await core.craftExecute(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/LootGrant", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = LootGrantSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { result: await core.lootGrant(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/InventoryMutate", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = InventoryMutateSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { result: await core.inventoryMutate(regionId, input) };
     }),
   );
 

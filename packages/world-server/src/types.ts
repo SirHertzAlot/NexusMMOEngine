@@ -308,6 +308,212 @@ export interface GetCharacterLockInput {
   characterId: number;
 }
 
+// ---------------------------------------------------------------------------
+// Atomic operations (ATOMIC-OPERATIONS-SPEC, slice A1): the six
+// value-moving exchanges as world-tier DB functions.
+//
+// Governing invariant: one operation = one WorldStore call = one DB
+// transaction. Each operation below is a single WorldStore method;
+// the Surreal implementation persists the state change and the item
+// ledger entries in one transaction, the fake in one critical
+// section. The world core never assembles an operation from
+// sequential store calls.
+//
+// State shape: a character record's opaque `state` object carries
+// `gold` (integer >= 0) and `inventory` (InventoryItem[]) for these
+// operations; every other key is preserved verbatim. System
+// counterparties (vendor, auction house, loot source) are world-tier
+// identities ("vendor:<id>", a caller-supplied sourceId, ...), so an
+// exchange with the game itself has the same transaction shape.
+// ---------------------------------------------------------------------------
+
+/** The typed business rejections of every atomic operation. */
+export type AtomicRejectionCode =
+  | "INSUFFICIENT_FUNDS"
+  | "ITEM_NOT_PRESENT"
+  | "VERSION_CONFLICT"
+  | "LOCK_CONFLICT"
+  | "EPOCH_STALE";
+
+export type AtomicOpKind =
+  | "tradeCommit"
+  | "vendorTransact"
+  | "auctionSettle"
+  | "craftExecute"
+  | "lootGrant"
+  | "inventoryMutate";
+
+/**
+ * One participant's fence: the session-lock epoch the caller carries
+ * for the character, plus the record version the caller read. A stale
+ * epoch is EPOCH_STALE, a missing/expired lock LOCK_CONFLICT, a
+ * version mismatch VERSION_CONFLICT — and the operation never
+ * partially applies.
+ */
+export interface ParticipantFence {
+  characterId: number;
+  /** The character's current session-lock epoch, as held by the caller. */
+  epoch: number;
+  /** The character record version the caller's decision was based on. */
+  expectedVersion: number;
+}
+
+/** One item stack in a character's world-tier inventory. */
+export interface InventoryItem {
+  /** Globally unique item instance id (never reused). */
+  instanceId: string;
+  /** Item definition id. */
+  def: number;
+  /** Inventory slot (bag / hand / armour position, by game rules). */
+  slot: number;
+  /** Stack size (>= 1). */
+  count: number;
+}
+
+/**
+ * One movement appended to the world item ledger inside the same
+ * transaction as the state change it audits: the trail and the state
+ * commit or fail together. Owners are `char:<characterId>` for
+ * characters and world-tier system identities otherwise
+ * (`vendor:<id>`, a loot `sourceId`, `system:craft`).
+ */
+export interface AtomicLedgerEntry {
+  /** Store-assigned, from 1, contiguous across committed operations. */
+  seq: number;
+  opId: string;
+  op: AtomicOpKind;
+  kind: "item" | "gold";
+  /** Item movements only: the instance that moved. */
+  instanceId?: string;
+  /** Item movements only: the instance's def. */
+  def?: number;
+  from: string;
+  to: string;
+  /** Gold movements only: the amount moved. */
+  amount?: number;
+  /** Item movements only: the stack size moved. */
+  count?: number;
+  /** inventoryMutate only: the slot the item left / arrived at. */
+  fromSlot?: number;
+  toSlot?: number;
+  at: number; // epoch ms, stamped by the store at commit
+}
+
+/** `tradeCommit`: two characters exchange item sets and gold, both ways. */
+export interface TradeCommitInput {
+  regionId: string;
+  opId: string;
+  a: ParticipantFence;
+  b: ParticipantFence;
+  aGivesGold: number;
+  bGivesGold: number;
+  /** Instance ids moving a -> b (whole stacks). */
+  aGivesItems: string[];
+  /** Instance ids moving b -> a (whole stacks). */
+  bGivesItems: string[];
+}
+
+/** `vendorTransact`: buy (gold -> item) or sell (item -> gold), one step. */
+export interface VendorTransactInput {
+  regionId: string;
+  opId: string;
+  participant: ParticipantFence;
+  /** The vendor's world-tier identity suffix (`vendor:<vendorId>`). */
+  vendorId: string;
+  direction: "buy" | "sell";
+  /** Buy: the def being bought. Sell: the def of the instance sold. */
+  def: number;
+  /** Buy: gold charged. Sell: gold paid out. */
+  price: number;
+  /** Buy: the new instance's id. Sell: the instance leaving the bag. */
+  instanceId: string;
+  /** Buy only: the slot to place the item in; lowest free when omitted. */
+  slot?: number;
+}
+
+/** `auctionSettle`: buyer pays, seller receives, item moves buyer-ward. */
+export interface AuctionSettleInput {
+  regionId: string;
+  opId: string;
+  buyer: ParticipantFence;
+  seller: ParticipantFence;
+  instanceId: string;
+  price: number;
+}
+
+export interface CraftConsume {
+  instanceId: string;
+  count: number;
+}
+
+export interface CraftOutput {
+  instanceId: string;
+  def: number;
+  slot?: number;
+  count?: number;
+}
+
+/** `craftExecute`: consume inputs (+ optional gold fee), produce outputs. */
+export interface CraftExecuteInput {
+  regionId: string;
+  opId: string;
+  participant: ParticipantFence;
+  consumes: CraftConsume[];
+  goldFee: number;
+  outputs: CraftOutput[];
+}
+
+/** `lootGrant`: system -> character; creates and assigns the instance. */
+export interface LootGrantInput {
+  regionId: string;
+  opId: string;
+  participant: ParticipantFence;
+  /** The granting system identity, recorded as the ledger source. */
+  sourceId: string;
+  instanceId: string;
+  def: number;
+  slot?: number;
+  count?: number;
+}
+
+export type InventoryMutation =
+  | { kind: "move"; instanceId: string; toSlot: number }
+  | { kind: "swap"; aInstanceId: string; bInstanceId: string }
+  | { kind: "merge"; fromInstanceId: string; intoInstanceId: string };
+
+/** `inventoryMutate`: move / merge / swap within one character's inventory. */
+export interface InventoryMutateInput {
+  regionId: string;
+  opId: string;
+  participant: ParticipantFence;
+  mutations: InventoryMutation[];
+}
+
+/**
+ * The settled outcome of an atomic operation. On success the caller
+ * applies `characters` (the new world records) to its live session
+ * state — the world's version is truth. On rejection nothing applied,
+ * anywhere: every participating record and the ledger are exactly as
+ * they were before the call.
+ */
+export type AtomicOpResult =
+  | {
+      ok: true;
+      opId: string;
+      op: AtomicOpKind;
+      /** The participating characters' records after the commit. */
+      characters: CharacterStateRecord[];
+      /** The ledger entries this operation appended, in order. */
+      ledger: AtomicLedgerEntry[];
+    }
+  | {
+      ok: false;
+      opId: string;
+      op: AtomicOpKind;
+      rejection: AtomicRejectionCode;
+      message: string;
+    };
+
 /**
  * A host resource report as stored (persistence P5): one per host,
  * replaced on every report, TTL'd like heartbeats and reaped when
@@ -484,6 +690,20 @@ export interface WorldStore {
    */
   issueCharacterLockEpoch(characterId: number): Promise<number>;
 
+  // -- atomic operations (slice A1) --
+  // Each method IS the operation: validation, the state change, and
+  // the item-ledger append happen inside it as one transaction /
+  // critical section. Business failures are returned as typed
+  // rejections (AtomicOpResult), never thrown, and commit nothing.
+  tradeCommit(input: TradeCommitInput): Promise<AtomicOpResult>;
+  vendorTransact(input: VendorTransactInput): Promise<AtomicOpResult>;
+  auctionSettle(input: AuctionSettleInput): Promise<AtomicOpResult>;
+  craftExecute(input: CraftExecuteInput): Promise<AtomicOpResult>;
+  lootGrant(input: LootGrantInput): Promise<AtomicOpResult>;
+  inventoryMutate(input: InventoryMutateInput): Promise<AtomicOpResult>;
+  /** The world item ledger written by atomic operations, in seq order. */
+  getAtomicLedger(): Promise<AtomicLedgerEntry[]>;
+
   // -- host reports (persistence P5) --
   /** Store a host's latest resource report (one per hostId, replaced). */
   upsertHostReport(r: HostResourceReport): Promise<void>;
@@ -573,6 +793,19 @@ export interface WorldCore {
   releaseCharacterLock(caller: string, input: ReleaseCharacterLockInput): Promise<void>;
   /** A character's current session lock; null when unheld. */
   getCharacterLock(caller: string, input: GetCharacterLockInput): Promise<CharacterSessionLock | null>;
+
+  // -- atomic operations (slice A1) --
+  // Each core op is idempotent on opId (a replay returns the stored
+  // outcome, success or rejection, and never re-applies) and delegates
+  // the exchange itself to exactly ONE WorldStore call — the store
+  // executes it as one transaction. Rejections are outcomes, returned
+  // in the result, not thrown: nothing partially applies, ever.
+  tradeCommit(caller: string, input: TradeCommitInput): Promise<AtomicOpResult>;
+  vendorTransact(caller: string, input: VendorTransactInput): Promise<AtomicOpResult>;
+  auctionSettle(caller: string, input: AuctionSettleInput): Promise<AtomicOpResult>;
+  craftExecute(caller: string, input: CraftExecuteInput): Promise<AtomicOpResult>;
+  lootGrant(caller: string, input: LootGrantInput): Promise<AtomicOpResult>;
+  inventoryMutate(caller: string, input: InventoryMutateInput): Promise<AtomicOpResult>;
 
   // -- persistence P5: host reports + resource-aware assignment --
   /**

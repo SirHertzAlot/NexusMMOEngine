@@ -76,6 +76,25 @@ service World
   # (chunkRange present) are unchanged.
   - ReportHostResources(input: ReportHostResourcesInput) => (report: HostResourceReport)
 
+  # Atomic operations (slice A1): the six value-moving exchanges as
+  # world-tier DB functions. One operation = one WorldStore call = one
+  # DB transaction: the state change and the item-ledger append commit
+  # or fail together. Every op is idempotent on opId (a replay returns
+  # the stored outcome and never re-applies) and fenced per
+  # participating character by its session-lock epoch + the expected
+  # record version. The outcome is a value, not an error: a business
+  # rejection is { ok: false, rejection: <code> } with code one of
+  # INSUFFICIENT_FUNDS | ITEM_NOT_PRESENT | VERSION_CONFLICT |
+  # LOCK_CONFLICT | EPOCH_STALE, and nothing partially applied.
+  # System counterparties (vendor, auction house, loot source) are
+  # world-tier identities, so the transaction shape never changes.
+  - TradeCommit(input: TradeCommitInput) => (result: AtomicOpResult)
+  - VendorTransact(input: VendorTransactInput) => (result: AtomicOpResult)
+  - AuctionSettle(input: AuctionSettleInput) => (result: AtomicOpResult)
+  - CraftExecute(input: CraftExecuteInput) => (result: AtomicOpResult)
+  - LootGrant(input: LootGrantInput) => (result: AtomicOpResult)
+  - InventoryMutate(input: InventoryMutateInput) => (result: AtomicOpResult)
+
 struct ChunkRange
   - x0: int32
   - x1: int32
@@ -326,3 +345,143 @@ struct ReleaseCharacterLockInput
 struct GetCharacterLockInput
   - regionId: string
   - characterId: uint64
+
+# --- Atomic operations (slice A1) -------------------------------------
+# A character record's opaque state carries gold + inventory for these
+# operations (see CharacterState.state): gold is an integer balance and
+# inventory a list of InventoryItem stacks. All other state keys are
+# preserved verbatim by every operation.
+
+struct ParticipantFence
+  - characterId: uint64
+  # The character's current session-lock epoch, as held by the caller
+  - epoch: uint64
+  # The record version the caller's decision was based on
+  - expectedVersion: uint64
+
+struct InventoryItem
+  - instanceId: string
+  - def: uint64
+  - slot: uint64
+  - count: uint64
+
+struct AtomicLedgerEntry
+  - seq: uint64
+  - opId: string
+  # tradeCommit | vendorTransact | auctionSettle | craftExecute |
+  # lootGrant | inventoryMutate
+  - op: string
+  # item | gold
+  - kind: string
+  # Item movements only
+  - instanceId: string
+  - def: uint64
+  # Owner identities: char:<characterId> or a system identity
+  # (vendor:<id>, a loot sourceId, system:craft)
+  - from: string
+  - to: string
+  # Gold movements only
+  - amount: uint64
+  # Item movements only: the stack size moved
+  - count: uint64
+  # inventoryMutate only
+  - fromSlot: uint64
+  - toSlot: uint64
+  - at: uint64
+
+struct AtomicOpResult
+  - ok: bool
+  - opId: string
+  - op: string
+  # Success only: the participating records after the commit
+  - characters: []CharacterState
+  # Success only: the ledger entries this operation appended
+  - ledger: []AtomicLedgerEntry
+  # Rejection only: INSUFFICIENT_FUNDS | ITEM_NOT_PRESENT |
+  # VERSION_CONFLICT | LOCK_CONFLICT | EPOCH_STALE
+  - rejection: string
+  - message: string
+
+struct TradeCommitInput
+  - regionId: string
+  - opId: string
+  - a: ParticipantFence
+  - b: ParticipantFence
+  - aGivesGold: uint64
+  - bGivesGold: uint64
+  - aGivesItems: []string
+  - bGivesItems: []string
+
+struct VendorTransactInput
+  - regionId: string
+  - opId: string
+  - participant: ParticipantFence
+  - vendorId: string
+  # buy | sell
+  - direction: string
+  - def: uint64
+  - price: uint64
+  - instanceId: string
+  # Buy only; omitted = lowest free slot
+  - slot: uint64
+
+struct AuctionSettleInput
+  - regionId: string
+  - opId: string
+  - buyer: ParticipantFence
+  - seller: ParticipantFence
+  - instanceId: string
+  - price: uint64
+
+struct CraftConsume
+  - instanceId: string
+  - count: uint64
+
+struct CraftOutput
+  - instanceId: string
+  - def: uint64
+  # Omitted = lowest free slot
+  - slot: uint64
+  # Omitted = 1
+  - count: uint64
+
+struct CraftExecuteInput
+  - regionId: string
+  - opId: string
+  - participant: ParticipantFence
+  - consumes: []CraftConsume
+  - goldFee: uint64
+  - outputs: []CraftOutput
+
+struct LootGrantInput
+  - regionId: string
+  - opId: string
+  - participant: ParticipantFence
+  # The granting system identity, recorded as the ledger source
+  - sourceId: string
+  - instanceId: string
+  - def: uint64
+  # Omitted = lowest free slot
+  - slot: uint64
+  # Omitted = 1
+  - count: uint64
+
+struct InventoryMutation
+  # move | swap | merge
+  - kind: string
+  # move: the item; merge: the stack folded away
+  - instanceId: string
+  # move only
+  - toSlot: uint64
+  # swap only
+  - aInstanceId: string
+  - bInstanceId: string
+  # merge only: fromInstanceId folds into intoInstanceId
+  - fromInstanceId: string
+  - intoInstanceId: string
+
+struct InventoryMutateInput
+  - regionId: string
+  - opId: string
+  - participant: ParticipantFence
+  - mutations: []InventoryMutation

@@ -2,17 +2,36 @@
  * In-memory WorldStore. Used by unit tests and by `WORLD_DB_URL=mem:`
  * dev runs. Production uses SurrealWorldStore (src/surreal-store.ts).
  */
+import {
+  applyAuctionSettle,
+  applyCraftExecute,
+  applyInventoryMutate,
+  applyLootGrant,
+  applyTradeCommit,
+  applyVendorTransact,
+  type AtomicContext,
+  type AtomicOutcome,
+} from "./atomic.js";
 import type {
+  AtomicLedgerEntry,
+  AtomicOpKind,
+  AtomicOpResult,
+  AuctionSettleInput,
   CharacterSessionLock,
   CharacterStateRecord,
+  CraftExecuteInput,
   HostResourceReport,
+  InventoryMutateInput,
   LedgerEvent,
+  LootGrantInput,
   MigrationRecord,
   MigrationState,
   RegionRecord,
   ShardSnapshotRecord,
   StoredDungeonRun,
   StoredLedgerEvent,
+  TradeCommitInput,
+  VendorTransactInput,
   WorldStore,
 } from "./types.js";
 
@@ -228,6 +247,107 @@ export class MemoryWorldStore implements WorldStore {
     const next = (this.characterLockEpochs.get(characterId) ?? 0) + 1;
     this.characterLockEpochs.set(characterId, next);
     return next;
+  }
+
+  // -- atomic operations (slice A1) --
+
+  private atomicLedgerEntries: AtomicLedgerEntry[] = [];
+  private atomicSeq = 0;
+
+  /**
+   * One atomic operation as one critical section: this body contains
+   * no awaits, so validation, the state change, and the ledger append
+   * cannot interleave with any other operation on this store. The
+   * semantics come from src/atomic.ts, shared with the Surreal store.
+   */
+  private runAtomic(
+    op: AtomicOpKind,
+    opId: string,
+    regionId: string,
+    participantIds: number[],
+    apply: (ctx: AtomicContext) => AtomicOutcome,
+  ): AtomicOpResult {
+    const now = Date.now();
+    const ctx: AtomicContext = {
+      regionId,
+      now,
+      records: new Map(
+        participantIds.map((id) => {
+          const r = this.characterStates.get(id);
+          return [id, r ? structuredClone(r) : null] as const;
+        }),
+      ),
+      locks: new Map(
+        participantIds.map((id) => {
+          const l = this.characterLocks.get(id);
+          return [id, l ? { ...l } : null] as const;
+        }),
+      ),
+    };
+    const outcome = apply(ctx);
+    if (!outcome.ok) {
+      return { ok: false, opId, op, rejection: outcome.rejection, message: outcome.message };
+    }
+    const entries: AtomicLedgerEntry[] = outcome.commit.ledger.map((d) => ({
+      ...d,
+      seq: ++this.atomicSeq,
+      at: now,
+    }));
+    for (const r of outcome.commit.records) {
+      this.characterStates.set(r.characterId, structuredClone(r));
+    }
+    this.atomicLedgerEntries.push(...entries);
+    return {
+      ok: true,
+      opId,
+      op,
+      characters: outcome.commit.records.map((r) => structuredClone(r)),
+      ledger: entries.map((e) => ({ ...e })),
+    };
+  }
+
+  async tradeCommit(input: TradeCommitInput): Promise<AtomicOpResult> {
+    return this.runAtomic("tradeCommit", input.opId, input.regionId, [input.a.characterId, input.b.characterId], (ctx) =>
+      applyTradeCommit(ctx, input),
+    );
+  }
+
+  async vendorTransact(input: VendorTransactInput): Promise<AtomicOpResult> {
+    return this.runAtomic("vendorTransact", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyVendorTransact(ctx, input),
+    );
+  }
+
+  async auctionSettle(input: AuctionSettleInput): Promise<AtomicOpResult> {
+    return this.runAtomic(
+      "auctionSettle",
+      input.opId,
+      input.regionId,
+      [input.buyer.characterId, input.seller.characterId],
+      (ctx) => applyAuctionSettle(ctx, input),
+    );
+  }
+
+  async craftExecute(input: CraftExecuteInput): Promise<AtomicOpResult> {
+    return this.runAtomic("craftExecute", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyCraftExecute(ctx, input),
+    );
+  }
+
+  async lootGrant(input: LootGrantInput): Promise<AtomicOpResult> {
+    return this.runAtomic("lootGrant", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyLootGrant(ctx, input),
+    );
+  }
+
+  async inventoryMutate(input: InventoryMutateInput): Promise<AtomicOpResult> {
+    return this.runAtomic("inventoryMutate", input.opId, input.regionId, [input.participant.characterId], (ctx) =>
+      applyInventoryMutate(ctx, input),
+    );
+  }
+
+  async getAtomicLedger(): Promise<AtomicLedgerEntry[]> {
+    return this.atomicLedgerEntries.map((e) => ({ ...e }));
   }
 
   // -- host reports (persistence P5) --
