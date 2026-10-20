@@ -431,6 +431,29 @@ export interface VendorTransactInput {
   slot?: number;
 }
 
+/**
+ * A gold credit owed to a character that could not be paid into its
+ * world record at settle time (fleet auction parity): the seller was
+ * online on another region, so the proceeds wait here until the
+ * character's own region next interacts with the world tier — its
+ * next `putCharacterState` or `acquireCharacterLock` drains every
+ * pending credit into the record in one store-level fold (see
+ * WorldStore.applyPendingCredits). One row per settled operation
+ * (opId is unique), consumed exactly once by the drain.
+ */
+export interface PendingCredit {
+  opId: string;
+  characterId: number;
+  amount: number;
+  createdAt: number; // epoch ms, stamped by the store at commit
+}
+
+/** The auction house's cut of every settled price (mirrors engine-core's AUCTION_FEE; parity-tested). */
+export const AUCTION_HOUSE_CUT_RATE = 0.05;
+
+/** The world-tier identity the auction house cut is ledgered to (a pure gold sink). */
+export const AUCTION_HOUSE_SINK = "system:auction-house";
+
 /** `auctionSettle`: buyer pays, seller receives, item moves buyer-ward. */
 export interface AuctionSettleInput {
   regionId: string;
@@ -703,6 +726,17 @@ export interface WorldStore {
   inventoryMutate(input: InventoryMutateInput): Promise<AtomicOpResult>;
   /** The world item ledger written by atomic operations, in seq order. */
   getAtomicLedger(): Promise<AtomicLedgerEntry[]>;
+  /** A character's unconsumed pending credits, oldest first. */
+  listPendingCredits(characterId: number): Promise<PendingCredit[]>;
+  /**
+   * Fold ALL pending credits for the character into its CURRENT world
+   * record in one store-level operation: gold += total, version + 1,
+   * updatedAt = now, the credit rows are consumed, and the updated
+   * record is returned. When there is no record, or the record's state
+   * carries no numeric `gold`, or there are no credits: consume
+   * NOTHING and return `{ total: 0, record: <current or null> }`.
+   */
+  applyPendingCredits(characterId: number): Promise<{ total: number; record: CharacterStateRecord | null }>;
 
   // -- host reports (persistence P5) --
   /** Store a host's latest resource report (one per hostId, replaced). */

@@ -4501,9 +4501,8 @@ export class Gateway {
    * region-side negotiation and run through the ordinary handler.
    * A buyout validates region-side, then routes the settlement
    * through the world-tier `auctionSettle` (buyer pays the full
-   * price, seller receives it — the world tier conserves gold
-   * exactly, so the local 5% house cut does not apply to a
-   * world-settled sale). When the buyer is their own top bidder,
+   * price, seller receives it net of the same 5% house cut a local
+   * settle takes — fleet auction parity). When the buyer is their own top bidder,
    * their escrow is first released locally and the made-whole
    * balance uploaded, so the world charges the full price exactly
    * once. A rejection or an outage refuses with 4005; the listing

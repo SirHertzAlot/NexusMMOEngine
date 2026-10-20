@@ -464,6 +464,18 @@ export class WorldCharacterSync {
       try {
         const record = await this.client.putCharacterState(characterId, lock.epoch, payload);
         this.versions.set(characterId, record.version);
+        if (this.economy) {
+          // Fleet auction parity: the world drained pending credits
+          // into the record during this put, so the returned record's
+          // gold can exceed the gold the payload carried. Reconcile
+          // the local wallet to the returned record in the same
+          // cycle — that is how a drained credit reaches the wallet
+          // it was owed to. No difference: no reconcile, as before.
+          const eco = economyOfState(record.state);
+          if (eco !== null && payload.gold !== undefined && eco.gold !== payload.gold) {
+            this.economy.reconcile(characterId, eco.gold, eco.inventory);
+          }
+        }
         return true;
       } catch (err) {
         if (isFencingRejection(err)) {
