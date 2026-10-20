@@ -180,4 +180,85 @@ behaviour, or a second region migrating a character (the crash drills on
 `arlo/durability-verification`, already on main, cover kill/recovery at
 the service level; a two-region live migration smoke is still unbuilt).
 
+## Step 4 — Failure set re-measured, addons built vs unbuilt (2026-10-20)
+
+Method: the identical suite invocation in both trees — every
+`dist/test/**/*.test.js` file (168 files, enumerated) run with
+`node --expose-gc --test --test-skip-pattern="latency budget"`,
+TAP reporter, failure sets extracted as sorted `not ok` lines and
+compared as sets. Two exclusions/handling notes, applied identically to
+both trees:
+
+- `transport.test.js` is **excluded from both runs**: it hangs in this
+  sandbox (uWS), as recorded during the stack work. Everything else in
+  `dist/test` ran.
+- The `latency budget` persist test is skipped by the package's own
+  `test` script too (it runs separately as `test:perf`). Run standalone
+  here, it **passes in both trees** (it does not touch the addons).
+
+Trees: *unbuilt* = a pristine worktree of `82b58c8`, `npm install
+--ignore-scripts`, TS built, **no addon builds** (the state every fresh
+worktree starts in). *Built* = this worktree after Step 2.
+
+| Tree | Tests | Pass | Fail |
+|---|---|---|---|
+| Unbuilt baseline | 1,269 | 1,199 | **57** |
+| Addons built | 1,291 | 1,274 | **15** |
+
+(The totals differ because in the unbuilt tree some test files fail at
+load and their subtests never register; built, they register fully.)
+
+**Set comparison (the decisive part):** the built tree's failure set is
+a strict subset of the baseline's — `comm` shows **zero** failures that
+exist only in the built tree. Building the addons introduced no
+regressions and removed 68 `not ok` lines, all of them the native class:
+
+- the procgen chunk source ("addon source: chunk data originates from
+  the native addon", border-sharing, seed/amplitude cases),
+- navmesh baking + DetourCrowd (the whole `chunk-baker.test.js` file
+  fails to load unbuilt; crowd pathing cases),
+- world bake/survey ("the shipped default world (4 x 4 km, seed 1234)",
+  "full bake", survey + regional re-bake family),
+- PCG (webrpc service, cooks, asset library),
+- physics movers vs baked static bodies,
+- `dungeons/shell-agrees.test.js` (fails to load unbuilt — geometry
+  addon),
+- end-to-end stack tests that boot real systems in-process ("boots the
+  real stack, walks a path, survives kill/restore — twice"; "two-gateway
+  trade over a real HTTP world server commits via tradeCommit").
+
+**The 15 failures that remain are pre-existing on main in BOTH trees**
+(none is addon-related; all were already failing unbuilt):
+
+- engine/game-split tolerance + skill contract (10): "a half-present dir
+  fails loud naming the missing file(s)" ×2 variants, "a present but
+  invalid file still fails loud" ×2, "the sample pack still loads when
+  present" ×2, "the sample pack satisfies the contract", "fails loud
+  naming a missing skill id / technique id / every missing id at once".
+- items (5): the starter-weapon family — "restores bag, hands and ground
+  into a new service without a second starter weapon", "entering the
+  world outfits the starter sword…", "armour equips over the wire…",
+  the M3/M4 sword-drop cases.
+
+These match the categories the stack merge recorded for pristine main
+(dungeon-content breakage, the starter-weapon failure); the stack-era
+"41 failures" figure was measured under a different invocation, so the
+counts are not directly comparable — the set relationship is what
+matters, and it is clean: **built ⊆ unbuilt, difference = exactly the
+native-addon class.**
+
+### Bottom line
+
+Every gap this slice targeted is closed with evidence on this branch:
+all 10 native addons build and load (Step 2); the real region server
+boots standalone and in fleet mode against a real SurrealDB 2.7.0,
+completes the wire handshake, and shuts down cleanly (Step 3, scripts
+committed); the engine-core suite's native failure class is gone with
+zero regressions (Step 4). Still unproven, stated plainly: sustained
+load/soak, a live two-region character migration, the 5 pre-existing
+tsc errors and 15 pre-existing test failures on main (both itemised
+above — main's own cleanup, untouched here), and `transport.test.js`,
+which still hangs in this sandbox and was excluded from both runs.
+
+
 
