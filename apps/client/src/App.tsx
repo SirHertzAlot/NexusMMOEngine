@@ -555,10 +555,11 @@ export function App(): React.ReactElement {
   useEffect(() => {
     if (notice) audio.playEvent("ui-notice");
   }, [audio, notice]);
-  // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
+  // PCG assets (trees, a dungeon's shell, …) come from the Pcg webrpc service on the game port of
+  // the gateway the client joined: the region, or a dungeon instance's own port after a hop.
   const pcg = useMemo(
-    () => (client ? new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken) : undefined),
-    // One service per joined client (the URL it joined with).
+    () => (client ? new PcgRpcClient(httpBaseForGameUrl(client.endpoint ?? url), () => client.sessionToken) : undefined),
+    // One service per joined client (the gateway it joined).
     [client],
   );
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);

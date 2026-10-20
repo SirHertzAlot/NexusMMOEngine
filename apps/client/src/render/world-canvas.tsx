@@ -426,8 +426,9 @@ function MirrorWorld({
     const weatherFeel = new WeatherFeel();
     weatherFeel.setAudio(audio ?? null);
     scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, clouds.group, rain.mesh);
-    // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
-    // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
+    // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
+    // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
+    // floors, ceilings) arrives as an ordinary asset entity and draws over it.
     const floor = instance ? makeFloor() : null;
     if (floor) scene.add(floor);
 
@@ -796,10 +797,11 @@ function MirrorWorld({
   return null;
 }
 
-/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across. */
+/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across, 6 cm under the shell's own floor (no z-fighting). */
 function makeFloor(): THREE.Group {
   const g = new THREE.Group();
   g.name = "instance-floor";
+  g.position.y = -0.06;
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 }));
   plane.rotation.x = -Math.PI / 2;
   const grid = new THREE.GridHelper(400, 200, 0x4a4038, 0x3a332c);
