@@ -181,6 +181,73 @@ export class AuctionSystem implements SimSystem {
     return this.byItem.has(itemId);
   }
 
+  /** A read-only snapshot of a live listing (slice A2); null when gone. */
+  listing(listingId: number): Listing | null {
+    const l = this.listings.get(listingId);
+    return l ? { ...l } : null;
+  }
+
+  /**
+   * The region-side terms of settling a listing to `buyer` at its
+   * buyout price (slice A2): every check the local settle performs
+   * that does not move value. The fleet-mode commit path validates
+   * with this, then routes the value movement through the world tier.
+   */
+  buyoutTerms(
+    buyer: number,
+    listingId: number,
+    tick: number,
+  ): { error: string } | { listing: Listing } {
+    const l = this.listings.get(listingId);
+    if (!l) return { error: "no such listing" };
+    if (l.buyout <= 0) return { error: "no buyout on that listing" };
+    if (buyer === l.seller) return { error: "that's your listing" };
+    if (tick >= l.expiresAt) return { error: "that listing expired" };
+    if (!this.items.owns(l.seller, l.item)) return { error: "the item is gone" };
+    if (this.items.freeSlots(buyer) < 1) return { error: "your bag is full" };
+    return { listing: { ...l } };
+  }
+
+  /**
+   * Release the top bidder's escrow back to their wallet and clear
+   * the bid (slice A2): the fleet buyout path settles at the world
+   * tier — the buyer is charged the full price there and the seller
+   * receives it net of the same 5% house cut as a local settle — so
+   * when the buyer is their own top bidder the escrow comes back
+   * first (region-side negotiation state) and the world charges the
+   * whole price against the made-whole balance.
+   * Returns the released amount (0: no escrow was held).
+   */
+  releaseEscrow(listingId: number, tick: number): number {
+    const l = this.listings.get(listingId);
+    if (!l || l.topBidder === 0 || l.topBid <= 0) return 0;
+    const amount = l.topBid;
+    this.wallet.grant(l.topBidder, amount, tick);
+    l.topBid = 0;
+    l.topBidder = 0;
+    return amount;
+  }
+
+  /**
+   * Finalise a listing whose settlement the world tier has committed
+   * (slice A2, fleet mode): the item has already moved in the world
+   * records, the buyer has been charged the full price, and the
+   * seller has been credited the price net of the same house cut a
+   * local settle takes (directly, or as a pending credit when the
+   * seller is elsewhere) — the local caches reconcile to the world
+   * records, so NO gold or items move here, except the outbid
+   * party's escrow, which is region-side negotiation state and is
+   * refunded locally. The listing closes as sold, with the usual
+   * event. False when the listing is no longer live.
+   */
+  settleFromWorld(listingId: number, buyer: number, tick: number): boolean {
+    const l = this.listings.get(listingId);
+    if (!l) return false;
+    if (l.topBidder !== 0 && l.topBidder !== buyer) this.refund(l, tick);
+    this.drop(l.id, l, tick, "sold", [l.seller, buyer]);
+    return true;
+  }
+
   /** The current order book (a copy), soonest-expiring first. */
   browse(): ListingView[] {
     return [...this.listings.values()]

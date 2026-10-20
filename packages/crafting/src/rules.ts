@@ -50,6 +50,24 @@ export const CraftingRulesSchema = z.strictObject({
 });
 export type CraftingRules = z.infer<typeof CraftingRulesSchema>;
 
+/**
+ * No crafting content: every table empty. The scalar fallbacks are inert
+ * placeholders — nothing references them while the records are empty (the
+ * schema requires non-empty ids, so they cannot be left blank).
+ */
+export const EMPTY_CRAFTING_RULES: CraftingRules = {
+  version: 1,
+  refining: {},
+  reagents: {},
+  fallbackReagent: "none",
+  runeStone: "none",
+  fittings: [],
+  units: [],
+  defaultUnits: 1,
+  skills: [],
+  defaultSkill: "none",
+};
+
 /** The repo's content/crafting/recipes.json (this file is dist/src/rules.js). */
 export const DEFAULT_CRAFTING_FILE = fileURLToPath(new URL("../../../../content/crafting/recipes.json", import.meta.url));
 
@@ -100,9 +118,14 @@ export class CraftingRulesError extends Error {
   }
 }
 
-/** Read and check a crafting rules file. Throws CraftingRulesError listing every problem. */
-export function loadCraftingRules(file: string = DEFAULT_CRAFTING_FILE, o: Parameters<typeof checkCraftingRules>[1] = {}): CraftingRules {
-  if (!existsSync(file)) throw new CraftingRulesError(file, [{ path: "", message: "no such file" }]);
+/**
+ * Read and check a crafting rules file. A missing file means "no crafting"
+ * (null, matching loadCombatContent's null-on-missing pattern) — the engine
+ * boots game-less. A present file is validated and throws CraftingRulesError
+ * listing every problem.
+ */
+export function loadCraftingRules(file: string = DEFAULT_CRAFTING_FILE, o: Parameters<typeof checkCraftingRules>[1] = {}): CraftingRules | null {
+  if (!existsSync(file)) return null;
   let json: unknown;
   try {
     json = JSON.parse(readFileSync(file, "utf8"));

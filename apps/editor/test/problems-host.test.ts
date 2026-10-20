@@ -47,6 +47,14 @@ describe("problems", () => {
     assert.ok(ps.some((p) => p.source === "playtest"));
     rmSync(root, { recursive: true });
   });
+  it("a scale document out of range is a scale problem that links to the Scale view", async () => {
+    const root = fakeRepo();
+    put(join(root, "content/scale.json"), JSON.stringify({ version: 1, global: 99, categories: {}, assets: {} }));
+    const hit = (await collectProblems(root)).find((p) => p.source === "scale");
+    assert.ok(hit && hit.severity === "error" && hit.file === "content/scale.json" && hit.message.startsWith("global:"));
+    assert.equal(problemLink(hit), "#/artaudio/scale");
+    rmSync(root, { recursive: true });
+  });
   it("a collector that throws becomes one warning and the rest still run", async () => {
     const ps = await collectProblems("/nowhere", [
       ["flow", () => { throw new Error("boom"); }],

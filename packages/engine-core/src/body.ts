@@ -129,7 +129,7 @@ export interface BodySkills {
   train(e: number, id: string, difficulty: number, key: number): void;
 }
 
-/** How hard a treatment is taken to be for training, above its own difficulty (a failure adds FAILED_TEACHES). */
+/** How hard a treatment is taken to be for training, above its own difficulty (a failure adds FAILED_TEACHES): the engine defaults (body.json `treatment.trainsAbove`, `failedTeaches`). */
 export const TREAT_TRAINS_ABOVE = 0.3;
 export const FAILED_TEACHES = 0.1;
 
@@ -439,12 +439,13 @@ export class BodySystem implements SimSystem {
       return kind ? { part, kind } : null;
     }
     let best = -1;
-    let rank = 0;
+    let rank = -Infinity;
+    const order = this.rules.treatment.priority;
     for (let i = 0; i < L.ids.length; i++) {
       const k = pick(i);
       if (!k) continue;
       const w = Body.wound[e][i];
-      const r = k === "stump" ? 4 : w === Wound.Thrust ? 3 : k === "bandage" ? 2 : 1 + L.share[i];
+      const r = k === "stump" ? order.stump : w === Wound.Thrust ? order.thrust : k === "bandage" ? order.bandage : order.set + L.share[i];
       if (r > rank) {
         rank = r;
         best = i;
@@ -590,8 +591,9 @@ export class BodySystem implements SimSystem {
       t.left -= dt;
       if (t.left > 0) continue;
       this.treating.delete(h);
-      const diff = this.rules.treatment[t.kind].difficulty + TREAT_TRAINS_ABOVE;
-      this.skills?.train(h, "medicine", t.success ? diff : diff + FAILED_TEACHES, p);
+      const tr = this.rules.treatment;
+      const diff = tr[t.kind].difficulty + tr.trainsAbove;
+      this.skills?.train(h, "medicine", t.success ? diff : diff + tr.failedTeaches, p);
       if (t.success) {
         if (t.kind === "set") {
           this.setState(p, t.part, HARMED);

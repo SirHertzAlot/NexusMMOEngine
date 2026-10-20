@@ -45,6 +45,8 @@ export function createSystems(ctx) {
     skills: config.combatSkills,
     body,
     techniques: () => Object.keys(rules.combat.techniques),
+    // Blow resolution (EG6): combat.json's resolution and items.json's unarmed, live across reloads.
+    tuning: config.getCombatTuning,
   };
 
   const abilities = new AbilitySystem(30);

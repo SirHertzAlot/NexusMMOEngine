@@ -19,7 +19,8 @@
  * anywhere else until the region commits that batch.
  */
 
-import { hasComponent } from "bitecs";
+import { readFileSync } from "node:fs";
+import { addComponent, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
@@ -34,8 +35,12 @@ import { SimWorld } from "../world.js";
 import { Gateway } from "../net/gateway.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
+import { buildSpawn } from "../admin/spawn.js";
+import { PcgAssetLibrary } from "../pcg/asset-library.js";
+import { mountPcgService } from "../pcg/boot.js";
 import { hash } from "../procgen/ecology.js";
-import type { InstanceRules } from "./content.js";
+import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
+import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout } from "./pool.js";
 import { DungeonWallSystem } from "./walls.js";
 
@@ -86,6 +91,10 @@ export interface DungeonInstanceOptions {
   entrance: string;
   layout: InstanceLayout;
   rules: InstanceRules;
+  /** What each baked prop kind spawns as (props.json); absent: the run spawns no props. */
+  props?: DungeonProps;
+  /** How the run looks per theme (looks.json); absent: the client keeps the open world's look. */
+  looks?: DungeonLooks;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -144,7 +153,8 @@ export class DungeonInstance {
     this.rng = hash(opts.id.length, ...[...opts.id].map((c) => c.charCodeAt(0)));
     for (const m of opts.members) this.members.set(m.characterId, m);
     const rules = opts.game.rules;
-    this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0 });
+    this.world.movement = rules.movement;
+    this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0, ai: rules.creatures.ai });
     const stamina = new StaminaSystem();
     const weaponOf = (e: number): Weapon | null =>
       hasComponent(this.world.ecs, C.CharacterRef, e)
@@ -154,7 +164,8 @@ export class DungeonInstance {
       hasComponent(this.world.ecs, C.CharacterRef, e)
         ? (opts.armourOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e]) ?? 1)
         : 1;
-    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf });
+    const tuning = { resolution: rules.combat.resolution, unarmed: rules.items.unarmed };
+    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf, tuning: () => tuning });
     const death: DeathSystem = new DeathSystem(
       opts.game.hooks,
       30,
@@ -188,12 +199,13 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
       groundHeightAt: () => 0,
       allowRegister: false,
+      social: rules.social,
       creatures: {
         has: (k) => k in rules.creatures.creatures,
         spawnPack: (w, k, x, z) => this.creatures.spawnPack(w, k, x, z),
@@ -204,7 +216,69 @@ export class DungeonInstance {
       ...(opts.clock ? { clock: opts.clock } : opts.now ? { clock: opts.now } : {}),
       ...(opts.transport ? { transport: opts.transport } : {}),
     });
+    this.mountShell();
+    this.spawnProps();
     this.populate();
+  }
+
+  /**
+   * The baked shell (walls, floors, ceilings) reaches clients as an ordinary
+   * asset, the way scattered props do: one static entity at the origin carrying
+   * its AssetRef (the generic snapshot replicates it), and the Pcg service on
+   * this gateway serving the mesh. No dungeon-specific message, no client code.
+   * A dungeon baked without a shell runs as before.
+   */
+  private mountShell(): void {
+    const { layout } = this.opts;
+    if (!layout.shell) return;
+    const library = PcgAssetLibrary.empty();
+    const asset = library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name);
+    mountPcgService(this.gateway, library);
+    // Every field is written: the SoA stores are process-wide and a recycled slot still holds
+    // the entity that died there (a scatter prop's position, say), which would shift the shell.
+    const eid = this.world.spawn();
+    addComponent(this.world.ecs, C.Transform, eid);
+    const T = C.Transform;
+    T.px[eid] = T.py[eid] = T.pz[eid] = 0;
+    T.qx[eid] = T.qy[eid] = T.qz[eid] = 0;
+    T.qw[eid] = 1;
+    T.sx[eid] = T.sy[eid] = T.sz[eid] = 1;
+    addComponent(this.world.ecs, C.AssetRef, eid);
+    C.AssetRef.assetHash[eid] = asset.assetHash;
+    C.AssetRef.variant[eid] = 0;
+  }
+
+  /** Prop kinds the bake placed that props.json has no entry for (so nothing spawned): kind -> count. */
+  readonly unspawnedProps = new Map<string, number>();
+
+  /**
+   * The baked props (pillars, furniture, torches…) stand in the run as ordinary
+   * scatter entities: the world's spawn table (`props.json`, keyed by kind) says what
+   * each is (asset, collision box), `buildSpawn` and `spawnScatterEntity` make it, and
+   * the generic snapshot replicates it. A standing kind rests on the floor (the world's
+   * convention: its body is centred there, halfY its full height); a mounted kind hangs
+   * centred at its table `lift`. A dressing prop's own footprint sizes its box.
+   * A kind with no entry is counted, not spawned (decals wait for art).
+   */
+  private spawnProps(): void {
+    const table = this.opts.props;
+    if (!table) return;
+    for (const p of this.opts.layout.props) {
+      const asset = `dungeon:${p.kind}`; // the table is keyed by asset id, as the world's spawn tables are (cf. structure:<kind>)
+      const archetype = table.archetypes[asset];
+      if (!archetype) {
+        this.unspawnedProps.set(p.kind, (this.unspawnedProps.get(p.kind) ?? 0) + 1);
+        continue;
+      }
+      const half = archetype.collision?.halfExtents ?? [0.5, 0.5, 0.5];
+      const lift = table.lift[p.kind];
+      const built = buildSpawn(table, asset, p.x, lift ?? 0, p.z, p.yaw);
+      if ("error" in built) continue;
+      built.sx = built.sy = built.sz = p.scale;
+      // The bake's own footprint beats the table's default one.
+      if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
+      spawnScatterEntity(this.world, built);
+    }
   }
 
   /** Bind the port and start the tick. Returns the port. */
@@ -313,7 +387,17 @@ export class DungeonInstance {
       C.Transform.pz[e] = this.opts.layout.entrance.z;
       C.Transform.py[e] = 0;
     }
+    this.pushLook(p);
     this.pushState(p);
+  }
+
+  /** The run's look for the member's client (once, on entering): the layout's theme's entry of looks.json. */
+  private pushLook(p: ExtensionPlayer): void {
+    const looks = this.opts.looks;
+    const theme = looks?.themes[this.opts.layout.theme];
+    if (!looks || !theme) return;
+    const { label: _label, ...look } = theme;
+    p.send({ kind: "dungeon", op: "look", look: { theme: this.opts.layout.theme, ...look, emitters: looks.emitters, maxLights: looks.maxLights } });
   }
 
   private onDeath(sim: SimWorld, ev: LifeEvent): void {

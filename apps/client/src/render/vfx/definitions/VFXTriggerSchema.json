@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mmo-engine.dev/schemas/vfx-trigger.json",
+  "title": "VFX Trigger Definition",
+  "description": "Semantic event triggers for VFX effects (VFX Engine Spec §4). Maps game events to effect instances.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "event", "effectId"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "description": "Unique trigger ID"
+    },
+    "event": {
+      "$ref": "#/$defs/semanticEvent",
+      "description": "Semantic event type that activates this trigger"
+    },
+    "effectId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "description": "Effect ID to spawn when trigger fires (must match a VFXEffect.id)"
+    },
+    "conditions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/condition" },
+      "default": [],
+      "description": "Optional conditions that must all be true for trigger to fire"
+    },
+    "intensity": {
+      "type": "object",
+      "required": ["path", "scale"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "JSON path in event data to read intensity from (e.g. 'data.power', 'data.damage')"
+        },
+        "scale": {
+          "type": "number",
+          "default": 1,
+          "description": "Multiplier for the intensity value"
+        },
+        "clamp": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" }
+          },
+          "description": "Clamp intensity to range"
+        }
+      },
+      "description": "How to derive effect intensity from event data"
+    },
+    "cooldown": {
+      "type": "number",
+      "minimum": 0,
+      "default": 0,
+      "description": "Minimum seconds between trigger activations (per entity/target)"
+    },
+    "maxInstances": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Maximum concurrent instances from this trigger (per entity/target)"
+    },
+    "lod": {
+      "type": "object",
+      "required": ["tier", "maxDistance"],
+      "additionalProperties": false,
+      "properties": {
+        "tier": { "$ref": "#/$defs/qualityTier" },
+        "maxDistance": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "description": "Level-of-detail: only spawn if camera within maxDistance for given tier"
+    }
+  },
+  "$defs": {
+    "qualityTier": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "ultra"],
+      "description": "Quality tier for budget/LOD"
+    },
+    "semanticEvent": {
+      "type": "string",
+      "enum": [
+        "structure_state_changed",
+        "weather_changed",
+        "combat_event",
+        "spell_cast",
+        "spell_impact",
+        "ability_activate",
+        "ability_impact",
+        "status_applied",
+        "status_removed",
+        "entity_spawned",
+        "entity_despawned",
+        "entity_died",
+        "entity_damaged",
+        "entity_healed",
+        "item_pickup",
+        "item_drop",
+        "item_use",
+        "footstep",
+        "landing",
+        "water_splash",
+        "ambient_changed",
+        "time_of_day_changed",
+        "biome_changed",
+        "zone_entered",
+        "zone_exited"
+      ],
+      "description": "Semantic event types from the game simulation"
+    },
+    "condition": {
+      "type": "object",
+      "required": ["path", "operator", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "JSON path in event data to evaluate (e.g. 'data.spellId', 'source.entityType')"
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "nin", "contains", "matches"],
+          "description": "Comparison operator"
+        },
+        "value": {
+          "description": "Value to compare against (type depends on operator)"
+        }
+      }
+    }
+  }
+}

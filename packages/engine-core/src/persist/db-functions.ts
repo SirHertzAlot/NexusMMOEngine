@@ -221,3 +221,50 @@ export function checkParams(def: DbFunctionDef, params: Record<string, SqlValue>
     }
   }
 }
+
+/** One row of EXPLAIN QUERY PLAN output. */
+export interface QueryPlanNode {
+  id: number;
+  parent: number;
+  notused: number;
+  detail: string;
+}
+
+/**
+ * EA17: check a function's query plan for full table scans.
+ *
+ * Runs EXPLAIN QUERY PLAN on the function's SQL (with NULL bound for every
+ * parameter) and returns a warning for each SCAN without a USING INDEX.
+ * Expression indexes (e.g. `CREATE INDEX i ON t(expr(x))`) appear as
+ * `USING INDEX` in the plan when the query's WHERE matches the expression.
+ *
+ * Returns an empty array when the plan is clean. The `db` callback runs the
+ * EXPLAIN; the caller supplies it so this stays testable without a real DB.
+ */
+export function checkQueryPlan(
+  def: DbFunctionDef,
+  explain: (sql: string, params: Record<string, null>) => QueryPlanNode[],
+): string[] {
+  const warnings: string[] = [];
+  const nullParams = Object.fromEntries(def.params.map((p) => [p, null]));
+  let plan: QueryPlanNode[];
+  try {
+    plan = explain(`EXPLAIN QUERY PLAN ${def.sql}`, nullParams);
+  } catch (e) {
+    // If EXPLAIN fails (e.g. the SQL references a missing table), that's a
+    // load-time problem, not a plan problem — report it as such.
+    return [`cannot explain query plan: ${e instanceof Error ? e.message : String(e)}`];
+  }
+  for (const node of plan) {
+    const d = node.detail;
+    // "SCAN t" without "USING INDEX" = full table scan.
+    // "SCAN t USING INDEX i" or "SEARCH t USING INDEX i" = indexed.
+    if (/^SCAN\s/i.test(d) && !/USING\s+INDEX/i.test(d)) {
+      const table = d.replace(/^SCAN\s+/i, "").trim().split(/\s/)[0];
+      warnings.push(
+        `function "${def.name}": full table scan on "${table}" — consider an index (expression indexes help for WHERE on computed values)`,
+      );
+    }
+  }
+  return warnings;
+}

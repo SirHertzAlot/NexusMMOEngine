@@ -141,6 +141,11 @@ export class WaterRenderer {
     this.uniforms.uTime.value = timeSeconds;
   }
 
+  /** Rain ripples (WX1): 0 = calm, 1 = heavy rain. Driven by the weather field. */
+  setRainIntensity(v: number): void {
+    this.uniforms.uRainIntensity.value = v;
+  }
+
   setWireframe(on: boolean): void {
     this.material.wireframe = on;
   }

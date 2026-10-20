@@ -34,6 +34,10 @@ export interface DressedProp {
   rot: number;
   room: number;
   mount: boolean;
+  /** Footprint radius, cells. */
+  radius: number;
+  /** Whether it blocks bodies (the dressing line's `collision`). */
+  collision: "solid" | "none";
 }
 
 export interface Resource {
@@ -166,9 +170,9 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
       deriveSeed(seed, STAGE.inventory * 1000 + r),
       () => relaxed.push(`inventory:${r}`),
     );
-    const items: (PlaceItem & { kind: string })[] = [];
+    const items: (PlaceItem & { kind: string; collision: "solid" | "none" })[] = [];
     lines.forEach((k, i) => {
-      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius: k.radius, mount: k.mount });
+      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius: k.radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid") });
     });
     // Where: big and centre pieces first.
     items.sort((p, q) => Number(q.where === "centre") - Number(p.where === "centre") || q.radius - p.radius);
@@ -179,7 +183,7 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         return;
       }
       layoutTaken[r].push(p);
-      props.push({ kind: items[i].kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!items[i].mount });
+      props.push({ kind: items[i].kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!items[i].mount, radius: items[i].radius, collision: items[i].collision });
     });
   });
 

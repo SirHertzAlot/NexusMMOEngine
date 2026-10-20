@@ -1,7 +1,10 @@
+import type { SabDecodeResult } from "../assets/glb-meshopt.js";
+
 /**
  * Worker task types and payloads — shared between main thread and worker.
  */
 import type { TerrainTile } from '@mmo-engine/protocol';
+import type { WeatherFieldParams } from '../render/weather/field.js';
 
 export interface WorkerTask<T = unknown> {
   id: number;
@@ -23,6 +26,10 @@ export interface TaskPayloadMap {
   bvh: BvhTaskPayload;
   terrainBlock: TerrainBlockTaskPayload;
   chunkDecompose: ChunkDecomposePayload;
+  /** SAB Phase 6: decode a GLB into a SharedArrayBuffer arena. */
+  assetDecode: AssetDecodeTaskPayload;
+  /** WX1: advance the coarse weather field simulation by a batch of steps. */
+  weather: WeatherTaskPayload;
   // Extend this interface to add new task types
 }
 
@@ -74,6 +81,9 @@ export interface PcgResultPayload {
   normal?: Float32Array;
   uv?: Float32Array;
   color?: Float32Array;
+  /** Material slot names (a dungeon shell: floor, wall, ceiling, basin) and each triangle's slot. */
+  materials?: string[];
+  triangleMaterial?: Uint32Array;
   bbox: Float32Array;
 }
 
@@ -91,7 +101,37 @@ export interface TerrainBlockResultPayload {
   index: Uint16Array | Uint32Array;
 }
 
-export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload;
+export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload | TerrainBlockResultPayload | AssetDecodeResultPayload | WeatherResultPayload;
+
+/** WX1: the updated field arrays. `moisture`/`temperature` hold the state
+ *  after `steps` steps; the climatology arrays are returned unchanged so the
+ *  main thread gets re-attached copies (they were transferred in the payload). */
+export interface WeatherResultPayload {
+  moisture: Float32Array;
+  temperature: Float32Array;
+  climatologyTemp: Float32Array;
+  climatologyMoisture: Float32Array;
+}
+
+/** SAB Phase 6: GLB bytes (transferred to the worker) + the arena it decodes into. */
+export interface AssetDecodeTaskPayload {
+  glb: ArrayBuffer;
+  sab: SharedArrayBuffer;
+}
+
+/** WX1: the field arrays the main thread owns, plus everything needed to
+ *  advance them `steps` steps of `dt` seconds. All arrays are transferred. */
+export interface WeatherTaskPayload {
+  moisture: Float32Array;
+  temperature: Float32Array;
+  params: WeatherFieldParams;
+  seed: number;
+  steps: number;
+  dt: number;
+}
+
+/** Worker decode result, or an overflow report (retry with a bigger arena). */
+export type AssetDecodeResultPayload = SabDecodeResult | { overflow: true; neededBytes: number };
 
 export interface WorkerRequest<T extends keyof TaskPayloadMap = keyof TaskPayloadMap> {
   id: number;
@@ -107,6 +147,8 @@ export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPaylo
     T extends 'bvh' ? BvhResultPayload :
     T extends 'terrainBlock' ? TerrainBlockResultPayload :
     T extends 'chunkDecompose' ? TerrainTile[] :
+    T extends 'assetDecode' ? AssetDecodeResultPayload :
+    T extends 'weather' ? WeatherResultPayload :
     never;
   error?: string;
 }

@@ -11,7 +11,7 @@
  * model (synty-props.ts, with its own textured materials) or a PICG
  * asset's cooked mesh (pcg-meshes.ts, in its vertex colours): drawn at
  * the prop's Transform. Until then (or without one) it is a placeholder: a unit box or
- * sphere scaled to its BodyConfig, in the entity's placeholder colour.
+ * sphere sized to its BodyConfig, in the entity's placeholder colour.
  * When a cooked mesh arrives, `modelsChanged()` moves its props over.
  *
  * Removal moves the last instance into the freed slot, so a batch stays
@@ -29,6 +29,7 @@ import { ShapeKind } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
 import { ensureBoundsTree } from "./bvh.js";
 import type { LodLevel } from "./lod.js";
+import { applyShadingToMaterial } from "./shading/shading.js";
 
 /** Smallest dimension drawn (a zero-size body still shows). */
 const MIN_SIZE = 0.05;
@@ -107,15 +108,19 @@ const tmpQuat = new THREE.Quaternion();
 const tmpScale = new THREE.Vector3();
 const tmpColor = new THREE.Color();
 
-/** A placeholder's matrix: its Transform, scaled to its body's size on a unit shape (1 m without a body). */
+/**
+ * A stand-in's matrix. One convention with the server (global scale): a
+ * BodyConfig is world-final (the scale is already in it), so a stand-in is
+ * drawn at the body's size and the Transform scale is NOT applied again; a
+ * model is drawn at the Transform scale (its mesh has its own size), so the
+ * two are the same size. Without a body: a 1 m unit shape at the Transform scale.
+ */
 export function propMatrix(t: TransformRow, body: BodyConfigRow | null, out = new THREE.Matrix4()): THREE.Matrix4 {
-  const sphere = body?.shapeKind === ShapeKind.Sphere;
-  const r = body ? Math.max(body.radius, MIN_SIZE) : 0.5;
-  tmpScale.set(
-    t.sx * (!body ? 1 : sphere ? r : Math.max(body.halfX * 2, MIN_SIZE)),
-    t.sy * (!body ? 1 : sphere ? r : Math.max(body.halfY * 2, MIN_SIZE)),
-    t.sz * (!body ? 1 : sphere ? r : Math.max(body.halfZ * 2, MIN_SIZE)),
-  );
+  if (!body) tmpScale.set(t.sx, t.sy, t.sz);
+  else if (body.shapeKind === ShapeKind.Sphere) {
+    const r = Math.max(body.radius, MIN_SIZE);
+    tmpScale.set(r, r, r);
+  } else tmpScale.set(Math.max(body.halfX * 2, MIN_SIZE), Math.max(body.halfY * 2, MIN_SIZE), Math.max(body.halfZ * 2, MIN_SIZE));
   return out.compose(tmpPos.set(t.px, t.py, t.pz), tmpQuat.set(t.qx, t.qy, t.qz, t.qw), tmpScale);
 }
 
@@ -136,6 +141,10 @@ export class InstancedProps {
 
   constructor(private readonly models: PropModels | null = null) {
     this.group.name = "props";
+    // Shaded as content says (materials.json -> shading): a stand-in shape
+    // and a cooked model are different kinds of thing.
+    applyShadingToMaterial(this.placeholderMaterial, "placeholder");
+    applyShadingToMaterial(this.modelMaterial, "model");
   }
 
   /** Props on screen. */
@@ -183,6 +192,23 @@ export class InstancedProps {
 
   wireIds(): IterableIterator<bigint> {
     return this.slots.keys();
+  }
+
+  /** Where the props showing any of these assets (by AssetRef hash) stand: [x, y, z] each. */
+  positionsOf(hashes: ReadonlySet<number>): [number, number, number][] {
+    const out: [number, number, number][] = [];
+    for (const slot of this.slots.values()) {
+      if (slot.asset && hashes.has(slot.asset.assetHash >>> 0)) out.push([slot.transform.px, slot.transform.py, slot.transform.pz]);
+    }
+    return out;
+  }
+
+  /** Matte surfaces: nothing shiny or reflective (a dungeon's stand-ins and models). */
+  matte(): void {
+    for (const m of [this.placeholderMaterial, this.modelMaterial]) {
+      m.roughness = 1;
+      m.metalness = 0;
+    }
   }
 
   /** Add a prop (or refresh it if already here). */

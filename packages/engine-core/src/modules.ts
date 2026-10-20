@@ -31,6 +31,13 @@ export interface ServerModuleContext {
    * Modules must tolerate absence (sensible defaults or a clear error).
    */
   config?: Record<string, Record<string, unknown>>;
+  /**
+   * Shared domain stores. Modules that own a store (economy → wallet,
+   * character → characters, social → guilds/parties) publish it here during
+   * createSystems; server.ts reads them post-assembly for gateway wiring.
+   * The assembler initializes it to an empty record when absent.
+   */
+  stores?: Record<string, unknown>;
 }
 
 export interface AssembleOptions {
@@ -50,6 +57,11 @@ export interface AssembleOptions {
 /** What a native (N-API) module entry must export. */
 interface NativeModuleExports {
   createSystems?: (ctx: ServerModuleContext) => Record<string, SimSystem> | Promise<Record<string, SimSystem>>;
+  /**
+   * Optional teardown (complete-modularity lifecycle): the assembler runs
+   * every module's dispose in reverse dependency order on shutdown.
+   */
+  dispose?: (ctx: ServerModuleContext) => void | Promise<void>;
 }
 
 /**
@@ -61,7 +73,13 @@ export async function loadNativeModule(
   m: DiscoveredModule,
   ctx: ServerModuleContext,
   requireFn: (entryPath: string) => unknown = createRequire(import.meta.url),
-): Promise<{ systems: Record<string, SimSystem>; disabled: boolean; problems: string[] }> {
+): Promise<{
+  systems: Record<string, SimSystem>;
+  disabled: boolean;
+  problems: string[];
+  /** The entry's optional dispose export, when present. */
+  dispose?: (ctx: ServerModuleContext) => void | Promise<void>;
+}> {
   const problems: string[] = [];
   const name = m.manifest.name;
   const native = m.manifest.native!;
@@ -92,7 +110,12 @@ export async function loadNativeModule(
       problems.push(`${name}: provides "${k}", which its manifest does not list`);
     }
   }
-  return { systems, disabled: false, problems };
+  return {
+    systems,
+    disabled: false,
+    problems,
+    ...(typeof exports.dispose === "function" ? { dispose: exports.dispose } : {}),
+  };
 }
 
 const ENGINE_VERSION = (JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string }).version;
@@ -110,7 +133,24 @@ export async function assembleServerSystems(
    * directly (e.g. quests, dungeons). They never enter `systems`/`byName`.
    */
   extensions: Record<string, unknown>;
+  /**
+   * Teardown in reverse dependency order (complete-modularity lifecycle).
+   * Runs every module entry's `dispose(ctx)` — server and native entries
+   * alike — even if one throws; failures are logged via ctx and rethrown
+   * as a single error at the end. Modules without a dispose export are
+   * skipped silently.
+   */
+  disposeModules: () => Promise<void>;
+  /**
+   * EA12: edge routes, keyed `local:<module>`. For each enabled module with
+   * a manifest `edge` contribution, the route carries its regions, endpoint,
+   * and capabilities. Merged into the edge routing table at boot.
+   */
+  edgeRoutes: Record<string, { regions: string[]; endpoint: string; capabilities: string[] }>;
 }> {
+  // Complete-modularity: modules publish domain stores here during
+  // createSystems (economy → wallet, character → characters, ...).
+  o.ctx.stores ??= {};
   const set = readEnabledSet(o.setFile);
   const found = discoverModules(o.modulesDir, ENGINE_VERSION);
   const lines = [...set.problems, ...found.problems.filter((p) => set.modules.includes(p.module) || p.module === "core")].map(
@@ -136,6 +176,8 @@ export async function assembleServerSystems(
   const instances = new Map<string, SimSystem | undefined>();
   const extensionInstances = new Map<string, unknown>();
   const problems: string[] = [];
+  /** Module teardown hooks in dependency order; disposeModules runs them reversed. */
+  const disposers: Array<{ module: string; dispose: (ctx: ServerModuleContext) => void | Promise<void> }> = [];
   const requireFn = o.nativeRequire ?? createRequire(import.meta.url);
   for (const m of r.modules) {
     const name = m.manifest.name;
@@ -147,6 +189,7 @@ export async function assembleServerSystems(
     if (m.manifest.server?.entry) {
       const mod = (await import(pathToFileURL(join(m.dir, m.manifest.server.entry)).href)) as {
         createSystems?: (ctx: ServerModuleContext) => Record<string, SimSystem> | Promise<Record<string, SimSystem>>;
+        dispose?: (ctx: ServerModuleContext) => void | Promise<void>;
       };
       if (typeof mod.createSystems !== "function") problems.push(`${name}: ${m.manifest.server.entry} must export createSystems(ctx)`);
       else {
@@ -154,6 +197,7 @@ export async function assembleServerSystems(
         for (const d of declared) if (!made?.[d] && !optionalSystems.has(d)) problems.push(`${name}: ${m.manifest.server.entry} does not provide "${d}"`);
         for (const d of declaredExtensions) if (!made?.[d]) problems.push(`${name}: ${m.manifest.server.entry} does not provide extension "${d}"`);
       }
+      if (typeof mod.dispose === "function") disposers.push({ module: name, dispose: mod.dispose });
     } else if (declared.length > 0) {
       made = o.provided[name];
       if (!made) problems.push(`${name}: declares systems but has no server entry and the host provides none`);
@@ -162,6 +206,7 @@ export async function assembleServerSystems(
       const native = await loadNativeModule(m, o.ctx, requireFn);
       problems.push(...native.problems);
       made = { ...(made ?? {}), ...native.systems };
+      if (typeof native.dispose === "function") disposers.push({ module: name, dispose: native.dispose });
     }
     for (const k of Object.keys(made ?? {})) {
       if (!declared.includes(k) && !declaredNative.includes(k) && !declaredExtensions.includes(k))
@@ -177,5 +222,37 @@ export async function assembleServerSystems(
   for (const [k, v] of instances) if (v !== undefined) systemsByName[k] = v;
   const extensions: Record<string, unknown> = {};
   for (const [k, v] of extensionInstances) if (v !== undefined) extensions[k] = v;
-  return { systems: order.map((s) => instances.get(s.name)!), order, modules: r.modules.map((m) => m.manifest.name), byName: systemsByName, extensions };
+  const orderedDisposers = [...disposers].reverse();
+  // EA12: merge `local:<module>` routes for enabled modules with edge contributions.
+  const edgeRoutes: Record<string, { regions: string[]; endpoint: string; capabilities: string[] }> = {};
+  for (const m of r.modules) {
+    const edge = m.manifest.edge;
+    if (edge) {
+      edgeRoutes[`local:${m.manifest.name}`] = {
+        regions: edge.regions,
+        endpoint: edge.endpoint,
+        capabilities: edge.capabilities,
+      };
+    }
+  }
+  return {
+    systems: order.map((s) => instances.get(s.name)!),
+    order,
+    modules: r.modules.map((m) => m.manifest.name),
+    byName: systemsByName,
+    extensions,
+    edgeRoutes,
+    disposeModules: async (): Promise<void> => {
+      const failures: string[] = [];
+      for (const d of orderedDisposers) {
+        try {
+          await d.dispose(o.ctx);
+        } catch (e) {
+          failures.push(`${d.module}: ${(e as Error).message}`);
+        }
+      }
+      for (const f of failures) o.ctx.log(`[modules] dispose failed: ${f}`);
+      if (failures.length > 0) throw new Error(`modules: ${failures.length} dispose failure(s):\n  ${failures.join("\n  ")}`);
+    },
+  };
 }

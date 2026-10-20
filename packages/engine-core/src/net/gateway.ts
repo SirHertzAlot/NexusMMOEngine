@@ -88,6 +88,7 @@ import {
   type DuelMessage,
   type TradeMessage,
   type WalletMessage,
+  type ResourcesMessage,
   type VendorAction,
   type VendorMessage,
   type AuctionMessage,
@@ -102,7 +103,9 @@ import {
   Ability,
   LocomotionMode,
   encodeTileHeights,
+  type ChatChannel,
 } from "@mmo-engine/protocol";
+import type { SocialRules } from "@mmo-engine/rules";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
@@ -116,6 +119,7 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
+import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
@@ -151,7 +155,9 @@ import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
 // Fallback during migration; removed once all bootstraps inject chatRules.
 import * as builtInChat from "../chat.js";
-import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { clearOfStatics } from "../prop-collision.js";
+import type { ScaleResolver } from "../scale.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
 import { AbilitySystem } from "../abilities.js";
@@ -166,7 +172,9 @@ import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
-import type { MigrationRecord } from "@mmo-engine/world-server";
+import type { WorldCharacterSync } from "../world/character-sync.js";
+import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
+import type { AtomicOpResult, MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
 import { Mana, type MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
@@ -259,6 +267,28 @@ export interface GatewayOptions {
    * production server passes a SqliteCharacterStore.
    */
   characterStore?: CharacterStore;
+  /**
+   * Persistence P4: world-tier character records + session locks
+   * (fleet mode). When present, a character's login acquires its world
+   * session lock and seeds the local store from the world record
+   * before the avatar spawns, working saves also write uphill, and
+   * logout (grace expiry, shutdown, migration commit) commits finally
+   * and releases the lock. Absent: local-only behaviour, unchanged
+   * (standalone mode never passes one).
+   */
+  worldCharacters?: WorldCharacterSync;
+  /**
+   * Atomic operations (slice A2, fleet mode): the world-tier commit
+   * path for the economy trade/vendor/auction settlements and the
+   * item grant path. When present, a completing trade accept, a
+   * vendor buy/sell, an auction buyout, and an admin `give` route
+   * their commit step through the world tier and apply the settled
+   * outcome; negotiation, validation, and rate limits stay in the
+   * region handlers. A world rejection or outage fails the operation
+   * closed (4005, nothing committed locally). Absent: every path is
+   * the local one, unchanged (standalone mode never passes one).
+   */
+  atomicOps?: WorldAtomicOps;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
   /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
@@ -275,8 +305,13 @@ export interface GatewayOptions {
    * null/absent = structural checks only (a server without the art).
    */
   characterCatalog?: ModularCatalog | null;
-  /** Characters an account may have. Default 8. */
+  /** Characters an account may have. Default 8, or social.characters.slots; this option wins over both. */
   maxCharacters?: number;
+  /**
+   * Party, guild, chat and character slot limits (content/rules/social.json,
+   * EG9). Absent: the built-in constants. setSocial replaces them live.
+   */
+  social?: SocialRules;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -310,6 +345,8 @@ export interface GatewayOptions {
    * table in tests.
    */
   spawnTable?: SpawnTable;
+  /** The global scale for admin-spawned props (default: none). */
+  scale?: ScaleResolver;
   /**
    * Region chat text filter (roadmap S1): return false to reject a line.
    * Default allows everything that passes shape limits; a profanity or
@@ -749,6 +786,7 @@ export class Gateway {
       | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
+      | "social"
       | "sessionTtlMs"
       | "sessionStore"
       | "authRateLimit"
@@ -772,9 +810,12 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "scale"
       | "extensions"
       | "items"
       | "sectorBroadcast"
+      | "worldCharacters"
+      | "atomicOps"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -788,8 +829,16 @@ export class Gateway {
   private readonly rateLimiter: AuthRateLimiter;
   private readonly credentialStore: CredentialStore;
   private readonly characterStore: CharacterStore;
+  /** Persistence P4 world-tier character sync (fleet mode); null standalone. */
+  private readonly worldCharacters: WorldCharacterSync | null;
+  /** Atomic operations commit path (slice A2, fleet mode); null standalone. */
+  private readonly atomicOps: WorldAtomicOps | null;
   private readonly characterCatalog: ModularCatalog | null;
-  private readonly maxCharacters: number;
+  private maxCharacters: number;
+  /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
+  private readonly fixedMaxCharacters: boolean;
+  /** social.json (EG9), or null for the chat module's own range and cooldowns. */
+  private social: SocialRules | null = null;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a).
    * Injected by the production server via makeDebugSource(); null →
@@ -870,6 +919,7 @@ export class Gateway {
    * first use so addon-less boots never pay for it.
    */
   private spawnTable: SpawnTable | null = null;
+  private readonly scale: ScaleResolver | undefined;
 
   private readonly transportKind: TransportKind | undefined;
   private transport: Transport | null = null;
@@ -923,8 +973,12 @@ export class Gateway {
     this.presence = opts.presence ?? null;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
+    this.worldCharacters = opts.worldCharacters ?? null;
+    this.atomicOps = opts.atomicOps ?? null;
     this.characterCatalog = opts.characterCatalog ?? null;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
+    this.fixedMaxCharacters = opts.maxCharacters !== undefined;
+    if (opts.social) this.setSocial(opts.social);
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -941,6 +995,7 @@ export class Gateway {
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
+    this.scale = opts.scale;
     this.textFilter = opts.textFilter ?? this.chatRules.allowAllText;
     for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
@@ -1063,6 +1118,22 @@ export class Gateway {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    // Fleet mode (P4): shutdown is a logout for every character in
+    // the world — final commit uphill + lock release, awaited but
+    // never blocking teardown on a dead world (the sync logs and the
+    // lock expires on its own). Standalone closes are unchanged.
+    if (this.worldCharacters) {
+      const departing: Promise<boolean>[] = [];
+      for (const s of this.sessions.values()) {
+        if (s.playerEntity === null || !s.character) continue;
+        // A hand-off arrival not yet arrived holds no lock here and
+        // its state is not ours to commit.
+        if (this.handoffArrivals.has(s.clientId)) continue;
+        this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+        departing.push(this.worldCharacters.logout(s.character.id));
+      }
+      await Promise.allSettled(departing);
+    }
     for (const s of this.sessions.values()) {
       try {
         s.socket?.listen({ message() {}, close() {} });
@@ -1085,6 +1156,26 @@ export class Gateway {
    * Set the HTTP handler (see GatewayOptions.http) before listen(): for
    * services that authenticate through this gateway's sessions.
    */
+  /**
+   * Apply social.json (EG9): party and guild sizes and timeouts, the block
+   * limit, chat reach, line length and cooldowns, and character slots. Takes
+   * effect on the next action; parties, guilds and blocks already over a
+   * lowered limit stay as they are.
+   */
+  setSocial(rules: SocialRules): void {
+    this.social = rules;
+    this.parties.setRules(rules.party);
+    this.guilds.setRules(rules.guild);
+    if ("limit" in this.blocks) (this.blocks as { limit: number }).limit = rules.chat.blockLimit;
+    if (!this.fixedMaxCharacters) this.maxCharacters = rules.characters.slots;
+  }
+
+  /** Milliseconds between two lines on `channel` from one session. */
+  private chatCooldownMs(channel: ChatChannel): number {
+    const s = this.social?.chat.cooldownSeconds[channel];
+    return s === undefined ? this.chatRules.CHAT_COOLDOWN_MS[channel] : s * 1000;
+  }
+
   setHttpHandler(handler: HttpHandler): void {
     if (this.transport) throw new Error("gateway: set the HTTP handler before listen()");
     this.httpHandler = handler;
@@ -1205,6 +1296,7 @@ export class Gateway {
       ...this.sendWallets(sim, tick),
       ...this.sendAuctions(sim, tick),
     ];
+    this.sendResources(sim);
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
@@ -1595,6 +1687,11 @@ export class Gateway {
       if (s.playerEntity === null || !s.character) continue;
       this.saveAvatar(this.world.resolveWireId(s.playerEntity));
       n++;
+      // Persistence P4: the same cadence writes uphill to the world
+      // tier, fenced by the session lock. Fire-and-forget: the sync
+      // never throws, and a fenced or failed write only degrades
+      // durability (logged there), never this save cycle.
+      if (this.worldCharacters) void this.worldCharacters.save(s.character.id);
     }
     return n;
   }
@@ -1679,10 +1776,23 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Bye, encodeControl(bye));
   }
 
-  /** The target region took the player: remove the avatar here, unsaved (it isn't ours to save). */
+  /**
+   * The target region took the player: remove the avatar here. (The
+   * entity state itself travels in the migration record.) In fleet
+   * mode (P4) this is also the migration commit point for the
+   * character's session lock: the avatar's final state is staged
+   * into the local store, committed uphill, and the lock releases
+   * here — so the destination can acquire it (fresh epoch) before
+   * the character is playable there. Fire-and-forget like the rest
+   * of the commit path; a failed release leaves the lock to expire.
+   */
   private handoffDrop(entityId: string): void {
     const s = this.handoffSession(entityId);
     if (!s || s.playerEntity === null) return;
+    if (this.worldCharacters && s.character) {
+      this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+      void this.worldCharacters.logout(s.character.id);
+    }
     const eid = this.world.resolveWireId(s.playerEntity);
     this.mastery?.forget(eid);
     this.world.despawn(parseWireEntityId(s.playerEntity).slot);
@@ -1778,6 +1888,18 @@ export class Gateway {
       const a = this.handoffArrivals.get(s.clientId);
       if (!a || a.migrationId !== migrationId) continue;
       if (a.ticketHash !== hash) return null;
+      // Fleet mode (P4): the lock moves with the character. The
+      // destination acquires it (fresh epoch) and seeds its local
+      // cache from the world record here — after the migration
+      // commit, before the character is playable (this hello is what
+      // makes it playable). Refused (the source's release has not
+      // landed yet, or the world is unreachable): the hello fails
+      // like any other auth failure and the arrival stays parked,
+      // so a retry can complete the move.
+      if (this.worldCharacters && s.character) {
+        const res = await this.worldCharacters.login(s.character.id);
+        if (!res.ok) return null;
+      }
       this.handoffArrivals.delete(s.clientId);
       return s.token;
     }
@@ -1802,9 +1924,10 @@ export class Gateway {
     if (!st || !(st.health > 0)) return;
     if (!this.spawnOverridden) {
       const T = C.Transform;
-      T.px[eid] = st.x;
-      T.pz[eid] = st.z;
-      T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+      const at = clearOfStatics(this.world, st.x, st.z, CHARACTER_CAPSULE.radius);
+      T.px[eid] = at.x;
+      T.pz[eid] = at.z;
+      T.py[eid] = this.groundHeightAt?.(at.x, at.z) ?? st.y;
     }
     C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
     C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
@@ -1825,7 +1948,7 @@ export class Gateway {
     if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
     const x = this.spawnPoint.x;
     const z = this.spawnPoint.z;
-    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ? this.groundHeightAt(x, z) : null);
+    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ?? null);
     return r.ok;
   }
 
@@ -2120,6 +2243,14 @@ export class Gateway {
         this.mastery?.forget(eid);
         this.world.despawn(slot);
       }
+      // The grace period is over: this is the logout. Fleet mode
+      // (P4) commits the just-saved state uphill and releases the
+      // character's session lock — fire-and-forget, never blocking
+      // the sweep (an unreachable world leaves the local record as
+      // the fallback truth and the lock to expire on its own).
+      if (this.worldCharacters && s.character) {
+        void this.worldCharacters.logout(s.character.id);
+      }
       this.tokenToClient.delete(s.token);
       this.sessions.delete(s.clientId);
     }
@@ -2311,6 +2442,9 @@ export class Gateway {
       case MessageType.TileRequest:
         this.onTileRequest(s, payload);
         break;
+      case MessageType.Gather:
+        this.onGather(s, payload);
+        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -2452,6 +2586,11 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "give" && this.atomicOps) {
+      // Slice A2 (fleet mode): the grant's commit is async (world
+      // tier); the handler answers and logs like the sync path does.
+      this.contain(s, "give", this.runItemGiveFleet(s, cmd.args));
+      return;
     } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot" || cmd.command === "gold") {
       res = this.runItemCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
@@ -2689,7 +2828,7 @@ export class Gateway {
     }
     const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
-    const eid = spawnScatterEntity(this.world, built);
+    const eid = spawnScatterEntity(this.world, built, undefined, this.scale);
     return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
   }
 
@@ -2706,8 +2845,7 @@ export class Gateway {
       }
       const target = this.resolveTarget(s, parsed.data.entity);
       if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
-      const ground = this.groundHeightAt ? this.groundHeightAt(parsed.data.x, parsed.data.z) : null;
-      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, ground);
+      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, this.groundHeightAt ?? null);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
       return { kind: "admin", command, ok: true, message: r.message };
     }
@@ -2840,6 +2978,7 @@ export class Gateway {
       }
       const parsed = this.chatRules.ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
+      if (this.social && parsed.data.text.length > this.social.chat.textMax) throw new Error("too long");
       text = parsed.data.text;
       channel = parsed.data.channel;
       to = parsed.data.to;
@@ -2852,8 +2991,9 @@ export class Gateway {
       return;
     }
     const now = this.clock();
-    const last = s.lastChatMs[channel] ?? -this.chatRules.CHAT_COOLDOWN_MS[channel] - 1;
-    if (now - last < this.chatRules.CHAT_COOLDOWN_MS[channel]) {
+    const cooldown = this.chatCooldownMs(channel);
+    const last = s.lastChatMs[channel] ?? -cooldown - 1;
+    if (now - last < cooldown) {
       this.sendError(s, 4003, "chat too fast");
       return;
     }
@@ -2929,7 +3069,8 @@ export class Gateway {
     }
     const sx = C.Transform.px[eid];
     const sz = C.Transform.pz[eid];
-    const range2 = this.chatRules.SAY_RANGE_M * this.chatRules.SAY_RANGE_M;
+    const range = this.social?.chat.sayRangeM ?? this.chatRules.SAY_RANGE_M;
+    const range2 = range * range;
     for (const r of this.sessions.values()) {
       if (!r.welcomed || r.playerEntity === null) continue;
       const reid = this.world.resolveWireId(r.playerEntity);
@@ -3402,6 +3543,10 @@ export class Gateway {
     s.isAdmin = this.devServer || this.admins.has(auth.username);
     // A session that already entered as a character re-enters as it.
     if (auth.character) {
+      if (!(await this.prepareCharacterEntry(auth.character))) {
+        this.sendErrorAndClose(s, 4002, "auth failed");
+        return;
+      }
       this.enterWorld(s, auth.character);
       return;
     }
@@ -3413,7 +3558,12 @@ export class Gateway {
     // No choice asked for: the account's first character, if any.
     const [first] = await this.characterStore.list(s.username);
     if (!this.sessions.has(s.clientId)) return;
-    this.enterWorld(s, first ? this.remember(s, first) : null);
+    const chosen = first ? this.remember(s, first) : null;
+    if (!(await this.prepareCharacterEntry(chosen))) {
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    this.enterWorld(s, chosen);
   }
 
   /** Record `c` as the character of the session's token (see AuthSession.character). */
@@ -3422,6 +3572,21 @@ export class Gateway {
     const auth = this.authSessions.get(s.token);
     if (auth) auth.character = character;
     return character;
+  }
+
+  /**
+   * Persistence P4 (fleet mode): acquire the character's world
+   * session lock and seed the local store from the world record —
+   * both BEFORE the character is playable (enterWorld). True when
+   * the character may enter (always true standalone, and for sessions
+   * without a character). On refusal the caller answers through the
+   * join path's existing error semantics (4002 on a hello, 4005 on
+   * enter_world) — there is no parallel auth path.
+   */
+  private async prepareCharacterEntry(character: { id: number } | null): Promise<boolean> {
+    if (!character || !this.worldCharacters) return true;
+    const res = await this.worldCharacters.login(character.id);
+    return res.ok;
   }
 
   /**
@@ -3571,6 +3736,14 @@ export class Gateway {
       this.sendError(s, 4005, "no such character");
       return;
     }
+    // Fleet mode (P4): the world session lock gates entry; a live
+    // holder elsewhere refuses here, in character selection, so the
+    // player can pick another character.
+    if (!(await this.prepareCharacterEntry(record))) {
+      this.sendError(s, 4005, "that character is already in the world elsewhere");
+      return;
+    }
+    if (!this.sessions.has(s.clientId) || !s.choosingCharacter) return;
     this.enterWorld(s, this.remember(s, record));
   }
 
@@ -3894,6 +4067,10 @@ export class Gateway {
     if (names) this.deliver(s, names, this.tick);
     const drops = this.dropsFor(null);
     if (drops) this.deliver(s, drops, this.tick);
+    // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
+    const gathering = this.gathering;
+    if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
+    if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     this.deliverSnapshot(
       s,
       encodeEnvelope(
@@ -4136,9 +4313,345 @@ export class Gateway {
       this.sendError(s, 4003, "malformed trade");
       return;
     }
-    if (kind === "vendor") this.onVendor(s, payload);
-    else if (kind === "auction") this.onAuction(s, payload);
-    else this.onTrade(s, payload);
+    // Slice A2 (fleet mode): the commit actions (a completing trade
+    // accept, a vendor buy/sell, an auction buyout) go through the
+    // async world-tier handlers; every other action is handled by
+    // the ordinary synchronous handlers, exactly as standalone.
+    if (kind === "vendor") {
+      if (this.atomicOps) this.contain(s, "vendor", this.onVendorFleet(s, payload));
+      else this.onVendor(s, payload);
+    } else if (kind === "auction") {
+      if (this.atomicOps) this.contain(s, "auction", this.onAuctionFleet(s, payload));
+      else this.onAuction(s, payload);
+    } else {
+      if (this.atomicOps) this.contain(s, "trade", this.onTradeFleet(s, payload));
+      else this.onTrade(s, payload);
+    }
+  }
+
+  /**
+   * The refusal text for a settled world rejection (slice A2): the
+   * typed rejection surfaces through the gateway's existing 4005
+   * refusal semantics, in the vocabulary the local paths use where
+   * one exists.
+   */
+  private atomicRefusal(result: AtomicOpResult & { ok: false }): string {
+    switch (result.rejection) {
+      case "INSUFFICIENT_FUNDS":
+        return "not enough gold";
+      case "ITEM_NOT_PRESENT":
+        return "that item is not there";
+      default:
+        return `refused by the world (${result.rejection}: ${result.message})`;
+    }
+  }
+
+  /**
+   * Trade in fleet mode (slice A2): open/offer/cancel and a
+   * non-completing accept are region-side negotiation and run
+   * through the ordinary handler. A COMPLETING accept routes the
+   * settlement through the world-tier `tradeCommit`: on success the
+   * trade closes as settled (its event and the wallet changes drain
+   * on the next tick as usual) with the local caches already
+   * reconciled to the world records; on a rejection or an outage
+   * the trade cancels — the existing failed-settlement semantics —
+   * and nothing has moved anywhere.
+   */
+  private async onTradeFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    if (!trade || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "trade outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    const parsed = TradeActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action !== "accept" || parsed.data.id === undefined) {
+      this.onTrade(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    const id = parsed.data.id;
+    const t = trade.pending(id);
+    if (!t || (me !== t.a && me !== t.b)) {
+      this.sendError(s, 4005, "nothing to accept");
+      return;
+    }
+    const otherAccepted = me === t.a ? t.bAccepted : t.aAccepted;
+    if (!otherAccepted) {
+      // Not the completing accept: record it locally, as standalone.
+      trade.accept(id, me, tick);
+      return;
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.trade({
+        a: t.a,
+        b: t.b,
+        aGivesGold: t.aGold,
+        bGivesGold: t.bGold,
+        aGivesItems: t.aItems.map(itemInstanceId),
+        bGivesItems: t.bItems.map(itemInstanceId),
+      });
+    } catch {
+      trade.failSettlement(id, tick);
+      this.sendError(s, 4005, "trade refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      trade.failSettlement(id, tick);
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    trade.settleFromWorld(id, tick);
+    this.sendInventory(s);
+    const other = this.sessionOf(me === t.a ? t.b : t.a);
+    if (other) this.sendInventory(other);
+  }
+
+  /**
+   * Vendor in fleet mode (slice A2): `list` is region-side and runs
+   * through the ordinary handler. Buy and sell validate region-side
+   * (the system's terms checks, the wallet balance, bag room), then
+   * route the value movement through the world-tier
+   * `vendorTransact`; the settled outcome reconciles the buyer's
+   * gold and bag before the usual vendor/inventory messages go out.
+   * A rejection or an outage refuses with 4005 and moves nothing —
+   * the pre-allocated purchase item is destroyed, never bagged.
+   */
+  private async onVendorFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "vendor outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    const parsed = VendorActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action === "list") {
+      this.onVendor(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const me = sim.resolveWireId(s.playerEntity);
+    if (me < 0) return;
+    const meChar = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.vendor === undefined) {
+      this.sendError(s, 4003, "vendor action needs a vendor");
+      return;
+    }
+    let vEntity = -1;
+    try {
+      vEntity = sim.resolveWireId(BigInt(parsed.data.vendor));
+    } catch {
+      vEntity = -1;
+    }
+    if (vEntity < 0) {
+      this.sendError(s, 4005, "no such vendor");
+      return;
+    }
+    const wire = parsed.data.vendor;
+    const wallet = this.systems.find((x): x is WalletSystem => x instanceof WalletSystem);
+    if (parsed.data.action === "buy") {
+      if (parsed.data.def === undefined) {
+        this.sendError(s, 4003, "buy needs a def");
+        return;
+      }
+      const def = parsed.data.def;
+      const terms = vendor.buyTerms(sim, me, vEntity, def);
+      if ("error" in terms) {
+        this.sendError(s, 4005, terms.error);
+        return;
+      }
+      if (!wallet || wallet.balanceOf(meChar) < terms.price) {
+        this.sendError(s, 4005, "not enough gold");
+        return;
+      }
+      if (!this.items || !this.items.store.hasRoom(meChar)) {
+        this.sendError(s, 4005, "your bag is full");
+        return;
+      }
+      // Allocate the purchased item's identity locally (Free state,
+      // in no bag): the world grant and the local item share it, and
+      // a failed commit destroys it without ever bagging it.
+      const item = this.items.store.create(def, this.items.defs.durability[def]);
+      let result: AtomicOpResult;
+      try {
+        result = await this.atomicOps!.vendor({
+          character: meChar,
+          vendorId: terms.vendorId,
+          direction: "buy",
+          def,
+          price: terms.price,
+          instanceId: itemInstanceId(item),
+        });
+      } catch {
+        this.items.store.destroy(item);
+        this.sendError(s, 4005, "vendor refused: the world tier is unreachable");
+        return;
+      }
+      if (!result.ok) {
+        this.items.store.destroy(item);
+        this.sendError(s, 4005, this.atomicRefusal(result));
+        return;
+      }
+      vendor.commitBuyStock(terms.vendorId, def);
+      const m: VendorMessage = {
+        kind: "vendor",
+        tick,
+        vendor: wire,
+        state: "bought",
+        def,
+        price: terms.price,
+      };
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+      this.sendInventory(s);
+      return;
+    }
+    // sell
+    if (parsed.data.item === undefined) {
+      this.sendError(s, 4003, "sell needs an item");
+      return;
+    }
+    const item = parsed.data.item;
+    const terms = vendor.sellTerms(sim, me, vEntity, item);
+    if ("error" in terms) {
+      this.sendError(s, 4005, terms.error);
+      return;
+    }
+    if (!this.items || !this.items.store.inBagOf(meChar, item)) {
+      this.sendError(s, 4005, "you don't have that");
+      return;
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.vendor({
+        character: meChar,
+        vendorId: terms.vendorId,
+        direction: "sell",
+        def: terms.def,
+        price: terms.price,
+        instanceId: itemInstanceId(item),
+      });
+    } catch {
+      this.sendError(s, 4005, "vendor refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    const m: VendorMessage = {
+      kind: "vendor",
+      tick,
+      vendor: wire,
+      state: "sold",
+      item,
+    };
+    this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    this.sendInventory(s);
+  }
+
+  /**
+   * Auction in fleet mode (slice A2): browse/list/bid/cancel are
+   * region-side negotiation and run through the ordinary handler.
+   * A buyout validates region-side, then routes the settlement
+   * through the world-tier `auctionSettle` (buyer pays the full
+   * price, seller receives it net of the same 5% house cut a local
+   * settle takes — fleet auction parity). When the buyer is their own top bidder,
+   * their escrow is first released locally and the made-whole
+   * balance uploaded, so the world charges the full price exactly
+   * once. A rejection or an outage refuses with 4005; the listing
+   * stays live and no value has moved.
+   */
+  private async onAuctionFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    if (!auction || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "auction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    const parsed = AuctionActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action !== "buyout") {
+      this.onAuction(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.listing === undefined) {
+      this.sendError(s, 4003, "buyout needs a listing");
+      return;
+    }
+    const terms = auction.buyoutTerms(me, parsed.data.listing, tick);
+    if ("error" in terms) {
+      this.sendError(s, 4005, terms.error);
+      return;
+    }
+    const l = terms.listing;
+    if (l.topBidder === me && l.topBid > 0) {
+      auction.releaseEscrow(l.id, tick);
+      if (this.worldCharacters) await this.worldCharacters.save(me);
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.auction({
+        buyer: me,
+        seller: l.seller,
+        instanceId: itemInstanceId(l.item),
+        price: l.buyout,
+      });
+    } catch {
+      this.sendError(s, 4005, "auction refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    auction.settleFromWorld(l.id, me, tick);
+    const tell = (m: AuctionMessage): void => {
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    };
+    tell({ kind: "auction", tick, state: "sold", listing: undefined });
+    this.sendInventory(s);
+    const seller = this.sessionOf(l.seller);
+    if (seller) this.sendInventory(seller);
   }
 
   /**
@@ -4609,6 +5122,64 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Inventory, encodeControl(this.items.inventoryOf(this.holderOf(s))));
   }
 
+  /** The server's gathering system (resource nodes and pouches), if it runs one. */
+  private get gathering(): GatheringSystem | undefined {
+    return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
+  }
+
+  /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
+  private sendResources(sim: SimWorld): void {
+    const nodes = this.gathering?.drainChanges(sim) ?? [];
+    if (nodes.length === 0) return;
+    const bytes = encodeControl({ kind: "resources", nodes } satisfies ResourcesMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Gather, bytes);
+  }
+
+  /**
+   * Gather once from a resource node (catalog 0x24): in-world sessions
+   * only; a bad shape is 4003, a refusal (too far, worked out, still
+   * gathering, pouch full) 4005. Shares the pickup rate limit. A gather
+   * answers with the whole pouch, naming what was added.
+   */
+  private onGather(s: ClientSession, payload: Uint8Array): void {
+    const gathering = this.gathering;
+    if (!gathering || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "gathering outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed gather");
+      return;
+    }
+    const parsed = GatherActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed gather");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) {
+      this.sendError(s, 4005, "no avatar");
+      return;
+    }
+    const wire = parseEntityArg(parsed.data.entity);
+    const holder = this.holderOf(s);
+    const result = wire === null ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, this.world.resolveWireId(wire));
+    if (!result.ok) {
+      this.sendError(s, 4005, result.error);
+      return;
+    }
+    this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+  }
+
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */
   private dropsFor(only: readonly bigint[] | null): Uint8Array | null {
     if (!this.items) return null;
@@ -4673,6 +5244,35 @@ export class Gateway {
     }
     const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
     return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
+  }
+
+  /**
+   * The admin `give` command in fleet mode (slice A2): same pick and
+   * answers as the sync path, but the grant itself routes through
+   * ItemService.giveGranted — the world-tier `lootGrant` commits it,
+   * and a refusal or outage answers 4003 having granted nothing.
+   */
+  private async runItemGiveFleet(s: ClientSession, args: unknown): Promise<void> {
+    const fail = (message: string): void => {
+      this.logAdmin(s.username, "give", false);
+      this.sendError(s, 4003, message);
+    };
+    const items = this.items;
+    if (!items) return fail("no items on this server");
+    if (s.playerEntity === null) return fail("no player entity (not in the world)");
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return fail("avatar is gone");
+    const a = ItemPickArgsSchema.safeParse(args ?? {});
+    if (!a.success) return fail("usage: give {def? | base?, rank?, source?}");
+    const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
+    const def = pickDef(items.defs, a.data, seed);
+    if (def < 0) return fail("no items match");
+    const r = await items.giveGranted(this.holderOf(s), def);
+    if (!r.ok) return fail(r.error);
+    this.sendInventory(s);
+    this.logAdmin(s.username, "give", true);
+    const res: AdminResult = { kind: "admin", command: "give", ok: true, message: r.message };
+    this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
   }
 
   /**
@@ -4874,8 +5474,10 @@ export class Gateway {
     C.Locomotion.breath[eid] = 1;
     const T = C.Transform;
     const i = this.playerSeq++;
-    T.px[eid] = this.spawnPoint.x + (i % 8) * 4 - 14;
-    T.pz[eid] = this.spawnPoint.z + Math.floor(i / 8) * 4 - 14;
+    // Clear of baked buildings: the spawn point can sit inside a generated town.
+    const at = clearOfStatics(sim, this.spawnPoint.x + (i % 8) * 4 - 14, this.spawnPoint.z + Math.floor(i / 8) * 4 - 14, CHARACTER_CAPSULE.radius);
+    T.px[eid] = at.x;
+    T.pz[eid] = at.z;
     T.py[eid] = this.groundHeightAt?.(T.px[eid], T.pz[eid]) ?? 0;
     T.qx[eid] = 0; T.qy[eid] = 0; T.qz[eid] = 0; T.qw[eid] = 1;
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;

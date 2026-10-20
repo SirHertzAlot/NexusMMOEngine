@@ -22,6 +22,7 @@
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import {
+  decodePcgMesh,
   exposedParameters,
   fnv1a32,
   parameterValues,
@@ -100,6 +101,8 @@ export class PcgAssetLibrary {
   private readonly entries = new Map<number, Entry>();
   private readonly byId = new Map<string, Entry>();
   private readonly meshes = new Map<string, Promise<CookedMesh | null>>();
+  /** Assets that are already a mesh (a dungeon's baked shell): served as they are, never cooked. */
+  private readonly fixed = new Map<number, CookedMesh & { info: PcgAssetInfo }>();
 
   private constructor(
     readonly root: string,
@@ -137,16 +140,36 @@ export class PcgAssetLibrary {
     return library;
   }
 
+  /** A library with no graph assets, for prebaked meshes only (see `addPrebaked`). */
+  static empty(): PcgAssetLibrary {
+    return new PcgAssetLibrary("", { version: 1, subgraphs: [], assets: [] }, null);
+  }
+
+  /**
+   * Add an asset that is already a mesh: `pcgm` is PCGM bytes (a dungeon's baked
+   * shell). It is listed and fetched like any asset, by the hash of `id`, at
+   * revision 1 with no level-of-detail chain (a shell is one big mesh the
+   * player stands inside: coarser levels with distance would eat its walls).
+   */
+  addPrebaked(id: string, pcgm: Uint8Array, displayName = id): PcgAssetInfo {
+    const { positions, indices } = decodePcgMesh(pcgm); // throws on bytes that aren't PCGM: fail at boot, not at the first fetch
+    const assetHash = fnv1a32(id);
+    if (this.entries.has(assetHash) || this.fixed.has(assetHash)) throw new Error(`pcg library: asset hash collision on '${id}'`);
+    const info: PcgAssetInfo = { id, assetHash, displayName, graph: "", variants: 1, revision: 1 };
+    this.fixed.set(assetHash, { assetHash, variantIndex: 0, revision: 1, bytes: pcgm, vertexCount: positions.length / 3, triangleCount: indices.length / 3, lods: [], acmr: null, info });
+    return { ...info };
+  }
+
   get canCook(): boolean {
     return this.cooker !== null;
   }
 
   list(): PcgAssetInfo[] {
-    return [...this.entries.values()].map((e) => ({ ...e.info }));
+    return [...this.entries.values(), ...this.fixed.values()].map((e) => ({ ...e.info }));
   }
 
   info(assetHash: number): PcgAssetInfo | null {
-    const e = this.entries.get(assetHash >>> 0);
+    const e = this.entries.get(assetHash >>> 0) ?? this.fixed.get(assetHash >>> 0);
     return e ? { ...e.info } : null;
   }
 
@@ -167,6 +190,8 @@ export class PcgAssetLibrary {
    * asset, or no cooker). Cooked once per revision; later calls share it.
    */
   mesh(assetHash: number, variant: number): Promise<CookedMesh | null> {
+    const fixed = this.fixed.get(assetHash >>> 0);
+    if (fixed) return Promise.resolve(fixed);
     const e = this.entries.get(assetHash >>> 0);
     if (!e || !this.cooker) return Promise.resolve(null);
     const vi = variantIndex(e.asset, variant);
@@ -201,6 +226,8 @@ export class PcgAssetLibrary {
 
   /** A mesh already cooked for exactly this revision (for GET by URL). */
   cachedMesh(assetHash: number, vi: number, revision: number): Promise<CookedMesh | null> | null {
+    const fixed = this.fixed.get(assetHash >>> 0);
+    if (fixed) return vi === 0 && revision === 1 ? Promise.resolve(fixed) : null;
     return this.meshes.get(`${assetHash >>> 0}:${vi}:${revision}`) ?? null;
   }
 

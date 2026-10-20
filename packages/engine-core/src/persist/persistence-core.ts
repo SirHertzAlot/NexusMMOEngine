@@ -132,6 +132,11 @@ export interface PersistenceCoreOptions {
   /** True while a game server is using the data dir. Default: never. */
   isServerRunning?: () => boolean;
   clock?: () => number;
+  /**
+   * Query rows and timeout (content/server/persistence.json, EG13), read on
+   * every query so an edit applies to the next one. Absent: the defaults.
+   */
+  queryLimits?: () => { defaultRows: number; maxRows: number; timeoutMs: number };
 }
 
 export class PersistenceCore {
@@ -211,6 +216,52 @@ export class PersistenceCore {
     );
   }
 
+  /**
+   * EA17: performance diagnostics for one database.
+   * Returns table sizes, index list, and per-function query-plan warnings
+   * (via checkQueryPlan) so the Performance panel can flag slow queries.
+   */
+  async dbPerformance(db: string): Promise<{
+    tables: Array<{ name: string; rowCount: number; bytes: number }>;
+    indexes: Array<{ name: string; table: string; sql: string | null }>;
+    functionPlans: Array<{ function: string; warnings: string[] }>;
+  }> {
+    const { checkQueryPlan } = await import("./db-functions.js");
+    return this.withRo(db, (d) => {
+      // Table sizes: row counts + page-based byte estimate.
+      const tables = (
+        d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as Array<{ name: string }>
+      ).map(({ name }) => {
+        const rowCount = (d.prepare(`SELECT count(*) AS n FROM ${quote(name)}`).get() as { n: number }).n;
+        // Approximate bytes via dbstat (if available) or page_count heuristic.
+        let bytes = 0;
+        try {
+          const stat = d.prepare("SELECT SUM(pgsize) AS b FROM dbstat WHERE name = ?").get(name) as { b: number | null };
+          bytes = stat.b ?? 0;
+        } catch {
+          bytes = 0;
+        }
+        return { name, rowCount, bytes };
+      });
+      // Indexes.
+      const indexes = (
+        d.prepare("SELECT name, tbl_name AS tbl, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY tbl_name, name").all() as Array<{ name: string; tbl: string; sql: string | null }>
+      ).map((r) => ({ name: r.name, table: r.tbl, sql: r.sql }));
+      // Function query plans.
+      const functionPlans = this.dbFunctions
+        .filter((f) => f.db === db)
+        .map((f) => {
+          const warnings = checkQueryPlan(f, (sql, params) => {
+            const stmt = d.prepare(sql);
+            return stmt.all(params) as Array<{ id: number; parent: number; notused: number; detail: string }>;
+          });
+          return { function: f.name, warnings };
+        })
+        .filter((r) => r.warnings.length > 0);
+      return { tables, indexes, functionPlans };
+    });
+  }
+
   private tables(db: string, d: Database.Database): TableInfo[] {
     const names = d
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
@@ -242,8 +293,9 @@ export class PersistenceCore {
   ): Promise<QueryResult> {
     const text = checkSelect(sql);
     const file = this.file(db);
-    const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? QUERY_DEFAULT_ROWS)), QUERY_MAX_ROWS);
-    const timeoutMs = opts.timeoutMs ?? QUERY_DEFAULT_TIMEOUT_MS;
+    const caps = this.opts.queryLimits?.() ?? { defaultRows: QUERY_DEFAULT_ROWS, maxRows: QUERY_MAX_ROWS, timeoutMs: QUERY_DEFAULT_TIMEOUT_MS };
+    const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? caps.defaultRows)), caps.maxRows);
+    const timeoutMs = opts.timeoutMs ?? caps.timeoutMs;
     return new Promise((resolve, reject) => {
       const child = fork(fileURLToPath(new URL("./query-worker.js", import.meta.url)), [JSON.stringify({ file, sql: text, limit, params: opts.params ?? null })], {
         stdio: ["ignore", "ignore", "ignore", "ipc"],

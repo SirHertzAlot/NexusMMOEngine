@@ -14,5 +14,7 @@
   "trapsPerRun": 2,
   "trapHarm": 10,
   "trapTriggerRadiusM": 2,
-  "commit": "on-report"
+  "commit": "on-report",
+  "wallBodyRadiusM": 0.4,
+  "teleportStepM": 8
 }

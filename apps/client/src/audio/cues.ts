@@ -80,3 +80,33 @@ export function startWind(ctx: BaseAudioContext, out: AudioNode): () => void {
     level.disconnect();
   };
 }
+
+/**
+ * Rain (WX1): looping noise through a band-pass whose level drifts with a
+ * slow LFO, like wind but brighter and steadier. The caller modulates the
+ * level gain with the weather field's rain intensity. Returns a stop function.
+ */
+export function startRain(ctx: BaseAudioContext, out: AudioNode): () => void {
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(ctx);
+  src.loop = true;
+  const band = ctx.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = 1800;
+  band.Q.value = 0.4;
+  const level = ctx.createGain();
+  level.gain.value = 0;
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 0.13;
+  const depth = ctx.createGain();
+  depth.gain.value = 0.04;
+  lfo.connect(depth).connect(level.gain);
+  src.connect(band).connect(level).connect(out);
+  src.start();
+  lfo.start();
+  return () => {
+    src.stop();
+    lfo.stop();
+    level.disconnect();
+  };
+}

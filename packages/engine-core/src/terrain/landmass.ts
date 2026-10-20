@@ -11,8 +11,9 @@
  * headlands.
  */
 
-import type { CoarseGrid } from "./survey.js";
+import { mulberry32, type CoarseGrid } from "./survey.js";
 import { distanceTo, labelComponents, sampleBilinear, smoothstep } from "./grid-ops.js";
+import { crestProfile } from "./relief.js";
 import { windVector, worldBounds, type WorldSpec } from "./world-spec.js";
 
 /** A mountain range's axis (world metres) and its size. */
@@ -74,6 +75,10 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
   const D = grid.depth;
   const wander = spec.land.coast.wander / span;
   const mask = new Uint8Array(W * D);
+  if (spec.land.coast.shape !== "peninsula") {
+    islandMask(spec, grid, warpA, warpT, mask);
+    return tidyLandmass(mask, W, D, grid.cell, spec.land.minIslandArea);
+  }
   for (let v = 0; v < D; v++) {
     const z = grid.originZ + v * grid.cell;
     for (let u = 0; u < W; u++) {
@@ -86,6 +91,126 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
     }
   }
   return tidyLandmass(mask, W, D, grid.cell, spec.land.minIslandArea);
+}
+
+/** A round landmass seed in half-span units: centre and radius. */
+interface Blob { x: number; z: number; r: number; p: number }
+
+/** Distance from a blob's centre in its own norm: p = 2 is round, higher is squarer (fills a world cell better). */
+const reach = (o: Blob, x: number, z: number): number => Math.pow(Math.pow(Math.abs(x - o.x), o.p) + Math.pow(Math.abs(z - o.z), o.p), 1 / o.p);
+
+/**
+ * Where the main landmasses sit. "island": one at the world's centre.
+ * "continents": `continents` landmasses spread apart, their sizes grown
+ * together until the land covers `continentCover` of the world, or until
+ * neighbours are `continentGap` apart (a negative gap lets them overlap,
+ * which joins them with land bridges; satellites and wandering coasts add
+ * a little).
+ */
+function mainBlobs(spec: WorldSpec, rng: () => number, share: (blobs: Blob[]) => number): Blob[] {
+  const c = spec.land.coast;
+  if (c.shape === "island") return [{ x: 0, z: 0, r: c.islandRadius, p: 2 }];
+  if (c.shape === "pangaea") {
+    // One supercontinent: a large centre and four lobes that overlap it, so the coast is ragged and inland seas and gulfs appear, grown to the cover.
+    const lobes: Blob[] = [{ x: 0, z: 0, r: 1, p: 2.3 }];
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      lobes.push({ x: sx * (0.4 + 0.1 * rng()), z: sz * (0.4 + 0.1 * rng()), r: 0.6 + 0.2 * rng(), p: 2.3 });
+    }
+    let lo = 0.05;
+    let hi = 1.6;
+    for (let i = 0; i < 16; i++) {
+      const mid = (lo + hi) / 2;
+      if (share(lobes.map((b) => ({ ...b, r: b.r * mid }))) < c.continentCover) lo = mid;
+      else hi = mid;
+    }
+    return lobes.map((b) => ({ ...b, r: b.r * ((lo + hi) / 2) }));
+  }
+  const n = c.continents;
+  // Centres on a jittered grid (the best way to pack big round landmasses
+  // with room between them); cells beyond `n` stay empty, chosen at random.
+  const cols = Math.ceil(Math.sqrt(n));
+  const cells: Blob[] = [];
+  for (let row = 0; row < cols; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = ((col + 0.5) / cols) * 2 - 1 + (rng() - 0.5) * 0.12;
+      const z = ((row + 0.5) / cols) * 2 - 1 + (rng() - 0.5) * 0.12;
+      cells.push({ x, z, r: 0.92 + 0.16 * rng(), p: 2.6 });
+    }
+  }
+  while (cells.length > n) cells.splice(Math.floor(rng() * cells.length), 1);
+  const seeds = cells;
+  const grown = (k: number): Blob[] => seeds.map((b) => ({ ...b, r: b.r * k }));
+  // How far they may grow: a sea channel of `continentGap` between neighbours,
+  // or, when it is negative, that much overlap, which makes land bridges.
+  const CHANNEL = c.continentGap;
+  let hi = 2.5;
+  for (let i = 0; i < seeds.length; i++) {
+    for (let j = i + 1; j < seeds.length; j++) {
+      const d = Math.hypot(seeds[i].x - seeds[j].x, seeds[i].z - seeds[j].z) - CHANNEL;
+      hi = Math.min(hi, d / (seeds[i].r + seeds[j].r));
+    }
+  }
+  let lo = 0.05;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    if (share(grown(mid)) < c.continentCover) lo = mid;
+    else hi = mid;
+  }
+  return grown((lo + hi) / 2);
+}
+
+/**
+ * Island and continent shapes: the main landmass(es) in open sea, plus
+ * `satellites` smaller islands scattered in the sea between and around
+ * them. The same noise that bends the peninsula's coast wobbles each shore.
+ */
+function islandMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array, warpT: Float32Array, mask: Uint8Array): void {
+  const b = worldBounds(spec);
+  const half = (b.max - b.min) / 2;
+  const cx = (b.max + b.min) / 2;
+  const wander = spec.land.coast.wander / half;
+  const rng = mulberry32(spec.seed ^ 0x151a4d);
+  const nxAt = (i: number, u: number): number => (grid.originX + u * grid.cell - cx) / half + wander * warpA[i];
+  const nzAt = (i: number, v: number): number => (grid.originZ + v * grid.cell - cx) / half + wander * warpT[i];
+  // Share of the world the blobs cover, sampled on every 4th cell.
+  const share = (bs: Blob[]): number => {
+    let land = 0;
+    let all = 0;
+    for (let v = 0; v < grid.depth; v += 4) {
+      for (let u = 0; u < grid.width; u += 4) {
+        const i = v * grid.width + u;
+        const x = nxAt(i, u);
+        const z = nzAt(i, v);
+        all++;
+        if (bs.some((o) => reach(o, x, z) < o.r)) land++;
+      }
+    }
+    return land / all;
+  };
+  const blobs = mainBlobs(spec, rng, share);
+  for (let k = 0; k < spec.land.coast.satellites; k++) {
+    const r = 0.04 + 0.06 * rng();
+    for (let tries = 0; tries < 60; tries++) {
+      const reach = 1 - r - 0.04;
+      const x = (rng() * 2 - 1) * reach;
+      const z = (rng() * 2 - 1) * reach;
+      if (blobs.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + r + 0.05)) {
+        blobs.push({ x, z, r, p: 2 });
+        break;
+      }
+    }
+  }
+  const W = grid.width;
+  for (let v = 0; v < grid.depth; v++) {
+    for (let u = 0; u < W; u++) {
+      const i = v * W + u;
+      const nx = nxAt(i, u);
+      const nz = nzAt(i, v);
+      let land = false;
+      for (let s = 0; s < blobs.length && !land; s++) land = reach(blobs[s], nx, nz) < blobs[s].r;
+      mask[i] = land ? 1 : 0;
+    }
+  }
 }
 
 /**
@@ -251,6 +376,8 @@ export function rangeUplift(
   crossNoise: Float32Array,
   warpU: Float32Array,
   warpV: Float32Array,
+  /** Ridged multifractal 0..1 (relief.ts); applied when spec.ranges.crest.detailOctaves > 0. */
+  detail?: Float32Array,
 ): Float32Array {
   const R = spec.ranges;
   const W = grid.width;
@@ -290,7 +417,7 @@ export function rangeUplift(
         const r = best / halfW;
         if (r >= 1) continue;
         const i = v * W + u;
-        const profile = (1 - r * r) * (1 - r * r);
+        const profile = crestProfile(r, R.crest.sharpness);
         const ends = (range.spur ? 1 : smoothstep(0, 0.2, along)) * smoothstep(0, 0.2, 1 - along);
         const lift = range.height * profile * ends * (0.75 + 0.25 * alongNoise[i]);
         if (lift > up[i]) up[i] = lift;
@@ -309,6 +436,8 @@ export function rangeUplift(
       const side = (1 - Math.abs(crossNoise[i])) ** 2;
       const ridge = Math.max(main, 0.8 * side);
       up[i] *= 1 - R.ridges + 2 * R.ridges * ridge;
+      // Ridged multifractal crests: detail gathers on the high ground.
+      if (detail) up[i] *= 1 - R.crest.detailStrength + 2 * R.crest.detailStrength * detail[i];
     }
   }
   return up;
@@ -382,6 +511,12 @@ export function raiseVolcanoes(
   baseLevel: Float32Array,
   volcanoes: Volcano[],
   lobes: Float32Array,
+  /**
+   * Noise (-1..1) read in polar coordinates (angle across, radius slowly
+   * down) so ridged crests run down the cone: with `volcano.gullies` > 0 the
+   * flank is cut by radial gullies between spur ridges, from below the rim.
+   */
+  gullyNoise?: Float32Array,
 ): void {
   const V = spec.volcano;
   const W = grid.width;
@@ -402,7 +537,15 @@ export function raiseVolcanoes(
           continue;
         }
         const flank = (reachHere - r) / (reachHere - V.craterRadius);
-        h[i] = Math.max(h[i], base + V.height * Math.pow(flank, 1.6));
+        let rise = V.height * Math.pow(flank, 1.6);
+        if (gullyNoise && V.gullies > 0) {
+          // Polar noise coordinates: ~50 cells of noise per radian, radius stretched ~3x.
+          const theta = Math.atan2(v - cv, u - cu);
+          const n = sampleBilinear(gullyNoise, W, D, W / 2 + theta * 50, D / 2 + (r / grid.cell) * 0.3);
+          const spur = (1 - Math.abs(n)) ** 2;
+          rise *= 1 - V.gullies * (1 - spur) * smoothstep(0.08, 0.45, 1 - flank) * Math.min(1, flank * 4);
+        }
+        h[i] = Math.max(h[i], base + rise);
       }
     }
   }

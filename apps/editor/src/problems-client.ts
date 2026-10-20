@@ -20,6 +20,7 @@ const LINKS: Record<ProblemSource, string> = {
   flow: "#/flow/flow",
   hud: "#/release/hud",
   strings: "#/story/strings",
+  scale: "#/artaudio/scale",
   audio: "#/artaudio/audio",
   vfx: "#/artaudio/vfx",
   animation: "#/artaudio/animation",

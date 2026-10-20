@@ -84,6 +84,12 @@ export interface SaveResult {
   entityCount: number;
   /** Snapshot payload size in bytes. */
   bytes: number;
+  /**
+   * A copy of the exact snapshot bytes this save persisted (persistence
+   * P2): the world-tier upload ships these bytes — never a re-encode —
+   * so local and world copies cannot diverge.
+   */
+  snapshotBytes: Uint8Array;
   /** End-to-end save latency (collect + encode + insert + prune), ms. */
   ms: number;
 }
@@ -250,6 +256,9 @@ export class SnapshotStore {
       tick,
       entityCount,
       bytes: bytes.byteLength,
+      // Copy: the caller's view may alias a reused builder buffer that
+      // the next encode overwrites.
+      snapshotBytes: bytes.slice(),
       ms: performance.now() - t0,
     };
   }

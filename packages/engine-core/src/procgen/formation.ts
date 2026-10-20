@@ -36,6 +36,7 @@ import { HeightfieldSdf, mulberry32, poissonDisc, snapToGround } from "@mmo-engi
 import { pointsProblem, solve, type WfcOption } from "@mmo-engine/wfc";
 import { fnv1a32 } from "@mmo-engine/scatter";
 import { terrainHeightAt } from "../systems.js";
+import { bandSurfaceAt, habitatOk, LAND_MARGIN_M, surfaceAt } from "./habitat.js";
 import { fieldAt, hash, ramp, type EcologyLayer, type EcologyPlan, type WeightedAsset } from "./ecology.js";
 
 /** One kind of piece in a formation. */
@@ -381,12 +382,7 @@ function suitability(plan: EcologyPlan, layer: EcologyLayer, env: FormationEnv, 
   const slope = Math.hypot((ground(xp, z) - ground(xm, z)) / (xp - xm), (ground(x, zp) - ground(x, zm)) / (zp - zm));
   if (layer.slope && (slope < layer.slope[0] || slope > layer.slope[1])) return 0;
   if (layer.slopeBoost) p *= 1 + layer.slopeBoost * slope;
-  if (layer.aboveWater) {
-    const w = env.waterAt ? env.waterAt(x, z) : env.seaLevel ?? null;
-    const above = w === null ? Infinity : ground(x, z) - w;
-    const [lo, hi] = layer.aboveWater;
-    if (above < lo || (hi !== null && above > hi)) return 0;
-  }
+  if (!habitatOk(layer, plan.landMarginM ?? LAND_MARGIN_M, ground(x, z), surfaceAt(env.waterAt, env.seaLevel, x, z), bandSurfaceAt(env.waterAt, env.seaLevel, x, z))) return 0;
   return Math.min(p, 1);
 }
 

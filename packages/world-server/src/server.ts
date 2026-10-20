@@ -11,6 +11,9 @@
  *                           durable); "ws://..." -> SurrealDB server
  *                           (durable). Default "mem:".
  *   WORLD_DB_NS / WORLD_DB_DB / WORLD_DB_USER / WORLD_DB_PASS
+ *   WORLD_DB_CONNECT_TIMEOUT_MS  bound on the SurrealDB connect
+ *                                handshake (default 10000; unset or
+ *                                not a positive finite number = default)
  *   WORLD_API_KEY           bootstrap key regions register with.
  *                           Unset = registration disabled.
  *   WORLD_HEARTBEAT_INTERVAL_MS  lease interval (default 5000)
@@ -18,6 +21,12 @@
  *   WORLD_MIGRATION_TIMEOUT_MS   a hand-off not committed within this
  *                                expires; the source keeps the entity
  *                                (default 10000)
+ *   WORLD_TOTAL_CHUNK_SPACE "x0,z0,x1,z1" total world chunk space the
+ *                                assignment policy (P5) carves ranges
+ *                                from (default "0,0,4096,4096")
+ *   WORLD_HOST_REPORT_TIMEOUT_MS how long a host report stays fresh
+ *                                for assignment (default: the heartbeat
+ *                                timeout)
  *
  * Durable local dev: `npm run db --workspace=@mmo-engine/world-server`
  * (needs the `surrealdb` binary on PATH) with
@@ -42,6 +51,22 @@ const HEARTBEAT_TIMEOUT_MS = Number(
 const MIGRATION_TIMEOUT_MS = Number(
   process.env.WORLD_MIGRATION_TIMEOUT_MS ?? 10000,
 );
+const TOTAL_WORLD_CHUNK_SPACE = (() => {
+  const parts = (process.env.WORLD_TOTAL_CHUNK_SPACE ?? "0,0,4096,4096")
+    .split(",")
+    .map(Number);
+  // Env order is "x0,z0,x1,z1", the REGION_CHUNK_RANGE convention.
+  return { x0: parts[0], z0: parts[1], x1: parts[2], z1: parts[3] };
+})();
+const HOST_REPORT_TIMEOUT_MS = process.env.WORLD_HOST_REPORT_TIMEOUT_MS
+  ? Number(process.env.WORLD_HOST_REPORT_TIMEOUT_MS)
+  : undefined;
+const DB_CONNECT_TIMEOUT_MS = (() => {
+  const raw = process.env.WORLD_DB_CONNECT_TIMEOUT_MS;
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+})();
 
 async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<void> }> {
   if (DB_URL === "mem:" || DB_URL === "") {
@@ -55,6 +80,7 @@ async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<vo
     database: process.env.WORLD_DB_DB ?? "world",
     username: process.env.WORLD_DB_USER,
     password: process.env.WORLD_DB_PASS,
+    connectTimeoutMs: DB_CONNECT_TIMEOUT_MS,
   });
   await store.connect();
   console.log(`[world] store=surrealdb url=${DB_URL}`);
@@ -74,6 +100,8 @@ async function main(): Promise<void> {
     heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
     heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
     migrationTimeoutMs: MIGRATION_TIMEOUT_MS,
+    totalWorldChunkSpace: TOTAL_WORLD_CHUNK_SPACE,
+    hostReportTimeoutMs: HOST_REPORT_TIMEOUT_MS,
     apiKeyHash,
   });
 
