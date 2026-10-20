@@ -31,7 +31,7 @@ const { registry } = loadBiomeRegistry();
 const worldSpec = JSON.parse(readFileSync(fileURLToPath(new URL("../../../worlds/default.world.json", import.meta.url)), "utf8")) as {
   biomes: { id: string }[];
 };
-// The species roster's ids (@mmo-engine/species BUILTIN_SPECIES) that live in the open world.
+// Species ids from the sample pack (content/species/species.json) that live in the open world.
 const SPECIES = ["goblin", "orc", "troll", "ogre", "wolf", "bear", "boar", "giant-spider"];
 
 function registryOf(biomes: Record<string, unknown>): BiomeRegistry {
