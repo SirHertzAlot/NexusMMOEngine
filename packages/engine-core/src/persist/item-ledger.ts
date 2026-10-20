@@ -97,7 +97,9 @@ export class ItemLedger {
   private readonly maxIdStmt: Database.Statement;
   private readonly countStmt: Database.Statement;
   private readonly eventsAfterStmt: Database.Statement;
+  private readonly importStmt: Database.Statement;
   private readonly flushTx: (n: number, at: number) => void;
+  private readonly importTx: (rows: readonly LedgerEventRow[]) => number;
 
   private capacity = INITIAL_EVENTS;
   private n = 0;
@@ -142,6 +144,29 @@ export class ItemLedger {
       `SELECT seq, item_id AS itemId, tick, committed_at AS committedAt, kind, def, owner, slot, durability, x, z
        FROM item_events WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
     );
+    this.importStmt = this.db.prepare(
+      "INSERT OR IGNORE INTO item_events (seq, item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    );
+    this.importTx = this.db.transaction((rows: readonly LedgerEventRow[]): number => {
+      let inserted = 0;
+      for (const row of rows) {
+        const info = this.importStmt.run(
+          row.seq,
+          row.itemId,
+          row.tick,
+          row.committedAt,
+          row.kind,
+          row.def,
+          row.owner,
+          row.slot,
+          row.durability,
+          row.x,
+          row.z,
+        );
+        inserted += Number(info.changes);
+      }
+      return inserted;
+    });
     this.flushTx = this.db.transaction((count: number, at: number) => {
       for (let i = 0; i < count; i++) {
         this.insertStmt.run(
@@ -206,6 +231,22 @@ export class ItemLedger {
   /** Highest item id ever written, destroyed ones included (ids are never reused). */
   maxItemId(): number {
     return (this.maxIdStmt.get() as { id: number }).id;
+  }
+
+  /**
+   * Import events recalled from the world store (persistence P3),
+   * preserving each row's own `seq` — the sequence is the event's
+   * identity on both tiers, so an import is idempotent: a seq already
+   * present locally keeps its first-written row (INSERT OR IGNORE) and
+   * is never duplicated, and later locally-flushed events continue
+   * after the highest imported seq. Returns how many rows were new.
+   * Nothing is recorded in the pending buffer; imported rows are
+   * durable immediately and `load()` collapses them exactly like
+   * locally-written rows.
+   */
+  importEvents(rows: readonly LedgerEventRow[]): number {
+    if (rows.length === 0) return 0;
+    return this.importTx(rows);
   }
 
   /**

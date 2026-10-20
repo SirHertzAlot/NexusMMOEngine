@@ -154,6 +154,7 @@ import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { ShardStateShipper } from "./world/state-shipper.js";
+import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, RulesError } from "@mmo-engine/rules";
@@ -322,6 +323,73 @@ async function main(): Promise<void> {
     console.warn(`[server] MMO_WORLD_SEED=${WORLD_SEED} ignored: this world was baked with seed ${worldSeed}`);
   }
   const sim = new SimWorld({ stats: game.rules.stats, movement: game.rules.movement });
+
+  // ---- persistence P3: fleet boot recall --------------------------------
+  // With WORLD_URL set, the world store is the single source of truth
+  // and hot-loading from it is the normal boot path: register first
+  // (P1 recall reads require an authenticated known region, and
+  // registration issues this boot's fresh fencing epoch), recall into
+  // the local stores, and only then restore + simulate below. The
+  // WorldClient created here is the one the migration coordinator and
+  // the P2 shipper use for the rest of the boot, so every post-boot
+  // state-plane write carries the post-boot epoch. Standalone mode
+  // (no WORLD_URL) engages none of this: local restore, unchanged.
+  // Every item change, appended to world.db and written each second
+  // (roadmap P2a); created here so recall can import into it.
+  const itemLedger = new ItemLedger(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  const WORLD_URL = process.env.WORLD_URL;
+  const REGION_ID = process.env.REGION_ID ?? "region-1";
+  const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
+  let worldClient: WorldClient | null = null;
+  let migrationCoordinator: MigrationCoordinator | null = null;
+  const regionChunkRange = ((): { x0: number; z0: number; x1: number; z1: number } => {
+    const parts = (process.env.REGION_CHUNK_RANGE ?? "0,0,4096,4096")
+      .split(",")
+      .map(Number);
+    return { x0: parts[0], z0: parts[1], x1: parts[2], z1: parts[3] };
+  })();
+  if (WORLD_URL) {
+    worldClient = new WorldClient({
+      transport: new WebrpcWorldTransport(WORLD_URL),
+      regionId: REGION_ID,
+      chunkRange: regionChunkRange,
+      endpoint: process.env.REGION_ENDPOINT ?? `ws://localhost:${PORT}`,
+      capacity: REGION_CAPACITY,
+      apiKey: process.env.WORLD_API_KEY ?? "",
+      getStats: () => ({
+        load: sim.liveEntityCount / REGION_CAPACITY,
+        // TODO(slice D): real tick timing from the harness.
+        tickJitterMs: 0,
+        entityCount: sim.liveEntityCount,
+      }),
+      onError: (err, ctx) =>
+        console.warn(`[server] world ${ctx}: ${(err as Error).message}`),
+      // Region migration (slice B): acks carry registry changes and
+      // hand-off outcomes for the coordinator (built after the gateway
+      // exists, below; it reads this ref once assigned).
+      onAck: (ack) => {
+        void migrationCoordinator?.onAck(ack).catch((err: unknown) =>
+          console.warn(`[server] migration ack: ${(err as Error).message}`));
+      },
+    });
+    await worldClient.start();
+    if (worldClient.registered) {
+      console.log(
+        `[server] registered with world at ${WORLD_URL} as ${REGION_ID} (epoch ${worldClient.epoch})`,
+      );
+      // Recall completes here, before the restore below and long
+      // before the gateway starts ticking: the ordering invariant.
+      await recallShardState({
+        client: worldClient,
+        store,
+        ledger: itemLedger,
+        log: (line) => console.log(`[server] ${line}`),
+      });
+    } else {
+      console.warn(`[server] world registration failed; running with local state only`);
+    }
+  }
+
   const restoredTick = store.restoreInto(sim);
   const freshBoot = restoredTick == null;
   if (!freshBoot) {
@@ -455,8 +523,8 @@ async function main(): Promise<void> {
   // this connection leaves checkpoints (and their fsync) to it.
   const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
   const formationTiles = new FormationTileStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
-  // Every item change, appended here and written each second (roadmap P2a).
-  const itemLedger = new ItemLedger(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  // The item ledger (roadmap P2a) is created with the snapshot store
+  // above, so the P3 recall could import world events into it.
   // Baked worlds have a sea: nothing is scattered below it.
   const seaLevelMeta = store.getMeta("sea_level");
   // Baked worlds have water: swimming happens against its surface, and
@@ -1050,7 +1118,7 @@ async function main(): Promise<void> {
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
   // Cross-region presence (S2): the gateway reports online names and asks
   // where friends play; without a world client both are inert. `worldClient`
-  // is declared below and assigned when WORLD_URL is set; these closures
+  // was assigned during the fleet boot block when WORLD_URL is set; these closures
   // only run once players are around, long after.
   const gw: Gateway = new Gateway({
     port: PORT,
@@ -1126,59 +1194,31 @@ async function main(): Promise<void> {
   let nextSaveTick =
     (Math.floor(gw.serverTick / SAVE_EVERY_TICKS) + 1) * SAVE_EVERY_TICKS;
 
-  // ---- world server registration (region) -------------------------------
-  // Runs entirely off the tick loop: register -> heartbeat timer ->
-  // snapshot reports. A slow or dead world server must never stall the sim.
-  const WORLD_URL = process.env.WORLD_URL;
-  const REGION_ID = process.env.REGION_ID ?? "region-1";
-  const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
-  let worldClient: WorldClient | null = null;
+  // ---- world server: migration + presence (region) ----------------------
+  // Registration + P3 recall already happened above, before the world
+  // was restored (see the fleet boot block); the client created there
+  // is reused here, still carrying this boot's epoch. Everything here
+  // runs off the tick loop: heartbeat timer -> snapshot reports ->
+  // migration/presence timers. A slow or dead world server must never
+  // stall the sim.
   let migrationTimer: NodeJS.Timeout | null = null;
   let presenceTimer: NodeJS.Timeout | null = null;
-  if (WORLD_URL) {
-    const parts = (process.env.REGION_CHUNK_RANGE ?? "0,0,4096,4096")
-      .split(",")
-      .map(Number);
-    const chunkRange = { x0: parts[0], z0: parts[1], x1: parts[2], z1: parts[3] };
-    let migration: MigrationCoordinator | null = null;
-    worldClient = new WorldClient({
-      transport: new WebrpcWorldTransport(WORLD_URL),
-      regionId: REGION_ID,
-      chunkRange,
-      endpoint:
-        process.env.REGION_ENDPOINT ?? `ws://localhost:${PORT}`,
-      capacity: REGION_CAPACITY,
-      apiKey: process.env.WORLD_API_KEY ?? "",
-      getStats: () => ({
-        load: sim.liveEntityCount / REGION_CAPACITY,
-        // TODO(slice D): real tick timing from the harness.
-        tickJitterMs: 0,
-        entityCount: sim.liveEntityCount,
-      }),
-      onError: (err, ctx) =>
-        console.warn(`[server] world ${ctx}: ${(err as Error).message}`),
-      // Region migration (slice B): acks carry registry changes and
-      // hand-off outcomes for the coordinator.
-      onAck: (ack) => {
-        void migration?.onAck(ack).catch((err: unknown) =>
-          console.warn(`[server] migration ack: ${(err as Error).message}`));
-      },
-    });
+  if (WORLD_URL && worldClient) {
+    const chunkRange = regionChunkRange;
     // Border hand-offs (WORLD-SERVER-SPEC §6): players walking into another
     // live region's chunks are handed to it; off the tick, 4 times a second.
-    migration = new MigrationCoordinator({
+    const migration = new MigrationCoordinator({
       world: worldClient,
       host: gw.migrationHost(),
       chunkRange,
       chunkSize: CHUNK_SIZE,
       log: (line) => console.log(`[server] ${line}`),
     });
+    migrationCoordinator = migration;
     const coordinator = migration;
     coordinator.onEvent((e) => console.log(`[server] migration ${e.kind} ${e.entityId} ${e.migrationId}`));
     gw.setMigrationAcceptor((id, verify) => coordinator.accept(id, false, verify));
-    await worldClient.start();
     if (worldClient.registered) {
-      console.log(`[server] registered with world at ${WORLD_URL} as ${REGION_ID}`);
       await coordinator.refreshRegistry().catch(() => {});
       migrationTimer = setInterval(() => {
         void coordinator.observe(gw.migrationPositions()).catch((err: unknown) =>
@@ -1194,14 +1234,14 @@ async function main(): Promise<void> {
         }
       }, 30_000);
       presenceTimer.unref();
-    } else {
-      console.warn(`[server] world registration failed; running standalone`);
     }
   }
 
   // Persistence P2: write-through to the world store (ledger streaming +
   // snapshot upload), riding the save timer below. Exists only with a
-  // world client; standalone mode has no shipper and is unchanged.
+  // world client; standalone mode has no shipper and is unchanged. The
+  // shipper reads the client's epoch per write, and recall has already
+  // completed, so its writes carry the post-boot (registration) epoch.
   const stateShipper = worldClient
     ? new ShardStateShipper({
         client: worldClient,

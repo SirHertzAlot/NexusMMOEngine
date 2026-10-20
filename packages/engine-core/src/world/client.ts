@@ -17,6 +17,8 @@ import {
   type MigrationRecord,
   type RegionInfo,
   type RegionLease,
+  type ShardSnapshotRecord,
+  type StoredLedgerEvent,
 } from "@mmo-engine/world-server";
 import type { InstanceResult } from "../dungeons/instance.js";
 
@@ -278,6 +280,50 @@ export class WorldClient {
       this.fail(err, "putShardSnapshot");
       return false;
     }
+  }
+
+  // -------------------------------------------- persistence P3: recall reads
+  // Boot-recall reads (PERSISTENCE-LAYER-SPEC, Recovery). The world
+  // core leaves reads unfenced, but they still require an authenticated
+  // known region — which is why fleet boot registers BEFORE recalling
+  // (see state-recall.ts). Like the migration ops below these throw on
+  // transport failure: the recall path decides what a failure means
+  // (fall back to the local working cache, never block the boot).
+
+  /** The range's latest world-tier checkpoint, payload included; null when the world holds none. */
+  async getShardSnapshot(): Promise<ShardSnapshotRecord | null> {
+    const res = await this.transport.call(
+      "GetShardSnapshot",
+      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKeyStr } },
+      this.token(),
+    );
+    return (res["snapshot"] as ShardSnapshotRecord | null) ?? null;
+  }
+
+  /** Stored ledger events for this range with seq > afterSeq, in seq order. */
+  async getLedgerEvents(afterSeq: number): Promise<StoredLedgerEvent[]> {
+    const res = await this.transport.call(
+      "GetLedgerEvents",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          rangeKey: this.rangeKeyStr,
+          afterSeq,
+        },
+      },
+      this.token(),
+    );
+    return res["events"] as StoredLedgerEvent[];
+  }
+
+  /** The world's contiguous acked ledger head seq for this range. */
+  async getLedgerHead(): Promise<number> {
+    const res = await this.transport.call(
+      "GetLedgerHead",
+      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKeyStr } },
+      this.token(),
+    );
+    return res["ackedSeq"] as number;
   }
 
   // ---------------------------------------------------------- slice B

@@ -251,6 +251,15 @@ export type {
   StatePlaneClient,
   ShardStateShipperOptions,
 } from "./world/state-shipper.js";
+export {
+  recallShardState,
+  unwrapShardSnapshotPayload,
+} from "./world/state-recall.js";
+export type {
+  StateRecallClient,
+  ShardRecallOutcome,
+  ShardStateRecallOptions,
+} from "./world/state-recall.js";
 export { MigrationCoordinator } from "./world/migration.js";
 export type {
   EntityPosition,
