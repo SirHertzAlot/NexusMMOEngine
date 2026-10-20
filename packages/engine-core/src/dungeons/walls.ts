@@ -62,6 +62,9 @@ export class DungeonWallSystem implements SimSystem {
     const l = this.layout;
     for (let i = 0; i < ids.length; i++) {
       const e = ids[i];
+      // A static body (a prop: a banner on its wall, a torch, a pillar) never moves, so rock is no
+      // reason to correct it: leave it where the bake put it.
+      if (hasComponent(sim.ecs, C.BodyConfig, e) && C.BodyConfig.motionType[e] === C.MotionType.Static) continue;
       // No-clip passes through walls: neither corrected nor remembered,
       // so switching it off inside rock simply accepts the spot.
       if (hasComponent(sim.ecs, C.Noclip, e)) {

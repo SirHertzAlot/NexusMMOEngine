@@ -33,7 +33,9 @@ export function createSystems(ctx) {
     creatures: config.rules.creatures.creatures,
     tables: config.rules.loot.tables ?? {},
     kindOf: config.kindOf,
-    wallet: config.wallet,
+    // The economy module (a dependency, so assembled first) publishes the
+    // wallet on ctx.stores during its createSystems.
+    wallet: ctx.stores.wallet,
   });
   return { items, dropper };
 }

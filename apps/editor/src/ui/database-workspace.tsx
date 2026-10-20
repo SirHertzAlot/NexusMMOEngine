@@ -5,7 +5,7 @@
  * (game server stopped); the grid says so when the host refuses.
  */
 import * as React from "react";
-import { applyMutations, fetchCatalog, fetchLog, runQuery, undoEntry, type Db, type LogEntry, type QueryResult } from "../database-client.js";
+import { applyMutations, fetchCatalog, fetchLog, fetchPerformance, runQuery, undoEntry, type Db, type DbPerformance, type LogEntry, type QueryResult } from "../database-client.js";
 import { parseCell, rowKey, stage, toMutations, viewRows, type Pending, type Table } from "../database-model.js";
 import { Badge, Button, Input, MIcon, notify, Select } from "./components.js";
 import { Column, DataTable } from "./data-table.js";
@@ -274,6 +274,102 @@ export function DatabaseAuditPanel(): React.JSX.Element {
         ]}
       />
       {log.length === 0 && <p className="p-3 text-sm text-muted-foreground">No edits yet.</p>}
+    </div>
+  );
+}
+
+/**
+ * Performance panel (roadmap EA17): per-database table sizes, index list,
+ * and query-plan warnings for stored functions. Flags full table scans so
+ * slow queries get indexes before they hit production.
+ */
+export function DatabasePerformancePanel(): React.JSX.Element {
+  const { dbs, error } = useCatalog();
+  const [db, setDb] = React.useState("");
+  const [perf, setPerf] = React.useState<DbPerformance | null>(null);
+  const [status, setStatus] = React.useState("");
+
+  // Default to the first database.
+  React.useEffect(() => {
+    if (!db && dbs.length > 0) setDb(dbs[0].name);
+  }, [dbs, db]);
+
+  const load = React.useCallback(() => {
+    if (!db) return;
+    setStatus("");
+    fetchPerformance(db).then(setPerf).catch((e) => setStatus(msg(e)));
+  }, [db]);
+  React.useEffect(load, [load]);
+
+  const fmtBytes = (b: number): string => {
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="h-full overflow-auto p-3">
+      <div className="mb-3 flex items-center gap-2">
+        <Select value={db} onChange={(v) => setDb(v)} aria-label="Database">
+          {dbs.map((d) => (
+            <option key={d.name} value={d.name}>{d.name}</option>
+          ))}
+        </Select>
+        <Button size="sm" variant="outline" onClick={load}>Refresh</Button>
+        {status && <span className="text-xs text-destructive" role="alert">{status}</span>}
+        {error && <span className="text-xs text-destructive" role="alert">{error}</span>}
+      </div>
+      {!perf ? (
+        <p className="p-3 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {perf.functionPlans.length > 0 && (
+            <section>
+              <h3 className="mb-2 text-sm font-medium text-destructive">Slow query warnings ({perf.functionPlans.length})</h3>
+              <div className="flex flex-col gap-2">
+                {perf.functionPlans.map((fp) => (
+                  <div key={fp.function} className="rounded-lg p-3" style={{ background: "var(--m3-error-container)" }}>
+                    <div className="text-sm font-medium" style={{ color: "var(--m3-on-error-container)" }}>{fp.function}</div>
+                    {fp.warnings.map((w, i) => (
+                      <div key={i} className="mt-1 text-xs" style={{ color: "var(--m3-on-error-container)" }}>{w}</div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          <section>
+            <h3 className="mb-2 text-sm font-medium">Tables ({perf.tables.length})</h3>
+            <DataTable
+              mono
+              rows={perf.tables}
+              rowKey={(t) => t.name}
+              columns={[
+                { id: "name", header: "Table", nowrap: true, cell: (t) => t.name },
+                { id: "rows", header: "Rows", nowrap: true, cell: (t) => t.rowCount.toLocaleString() },
+                { id: "bytes", header: "Size", nowrap: true, cell: (t) => fmtBytes(t.bytes) },
+              ]}
+            />
+          </section>
+          <section>
+            <h3 className="mb-2 text-sm font-medium">Indexes ({perf.indexes.length})</h3>
+            {perf.indexes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No custom indexes. Tables without indexes will show warnings above when queried.</p>
+            ) : (
+              <DataTable
+                mono
+                rows={perf.indexes}
+                rowKey={(ix) => ix.name}
+                columns={[
+                  { id: "name", header: "Index", nowrap: true, cell: (ix) => ix.name },
+                  { id: "table", header: "Table", nowrap: true, cell: (ix) => ix.table },
+                  { id: "sql", header: "Definition", cell: (ix) => ix.sql ?? "" },
+                ]}
+              />
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -105,6 +105,7 @@ describe("crafting recipes", () => {
     assert.match(read("content", "crafting", "recipes.json"), /"iron": \{ "inputs": \{ "iron-ore": 2, "coal": 1 \} \}/, "short values stay on one line");
     const crafting = (await import(pathToFileURL(join(REPO, "packages", "crafting", "dist", "src", "index.js")).href)) as Any;
     const rules = crafting.loadCraftingRules(join(ROOT, "content", "crafting", "recipes.json"));
+    assert.ok(rules, "the sample recipes file loads");
     assert.equal(rules.refining.steel.inputs.coal, 3);
   });
 

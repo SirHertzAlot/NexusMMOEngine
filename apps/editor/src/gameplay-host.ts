@@ -47,7 +47,7 @@ export interface GameplaySnapshot {
 
 type Roster = Record<string, unknown>;
 export interface SpeciesModule {
-  BUILTIN_SPECIES: Roster;
+  /** The sample pack (no arg), or a game's overlay file merged over it. */
   loadSpecies(file?: string): Roster;
 }
 
@@ -81,7 +81,7 @@ export async function readGameplay(repoRoot: string): Promise<GameplaySnapshot> 
   const keys = (v: unknown, under: string): string[] => Object.keys(((v as Record<string, unknown>)[under] ?? {}) as object);
   const sp = await loadSpeciesModule(repoRoot);
   const file = speciesFile(repoRoot);
-  const roster = existsSync(file) ? sp.loadSpecies(file) : sp.BUILTIN_SPECIES;
+  const roster = existsSync(file) ? sp.loadSpecies(file) : sp.loadSpecies();
   const data = await readDataTables(repoRoot);
   return {
     tables: {
@@ -96,7 +96,7 @@ export async function readGameplay(repoRoot: string): Promise<GameplaySnapshot> 
     context: {
       refs: { items: keys(rt.items, "bases"), creatures: keys(rt.creatures, "creatures"), ...data.refs },
       options: { techniques, families: skills.families ?? [], ...data.options },
-      builtinSpecies: Object.keys(sp.BUILTIN_SPECIES),
+      builtinSpecies: Object.keys(sp.loadSpecies()),
     },
   };
 }
@@ -172,11 +172,12 @@ async function speciesOverlay(repoRoot: string, content: unknown): Promise<{ ove
   const bad = (path: string, message: string): GameplayIssue => ({ file: "species.json", path, message });
   if (rows === null || typeof rows !== "object" || Array.isArray(rows)) return { overlay: {}, issues: [bad("", 'need {"species": {…}}')] };
   const issues: GameplayIssue[] = [];
-  for (const id of Object.keys(sp.BUILTIN_SPECIES)) {
-    if (!(id in rows)) issues.push(bad(`species.${id}`, `"${id}" is built in: it can be overridden, not removed`));
+  const shipped = sp.loadSpecies();
+  for (const id of Object.keys(shipped)) {
+    if (!(id in rows)) issues.push(bad(`species.${id}`, `"${id}" is shipped: it can be overridden, not removed`));
   }
   const overlay: Roster = {};
-  for (const [id, row] of Object.entries(rows)) if (!isDeepStrictEqual(row, sp.BUILTIN_SPECIES[id])) overlay[id] = row;
+  for (const [id, row] of Object.entries(rows)) if (!isDeepStrictEqual(row, shipped[id])) overlay[id] = row;
   // The real loader reads a file: give it the candidate in a throwaway one.
   const tmp = mkdtempSync(join(tmpdir(), "mmo-species-"));
   try {
