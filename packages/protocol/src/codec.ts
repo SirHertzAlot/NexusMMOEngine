@@ -879,3 +879,495 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   b.finish(root);
   return b.asUint8Array();
 }
+
+// ------------------------------------------------------- SoA encode
+//
+// Phase 3 (SAB wire encoding): the same Snapshot/Delta bytes built
+// directly from columnar component stores indexed by entity slot,
+// with NO intermediate row-object copy (CollectedState) in between.
+//
+// The row path above (collect -> rows -> FlatBuffers) allocates one JS
+// object per entity per block on every tick. The SoA path reads the
+// SAB-backed bitECS field arrays in place: the FlatBuffers builder
+// loop indexes `store[eids[i]]` exactly where the row path would have
+// read `rows[i].field`. Field-add order inside every table, vector
+// write order, and value conversions are mirrored one-for-one, so the
+// SoA encoders produce byte-identical output to the row encoders for
+// the same world state (proven by codec-soa.test.ts / snapshot-soa).
+//
+// The codec still takes no sim dependency: callers pass the stores as
+// `ArrayLike<number>` views (plain arrays, typed arrays, or
+// SAB-backed views — all index the same) plus a `wireIdOf` resolver.
+// The only non-numeric columns need callbacks: appearance looks are
+// strings (`lookOf`) and chunk heights are generated arrays
+// (`heightsOf`), both cold paths.
+
+/** Shared SoA block header: entity slots in wire order + wire-id resolver. */
+export interface SoAColumns {
+  /** Entity slots (bitECS eids) in wire order. */
+  eids: ArrayLike<number>;
+  /** Wire id for a slot. Called once per row. */
+  wireIdOf(eid: number): bigint;
+}
+
+/** SoA Transform block: field stores indexed by entity slot. */
+export interface TransformSoA extends SoAColumns {
+  px: ArrayLike<number>; py: ArrayLike<number>; pz: ArrayLike<number>;
+  qx: ArrayLike<number>; qy: ArrayLike<number>; qz: ArrayLike<number>; qw: ArrayLike<number>;
+  sx: ArrayLike<number>; sy: ArrayLike<number>; sz: ArrayLike<number>;
+}
+
+/** SoA Velocity block: field stores indexed by entity slot. */
+export interface VelocitySoA extends SoAColumns {
+  lx: ArrayLike<number>; ly: ArrayLike<number>; lz: ArrayLike<number>;
+  ax: ArrayLike<number>; ay: ArrayLike<number>; az: ArrayLike<number>;
+}
+
+/** SoA PlayerIntent block: field stores indexed by entity slot. */
+export interface IntentSoA extends SoAColumns {
+  mx: ArrayLike<number>; my: ArrayLike<number>; mz: ArrayLike<number>;
+  lookYaw: ArrayLike<number>; lookPitch: ArrayLike<number>;
+  jump: ArrayLike<number>; buttons: ArrayLike<number>;
+}
+
+/** SoA Chunk block: field stores indexed by entity slot. */
+export interface ChunkSoA extends SoAColumns {
+  chunkIdHi: ArrayLike<number>; chunkIdLo: ArrayLike<number>;
+  seedHi: ArrayLike<number>; seedLo: ArrayLike<number>;
+  lod: ArrayLike<number>;
+  /**
+   * Authoritative heights for a chunk slot, or null when the sender has
+   * no chunk source. Called at most once per chunk row, in wire order.
+   */
+  heightsOf?: (eid: number) => Float32Array | null;
+}
+
+/** SoA Health block: field stores indexed by entity slot. */
+export interface HealthSoA extends SoAColumns {
+  current: ArrayLike<number>; max: ArrayLike<number>;
+}
+
+/** SoA Stamina block: field stores indexed by entity slot. */
+export interface StaminaSoA extends SoAColumns {
+  current: ArrayLike<number>; max: ArrayLike<number>;
+}
+
+/** SoA CharacterRef block: field stores indexed by entity slot. */
+export interface CharacterRefSoA extends SoAColumns {
+  idHi: ArrayLike<number>; idLo: ArrayLike<number>;
+}
+
+/** SoA BodyConfig block: field stores indexed by entity slot. */
+export interface BodySoA extends SoAColumns {
+  shapeKind: ArrayLike<number>;
+  halfX: ArrayLike<number>; halfY: ArrayLike<number>; halfZ: ArrayLike<number>;
+  radius: ArrayLike<number>;
+  mass: ArrayLike<number>;
+  motionType: ArrayLike<number>;
+  layer: ArrayLike<number>;
+  friction: ArrayLike<number>;
+  restitution: ArrayLike<number>;
+}
+
+/** SoA AssetRef block: field stores indexed by entity slot. */
+export interface AssetSoA extends SoAColumns {
+  assetHash: ArrayLike<number>; variant: ArrayLike<number>;
+}
+
+/** SoA Locomotion block: field stores indexed by entity slot. */
+export interface LocomotionSoA extends SoAColumns {
+  mode: ArrayLike<number>; abilities: ArrayLike<number>; breath: ArrayLike<number>;
+}
+
+/** SoA Appearance block: the look string cannot come from a numeric store. */
+export interface AppearanceSoA extends SoAColumns {
+  /** Canonical look JSON for a slot. Called once per appearance row. */
+  lookOf(eid: number): string;
+}
+
+/** SoA Action block: field stores indexed by entity slot. */
+export interface ActionSoA extends SoAColumns {
+  move: ArrayLike<number>; started: ArrayLike<number>;
+  seq: ArrayLike<number>; yaw: ArrayLike<number>;
+}
+
+/** SoA Animation block: field stores indexed by entity slot. */
+export interface AnimationSoA extends SoAColumns {
+  clipId: ArrayLike<number>; startTick: ArrayLike<number>;
+  rate: ArrayLike<number>; layerMask: ArrayLike<number>;
+}
+
+/** Columnar view of world state for one tick. baseTick is 0 for snapshots. */
+export interface CollectedStateSoA {
+  tick: number;
+  baseTick: number;
+  transforms: TransformSoA;
+  velocities: VelocitySoA;
+  intents: IntentSoA;
+  chunks: ChunkSoA;
+  healths: HealthSoA;
+  staminas: StaminaSoA;
+  characterRefs: CharacterRefSoA;
+  bodies: BodySoA;
+  assets: AssetSoA;
+  locomotions: LocomotionSoA;
+  appearances: AppearanceSoA;
+  actions: ActionSoA;
+  animations: AnimationSoA;
+  spawned: ArrayLike<bigint>;
+  despawned: ArrayLike<bigint>;
+}
+
+/**
+ * Write a u64 id vector from an ArrayLike without materializing a
+ * bigint[] first. `start` is the generated `start*Vector` for the
+ * field; elements are written in reverse, mirroring the generated
+ * `create*Vector` helpers.
+ */
+function buildU64Vector(
+  b: flatbuffers.Builder,
+  ids: ArrayLike<bigint>,
+  start: (b: flatbuffers.Builder, n: number) => void,
+): number {
+  start(b, ids.length);
+  for (let i = ids.length - 1; i >= 0; i--) b.addInt64(ids[i]);
+  return b.endVector();
+}
+
+/**
+ * Write the entities vector for one SoA block: wire ids resolved on
+ * the fly, in reverse, mirroring the generated `createEntitiesVector`.
+ * No intermediate bigint[] gather.
+ */
+function buildEntitiesVectorSoA(
+  b: flatbuffers.Builder,
+  src: SoAColumns,
+  start: (b: flatbuffers.Builder, n: number) => void,
+): number {
+  const n = src.eids.length;
+  start(b, n);
+  for (let i = n - 1; i >= 0; i--) b.addInt64(src.wireIdOf(src.eids[i]));
+  return b.endVector();
+}
+
+function buildTransformBlockSoA(b: flatbuffers.Builder, src: TransformSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    Transform.startTransform(b);
+    Transform.addPosition(b, Vec3.createVec3(b, src.px[e], src.py[e], src.pz[e]));
+    Transform.addRotation(b, Quat.createQuat(b, src.qx[e], src.qy[e], src.qz[e], src.qw[e]));
+    Transform.addScale(b, Vec3.createVec3(b, src.sx[e], src.sy[e], src.sz[e]));
+    items[i] = Transform.endTransform(b);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => TransformBlock.startEntitiesVector(bb, k));
+  const vec = TransformBlock.createItemsVector(b, items);
+  TransformBlock.startTransformBlock(b);
+  TransformBlock.addEntities(b, entities);
+  TransformBlock.addItems(b, vec);
+  return TransformBlock.endTransformBlock(b);
+}
+
+function buildVelocityBlockSoA(b: flatbuffers.Builder, src: VelocitySoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    Velocity.startVelocity(b);
+    Velocity.addLinear(b, Vec3.createVec3(b, src.lx[e], src.ly[e], src.lz[e]));
+    Velocity.addAngular(b, Vec3.createVec3(b, src.ax[e], src.ay[e], src.az[e]));
+    items[i] = Velocity.endVelocity(b);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => VelocityBlock.startEntitiesVector(bb, k));
+  const vec = VelocityBlock.createItemsVector(b, items);
+  VelocityBlock.startVelocityBlock(b);
+  VelocityBlock.addEntities(b, entities);
+  VelocityBlock.addItems(b, vec);
+  return VelocityBlock.endVelocityBlock(b);
+}
+
+function buildIntentBlockSoA(b: flatbuffers.Builder, src: IntentSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = PlayerIntent.createPlayerIntent(
+      b,
+      Vec3.createVec3(b, src.mx[e], src.my[e], src.mz[e]),
+      src.lookYaw[e], src.lookPitch[e], src.jump[e] !== 0, src.buttons[e],
+    );
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => IntentBlock.startEntitiesVector(bb, k));
+  const vec = IntentBlock.createItemsVector(b, items);
+  IntentBlock.startIntentBlock(b);
+  IntentBlock.addEntities(b, entities);
+  IntentBlock.addItems(b, vec);
+  return IntentBlock.endIntentBlock(b);
+}
+
+function buildChunkBlockSoA(b: flatbuffers.Builder, src: ChunkSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    // The schema carries chunk_id/seed as full uint64 (bigint); the
+    // hi/lo split lives only in the bitECS component stores. Join with
+    // exact bigint math — mirroring the row path's joinU64 — NOT a
+    // double round-trip: hi * 2^32 exceeds 2^53 for large ids and a
+    // double would silently round (e.g. 0x123456789abcdef0n).
+    const chunkId = (BigInt(src.chunkIdHi[e] >>> 0) << 32n) | BigInt(src.chunkIdLo[e] >>> 0);
+    const seed = (BigInt(src.seedHi[e] >>> 0) << 32n) | BigInt(src.seedLo[e] >>> 0);
+    const heights = src.heightsOf?.(e) ?? null;
+    const heightsOff =
+      heights != null ? Chunk.createHeightsVector(b, heights) : 0;
+    items[i] = Chunk.createChunk(b, chunkId, seed, src.lod[e], heightsOff);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => ChunkBlock.startEntitiesVector(bb, k));
+  const vec = ChunkBlock.createItemsVector(b, items);
+  ChunkBlock.startChunkBlock(b);
+  ChunkBlock.addEntities(b, entities);
+  ChunkBlock.addItems(b, vec);
+  return ChunkBlock.endChunkBlock(b);
+}
+
+function buildHealthBlockSoA(b: flatbuffers.Builder, src: HealthSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = Health.createHealth(b, src.current[e], src.max[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => HealthBlock.startEntitiesVector(bb, k));
+  const vec = HealthBlock.createItemsVector(b, items);
+  HealthBlock.startHealthBlock(b);
+  HealthBlock.addEntities(b, entities);
+  HealthBlock.addItems(b, vec);
+  return HealthBlock.endHealthBlock(b);
+}
+
+function buildStaminaBlockSoA(b: flatbuffers.Builder, src: StaminaSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = Stamina.createStamina(b, src.current[e], src.max[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => StaminaBlock.startEntitiesVector(bb, k));
+  const vec = StaminaBlock.createItemsVector(b, items);
+  StaminaBlock.startStaminaBlock(b);
+  StaminaBlock.addEntities(b, entities);
+  StaminaBlock.addItems(b, vec);
+  return StaminaBlock.endStaminaBlock(b);
+}
+
+function buildCharacterRefBlockSoA(b: flatbuffers.Builder, src: CharacterRefSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    // Mirror the row path's double round-trip (see ChunkSoA): the row
+    // carries characterId as a JS number, so split the same way.
+    const characterId = src.idHi[e] * 4294967296 + src.idLo[e];
+    items[i] = CharacterRef.createCharacterRef(b, Math.floor(characterId / 4294967296), characterId % 4294967296);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => CharacterRefBlock.startEntitiesVector(bb, k));
+  const vec = CharacterRefBlock.createItemsVector(b, items);
+  CharacterRefBlock.startCharacterRefBlock(b);
+  CharacterRefBlock.addEntities(b, entities);
+  CharacterRefBlock.addItems(b, vec);
+  return CharacterRefBlock.endCharacterRefBlock(b);
+}
+
+function buildBodyBlockSoA(b: flatbuffers.Builder, src: BodySoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    BodyConfig.startBodyConfig(b);
+    BodyConfig.addShapeKind(b, src.shapeKind[e]);
+    BodyConfig.addHalfExtents(b, Vec3.createVec3(b, src.halfX[e], src.halfY[e], src.halfZ[e]));
+    BodyConfig.addRadius(b, src.radius[e]);
+    BodyConfig.addMass(b, src.mass[e]);
+    BodyConfig.addMotionType(b, src.motionType[e]);
+    BodyConfig.addLayer(b, src.layer[e]);
+    BodyConfig.addFriction(b, src.friction[e]);
+    BodyConfig.addRestitution(b, src.restitution[e]);
+    items[i] = BodyConfig.endBodyConfig(b);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => BodyConfigBlock.startEntitiesVector(bb, k));
+  const vec = BodyConfigBlock.createItemsVector(b, items);
+  BodyConfigBlock.startBodyConfigBlock(b);
+  BodyConfigBlock.addEntities(b, entities);
+  BodyConfigBlock.addItems(b, vec);
+  return BodyConfigBlock.endBodyConfigBlock(b);
+}
+
+function buildAssetRefBlockSoA(b: flatbuffers.Builder, src: AssetSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = AssetRef.createAssetRef(b, src.assetHash[e], src.variant[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => AssetRefBlock.startEntitiesVector(bb, k));
+  const vec = AssetRefBlock.createItemsVector(b, items);
+  AssetRefBlock.startAssetRefBlock(b);
+  AssetRefBlock.addEntities(b, entities);
+  AssetRefBlock.addItems(b, vec);
+  return AssetRefBlock.endAssetRefBlock(b);
+}
+
+function buildLocomotionBlockSoA(b: flatbuffers.Builder, src: LocomotionSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = Locomotion.createLocomotion(b, src.mode[e], src.abilities[e], src.breath[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => LocomotionBlock.startEntitiesVector(bb, k));
+  const vec = LocomotionBlock.createItemsVector(b, items);
+  LocomotionBlock.startLocomotionBlock(b);
+  LocomotionBlock.addEntities(b, entities);
+  LocomotionBlock.addItems(b, vec);
+  return LocomotionBlock.endLocomotionBlock(b);
+}
+
+function buildAppearanceBlockSoA(b: flatbuffers.Builder, src: AppearanceSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    items[i] = Appearance.createAppearance(b, b.createString(src.lookOf(src.eids[i])));
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => AppearanceBlock.startEntitiesVector(bb, k));
+  const vec = AppearanceBlock.createItemsVector(b, items);
+  AppearanceBlock.startAppearanceBlock(b);
+  AppearanceBlock.addEntities(b, entities);
+  AppearanceBlock.addItems(b, vec);
+  return AppearanceBlock.endAppearanceBlock(b);
+}
+
+function buildActionBlockSoA(b: flatbuffers.Builder, src: ActionSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = Action.createAction(b, src.move[e], src.started[e], src.seq[e], src.yaw[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => ActionBlock.startEntitiesVector(bb, k));
+  const vec = ActionBlock.createItemsVector(b, items);
+  ActionBlock.startActionBlock(b);
+  ActionBlock.addEntities(b, entities);
+  ActionBlock.addItems(b, vec);
+  return ActionBlock.endActionBlock(b);
+}
+
+function buildAnimationBlockSoA(b: flatbuffers.Builder, src: AnimationSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = Animation.createAnimation(b, src.clipId[e], src.startTick[e], src.rate[e], src.layerMask[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => AnimationBlock.startEntitiesVector(bb, k));
+  const vec = AnimationBlock.createItemsVector(b, items);
+  AnimationBlock.startAnimationBlock(b);
+  AnimationBlock.addEntities(b, entities);
+  AnimationBlock.addItems(b, vec);
+  return AnimationBlock.endAnimationBlock(b);
+}
+
+/**
+ * Encode a full Snapshot directly from columnar component stores.
+ * Byte-identical to `encodeSnapshot` for the same world state.
+ *
+ * Same builder-reuse contract as `encodeSnapshot`: pass a reused
+ * `flatbuffers.Builder` on hot paths; the returned Uint8Array is a
+ * view into that builder's buffer until the next encode.
+ */
+export function encodeSnapshotSoA(
+  s: CollectedStateSoA,
+  builder?: flatbuffers.Builder,
+): Uint8Array {
+  const b = builder ?? new flatbuffers.Builder(4096);
+  if (builder) builder.clear();
+  const t = buildTransformBlockSoA(b, s.transforms);
+  const v = buildVelocityBlockSoA(b, s.velocities);
+  const pi = buildIntentBlockSoA(b, s.intents);
+  const ch = buildChunkBlockSoA(b, s.chunks);
+  const h = buildHealthBlockSoA(b, s.healths);
+  const bd = buildBodyBlockSoA(b, s.bodies);
+  const ar = buildAssetRefBlockSoA(b, s.assets);
+  const lo = buildLocomotionBlockSoA(b, s.locomotions);
+  const ap = buildAppearanceBlockSoA(b, s.appearances);
+  const ac = buildActionBlockSoA(b, s.actions);
+  const st = buildStaminaBlockSoA(b, s.staminas);
+  const cr = buildCharacterRefBlockSoA(b, s.characterRefs);
+  const an = buildAnimationBlockSoA(b, s.animations);
+  const spawned = buildU64Vector(b, s.spawned, (bb, k) => Snapshot.startSpawnedVector(bb, k));
+  const despawned = buildU64Vector(b, s.despawned, (bb, k) => Snapshot.startDespawnedVector(bb, k));
+  Snapshot.startSnapshot(b);
+  Snapshot.addTick(b, BigInt(s.tick));
+  Snapshot.addTransforms(b, t);
+  Snapshot.addVelocities(b, v);
+  Snapshot.addIntents(b, pi);
+  Snapshot.addChunks(b, ch);
+  Snapshot.addHealths(b, h);
+  Snapshot.addBodies(b, bd);
+  Snapshot.addAssets(b, ar);
+  Snapshot.addSpawned(b, spawned);
+  Snapshot.addDespawned(b, despawned);
+  Snapshot.addLocomotions(b, lo);
+  Snapshot.addAppearances(b, ap);
+  Snapshot.addActions(b, ac);
+  Snapshot.addStaminas(b, st);
+  Snapshot.addCharacterRefs(b, cr);
+  Snapshot.addAnimations(b, an);
+  const root = Snapshot.endSnapshot(b);
+  Snapshot.finishSnapshotBuffer(b, root);
+  return b.asUint8Array();
+}
+
+/**
+ * Encode a changed-only Delta directly from columnar component stores.
+ * Byte-identical to `encodeDelta` for the same world state.
+ */
+export function encodeDeltaSoA(s: CollectedStateSoA): Uint8Array {
+  const b = new flatbuffers.Builder(1024);
+  const t = buildTransformBlockSoA(b, s.transforms);
+  const v = buildVelocityBlockSoA(b, s.velocities);
+  const pi = buildIntentBlockSoA(b, s.intents);
+  const ch = buildChunkBlockSoA(b, s.chunks);
+  const h = buildHealthBlockSoA(b, s.healths);
+  const bd = buildBodyBlockSoA(b, s.bodies);
+  const ar = buildAssetRefBlockSoA(b, s.assets);
+  const lo = buildLocomotionBlockSoA(b, s.locomotions);
+  const ap = buildAppearanceBlockSoA(b, s.appearances);
+  const ac = buildActionBlockSoA(b, s.actions);
+  const st = buildStaminaBlockSoA(b, s.staminas);
+  const cr = buildCharacterRefBlockSoA(b, s.characterRefs);
+  const an = buildAnimationBlockSoA(b, s.animations);
+  const spawned = buildU64Vector(b, s.spawned, (bb, k) => Delta.startSpawnedVector(bb, k));
+  const despawned = buildU64Vector(b, s.despawned, (bb, k) => Delta.startDespawnedVector(bb, k));
+  Delta.startDelta(b);
+  Delta.addTick(b, BigInt(s.tick));
+  Delta.addBaseTick(b, BigInt(s.baseTick));
+  Delta.addTransforms(b, t);
+  Delta.addVelocities(b, v);
+  Delta.addIntents(b, pi);
+  Delta.addChunks(b, ch);
+  Delta.addHealths(b, h);
+  Delta.addBodies(b, bd);
+  Delta.addAssets(b, ar);
+  Delta.addSpawned(b, spawned);
+  Delta.addDespawned(b, despawned);
+  Delta.addLocomotions(b, lo);
+  Delta.addAppearances(b, ap);
+  Delta.addActions(b, ac);
+  Delta.addStaminas(b, st);
+  Delta.addCharacterRefs(b, cr);
+  Delta.addAnimations(b, an);
+  const root = Delta.endDelta(b);
+  b.finish(root);
+  return b.asUint8Array();
+}

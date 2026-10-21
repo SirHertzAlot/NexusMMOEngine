@@ -85,6 +85,10 @@ export {
   attachChunkHeights,
   encodeSnapshot,
   encodeDelta,
+  encodeSnapshotFromSim,
+  encodeDeltaFromSim,
+  encodeSnapshotSoA,
+  encodeDeltaSoA,
   decodeSnapshot,
   decodeDelta,
   DeltaTracker,
@@ -101,6 +105,7 @@ export type {
   AppearanceRow,
   ActionRow,
   CollectedState,
+  CollectedStateSoA,
   DiffResult,
 } from "./snapshot.js";
 

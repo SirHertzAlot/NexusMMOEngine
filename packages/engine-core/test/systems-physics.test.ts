@@ -69,17 +69,21 @@ class MockBackend implements PhysicsBackend {
     this.removedBatches.push(ids);
   }
 
+  // Phase 2 (zero-copy): reads Transform directly from the passed
+  // component arrays at eids[k], mirroring the native backend.
   syncBodies(
-    count: number, entityIds: BigUint64Array, pos: Float32Array,
-    _quat: Float32Array, _lin: Float32Array, _ang: Float32Array,
-    flags: Uint8Array, _dt: number,
+    count: number, entityIds: BigUint64Array, eids: Int32Array,
+    px: Float32Array, py: Float32Array, pz: Float32Array,
+    _qx: Float32Array, _qy: Float32Array, _qz: Float32Array,
+    _qw: Float32Array, flags: Uint8Array, _dt: number,
   ): void {
     const fl: number[] = [];
     for (let k = 0; k < count; k++) {
       const b = this.bodies.get(entityIds[k]);
       assert.ok(b, "sync of unknown body");
       if (b.motion === MotionType.Kinematic || (flags[k] & 0x01) !== 0) {
-        b.px = pos[k * 3]; b.py = pos[k * 3 + 1]; b.pz = pos[k * 3 + 2];
+        const e = eids[k];
+        b.px = px[e]; b.py = py[e]; b.pz = pz[e];
       }
       fl.push(flags[k]);
     }
@@ -96,17 +100,24 @@ class MockBackend implements PhysicsBackend {
     }
   }
 
+  // Phase 2 (zero-copy): writes results directly into the passed
+  // component arrays at eids[k], mirroring the native backend.
   copyResults(
-    count: number, entityIds: BigUint64Array, pos: Float32Array,
-    quat: Float32Array, linVel: Float32Array, angVel: Float32Array,
+    count: number, entityIds: BigUint64Array, eids: Int32Array,
+    px: Float32Array, py: Float32Array, pz: Float32Array,
+    qx: Float32Array, qy: Float32Array, qz: Float32Array,
+    qw: Float32Array, lx: Float32Array, ly: Float32Array,
+    lz: Float32Array, ax: Float32Array, ay: Float32Array,
+    az: Float32Array,
   ): void {
     for (let k = 0; k < count; k++) {
       const b = this.bodies.get(entityIds[k]);
       assert.ok(b, "copy of unknown body");
-      pos[k * 3] = b.px; pos[k * 3 + 1] = b.py; pos[k * 3 + 2] = b.pz;
-      quat[k * 4 + 3] = 1;
-      linVel[k * 3] = b.lx; linVel[k * 3 + 1] = b.ly; linVel[k * 3 + 2] = b.lz;
-      angVel[k * 3] = 0; angVel[k * 3 + 1] = 0; angVel[k * 3 + 2] = 0;
+      const e = eids[k];
+      px[e] = b.px; py[e] = b.py; pz[e] = b.pz;
+      qx[e] = 0; qy[e] = 0; qz[e] = 0; qw[e] = 1;
+      lx[e] = b.lx; ly[e] = b.ly; lz[e] = b.lz;
+      ax[e] = 0; ay[e] = 0; az[e] = 0;
     }
   }
 

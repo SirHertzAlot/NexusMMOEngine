@@ -37,24 +37,48 @@ export interface AddBodiesDescriptor {
 export declare class PhysicsWorld {
   addBodies(desc: AddBodiesDescriptor): void;
   removeBodies(entityIds: BigUint64Array): void;
+  /**
+   * Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
+   * component arrays, indexed by eids[i]. entityIds[i] is the wire id
+   * for the native body lookup.
+   */
   syncBodies(
     count: number,
     entityIds: BigUint64Array,
-    pos: Float32Array,
-    quat: Float32Array,
-    linVel: Float32Array,
-    angVel: Float32Array,
+    eids: Int32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    qx: Float32Array,
+    qy: Float32Array,
+    qz: Float32Array,
+    qw: Float32Array,
     flags: Uint8Array,
     dt: number,
   ): void;
   step(dt: number, subSteps: number): void;
+  /**
+   * Phase 2 (zero-copy): px..az are the SAB-backed bitECS Transform +
+   * Velocity component arrays, indexed by eids[i]. C++ writes results
+   * directly into them; no dense scratch, no JS copy-back.
+   */
   copyResults(
     count: number,
     entityIds: BigUint64Array,
-    pos: Float32Array,
-    quat: Float32Array,
-    linVel: Float32Array,
-    angVel: Float32Array,
+    eids: Int32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    qx: Float32Array,
+    qy: Float32Array,
+    qz: Float32Array,
+    qw: Float32Array,
+    lx: Float32Array,
+    ly: Float32Array,
+    lz: Float32Array,
+    ax: Float32Array,
+    ay: Float32Array,
+    az: Float32Array,
   ): void;
   bodyCount(): number;
   /**
