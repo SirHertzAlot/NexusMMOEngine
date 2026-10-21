@@ -168,25 +168,76 @@ export class VendorSystem implements SimSystem {
   }
 
   /**
+   * The region-side terms of a buy (slice A2): every check that does
+   * not move value — the vendor exists and is open, the buyer is in
+   * reach, the def is stocked and not sold out. The fleet-mode commit
+   * path validates with this, then routes the value movement itself
+   * through the world tier; `buy` (standalone) settles locally.
+   */
+  buyTerms(
+    sim: SimWorld,
+    buyerEntity: number,
+    vendorEntity: number,
+    def: number,
+  ): { error: string } | { vendorId: string; price: number } {
+    const v = this.vendorOf(vendorEntity);
+    if (!v) return { error: "not a vendor" };
+    if (!v.enabled) return { error: "that shop is closed" };
+    if (!this.inReach(sim, buyerEntity, vendorEntity)) return { error: "too far from the vendor" };
+    const line = v.stock.find((s) => s.def === def);
+    if (!line) return { error: "the vendor doesn't sell that" };
+    if (line.quantity === 0) return { error: "out of stock" };
+    return { vendorId: v.id, price: line.price };
+  }
+
+  /**
+   * Record a settled buy against the vendor's stock (slice A2): a
+   * finite line decrements. Called only after the transaction has
+   * committed — locally in `buy`, at the world tier in fleet mode.
+   */
+  commitBuyStock(vendorId: string, def: number): void {
+    const line = this.defs.get(vendorId)?.stock.find((s) => s.def === def);
+    if (line && line.quantity > 0) line.quantity -= 1;
+  }
+
+  /**
    * Buy one unit of `def` from the vendor at `vendorEntity`. Returns an
    * error string, or null on success.
    */
   buy(sim: SimWorld, buyerChar: number, buyerEntity: number, vendorEntity: number, def: number, tick: number): string | null {
-    const v = this.vendorOf(vendorEntity);
-    if (!v) return "not a vendor";
-    if (!v.enabled) return "that shop is closed";
-    if (!this.inReach(sim, buyerEntity, vendorEntity)) return "too far from the vendor";
-    const line = v.stock.find((s) => s.def === def);
-    if (!line) return "the vendor doesn't sell that";
-    if (line.quantity === 0) return "out of stock";
-    if (!this.wallet.spend(buyerChar, line.price, tick)) return "not enough gold";
+    const terms = this.buyTerms(sim, buyerEntity, vendorEntity, def);
+    if ("error" in terms) return terms.error;
+    if (!this.wallet.spend(buyerChar, terms.price, tick)) return "not enough gold";
     if (!this.items.give(buyerChar, def)) {
       // Refund: the bag was full.
-      this.wallet.grant(buyerChar, line.price, tick);
+      this.wallet.grant(buyerChar, terms.price, tick);
       return "your bag is full";
     }
-    if (line.quantity > 0) line.quantity -= 1;
+    this.commitBuyStock(terms.vendorId, def);
     return null;
+  }
+
+  /**
+   * The region-side terms of a sell (slice A2): like `buyTerms`, every
+   * check that does not move value, ending with the buyback price.
+   */
+  sellTerms(
+    sim: SimWorld,
+    sellerEntity: number,
+    vendorEntity: number,
+    itemId: number,
+  ): { error: string } | { vendorId: string; def: number; price: number } {
+    const v = this.vendorOf(vendorEntity);
+    if (!v) return { error: "not a vendor" };
+    if (!v.enabled) return { error: "that shop is closed" };
+    if (!this.inReach(sim, sellerEntity, vendorEntity)) return { error: "too far from the vendor" };
+    const def = this.items.defOf(itemId);
+    if (def < 0) return { error: "no such item" };
+    const line = v.stock.find((s) => s.def === def);
+    if (!line) return { error: "the vendor doesn't want that" };
+    const price = Math.floor(line.price * v.buybackRate);
+    if (price <= 0) return { error: "the vendor doesn't want that" };
+    return { vendorId: v.id, def, price };
   }
 
   /**
@@ -194,18 +245,10 @@ export class VendorSystem implements SimSystem {
    * error string, or null on success.
    */
   sell(sim: SimWorld, sellerChar: number, sellerEntity: number, vendorEntity: number, itemId: number, tick: number): string | null {
-    const v = this.vendorOf(vendorEntity);
-    if (!v) return "not a vendor";
-    if (!v.enabled) return "that shop is closed";
-    if (!this.inReach(sim, sellerEntity, vendorEntity)) return "too far from the vendor";
-    const def = this.items.defOf(itemId);
-    if (def < 0) return "no such item";
-    const line = v.stock.find((s) => s.def === def);
-    if (!line) return "the vendor doesn't want that";
-    const price = Math.floor(line.price * v.buybackRate);
-    if (price <= 0) return "the vendor doesn't want that";
+    const terms = this.sellTerms(sim, sellerEntity, vendorEntity, itemId);
+    if ("error" in terms) return terms.error;
     if (!this.items.take(sellerChar, itemId)) return "you don't have that";
-    this.wallet.grant(sellerChar, price, tick);
+    this.wallet.grant(sellerChar, terms.price, tick);
     return null;
   }
 

@@ -142,6 +142,17 @@ export const WorldSpecSchema = z
             wander: z.number().min(0).default(300),
             /** Size of bays and headlands, metres. */
             wanderScale: z.number().positive().default(700),
+            /** "peninsula" runs off the world's far edge; "island" floats in open sea with sea on every side; "continents" is several large landmasses joined by land bridges or split by sea; "pangaea" is one supercontinent with ragged coasts and inland seas (its size is set by continentCover). */
+            shape: z.enum(["peninsula", "island", "continents", "pangaea"]).default("peninsula"),
+            /** Island only: radius of the main island, 0.2..1.2 of half the world; past 1 it touches the edges and only the corners stay sea. */
+            islandRadius: z.number().min(0.2).max(1.2).default(0.8),
+            /** Continents only: how many large landmasses, and the share of the world they cover together (0.8 measures about 70% land: most chances for settlements). */
+            continents: z.number().int().min(2).max(9).default(4),
+            /** Continents only: sea between neighbours (half-world units); negative overlaps them, joining them with land bridges. */
+            continentGap: z.number().min(-0.4).max(0.4).default(-0.08),
+            continentCover: z.number().min(0.2).max(0.9).default(0.8),
+            /** Island and continents: how many smaller islands lie in the sea around the main landmass(es). */
+            satellites: z.number().int().min(0).max(24).default(0),
           })
           .strict()
           .prefault({}),
@@ -189,6 +200,21 @@ export const WorldSpecSchema = z
         ridges: z.number().min(0).max(1).default(0.45),
         /** Smallest distance between a range's axis and the sea, metres. */
         coastClearance: z.number().min(0).default(350),
+        /**
+         * Crest shaping, off by default (the old rounded quartic profile):
+         * `sharpness` 0..1 blends the cross-section toward a pointed ridge
+         * (a crest line instead of a dome); `detailOctaves` layers a
+         * domain-warped ridged multifractal over the range (1..5 octaves, 0
+         * = none) at `detailStrength` of the range height.
+         */
+        crest: z
+          .object({
+            sharpness: z.number().min(0).max(1).default(0),
+            detailOctaves: z.number().int().min(0).max(5).default(0),
+            detailStrength: z.number().min(0).max(1).default(0.5),
+          })
+          .strict()
+          .prefault({}),
       })
       .strict()
       .prefault({}),
@@ -218,6 +244,8 @@ export const WorldSpecSchema = z
         recycling: z.number().min(0).max(0.95).default(0.35),
         /** Humidity (0..1) of air blowing in over the land edges. */
         inlandHumidity: z.number().min(0).max(1).default(0.35),
+        /** Global humidity dial: scales the rain and the moisture of the air over the land (1 = as specified, 0 = a dry world). */
+        humidity: z.number().min(0).max(2).default(1),
         /** The edge the sun stands over at noon (the equator side). */
         sunFrom: Side.default("south"),
         /** Noon sun elevation over the sea edge and over the far edge, degrees. */
@@ -253,6 +281,95 @@ export const WorldSpecSchema = z
         /** River incision (stream power): passes and strength. */
         fluvialPasses: z.number().int().min(0).default(12),
         fluvialStrength: z.number().min(0).default(0.004),
+        /**
+         * Stream-power incision (implicit, detachment-limited, off with
+         * passes 0): valleys cut in proportion to k * area^areaExponent *
+         * slope, so channels deepen while summits (no drainage area) stay.
+         * `maxCutM` caps how deep any cell may be cut in total.
+         */
+        incision: z
+          .object({
+            passes: z.number().int().min(0).default(0),
+            k: z.number().min(0).default(0.0012),
+            areaExponent: z.number().min(0.1).max(1).default(0.5),
+            maxCutM: z.number().positive().default(40),
+          })
+          .strict()
+          .prefault({}),
+        /**
+         * Bare rock holds a steeper face than scree: above `rockFromM` the
+         * angle of repose rises to `rockTalusDeg` over `rockSpanM` metres of
+         * height, so crests stay sharp while the slopes below weather to
+         * `talusDeg`. Omitted = one angle everywhere (the old behaviour).
+         */
+        rockTalusDeg: z.number().gt(0).lt(90).optional(),
+        rockFromM: z.number().default(150),
+        rockSpanM: z.number().positive().default(100),
+      })
+      .strict()
+      .prefault({}),
+
+    /**
+     * Plains and terraces (plains.ts), off by default: low ground becomes
+     * rolling plains and a stair of flat treads between short risers, with
+     * flats along rivers and the shore, so there is land to build on.
+     * Ground above `fadeToM` is never touched. Worlds opting in must be
+     * re-baked.
+     */
+    plains: z
+      .object({
+        enabled: z.boolean().default(false),
+        /** Smoothing of the land the treads are cut from (about one standard deviation), metres. */
+        smoothM: z.number().positive().default(300),
+        /** Height above the sea where the pass starts to fade out, and where it is gone (mountains stay as they are), metres. */
+        fadeFromM: z.number().min(0).default(45),
+        fadeToM: z.number().positive().default(100),
+        /** Ground steeper than this (rise over run, %) starts to keep its shape; gone at `slopeToPct`. */
+        slopeFromPct: z.number().min(0).default(6),
+        slopeToPct: z.number().positive().default(12),
+        /** Rolling undulation on the plains: height (± metres) and wavelength (metres). */
+        undulationM: z.number().min(0).default(1.5),
+        undulationScaleM: z.number().positive().default(1200),
+        treads: z
+          .object({
+            /** Wanted tread width, metres: the step height follows the local climb (steeper land, taller steps). */
+            treadWidthM: z.number().positive().default(1000),
+            /** Step height bounds, metres. */
+            stepMinM: z.number().positive().default(2),
+            stepMaxM: z.number().positive().default(24),
+            /** Share of a step that is tread (the rest is riser), 0.3..0.95. */
+            treadShare: z.number().min(0.3).max(0.95).default(0.9),
+            /** How much of the land's climb a tread keeps (0 = dead level), 0..0.5: treads drain gently. */
+            tilt: z.number().min(0).max(0.5).default(0.05),
+            /** Share of the land where the steps dissolve into a plain slope: ramps up every riser, 0..0.6. */
+            rampShare: z.number().min(0).max(0.6).default(0.15),
+            /** Steepest riser, degrees: where the land's own climb would make a steeper one, the step fades back toward the plain slope. */
+            maxRiserDeg: z.number().positive().max(60).default(22),
+          })
+          .strict()
+          .prefault({}),
+        /** River floodplain: flat to this distance from a river (metres), graded this much (rise over run). */
+        floodplain: z
+          .object({
+            widthM: z.number().min(0).default(500),
+            gradient: z.number().min(0).default(0.003),
+            /** Ground more than this far (metres) off the plain is valley wall and keeps its shape. */
+            riseM: z.number().positive().default(3),
+          })
+          .strict()
+          .prefault({}),
+        /** Coastal shelf (and lake shores): the same, from the water's edge. */
+        coast: z
+          .object({
+            widthM: z.number().min(0).default(800),
+            gradient: z.number().min(0).default(0.003),
+            /** The plain starts this far above the water, metres. */
+            marginM: z.number().min(0.3).default(0.8),
+            /** Ground more than this far (metres) off the plain keeps its shape. */
+            riseM: z.number().positive().default(3),
+          })
+          .strict()
+          .prefault({}),
       })
       .strict()
       .prefault({}),
@@ -296,6 +413,8 @@ export const WorldSpecSchema = z
         craterDepth: z.number().min(0).default(45),
         /** Vent heat at the summit (keeps the crater clear of ice), °C, fading to 0 at the base. */
         heatC: z.number().min(0).default(10),
+        /** Radial gullies cut in the cone's flanks (0 = the smooth young cone, 1 = deeply dissected). */
+        gullies: z.number().min(0).max(1).default(0),
       })
       .strict()
       .prefault({}),
@@ -360,11 +479,20 @@ export const WorldSpecSchema = z
     }
     const { waterEdge, tip } = w.land.coast;
     const sidesTurn = 1 - 2 * (waterEdge - 0.25);
-    if (waterEdge > 0.25 && tip <= sidesTurn) {
+    if (w.land.coast.shape === "peninsula" && waterEdge > 0.25 && tip <= sidesTurn) {
       ctx.addIssue({
         code: "custom",
         message: `land.coast.tip (${tip}) must reach past where the side edges turn to sea (${sidesTurn.toFixed(2)} for waterEdge ${waterEdge})`,
       });
+    }
+    if (w.plains.fadeFromM >= w.plains.fadeToM) {
+      ctx.addIssue({ code: "custom", message: `plains.fadeFromM (${w.plains.fadeFromM}) must be below plains.fadeToM (${w.plains.fadeToM})` });
+    }
+    if (w.plains.slopeFromPct >= w.plains.slopeToPct) {
+      ctx.addIssue({ code: "custom", message: `plains.slopeFromPct (${w.plains.slopeFromPct}) must be below plains.slopeToPct (${w.plains.slopeToPct})` });
+    }
+    if (w.plains.treads.stepMinM > w.plains.treads.stepMaxM) {
+      ctx.addIssue({ code: "custom", message: "plains.treads.stepMinM must be <= stepMaxM" });
     }
     const spawnBiome = w.spawn?.biome;
     if (spawnBiome !== undefined && !ids.has(spawnBiome)) {

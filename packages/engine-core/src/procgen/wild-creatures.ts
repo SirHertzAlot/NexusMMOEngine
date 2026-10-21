@@ -35,7 +35,11 @@ export interface WildCreaturesOptions {
   chunkWorldSize: number;
   biomeAt: (x: number, z: number) => string | null;
   /** Packs whose centre is here are skipped: in water, or anywhere else creatures can't stand. Default: none. */
-  blocked?: (x: number, z: number) => boolean;
+  blocked?: (x: number, z: number, aquatic: boolean) => boolean;
+  /** More packs from another planner (the wildlife table, wildlife-table.ts), added to the registry's. */
+  extraPlan?: (cx: number, cz: number) => PlannedPack[];
+  /** One line per pack spawned (MMO_WILDLIFE_LOG=1). */
+  log?: (line: string) => void;
 }
 
 export interface WildCreaturesStats {
@@ -55,14 +59,14 @@ export class WildCreatures implements ChunkContentsHook {
 
   /** The packs chunk (cx, cz) holds, whether or not their kinds can spawn yet. */
   plan(cx: number, cz: number): PlannedPack[] {
-    return planChunkPacks(this.opts.registry, {
+    return [...planChunkPacks(this.opts.registry, {
       seed: this.opts.seed,
       cx,
       cz,
       chunkWorldSize: this.opts.chunkWorldSize,
       biomeAt: this.opts.biomeAt,
       spawnable: (k) => this.opts.spawner.has(k),
-    });
+    }), ...(this.opts.extraPlan?.(cx, cz) ?? [])];
   }
 
   load(sim: SimWorld, cx: number, cz: number): void {
@@ -70,9 +74,11 @@ export class WildCreatures implements ChunkContentsHook {
     if (this.byChunk.has(key)) return;
     const ids: number[] = [];
     for (const p of this.plan(cx, cz)) {
-      if (this.opts.blocked?.(p.x, p.z)) continue;
-      ids.push(...this.opts.spawner.spawnPack(sim, p.kind, p.x, p.z, p.pack));
+      if (this.opts.blocked?.(p.x, p.z, p.aquatic === true)) continue;
+      const made = this.opts.spawner.spawnPack(sim, p.kind, p.x, p.z, p.pack);
+      ids.push(...made);
       this.counters.spawned++;
+      this.opts.log?.(`[wildlife] ${p.kind} x${made.length} at ${p.x.toFixed(0)}, ${p.z.toFixed(0)} (${p.biome}${p.aquatic ? ", water" : ""})`);
     }
     if (ids.length > 0) this.byChunk.set(key, ids);
   }

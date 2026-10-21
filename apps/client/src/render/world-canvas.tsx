@@ -33,13 +33,15 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Effect } from "postprocessing";
 import { PerformanceMonitor } from "@react-three/drei";
-import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type WorldMap } from "@mmo-engine/protocol";
+import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type DungeonLook, type WorldMap } from "@mmo-engine/protocol";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
+import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
+import { DungeonAmbience } from "./dungeon-look.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
@@ -53,12 +55,19 @@ import { installBvh } from "./bvh.js";
 import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
 import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
-import { ParticleFx, WEATHER_RULES, budgetMultiplierForTier } from "./fx/particle-fx.js";
-import { biomeAt, weatherAt } from "./fx/weather.js";
+import { ParticleFx, budgetMultiplierForTier } from "./fx/particle-fx.js";
+import { biomeAt } from "./fx/weather.js";
+import { FieldService, type ClimateParams } from "./weather/field-service.js";
+import { overcastFromSample, type OvercastParams } from "./weather/sky-overcast.js";
+import { CloudVolume } from "./weather/cloud-volume.js";
+import { RainCurtain } from "./weather/rain-curtain.js";
+import { WeatherFeel } from "./weather/weather-feel.js";
+import type { AudioEngine } from "../audio/engine.js";
 import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
+import { StreamingCoordinator } from "./terrain/streaming-coordinator.js";
 import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
@@ -76,6 +85,12 @@ const CAMERA_NEAR = 0.5;
 const CAMERA_FAR = FOG_FAR + 800;
 
 const splashAt = new THREE.Vector3();
+/** Scratch overcast params (no per-frame allocation). */
+const overcastScratch: OvercastParams = { coverage: 0, sunDim: 1, fogPull: 1, skyDarken: 1 };
+/** Scratch weather object for ParticleFx.update (no per-frame allocation). */
+const weatherScratch = { kind: null as "rain" | "snow" | "ash" | null, intensity: 0, windX: 0, windZ: 0 };
+/** Grey colour the fog lerps toward under overcast. */
+const OVERCAST_GREY = new THREE.Color(0.45, 0.45, 0.5);
 
 /** Once-a-second numbers for the HUD. */
 export interface HudData {
@@ -138,12 +153,16 @@ export interface WorldCanvasProps {
   onMend?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** The resource node in gathering range changed (its wire id; null: none in range). */
+  onNearResource?: (node: bigint | null) => void;
   /** The quest log key (P1/U11). */
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
   onNearNpc?: (npc: string | null) => void;
-  /** Inside a dungeon instance (D4): draw a stand-in floor, since the walls aren't on the wire yet. Read on mount. */
+  /** Inside a dungeon instance (D4): a stand-in floor under the shell, and the run's look applies. Read on mount. */
   instance?: boolean;
+  /** The run's look (the server's `look`, sent on entering; null: none yet): dark fantasy lighting and matte stone. Read each frame. */
+  getLook?: () => DungeonLook | null;
   /** The dungeon entrance the player stands in changed (an entrance id; null: none). */
   onNearEntrance?: (entrance: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
@@ -154,6 +173,10 @@ export interface WorldCanvasProps {
   onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
+  /** Optional ref to receive the streaming coordinator for region-change notifications. */
+  streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
+  /** The audio engine for weather sound (rain bed). */
+  audio?: AudioEngine | null;
 }
 
 /** The player's health and the target, as the frames show them (U12a). */
@@ -172,6 +195,8 @@ export interface NearDrop {
 
 /** How near a drop must be for the prompt: a little inside the server's range (rules loot.pickupRange, 2.5 m). */
 const PICKUP_PROMPT_RANGE = 2.3;
+/** How near a resource node's edge must be for the prompt: inside the server's reach (2.5 m). */
+const GATHER_PROMPT_RANGE = 2.3;
 
 installBvh();
 
@@ -285,8 +310,16 @@ interface Runtime {
   layer: EntityLayer;
   input: InputState;
   drops: DropLabels;
+  resources: ResourceNodes;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
+  streaming: StreamingCoordinator;
+  weather: FieldService;
+  clouds: CloudVolume;
+  rain: RainCurtain;
+  weatherFeel: WeatherFeel;
+  /** Inside a dungeon run: its look (lights, fog, matte stone). */
+  ambience: DungeonAmbience | null;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
@@ -306,10 +339,12 @@ function MirrorWorld({
   onTreat,
   onMend,
   onNearDrop,
+  onNearResource,
   onQuests,
   onNearNpc,
   onNearEntrance,
   instance,
+  getLook,
   combat,
   onCombat,
   view: viewProp,
@@ -317,14 +352,16 @@ function MirrorWorld({
   settings,
   screen,
   physicalSky,
+  streamingRef,
+  audio,
 }: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -337,6 +374,7 @@ function MirrorWorld({
   const loop = useRef({
     pointerMoved: false,
     nearDrop: null as bigint | null,
+    nearResource: null as bigint | null,
     nearNpc: null as string | null,
     nearEntrance: null as string | null,
     hp: NaN,
@@ -354,6 +392,8 @@ function MirrorWorld({
   const raycaster = useRef(Object.assign(new THREE.Raycaster(), { firstHitOnly: true }));
   // For CombatFeedback.prune, made once per client rather than every frame.
   const hasEntity = useCallback((wid: bigint) => client.state.entities.has(wid), [client]);
+  // Chunk world size for streaming (updated when world loads).
+  const chunkWorldSizeRef = useRef(client.world?.chunkWorldSize ?? 16);
 
   // Create the world's renderers and bind input; the same effect disposes
   // them, so StrictMode's mount/unmount/mount never sees a disposed one.
@@ -371,7 +411,10 @@ function MirrorWorld({
     const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16, workers);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
-    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers });
+    // A dungeon run's look: hides what a run has no use for, and colours the shell's material slots (matte stone).
+    const ambience = instance ? new DungeonAmbience(scene) : null;
+    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers, ...(ambience ? { materialFor: ambience.materialFor } : {}) });
+    if (ambience) layer.matte();
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -379,11 +422,23 @@ function MirrorWorld({
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
+    const resources = new ResourceNodes();
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group);
-    // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
-    // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
+    // Weather: the field service (worker-advanced), cloud volumes, and rain curtain.
+    const weatherMap = map ?? { cell: 8, width: 1, depth: 1, originX: 0, originZ: 0, heights: new Float32Array([0]), biome: new Uint8Array([0]), biomes: ["plains"], river: new Uint8Array([0]) };
+    // The server sends a `climate` block in the welcome's WorldInfo; fall back to defaults.
+    const worldClimate = (world as { climate?: ClimateParams } | undefined)?.climate ?? null;
+    const weather = new FieldService(weatherMap, workers ?? null, 1234, worldClimate);
+    const clouds = new CloudVolume(10);
+    const rain = new RainCurtain();
+    const weatherFeel = new WeatherFeel();
+    weatherFeel.setAudio(audio ?? null);
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, clouds.group, rain.mesh);
+    ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
+    // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
+    // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
+    // floors, ceilings) arrives as an ordinary asset entity and draws over it.
     const floor = instance ? makeFloor() : null;
     if (floor) scene.add(floor);
 
@@ -402,10 +457,23 @@ function MirrorWorld({
         else if (action === "mend") latest.current.onMend?.();
         else if (action === "quests") latest.current.onQuests?.();
         else if (drops.nearest !== null) client.pickup(drops.nearest);
+        else if (resources.nearest !== null) client.gather(resources.nearest);
         else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
         else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
       },
     });
+    // Chunk streaming: request tiles around the camera from the region server.
+    chunkWorldSizeRef.current = client.world?.chunkWorldSize ?? 16;
+    const streaming = new StreamingCoordinator(terrain, { radius: 6, handoffMargin: 2 });
+    streaming.attachClient(client);
+    // Expose streaming coordinator for region-change notifications from App.
+    if (streamingRef) streamingRef.current = streaming;
+    // Register the initial world as a region. The welcome includes bounds and endpoint.
+    if (world) {
+      // Use the URL the client connected to (stored in the client's socket URL).
+      const endpoint = (client as unknown as { socket?: { url?: string } }).socket?.url ?? "ws://localhost:7777";
+      streaming.addRegion("main", world.bounds, endpoint);
+    }
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       camDistance.current = clampCamDistance(camDistance.current + e.deltaY * 0.01);
@@ -441,7 +509,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -450,6 +518,7 @@ function MirrorWorld({
     }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
+      const streaming = rt.current?.streaming;
       rt.current = null;
       unbind();
       canvas.removeEventListener("wheel", onWheel);
@@ -475,9 +544,13 @@ function MirrorWorld({
       drops.dispose();
       npcs.dispose();
       entrances.dispose();
+      streaming?.streamManager.dispose();
       terrain.dispose();
       workers?.dispose();
       water.dispose();
+      clouds.dispose();
+      rain.dispose();
+      ambience?.dispose();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
@@ -544,6 +617,13 @@ function MirrorWorld({
       combat.prune(hasEntity, now / 1000);
       r.layer.setFlashes(combat.flashUntil);
     }
+    // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
+    r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
+    r.layer.setDepleted(r.resources.depleted);
+    if (r.resources.nearest !== l.nearResource) {
+      l.nearResource = r.resources.nearest;
+      latest.current.onNearResource?.(l.nearResource);
+    }
     r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
@@ -609,6 +689,12 @@ function MirrorWorld({
       r.layer.setPlayerHidden(false);
       followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
     }
+    // Chunk streaming: track camera position and velocity for demand + handoff prediction.
+    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
+    if (r.layer.player && me) {
+      const playerVel = me.velocity ?? { lx: 0, ly: 0, lz: 0 };
+      r.streaming.trackPlayer(camera.position.x, camera.position.z, playerVel.lx, playerVel.lz, chunkWorldSizeRef.current);
+    }
     const surface = r.water.surfaceAt(camera.position.x, camera.position.z);
     screen.current.underwater = surface === null ? 0 : underwaterAmount(surface - camera.position.y);
 
@@ -620,26 +706,53 @@ function MirrorWorld({
     r.sky.setDomeVisible(!physical);
     physical?.setSun(r.sky.sunDir);
     if (fog) {
-      fog.near = physical ? CAMERA_FAR * 10 : FOG_NEAR;
-      fog.far = physical ? CAMERA_FAR * 20 : FOG_FAR;
+      // Always use the configured fog range for culling; physical sky adds
+      // aerial perspective visually but we still need fog to limit far draws.
+      fog.near = FOG_NEAR;
+      fog.far = FOG_FAR;
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
-    // Weather where the camera is, the same on every client (biome + tick),
-    // unless the server forces the sky (`weather`).
-    const tick = client.serverTick;
-    const hz = client.tickHz || 30;
-    const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
-    const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
+    const seconds = now / 1000;
+    // Weather from the field service (worker-advanced simulation).
+    r.weather.setOverride(client.weatherOverride === "auto" ? null : client.weatherOverride);
+    const wxSample = r.weather.sample(camera.position.x, camera.position.z);
+    // Overcast blend from the weather sample.
+    const overcast = overcastFromSample(wxSample, overcastScratch);
+    if (fog) {
+      fog.near = FOG_NEAR * overcast.fogPull;
+      fog.far = FOG_FAR * overcast.fogPull;
+      fog.color.lerp(OVERCAST_GREY, overcast.coverage * 0.5);
+    }
+    // Dim the sun and sky lights under overcast.
+    r.sky.sunLight.intensity *= overcast.sunDim;
+    r.sky.skyLight.intensity *= overcast.skyDarken;
+    // Cloud volumes follow the camera, driven by the field's moisture.
+    const moisture = r.weather.moistureAt(camera.position.x, camera.position.z);
+    r.clouds.update(camera.position, moisture, overcast.coverage, wxSample.windX, wxSample.windZ, delta, camera.quaternion);
+    // Rain curtain: visible only when raining.
+    const rainIntensity = wxSample.kind === "rain" ? wxSample.intensity : 0;
+    r.rain.update(seconds, wxSample.windX, wxSample.windZ, rainIntensity, camera.position);
+    // A dungeon run's look wins over the sky: hidden sky and weather, near-black fog, torchlight on the nearest torches.
+    if (r.ambience) {
+      r.ambience.apply(getLook?.() ?? null);
+      r.ambience.update(camera.position, r.layer.emitterPositions(r.ambience.emitterHashes), seconds);
+    }
+    // WX1 couplings: wet look, water ripples, and rain audio.
+    r.weatherFeel.update(wxSample, delta, r.water, r.terrain);
     // Splashes where the player swims and moves.
-    const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
     const v = me?.velocity;
     if (swimming && r.layer.player && v && Math.hypot(v.lx, v.lz) > 0.5) {
       const surface = r.water.surfaceAt(r.layer.player.x, r.layer.player.z);
       if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
     }
-    r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+    // Pass the weather (with wind vector) to the particle system.
+    weatherScratch.kind = wxSample.kind === "clear" ? null : wxSample.kind;
+    weatherScratch.intensity = wxSample.intensity;
+    weatherScratch.windX = wxSample.windX;
+    weatherScratch.windZ = wxSample.windZ;
+    r.particles.update(Math.min(delta, 0.25), camera.position, weatherScratch);
 
     // A step sounds each stride on the ground, on the surface of the biome underfoot (content/materials).
     const onStep = latest.current.onFootstep;
@@ -652,7 +765,6 @@ function MirrorWorld({
       }
     }
 
-    const seconds = now / 1000;
     r.terrain.update(camera.position);
     r.water.update(seconds);
     updateTerrainFx(seconds);
@@ -688,7 +800,7 @@ function MirrorWorld({
         mode: me?.locomotion?.mode ?? null,
         breath: me?.locomotion?.breath ?? 1,
         time: client.day ? formatTimeOfDay(timeOfDay) : null,
-        weather: weather.intensity > 0 ? weather.kind : null,
+        weather: wxSample.intensity > 0 ? wxSample.kind : null,
         hp: me?.health?.current ?? null,
         maxHp: me?.health?.max ?? null,
         sp: me?.stamina?.current ?? null,
@@ -701,10 +813,11 @@ function MirrorWorld({
   return null;
 }
 
-/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across. */
+/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across, 6 cm under the shell's own floor (no z-fighting). */
 function makeFloor(): THREE.Group {
   const g = new THREE.Group();
   g.name = "instance-floor";
+  g.position.y = -0.06;
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 }));
   plane.rotation.x = -Math.PI / 2;
   const grid = new THREE.GridHelper(400, 200, 0x4a4038, 0x3a332c);

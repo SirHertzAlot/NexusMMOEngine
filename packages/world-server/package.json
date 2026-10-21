@@ -18,6 +18,7 @@
     "build": "tsc -p tsconfig.json",
     "db": "surreal start --user root --pass root --bind 127.0.0.1:8000 rocksdb:./data/surrealdb",
     "server": "npm run build && node dist/src/server.js",
+    "sidecar": "npm run build && node dist/src/host-sidecar.js",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\""
   },
   "type": "module",

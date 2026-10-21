@@ -1,0 +1,1491 @@
+{
+  "version": "settlement-rules/11",
+  "demographics": {
+    "householdSizeX10": 44,
+    "ageShares": {
+      "child": 280,
+      "adolescent": 170,
+      "adult": 410,
+      "elder": 140
+    },
+    "laborParticipationPermille": 850,
+    "classShares": {
+      "peasant": 610,
+      "artisan": 230,
+      "merchant": 100,
+      "clergy": 25,
+      "guard": 25,
+      "noble": 10
+    }
+  },
+  "districtShares": {
+    "housing": 560,
+    "agriculture": 165,
+    "shopping": 110,
+    "manufacturing": 165
+  },
+  "layout": {
+    "block": [
+      4,
+      2
+    ],
+    "parcelSizeMm": [
+      12000,
+      20000
+    ],
+    "streetWidthMm": 6000,
+    "parcelsPerHouseholdPermille": 1550,
+    "farmSurplusPermille": 1250,
+    "familiesPerHomeX10": 20,
+    "worksBufferMm": 40000,
+    "homeSpacePermille": 1250
+  },
+  "farming": {
+    "acresPerPersonX10": 15,
+    "fieldAspect": 2
+  },
+  "watch": {
+    "post": "guardhouse",
+    "headquarters": "watch_hq",
+    "gaol": "gaol",
+    "villageEntrancePosts": 2,
+    "marketPlotsPerPost": 10,
+    "poorHomesPerPost": 20,
+    "lowIncomePermille": 300,
+    "highIncomePermille": 200
+  },
+  "mastery": {
+    "oneInPeople": 100,
+    "yield": 4,
+    "landFactor": 4,
+    "residentsPerMaster": 10,
+    "visitorsPerMaster": 50,
+    "communityMasters": 3,
+    "grandMaster": {
+      "oneInMasters": 20,
+      "pupils": 30,
+      "pupilsPerWorkplace": 5
+    },
+    "professions": {
+      "farming": {
+        "archetype": "farmstead",
+        "master": "master_farmstead",
+        "weight": 6
+      },
+      "smithing": {
+        "archetype": "smithy",
+        "master": "master_smithy",
+        "weight": 2
+      },
+      "crafting": {
+        "archetype": "workshop",
+        "master": "master_workshop",
+        "weight": 3
+      },
+      "baking": {
+        "archetype": "bakery",
+        "master": "master_bakery",
+        "weight": 2
+      }
+    }
+  },
+  "homeless": {
+    "permille": [
+      10,
+      30
+    ],
+    "minPopulation": 150,
+    "shelters": [
+      "hospital",
+      "monastery",
+      "chapel",
+      "parish_church",
+      "cathedral"
+    ]
+  },
+  "openGround": {
+    "park": "park",
+    "lot": "empty_lot",
+    "parkPerPeople": 600,
+    "lotsPermille": {
+      "growing": 50,
+      "stable": 15,
+      "shrinking": 80
+    }
+  },
+  "props": {
+    "sizesMm": {
+      "street_lamp": [
+        300,
+        300,
+        3500
+      ],
+      "bench": [
+        1800,
+        600,
+        900
+      ],
+      "fountain": [
+        4000,
+        4000,
+        2500
+      ],
+      "statue": [
+        1500,
+        1500,
+        4000
+      ],
+      "barrel": [
+        700,
+        700,
+        1000
+      ],
+      "crate": [
+        900,
+        900,
+        900
+      ],
+      "planter": [
+        1200,
+        500,
+        600
+      ],
+      "log_pile": [
+        3000,
+        900,
+        1100
+      ],
+      "ore_cart": [
+        1400,
+        900,
+        1100
+      ],
+      "fish_rack": [
+        2400,
+        700,
+        1600
+      ],
+      "grain_sacks": [
+        1600,
+        900,
+        800
+      ],
+      "guild_banner": [
+        1000,
+        400,
+        4500
+      ]
+    },
+    "lampEveryPlots": 2,
+    "lampInsetMm": 500,
+    "squareBenchSpacingMm": 8000,
+    "squareBenchInsetMm": 2500,
+    "fountainMinPopulation": 1000,
+    "statueMinPopulation": 2000,
+    "parkBenches": 2,
+    "stores": [
+      "tavern",
+      "inn",
+      "warehouse",
+      "bakery",
+      "master_bakery"
+    ],
+    "planters": [
+      "high"
+    ],
+    "dressing": {
+      "sawmill": "log_pile",
+      "mine": "ore_cart",
+      "fishery": "fish_rack",
+      "master_fishery": "fish_rack",
+      "mill": "grain_sacks",
+      "guild_hall": "guild_banner"
+    },
+    "terraces": {
+      "archetypes": [
+        "town_hall",
+        "guild_hall",
+        "parish_church",
+        "cathedral",
+        "library",
+        "townhouse"
+      ],
+      "heightMm": 600,
+      "stepRiseMm": 200,
+      "stepTreadMm": 350,
+      "stairsWidthMm": 3000
+    }
+  },
+  "industry": {
+    "industries": {
+      "timber": {
+        "biomes": {
+          "forest": 1000,
+          "rainforest": 1000,
+          "swamp": 500
+        },
+        "water": {},
+        "fertility": false,
+        "priorityPermille": 1000,
+        "profession": {
+          "name": "crafting",
+          "archetype": "workshop",
+          "master": "master_workshop"
+        },
+        "workplace": "sawmill",
+        "products": [
+          {
+            "material": "ash-log",
+            "tier": 1,
+            "biomes": [
+              "forest",
+              "plains"
+            ],
+            "minSharePermille": 1,
+            "water": [],
+            "export": "ash furniture"
+          },
+          {
+            "material": "yew-log",
+            "tier": 2,
+            "biomes": [
+              "forest",
+              "swamp"
+            ],
+            "minSharePermille": 200,
+            "water": [],
+            "export": "yew longbows and cabinets"
+          },
+          {
+            "material": "ironwood-log",
+            "tier": 3,
+            "biomes": [
+              "rainforest"
+            ],
+            "minSharePermille": 1,
+            "water": [],
+            "export": "ironwood furniture"
+          },
+          {
+            "material": "heartwood",
+            "tier": 4,
+            "biomes": [
+              "rainforest"
+            ],
+            "minSharePermille": 400,
+            "water": [],
+            "export": "heartwood furniture and staves"
+          }
+        ],
+        "good": "timber",
+        "basePrice": 40,
+        "depletePermillePerYear": 12,
+        "regrowPermillePerYear": 30
+      },
+      "mining": {
+        "biomes": {
+          "mountains": 1000,
+          "volcanic": 1000,
+          "glacier": 600,
+          "desert": 500,
+          "tundra": 500
+        },
+        "water": {},
+        "fertility": false,
+        "priorityPermille": 1000,
+        "profession": {
+          "name": "smithing",
+          "archetype": "smithy",
+          "master": "master_smithy"
+        },
+        "workplace": "mine",
+        "products": [
+          {
+            "material": "iron-ore",
+            "tier": 1,
+            "biomes": [
+              "mountains",
+              "tundra",
+              "desert"
+            ],
+            "minSharePermille": 1,
+            "water": [],
+            "export": "iron blades and tools"
+          },
+          {
+            "material": "silver-ore",
+            "tier": 2,
+            "biomes": [
+              "mountains"
+            ],
+            "minSharePermille": 250,
+            "water": [],
+            "export": "silver-inlaid blades"
+          },
+          {
+            "material": "fire-crystal",
+            "tier": 3,
+            "biomes": [
+              "volcanic"
+            ],
+            "minSharePermille": 1,
+            "water": [],
+            "export": "fire-forged blades"
+          },
+          {
+            "material": "frost-crystal",
+            "tier": 3,
+            "biomes": [
+              "glacier"
+            ],
+            "minSharePermille": 1,
+            "water": [],
+            "export": "frost-tempered blades"
+          }
+        ],
+        "good": "metal",
+        "basePrice": 90,
+        "depletePermillePerYear": 10,
+        "regrowPermillePerYear": 0
+      },
+      "fishing": {
+        "biomes": {},
+        "water": {
+          "sea": 1000,
+          "lake": 700,
+          "river": 500
+        },
+        "fertility": false,
+        "priorityPermille": 1000,
+        "profession": {
+          "name": "fishing",
+          "archetype": "fishery",
+          "master": "master_fishery"
+        },
+        "workplace": "fishery",
+        "products": [
+          {
+            "material": "sea-fish",
+            "tier": 1,
+            "biomes": [],
+            "minSharePermille": 1,
+            "water": [
+              "sea"
+            ],
+            "export": "salted sea fish"
+          },
+          {
+            "material": "river-fish",
+            "tier": 1,
+            "biomes": [],
+            "minSharePermille": 1,
+            "water": [
+              "lake",
+              "river"
+            ],
+            "export": "smoked river fish"
+          }
+        ],
+        "good": "fish",
+        "basePrice": 30,
+        "depletePermillePerYear": 15,
+        "regrowPermillePerYear": 80
+      },
+      "farming": {
+        "biomes": {},
+        "water": {},
+        "fertility": true,
+        "priorityPermille": 600,
+        "profession": {
+          "name": "farming",
+          "archetype": "farmstead",
+          "master": "master_farmstead"
+        },
+        "workplace": "mill",
+        "products": [
+          {
+            "material": "grain",
+            "tier": 1,
+            "biomes": [
+              "plains"
+            ],
+            "minSharePermille": 1,
+            "water": [],
+            "export": "flour and ale"
+          }
+        ],
+        "good": "grain",
+        "basePrice": 20,
+        "depletePermillePerYear": 0,
+        "regrowPermillePerYear": 0
+      }
+    },
+    "fullSharePermille": 500,
+    "minAbundancePermille": 150,
+    "capFloorPermille": 400,
+    "specialtyPermille": 600,
+    "exportPerPeople": 150,
+    "trade": {
+      "loadsPerWorkplace": 12,
+      "peoplePerLoad": 60,
+      "pricePermillePerKm": 40,
+      "seaPermille": 400,
+      "shortagePermille": 1500
+    },
+    "history": {
+      "switchPermille": 250,
+      "growthPermillePerYear": 30,
+      "shrinkPermillePerYear": 50,
+      "stablePermille": 50
+    },
+    "guild": {
+      "archetype": "guild_hall",
+      "minPopulation": 400,
+      "ranks": [
+        {
+          "title": "Initiate",
+          "reputation": 0,
+          "tier": 1,
+          "pupil": false
+        },
+        {
+          "title": "Journeyman",
+          "reputation": 1000,
+          "tier": 2,
+          "pupil": false
+        },
+        {
+          "title": "Craftsman",
+          "reputation": 3000,
+          "tier": 3,
+          "pupil": false
+        },
+        {
+          "title": "Pupil of a master",
+          "reputation": 6000,
+          "tier": 4,
+          "pupil": true
+        },
+        {
+          "title": "Master of the guild",
+          "reputation": 12000,
+          "tier": 5,
+          "pupil": true
+        }
+      ]
+    },
+    "resources": {
+      "nodes": {
+        "timber": {
+          "kind": "tree_stand",
+          "skill": "Woodcutting",
+          "sizeMm": [
+            6000,
+            6000,
+            9000
+          ],
+          "stock": 40,
+          "regrowHours": 72
+        },
+        "mining": {
+          "kind": "ore_vein",
+          "skill": "Mining",
+          "sizeMm": [
+            3000,
+            2500,
+            1800
+          ],
+          "stock": 60,
+          "regrowHours": 0
+        },
+        "fishing": {
+          "kind": "fishing_spot",
+          "skill": "Fishing",
+          "sizeMm": [
+            4000,
+            4000,
+            300
+          ],
+          "stock": 30,
+          "regrowHours": 6
+        }
+      },
+      "perWorkplace": 3,
+      "nearby": 6,
+      "spacingMm": 25000,
+      "bandMm": 400000
+    }
+  },
+  "settings": {
+    "access": {
+      "port": {
+        "maxPopulation": 3500,
+        "masteryPermille": 1500,
+        "trendPermille": [
+          500,
+          100
+        ],
+        "densityPermille": [
+          1050,
+          1200
+        ]
+      },
+      "river": {
+        "maxPopulation": 3000,
+        "masteryPermille": 1200,
+        "trendPermille": [
+          400,
+          150
+        ],
+        "densityPermille": [
+          950,
+          1100
+        ]
+      },
+      "road": {
+        "maxPopulation": 2500,
+        "masteryPermille": 1000,
+        "trendPermille": [
+          300,
+          250
+        ],
+        "densityPermille": [
+          850,
+          1000
+        ]
+      },
+      "remote": {
+        "maxPopulation": 600,
+        "masteryPermille": 250,
+        "trendPermille": [
+          150,
+          450
+        ],
+        "densityPermille": [
+          600,
+          800
+        ]
+      }
+    },
+    "remoteWalkM": 1500,
+    "remotePressurePermille": 250
+  },
+  "worship": {
+    "archetypes": [
+      "chapel",
+      "parish_church",
+      "cathedral"
+    ],
+    "sharePermille": 500
+  },
+  "architecture": {
+    "storeyM": 2.7,
+    "groundCeilingM": 2.44,
+    "roofM": 2,
+    "characterM": 1.8
+  },
+  "fortification": {
+    "minHouseholds": 45,
+    "setbackMm": 4000,
+    "thicknessMm": 2000,
+    "heightM": 6,
+    "pieceMm": 6000,
+    "towerMm": 5000,
+    "towerHeightM": 9,
+    "towerSpacingMm": 40000,
+    "gateHeightM": 8
+  },
+  "archetypes": {
+    "house": {
+      "kinds": [
+        "housing"
+      ],
+      "weight": 10,
+      "households": 2,
+      "workers": 0,
+      "feeds": 0,
+      "floors": 2,
+      "role": "",
+      "shop": false,
+      "entrances": 2,
+      "capacity": 12
+    },
+    "tenement": {
+      "kinds": [
+        "housing"
+      ],
+      "weight": 6,
+      "households": 3,
+      "workers": 0,
+      "feeds": 0,
+      "floors": 3,
+      "role": "",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 16,
+      "wealth": [
+        "low"
+      ]
+    },
+    "park": {
+      "kinds": [
+        "housing",
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 0,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 0.5,
+      "role": "",
+      "shop": false,
+      "entrances": 4,
+      "capacity": 150
+    },
+    "empty_lot": {
+      "kinds": [
+        "housing",
+        "shopping"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 0,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 0.1,
+      "role": "",
+      "shop": false,
+      "entrances": 4
+    },
+    "garden": {
+      "kinds": [
+        "housing"
+      ],
+      "weight": 8,
+      "households": 0,
+      "workers": 0,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 0.5,
+      "role": "",
+      "shop": false,
+      "entrances": 1
+    },
+    "townhouse": {
+      "kinds": [
+        "civic",
+        "shopping",
+        "entertainment",
+        "education"
+      ],
+      "weight": 3,
+      "households": 1,
+      "workers": 0,
+      "feeds": 0,
+      "floors": 3,
+      "role": "",
+      "shop": false,
+      "entrances": 2,
+      "capacity": 8
+    },
+    "artisan_house": {
+      "kinds": [
+        "housing"
+      ],
+      "weight": 3,
+      "households": 1,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 2,
+      "role": "artisan",
+      "shop": false,
+      "entrances": 2,
+      "capacity": 8
+    },
+    "farmstead": {
+      "kinds": [
+        "agriculture"
+      ],
+      "weight": 10,
+      "households": 1,
+      "workers": 2,
+      "feeds": 30,
+      "floors": 2,
+      "role": "farmer",
+      "shop": false,
+      "entrances": 3,
+      "capacity": 8
+    },
+    "master_farmstead": {
+      "kinds": [
+        "agriculture"
+      ],
+      "weight": 1,
+      "households": 1,
+      "workers": 3,
+      "feeds": 120,
+      "floors": 2,
+      "role": "master farmer",
+      "shop": false,
+      "entrances": 3,
+      "capacity": 10
+    },
+    "master_smithy": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 4,
+      "role": "master blacksmith",
+      "shop": true,
+      "entrances": 2
+    },
+    "master_workshop": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 4,
+      "feeds": 0,
+      "floors": 2,
+      "role": "master craftsman",
+      "shop": true,
+      "entrances": 2
+    },
+    "sawmill": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 4,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 4.5,
+      "role": "sawyer",
+      "shop": false,
+      "entrances": 2
+    },
+    "mine": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 6,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 4,
+      "role": "miner",
+      "shop": false,
+      "entrances": 1
+    },
+    "fishery": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 4,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 3.5,
+      "role": "fisherman",
+      "shop": true,
+      "entrances": 2
+    },
+    "master_fishery": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 4,
+      "feeds": 0,
+      "floors": 2,
+      "role": "master fisherman",
+      "shop": true,
+      "entrances": 2
+    },
+    "guild_hall": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 3,
+      "storeyM": 4.5,
+      "role": "guild clerk",
+      "shop": true,
+      "entrances": 2,
+      "capacity": 120
+    },
+    "master_bakery": {
+      "kinds": [
+        "shopping"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 2,
+      "role": "master baker",
+      "shop": true,
+      "entrances": 2,
+      "capacity": 16
+    },
+    "granary": {
+      "kinds": [
+        "agriculture"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 6,
+      "role": "granary keeper",
+      "shop": false,
+      "entrances": 1
+    },
+    "mill": {
+      "kinds": [
+        "agriculture",
+        "manufacturing"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 3,
+      "storeyM": 3.5,
+      "role": "miller",
+      "shop": false,
+      "entrances": 2
+    },
+    "shop": {
+      "kinds": [
+        "shopping"
+      ],
+      "weight": 5,
+      "households": 1,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 3,
+      "role": "shopkeeper",
+      "shop": true,
+      "entrances": 2,
+      "capacity": 12
+    },
+    "bakery": {
+      "kinds": [
+        "shopping"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 2,
+      "role": "baker",
+      "shop": true,
+      "entrances": 2,
+      "capacity": 10
+    },
+    "smithy": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 4,
+      "role": "blacksmith",
+      "shop": true,
+      "entrances": 2
+    },
+    "workshop": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 4,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 2,
+      "role": "craftsman",
+      "shop": true,
+      "entrances": 2
+    },
+    "market": {
+      "kinds": [
+        "shopping"
+      ],
+      "weight": 6,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 1,
+      "role": "trader",
+      "shop": true,
+      "entrances": 4,
+      "capacity": 200,
+      "minAccess": 2
+    },
+    "tavern": {
+      "kinds": [
+        "entertainment"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 3,
+      "role": "innkeeper",
+      "shop": true,
+      "entrances": 2,
+      "capacity": 40
+    },
+    "inn": {
+      "kinds": [
+        "entertainment"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 3,
+      "role": "innkeeper",
+      "shop": true,
+      "entrances": 2,
+      "capacity": 50
+    },
+    "theatre": {
+      "kinds": [
+        "entertainment"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 9,
+      "role": "player",
+      "shop": true,
+      "entrances": 3,
+      "capacity": 400
+    },
+    "bathhouse": {
+      "kinds": [
+        "entertainment"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 5,
+      "role": "bath keeper",
+      "shop": true,
+      "entrances": 1,
+      "capacity": 30
+    },
+    "chapel": {
+      "kinds": [
+        "housing",
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 8,
+      "role": "priest",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 120
+    },
+    "parish_church": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 11,
+      "role": "priest",
+      "shop": false,
+      "entrances": 2,
+      "capacity": 400
+    },
+    "churchyard": {
+      "kinds": [
+        "civic",
+        "housing"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 1,
+      "role": "sexton",
+      "shop": false,
+      "entrances": 1
+    },
+    "rectory": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 1,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 2,
+      "role": "clerk",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 8
+    },
+    "hospital": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 3.5,
+      "role": "infirmarian",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 30
+    },
+    "cathedral": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 6,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 18,
+      "role": "canon",
+      "shop": false,
+      "entrances": 3,
+      "capacity": 2000
+    },
+    "monastery": {
+      "kinds": [
+        "agriculture"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 8,
+      "feeds": 20,
+      "floors": 2,
+      "storeyM": 4,
+      "role": "monk",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 60
+    },
+    "apothecary": {
+      "kinds": [
+        "shopping"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 2,
+      "role": "apothecary",
+      "shop": true,
+      "entrances": 1,
+      "capacity": 6
+    },
+    "town_hall": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 3,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 4,
+      "role": "clerk",
+      "shop": false,
+      "entrances": 2,
+      "capacity": 100
+    },
+    "guardhouse": {
+      "kinds": [
+        "housing",
+        "civic",
+        "shopping",
+        "entertainment",
+        "education"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 2,
+      "role": "town guard",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 6
+    },
+    "watch_hq": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 4,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 3.5,
+      "role": "captain of the watch",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 20
+    },
+    "gaol": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 3.5,
+      "role": "gaoler",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 24
+    },
+    "barracks": {
+      "kinds": [
+        "civic"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 8,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 3.5,
+      "role": "soldier",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 60
+    },
+    "school": {
+      "kinds": [
+        "education"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 2,
+      "feeds": 0,
+      "floors": 2,
+      "role": "teacher",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 40
+    },
+    "library": {
+      "kinds": [
+        "education"
+      ],
+      "weight": 1,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 2,
+      "storeyM": 4,
+      "role": "scribe",
+      "shop": false,
+      "entrances": 1,
+      "capacity": 30
+    },
+    "warehouse": {
+      "kinds": [
+        "manufacturing"
+      ],
+      "weight": 2,
+      "households": 0,
+      "workers": 1,
+      "feeds": 0,
+      "floors": 1,
+      "storeyM": 5,
+      "role": "porter",
+      "shop": false,
+      "entrances": 2
+    }
+  },
+  "required": {
+    "market": {
+      "min": 1,
+      "perPopulation": 400
+    },
+    "chapel": {
+      "min": 1,
+      "max": 3,
+      "perPopulation": 600,
+      "maxPerPopulation": 250
+    },
+    "granary": {
+      "min": 1,
+      "perPopulation": 500,
+      "maxPerPopulation": 200
+    },
+    "mill": {
+      "min": 1,
+      "perPopulation": 600,
+      "maxPerPopulation": 300
+    },
+    "bakery": {
+      "min": 1,
+      "perPopulation": 250,
+      "maxPerPopulation": 120
+    },
+    "smithy": {
+      "min": 1,
+      "perPopulation": 400,
+      "maxPerPopulation": 150
+    },
+    "tavern": {
+      "min": 1,
+      "perPopulation": 300,
+      "maxPerPopulation": 150,
+      "visitors": true
+    },
+    "inn": {
+      "minPopulation": 250,
+      "perPopulation": 500,
+      "maxPerPopulation": 300,
+      "visitors": true
+    },
+    "theatre": {
+      "minPopulation": 600,
+      "perPopulation": 2000,
+      "max": 2
+    },
+    "bathhouse": {
+      "minPopulation": 400,
+      "perPopulation": 1000,
+      "max": 3
+    },
+    "town_hall": {
+      "minPopulation": 200,
+      "min": 1,
+      "max": 1
+    },
+    "guild_hall": {
+      "max": 0
+    },
+    "parish_church": {
+      "minPopulation": 200,
+      "min": 1,
+      "perPopulation": 1500,
+      "max": 4
+    },
+    "churchyard": {
+      "min": 1,
+      "perPopulation": 1500,
+      "max": 4
+    },
+    "rectory": {
+      "minPopulation": 200,
+      "min": 1,
+      "perPopulation": 1500,
+      "max": 4
+    },
+    "hospital": {
+      "minPopulation": 400,
+      "perPopulation": 1500,
+      "max": 3
+    },
+    "cathedral": {
+      "minPopulation": 2000,
+      "min": 1,
+      "max": 1
+    },
+    "monastery": {
+      "minPopulation": 1000,
+      "min": 1,
+      "max": 1
+    },
+    "apothecary": {
+      "minPopulation": 250,
+      "perPopulation": 600,
+      "maxPerPopulation": 400
+    },
+    "guardhouse": {
+      "min": 1
+    },
+    "watch_hq": {
+      "minPopulation": 200,
+      "min": 1,
+      "max": 1
+    },
+    "gaol": {
+      "minPopulation": 200,
+      "min": 1,
+      "perPopulation": 2500,
+      "max": 2
+    },
+    "barracks": {
+      "minPopulation": 1200,
+      "perPopulation": 2500,
+      "max": 2
+    },
+    "school": {
+      "min": 1,
+      "perPopulation": 500,
+      "maxPerPopulation": 350
+    },
+    "library": {
+      "minPopulation": 800,
+      "perPopulation": 2000,
+      "max": 2
+    },
+    "warehouse": {
+      "min": 1,
+      "perPopulation": 500,
+      "maxPerPopulation": 150
+    },
+    "workshop": {
+      "perPopulation": 150
+    }
+  },
+  "forbiddenAdjacent": [
+    [
+      "smithy",
+      "granary"
+    ],
+    [
+      "smithy",
+      "chapel"
+    ],
+    [
+      "smithy",
+      "bakery"
+    ],
+    [
+      "tavern",
+      "school"
+    ],
+    [
+      "tavern",
+      "chapel"
+    ],
+    [
+      "tavern",
+      "parish_church"
+    ],
+    [
+      "smithy",
+      "churchyard"
+    ],
+    [
+      "tavern",
+      "churchyard"
+    ]
+  ],
+  "sites": {
+    "maxSlopePermille": 150,
+    "fertilityPermille": {
+      "plains": 1000,
+      "forest": 450,
+      "rainforest": 350,
+      "swamp": 150,
+      "beach": 100,
+      "desert": 60,
+      "tundra": 80
+    },
+    "waterRangeM": [
+      60,
+      800
+    ],
+    "resourcePermille": {
+      "forest": 1000,
+      "rainforest": 700,
+      "swamp": 300
+    },
+    "resourceRangeM": 600,
+    "minSpacingM": 1500,
+    "minPressurePermille": 150,
+    "maxElevationM": 60,
+    "lowlandBandM": 40,
+    "minElevationM": 4,
+    "maxReliefM": 3,
+    "ridgeHeightM": 120,
+    "mountainClearanceM": 300,
+    "walkSlopeDeg": 25,
+    "requireReachable": true
+  },
+  "places": {
+    "routes": {
+      "extraLinksPerTown": 1,
+      "maxExtraLinkKm": 6,
+      "stride": 4,
+      "walkSlopeDeg": 25,
+      "riverCost": 8,
+      "roadDiscount": 0.35
+    },
+    "roadside": {
+      "outpostSpacingM": 2400,
+      "townClearM": 350,
+      "innMinTownDistM": 900,
+      "innBesideOutpostM": 70,
+      "shackSpacingM": 1300,
+      "shackOffsetM": [
+        25,
+        60
+      ],
+      "campSpacingM": 2600,
+      "campWaterM": 250,
+      "campClearOfGuardM": 700
+    },
+    "homesteads": {
+      "perTown": 3,
+      "familyMin": 2,
+      "familyMax": 10,
+      "spacingM": 700,
+      "townClearM": 700,
+      "routeBandM": [
+        120,
+        1400
+      ],
+      "maxSlopePermille": 100,
+      "clearM": 48,
+      "farmBiomes": [
+        "plains",
+        "forest",
+        "rainforest"
+      ],
+      "ranchBiomes": [
+        "plains"
+      ],
+      "ranchShare": 0.7
+    }
+  }
+}

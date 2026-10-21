@@ -2,9 +2,11 @@
 /**
  * `npm run build`: build the whole project, in order.
  *
- *   1. every workspace's own build: the FlatBuffers bindings (codegen), the
- *      TypeScript packages, the edge and the server, and the production
- *      bundles of the player's client and the editor
+ *   1. every workspace's own build, once each and in dependency order: the
+ *      FlatBuffers bindings (codegen), the TypeScript packages, the edge and
+ *      the server, and the production bundles of the player's client and the
+ *      editor (MMO_ORDERED_BUILD turns the per-package dependency builds,
+ *      scripts/dep-build.mjs, into no-ops; each tsconfig is incremental)
  *   2. the native addons under packages/addons (node-gyp: a full rebuild
  *      when there is no build yet, else an incremental one)
  *   3. the native entries of the modules under modules/ (`npm run build:native`)
@@ -31,7 +33,33 @@ function built(dir) {
   return existsSync(out) && readdirSync(out).some((f) => f.endsWith(".node"));
 }
 
-npm("build", ["run", "build", "--workspaces", "--if-present"], { hint: "a workspace failed to build; the error is above" });
+/** Workspaces with a build script, dependencies first (declared ones plus those a script builds first). */
+function buildOrder() {
+  const { workspaces } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const pkgs = new Map();
+  for (const w of workspaces) {
+    const file = join(root, w, "package.json");
+    if (!existsSync(file)) continue;
+    const pkg = JSON.parse(readFileSync(file, "utf8"));
+    const text = Object.values(pkg.scripts ?? {}).join(" ");
+    const deps = new Set([...Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }), ...text.matchAll(/dep-build\.mjs (\S+)/g)].map((d) => (Array.isArray(d) ? d[1] : d)));
+    pkgs.set(pkg.name, { deps, builds: Boolean(pkg.scripts?.build) });
+  }
+  const order = [];
+  const seen = new Set();
+  const visit = (name) => {
+    if (seen.has(name) || !pkgs.has(name)) return;
+    seen.add(name);
+    for (const d of pkgs.get(name).deps) visit(d);
+    if (pkgs.get(name).builds) order.push(name);
+  };
+  for (const name of pkgs.keys()) visit(name);
+  return order;
+}
+
+for (const name of buildOrder()) {
+  npm("build", ["run", "build", `--workspace=${name}`], { env: { MMO_ORDERED_BUILD: "1" }, hint: `${name} failed to build; the error is above` });
+}
 
 if (skipNative) {
   log("done (native addons and modules skipped)");

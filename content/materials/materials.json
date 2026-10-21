@@ -227,5 +227,23 @@
       "footstep": "footstep-stone"
     }
   },
-  "footstepStride": 1.7
+  "footstepStride": 1.7,
+  "shading": {
+    "kinds": {
+      "model": [
+        "toon"
+      ],
+      "placeholder": [
+        "toon"
+      ],
+      "prefab": [
+        "toon"
+      ]
+    },
+    "rows": {
+      "model": "leather",
+      "placeholder": "leather",
+      "prefab": "cloth"
+    }
+  }
 }

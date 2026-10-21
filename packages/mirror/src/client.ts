@@ -76,6 +76,9 @@ import {
   type TerrainTile,
   type TileRequestMessage,
   type TileResponseMessage,
+  type PouchMessage,
+  type ResourceNodeView,
+  type ResourcesMessage,
   decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -127,6 +130,10 @@ export interface MirrorEvents {
   onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
+  /** Resource nodes were described or changed stock (all on joining; protocol 0x24). */
+  onResources?(r: ResourcesMessage): void;
+  /** The player's materials pouch (on joining and after every gather; protocol 0x24). */
+  onPouch?(p: PouchMessage): void;
   /** A blow landed, was blocked or dodged (roadmap M2a/U12a, protocol 0x16). */
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
@@ -203,12 +210,23 @@ export class MirrorClient {
   readonly drops = new Map<bigint, { name: string; rank: string; color: string }>();
   /** The player's bag, from the last inventory message; null until one arrives. */
   inventory: InventoryMessage | null = null;
+  /** The resource nodes (catalog 0x24) by entity wire id: what each gives and how much it has left. */
+  readonly resources = new Map<bigint, ResourceNodeView>();
+  /** The player's materials pouch, from the last pouch message; null until one arrives. */
+  pouch: PouchMessage | null = null;
   /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
   readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
   private socket: SocketLike | null = null;
   /** The server this client talks to, and the name it gave in its hello (for a region redirect). */
   private url: string | null = null;
+  /**
+   * The gateway this client talks to: the region, or a dungeon instance's own port.
+   * Where its Pcg service is (null until it joins).
+   */
+  get endpoint(): string | null {
+    return this.url;
+  }
   private clientName = "";
   /** A region redirect is in progress: socket closes are part of it, not the end. */
   private handingOff = false;
@@ -306,6 +324,12 @@ export class MirrorClient {
   pickup(entity: bigint): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
+  }
+
+  /** Gather once from a resource node (0x24); the server answers with the pouch, or a 4005 refusal. */
+  gather(entity: bigint): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Gather, encodeControl({ kind: "gather", entity: entity.toString() })));
   }
 
   /**
@@ -794,6 +818,17 @@ export class MirrorClient {
         for (const [entity, name, rank, color] of drops) this.drops.set(BigInt(entity), { name, rank, color });
         break;
       }
+      case MessageType.Gather: {
+        const m = decodeControl<ResourcesMessage | PouchMessage>(payload);
+        if (m.kind === "resources") {
+          for (const n of m.nodes) this.resources.set(BigInt(n.entity), n);
+          this.events.onResources?.(m);
+        } else {
+          this.pouch = m;
+          this.events.onPouch?.(m);
+        }
+        break;
+      }
       case MessageType.Inventory: {
         this.inventory = decodeControl<InventoryMessage>(payload);
         this.events.onInventory?.(this.inventory);
@@ -895,6 +930,7 @@ export class MirrorClient {
       this.interpolator.remove(wid);
       this.names.delete(wid);
       this.drops.delete(wid);
+      this.resources.delete(wid);
     }
     this.serverTick = d.tick;
     this.events.onState(d.tick);

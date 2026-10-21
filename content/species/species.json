@@ -1,0 +1,1061 @@
+{
+  "goblin": {
+    "name": "Goblin",
+    "kind": "organic",
+    "sustenance": [
+      "food",
+      "water",
+      "rest"
+    ],
+    "needs": {
+      "speciesId": "goblin",
+      "schemaVersion": 1,
+      "needs": {
+        "need:hydration.fresh": {
+          "weight": 2.0,
+          "tolerance": 0.15
+        },
+        "need:forage.general": {
+          "weight": 1.5,
+          "tolerance": 0.3
+        },
+        "need:thermal.temperate": {
+          "weight": 1.0,
+          "tolerance": 0.45
+        },
+        "need:rest.shelter": {
+          "weight": 0.8,
+          "tolerance": 0.5
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      3,
+      6
+    ],
+    "tier": [
+      1,
+      3
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "storeroom": 2,
+      "barracks": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "verdant": 1,
+          "ancient": 0.5
+        },
+        "depth": [
+          0,
+          0.5
+        ]
+      }
+    }
+  },
+  "orc": {
+    "name": "Orc",
+    "kind": "organic",
+    "sustenance": [
+      "food",
+      "water",
+      "rest"
+    ],
+    "needs": {
+      "speciesId": "orc",
+      "schemaVersion": 1,
+      "needs": {
+        "need:hydration.fresh": {
+          "weight": 1.0,
+          "tolerance": 0.4
+        },
+        "need:forage.general": {
+          "weight": 1.5,
+          "tolerance": 0.3
+        },
+        "need:thermal.warm": {
+          "weight": 2.5,
+          "tolerance": 0.2
+        },
+        "need:rest.shelter": {
+          "weight": 0.8,
+          "tolerance": 0.5
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      2,
+      4
+    ],
+    "tier": [
+      1,
+      3
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "armoury": 2,
+      "barracks": 2,
+      "forge": 1.5
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "molten": 1,
+          "ancient": 0.5
+        },
+        "depth": [
+          0,
+          0.6
+        ]
+      }
+    }
+  },
+  "troll": {
+    "name": "Troll",
+    "kind": "organic",
+    "sustenance": [
+      "food",
+      "rest"
+    ],
+    "needs": {
+      "speciesId": "troll",
+      "schemaVersion": 1,
+      "needs": {
+        "need:forage.general": {
+          "weight": 1.5,
+          "tolerance": 0.35
+        },
+        "need:thermal.cool": {
+          "weight": 2.5,
+          "tolerance": 0.2
+        },
+        "need:rest.shelter": {
+          "weight": 0.8,
+          "tolerance": 0.5
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      2
+    ],
+    "tier": [
+      2,
+      3
+    ],
+    "boss": true,
+    "minRank": 2,
+    "drawnTo": {
+      "grotto": 2,
+      "icehall": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "frost": 1,
+          "verdant": 0.5
+        },
+        "depth": [
+          0.3,
+          1
+        ]
+      }
+    }
+  },
+  "ogre": {
+    "name": "Ogre",
+    "kind": "organic",
+    "sustenance": [
+      "food",
+      "rest"
+    ],
+    "needs": {
+      "speciesId": "ogre",
+      "schemaVersion": 1,
+      "needs": {
+        "need:forage.general": {
+          "weight": 2.0,
+          "tolerance": 0.25
+        },
+        "need:thermal.temperate": {
+          "weight": 1.0,
+          "tolerance": 0.4
+        },
+        "need:rest.shelter": {
+          "weight": 0.6,
+          "tolerance": 0.5
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      3,
+      3
+    ],
+    "boss": true,
+    "minRank": 1,
+    "drawnTo": {
+      "throne": 2,
+      "storeroom": 1.5
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "verdant": 2,
+          "molten": 1,
+          "frost": 1,
+          "ancient": 1
+        },
+        "depth": [
+          0.6,
+          1
+        ]
+      }
+    }
+  },
+  "wolf": {
+    "name": "Wolf",
+    "kind": "beast",
+    "sustenance": [
+      "food",
+      "water"
+    ],
+    "needs": {
+      "speciesId": "wolf",
+      "schemaVersion": 1,
+      "needs": {
+        "need:hydration.fresh": {
+          "weight": 1.2,
+          "tolerance": 0.3
+        },
+        "need:forage.general": {
+          "weight": 2.0,
+          "tolerance": 0.25
+        },
+        "need:thermal.cool": {
+          "weight": 1.2,
+          "tolerance": 0.35
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      3,
+      6
+    ],
+    "tier": [
+      1,
+      2
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {},
+    "body": "humanoid",
+    "tags": []
+  },
+  "bear": {
+    "name": "Bear",
+    "kind": "beast",
+    "sustenance": [
+      "food",
+      "water",
+      "rest"
+    ],
+    "needs": {
+      "speciesId": "bear",
+      "schemaVersion": 1,
+      "needs": {
+        "need:hydration.fresh": {
+          "weight": 1.2,
+          "tolerance": 0.3
+        },
+        "need:forage.general": {
+          "weight": 2.0,
+          "tolerance": 0.25
+        },
+        "need:thermal.cool": {
+          "weight": 1.0,
+          "tolerance": 0.4
+        },
+        "need:rest.shelter": {
+          "weight": 1.0,
+          "tolerance": 0.4
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      2,
+      3
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {},
+    "body": "humanoid",
+    "tags": []
+  },
+  "boar": {
+    "name": "Boar",
+    "kind": "beast",
+    "sustenance": [
+      "food",
+      "water"
+    ],
+    "needs": {
+      "speciesId": "boar",
+      "schemaVersion": 1,
+      "needs": {
+        "need:hydration.fresh": {
+          "weight": 1.2,
+          "tolerance": 0.3
+        },
+        "need:forage.general": {
+          "weight": 2.0,
+          "tolerance": 0.25
+        },
+        "need:thermal.temperate": {
+          "weight": 1.0,
+          "tolerance": 0.4
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      2,
+      4
+    ],
+    "tier": [
+      1,
+      1
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {},
+    "body": "humanoid",
+    "tags": []
+  },
+  "giant-spider": {
+    "name": "Giant spider",
+    "kind": "beast",
+    "sustenance": [
+      "food"
+    ],
+    "needs": {
+      "speciesId": "giant-spider",
+      "schemaVersion": 1,
+      "needs": {
+        "need:forage.general": {
+          "weight": 2.0,
+          "tolerance": 0.25
+        },
+        "need:thermal.temperate": {
+          "weight": 1.0,
+          "tolerance": 0.4
+        },
+        "need:rest.shelter": {
+          "weight": 0.8,
+          "tolerance": 0.5
+        }
+      },
+      "variantAxes": [
+        "biome",
+        "size"
+      ],
+      "provenance": {
+        "script": "species/open-world.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      2,
+      5
+    ],
+    "tier": [
+      1,
+      2
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "grotto": 2,
+      "storeroom": 1.5
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "verdant": 2,
+          "grim": 1,
+          "ancient": 1
+        },
+        "depth": [
+          0,
+          0.7
+        ]
+      }
+    }
+  },
+  "skeleton": {
+    "name": "Skeleton",
+    "kind": "undead",
+    "sustenance": [
+      "necromancy"
+    ],
+    "needs": {
+      "speciesId": "skeleton",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.necromancy": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "crypt"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      2,
+      6
+    ],
+    "tier": [
+      1,
+      2
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "crypt": 2,
+      "armoury": 1.5
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "grim": 3,
+          "ancient": 2,
+          "frost": 1
+        },
+        "depth": [
+          0,
+          0.8
+        ]
+      }
+    }
+  },
+  "ghoul": {
+    "name": "Ghoul",
+    "kind": "undead",
+    "sustenance": [
+      "lifeforce"
+    ],
+    "needs": {
+      "speciesId": "ghoul",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.lifeforce": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "crypt"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      2,
+      4
+    ],
+    "tier": [
+      1,
+      3
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "crypt": 2,
+      "storeroom": 1.5
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "grim": 3,
+          "frost": 1
+        },
+        "depth": [
+          0.1,
+          0.9
+        ]
+      }
+    }
+  },
+  "wraith": {
+    "name": "Wraith",
+    "kind": "undead",
+    "sustenance": [
+      "lifeforce",
+      "emotion"
+    ],
+    "needs": {
+      "speciesId": "wraith",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.lifeforce": {
+          "weight": 2.0,
+          "tolerance": 0.15
+        },
+        "need:essence.emotion": {
+          "weight": 1.5,
+          "tolerance": 0.2
+        }
+      },
+      "variantAxes": [
+        "haunt"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      3
+    ],
+    "tier": [
+      2,
+      3
+    ],
+    "boss": false,
+    "minRank": 2,
+    "drawnTo": {
+      "chapel": 2,
+      "library": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "grim": 2,
+          "ancient": 2,
+          "frost": 2
+        },
+        "depth": [
+          0.4,
+          1
+        ]
+      }
+    }
+  },
+  "bone-champion": {
+    "name": "Bone champion",
+    "kind": "undead",
+    "sustenance": [
+      "necromancy"
+    ],
+    "needs": {
+      "speciesId": "bone-champion",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.necromancy": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "crypt"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      3,
+      3
+    ],
+    "boss": true,
+    "minRank": 1,
+    "drawnTo": {
+      "throne": 2,
+      "crypt": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "grim": 2,
+          "ancient": 2,
+          "frost": 2
+        },
+        "depth": [
+          0.6,
+          1
+        ]
+      }
+    }
+  },
+  "lich": {
+    "name": "Lich",
+    "kind": "undead",
+    "sustenance": [
+      "necromancy"
+    ],
+    "needs": {
+      "speciesId": "lich",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.necromancy": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "phylactery"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      3,
+      3
+    ],
+    "boss": true,
+    "minRank": 3,
+    "drawnTo": {
+      "throne": 3,
+      "library": 2,
+      "ritual": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "grim": 3,
+          "ancient": 2,
+          "frost": 1
+        },
+        "depth": [
+          0.7,
+          1
+        ]
+      }
+    }
+  },
+  "imp": {
+    "name": "Imp",
+    "kind": "demon",
+    "sustenance": [
+      "emotion"
+    ],
+    "needs": {
+      "speciesId": "imp",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.emotion": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "summoning"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      3,
+      6
+    ],
+    "tier": [
+      1,
+      1
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "ritual": 3,
+      "forge": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "molten": 3,
+          "grim": 1,
+          "ancient": 1
+        },
+        "depth": [
+          0,
+          0.7
+        ]
+      }
+    }
+  },
+  "fiend": {
+    "name": "Fiend",
+    "kind": "demon",
+    "sustenance": [
+      "emotion",
+      "lifeforce"
+    ],
+    "needs": {
+      "speciesId": "fiend",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.emotion": {
+          "weight": 2.0,
+          "tolerance": 0.15
+        },
+        "need:essence.lifeforce": {
+          "weight": 1.5,
+          "tolerance": 0.15
+        }
+      },
+      "variantAxes": [
+        "summoning"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      3
+    ],
+    "tier": [
+      2,
+      3
+    ],
+    "boss": false,
+    "minRank": 2,
+    "drawnTo": {
+      "ritual": 3,
+      "chapel": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "molten": 3,
+          "grim": 2
+        },
+        "depth": [
+          0.3,
+          1
+        ]
+      }
+    }
+  },
+  "infernal-brute": {
+    "name": "Infernal brute",
+    "kind": "demon",
+    "sustenance": [
+      "lifeforce"
+    ],
+    "needs": {
+      "speciesId": "infernal-brute",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.lifeforce": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "summoning"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      3,
+      3
+    ],
+    "boss": true,
+    "minRank": 1,
+    "drawnTo": {
+      "throne": 2,
+      "forge": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "molten": 3,
+          "grim": 1
+        },
+        "depth": [
+          0.6,
+          1
+        ]
+      }
+    }
+  },
+  "pit-lord": {
+    "name": "Pit lord",
+    "kind": "demon",
+    "sustenance": [
+      "lifeforce"
+    ],
+    "needs": {
+      "speciesId": "pit-lord",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.lifeforce": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "summoning"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      3,
+      3
+    ],
+    "boss": true,
+    "minRank": 4,
+    "drawnTo": {
+      "throne": 3,
+      "ritual": 3
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "molten": 3,
+          "grim": 1
+        },
+        "depth": [
+          0.7,
+          1
+        ]
+      }
+    }
+  },
+  "elemental-shard": {
+    "name": "Elemental shard",
+    "kind": "otherworldly",
+    "sustenance": [
+      "none"
+    ],
+    "needs": {
+      "speciesId": "elemental-shard",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.none": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "element"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      3
+    ],
+    "tier": [
+      1,
+      3
+    ],
+    "boss": false,
+    "minRank": 1,
+    "drawnTo": {
+      "icehall": 2,
+      "forge": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "molten": 2,
+          "frost": 3,
+          "ancient": 1
+        },
+        "depth": [
+          0.2,
+          1
+        ]
+      }
+    }
+  },
+  "void-watcher": {
+    "name": "Void watcher",
+    "kind": "otherworldly",
+    "sustenance": [
+      "emotion"
+    ],
+    "needs": {
+      "speciesId": "void-watcher",
+      "schemaVersion": 1,
+      "needs": {
+        "need:essence.emotion": {
+          "weight": 3.0,
+          "tolerance": 0.1
+        }
+      },
+      "variantAxes": [
+        "void"
+      ],
+      "provenance": {
+        "script": "species/dungeons.scm",
+        "author": "design"
+      }
+    },
+    "pack": [
+      1,
+      1
+    ],
+    "tier": [
+      3,
+      3
+    ],
+    "boss": true,
+    "minRank": 3,
+    "drawnTo": {
+      "throne": 2,
+      "library": 2
+    },
+    "body": "humanoid",
+    "tags": [],
+    "habitat": {
+      "dungeon": {
+        "themes": {
+          "ancient": 2,
+          "verdant": 1,
+          "frost": 1
+        },
+        "depth": [
+          0.8,
+          1
+        ]
+      }
+    }
+  }
+}

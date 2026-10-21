@@ -114,6 +114,14 @@ export interface ClientSession {
    * Missing entries never sent on that channel.
    */
   lastChatMs: Partial<Record<"say" | "yell" | "emote" | "whisper" | "party" | "guild", number>>;
+  /**
+   * Sector topic this session is subscribed to (Phase 5 pub/sub fan-out),
+   * e.g. "sector:0,0" — null when not subscribed (no player entity yet,
+   * resyncing, or sector broadcast off). The gateway keeps this in sync
+   * with the avatar's position; the transport drops the subscription
+   * when the socket closes.
+   */
+  sectorTopic: string | null;
 }
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */

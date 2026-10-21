@@ -37,3 +37,12 @@ export const applyMutations = async (mutations: Mutation[]): Promise<LogEntry[]>
   (await call<{ entries: LogEntry[] }>("apply", { mutations })).entries;
 export const fetchLog = async (): Promise<LogEntry[]> => (await call<{ log: LogEntry[] }>("log")).log;
 export const undoEntry = async (id: number): Promise<LogEntry> => (await call<{ entry: LogEntry }>("undo", { id })).entry;
+
+/** EA17: performance diagnostics for one database. */
+export interface DbPerformance {
+  tables: Array<{ name: string; rowCount: number; bytes: number }>;
+  indexes: Array<{ name: string; table: string; sql: string | null }>;
+  functionPlans: Array<{ function: string; warnings: string[] }>;
+}
+export const fetchPerformance = async (db: string): Promise<DbPerformance> =>
+  (await call<{ performance: DbPerformance }>(`performance?db=${encodeURIComponent(db)}`)).performance;

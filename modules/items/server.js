@@ -18,6 +18,9 @@ export function createSystems(ctx) {
     tickHz: config.tickHz ?? 30,
     groundHeightAt: config.groundHeightAt,
     rankOrder: config.rankOrder,
+    // Atomic operations A2: in fleet mode the grant path commits at
+    // the world tier; absent in standalone (byte-identical).
+    atomicGrant: config.atomicGrant,
   });
   // Startup sequence: clear strays from a restored snapshot, then restore
   // every item from the ledger (bags, hands, ground).
@@ -33,7 +36,9 @@ export function createSystems(ctx) {
     creatures: config.rules.creatures.creatures,
     tables: config.rules.loot.tables ?? {},
     kindOf: config.kindOf,
-    wallet: config.wallet,
+    // The economy module (a dependency, so assembled first) publishes the
+    // wallet on ctx.stores during its createSystems.
+    wallet: ctx.stores.wallet,
   });
   return { items, dropper };
 }

@@ -54,6 +54,9 @@ describe("ruleFileNames", () => {
       "needs",
       "ingress",
       "spells",
+      "gathering",
+      "movement",
+      "social",
     ]);
   });
 });

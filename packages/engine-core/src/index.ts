@@ -39,6 +39,7 @@ export {
   Appearance,
   Action,
   WorldItem,
+  StructuralIntegrity,
 } from "./components.js";
 export * from "./items/index.js";
 
@@ -86,10 +87,12 @@ export {
   encodeDelta,
   encodeSnapshotFromSim,
   encodeDeltaFromSim,
+  encodeFastDeltaFromSim,
   encodeSnapshotSoA,
   encodeDeltaSoA,
   decodeSnapshot,
   decodeDelta,
+  decodeFastDelta,
   DeltaTracker,
 } from "./snapshot.js";
 export type {
@@ -214,7 +217,8 @@ export { CrowdSystem } from "./navigation/crowd-system.js";
 export { CreatureSystem, type CreatureOptions } from "./creatures.js";
 export { NavObstacleSystem } from "./navigation/obstacle-system.js";
 export type { NavObstacleOptions } from "./navigation/obstacle-system.js";
-export { PropCollisionSystem } from "./prop-collision.js";
+export { loadScale, scaleResolver, type ScaleResolver } from "./scale.js";
+export { clearOfStatics, PropCollisionSystem } from "./prop-collision.js";
 export type { NavigationSystemOptions } from "./navigation/system.js";
 
 export {
@@ -244,8 +248,73 @@ export {
   WorldClient,
   WorldTransportError,
 } from "./world/client.js";
-export type { WorldTransport, WorldClientOptions } from "./world/client.js";
+export type {
+  WorldTransport,
+  WorldClientOptions,
+  TradeCommitRequest,
+  VendorTransactRequest,
+  AuctionSettleRequest,
+  CraftExecuteRequest,
+  LootGrantRequest,
+  InventoryMutateRequest,
+} from "./world/client.js";
+export {
+  WorldAtomicOps,
+  LocalEconomyView,
+  itemInstanceId,
+  parseItemInstanceId,
+} from "./world/atomic-ops.js";
+export type {
+  AtomicWorldClient,
+  AtomicFenceSource,
+  WorldAtomicOpsOptions,
+  LocalEconomyViewOptions,
+} from "./world/atomic-ops.js";
+export { CraftingService } from "./crafting/crafting-service.js";
+export type {
+  AtomicCraftExecutor,
+  CraftingServiceOptions,
+} from "./crafting/crafting-service.js";
 export { WebrpcWorldTransport } from "./world/webrpc-transport.js";
+export {
+  planFleetBoot,
+  parseChunkRangeEnv,
+  DEFAULT_CHUNK_RANGE,
+} from "./world/fleet-boot.js";
+export type { FleetBootPlan, FleetBootEnv } from "./world/fleet-boot.js";
+export {
+  ShardStateShipper,
+  LEDGER_BATCH_MAX_EVENTS,
+  LEDGER_BATCH_MAX_BYTES,
+} from "./world/state-shipper.js";
+export type {
+  StatePlaneClient,
+  ShardStateShipperOptions,
+} from "./world/state-shipper.js";
+export {
+  WorldCharacterSync,
+  parseWorldCharacterState,
+  seedLocalCharacter,
+  worldCharacterPayload,
+  economyOfState,
+  CHARACTER_LOCK_TTL_MS,
+} from "./world/character-sync.js";
+export type {
+  CharacterWorldClient,
+  CharacterLoginResult,
+  WorldCharacterState,
+  WorldCharacterSyncOptions,
+  CharacterEconomyView,
+} from "./world/character-sync.js";
+export {
+  recallShardState,
+  unwrapShardSnapshotPayload,
+} from "./world/state-recall.js";
+export type {
+  StateRecallClient,
+  ShardRecallOutcome,
+  ShardStateRecallOptions,
+} from "./world/state-recall.js";
 export { MigrationCoordinator } from "./world/migration.js";
 export type {
   EntityPosition,
@@ -324,3 +393,4 @@ export {
 export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
 export type { GatewayTick } from "./net/gateway.js";
 export { backupWorld, discardBackup, hasBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
+export * from "./server-settings.js";
