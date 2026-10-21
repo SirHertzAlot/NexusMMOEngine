@@ -12,24 +12,30 @@
 export * from "./manifest.js";
 export * from "./scan.js";
 export * from "./provider.js";
-export * from "./animation-bake.js";
-// compress-gltfpack's CompressResult collides with animation-bake's;
-// re-export explicitly with a distinguishing alias.
+export * from "./compress-gltfpack.js";
+// animation-bake also exports a `CompressResult` (a clip's { data,
+// stats }, not a GLB file's { input, output, ... }) — `export *` from
+// both is ambiguous (TS2308), so its exports are listed explicitly
+// and its CompressResult is qualified at the root. Deep imports of
+// "./animation-bake.js" still see the bare name.
 export {
-  compressGlb,
-  hasGltfpack,
-  type CompressOptions,
-  type CompressResult as GltfpackCompressResult,
-} from "./compress-gltfpack.js";
+  hasAnimationAddon,
+  retargetClip,
+  compressClip,
+  validateClip,
+  type CompressStats,
+  type RetargetResult,
+  type SkeletonDef,
+  type ValidationResult,
+  type ClipCompressResult as AnimationCompressResult,
+} from "./animation-bake.js";
 export * from "./transform-gltf.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
 export * from "./character/look.js";
 export * from "./character/animations.js";
 export { loadMaterial, type Material } from "./materials.js";
-export * from "./animation-bake.js";
 export * from "./character/clip-map.js";
 export * from "./character/clip-playback.js";
-export * from "./media/index.js";
 export * from "./character/stand-in.js";
 export { loadParticleBudgets, budgetForTier, DEFAULT_PARTICLE_BUDGETS, type ParticleBudgets, type TierBudget, type QualityTier } from "./particle-budgets.js";

@@ -123,3 +123,30 @@ Proposed follow-up slices (not done in E5, which only measures):
 - **Heartbeat (B5, no change made):** a hung core is caught in about 19 s
   at the defaults (5 s × 3, plus the partial first interval). Tightening
   is a config change, `heartbeatMs` and `maxMissed`, for Joey to decide.
+
+## B3: Tick overhead of pushes (2026-10-20)
+
+Machine: AMD EPYC 9D25 126-Core Processor x2, 7.7 GiB, Linux 7.0.0-39-generic, Node v24.20.0. Commit `8a578f2`.
+
+1000 moving entities, 1000 measured ticks after 100 warm-up, same seed, ticks driven back to back. Tick time, ms:
+
+| Pushes | mean | p50 | p99 | max |
+|---|---|---|---|---|
+| disabled | 0.632 | 0.5471 | 1.1088 | 17.3995 |
+| enabled (1 edge connected) | 0.9842 | 0.7473 | 3.6071 | 16.5956 |
+
+Added mean per tick: **0.3522 ms** (budget < 0.5 ms): **PASS**. The edge received 920 `tick.delta` pushes.
+
+## B4: Delta bandwidth at scale (2026-10-20)
+
+Machine: AMD EPYC 9D25 126-Core Processor x2, 7.7 GiB, Linux 7.0.0-39-generic, Node v24.20.0. Commit `8a578f2`.
+
+Every entity moves every tick, so every delta carries all of them (the worst case). 300 ticks per row. Encode = FlatBuffers bytes to base64, JSON, and the length-prefixed frame.
+
+| Entities | delta frame (mean) | at 30 Hz | encode p50 ms | encode p99 ms | snapshot frame | snapshot encode ms |
+|---|---|---|---|---|---|---|
+| 1000 | 73.8 KiB | 2215 KiB/s | 0.1554 | 2.0839 | 125.7 KiB | 2.4978 |
+| 5000 | 366.3 KiB | 10989.9 KiB/s | 0.9321 | 11.738 | 625.7 KiB | 6.679 |
+| 10000 | 732.0 KiB | 21958.8 KiB/s | 1.7661 | 12.8834 | 1250.7 KiB | 16.1394 |
+
+Encode p99 budget < 5 ms: **BREACH** (worst 12.8834 ms).

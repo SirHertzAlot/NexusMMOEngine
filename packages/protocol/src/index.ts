@@ -50,6 +50,18 @@ export {
   encodeSnapshot,
   encodeSnapshotSoA,
 } from "./codec.js";
+export {
+  decodeFastDelta,
+  encodeFastDelta,
+  encodeFastDeltaFromSoA,
+  tryDecodeFastDelta,
+  FAST_PATH_HEADER_BYTES,
+  FAST_PATH_MAGIC,
+  FAST_PATH_RECORD_BYTES,
+  FAST_PATH_VERSION,
+  FastPathError,
+} from "./fast-path.js";
+export type { FastPathDecodeResult, FastPathEntry, FastPathTransformColumns, FastPathVelocityColumns } from "./fast-path.js";
 export type {
   ActionSoA,
   AnimationSoA,
