@@ -363,6 +363,25 @@ describe("dressing data and the bake", () => {
     for (const a of Object.values(BUILTIN_DRESSING.archetypes)) for (const k of a.contents) assert.ok(k.arrange, `${k.kind} has an arrangement`);
   });
 
+  it("rebaking changes the dressing only: the same seed gives the same rooms, doorways, spawns and shell", () => {
+    const common = { count: 3, seed: 7, theme: "auto", rooms: [14, 24] as [number, number], loopChance: 0.15, decorDensity: 0.5, themes: BUILTIN_THEMES };
+    const a = mkdtempSync(join(tmpdir(), "arranged-"));
+    const b = mkdtempSync(join(tmpdir(), "scattered-"));
+    bakeDungeons({ ...common, out: a, dress: { dressing: BUILTIN_DRESSING, rank: [2, 4] } });
+    bakeDungeons({ ...common, out: b, dress: { dressing: scatterOnly(BUILTIN_DRESSING), rank: [2, 4] } });
+    const ea = readIndex(a).dungeons, eb = readIndex(b).dungeons;
+    assert.equal(ea.length, eb.length);
+    ea.forEach((x, i) => {
+      const fa = JSON.parse(readFileSync(join(a, x.file), "utf8")) as Record<string, unknown>;
+      const fb = JSON.parse(readFileSync(join(b, eb[i].file), "utf8")) as Record<string, unknown>;
+      for (const key of ["seed", "params", "width", "height", "rooms", "corridors", "entrance", "boss", "grids", "spawns", "torches", "pools", "arches", "props"]) {
+        assert.deepEqual(fa[key], fb[key], `dungeon ${i}: ${key} is the same`);
+      }
+      assert.deepEqual((fa.dressing as DungeonDressing).archetypes, (fb.dressing as DungeonDressing).archetypes, "the same rooms hold the same archetypes");
+      if (x.shell) assert.ok(readFileSync(join(a, x.shell.file)).equals(readFileSync(join(b, eb[i].shell!.file))), `dungeon ${i}: the shell is the same`);
+    });
+  });
+
   it("dresses baked dungeons at a rank in range, or leaves them bare", () => {
     const out = mkdtempSync(join(tmpdir(), "dressed-"));
     const common = { count: 4, seed: 3, theme: "auto", rooms: [14, 24] as [number, number], loopChance: 0.15, decorDensity: 0.5, themes: BUILTIN_THEMES, out };
