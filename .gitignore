@@ -67,3 +67,6 @@ packages/engine-core/content/wildlife/*.local.json
 /content/bake-env.local.txt
 /content/ecology/*.local.ecology.json
 /content/wildlife/*.local.json
+
+# Dungeon prop art overlay: names licensed catalog models (npm run dungeon:art); local only
+content/dungeons/props.local.json

@@ -9,7 +9,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addComponent, defineQuery } from "bitecs";
@@ -20,7 +20,7 @@ import { SimWorld } from "../../src/world.js";
 import { Gateway } from "../../src/net/gateway.js";
 import { MemoryCharacterStore } from "../../src/index.js";
 import { loadGameRules } from "../../src/rules/boot.js";
-import { loadDungeonContent, parseDungeonContent, type DungeonContent } from "../../src/dungeons/content.js";
+import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent, parseDungeonContent, type DungeonContent } from "../../src/dungeons/content.js";
 import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/pool.js";
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
 import { PROP_SLOTS } from "../../src/dungeons/prop-mesh.js";
@@ -397,6 +397,61 @@ describe("dungeon instance", () => {
     for (const [theme, l] of Object.entries(content.looks!.themes)) {
       for (const slot of PROP_SLOTS) assert.match(l.palette[slot] ?? "", /^#[0-9a-f]{6}$/i, `${theme}: a ${slot} colour`);
     }
+  });
+
+  describe("the local art overlay (props.local.json)", () => {
+    const rawProps = JSON.parse(readFileSync(join(DEFAULT_DUNGEON_CONTENT, "props.json"), "utf8")) as unknown;
+    const entrances = { version: 1, entrances: {} };
+
+    it("remaps the kinds it names to catalog models, and changes nothing else; no overlay changes nothing at all", () => {
+      const plain = parseDungeonContent(content.rules, entrances, rawProps);
+      assert.deepEqual(plain.artAssets, {});
+      const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "SomeCoffinModel" } });
+      assert.equal(art.props.archetypes["dungeon:coffin"].asset, "SomeCoffinModel");
+      assert.deepEqual(art.props.archetypes["dungeon:coffin"].collision, plain.props.archetypes["dungeon:coffin"].collision, "its collision box is unchanged");
+      assert.deepEqual({ ...art.props.archetypes, "dungeon:coffin": plain.props.archetypes["dungeon:coffin"] }, plain.props.archetypes, "the other kinds are untouched");
+      assert.deepEqual(art.artAssets, { coffin: "SomeCoffinModel" });
+    });
+
+    it("fails loud, naming the file, for a kind the table lacks or a wrong shape", () => {
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { nope: "X" } }), /props\.local\.json.*nope/);
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 2, assets: {} }), /props\.local\.json/);
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "" } }), /props\.local\.json/);
+    });
+
+    it("loadDungeonContent reads it from the content folder when it is there", () => {
+      const dir = mkdtempSync(join(tmpdir(), "art-overlay-"));
+      dirs.push(dir);
+      for (const f of ["instances.json", "entrances.json", "props.json", "looks.json"]) writeFileSync(join(dir, f), readFileSync(join(DEFAULT_DUNGEON_CONTENT, f)));
+      assert.deepEqual(loadDungeonContent(dir).artAssets, {});
+      writeFileSync(join(dir, "props.local.json"), JSON.stringify({ version: 1, assets: { barrel: "SomeBarrelModel" } }));
+      assert.equal(loadDungeonContent(dir).props.archetypes["dungeon:barrel"].asset, "SomeBarrelModel");
+    });
+
+    it("stands a remapped kind in the run under the model's hash, and keeps the run's torch lights lit", async () => {
+      SimWorld.resetEntityCursorForTesting();
+      const characters = new MemoryCharacterStore();
+      const rec = await characters.create("alice", "Alice", "{}", 8);
+      const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { pillar: "SomePillarModel", torch: "SomeTorchModel" } });
+      const baked = { ...fixture("grim-art", "grim"), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }], torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }] };
+      const inst = new DungeonInstance({
+        id: "run-art", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, props: art.props, looks: content.looks!, artAssets: art.artAssets, game,
+        members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+        onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+      });
+      const port = await inst.start();
+      closers.push(() => inst.close());
+      const hashes = [...queryEntities(inst.world, C.AssetRef)].map((e) => C.AssetRef.assetHash[e]);
+      assert.ok(hashes.includes(fnv1a32("SomePillarModel")) && !hashes.includes(fnv1a32("dungeon:pillar")), "the pillar carries the model's hash");
+      const c = new HeadlessClient();
+      closers.push(() => c.close());
+      await c.connect(`ws://127.0.0.1:${port}`);
+      await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+      await until(() => ctl(c).some((m) => m.kind === "dungeon" && m.op === "look"));
+      const look = ctl(c).find((m) => m.op === "look")!.look as { emitters: string[] };
+      assert.ok(look.emitters.includes("dungeon:torch") && look.emitters.includes("SomeTorchModel"), "both ids give light");
+      assert.equal(new Set(look.emitters).size, look.emitters.length, "no duplicates");
+    });
   });
 
   it("runs as before when the dungeon was baked without a shell", async () => {

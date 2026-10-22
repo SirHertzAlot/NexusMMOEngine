@@ -149,6 +149,7 @@ export class InstanceManager implements GatewayExtension {
         rules,
         props: content.props,
         ...(content.looks ? { looks: content.looks } : {}),
+        artAssets: content.artAssets,
         game: this.opts.game(),
         members,
         credentialStore: this.opts.credentialStore,

@@ -36,6 +36,7 @@ import { Gateway } from "../net/gateway.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
 import { buildSpawn } from "../admin/spawn.js";
+import { fnv1a32 } from "@mmo-engine/picg";
 import { PcgAssetLibrary } from "../pcg/asset-library.js";
 import { mountPcgService } from "../pcg/boot.js";
 import { propMesh } from "./prop-mesh.js";
@@ -96,6 +97,8 @@ export interface DungeonInstanceOptions {
   props?: DungeonProps;
   /** How the run looks per theme (looks.json); absent: the client keeps the open world's look. */
   looks?: DungeonLooks;
+  /** The local art overlay (props.local.json), kind to catalog model id: a light emitter it remaps keeps giving light. */
+  artAssets?: Record<string, string>;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -281,6 +284,12 @@ export class DungeonInstance {
       const lift = table.lift[p.kind];
       const built = buildSpawn(table, asset, p.x, lift ?? 0, p.z, p.yaw);
       if ("error" in built) continue;
+      // The table is keyed `dungeon:<kind>`; its `asset` is what the client draws: the same id, or the catalog model the local
+      // art overlay stands in (an entity's AssetRef hash is the hash of that id).
+      if (archetype.asset !== asset) {
+        built.assetId = archetype.asset;
+        built.assetHash = fnv1a32(archetype.asset);
+      }
       built.sx = built.sy = built.sz = p.scale;
       // The bake's own footprint beats the table's default one.
       if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
@@ -404,7 +413,13 @@ export class DungeonInstance {
     const theme = looks?.themes[this.opts.layout.theme];
     if (!looks || !theme) return;
     const { label: _label, ...look } = theme;
-    p.send({ kind: "dungeon", op: "look", look: { theme: this.opts.layout.theme, ...look, emitters: looks.emitters, maxLights: looks.maxLights } });
+    p.send({ kind: "dungeon", op: "look", look: { theme: this.opts.layout.theme, ...look, emitters: this.emitters(looks.emitters), maxLights: looks.maxLights } });
+  }
+
+  /** The assets that give light: looks.json's, and the catalog models the art overlay stands in for them (their entities carry the model's hash). */
+  private emitters(ids: readonly string[]): string[] {
+    const art = this.opts.artAssets ?? {};
+    return [...new Set(ids.flatMap((id) => [id, art[id.replace(/^dungeon:/, "")]].filter((x): x is string => !!x)))];
   }
 
   private onDeath(sim: SimWorld, ev: LifeEvent): void {
