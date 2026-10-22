@@ -411,6 +411,14 @@ describe("dungeon instance", () => {
       assert.deepEqual(art.props.archetypes["dungeon:coffin"].collision, plain.props.archetypes["dungeon:coffin"].collision, "its collision box is unchanged");
       assert.deepEqual({ ...art.props.archetypes, "dungeon:coffin": plain.props.archetypes["dungeon:coffin"] }, plain.props.archetypes, "the other kinds are untouched");
       assert.deepEqual(art.artAssets, { coffin: "SomeCoffinModel" });
+      assert.deepEqual(art.artScales, {}, "no sizes unless the overlay gives them");
+      const sized = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "SomeCoffinModel" }, scales: { coffin: 2 } });
+      assert.deepEqual(sized.artScales, { coffin: 2 });
+    });
+
+    it("refuses a size for a kind with no model, or an absurd one", () => {
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: {}, scales: { coffin: 2 } }), /props\.local\.json.*scales\.coffin/);
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "X" }, scales: { coffin: 0 } }), /props\.local\.json/);
     });
 
     it("fails loud, naming the file, for a kind the table lacks or a wrong shape", () => {
@@ -432,10 +440,10 @@ describe("dungeon instance", () => {
       SimWorld.resetEntityCursorForTesting();
       const characters = new MemoryCharacterStore();
       const rec = await characters.create("alice", "Alice", "{}", 8);
-      const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { pillar: "SomePillarModel", torch: "SomeTorchModel" } });
+      const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { pillar: "SomePillarModel", torch: "SomeTorchModel" }, scales: { pillar: 2 } });
       const baked = { ...fixture("grim-art", "grim"), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }], torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }] };
       const inst = new DungeonInstance({
-        id: "run-art", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, props: art.props, looks: content.looks!, artAssets: art.artAssets, game,
+        id: "run-art", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, props: art.props, looks: content.looks!, artAssets: art.artAssets, artScales: art.artScales, game,
         members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
         onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
       });
@@ -443,6 +451,8 @@ describe("dungeon instance", () => {
       closers.push(() => inst.close());
       const hashes = [...queryEntities(inst.world, C.AssetRef)].map((e) => C.AssetRef.assetHash[e]);
       assert.ok(hashes.includes(fnv1a32("SomePillarModel")) && !hashes.includes(fnv1a32("dungeon:pillar")), "the pillar carries the model's hash");
+      const pillar = [...queryEntities(inst.world, C.AssetRef)].find((e) => C.AssetRef.assetHash[e] === fnv1a32("SomePillarModel"))!;
+      assert.equal(C.Transform.sx[pillar], 2, "drawn at the overlay's size factor");
       const c = new HeadlessClient();
       closers.push(() => c.close());
       await c.connect(`ws://127.0.0.1:${port}`);

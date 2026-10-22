@@ -112,6 +112,8 @@ export type DungeonLooks = z.infer<typeof DungeonLooksSchema>;
 export const PropArtSchema = z.strictObject({
   version: z.literal(1),
   assets: z.record(z.string().regex(/^[a-z][A-Za-z0-9-]*$/), z.string().min(1)),
+  /** Optional size factor per kind (a model drawn smaller or larger than a real one of its kind); multiplies the bake's own scale. */
+  scales: z.record(z.string().regex(/^[a-z][A-Za-z0-9-]*$/), z.number().min(0.05).max(20)).default({}),
 });
 
 export const EntrancesSchema = z.strictObject({
@@ -155,7 +157,7 @@ export const DEFAULT_INSTANCE_RULES: InstanceRules = {
 };
 
 /** Valid empty dungeon content: no entrances, so no runs. */
-export const EMPTY_DUNGEON_CONTENT: DungeonContent = { rules: DEFAULT_INSTANCE_RULES, entrances: {}, props: { version: 1, archetypes: {}, lift: {} }, looks: null, artAssets: {} };
+export const EMPTY_DUNGEON_CONTENT: DungeonContent = { rules: DEFAULT_INSTANCE_RULES, entrances: {}, props: { version: 1, archetypes: {}, lift: {} }, looks: null, artAssets: {}, artScales: {} };
 
 export interface DungeonContent {
   rules: InstanceRules;
@@ -166,6 +168,8 @@ export interface DungeonContent {
   looks: DungeonLooks | null;
   /** The local art overlay, kind to catalog model id (already applied to `props`; empty without props.local.json). */
   artAssets: Record<string, string>;
+  /** The overlay's size factors by kind (empty without props.local.json). */
+  artScales: Record<string, number>;
 }
 
 export const DEFAULT_DUNGEON_CONTENT = fileURLToPath(new URL("../../../../../content/dungeons", import.meta.url));
@@ -180,13 +184,16 @@ export function parseDungeonContent(rules: unknown, entrances: unknown, props?: 
   if (!p.success) for (const i of p.error.issues) problems.push(`props.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
   const lk = looks === undefined ? { success: true as const, data: null } : DungeonLooksSchema.safeParse(looks);
   if (!lk.success) for (const i of lk.error.issues) problems.push(`looks.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
-  const ar = art === undefined ? { success: true as const, data: { version: 1 as const, assets: {} as Record<string, string> } } : PropArtSchema.safeParse(art);
+  const ar = art === undefined ? { success: true as const, data: { version: 1 as const, assets: {} as Record<string, string>, scales: {} as Record<string, number> } } : PropArtSchema.safeParse(art);
   if (!ar.success) for (const i of ar.error.issues) problems.push(`props.local.json: ${i.path.join(".") || "(root)"}: ${i.message}`);
-  if (ar.success && p.success) for (const kind of Object.keys(ar.data.assets)) if (!p.data.archetypes[`dungeon:${kind}`]) problems.push(`props.local.json: assets.${kind}: no such prop kind in props.json`);
+  if (ar.success && p.success) {
+    for (const kind of Object.keys(ar.data.assets)) if (!p.data.archetypes[`dungeon:${kind}`]) problems.push(`props.local.json: assets.${kind}: no such prop kind in props.json`);
+    for (const kind of Object.keys(ar.data.scales)) if (!(kind in ar.data.assets)) problems.push(`props.local.json: scales.${kind}: a size for a kind with no model`);
+  }
   if (!r.success || !e.success || !p.success || !lk.success || !ar.success || problems.length > 0) throw new Error(`dungeon content: ${problems.join("; ")}`);
   const archetypes = { ...p.data.archetypes };
   for (const [kind, asset] of Object.entries(ar.data.assets)) archetypes[`dungeon:${kind}`] = { ...archetypes[`dungeon:${kind}`], asset };
-  return { rules: r.data, entrances: e.data.entrances, props: { ...p.data, archetypes }, looks: lk.data, artAssets: ar.data.assets };
+  return { rules: r.data, entrances: e.data.entrances, props: { ...p.data, archetypes }, looks: lk.data, artAssets: ar.data.assets, artScales: ar.data.scales };
 }
 
 export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT): DungeonContent {

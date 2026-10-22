@@ -59,8 +59,19 @@ export const DUNGEON_ART_PATTERNS: Record<string, { words: string[]; avoid?: str
 
 const hasRun = (words: readonly string[], run: readonly string[]): boolean => words.some((_, i) => run.every((r, j) => words[i + j] === r));
 
+/**
+ * The longest side (metres) a real one of the kind should have: the size factor of an art model is this over the model's own
+ * longest side (catalog `size`). Kinds not listed keep the model's own size (the torch hangs at its own length).
+ */
+export const NOMINAL_LONGEST_M: Record<string, number> = {
+  "weapon-rack": 1.5, barrel: 1.0, chest: 0.9, crate: 0.9, statue: 2.8, brazier: 1.2, throne: 2.0, anvil: 0.9, coffin: 2.0,
+  pillar: 5.2, rubble: 1.0, table: 1.6, candles: 0.4, sack: 0.6, pew: 1.8,
+};
+
 export interface ArtMatch {
   assets: Record<string, string>;
+  /** Size factors, only where the model's own size is off by more than 5%. */
+  scales: Record<string, number>;
   unmatched: string[];
   contact: { kind: string; model: string; name: string; candidates: number; triangles?: number; size?: [number, number, number] }[];
 }
@@ -68,7 +79,7 @@ export interface ArtMatch {
 /** Match `kinds` to `models`: per kind the first (by name, then id) unskinned model that fits its pattern. */
 export function matchProps(models: readonly CatalogModel[], kinds: readonly string[]): ArtMatch {
   const sorted = [...models].filter((x) => !x.skinned).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1));
-  const out: ArtMatch = { assets: {}, unmatched: [], contact: [] };
+  const out: ArtMatch = { assets: {}, scales: {}, unmatched: [], contact: [] };
   for (const kind of kinds) {
     const pat = DUNGEON_ART_PATTERNS[kind];
     const hits = pat
@@ -83,6 +94,12 @@ export function matchProps(models: readonly CatalogModel[], kinds: readonly stri
     }
     const [first] = hits;
     out.assets[kind] = first.id;
+    const nominal = NOMINAL_LONGEST_M[kind];
+    const own = first.size ? Math.max(...first.size) : 0;
+    if (nominal && own > 0) {
+      const factor = Math.min(20, Math.max(0.05, Math.round((nominal / own) * 100) / 100));
+      if (Math.abs(factor - 1) > 0.05) out.scales[kind] = factor;
+    }
     out.contact.push({ kind, model: first.id, name: first.name, candidates: hits.length, ...(first.triangles !== undefined ? { triangles: first.triangles } : {}), ...(first.size ? { size: first.size } : {}) });
   }
   return out;

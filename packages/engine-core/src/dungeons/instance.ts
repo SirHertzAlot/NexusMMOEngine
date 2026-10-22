@@ -99,6 +99,8 @@ export interface DungeonInstanceOptions {
   looks?: DungeonLooks;
   /** The local art overlay (props.local.json), kind to catalog model id: a light emitter it remaps keeps giving light. */
   artAssets?: Record<string, string>;
+  /** The overlay's size factors by kind: a model drawn smaller or larger than a real one of its kind. */
+  artScales?: Record<string, number>;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -290,7 +292,7 @@ export class DungeonInstance {
         built.assetId = archetype.asset;
         built.assetHash = fnv1a32(archetype.asset);
       }
-      built.sx = built.sy = built.sz = p.scale;
+      built.sx = built.sy = built.sz = p.scale * (this.opts.artScales?.[p.kind] ?? 1);
       // The bake's own footprint beats the table's default one.
       if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
       spawnScatterEntity(this.world, built);

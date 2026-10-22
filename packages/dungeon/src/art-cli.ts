@@ -24,6 +24,6 @@ const kinds = Object.keys((JSON.parse(readFileSync(propsFile, "utf8")) as { arch
 const match = writeArtOverlay(models, kinds, out);
 
 console.log(`[dungeon:art] ${Object.keys(match.assets).length} of ${kinds.length} kinds matched, from ${models.length} models -> ${out}`);
-for (const c of match.contact) console.log(`  ${c.kind.padEnd(13)} ${c.name}  (${c.candidates} match${c.candidates === 1 ? "" : "es"}${c.triangles !== undefined ? `, ${c.triangles} tris` : ""}${c.size ? `, ${c.size.map((n) => n.toFixed(2)).join(" x ")} m` : ""})`);
+for (const c of match.contact) console.log(`  ${c.kind.padEnd(13)} ${c.name}  (${c.candidates} match${c.candidates === 1 ? "" : "es"}${match.scales[c.kind] ? `, scaled x${match.scales[c.kind]}` : ""}${c.triangles !== undefined ? `, ${c.triangles} tris` : ""}${c.size ? `, ${c.size.map((n) => n.toFixed(2)).join(" x ")} m` : ""})`);
 console.log(`  procedural: ${match.unmatched.join(", ")}`);
 console.log("  The overlay names licensed art: it is git-ignored, keep it that way. It needs the art served (the dev server serves assets/).");

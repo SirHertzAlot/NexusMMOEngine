@@ -66,12 +66,26 @@ describe("matchProps", () => {
   });
 });
 
+describe("size factors", () => {
+  it("scales a model to a real one's size by its longest side, and leaves a right-sized or unknown one alone", () => {
+    const got = matchProps(
+      [m("SM_Prop_Coffin_01", { size: [1.0, 0.19, 0.45] }), m("SM_Prop_Barrel_01", { size: [0.98, 1.0, 0.98] }), m("SM_Env_Statue_01", { size: [3.06, 4.48, 3.06] }), m("SM_Prop_Anvil_01")],
+      ["coffin", "barrel", "statue", "anvil", "torch"],
+    );
+    assert.equal(got.scales.coffin, 2, "a 1 m coffin is drawn twice as big");
+    assert.equal(got.scales.barrel, undefined, "within 5% of a barrel: no factor");
+    assert.equal(got.scales.statue, 0.63, "a 4.5 m statue is brought down to 2.8 m");
+    assert.equal(got.scales.anvil, undefined, "no size in the catalog: its own");
+    assert.equal(got.scales.torch, undefined);
+  });
+});
+
 describe("writeArtOverlay", () => {
   it("writes the overlay the server reads: version 1 and kind to model id, only the matched kinds", () => {
     const dir = mkdtempSync(join(tmpdir(), "art-"));
     const out = join(dir, "props.local.json");
     const { assets } = writeArtOverlay([m("SM_Prop_Barrel_01"), m("SM_Prop_Anvil_01")], ["barrel", "anvil", "urn"], out);
-    assert.deepEqual(JSON.parse(readFileSync(out, "utf8")), { version: 1, assets: { anvil: "id-SM_Prop_Anvil_01", barrel: "id-SM_Prop_Barrel_01" } });
+    assert.deepEqual(JSON.parse(readFileSync(out, "utf8")), { version: 1, assets: { anvil: "id-SM_Prop_Anvil_01", barrel: "id-SM_Prop_Barrel_01" }, scales: {} });
     assert.deepEqual(Object.keys(assets).sort(), ["anvil", "barrel"]);
     writeFileSync(join(dir, "again.json"), "{}");
   });
