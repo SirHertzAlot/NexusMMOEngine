@@ -86,22 +86,40 @@ export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: num
 
 /**
  * Items beside `anchor` along its width (perpendicular to its facing), facing as it does. `sides` 2 alternates either side
- * (statues flanking a throne), 1 stacks on one side (an anvil beside its smelter). Each side stops at the first spot that does
- * not fit.
+ * (statues flanking a throne); 1 stacks on one side, the one with room for more (an anvil beside its smelter). Each side stops
+ * at the first spot that does not fit.
  */
 export function layFlank(ctx: ArrangeCtx, anchor: Placed, radius: number, count: number, gap: number, sides: 1 | 2): Placed[] {
-  const out: Placed[] = [];
-  if (count <= 0) return out;
+  if (count <= 0) return [];
   const [tx, ty] = [-Math.sin(anchor.rot), Math.cos(anchor.rot)];
   const first = anchor.radius + radius + gap;
   const pitch = 2 * radius + gap;
-  const open = { plus: true, minus: sides === 2 };
+  const normal = anchor.nx !== undefined && anchor.ny !== undefined ? { nx: anchor.nx, ny: anchor.ny } : undefined;
+  const at = (sign: number, k: number): Placed => {
+    const d = (first + k * pitch) * sign;
+    return pose(anchor.x + tx * d, anchor.y + ty * d, anchor.rot, radius, normal);
+  };
+  /** Up to `n` on one side, nearest the anchor first, stopping at the first that does not fit. */
+  const stack = (sign: number, n: number, already: readonly Placed[]): Placed[] => {
+    const out: Placed[] = [];
+    for (let k = 0; k < n; k++) {
+      const p = at(sign, k);
+      if (!fits(ctx, [...already, ...out], p.x, p.y, radius)) break;
+      out.push(p);
+    }
+    return out;
+  };
+  if (sides === 1) {
+    const plus = stack(1, count, []);
+    return plus.length >= count ? plus : [plus, stack(-1, count, [])].reduce((best, s) => (s.length > best.length ? s : best));
+  }
+  const out: Placed[] = [];
+  const open = { plus: true, minus: true };
   for (let k = 0; out.length < count && (open.plus || open.minus); k++) {
     for (const side of ["plus", "minus"] as const) {
       if (out.length >= count || !open[side]) continue;
-      const d = (first + k * pitch) * (side === "plus" ? 1 : -1);
-      const [x, y] = [anchor.x + tx * d, anchor.y + ty * d];
-      if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, anchor.rot, radius, anchor.nx !== undefined && anchor.ny !== undefined ? { nx: anchor.nx, ny: anchor.ny } : undefined));
+      const p = at(side === "plus" ? 1 : -1, k);
+      if (fits(ctx, out, p.x, p.y, radius)) out.push(p);
       else open[side] = false;
     }
   }
