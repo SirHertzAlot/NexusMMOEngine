@@ -1,11 +1,16 @@
 /**
  * Arrangements: how a room's items stand relative to each other and the room, the way that kind of room would be set out
- * (a row of coffins along a wall, pews in a grid, statues flanking a throne, candles ringing a circle).
+ * (a row of coffins along a wall, pews in a grid, statues flanking a throne, candles ringing a circle, a footlocker at the
+ * foot of every bunk).
  *
  * Pure geometry on the room's distance field: each pattern builds poses analytically, then keeps only the ones that fit
- * (on the room's own floor, clear of the walls by their radius, clear of what is already there and of each other).
- * They return fewer than asked when the room runs out; dress.ts scatters the rest. Poses are in grid cells; `rot` is the
- * facing angle (`atan2(ny, nx)`, as placement's wall items), so a pose's facing is the direction (cos rot, sin rot).
+ * (on the room's own floor, clear of the walls, clear of what is already there and of each other). They return fewer than
+ * asked when the room runs out; dress.ts scatters the rest. Poses are in grid cells; `rot` is the facing angle
+ * (`atan2(ny, nx)`, as placement's wall items), so a pose's facing is the direction (cos rot, sin rot).
+ *
+ * An item is a lateral half-width `radius` (its clearance from neighbours) and, optionally, a `reach`: its half-length along
+ * its facing (a coffin is slim but long). The centre of an item stands `reach` from the wall it backs onto, and the item in
+ * front of it (a footlocker) stands `reach` further out. `reach` defaults to `radius`: a round item.
  */
 
 import type { Placed, Sdf2 } from "@mmo-engine/placement";
@@ -15,47 +20,68 @@ export interface ArrangeCtx {
   sdf: Sdf2;
   /** The room's own floor, off doorways (dress.ts's region test). */
   inside: (x: number, y: number) => boolean;
-  /** What is already there: items keep clear of these. */
+  /** What is already there: items keep clear of these (for a mounted call: the room's other mounted items). */
   taken: readonly Placed[];
   /** The room's centre. */
   centre: { x: number; y: number };
+  /** The room's size in cells (`line` runs along the longer side). */
+  extent?: { w: number; h: number };
 }
+
+/** Options shared by the patterns. */
+export interface LayOpts {
+  /** The item's half-length along its facing, cells (default: its radius). */
+  reach?: number;
+  /** Hung on the wall (a painting): on the wall surface, clear only of other mounted items. */
+  mounted?: boolean;
+}
+
+/** A pose that remembers its reach (what `layBefore` measures from). */
+type Pose = Placed & { reach?: number };
+/** The half-length along its facing of a pose this module made (its radius for any other). */
+export const reachOf = (p: Placed): number => (p as Pose).reach ?? p.radius;
 
 /** Clearance slack: a sampled distance field is only so exact, and the dressing checks clearance to this much. */
 const EPS = 1e-3;
 /** How far from the wall a row's items may drift (cells): a row follows the wall, it does not wander off it. */
 const HUG = 0.15;
+/** A mounted item hangs this far off the wall. */
+const MOUNT = 0.01;
 
-/** A pose of `radius` at (x, y) is valid: on the floor, off the walls, clear of everything placed. */
-function fits(ctx: ArrangeCtx, placed: readonly Placed[], x: number, y: number, radius: number): boolean {
-  if (!ctx.inside(x, y) || ctx.sdf.distance(x, y) < radius - EPS) return false;
+/** A pose of lateral `radius` at (x, y) is valid: on the floor, `wall` clear of the walls (0: on a wall surface), clear of everything placed. */
+function fits(ctx: ArrangeCtx, placed: readonly Placed[], x: number, y: number, radius: number, wall = radius): boolean {
+  if (!ctx.inside(x, y) || ctx.sdf.distance(x, y) < wall - EPS) return false;
   const clear = (p: Placed): boolean => (p.x - x) ** 2 + (p.y - y) ** 2 >= (p.radius + radius) ** 2 - EPS;
   return ctx.taken.every(clear) && placed.every(clear);
 }
 
-const pose = (x: number, y: number, rot: number, radius: number, n?: { nx: number; ny: number }): Placed => ({ x, y, rot, radius, ...(n ?? {}) });
+const pose = (x: number, y: number, rot: number, radius: number, reach: number, n?: { nx: number; ny: number }): Pose => ({ x, y, rot, radius, reach, ...(n ?? {}) });
 
 /**
  * A straight row along a wall from `wall` (an item already settled against it: `nx, ny` its normal, `rot` facing out of the
- * wall): `wall`'s own spot, then alternately either side along the wall, `2 * radius + gap` apart, all facing as it does. Each
- * side stops at the first spot that does not fit (a corner, a bend in the wall, a door, something in the way): the dungeon's
- * walls are grid stair-steps, so a row is as long as the wall is straight.
+ * wall, its centre `reach` from the wall, or on it for a mounted item): `wall`'s own spot, then alternately either side along
+ * the wall, `2 * radius + gap` apart, all facing as it does. Each side stops at the first spot that does not fit (a corner, a
+ * bend in the wall, a door, something in the way): the dungeon's walls are grid stair-steps, so a row is as long as the wall
+ * is straight.
  */
-export function layRow(ctx: ArrangeCtx, wall: Placed, radius: number, count: number, gap: number): Placed[] {
+export function layRow(ctx: ArrangeCtx, wall: Placed, radius: number, count: number, gap: number, o: LayOpts = {}): Placed[] {
   const out: Placed[] = [];
-  if (count <= 0 || !fits(ctx, out, wall.x, wall.y, radius)) return out;
+  const reach = o.reach ?? radius;
+  const off = o.mounted ? 0 : reach;
+  if (count <= 0 || !fits(ctx, out, wall.x, wall.y, radius, off)) return out;
   const nx = wall.nx ?? Math.cos(wall.rot);
   const ny = wall.ny ?? Math.sin(wall.rot);
   const [tx, ty] = [-ny, nx];
   const pitch = 2 * radius + gap;
-  const at = (k: number): Placed => pose(wall.x + tx * k * pitch, wall.y + ty * k * pitch, wall.rot, radius, { nx, ny });
+  const at = (k: number): Placed => pose(wall.x + tx * k * pitch, wall.y + ty * k * pitch, wall.rot, radius, reach, { nx, ny });
+  const hug = (p: Placed): boolean => ctx.sdf.distance(p.x, p.y) <= (o.mounted ? MOUNT : reach) + HUG;
   out.push(at(0));
   const open = { plus: true, minus: true };
   for (let k = 1; out.length < count && (open.plus || open.minus); k++) {
     for (const side of ["plus", "minus"] as const) {
       if (out.length >= count || !open[side]) continue;
       const p = at(side === "plus" ? k : -k);
-      if (fits(ctx, out, p.x, p.y, radius) && ctx.sdf.distance(p.x, p.y) <= radius + HUG) out.push(p);
+      if (fits(ctx, out, p.x, p.y, radius, off) && hug(p)) out.push(p);
       else open[side] = false;
     }
   }
@@ -63,24 +89,65 @@ export function layRow(ctx: ArrangeCtx, wall: Placed, radius: number, count: num
 }
 
 /**
- * A lattice of pitch `2 * radius + gap` through the room's centre, axes aligned, filled row by row from the centre row outward
- * (a row of pews across the room, then the rows either side). All items share one facing: toward `faceTo` (from the centre)
- * when given, snapped to the nearest axis so the rows stay square to it, else +y.
+ * A lattice through the room's centre, axes aligned, filled row by row from the centre row outward (a row of pews across the
+ * room, then the rows either side). Across the facing the pitch is `2 * radius + gap`, along it `2 * reach + gap`. All items
+ * share one facing: toward `faceTo` (from the centre) when given, snapped to the nearest axis so the rows stay square to it, else +y.
  */
-export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: number, faceTo: { x: number; y: number } | null): Placed[] {
+export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: number, faceTo: { x: number; y: number } | null, o: LayOpts = {}): Placed[] {
   const out: Placed[] = [];
   if (count <= 0) return out;
-  const pitch = 2 * radius + gap;
+  const reach = o.reach ?? radius;
   const rot = faceTo ? Math.round(Math.atan2(faceTo.y - ctx.centre.y, faceTo.x - ctx.centre.x) / (Math.PI / 2)) * (Math.PI / 2) : Math.PI / 2;
-  const reach = Math.ceil(32 / pitch);
+  const alongX = Math.abs(Math.cos(rot)) > 0.5;
+  const [pitchX, pitchY] = alongX ? [2 * reach + gap, 2 * radius + gap] : [2 * radius + gap, 2 * reach + gap];
+  const span = Math.ceil(32 / Math.min(pitchX, pitchY));
   const lattice: { i: number; j: number }[] = [];
-  for (let j = -reach; j <= reach; j++) for (let i = -reach; i <= reach; i++) lattice.push({ i, j });
-  lattice.sort((a, b) => Math.abs(a.j) - Math.abs(b.j) || a.j - b.j || Math.abs(a.i) - Math.abs(b.i) || a.i - b.i);
+  for (let j = -span; j <= span; j++) for (let i = -span; i <= span; i++) lattice.push({ i, j });
+  // Rows run across the facing: for items facing along y a row is constant y (j), facing along x it is constant x (i).
+  lattice.sort((a, b) => (alongX ? Math.abs(a.i) - Math.abs(b.i) || a.i - b.i || Math.abs(a.j) - Math.abs(b.j) || a.j - b.j : Math.abs(a.j) - Math.abs(b.j) || a.j - b.j || Math.abs(a.i) - Math.abs(b.i) || a.i - b.i));
   for (const { i, j } of lattice) {
     if (out.length >= count) break;
-    const x = ctx.centre.x + i * pitch;
-    const y = ctx.centre.y + j * pitch;
-    if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, rot, radius));
+    const x = ctx.centre.x + i * pitchX;
+    const y = ctx.centre.y + j * pitchY;
+    if (fits(ctx, out, x, y, radius, reach)) out.push(pose(x, y, rot, radius, reach));
+  }
+  return out;
+}
+
+/**
+ * Items down the room's long axis through its centre, `at` cells off the centreline, `2 * radius + gap` apart, filled from the
+ * middle outward (a carpet runner, a hall of pillars, sarcophagi down a crypt); facing along the axis. Spots that do not fit are skipped.
+ */
+export function layLine(ctx: ArrangeCtx, radius: number, count: number, gap: number, at: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  if (count <= 0) return out;
+  const reach = o.reach ?? radius;
+  const alongX = (ctx.extent?.w ?? 1) >= (ctx.extent?.h ?? 0);
+  const rot = alongX ? 0 : Math.PI / 2;
+  const pitch = 2 * radius + gap;
+  const span = Math.ceil((alongX ? ctx.extent?.w ?? 64 : ctx.extent?.h ?? 64) / pitch);
+  for (let k = 0; out.length < count && k <= span; k++) {
+    for (const sign of k === 0 ? [1] : [1, -1]) {
+      if (out.length >= count) break;
+      const d = sign * k * pitch;
+      const [x, y] = alongX ? [ctx.centre.x + d, ctx.centre.y + at] : [ctx.centre.x + at, ctx.centre.y + d];
+      if (fits(ctx, out, x, y, radius, reach)) out.push(pose(x, y, rot, radius, reach));
+    }
+  }
+  return out;
+}
+
+/**
+ * One item in front of each of `anchors` (the foot of every bunk, a bench before every table): `reach` beyond the anchor's own
+ * reach plus `gap`, along its facing, facing as it does. Anchors with no room in front get none.
+ */
+export function layBefore(ctx: ArrangeCtx, anchors: readonly Placed[], radius: number, gap: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  const reach = o.reach ?? radius;
+  for (const a of anchors) {
+    const d = reachOf(a) + reach + gap;
+    const [x, y] = [a.x + Math.cos(a.rot) * d, a.y + Math.sin(a.rot) * d];
+    if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, a.rot, radius, reach));
   }
   return out;
 }
@@ -90,15 +157,16 @@ export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: num
  * (statues flanking a throne); 1 stacks on one side, the one with room for more (an anvil beside its smelter). Each side stops
  * at the first spot that does not fit.
  */
-export function layFlank(ctx: ArrangeCtx, anchor: Placed, radius: number, count: number, gap: number, sides: 1 | 2): Placed[] {
+export function layFlank(ctx: ArrangeCtx, anchor: Placed, radius: number, count: number, gap: number, sides: 1 | 2, o: LayOpts = {}): Placed[] {
   if (count <= 0) return [];
+  const reach = o.reach ?? radius;
   const [tx, ty] = [-Math.sin(anchor.rot), Math.cos(anchor.rot)];
   const first = anchor.radius + radius + gap;
   const pitch = 2 * radius + gap;
   const normal = anchor.nx !== undefined && anchor.ny !== undefined ? { nx: anchor.nx, ny: anchor.ny } : undefined;
   const at = (sign: number, k: number): Placed => {
     const d = (first + k * pitch) * sign;
-    return pose(anchor.x + tx * d, anchor.y + ty * d, anchor.rot, radius, normal);
+    return pose(anchor.x + tx * d, anchor.y + ty * d, anchor.rot, radius, reach, normal);
   };
   /** Up to `n` on one side, nearest the anchor first, stopping at the first that does not fit. */
   const stack = (sign: number, n: number, already: readonly Placed[]): Placed[] => {
@@ -128,14 +196,15 @@ export function layFlank(ctx: ArrangeCtx, anchor: Placed, radius: number, count:
 }
 
 /** Items evenly round `anchor`, starting from its facing, facing it ("in") or away ("out"); the ones that do not fit are skipped. */
-export function layRing(ctx: ArrangeCtx, anchor: Placed, radius: number, count: number, gap: number, face: "in" | "out"): Placed[] {
+export function layRing(ctx: ArrangeCtx, anchor: Placed, radius: number, count: number, gap: number, face: "in" | "out", o: LayOpts = {}): Placed[] {
   const out: Placed[] = [];
   if (count <= 0) return out;
+  const reach = o.reach ?? radius;
   const R = anchor.radius + radius + gap;
   for (let i = 0; i < count; i++) {
     const a = anchor.rot + (2 * Math.PI * i) / count;
     const [x, y] = [anchor.x + R * Math.cos(a), anchor.y + R * Math.sin(a)];
-    if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, face === "in" ? a + Math.PI : a, radius));
+    if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, face === "in" ? a + Math.PI : a, radius, reach));
   }
   return out;
 }
