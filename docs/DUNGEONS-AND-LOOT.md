@@ -263,12 +263,27 @@ A dressing content line (`dressing.ts`) says what a room holds and, optionally, 
 | `flank` | pairs either side of the anchor's item, mirrored, facing as it does | `anchor` |
 | `beside` | stacked on one side of the anchor's item (the side with room) | `anchor` |
 | `ring` | evenly round the anchor's item, facing it (`faces: "out"` away) | `anchor` |
+| `line` | down the room's long axis through the centre (`at` cells off it), spaced by the item's length, facing along it: a hall of pillars, sarcophagi, a carpet runner | |
+| `before` | one item in front of **each** item of the anchor's kind (a footlocker at the foot of every bunk, a bench before every table, coin piles before the chests); its own count is not used | `anchor` |
+| `head` | one item in the middle of the longest free run of wall (the patron's statue; the altar is `before` it) | |
 
 `anchor` is the `kind` of another line of the same archetype. Focal pieces (centre items, anchors) and corner items are placed
 first, then arranged lines (an anchor line before the lines that use it), then everything else. What a pattern has no room for
 falls back to scatter, then to `unplaced`. A pattern never walls off a doorway: if it would, its last items go back to scatter.
-Mounted lines cannot be arranged. The dungeon file does not change: `dressing.props` still holds `x, y, rot, kind`, so the
+A mounted line can only be a `row` (paintings, shields, banners hung along a wall at their `lift`, clear only of each other). The dungeon file does not change: `dressing.props` still holds `x, y, rot, kind`, so the
 arrangement shows only in dungeons baked after it (**rebake the pool**); layouts and shells of the same seed are identical.
+
+A grid facing an anchor is centred on the anchor's axis, fills the rows nearest it first and may keep a lateral `aisle` free (the
+chapel's pews are two blocks either side of an aisle, all looking at the altar). What a `line`, `grid`, `flank` or `ring` cannot fit is
+left out, not scattered: a sarcophagus or pew at a random angle would spoil the arrangement; a row's leftovers still go along a wall.
+
+#### Item size, fill, density (DF3)
+
+An item is a lateral half-width `radius` (its clearance from neighbours) and, optionally, a `reach`: its half-length along its facing
+(a coffin: `radius 0.2, reach 0.5`). Its centre stands `reach` from the wall it backs onto; the item in front stands `reach` further out;
+its collision footprint is the larger of the two. An archetype's `fill` (default 0.6) is the share of the room's floor its inventory may
+fill, so dense rooms (a crypt, a library) set 0.65 to 0.7; every doorway still stays reachable. Rooms now hold real quantities (see the
+built-in `crypt`, `barracks`, `armoury`, `library`, `chapel`, `jail`, `messhall`), about 680 props in a dungeon; a test pins the ceiling at 1000.
 
 ### Prop looks (DF2)
 

@@ -14,7 +14,7 @@ const table = JSON.parse(readFileSync(`${DEFAULT_DUNGEON_CONTENT}/props.json`, "
   archetypes: Record<string, { collision: { halfExtents: [number, number, number] } }>;
 };
 const kinds = Object.keys(table.archetypes).map((k) => k.replace(/^dungeon:/, ""));
-const MOUNTED = new Set(["torch", "banner"]);
+const MOUNTED = new Set(Object.keys((JSON.parse(readFileSync(`${DEFAULT_DUNGEON_CONTENT}/props.json`, "utf8")) as { lift: Record<string, number> }).lift));
 
 describe("propMesh", () => {
   it("has a recipe for every kind in props.json, and for nothing else", () => {
