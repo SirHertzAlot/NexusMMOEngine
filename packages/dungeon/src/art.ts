@@ -4,8 +4,8 @@
  * `props.json` (engine-core `content.ts`), because a prop's AssetRef hash is the hash of its asset id and the client draws a
  * pack model when that id is a catalog model's id.
  *
- * Matching is conservative: a wrong model is worse than the procedural mesh (cage must not take a ribcage, nor desk a
- * speaker), so every pattern names what to avoid, and a kind with no pattern is always procedural.
+ * Matching is conservative, on whole name words: a wrong model is worse than the procedural mesh (a pillar must not be a
+ * Caterpillar, a table the Stables), so patterns name what to avoid, and a kind with no pattern is always procedural.
  */
 
 import { writeFileSync } from "node:fs";
@@ -18,25 +18,46 @@ export interface CatalogModel {
   size?: [number, number, number];
 }
 
-/** Prop kind to the words its model's name must have (`match`) and must not have (`avoid`). Kinds not listed stay procedural. */
-export const DUNGEON_ART_PATTERNS: Record<string, { match: RegExp; avoid?: RegExp }> = {
-  "weapon-rack": { match: /weapon.?rack/i },
-  barrel: { match: /barrel/i, avoid: /broken|lid/i },
-  chest: { match: /chest/i, avoid: /lid|plate|armou?r|rib|drawer|treasure.?pile/i },
-  crate: { match: /crate/i, avoid: /broken/i },
-  statue: { match: /statue/i, avoid: /broken|head_only/i },
-  brazier: { match: /brazier/i },
-  throne: { match: /throne/i },
-  anvil: { match: /anvil/i },
-  coffin: { match: /coffin/i, avoid: /lid/i },
-  torch: { match: /torch/i, avoid: /lid|particle|wall_bracket_only/i },
-  pillar: { match: /pillar/i, avoid: /ceiling|broken|stump|small|base_only/i },
-  rubble: { match: /rubble/i },
-  table: { match: /table/i, avoid: /skeleton|speaker|desk|picnic/i },
-  candles: { match: /candles/i, avoid: /particle/i },
-  sack: { match: /sack/i, avoid: /hanging/i },
-  pew: { match: /\bpew\b|_pew_|pew_/i },
+/**
+ * A model name as lower-case words: split at anything that is not a letter or digit and at camelCase joins, digits dropped
+ * (`SM_Prop_WeaponRack_01` is sm prop weapon rack). Matching whole words keeps `pillar` off `Caterpillar`, `crate` off
+ * `Crater` and `table` off `Stables`.
+ */
+export function nameWords(name: string): string[] {
+  return name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .map((w) => w.toLowerCase())
+    .filter((w) => w !== "" && !/^\d+$/.test(w));
+}
+
+/** Words no prop model should have, whatever the kind: building and character parts, effects, damage, props' lids. */
+const NEVER = ["bld", "chr", "fx", "particle", "lid", "broken", "damaged", "destroyed", "speaker", "skeleton"];
+
+/**
+ * Prop kind to the word sequence its model's name must contain (`words`, in order, next to each other) and the words it must
+ * not (`avoid`). Kinds not listed stay procedural.
+ */
+export const DUNGEON_ART_PATTERNS: Record<string, { words: string[]; avoid?: string[] }> = {
+  "weapon-rack": { words: ["weapon", "rack"] },
+  barrel: { words: ["barrel"] },
+  chest: { words: ["chest"], avoid: ["plate", "armour", "armor", "rib", "drawer", "pile"] },
+  crate: { words: ["crate"] },
+  statue: { words: ["statue"], avoid: ["fountain", "head"] },
+  brazier: { words: ["brazier"] },
+  throne: { words: ["throne"] },
+  anvil: { words: ["anvil"] },
+  coffin: { words: ["coffin"] },
+  torch: { words: ["torch"] },
+  pillar: { words: ["pillar"], avoid: ["ceiling", "stump", "small", "base"] },
+  rubble: { words: ["rubble"], avoid: ["wall"] },
+  table: { words: ["table"], avoid: ["desk", "picnic"] },
+  candles: { words: ["candles"] },
+  sack: { words: ["sack"], avoid: ["hanging"] },
+  pew: { words: ["pew"] },
 };
+
+const hasRun = (words: readonly string[], run: readonly string[]): boolean => words.some((_, i) => run.every((r, j) => words[i + j] === r));
 
 export interface ArtMatch {
   assets: Record<string, string>;
@@ -50,7 +71,12 @@ export function matchProps(models: readonly CatalogModel[], kinds: readonly stri
   const out: ArtMatch = { assets: {}, unmatched: [], contact: [] };
   for (const kind of kinds) {
     const pat = DUNGEON_ART_PATTERNS[kind];
-    const hits = pat ? sorted.filter((x) => pat.match.test(x.name) && !(pat.avoid && pat.avoid.test(x.name))) : [];
+    const hits = pat
+      ? sorted.filter((x) => {
+          const words = nameWords(x.name);
+          return hasRun(words, pat.words) && !words.some((w) => NEVER.includes(w) || pat.avoid?.includes(w));
+        })
+      : [];
     if (hits.length === 0) {
       out.unmatched.push(kind);
       continue;

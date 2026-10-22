@@ -8,9 +8,17 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DUNGEON_ART_PATTERNS, matchProps, writeArtOverlay, type CatalogModel } from "../src/index.js";
+import { DUNGEON_ART_PATTERNS, matchProps, nameWords, writeArtOverlay, type CatalogModel } from "../src/index.js";
 
 const m = (name: string, extra: Partial<CatalogModel> = {}): CatalogModel => ({ id: `id-${name}`, name, ...extra });
+
+describe("nameWords", () => {
+  it("splits at separators and camelCase joins, lower-cases, and drops numbers", () => {
+    assert.deepEqual(nameWords("SM_Prop_WeaponRack_01"), ["sm", "prop", "weapon", "rack"]);
+    assert.deepEqual(nameWords("Weapon_Rack"), ["weapon", "rack"]);
+    assert.deepEqual(nameWords("Caterpillar"), ["caterpillar"]);
+  });
+});
 
 describe("matchProps", () => {
   const kinds = ["weapon-rack", "barrel", "chest", "cage", "urn", "desk", "table", "candles", "sarcophagus"];
@@ -31,6 +39,16 @@ describe("matchProps", () => {
     );
     for (const k of ["chest", "cage", "urn", "desk", "table", "candles"]) assert.equal(got.assets[k], undefined, `${k} stays procedural`);
     assert.ok(got.unmatched.includes("chest") && got.unmatched.includes("candles"));
+  });
+
+  it("matches whole words: a Caterpillar is no pillar, a Crater no crate, the Stables no table, a candlestick no candles, a fountain's statue no statue", () => {
+    const got = matchProps(
+      [m("Caterpillar"), m("SM_Env_Ground_Crater_01"), m("SM_Bld_Preset_Stables_01"), m("FX_Item_Candlestick_01"), m("SM_Env_Fountain_Statue_01"), m("SM_Bld_Castle_Rubble_01")],
+      ["pillar", "crate", "table", "candles", "statue", "rubble"],
+    );
+    assert.deepEqual(got.assets, {}, "nothing matches: all six stay procedural");
+    const ok = matchProps([m("SM_Env_Pillar_01"), m("SM_Prop_Crate_Metal_01"), m("SM_Prop_Table_Long_01"), m("SM_Prop_Candles_01"), m("SM_Env_Statue_01"), m("SM_Env_Rubble_01")], ["pillar", "crate", "table", "candles", "statue", "rubble"]);
+    assert.equal(Object.keys(ok.assets).length, 6, "the real ones match");
   });
 
   it("then takes the plain model beside the near misses", () => {
