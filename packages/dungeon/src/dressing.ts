@@ -11,10 +11,10 @@ import { z } from "zod";
 const ROLES = ["entrance", "combat", "elite", "treasure", "shrine", "boss"] as const;
 const WHERE = ["floor", "centre", "wall", "corner"] as const;
 /** How a content line's items are laid out in the room (dress.ts): scatter is each on its own, the rest are patterns (arrange.ts). */
-export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring"] as const;
+export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring", "line", "before"] as const;
 export type Arrangement = (typeof ARRANGEMENTS)[number];
 /** Patterns that stand round another line's item. */
-const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring"];
+const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring", "before"];
 
 export const ContentSchema = z.strictObject({
   /** What it is (the renderer maps kinds to art). */
@@ -38,6 +38,10 @@ export const ContentSchema = z.strictObject({
   anchor: z.string().min(1).optional(),
   /** Cells left between neighbours in a pattern. */
   gap: z.number().min(0).default(0.3),
+  /** Half-length along the item's facing, cells (default: `radius`, a round item). `radius` is then its lateral half-width: a coffin is slim (`radius`) and long (`reach`). */
+  reach: z.number().positive().optional(),
+  /** For `line`: cells off the centreline of the room's long axis (default 0). */
+  at: z.number().optional(),
 });
 
 export const ArchetypeSchema = z.strictObject({
@@ -57,6 +61,8 @@ export const ArchetypeSchema = z.strictObject({
   /** Needs at least one of these beside it (a storeroom by a barracks). */
   near: z.array(z.string()).default([]),
   contents: z.array(ContentSchema).default([]),
+  /** The share of the room's floor the inventory may fill (default 0.6): dense rooms (a crypt, a library) raise it. */
+  fill: z.number().min(0.1).max(0.9).optional(),
 });
 
 export const VeinSchema = z.strictObject({
@@ -168,7 +174,7 @@ export function loadDressing(file?: string): Dressing {
     arch.contents.forEach((k, i) => {
       if (k.count[0] > k.count[1]) problems.push(`archetypes.${id}.contents[${i}]: count min above max`);
       if (NEEDS_ANCHOR.includes(k.arrange) && !k.anchor) problems.push(`archetypes.${id}.contents[${i}]: arrange "${k.arrange}" needs an anchor`);
-      if (k.mount && k.arrange !== "scatter") problems.push(`archetypes.${id}.contents[${i}]: a mounted line cannot be arranged (only standing items)`);
+      if (k.mount && k.arrange !== "scatter" && k.arrange !== "row") problems.push(`archetypes.${id}.contents[${i}]: a mounted line can only be a row (or scatter)`);
       if (k.anchor && !arch.contents.some((o, j) => j !== i && o.kind === k.anchor)) problems.push(`archetypes.${id}.contents[${i}]: anchor "${k.anchor}" is not another kind in ${id}`);
     });
   }

@@ -25,7 +25,7 @@ import { solve, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engin
 import { CELL, type Dungeon } from "./generate.js";
 import { deriveSeed } from "./rng.js";
 import type { Content, Dressing } from "./dressing.js";
-import { layFlank, layGrid, layRing, layRow, type ArrangeCtx } from "./arrange.js";
+import { layBefore, layFlank, layGrid, layLine, layRing, layRow, reachOf, type ArrangeCtx } from "./arrange.js";
 
 export interface DressedProp {
   kind: string;
@@ -193,8 +193,8 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         domains: lines.map((k) => Array.from({ length: k.count[1] - k.count[0] + 1 }, (_, i) => k.count[0] + i)),
         budgets: lines.map((k, i) => ({
           // Line i's footprint per item, counted only in its own slot.
-          cost: counts.map((_, n) => n * Math.PI * k.radius * k.radius * 4),
-          max: floor * 0.6,
+          cost: counts.map((_, n) => n * Math.PI * k.radius * (k.reach ?? k.radius) * 4),
+          max: floor * (arch.fill ?? 0.6),
           slots: [i],
         })),
       },
@@ -204,14 +204,21 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
     type Item = PlaceItem & { kind: string; collision: "solid" | "none"; line: Content };
     const items: Item[] = [];
     lines.forEach((k, i) => {
-      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius: k.radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid"), line: k });
+      // A `before` line has one item per item of its anchor, laid after it (its WFC count is not used).
+      if (k.arrange === "before") return;
+      const radius = k.arrange === "scatter" ? Math.max(k.radius, k.reach ?? 0) : k.radius;
+      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid"), line: k });
     });
     const region = regionOf(r);
     const poses = new Map<string, Placed[]>();
-    const record = (it: Item, p: Placed): void => {
-      layoutTaken[r].push(p);
+    /** What hangs on this room's walls (mounted rows): clear only of each other. */
+    const mountedHere: Placed[] = [];
+    const record = (it: Item, p: Placed, hung = false): void => {
+      // What later items keep clear of is the item's whole footprint (its length along its facing too); a hung item is clear of the floor.
+      if (hung) mountedHere.push(p);
+      else layoutTaken[r].push({ ...p, radius: Math.max(p.radius, reachOf(p)) });
       poses.set(it.kind, [...(poses.get(it.kind) ?? []), p]);
-      props.push({ kind: it.kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!it.mount, radius: it.radius, collision: it.collision });
+      props.push({ kind: it.kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!it.mount, radius: Math.max(it.radius, reachOf(p)), collision: it.collision });
     };
     // Scatter a batch (each item on its own, as the dressing always has); the items with no room come back.
     const scatter = (batch: Item[], batchNo: number): Item[] => {
@@ -223,7 +230,7 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
     };
     // Big and centre pieces first.
     const bigFirst = (a: Item, b: Item): number => Number(b.where === "centre") - Number(a.where === "centre") || b.radius - a.radius;
-    if (items.every((it) => it.line.arrange === "scatter")) {
+    if (lines.every((k) => k.arrange === "scatter")) {
       items.sort(bigFirst);
       unplaced += scatter(items, 0).length;
     } else {
@@ -246,9 +253,9 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
       const anchors = new Set(lines.filter((k) => k.arrange !== "scatter" && k.anchor).map((k) => k.anchor!));
       const focal = (it: Item): boolean => it.line.arrange === "scatter" && (it.where === "centre" || it.where === "corner" || anchors.has(it.kind));
       unplaced += guarded(() => scatter(items.filter(focal).sort(bigFirst), 1));
-      const ctx: ArrangeCtx = { sdf, inside: region.inside!, taken: layoutTaken[r], centre: { x: _room.cx, y: _room.cy } };
+      const ctx: ArrangeCtx = { sdf, inside: region.inside!, taken: layoutTaken[r], centre: { x: _room.cx, y: _room.cy }, extent: { w: _room.w, h: _room.h } };
       const leftover: Item[] = items.filter((it) => it.line.arrange === "scatter" && !focal(it));
-      const arrangedLines = [...new Set(items.filter((it) => it.line.arrange !== "scatter").map((it) => it.line))].sort((a, b) => Number(anchors.has(b.kind)) - Number(anchors.has(a.kind)));
+      const arrangedLines = lines.filter((k) => k.arrange !== "scatter").sort((a, b) => Number(anchors.has(b.kind)) - Number(anchors.has(a.kind)));
       /** `laid` less its last items until it no longer walls off a doorway the room's other items leave open. */
       const keepOpen = (laid: Placed[], line: Content): Placed[] => {
         if (line.collision === "none" || (line.mount && !line.collision)) return laid;
@@ -261,26 +268,35 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
       arrangedLines.forEach((line, li) => {
         const its = items.filter((it) => it.line === line);
         const anchor = line.anchor ? poses.get(line.anchor)?.[0] : undefined;
+        const template: Item = { kind: line.kind, where: line.where, radius: line.radius, mount: line.mount, collision: line.collision ?? (line.mount ? "none" : "solid"), line };
+        const opts = { ...(line.reach ? { reach: line.reach } : {}), ...(line.mount ? { mounted: true } : {}) };
         let laid: Placed[] = [];
         if (line.arrange === "row") {
           // Rows on the wall that holds the most (the best of a dozen spots round the walls); what is left over starts another
-          // row on another wall, and what that cannot fit is scattered.
-          for (let pass = 0; pass < 4 && laid.length < its.length; pass++) {
-            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: layoutTaken[r], reach: 3 });
+          // row on another wall (up to eight), and what that cannot fit is scattered. A mounted row hangs on the wall instead.
+          const rowCtx: ArrangeCtx = line.mount ? { ...ctx, taken: mountedHere } : ctx;
+          for (let pass = 0; pass < 8 && laid.length < its.length; pass++) {
+            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius, ...(line.mount ? { mount: true } : {}) })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: line.mount ? mountedHere : layoutTaken[r], reach: 3 });
             let best: Placed[] = [];
             for (const wall of wallSpots) {
-              const row = wall ? layRow(ctx, wall, line.radius, its.length - laid.length, line.gap) : [];
+              const row = wall ? layRow(rowCtx, wall, line.radius, its.length - laid.length, line.gap, opts) : [];
               if (row.length > best.length) best = row;
             }
             best = keepOpen(best, line);
             if (best.length === 0) break;
-            best.forEach((p, k) => record(its[laid.length + k], p));
+            best.forEach((p, k) => record(its[laid.length + k], p, !!line.mount));
             laid = [...laid, ...best];
           }
+        } else if (line.arrange === "before") {
+          // One item in front of each item of the anchor kind; the room's other items keep their places.
+          const front = layBefore(ctx, line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, line.gap, opts);
+          keepOpen(front, line).forEach((p) => record(template, p));
+          return;
         } else {
-          if (line.arrange === "grid") laid = layGrid(ctx, line.radius, its.length, line.gap, anchor ?? null);
-          else if (anchor && (line.arrange === "flank" || line.arrange === "beside")) laid = layFlank(ctx, anchor, line.radius, its.length, line.gap, line.arrange === "flank" ? 2 : 1);
-          else if (anchor && line.arrange === "ring") laid = layRing(ctx, anchor, line.radius, its.length, line.gap, line.faces === "out" ? "out" : "in");
+          if (line.arrange === "grid") laid = layGrid(ctx, line.radius, its.length, line.gap, anchor ?? null, opts);
+          else if (line.arrange === "line") laid = layLine(ctx, line.radius, its.length, line.gap, line.at ?? 0, opts);
+          else if (anchor && (line.arrange === "flank" || line.arrange === "beside")) laid = layFlank(ctx, anchor, line.radius, its.length, line.gap, line.arrange === "flank" ? 2 : 1, opts);
+          else if (anchor && line.arrange === "ring") laid = layRing(ctx, anchor, line.radius, its.length, line.gap, line.faces === "out" ? "out" : "in", opts);
           laid = keepOpen(laid, line);
           laid.forEach((p, k) => record(its[k], p));
         }
