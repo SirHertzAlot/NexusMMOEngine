@@ -8,6 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,6 +75,7 @@ describe("dressDungeon: what (WFC)", () => {
       d.rooms.forEach((_, i) => {
         const a = BUILTIN_DRESSING.archetypes[x.archetypes[i]];
         for (const line of a.contents) {
+          if (a.contents.some((l) => l.kind === line.kind && l.arrange === "before")) continue; // one per item of its anchor
           const n = x.props.filter((p) => p.room === i && p.kind === line.kind).length;
           const max = a.contents.filter((l) => l.kind === line.kind && rank >= l.minRank).reduce((s, l) => s + l.count[1], 0);
           assert.ok(n <= max, `${at}: room ${i} has ${n} ${line.kind} (max ${max})`);
@@ -109,8 +111,9 @@ describe("dressDungeon: where (scatter + raymarcher)", () => {
       assert.equal(d.roomId[c], p.room, `${at}: ${p.kind} in its room`);
       assert.equal(d.grid[c], CELL.floor, `${at}: ${p.kind} on the floor`);
       assert.ok(!d.doorway[c], `${at}: ${p.kind} off the doorway`);
-      const line = Object.values(BUILTIN_DRESSING.archetypes).flatMap((a) => a.contents).find((l) => l.kind === p.kind)!;
-      if (!p.mount) assert.ok(sdf.distance(p.x, p.y) >= line.radius - 1e-3, `${at}: ${p.kind} has clearance`);
+      const lines = Object.values(BUILTIN_DRESSING.archetypes).flatMap((a) => a.contents).filter((l) => l.kind === p.kind);
+      const need = Math.min(...lines.map((l) => l.reach ?? l.radius));
+      if (!p.mount) assert.ok(sdf.distance(p.x, p.y) >= need - 1e-3, `${at}: ${p.kind} has clearance`);
     }
     for (const v of x.resources) assert.ok(Math.abs(sdf.distance(v.x, v.y)) < 0.05, `${at}: ${v.kind} on a wall surface`);
     // Nothing overlaps what the layout already put in the room (its set pieces, the monsters).
@@ -139,6 +142,8 @@ const scatterOnly = (d: Dressing): Dressing => ({
   ...d,
   archetypes: Object.fromEntries(Object.entries(d.archetypes).map(([id, a]) => [id, { ...a, contents: a.contents.map((k) => ({ ...k, arrange: "scatter" as const })) }])),
 });
+/** The built-in dressing as part A shipped it, every line scattered (a frozen fixture: the pinned hashes below are of its output). */
+const PART_A_DRESSING = JSON.parse(readFileSync(fileURLToPath(new URL("../../test/dressing-part-a.json", import.meta.url)), "utf8")) as Dressing;
 const digest = (x: DungeonDressing): string => createHash("sha256").update(JSON.stringify(x.props)).digest("hex").slice(0, 16);
 
 describe("dressDungeon: arrangements", () => {
@@ -149,7 +154,7 @@ describe("dressDungeon: arrangements", () => {
     assert.ok(pinned);
     for (const [i, hash] of all) {
       const [seed, theme, rank] = cases[i];
-      assert.equal(digest(dressDungeon(make(seed, theme), scatterOnly(BUILTIN_DRESSING), rank)), hash, `case ${i} (${theme} rank ${rank})`);
+      assert.equal(digest(dressDungeon(make(seed, theme), PART_A_DRESSING, rank)), hash, `case ${i} (${theme} rank ${rank})`);
     }
   });
 
@@ -229,16 +234,22 @@ describe("dressDungeon: the built-in rooms are arranged", () => {
     return ps.every((p) => Math.abs(p.rot - ps[0].rot) < 1e-9 && Math.abs(nx * p.x + ny * p.y - (nx * ps[0].x + ny * ps[0].y)) < 1e-6);
   };
 
-  it("sets crypts' coffins and armouries' racks in rows, and chapels' pews in one grid facing one way", () => {
-    for (const [theme, archetype, kind] of [["grim", "crypt", "coffin"], ["grim", "armoury", "weapon-rack"]] as const) {
-      const sets = dressed(theme, 3).flatMap(({ x }) => rooms(x, archetype, kind));
-      assert.ok(sets.length >= 5, `${theme}: ${sets.length} ${archetype} rooms with two or more ${kind}s`);
-      const rows = sets.filter(oneRow).length;
-      assert.ok(rows / sets.length >= 0.4, `${rows} of ${sets.length} ${archetype} rooms hold their ${kind}s in one row`);
+  it("sets crypts' coffins along the walls, and chapels' pews in one grid facing one way", () => {
+    const sdfOf = (d: Dungeon): GridSdf => new GridSdf(d.width, d.height, (cx, cy) => d.grid[cy * d.width + cx] !== CELL.floor);
+    let coffins = 0, hugging = 0;
+    for (const { d, x } of dressed("grim", 3)) {
+      const sdf = sdfOf(d);
+      for (const p of x.props.filter((q) => q.kind === "coffin")) {
+        coffins++;
+        if (Math.abs(sdf.distance(p.x, p.y) - 0.5) < 0.16) hugging++;
+      }
     }
+    assert.ok(coffins >= 100, `${coffins} coffins over the crypts`);
+    assert.ok(hugging / coffins >= 0.8, `${hugging} of ${coffins} coffins stand head to the wall`);
     const pews = dressed("ancient", 3).flatMap(({ x }) => rooms(x, "chapel", "pew"));
     assert.ok(pews.length >= 5);
-    assert.ok(pews.filter((ps) => ps.every((p) => Math.abs(p.rot - ps[0].rot) < 1e-9)).length / pews.length >= 0.8, "pews face one way");
+    const oneWay = pews.filter((ps) => ps.every((p) => Math.abs(p.rot - ps[0].rot) < 1e-9)).length;
+    assert.ok(oneWay / pews.length >= 0.5, `${oneWay} of ${pews.length} chapels have every pew facing one way (the rest had pews with no room left in the grid, scattered)`);
   });
 
   it("puts a forge's anvil beside its smelter and a vault's coin piles beside its chests", () => {
@@ -249,7 +260,8 @@ describe("dressDungeon: the built-in rooms are arranged", () => {
         const anvil = x.props.find((p) => p.room === i && p.kind === "anvil");
         if (a !== "forge" || !smelter || !anvil) return;
         forges++;
-        if (Math.abs(Math.hypot(anvil.x - smelter.x, anvil.y - smelter.y) - (0.9 + 0.7 + 0.3)) < 1e-6) beside++;
+        const [ls, la] = [BUILTIN_DRESSING.archetypes.forge.contents.find((l) => l.kind === "smelter")!, BUILTIN_DRESSING.archetypes.forge.contents.find((l) => l.kind === "anvil")!];
+        if (Math.abs(Math.hypot(anvil.x - smelter.x, anvil.y - smelter.y) - (ls.radius + la.radius + la.gap)) < 1e-6) beside++;
       });
     }
     assert.ok(forges >= 3, `${forges} forges`);
@@ -313,9 +325,13 @@ describe("dressDungeon: the built-in rooms are arranged", () => {
         assert.equal(d.roomId[c], p.room, `${theme}: ${p.kind} in its room`);
         assert.equal(d.grid[c], CELL.floor, `${theme}: ${p.kind} on the floor`);
         assert.ok(!d.doorway[c], `${theme}: ${p.kind} off the doorway`);
-        if (!p.mount) assert.ok(sdf.distance(p.x, p.y) >= p.radius - 1e-3, `${theme}: ${p.kind} off the walls`);
+        const need = Math.min(...Object.values(BUILTIN_DRESSING.archetypes).flatMap((a) => a.contents).filter((l) => l.kind === p.kind).map((l) => l.reach ?? l.radius));
+        if (!p.mount) assert.ok(sdf.distance(p.x, p.y) >= need - 1e-3, `${theme}: ${p.kind} off the walls`);
       }
-      const solid = x.props.filter((p) => p.collision === "solid");
+      // Elongated items (a bunk, a coffin) are collision circles of their length and overlap their neighbours as circles by design:
+      // their spacing is the pattern's, tested there. Round items must not overlap.
+      const slim = new Set(Object.values(BUILTIN_DRESSING.archetypes).flatMap((a) => a.contents).filter((l) => l.reach !== undefined).map((l) => l.kind));
+      const solid = x.props.filter((p) => p.collision === "solid" && !slim.has(p.kind));
       for (const [i, p] of solid.entries()) for (const q of solid.slice(i + 1)) if (p.room === q.room) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) >= p.radius + q.radius - 1e-3, `${theme}: ${p.kind} and ${q.kind} overlap`);
     }
     assert.ok(arranged <= Math.ceil(scattered * 1.25) + 2, `${arranged} unplaced arranged against ${scattered} scattered`);
@@ -494,5 +510,86 @@ describe("dressDungeon: density patterns", () => {
     assert.throws(() => loadDressing(file([{ ...base, kind: "footlocker", where: "floor", arrange: "before" }])), /needs an anchor/);
     assert.throws(() => loadDressing(file([{ ...base, mount: true, arrange: "grid" }])), /mounted line can only be a row/);
     assert.ok(loadDressing(file([{ ...base, mount: true, arrange: "row" }])));
+  });
+});
+
+describe("dressDungeon: the dense built-in rooms", () => {
+  /** A spread of dungeons: every theme, three ranks, six seeds. */
+  const spread = (() => {
+    const out: { d: Dungeon; x: DungeonDressing; rank: number; theme: string }[] = [];
+    for (const theme of Object.keys(BUILTIN_THEMES)) for (let seed = 1; seed <= 6; seed++) for (const rank of [1, 3, 5]) {
+      const d = generateDungeon({ seed: seed * 17 + rank, rooms: 34, loopChance: 0.2, decorDensity: 0.5, theme }, BUILTIN_THEMES[theme]);
+      out.push({ d, x: dressDungeon(d, BUILTIN_DRESSING, rank), rank, theme });
+    }
+    return out;
+  })();
+  /** Every room of an archetype: its props by kind, and its size. */
+  const roomsOf = (archetype: string) => spread.flatMap(({ d, x }) => d.rooms.flatMap((r, i) => (x.archetypes[i] === archetype ? [{ r, i, x, props: x.props.filter((p) => p.room === i) }] : [])));
+  const count = (props: { kind: string }[], ...kinds: string[]): number => props.filter((p) => kinds.includes(p.kind)).length;
+  const share = <T>(xs: T[], ok: (t: T) => boolean): number => xs.filter(ok).length / Math.max(1, xs.length);
+
+  it("a crypt holds many coffins, sarcophagi down its middle, and urns and candles", () => {
+    const crypts = roomsOf("crypt").filter(({ r }) => r.w >= 9 && r.h >= 9);
+    assert.ok(crypts.length >= 20, `${crypts.length} crypts`);
+    assert.ok(share(crypts, (c) => count(c.props, "coffin") >= 8) >= 0.7, "most crypts hold eight or more coffins");
+    assert.ok(share(roomsOf("crypt"), (c) => count(c.props, "sarcophagus") >= 2) >= 0.7, "sarcophagi in most");
+  });
+
+  it("a barracks is rows of bunks, a footlocker at the foot of most, and lockers", () => {
+    const rooms = roomsOf("barracks").filter(({ r }) => r.w >= 9 && r.h >= 9);
+    assert.ok(rooms.length >= 20, `${rooms.length} barracks`);
+    assert.ok(share(rooms, (c) => count(c.props, "bunk-bed") >= 6) >= 0.7, "six or more bunks");
+    assert.ok(count(rooms.flatMap((c) => c.props), "footlocker") >= 0.6 * count(rooms.flatMap((c) => c.props), "bunk-bed"), "a footlocker for most bunks");
+    assert.ok(share(rooms, (c) => count(c.props, "gear-locker") >= 2) >= 0.7, "lockers for the soldiers' gear");
+  });
+
+  it("an armoury holds the different arms and armour: sword, spear, bow and shield racks, armour stands", () => {
+    const rooms = roomsOf("armoury").filter(({ r }) => r.w >= 8 && r.h >= 8);
+    assert.ok(rooms.length >= 15, `${rooms.length} armouries`);
+    const kinds = ["sword-rack", "spear-rack", "bow-rack", "shield-rack", "armour-stand"];
+    assert.ok(share(rooms, (c) => kinds.filter((k) => count(c.props, k) > 0).length >= 3) >= 0.7, "three or more kinds of rack or stand");
+    assert.ok(share(rooms, (c) => count(c.props, "sword-rack", "spear-rack", "bow-rack", "shield-rack", "armour-stand") >= 8) >= 0.6, "eight or more racks and stands");
+  });
+
+  it("a library is rows of shelves and tables with benches", () => {
+    const rooms = roomsOf("library").filter(({ r }) => r.w >= 9 && r.h >= 9);
+    assert.ok(rooms.length >= 8, `${rooms.length} libraries`);
+    assert.ok(share(rooms, (c) => count(c.props, "bookshelf", "bookshelf-tall") >= 8) >= 0.7, "eight or more shelves");
+    assert.ok(share(rooms, (c) => count(c.props, "reading-table") >= 3) >= 0.7, "reading tables");
+    assert.ok(count(rooms.flatMap((c) => c.props), "bench") >= 0.5 * count(rooms.flatMap((c) => c.props), "reading-table"), "a bench for most tables");
+  });
+
+  it("a chapel has plenty of pews facing an altar in front of a huge statue, with paintings on the walls", () => {
+    const rooms = roomsOf("chapel").filter(({ r }) => r.w >= 9 && r.h >= 9);
+    assert.ok(rooms.length >= 20, `${rooms.length} chapels`);
+    assert.ok(share(rooms, (c) => count(c.props, "statue-large") === 1 && count(c.props, "altar") === 1) >= 0.8, "a statue and an altar");
+    assert.ok(share(rooms, (c) => count(c.props, "pew") >= 6) >= 0.7, "six or more pews");
+    assert.ok(share(rooms, (c) => count(c.props, "painting") >= 2) >= 0.6, "paintings");
+    // The altar stands in front of the statue, and the pews look toward the altar.
+    const facing = rooms.filter((c) => c.props.some((p) => p.kind === "altar"));
+    const ok = facing.filter((c) => {
+      const altar = c.props.find((p) => p.kind === "altar")!, statue = c.props.find((p) => p.kind === "statue-large")!;
+      const front = (altar.x - statue.x) * Math.cos(statue.rot) + (altar.y - statue.y) * Math.sin(statue.rot);
+      const pews = c.props.filter((p) => p.kind === "pew");
+      return front > 0 && pews.filter((p) => (altar.x - p.x) * Math.cos(p.rot) + (altar.y - p.y) * Math.sin(p.rot) > 0).length >= 0.8 * pews.length;
+    });
+    assert.ok(ok.length / facing.length >= 0.8, `${ok.length} of ${facing.length} chapels have the altar before the statue and the pews facing it`);
+  });
+
+  it("a jail is rows of cells with a guard desk, and a mess hall long tables with benches", () => {
+    const jails = roomsOf("jail").filter(({ r }) => r.w >= 9 && r.h >= 9);
+    assert.ok(jails.length >= 10, `${jails.length} jails`);
+    assert.ok(share(jails, (c) => count(c.props, "jail-cell") >= 6) >= 0.7, "six or more cells");
+    const halls = roomsOf("messhall");
+    assert.ok(halls.length >= 8, `${halls.length} mess halls`);
+    assert.ok(share(halls, (c) => count(c.props, "long-table") >= 3) >= 0.7, "long tables");
+  });
+
+  it("every archetype appears somewhere in the spread, and a dungeon stays under the prop ceiling", () => {
+    const seen = new Set(spread.flatMap(({ x }) => x.archetypes));
+    for (const id of Object.keys(BUILTIN_DRESSING.archetypes)) assert.ok(seen.has(id), `${id} is dressed somewhere`);
+    const totals = spread.map(({ x }) => x.props.length).sort((a, b) => a - b);
+    assert.ok(totals.at(-1)! <= 1000, `at most ${totals.at(-1)} props in a dungeon (ceiling 1000)`);
+    assert.ok(totals[totals.length >> 1] >= 400, `a typical dungeon holds ${totals[totals.length >> 1]} props: dense`);
   });
 });

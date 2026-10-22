@@ -115,7 +115,7 @@ export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: num
 }
 
 /**
- * Items down the room's long axis through its centre, `at` cells off the centreline, `2 * radius + gap` apart, filled from the
+ * Items down the room's long axis through its centre, `at` cells off the centreline, `2 * reach + gap` apart (they face along the line), filled from the
  * middle outward (a carpet runner, a hall of pillars, sarcophagi down a crypt); facing along the axis. Spots that do not fit are skipped.
  */
 export function layLine(ctx: ArrangeCtx, radius: number, count: number, gap: number, at: number, o: LayOpts = {}): Placed[] {
@@ -124,7 +124,8 @@ export function layLine(ctx: ArrangeCtx, radius: number, count: number, gap: num
   const reach = o.reach ?? radius;
   const alongX = (ctx.extent?.w ?? 1) >= (ctx.extent?.h ?? 0);
   const rot = alongX ? 0 : Math.PI / 2;
-  const pitch = 2 * radius + gap;
+  // Items face along the line, so what spaces them is their length (`reach`), not their width.
+  const pitch = 2 * reach + gap;
   const span = Math.ceil((alongX ? ctx.extent?.w ?? 64 : ctx.extent?.h ?? 64) / pitch);
   for (let k = 0; out.length < count && k <= span; k++) {
     for (const sign of k === 0 ? [1] : [1, -1]) {
@@ -144,10 +145,13 @@ export function layLine(ctx: ArrangeCtx, radius: number, count: number, gap: num
 export function layBefore(ctx: ArrangeCtx, anchors: readonly Placed[], radius: number, gap: number, o: LayOpts = {}): Placed[] {
   const out: Placed[] = [];
   const reach = o.reach ?? radius;
+  // Standing in front of an anchor is not "overlapping" it: the anchors' own footprints (circles of their longest side) are not in the way.
+  const isAnchor = (t: Placed): boolean => anchors.some((a) => Math.abs(a.x - t.x) < 1e-9 && Math.abs(a.y - t.y) < 1e-9);
+  const rest: ArrangeCtx = { ...ctx, taken: ctx.taken.filter((t) => !isAnchor(t)) };
   for (const a of anchors) {
     const d = reachOf(a) + reach + gap;
     const [x, y] = [a.x + Math.cos(a.rot) * d, a.y + Math.sin(a.rot) * d];
-    if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, a.rot, radius, reach));
+    if (fits(rest, out, x, y, radius)) out.push(pose(x, y, a.rot, radius, reach));
   }
   return out;
 }

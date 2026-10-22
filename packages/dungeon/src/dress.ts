@@ -206,7 +206,7 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
     lines.forEach((k, i) => {
       // A `before` line has one item per item of its anchor, laid after it (its WFC count is not used).
       if (k.arrange === "before") return;
-      const radius = k.arrange === "scatter" ? Math.max(k.radius, k.reach ?? 0) : k.radius;
+      const radius = Math.max(k.radius, k.reach ?? 0); // the footprint a scattered item needs (a pattern uses the line's own radius and reach)
       for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid"), line: k });
     });
     const region = regionOf(r);
