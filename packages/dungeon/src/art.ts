@@ -109,6 +109,7 @@ export function matchProps(models: readonly CatalogModel[], kinds: readonly stri
 export function writeArtOverlay(models: readonly CatalogModel[], kinds: readonly string[], file: string): ArtMatch {
   const match = matchProps(models, kinds);
   const assets = Object.fromEntries(Object.entries(match.assets).sort(([a], [b]) => (a < b ? -1 : 1)));
-  writeFileSync(file, JSON.stringify({ version: 1, assets }, null, 2) + "\n");
+  const scales = Object.fromEntries(Object.entries(match.scales).sort(([a], [b]) => (a < b ? -1 : 1)));
+  writeFileSync(file, `${JSON.stringify({ version: 1, assets, scales }, null, 2)}\n`);
   return match;
 }

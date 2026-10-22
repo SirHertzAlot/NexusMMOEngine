@@ -74,7 +74,7 @@ describe("size factors", () => {
     );
     assert.equal(got.scales.coffin, 2, "a 1 m coffin is drawn twice as big");
     assert.equal(got.scales.barrel, undefined, "within 5% of a barrel: no factor");
-    assert.equal(got.scales.statue, 0.63, "a 4.5 m statue is brought down to 2.8 m");
+    assert.equal(got.scales.statue, 0.62, "a 4.5 m statue is brought down to 2.8 m");
     assert.equal(got.scales.anvil, undefined, "no size in the catalog: its own");
     assert.equal(got.scales.torch, undefined);
   });
