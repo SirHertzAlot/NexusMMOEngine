@@ -23,6 +23,7 @@ import { loadGameRules } from "../../src/rules/boot.js";
 import { loadDungeonContent, parseDungeonContent, type DungeonContent } from "../../src/dungeons/content.js";
 import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/pool.js";
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
+import { PROP_SLOTS } from "../../src/dungeons/prop-mesh.js";
 import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
 import type { Weapon } from "../../src/combat.js";
 import { InstanceManager } from "../../src/dungeons/manager.js";
@@ -390,6 +391,12 @@ describe("dungeon instance", () => {
     for (const [theme, l] of Object.entries(content.looks!.themes)) assert.ok(l.torch.range > 0 && /^#[0-9a-f]{6}$/i.test(l.palette.floor ?? ""), `${theme}: a floor colour`);
     const bad = { version: 1, emitters: [], maxLights: 4, themes: { grim: { ...content.looks!.themes.grim, background: "black" } } };
     assert.throws(() => parseDungeonContent(content.rules, { version: 1, entrances: {} }, undefined, bad), /looks\.json/);
+  });
+
+  it("gives every theme's palette a colour for every prop material slot", () => {
+    for (const [theme, l] of Object.entries(content.looks!.themes)) {
+      for (const slot of PROP_SLOTS) assert.match(l.palette[slot] ?? "", /^#[0-9a-f]{6}$/i, `${theme}: a ${slot} colour`);
+    }
   });
 
   it("runs as before when the dungeon was baked without a shell", async () => {
