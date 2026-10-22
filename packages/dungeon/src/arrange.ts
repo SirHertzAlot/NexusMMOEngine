@@ -63,18 +63,19 @@ export function layRow(ctx: ArrangeCtx, wall: Placed, radius: number, count: num
 }
 
 /**
- * A lattice of pitch `2 * radius + gap` through the room's centre, axes aligned, filled from the centre outward. All items
- * share one facing: toward `faceTo` (from the centre) when given, else +y.
+ * A lattice of pitch `2 * radius + gap` through the room's centre, axes aligned, filled row by row from the centre row outward
+ * (a row of pews across the room, then the rows either side). All items share one facing: toward `faceTo` (from the centre)
+ * when given, snapped to the nearest axis so the rows stay square to it, else +y.
  */
 export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: number, faceTo: { x: number; y: number } | null): Placed[] {
   const out: Placed[] = [];
   if (count <= 0) return out;
   const pitch = 2 * radius + gap;
-  const rot = faceTo ? Math.atan2(faceTo.y - ctx.centre.y, faceTo.x - ctx.centre.x) : Math.PI / 2;
+  const rot = faceTo ? Math.round(Math.atan2(faceTo.y - ctx.centre.y, faceTo.x - ctx.centre.x) / (Math.PI / 2)) * (Math.PI / 2) : Math.PI / 2;
   const reach = Math.ceil(32 / pitch);
   const lattice: { i: number; j: number }[] = [];
   for (let j = -reach; j <= reach; j++) for (let i = -reach; i <= reach; i++) lattice.push({ i, j });
-  lattice.sort((a, b) => a.i * a.i + a.j * a.j - (b.i * b.i + b.j * b.j) || a.j - b.j || a.i - b.i);
+  lattice.sort((a, b) => Math.abs(a.j) - Math.abs(b.j) || a.j - b.j || Math.abs(a.i) - Math.abs(b.i) || a.i - b.i);
   for (const { i, j } of lattice) {
     if (out.length >= count) break;
     const x = ctx.centre.x + i * pitch;

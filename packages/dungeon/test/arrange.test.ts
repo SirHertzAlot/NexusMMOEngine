@@ -66,8 +66,21 @@ describe("layGrid", () => {
     assert.ok(apart(got));
   });
 
-  it("faces the point it is given", () => {
+  it("faces the point it is given, square to the room's axes", () => {
     for (const p of layGrid(room(24, 16), 0.5, 4, 0.3, { x: 12, y: 1 })) assert.ok(Math.abs(p.rot + Math.PI / 2) < 1e-9);
+    for (const p of layGrid(room(24, 16), 0.5, 4, 0.3, { x: 3, y: 15 })) assert.ok(Math.abs(Math.round(p.rot / (Math.PI / 2)) * (Math.PI / 2) - p.rot) < 1e-9, "snapped to an axis");
+  });
+
+  it("fills one row across the room before starting the next", () => {
+    const got = layGrid(room(24, 16), 0.5, 5, 0.3, null);
+    assert.equal(new Set(got.map((p) => p.y.toFixed(6))).size, 1, "five items, one row");
+    // A narrow room (six cells across) holds three to a row (centres at least a radius off each wall): nine items make three full rows.
+    const narrow = layGrid(room(8, 16), 0.5, 9, 0.3, null);
+    const rows = new Map<string, number>();
+    for (const p of narrow) rows.set(p.y.toFixed(6), (rows.get(p.y.toFixed(6)) ?? 0) + 1);
+    assert.equal(narrow.length, 9);
+    assert.equal(rows.size, 3);
+    assert.deepEqual([...rows.values()], [3, 3, 3]);
   });
 
   it("keeps to the room", () => {

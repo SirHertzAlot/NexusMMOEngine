@@ -113,7 +113,7 @@ export const BUILTIN_DRESSING: Dressing = {
     armoury: a(["combat", "elite"], [c("weapon-rack", "wall", 0.6, [1, 3], { arrange: "row" }), c("armour-stand", "wall", 0.5, [0, 2], { arrange: "beside", anchor: "weapon-rack" }), c("crate", "corner", 0.45, [1, 3])], {
       max: 2, minSize: 6,
     }),
-    barracks: a(["combat"], [c("bedroll", "floor", 0.6, [2, 5], { ...flat, arrange: "grid", faces: "anchor", anchor: "table" }), c("table", "centre", 0.9, [0, 1]), c("barrel", "corner", 0.4, [0, 2])], {
+    barracks: a(["combat"], [c("bedroll", "floor", 0.6, [2, 5], { ...flat, arrange: "row" }), c("table", "centre", 0.9, [0, 1]), c("barrel", "corner", 0.4, [0, 2])], {
       minSize: 7, repeatable: true,
     }),
     storeroom: a(["combat"], [c("crate", "floor", 0.45, [2, 5], { arrange: "row" }), c("barrel", "corner", 0.4, [1, 3]), c("sack", "floor", 0.35, [0, 3], flat)], {
