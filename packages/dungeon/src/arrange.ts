@@ -249,3 +249,12 @@ export function layHead(ctx: ArrangeCtx, seeds: readonly Placed[], radius: numbe
   }
   return best ? [best.pos] : [];
 }
+
+/**
+ * One item over each of `anchors`, at the same spot and facing (the upper tier of a wall of niches over the lower): for hung items, which
+ * are only ever clear of their own kind.
+ */
+export function layOver(anchors: readonly Placed[], radius: number, o: LayOpts = {}): Placed[] {
+  const reach = o.reach ?? radius;
+  return anchors.map((a) => pose(a.x, a.y, a.rot, radius, reach, a.nx !== undefined && a.ny !== undefined ? { nx: a.nx, ny: a.ny } : undefined));
+}

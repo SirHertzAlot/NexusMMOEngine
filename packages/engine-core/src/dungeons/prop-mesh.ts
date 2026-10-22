@@ -78,6 +78,9 @@ const chest = (band: PropSlot): Tri[] =>
     box(band, 0, 0.5, 0.3, 0.1, 0.14, 0.05),
   );
 
+/** A coffin in a wall niche (hung on the wall, centred on its lift, facing +Z): a stone frame, a dark recess, the coffin's end and a plate. */
+const niche = (): Tri[] => all(box("stone", 0, 0, 0, 1.2, 0.9, 0.12), box("earth", 0, 0, 0.065, 0.95, 0.65, 0.02), box("wood", 0, 0, 0.1, 0.8, 0.5, 0.08), box("wood", 0, 0, 0.14, 0.7, 0.4, 0.02), box("gold", 0, 0.05, 0.16, 0.12, 0.08, 0.015), box("bone", 0, -0.12, 0.16, 0.1, 0.1, 0.015), box("stone", 0, -0.42, 0.08, 1.3, 0.06, 0.2));
+
 /** `parts` raised by `dy`. */
 const lift = (parts: Tri[], dy: number): Tri[] => parts.map(({ p, slot }) => ({ p: p.map(([x, y, z]) => [x, y + dy, z]) as Tri["p"], slot }));
 
@@ -156,6 +159,9 @@ const RECIPES: Record<string, () => Tri[]> = {
   "shield-wall": () => all(box("wood", 0, 0, 0, 1.6, 1.2, 0.06), ...[-0.5, 0, 0.5].flatMap((x, i) => [box("metal", x, 0, 0.05, 0.4, 0.55, 0.04, 0), box("gold", x, 0, 0.085, 0.12, 0.12, 0.03), box("cloth", x, 0.2 - i * 0.02, 0.075, 0.3, 0.1, 0.012)]), box("metal", 0, 0.45, 0.04, 1.4, 0.04, 0.03)),
   "key-rack": () => all(box("wood", 0, 0, 0, 0.6, 0.6, 0.04), ...[-0.2, -0.1, 0, 0.1, 0.2].flatMap((x, i) => [box("metal", x, 0.18, 0.04, 0.03, 0.04, 0.04), box(i === 2 ? "gold" : "metal", x, 0.0 - (i % 2) * 0.04, 0.045, 0.03, 0.22, 0.012), box(i === 2 ? "gold" : "metal", x, -0.15 - (i % 2) * 0.04, 0.045, 0.08, 0.05, 0.012)])),
   "jail-cell": () => all(box("stone", 0, 0.05, 0, 2.0, 0.1, 2.0), box("metal", 0, 2.3, 0.95, 2.0, 0.08, 0.08), box("metal", -0.95, 2.3, 0, 0.08, 0.08, 2.0), box("metal", 0.95, 2.3, 0, 0.08, 0.08, 2.0), box("metal", 0, 0.14, 0.95, 2.0, 0.08, 0.08), ...[-0.9, -0.6, -0.3, 0.3, 0.6, 0.9].map((x) => box("metal", x, 1.2, 0.95, 0.05, 2.2, 0.05)), ...[-0.65, -0.35, -0.05, 0.25, 0.55, 0.85].flatMap((z) => [box("metal", -0.95, 1.2, z, 0.05, 2.2, 0.05), box("metal", 0.95, 1.2, z, 0.05, 2.2, 0.05)]), box("earth", -0.4, 0.14, -0.4, 0.9, 0.08, 0.7, 0.2), cyl("metal", 0.5, 0.1, -0.5, 0.15, 0.25, 0.12, 8), box("metal", 0, 1.2, 0.97, 0.06, 0.2, 0.06)),
+  "wall-coffin": () => niche(),
+  "wall-coffin-high": () => niche(),
+  "grand-sarcophagus": () => all(box("stone", 0, 0.075, 0, 3.6, 0.15, 2.4), box("stone", 0, 0.225, 0, 3.2, 0.15, 2.0), box("stone", 0, 0.65, 0, 2.8, 0.7, 1.3), box("gold", 0, 0.88, 0, 2.84, 0.05, 1.34), box("stone", 0, 1.0, 0, 2.9, 0.18, 1.4), box("stone", 0, 1.14, 0, 2.2, 0.1, 0.5), cyl("stone", 1.0, 1.19, 0, 0.22, 0.2, 0.2, 8), box("metal", -0.2, 1.2, 0, 1.6, 0.03, 0.07), box("gold", -0.95, 1.22, 0, 0.07, 0.04, 0.4), ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => cyl("gold", x * 1.4, 0.3, z * 0.65, 0.09, 0.9, 0.07, 6))),
 };
 
 export const PROP_KINDS: readonly string[] = Object.keys(RECIPES);

@@ -234,18 +234,18 @@ describe("dressDungeon: the built-in rooms are arranged", () => {
     return ps.every((p) => Math.abs(p.rot - ps[0].rot) < 1e-9 && Math.abs(nx * p.x + ny * p.y - (nx * ps[0].x + ny * ps[0].y)) < 1e-6);
   };
 
-  it("sets crypts' coffins along the walls, and chapels' pews in one grid facing one way", () => {
+  it("hangs a catacomb's coffins in niches on the walls, and sets chapels' pews in one grid facing one way", () => {
     const sdfOf = (d: Dungeon): GridSdf => new GridSdf(d.width, d.height, (cx, cy) => d.grid[cy * d.width + cx] !== CELL.floor);
-    let coffins = 0, hugging = 0;
+    let niches = 0, onWall = 0;
     for (const { d, x } of dressed("grim", 3)) {
       const sdf = sdfOf(d);
-      for (const p of x.props.filter((q) => q.kind === "coffin")) {
-        coffins++;
-        if (Math.abs(sdf.distance(p.x, p.y) - 0.5) < 0.16) hugging++;
+      for (const p of x.props.filter((q) => q.kind === "wall-coffin" || q.kind === "wall-coffin-high")) {
+        niches++;
+        if (p.mount && Math.abs(sdf.distance(p.x, p.y)) < 0.2) onWall++;
       }
     }
-    assert.ok(coffins >= 100, `${coffins} coffins over the crypts`);
-    assert.ok(hugging / coffins >= 0.8, `${hugging} of ${coffins} coffins stand head to the wall`);
+    assert.ok(niches >= 150, `${niches} niches over the catacombs`);
+    assert.ok(onWall / niches >= 0.95, `${onWall} of ${niches} niches hang on a wall`);
     const pews = dressed("ancient", 3).flatMap(({ x }) => rooms(x, "chapel", "pew"));
     assert.ok(pews.length >= 5);
     const oneWay = pews.filter((ps) => ps.every((p) => Math.abs(p.rot - ps[0].rot) < 1e-9)).length;
@@ -528,11 +528,27 @@ describe("dressDungeon: the dense built-in rooms", () => {
   const count = (props: { kind: string }[], ...kinds: string[]): number => props.filter((p) => kinds.includes(p.kind)).length;
   const share = <T>(xs: T[], ok: (t: T) => boolean): number => xs.filter(ok).length / Math.max(1, xs.length);
 
-  it("a crypt holds many coffins, sarcophagi down its middle, and urns and candles", () => {
+  it("a catacomb's walls are lined with coffins in two tiers of niches", () => {
     const crypts = roomsOf("crypt").filter(({ r }) => r.w >= 9 && r.h >= 9);
-    assert.ok(crypts.length >= 20, `${crypts.length} crypts`);
-    assert.ok(share(crypts, (c) => count(c.props, "coffin") >= 8) >= 0.7, "most crypts hold eight or more coffins");
-    assert.ok(share(roomsOf("crypt"), (c) => count(c.props, "sarcophagus") >= 2) >= 0.7, "sarcophagi in most");
+    assert.ok(crypts.length >= 20, `${crypts.length} catacombs`);
+    assert.ok(share(crypts, (c) => count(c.props, "wall-coffin") >= 10) >= 0.7, "ten or more niches on the lower tier");
+    assert.ok(share(crypts, (c) => count(c.props, "wall-coffin-high") === count(c.props, "wall-coffin")) >= 0.9, "an upper niche over every lower one");
+    assert.ok(share(crypts, (c) => count(c.props, "sarcophagus", "grand-sarcophagus") === 0) === 1, "no sarcophagi: that is the tomb");
+  });
+
+  it("a grand tomb is one great sarcophagus in the middle, ringed by statues and candles", () => {
+    const tombs = roomsOf("tomb").filter(({ r }) => r.w >= 9 && r.h >= 9);
+    assert.ok(tombs.length >= 5, `${tombs.length} tombs`);
+    assert.ok(share(tombs, (c) => count(c.props, "grand-sarcophagus") === 1) === 1, "exactly one sarcophagus");
+    assert.ok(share(tombs, (c) => count(c.props, "statue") >= 3) >= 0.65, "three or more statues (a doorway or the guard that keeps every door reachable shortens the ring)");
+    assert.ok(share(tombs, (c) => count(c.props, "candle-stand") >= 3) >= 0.7, "candle stands round it");
+    // The statues ring the sarcophagus: they stand about the same distance from it.
+    const ringed = tombs.filter((c) => {
+      const s = c.props.find((p) => p.kind === "grand-sarcophagus");
+      const ds = c.props.filter((p) => p.kind === "statue").map((p) => Math.hypot(p.x - s!.x, p.y - s!.y));
+      return ds.length >= 3 && Math.max(...ds) - Math.min(...ds) < 0.5;
+    });
+    assert.ok(ringed.length / tombs.length >= 0.6, `${ringed.length} of ${tombs.length} tombs have their statues in a ring`);
   });
 
   it("a barracks is rows of bunks, a footlocker at the foot of most, and lockers", () => {

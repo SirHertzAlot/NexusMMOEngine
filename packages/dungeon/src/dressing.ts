@@ -11,10 +11,10 @@ import { z } from "zod";
 const ROLES = ["entrance", "combat", "elite", "treasure", "shrine", "boss"] as const;
 const WHERE = ["floor", "centre", "wall", "corner"] as const;
 /** How a content line's items are laid out in the room (dress.ts): scatter is each on its own, the rest are patterns (arrange.ts). */
-export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring", "line", "before", "head"] as const;
+export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring", "line", "before", "head", "over"] as const;
 export type Arrangement = (typeof ARRANGEMENTS)[number];
 /** Patterns that stand round another line's item. */
-const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring", "before"];
+const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring", "before", "over"];
 
 export const ContentSchema = z.strictObject({
   /** What it is (the renderer maps kinds to art). */
@@ -140,13 +140,23 @@ export const BUILTIN_DRESSING: Dressing = {
       c("candles", "corner", 0.2, [2, 4], flat),
     ], { repeatable: true, fill: 0.65 }),
     crypt: a(["combat", "elite"], [
-      c("coffin", "wall", 0.2, [8, 22], { arrange: "row", reach: 0.5, gap: 0.1 }),
-      c("sarcophagus", "floor", 0.3, [2, 5], { arrange: "line", reach: 0.55, gap: 0.5 }),
+      // A catacomb: the walls are lined with coffins in niches, two tiers high.
+      c("wall-coffin", "wall", 0.3, [10, 22], { arrange: "row", mount: true, gap: 0.1 }),
+      c("wall-coffin-high", "wall", 0.3, [10, 22], { arrange: "over", mount: true, anchor: "wall-coffin" }),
       c("candle-stand", "corner", 0.15, [2, 4]),
       c("urn", "corner", 0.2, [1, 4]),
       c("bone-pile", "corner", 0.3, [1, 3], flat),
-      c("statue", "wall", 0.4, [0, 2]),
-    ], { themes: ["grim", "ancient", "frost"], minSize: 7, weight: 2, fill: 0.7 }),
+    ], { themes: ["grim", "ancient", "frost"], minSize: 7, weight: 2, fill: 0.5 }),
+    tomb: a(["combat", "elite"], [
+      // A grand tomb: one great sarcophagus on its dais in the middle, ringed by candles and statues.
+      c("grand-sarcophagus", "centre", 0.6, [1, 1], { reach: 0.9 }),
+      c("candle-stand", "floor", 0.15, [4, 6], { arrange: "ring", anchor: "grand-sarcophagus", gap: 0.4 }),
+      c("statue", "floor", 0.4, [6, 8], { arrange: "ring", anchor: "grand-sarcophagus", gap: 1.2 }),
+      c("statue-large", "wall", 0.5, [0, 1], { arrange: "head" }),
+      c("brazier", "corner", 0.3, [2, 4]),
+      c("urn", "corner", 0.2, [2, 4]),
+      c("banner", "wall", 0.4, [3, 6], { arrange: "row", mount: true, gap: 1 }),
+    ], { themes: ["grim", "ancient", "frost"], minSize: 8, max: 1, weight: 1.2, fill: 0.6 }),
     armoury: a(["combat", "elite"], [
       c("sword-rack", "wall", 0.35, [2, 5], { arrange: "row", reach: 0.15, gap: 0.1 }),
       c("spear-rack", "wall", 0.35, [2, 4], { arrange: "row", reach: 0.15, gap: 0.1 }),
@@ -259,7 +269,7 @@ export function loadDressing(file?: string): Dressing {
     arch.contents.forEach((k, i) => {
       if (k.count[0] > k.count[1]) problems.push(`archetypes.${id}.contents[${i}]: count min above max`);
       if (NEEDS_ANCHOR.includes(k.arrange) && !k.anchor) problems.push(`archetypes.${id}.contents[${i}]: arrange "${k.arrange}" needs an anchor`);
-      if (k.mount && k.arrange !== "scatter" && k.arrange !== "row") problems.push(`archetypes.${id}.contents[${i}]: a mounted line can only be a row (or scatter)`);
+      if (k.mount && k.arrange !== "scatter" && k.arrange !== "row" && k.arrange !== "over") problems.push(`archetypes.${id}.contents[${i}]: a mounted line can only be a row or over (or scatter)`);
       if (k.anchor && !arch.contents.some((o, j) => j !== i && o.kind === k.anchor)) problems.push(`archetypes.${id}.contents[${i}]: anchor "${k.anchor}" is not another kind in ${id}`);
     });
   }

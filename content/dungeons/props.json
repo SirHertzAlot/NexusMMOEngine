@@ -72,7 +72,10 @@
     "dungeon:bookshelf-tall": {"asset":"dungeon:bookshelf-tall","category":"prop","collision":{"halfExtents":[0.7,2.8,0.3],"motion":"static","shape":"box"}},
     "dungeon:painting": {"asset":"dungeon:painting","category":"prop","collision":{"halfExtents":[0.7,0.8,0.05],"motion":"static","shape":"box"}},
     "dungeon:shield-wall": {"asset":"dungeon:shield-wall","category":"prop","collision":{"halfExtents":[0.8,0.6,0.06],"motion":"static","shape":"box"}},
-    "dungeon:key-rack": {"asset":"dungeon:key-rack","category":"prop","collision":{"halfExtents":[0.3,0.3,0.05],"motion":"static","shape":"box"}}
+    "dungeon:key-rack": {"asset":"dungeon:key-rack","category":"prop","collision":{"halfExtents":[0.3,0.3,0.05],"motion":"static","shape":"box"}},
+    "dungeon:wall-coffin": {"asset":"dungeon:wall-coffin","category":"prop","collision":{"halfExtents":[0.5,0.45,0.15],"motion":"static","shape":"box"}},
+    "dungeon:wall-coffin-high": {"asset":"dungeon:wall-coffin-high","category":"prop","collision":{"halfExtents":[0.5,0.45,0.15],"motion":"static","shape":"box"}},
+    "dungeon:grand-sarcophagus": {"asset":"dungeon:grand-sarcophagus","category":"prop","collision":{"halfExtents":[1.8,1.5,1.2],"motion":"static","shape":"box"}}
   },
-  "lift": {"banner":2.6,"torch":2.2,"painting":2.0,"shield-wall":2.2,"key-rack":1.6}
+  "lift": {"banner":2.6,"torch":2.2,"painting":2.0,"shield-wall":2.2,"key-rack":1.6,"wall-coffin":0.7,"wall-coffin-high":1.9}
 }

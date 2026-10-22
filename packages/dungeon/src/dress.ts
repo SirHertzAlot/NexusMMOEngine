@@ -25,7 +25,7 @@ import { solve, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engin
 import { CELL, type Dungeon } from "./generate.js";
 import { deriveSeed } from "./rng.js";
 import type { Content, Dressing } from "./dressing.js";
-import { layBefore, layFlank, layGrid, layHead, layLine, layRing, layRow, reachOf, type ArrangeCtx } from "./arrange.js";
+import { layBefore, layFlank, layGrid, layHead, layLine, layOver, layRing, layRow, reachOf, type ArrangeCtx } from "./arrange.js";
 
 export interface DressedProp {
   kind: string;
@@ -212,10 +212,11 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
     const region = regionOf(r);
     const poses = new Map<string, Placed[]>();
     /** What hangs on this room's walls (mounted rows): clear only of each other. */
-    const mountedHere: Placed[] = [];
+    const mountedHere = new Map<string, Placed[]>();
+    const mountedOf = (kind: string): Placed[] => mountedHere.get(kind) ?? [];
     const record = (it: Item, p: Placed, hung = false): void => {
       // What later items keep clear of is the item's whole footprint (its length along its facing too); a hung item is clear of the floor.
-      if (hung) mountedHere.push(p);
+      if (hung) mountedHere.set(it.kind, [...mountedOf(it.kind), p]);
       else layoutTaken[r].push({ ...p, radius: Math.max(p.radius, reachOf(p)) });
       poses.set(it.kind, [...(poses.get(it.kind) ?? []), p]);
       props.push({ kind: it.kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!it.mount, radius: Math.max(it.radius, reachOf(p)), collision: it.collision });
@@ -274,9 +275,9 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         if (line.arrange === "row") {
           // Rows on the wall that holds the most (the best of a dozen spots round the walls); what is left over starts another
           // row on another wall (up to eight), and what that cannot fit is scattered. A mounted row hangs on the wall instead.
-          const rowCtx: ArrangeCtx = line.mount ? { ...ctx, taken: mountedHere } : ctx;
+          const rowCtx: ArrangeCtx = line.mount ? { ...ctx, taken: mountedOf(line.kind) } : ctx;
           for (let pass = 0; pass < 8 && laid.length < its.length; pass++) {
-            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius, ...(line.mount ? { mount: true } : {}) })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: line.mount ? mountedHere : layoutTaken[r], reach: 3 });
+            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius, ...(line.mount ? { mount: true } : {}) })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: line.mount ? mountedOf(line.kind) : layoutTaken[r], reach: 3 });
             let best: Placed[] = [];
             const take = Math.min(its.length - laid.length, Math.max(4, Math.ceil(its.length / 2)));
             for (const wall of wallSpots) {
@@ -291,8 +292,12 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         } else if (line.arrange === "head") {
           // One item at the head of the room: the middle of the longest free run of wall.
           const seeds = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li)), taken: layoutTaken[r], reach: 3 });
-          laid = keepOpen(layHead(ctx, seeds.filter((p): p is Placed => !!p), line.radius, opts), line);
+          laid = its.length === 0 ? [] : keepOpen(layHead(ctx, seeds.filter((p): p is Placed => !!p), line.radius, opts), line);
           laid.forEach((p, k) => record(its[k], p));
+        } else if (line.arrange === "over") {
+          // One over each item of the anchor kind (the upper tier of a wall of niches).
+          layOver(line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, opts).forEach((p) => record(template, p, !!line.mount));
+          return;
         } else if (line.arrange === "before") {
           // One item in front of each item of the anchor kind; the room's other items keep their places.
           const front = layBefore(ctx, line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, line.gap, opts);
