@@ -24,8 +24,8 @@ import {
   type SceneIssue,
 } from "@mmo-engine/scene";
 import { getFlow, playFromUrl, saveFlow } from "../../../apps/editor/src/flow-client.js";
-import { leftRightRoute } from "../../../apps/editor/src/ui/graph-view.js";
-import { issueCount } from "../../../apps/editor/src/ui/save-outcome.js";
+import { leftRightRoute } from "../../../apps/editor/src/graph-view.js";
+import { issueCount } from "../../../apps/editor/src/save-outcome.js";
 import { useSaveTask } from "../../../apps/editor/src/ui/use-save-task.js";
 import { NodeGraph } from "../../../apps/editor/src/ui/node-graph.js";
 import { MIcon, Select } from "../../../apps/editor/src/ui/components.js";

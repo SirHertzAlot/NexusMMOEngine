@@ -14,7 +14,7 @@ import {
   type Anchor,
   type WidgetPlacement,
   type WidgetBox,
-} from "./hud-editor-logic.js";
+} from "../../../apps/editor/src/ui/hud-editor-logic.js";
 
 interface Layout {
   widgets: Record<string, WidgetPlacement>;

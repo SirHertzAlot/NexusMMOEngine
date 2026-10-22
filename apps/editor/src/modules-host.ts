@@ -54,7 +54,6 @@ const execFileAsync = promisify(execFile);
 function nativeAddonPath(repoRoot: string, moduleName: string): string | null {
   // Native modules live in packages/addons/<name> or modules/<name>/native.
   // The manifest's native.entry points to the .node file.
-  const modulesDir = join(repoRoot, "modules", moduleName);
   const found = discoverModules(join(repoRoot, "modules"));
   const mod = found.valid.find((m) => m.manifest.name === moduleName);
   const entry = mod?.manifest.native?.entry;
