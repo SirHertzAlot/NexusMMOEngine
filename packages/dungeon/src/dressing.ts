@@ -10,6 +10,11 @@ import { z } from "zod";
 
 const ROLES = ["entrance", "combat", "elite", "treasure", "shrine", "boss"] as const;
 const WHERE = ["floor", "centre", "wall", "corner"] as const;
+/** How a content line's items are laid out in the room (dress.ts): scatter is each on its own, the rest are patterns (arrange.ts). */
+export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring"] as const;
+export type Arrangement = (typeof ARRANGEMENTS)[number];
+/** Patterns that stand round another line's item. */
+const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring"];
 
 export const ContentSchema = z.strictObject({
   /** What it is (the renderer maps kinds to art). */
@@ -25,6 +30,14 @@ export const ContentSchema = z.strictObject({
   minRank: z.number().int().min(1).default(1),
   /** Whether bodies are blocked by it: "solid" (a round collider of its radius) or "none" (walk-through). Default: solid, none when mounted. */
   collision: z.enum(["solid", "none"]).optional(),
+  /** How the items are laid out: scatter (each on its own, the default), a row along a wall, a grid, flanking or beside the anchor's item, a ring round it. */
+  arrange: z.enum(ARRANGEMENTS).default("scatter"),
+  /** Which way the pattern's items face: toward the room's centre or the anchor ("room", "anchor"), or away ("out"). Default: the pattern's own. */
+  faces: z.enum(["room", "anchor", "out"]).optional(),
+  /** The `kind` of another line of the same archetype that flank, beside and ring stand round (and a grid may face). */
+  anchor: z.string().min(1).optional(),
+  /** Cells left between neighbours in a pattern. */
+  gap: z.number().min(0).default(0.3),
 });
 
 export const ArchetypeSchema = z.strictObject({
@@ -76,7 +89,7 @@ export type Vein = z.infer<typeof VeinSchema>;
 export type Dressing = z.infer<typeof DressingSchema>;
 
 const c = (kind: string, where: (typeof WHERE)[number], radius: number, count: [number, number], extra: Partial<Content> = {}): Content => ({
-  kind, where, radius, count, mount: false, minRank: 1, ...extra, collision: extra.collision ?? (extra.mount ? "none" : "solid"),
+  kind, where, radius, count, mount: false, minRank: 1, arrange: "scatter", gap: 0.3, ...extra, collision: extra.collision ?? (extra.mount ? "none" : "solid"),
 });
 const flat: Partial<Content> = { collision: "none" };
 const a = (roles: Archetype["roles"], contents: Content[], extra: Partial<Archetype> = {}): Archetype => ({
@@ -154,6 +167,8 @@ export function loadDressing(file?: string): Dressing {
     for (const other of [...arch.avoid, ...arch.near]) if (!merged.archetypes[other]) problems.push(`archetypes.${id}: no archetype "${other}"`);
     arch.contents.forEach((k, i) => {
       if (k.count[0] > k.count[1]) problems.push(`archetypes.${id}.contents[${i}]: count min above max`);
+      if (NEEDS_ANCHOR.includes(k.arrange) && !k.anchor) problems.push(`archetypes.${id}.contents[${i}]: arrange "${k.arrange}" needs an anchor`);
+      if (k.anchor && !arch.contents.some((o, j) => j !== i && o.kind === k.anchor)) problems.push(`archetypes.${id}.contents[${i}]: anchor "${k.anchor}" is not another kind in ${id}`);
     });
   }
   if (problems.length) throw new Error(`${file}:\n${problems.map((p) => `  ${p}`).join("\n")}`);

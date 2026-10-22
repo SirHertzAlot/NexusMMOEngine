@@ -146,6 +146,25 @@ describe("dressing data and the bake", () => {
     assert.throws(() => loadDressing(bad), (e: Error) => /no archetype "zoo"/.test(e.message) && /count min above max/.test(e.message));
   });
 
+  it("reads arrangements on content lines, and rejects the ones that cannot work", () => {
+    const dir = mkdtempSync(join(tmpdir(), "arrange-"));
+    const withLines = (contents: unknown[]): string => {
+      const f = join(dir, `a${Math.random()}.json`);
+      writeFileSync(f, JSON.stringify({ archetypes: { tomb: { roles: ["combat"], contents } } }));
+      return f;
+    };
+    const line = { kind: "coffin", where: "wall", radius: 0.6, count: [1, 3] };
+    const ok = loadDressing(withLines([{ ...line, arrange: "row" }, { kind: "urn", where: "corner", radius: 0.3, count: [1, 2] }]));
+    assert.equal(ok.archetypes.tomb.contents[0].arrange, "row");
+    assert.equal(ok.archetypes.tomb.contents[0].gap, 0.3);
+    assert.equal(ok.archetypes.tomb.contents[1].arrange, "scatter", "a line that names none scatters, as before");
+    assert.throws(() => loadDressing(withLines([{ ...line, arrange: "zigzag" }])), /archetypes\.tomb\.contents\.0\.arrange/);
+    assert.throws(() => loadDressing(withLines([{ ...line, arrange: "flank" }])), /needs an anchor/);
+    assert.throws(() => loadDressing(withLines([{ ...line, arrange: "flank", anchor: "throne" }])), /anchor "throne"/);
+    assert.ok(loadDressing(withLines([{ ...line, arrange: "flank", anchor: "urn" }, { kind: "urn", where: "centre", radius: 0.3, count: [1, 1] }])));
+    for (const a of Object.values(BUILTIN_DRESSING.archetypes)) for (const k of a.contents) assert.ok(k.arrange, `${k.kind} has an arrangement`);
+  });
+
   it("dresses baked dungeons at a rank in range, or leaves them bare", () => {
     const out = mkdtempSync(join(tmpdir(), "dressed-"));
     const common = { count: 4, seed: 3, theme: "auto", rooms: [14, 24] as [number, number], loopChance: 0.15, decorDensity: 0.5, themes: BUILTIN_THEMES, out };
