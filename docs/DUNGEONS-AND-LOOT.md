@@ -270,6 +270,23 @@ falls back to scatter, then to `unplaced`. A pattern never walls off a doorway: 
 Mounted lines cannot be arranged. The dungeon file does not change: `dressing.props` still holds `x, y, rot, kind`, so the
 arrangement shows only in dungeons baked after it (**rebake the pool**); layouts and shells of the same seed are identical.
 
+### Prop looks (DF2)
+
+A prop's `AssetRef` hash is the hash of its asset id (`content/dungeons/props.json`, `dungeon:<kind>`). The client draws a pack
+model when the id is a catalog model's id, else the PCG asset of that id from the gateway it joined. So:
+
+- **Procedural, always.** `prop-mesh.ts` (engine-core) builds a small hard-edged mesh from boxes and cylinders for each of
+  props.json's kinds (a recipe per kind; metres, Y up, standing kinds on y = 0, front +Z). A run mounts the ones it uses in
+  its Pcg library beside the shell (`addPrebaked`). Each part names a material slot (`stone wood metal cloth gold bone fire ice
+  moss earth glass`); `looks.json` colours those slots per theme, matte, like the shell's.
+- **Licensed art, where it matches.** `npm run dungeon:art -- --catalog assets/catalog.json` writes `content/dungeons/props.local.json`
+  (`{ "version": 1, "assets": { "<kind>": "<catalog model id>" } }`), matching model names by whole words (a pillar is never a
+  Caterpillar; kinds with no pattern, and kinds nothing matches, stay procedural). The file is **git-ignored** (it names licensed
+  art). The server reads it over props.json; an entity of a remapped kind carries the model's hash, and a remapped light emitter
+  (the torch) is added to the run's `look` emitters so it still lights. The overlay needs the art served: where `assets/` is not
+  served the prop shows as a stand-in box, so generate it only where the art is.
+- No client change; no rebake of the pool (kinds are resolved when a run starts).
+
 ## 4. Species and where they live
 
 Species are data (`content/species/*.json`). Each species has:
