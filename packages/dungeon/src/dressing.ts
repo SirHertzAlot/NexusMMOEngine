@@ -168,6 +168,7 @@ export function loadDressing(file?: string): Dressing {
     arch.contents.forEach((k, i) => {
       if (k.count[0] > k.count[1]) problems.push(`archetypes.${id}.contents[${i}]: count min above max`);
       if (NEEDS_ANCHOR.includes(k.arrange) && !k.anchor) problems.push(`archetypes.${id}.contents[${i}]: arrange "${k.arrange}" needs an anchor`);
+      if (k.mount && k.arrange !== "scatter") problems.push(`archetypes.${id}.contents[${i}]: a mounted line cannot be arranged (only standing items)`);
       if (k.anchor && !arch.contents.some((o, j) => j !== i && o.kind === k.anchor)) problems.push(`archetypes.${id}.contents[${i}]: anchor "${k.anchor}" is not another kind in ${id}`);
     });
   }

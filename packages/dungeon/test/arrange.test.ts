@@ -5,7 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { GridSdf, type Placed } from "@mmo-engine/placement";
+import { GridSdf, placeInRegion, type Placed } from "@mmo-engine/placement";
 import { layFlank, layGrid, layRing, layRow, type ArrangeCtx } from "../src/index.js";
 
 /** An open room `w` × `h` cells with a solid border: floor spans (1, w - 1) × (1, h - 1); a wall item at distance r stands at 1 + r. */
@@ -24,8 +24,18 @@ describe("layRow", () => {
     for (let i = 1; i < xs.length; i++) assert.ok(Math.abs(xs[i] - xs[i - 1] - 1.5) < 1e-9, "spaced 2r + gap");
     for (const p of got) {
       assert.ok(Math.abs(p.y - 1.6) < 1e-9, "on one line");
-      assert.equal(p.rot, Math.PI / 2);
+      assert.ok(Math.abs(p.rot - Math.PI / 2) < 1e-9);
     }
+  });
+
+  it("is as long as the wall is straight: a round room gives a short row, still against the wall", () => {
+    const sdf = new GridSdf(40, 40, (x, y) => Math.hypot(x - 20, y - 20) > 15);
+    const inside = (x: number, y: number): boolean => Math.hypot(x - 20, y - 20) < 15;
+    const ctx: ArrangeCtx = { sdf, inside, taken: [], centre: { x: 20, y: 20 } };
+    const [seed] = placeInRegion(sdf, { x0: 0, y0: 0, x1: 40, y1: 40, inside }, [{ where: "wall", radius: 0.6 }], { seed: 3, taken: [] });
+    const got = layRow(ctx, seed!, 0.6, 20, 0.3);
+    assert.ok(got.length >= 1 && got.length < 20, `${got.length} fit`);
+    for (const p of got) assert.ok(Math.abs(sdf.distance(p.x, p.y) - 0.6) < 0.16, "against the wall");
   });
 
   it("returns fewer when the wall runs out, and none overlap", () => {

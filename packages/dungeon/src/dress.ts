@@ -24,7 +24,8 @@ import { GridSdf, placeInRegion, type PlaceItem, type Placed } from "@mmo-engine
 import { solve, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engine/wfc";
 import { CELL, type Dungeon } from "./generate.js";
 import { deriveSeed } from "./rng.js";
-import type { Dressing } from "./dressing.js";
+import type { Content, Dressing } from "./dressing.js";
+import { layFlank, layGrid, layRing, layRow, type ArrangeCtx } from "./arrange.js";
 
 export interface DressedProp {
   kind: string;
@@ -170,21 +171,68 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
       deriveSeed(seed, STAGE.inventory * 1000 + r),
       () => relaxed.push(`inventory:${r}`),
     );
-    const items: (PlaceItem & { kind: string; collision: "solid" | "none" })[] = [];
+    type Item = PlaceItem & { kind: string; collision: "solid" | "none"; line: Content };
+    const items: Item[] = [];
     lines.forEach((k, i) => {
-      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius: k.radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid") });
+      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius: k.radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid"), line: k });
     });
-    // Where: big and centre pieces first.
-    items.sort((p, q) => Number(q.where === "centre") - Number(p.where === "centre") || q.radius - p.radius);
-    const spots = placeInRegion(sdf, regionOf(r), items, { seed: deriveSeed(seed, STAGE.place * 1000 + r), taken: layoutTaken[r], reach: 3 });
-    spots.forEach((p, i) => {
-      if (!p) {
-        unplaced++;
-        return;
-      }
+    const region = regionOf(r);
+    const poses = new Map<string, Placed[]>();
+    const record = (it: Item, p: Placed): void => {
       layoutTaken[r].push(p);
-      props.push({ kind: items[i].kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!items[i].mount, radius: items[i].radius, collision: items[i].collision });
-    });
+      poses.set(it.kind, [...(poses.get(it.kind) ?? []), p]);
+      props.push({ kind: it.kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!it.mount, radius: it.radius, collision: it.collision });
+    };
+    // Scatter a batch (each item on its own, as the dressing always has); the items with no room come back.
+    const scatter = (batch: Item[], batchNo: number): Item[] => {
+      if (batch.length === 0) return [];
+      const spots = placeInRegion(sdf, region, batch, { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * batchNo), taken: layoutTaken[r], reach: 3 });
+      const left: Item[] = [];
+      spots.forEach((p, i) => (p ? record(batch[i], p) : left.push(batch[i])));
+      return left;
+    };
+    // Big and centre pieces first.
+    const bigFirst = (a: Item, b: Item): number => Number(b.where === "centre") - Number(a.where === "centre") || b.radius - a.radius;
+    if (items.every((it) => it.line.arrange === "scatter")) {
+      items.sort(bigFirst);
+      unplaced += scatter(items, 0).length;
+    } else {
+      // The room's focal pieces (centre items, and what other lines stand round) first, then each arranged line in its pattern
+      // (an anchor line before the lines that use it), then everything else, and what a pattern had no room for, scattered.
+      const anchors = new Set(lines.filter((k) => k.arrange !== "scatter" && k.anchor).map((k) => k.anchor!));
+      const focal = (it: Item): boolean => it.line.arrange === "scatter" && (it.where === "centre" || anchors.has(it.kind));
+      unplaced += scatter(items.filter(focal).sort(bigFirst), 1).length;
+      const ctx: ArrangeCtx = { sdf, inside: region.inside!, taken: layoutTaken[r], centre: { x: _room.cx, y: _room.cy } };
+      const leftover: Item[] = items.filter((it) => it.line.arrange === "scatter" && !focal(it));
+      const arrangedLines = [...new Set(items.filter((it) => it.line.arrange !== "scatter").map((it) => it.line))].sort((a, b) => Number(anchors.has(b.kind)) - Number(anchors.has(a.kind)));
+      arrangedLines.forEach((line, li) => {
+        const its = items.filter((it) => it.line === line);
+        const anchor = line.anchor ? poses.get(line.anchor)?.[0] : undefined;
+        let laid: Placed[] = [];
+        if (line.arrange === "row") {
+          // Rows on the wall that holds the most (the best of a dozen spots round the walls); what is left over starts another
+          // row on another wall, and what that cannot fit is scattered.
+          for (let pass = 0; pass < 4 && laid.length < its.length; pass++) {
+            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: layoutTaken[r], reach: 3 });
+            let best: Placed[] = [];
+            for (const wall of wallSpots) {
+              const row = wall ? layRow(ctx, wall, line.radius, its.length - laid.length, line.gap) : [];
+              if (row.length > best.length) best = row;
+            }
+            if (best.length === 0) break;
+            best.forEach((p, k) => record(its[laid.length + k], p));
+            laid = [...laid, ...best];
+          }
+        } else {
+          if (line.arrange === "grid") laid = layGrid(ctx, line.radius, its.length, line.gap, anchor ?? null);
+          else if (anchor && (line.arrange === "flank" || line.arrange === "beside")) laid = layFlank(ctx, anchor, line.radius, its.length, line.gap, line.arrange === "flank" ? 2 : 1);
+          else if (anchor && line.arrange === "ring") laid = layRing(ctx, anchor, line.radius, its.length, line.gap, line.faces === "out" ? "out" : "in");
+          laid.forEach((p, k) => record(its[k], p));
+        }
+        leftover.push(...its.slice(laid.length));
+      });
+      unplaced += scatter(leftover.sort(bigFirst), 2).length;
+    }
   });
 
   // ---- 3. seams: which vein kind each room carries ----------------------

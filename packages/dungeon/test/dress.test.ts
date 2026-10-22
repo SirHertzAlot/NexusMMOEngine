@@ -7,12 +7,13 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GridSdf } from "@mmo-engine/placement";
 import {
-  bakeDungeons, BUILTIN_DRESSING, BUILTIN_THEMES, CELL, dressDungeon, generateDungeon, loadDressing, readIndex,
+  bakeDungeons, BUILTIN_DRESSING, type Archetype, type Dressing, BUILTIN_THEMES, CELL, dressDungeon, generateDungeon, loadDressing, readIndex,
   type Dungeon, type DungeonDressing, type DungeonFile,
 } from "../src/index.js";
 
@@ -130,6 +131,82 @@ describe("dressDungeon: where (scatter + raymarcher)", () => {
     for (const v of x.resources) byRoom.set(v.room, [...(byRoom.get(v.room) ?? []), v]);
     assert.ok(byRoom.size > 0);
     for (const vs of byRoom.values()) for (const v of vs) assert.ok(Math.hypot(v.x - vs[0].x, v.y - vs[0].y) <= 3.6, "within a seam's reach of its first vein");
+  });
+});
+
+/** The dressing with every line scattered: what dressing did before arrangements. */
+const scatterOnly = (d: Dressing): Dressing => ({
+  ...d,
+  archetypes: Object.fromEntries(Object.entries(d.archetypes).map(([id, a]) => [id, { ...a, contents: a.contents.map((k) => ({ ...k, arrange: "scatter" as const })) }])),
+});
+const digest = (x: DungeonDressing): string => createHash("sha256").update(JSON.stringify(x.props)).digest("hex").slice(0, 16);
+
+describe("dressDungeon: arrangements", () => {
+  it("scatter-only dressing dresses exactly as it did before arrangements", () => {
+    // Pinned from the code before arrangements existed (cases 0, 4, 8, 13).
+    const pinned: [number, string] = [0, "f16ebb1997b93baa"];
+    const all: [number, string][] = [[0, "f16ebb1997b93baa"], [4, "ad28c2390f5f488e"], [8, "28671070cff1032b"], [13, "371f1c5aa448d239"]];
+    assert.ok(pinned);
+    for (const [i, hash] of all) {
+      const [seed, theme, rank] = cases[i];
+      assert.equal(digest(dressDungeon(make(seed, theme), scatterOnly(BUILTIN_DRESSING), rank)), hash, `case ${i} (${theme} rank ${rank})`);
+    }
+  });
+
+  const tomb = (contents: Archetype["contents"]): Dressing => ({
+    ...BUILTIN_DRESSING,
+    archetypes: { tomb: { roles: ["combat", "elite", "treasure", "shrine", "boss", "entrance"], weight: 1, minSize: 6, repeatable: true, avoid: [], near: [], contents } },
+  });
+  const line = (kind: string, where: "floor" | "centre" | "wall" | "corner", radius: number, count: [number, number], extra: Partial<Archetype["contents"][number]> = {}): Archetype["contents"][number] => ({
+    kind, where, radius, count, mount: false, minRank: 1, arrange: "scatter", gap: 0.3, ...extra,
+  });
+
+  it("lays a row line along a wall: evenly spaced and straight in straight-walled rooms, hugging the wall in all", () => {
+    const dressing = tomb([line("coffin", "wall", 0.6, [3, 3], { arrange: "row", collision: "solid" })]);
+    let three = 0, hugging = 0, rectRooms = 0, rows = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const d = make(seed, "grim");
+      const sdf = new GridSdf(d.width, d.height, (cx, cy) => d.grid[cy * d.width + cx] !== CELL.floor);
+      const x = dressDungeon(d, dressing, 1);
+      for (const [room, r] of d.rooms.entries()) {
+        const ps = x.props.filter((p) => p.room === room);
+        if (ps.length !== 3) continue;
+        three++;
+        if (ps.every((p) => Math.abs(sdf.distance(p.x, p.y) - 0.6) < 0.16)) hugging++;
+        if (r.shape !== "rect") continue;
+        rectRooms++;
+        const [nx, ny] = [Math.cos(ps[0].rot), Math.sin(ps[0].rot)];
+        const along = ps.map((p) => -ny * p.x + nx * p.y).sort((a, b) => a - b);
+        const flat = ps.every((p) => Math.abs(nx * p.x + ny * p.y - (nx * ps[0].x + ny * ps[0].y)) < 1e-6 && Math.abs(p.rot - ps[0].rot) < 1e-9);
+        if (flat && Math.abs(along[1] - along[0] - 1.5) < 1e-6 && Math.abs(along[2] - along[1] - 1.5) < 1e-6) rows++;
+      }
+    }
+    assert.ok(three >= 100 && rectRooms >= 50, `${three} rooms placed all three (${rectRooms} rectangular)`);
+    assert.ok(hugging / three >= 0.85, `${hugging} of ${three} keep to the wall`);
+    // The rest of the rectangular rooms have pillars, doors or set pieces on their walls: the row is cut short and the rest scatter.
+    assert.ok(rows / rectRooms >= 0.5, `${rows} of ${rectRooms} rectangular rooms hold one even straight row`);
+  });
+
+  it("scatters a line whose anchor the room never placed, without failing", () => {
+    const dressing = tomb([line("candles", "corner", 0.3, [2, 2], { arrange: "ring", anchor: "altar" }), line("altar", "centre", 0.8, [0, 0])]);
+    const d = make(5, "grim");
+    const x = dressDungeon(d, dressing, 1);
+    assert.ok(x.props.some((p) => p.kind === "candles"), "the candles are placed anyway");
+    assert.ok(x.props.every((p) => p.kind !== "altar"));
+    assert.ok(!x.relaxed.includes("archetypes"));
+  });
+
+  it("flanks and rings stand round what they are anchored on", () => {
+    const dressing = tomb([line("throne", "wall", 1, [1, 1]), line("statue", "floor", 0.5, [2, 2], { arrange: "flank", anchor: "throne" }), line("candles", "floor", 0.3, [4, 4], { arrange: "ring", anchor: "statue" })]);
+    let flanked = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const x = dressDungeon(make(seed, "ancient"), dressing, 1);
+      for (const t of x.props.filter((p) => p.kind === "throne")) {
+        const sts = x.props.filter((p) => p.kind === "statue" && p.room === t.room);
+        if (sts.length === 2 && sts.every((s) => Math.abs(Math.hypot(s.x - t.x, s.y - t.y) - 1.8) < 1e-6 && Math.abs(s.rot - t.rot) < 1e-9)) flanked++;
+      }
+    }
+    assert.ok(flanked >= 3, `${flanked} thrones flanked by a pair`);
   });
 });
 

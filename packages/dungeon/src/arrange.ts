@@ -21,7 +21,10 @@ export interface ArrangeCtx {
   centre: { x: number; y: number };
 }
 
-const EPS = 1e-6;
+/** Clearance slack: a sampled distance field is only so exact, and the dressing checks clearance to this much. */
+const EPS = 1e-3;
+/** How far from the wall a row's items may drift (cells): a row follows the wall, it does not wander off it. */
+const HUG = 0.15;
 
 /** A pose of `radius` at (x, y) is valid: on the floor, off the walls, clear of everything placed. */
 function fits(ctx: ArrangeCtx, placed: readonly Placed[], x: number, y: number, radius: number): boolean {
@@ -33,26 +36,26 @@ function fits(ctx: ArrangeCtx, placed: readonly Placed[], x: number, y: number, 
 const pose = (x: number, y: number, rot: number, radius: number, n?: { nx: number; ny: number }): Placed => ({ x, y, rot, radius, ...(n ?? {}) });
 
 /**
- * A row along a wall from `wall` (an item already settled against it: `nx, ny` its normal, `rot` facing out of the wall):
- * `wall`'s own spot, then alternately either side along the wall, `2 * radius + gap` apart, each side stopping at the first
- * spot that does not fit (a corner, a door, something in the way).
+ * A straight row along a wall from `wall` (an item already settled against it: `nx, ny` its normal, `rot` facing out of the
+ * wall): `wall`'s own spot, then alternately either side along the wall, `2 * radius + gap` apart, all facing as it does. Each
+ * side stops at the first spot that does not fit (a corner, a bend in the wall, a door, something in the way): the dungeon's
+ * walls are grid stair-steps, so a row is as long as the wall is straight.
  */
 export function layRow(ctx: ArrangeCtx, wall: Placed, radius: number, count: number, gap: number): Placed[] {
   const out: Placed[] = [];
-  if (count <= 0) return out;
+  if (count <= 0 || !fits(ctx, out, wall.x, wall.y, radius)) return out;
   const nx = wall.nx ?? Math.cos(wall.rot);
   const ny = wall.ny ?? Math.sin(wall.rot);
   const [tx, ty] = [-ny, nx];
   const pitch = 2 * radius + gap;
   const at = (k: number): Placed => pose(wall.x + tx * k * pitch, wall.y + ty * k * pitch, wall.rot, radius, { nx, ny });
-  if (!fits(ctx, out, wall.x, wall.y, radius)) return out;
   out.push(at(0));
   const open = { plus: true, minus: true };
   for (let k = 1; out.length < count && (open.plus || open.minus); k++) {
     for (const side of ["plus", "minus"] as const) {
       if (out.length >= count || !open[side]) continue;
       const p = at(side === "plus" ? k : -k);
-      if (fits(ctx, out, p.x, p.y, radius)) out.push(p);
+      if (fits(ctx, out, p.x, p.y, radius) && ctx.sdf.distance(p.x, p.y) <= radius + HUG) out.push(p);
       else open[side] = false;
     }
   }
