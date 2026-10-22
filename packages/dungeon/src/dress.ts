@@ -306,7 +306,11 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
           laid = keepOpen(laid, line);
           laid.forEach((p, k) => record(its[k], p));
         }
-        leftover.push(...its.slice(laid.length));
+        // What a row could not fit still goes along a wall, and a line whose anchor never came is scattered as plain items; what a
+        // line, grid, flank or ring could not fit is left out: a sarcophagus or a pew at a random angle would spoil the arrangement.
+        const needsAnchor = line.arrange === "flank" || line.arrange === "beside" || line.arrange === "ring";
+        if (line.arrange === "row" || line.arrange === "head" || (needsAnchor && !anchor)) leftover.push(...its.slice(laid.length));
+        else unplaced += its.length - laid.length;
       });
       unplaced += guarded(() => scatter(leftover.sort(bigFirst), 2));
     }
