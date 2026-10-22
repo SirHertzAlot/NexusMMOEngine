@@ -26,12 +26,14 @@ import {
   vfxToQuarks,
   budgetForTier,
   DEFAULT_PARTICLE_BUDGETS,
+  ParticleBudgets,
   type VfxEffect,
   type VfxEmitter,
   type VfxSpawnShape,
   type QualityTier,
 } from "@mmo-engine/art/browser";
 import { getEffect, listEffects, saveEffect } from "../vfx/vfx-client.js";
+import { getContentDoc } from "../content-docs.js";
 import { BezierCurvesEditor } from "../vfx/bezier-editor.js";
 import { PiecewiseBezier, Bezier } from "three.quarks";
 import { Button, Field, Input, MIcon, NumberInput, Select } from "./components.js";
@@ -98,6 +100,17 @@ export function ParticlePanel(): React.JSX.Element {
   const [playing, setPlaying] = React.useState(true);
   const [budgetWarn, setBudgetWarn] = React.useState<string | null>(null);
   const [activeTier, setActiveTier] = React.useState<QualityTier>("medium");
+  // The budgets in content/vfx/budgets.json (EG10, edited under VFX budgets); the built-in ones until it loads or if it is bad.
+  const [budgets, setBudgets] = React.useState<ParticleBudgets>(DEFAULT_PARTICLE_BUDGETS);
+  React.useEffect(() => {
+    getContentDoc("vfxBudgets").then(
+      (raw) => {
+        const r = ParticleBudgets.safeParse(raw);
+        if (r.success) setBudgets(r.data);
+      },
+      () => undefined,
+    );
+  }, []);
   const task = useSaveTask();
 
   const viewportRef = React.useRef<HTMLDivElement>(null);
@@ -181,7 +194,7 @@ export function ParticlePanel(): React.JSX.Element {
   // Budget check
   React.useEffect(() => {
     if (!effect) { setBudgetWarn(null); return; }
-    const budget = budgetForTier(DEFAULT_PARTICLE_BUDGETS, activeTier);
+    const budget = budgetForTier(budgets, activeTier);
     const total = effect.emitters.reduce((sum, e) => sum + e.maxParticles, 0);
     if (total > budget.maxParticles) {
       setBudgetWarn(`Exceeds ${activeTier} budget: ${total} > ${budget.maxParticles} max particles`);
@@ -190,7 +203,7 @@ export function ParticlePanel(): React.JSX.Element {
     } else {
       setBudgetWarn(null);
     }
-  }, [effect, activeTier]);
+  }, [effect, activeTier, budgets]);
 
   const loadEffect = React.useCallback((id: string): void => {
     setLoadError(null);

@@ -7,6 +7,8 @@
  *                                     and the running play server's tick order
  *   PUT  /api/editor/modules        → { enabled: [...] } → validate + resolve, then write content/modules.json
  *   POST /api/editor/modules/apply  → restart the owned play server with the saved set
+ *   POST /api/editor/modules/:name/build → (EA10) build the module's native addon via node-gyp
+ *   GET  /api/editor/modules/:name/check → (EA10) check if the module's native addon is built
  *
  * - Module names come from discovery (`modules/<name>/module.json`), never from
  *   the request as a path; the set file is always <repo>/content/modules.json.
@@ -15,8 +17,10 @@
  *   and writes nothing. `core` is always on and written first.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { discoverModules, readEnabledSet, resolveModuleSet, type Problem } from "@mmo-engine/modules";
 import { invalidMessage } from "./api.js";
 
@@ -41,6 +45,92 @@ export function parseTickOrder(output: string): string[] | null {
   return m ? m[1].trim().split(/\s+/) : null;
 }
 
+const execFileAsync = promisify(execFile);
+
+/**
+ * EA10: check if a module's native addon is built.
+ * Returns the .node file path if built, null otherwise.
+ */
+function nativeAddonPath(repoRoot: string, moduleName: string): string | null {
+  // Native modules live in packages/addons/<name> or modules/<name>/native.
+  // The manifest's native.entry points to the .node file.
+  const found = discoverModules(join(repoRoot, "modules"));
+  const mod = found.valid.find((m) => m.manifest.name === moduleName);
+  const entry = mod?.manifest.native?.entry;
+  if (!entry) return null;
+  const full = join(mod.dir, entry);
+  return existsSync(full) ? full : null;
+}
+
+/**
+ * EA10: handle POST /api/editor/modules/:name/build and GET :name/check.
+ * Build runs node-gyp rebuild in the module's dir; check reports whether
+ * the .node file exists.
+ */
+async function handleNativeRoute(
+  repoRoot: string,
+  name: string,
+  action: string,
+  method: string,
+): Promise<ModulesRouteResult> {
+  const found = discoverModules(join(repoRoot, "modules"));
+  const mod = found.valid.find((m) => m.manifest.name === name);
+  if (!mod) {
+    return { status: 404, body: { ok: false, error: `unknown module: ${name}` } };
+  }
+  if (!mod.manifest.native) {
+    return { status: 400, body: { ok: false, error: `module ${name} has no native addon` } };
+  }
+
+  if (action === "check") {
+    if (method !== "GET") return { status: 405, body: { ok: false, error: "use GET" } };
+    const built = nativeAddonPath(repoRoot, name);
+    return {
+      status: 200,
+      body: { ok: true, name, built: built !== null, path: built },
+    };
+  }
+
+  // action === "build"
+  if (method !== "POST") return { status: 405, body: { ok: false, error: "use POST" } };
+  // The native entry lives in packages/addons/<name> for shared addons,
+  // or in the module dir itself. Find the dir containing binding.gyp.
+  const candidates = [mod.dir, join(repoRoot, "packages", "addons", name)];
+  let buildDir: string | null = null;
+  for (const c of candidates) {
+    if (existsSync(join(c, "binding.gyp"))) {
+      buildDir = c;
+      break;
+    }
+  }
+  if (!buildDir) {
+    return { status: 400, body: { ok: false, error: `no binding.gyp found for ${name}` } };
+  }
+  try {
+    // node-gyp rebuild: clean + configure + build.
+    const { stdout, stderr } = await execFileAsync("npx", ["node-gyp", "rebuild"], {
+      cwd: buildDir,
+      timeout: 300_000, // 5 min max for native builds
+    });
+    const built = nativeAddonPath(repoRoot, name);
+    return {
+      status: 200,
+      body: { ok: true, name, built: built !== null, path: built, stdout: stdout.slice(-2000), stderr: stderr.slice(-2000) },
+    };
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string; message?: string };
+    return {
+      status: 500,
+      body: {
+        ok: false,
+        error: `build failed: ${err.message ?? String(e)}`,
+        stdout: (err.stdout ?? "").slice(-2000),
+        stderr: (err.stderr ?? "").slice(-2000),
+      },
+    };
+  }
+}
+
 export async function handleModulesRoute(
   repoRoot: string,
   method: string,
@@ -48,6 +138,12 @@ export async function handleModulesRoute(
   body: string | undefined,
   hooks: ModulesHooks,
 ): Promise<ModulesRouteResult | null> {
+  // EA10: native build/check routes: /api/editor/modules/:name/build and :name/check.
+  const nativeMatch = pathname.match(new RegExp(`^${BASE}/([^/]+)/(build|check)$`));
+  if (nativeMatch) {
+    const [, name, action] = nativeMatch;
+    return handleNativeRoute(repoRoot, name, action, method);
+  }
   if (pathname !== BASE && pathname !== `${BASE}/apply`) return null;
   const modulesDir = join(repoRoot, "modules");
   const issues = (problems: Problem[]): ModulesRouteResult => ({
@@ -83,11 +179,15 @@ export async function handleModulesRoute(
             locked: m.manifest.name === "core",
             editor: m.manifest.editor !== undefined,
             systems: (m.manifest.server?.systems ?? []).map((s) => s.name),
+            // EA10: native addon info for Build/Check buttons.
+            native: m.manifest.native
+              ? { entry: m.manifest.native.entry, systems: m.manifest.native.systems }
+              : undefined,
           }))
           .sort((a, b) => a.name.localeCompare(b.name)),
         invalid: found.invalid,
         enabled: set.modules,
-        problems: [...set.problems, ...(resolved.ok ? [] : resolved.problems)],
+        problems: [...set.problems, ...(resolved.ok ? [] : (resolved as { ok: false; problems: Problem[] }).problems)],
         tickOrder: resolved.ok ? resolved.systems.map((s) => s.name) : null,
         running: hooks.running() ? { systems: hooks.running() } : null,
       },
@@ -107,7 +207,7 @@ export async function handleModulesRoute(
     }
     const names = ["core", ...new Set((enabled as string[]).filter((n) => n !== "core"))];
     const resolved = resolveModuleSet(found.valid, names);
-    if (!resolved.ok) return issues(resolved.problems);
+    if (!resolved.ok) return issues((resolved as { ok: false; problems: Problem[] }).problems);
     mkdirSync(join(repoRoot, "content"), { recursive: true });
     const file = setFilePath(repoRoot);
     const tmp = `${file}.${process.pid}.tmp`;

@@ -142,6 +142,17 @@ export const WorldSpecSchema = z
             wander: z.number().min(0).default(300),
             /** Size of bays and headlands, metres. */
             wanderScale: z.number().positive().default(700),
+            /** "peninsula" runs off the world's far edge; "island" floats in open sea with sea on every side; "continents" is several large landmasses joined by land bridges or split by sea; "pangaea" is one supercontinent with ragged coasts and inland seas (its size is set by continentCover). */
+            shape: z.enum(["peninsula", "island", "continents", "pangaea"]).default("peninsula"),
+            /** Island only: radius of the main island, 0.2..1.2 of half the world; past 1 it touches the edges and only the corners stay sea. */
+            islandRadius: z.number().min(0.2).max(1.2).default(0.8),
+            /** Continents only: how many large landmasses, and the share of the world they cover together (0.8 measures about 70% land: most chances for settlements). */
+            continents: z.number().int().min(2).max(9).default(4),
+            /** Continents only: sea between neighbours (half-world units); negative overlaps them, joining them with land bridges. */
+            continentGap: z.number().min(-0.4).max(0.4).default(-0.08),
+            continentCover: z.number().min(0.2).max(0.9).default(0.8),
+            /** Island and continents: how many smaller islands lie in the sea around the main landmass(es). */
+            satellites: z.number().int().min(0).max(24).default(0),
           })
           .strict()
           .prefault({}),
@@ -233,6 +244,8 @@ export const WorldSpecSchema = z
         recycling: z.number().min(0).max(0.95).default(0.35),
         /** Humidity (0..1) of air blowing in over the land edges. */
         inlandHumidity: z.number().min(0).max(1).default(0.35),
+        /** Global humidity dial: scales the rain and the moisture of the air over the land (1 = as specified, 0 = a dry world). */
+        humidity: z.number().min(0).max(2).default(1),
         /** The edge the sun stands over at noon (the equator side). */
         sunFrom: Side.default("south"),
         /** Noon sun elevation over the sea edge and over the far edge, degrees. */
@@ -466,7 +479,7 @@ export const WorldSpecSchema = z
     }
     const { waterEdge, tip } = w.land.coast;
     const sidesTurn = 1 - 2 * (waterEdge - 0.25);
-    if (waterEdge > 0.25 && tip <= sidesTurn) {
+    if (w.land.coast.shape === "peninsula" && waterEdge > 0.25 && tip <= sidesTurn) {
       ctx.addIssue({
         code: "custom",
         message: `land.coast.tip (${tip}) must reach past where the side edges turn to sea (${sidesTurn.toFixed(2)} for waterEdge ${waterEdge})`,

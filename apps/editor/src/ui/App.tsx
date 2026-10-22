@@ -10,25 +10,8 @@
  */
 
 import * as React from "react";
-import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, getPlayController, playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
-import { AssetInspectorPanel } from "./asset-inspector.js";
-import { TerrainEditorPanel } from "./terrain-editor.js";
-import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
-import { GraphEditorPanel } from "./graph-editor.js";
-import { DungeonPanel } from "./dungeon-view.js";
-import { PipelineView } from "./pipeline-view.js";
-import { RulesPanel } from "./rules-editor.js";
-import { SettlementPanel } from "./settlement-panel.js";
-import { StringsPanel } from "./strings-panel.js";
-import { ScalePanel } from "./scale-panel.js";
-import { AnimationPanel } from "./animation-panel.js";
-import { MaterialsPanel } from "./materials-panel.js";
-import { ValgrindPanel } from "./valgrind-panel.js";
-import { ChangesPanel } from "./vcs-panel.js";
-import { RulesPanel as TablesPanel } from "./rules-panel.js";
-import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
-import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
+import { getPlayController, playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, useLocalStorage } from "./components.js";
 import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
 import { flagBlocked, getViewportActions, screenshotBlocked, subscribeViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
@@ -56,10 +39,10 @@ import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut 
 import { useDrag } from "./use-drag.js";
 import { SelectableList } from "./selectable-list.js";
 import { ViewList } from "./view-list.js";
-import { LiveOpsDetailsLive, LiveOpsViews } from "./liveops-live.js";
-import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network-live.js";
-import { PlaytestDetails, PlaytestsPanel } from "./playtests-live.js";
-import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
+import { LiveOpsDetailsLive } from "./liveops-live.js";
+import { NetworkDetailsLive } from "./network-live.js";
+import { PlaytestDetails } from "./playtests-live.js";
+import { QuestDetailsLive, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
 import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
@@ -96,12 +79,12 @@ interface Workspace {
 const WORKSPACES: Workspace[] = [
   {
     id: "world", label: "World", icon: "public",
-    views: [{ id: "terrain", label: "Viewport", icon: "landscape", kind: "panel", panel: <TerrainEditorPanel /> }],
+    views: [], // contributed by the terrain module (modules/terrain/editor)
     leftTitle: "Outliner",
   },
   {
     id: "scene", label: "Scene", icon: "landscape",
-    views: [{ id: "ecs", label: "Viewport", icon: "view_in_ar", kind: "panel", panel: <EcsInspectorPanel /> }],
+    views: [], // contributed by the ecs module (modules/ecs/editor)
     leftTitle: "Outliner",
   },
   {
@@ -121,85 +104,57 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "gameplay", label: "Gameplay", icon: "table_view",
-    views: [
-      { id: "grids", label: "Data grids", icon: "grid_on", kind: "panel", panel: <GameplayGridsPanel /> },
-      { id: "content", label: "Content browser", icon: "folder_open", kind: "panel", panel: <ContentBrowserPanel /> },
-      { id: "tables", label: "Tables", icon: "table_view", kind: "panel", panel: <TablesPanel /> },
-      { id: "rules", label: "Rules", icon: "tune", kind: "panel", panel: <RulesPanel /> },
-    ],
+    views: [], // contributed by the gameplay module (modules/gameplay/editor)
     leftTitle: "Tables",
   },
   {
     id: "dungeons", label: "Dungeons & PCG", icon: "castle",
-    views: [
-      { id: "dungeons", label: "Dungeon", icon: "castle", kind: "panel", panel: <DungeonPanel /> },
-      { id: "graphs", label: "PICG Graphs", icon: "graph_3", kind: "panel", panel: <GraphEditorPanel /> },
-      { id: "towns", label: "Towns", icon: "location_city", kind: "panel", panel: <SettlementPanel /> },
-    ],
+    views: [], // contributed by the dungeons module (modules/dungeons/editor)
     leftTitle: "Library",
   },
   {
     id: "liveops", label: "Live ops", icon: "groups",
-    views: LiveOpsViews(),
+    views: [], // contributed by the liveops module (modules/liveops/editor)
     leftTitle: "Live ops",
   },
   {
     id: "network", label: "Network", icon: "lan",
-    views: [
-      { id: "routes", label: "Edge routes", icon: "lan", kind: "panel", panel: <EdgeRoutesPanel /> },
-      { id: "connections", label: "Connections", icon: "network_check", kind: "panel", panel: <ConnectionsPanel /> },
-    ],
+    views: [], // contributed by the network module (modules/network/editor)
     leftTitle: "Network",
   },
   {
     id: "debug", label: "Debug", icon: "monitoring",
-    views: [{ id: "play", label: "Play mode", icon: "play_arrow", kind: "panel", panel: <PlayModePanel /> }],
+    views: [], // contributed by the debug module (modules/debug/editor)
     leftTitle: "Sessions",
   },
   {
     id: "changes", label: "Changes", icon: "commit",
-    views: [{ id: "changes", label: "Changes", icon: "commit", kind: "panel", panel: <ChangesPanel /> }],
+    views: [], // contributed by the changes module (modules/changes/editor)
     leftTitle: "Changes",
   },
   {
     id: "database", label: "Database", icon: "database",
-    views: [
-      { id: "grid", label: "Data grid", icon: "table_view", kind: "panel", panel: <DatabaseGridPanel /> },
-      { id: "query", label: "Query", icon: "code", kind: "panel", panel: <DatabaseQueryPanel /> },
-      { id: "audit", label: "Audit log", icon: "history", kind: "panel", panel: <DatabaseAuditPanel /> },
-    ],
+    views: [], // contributed by the database module (modules/database/editor)
     leftTitle: "Schema",
   },
   {
     id: "story", label: "Story", icon: "auto_stories",
-    views: [
-      { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
-      { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
-    ], // quest & dialog editor contributed by the story module (modules/story/editor)
+    views: [], // quest & dialog editor, quest list and strings grid contributed by the story module (modules/story/editor)
     leftTitle: "Stories",
   },
   {
     id: "artaudio", label: "Art & audio", icon: "movie",
-    views: [
-      { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
-      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
-      { id: "materials", label: "Materials", icon: "texture", kind: "panel", panel: <MaterialsPanel /> },
-      { id: "scale", label: "Scale", icon: "straighten", kind: "panel", panel: <ScalePanel /> },
-    ], // VFX and audio panels contributed by the vfx/audio modules
+    views: [], // assets/materials/scale contributed by the art module; animation by characters; VFX and audio by the vfx/audio modules
     leftTitle: "Library",
   },
   {
     id: "release", label: "Release", icon: "rocket_launch",
-    views: [
-      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
-      { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
-      { id: "valgrind", label: "Valgrind", icon: "memory", kind: "panel", panel: <ValgrindPanel /> },
-    ], // HUD layout editor contributed by the hud module (modules/hud/editor)
+    views: [], // pipeline/playtests/valgrind contributed by the release module; HUD layout editor by the hud module (modules/hud/editor)
     leftTitle: "Profiles",
   },
   {
     id: "modules", label: "Modules", icon: "extension",
-    views: [{ id: "modules", label: "Modules", icon: "extension", kind: "panel", panel: <ModulesPanel /> }],
+    views: [], // contributed by the core module (modules/core/editor)
     leftTitle: "Modules",
   },
 ];
@@ -230,7 +185,9 @@ const VIEW_KEYWORDS: Record<string, string> = {
   content: "content browser catalog assets prefabs",
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
-  dungeons: "dungeon rooms layout instances",
+  dungeons: "dungeon rooms layout",
+  crafting: "crafting recipes units fittings rune stone reagent craft skill smithing",
+  runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
   towns: "towns settlements generator rules industry guilds resources",
   graphs: "picg graph nodes procedural",
   play: "play mode debugger overlays navmesh waypoints server",
@@ -2026,7 +1983,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     requestOpenAsset("scene", name);
   };
   const t = useTree();
-  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
+  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "movement", "needs", "skills", "social", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id}>
       <TreeItem
@@ -2053,7 +2010,7 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     <div className="flex flex-col gap-0.5">
       {folder("rules", "content/rules", "folder", (
         <>
-          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", r === "creatures" || r === "items" ? "tables" : undefined]))}
+          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement", "skills", "social"].includes(r) ? "tables" : undefined]))}
         </>
       ))}
       {folder("pcg", "content/pcg", "folder", (
@@ -2072,9 +2029,18 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
           {file("content/settlements/rules.json", "rules.json", ["dungeons", "towns"])}
         </>
       ))}
+      {folder("crafting", "content/crafting", "folder", (
+        <>{file("content/crafting/recipes.json", "recipes.json", ["gameplay", "crafting"])}</>
+      ))}
+      {folder("vfx", "content/vfx", "folder", (
+        <>{file("content/vfx/budgets.json", "budgets.json", ["artaudio", "vfx.budgets"])}</>
+      ))}
+      {folder("server", "content/server", "folder", (
+        <>{["persistence.json", "world.json"].map((f) => file(`content/server/${f}`, f, ["liveops", "settings"]))}</>
+      ))}
       {folder("dungeons", "content/dungeons", "folder", (
         <>
-          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "dungeons"]))}
+          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "runs"]))}
         </>
       ))}
       {folder("edge", "content/edge", "folder", (

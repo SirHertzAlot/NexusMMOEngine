@@ -14,6 +14,8 @@ import { z } from "zod";
  * civic, entertainment and education quarters are sized by the buildings that must stand in them (their
  * required counts), so a village gets one school and one tavern and a city a quarter of each.
  */
+import { PlaceRulesSchema } from "./places.js";
+
 export const DISTRICT_KINDS = ["housing", "agriculture", "shopping", "manufacturing", "civic", "entertainment", "education"] as const;
 export type DistrictKind = (typeof DISTRICT_KINDS)[number];
 /** The districts sized by a share of the blocks. */
@@ -537,6 +539,8 @@ export const SettlementRulesSchema = z.strictObject({
   props: PropsSchema.optional(),
   /** What a town lives off, from the land around it (none without it, or without the land). */
   industry: IndustryRulesSchema.optional(),
+  /** The routes between towns, what stands along them and the homesteads between (`planPlaces`; the built-in defaults without it). */
+  places: PlaceRulesSchema.optional(),
   settings: SettingsSchema.default(DEFAULT_SETTINGS),
   /** Worship: the churches' seats hold at least `sharePermille` of the people (a mass at a time). */
   worship: z.strictObject({ archetypes: z.array(z.string()), sharePermille: z.number().int().min(0).max(1000) }).optional(),
@@ -573,6 +577,10 @@ export const SettlementRulesSchema = z.strictObject({
     lowlandBandM: z.number().positive().default(40),
     /** The lowest ground of the town's whole footprint stands at least this far above the sea (a livable tread, not a tidal flat), metres. Also at least this far above any lake or river nearby. The survey caller may raise it (`TerrainFields.safeFloorM`) so the stored tiles clear the spawner's margin. */
     minElevationM: z.number().positive().default(4),
+    /** The biomes that count as green: towns stand in all-green squares of them, and farm fields lie on them. */
+    greenBiomes: z.array(z.string()).default(["plains", "forest", "rainforest"]),
+    /** The smallest all-green square a town may stand in, survey cells. */
+    minSquareCells: z.number().int().positive().default(24),
     /** The most the ground may rise and fall across the town's whole footprint (max minus min height, from the height field, not the slope), metres. */
     maxReliefM: z.number().positive().default(3),
     /** Ground above this height is a mountain, metres. */
@@ -723,6 +731,8 @@ export const BUILTIN_RULES: SettlementRules = {
     maxElevationM: 60,
     lowlandBandM: 40,
     minElevationM: 4,
+    greenBiomes: ["plains", "forest", "rainforest"],
+    minSquareCells: 24,
     maxReliefM: 3,
     ridgeHeightM: 120,
     mountainClearanceM: 300,

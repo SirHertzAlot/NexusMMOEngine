@@ -13,7 +13,7 @@
  *   npm run bake:all -- --data-dir D:/bake/data --content-dir D:/bake/content --assets-dir D:/art
  *
  * Steps (see STEPS in lib/bake-plan.mjs): build, world, loot, dungeons,
- * settlement (best sites first, one id each), scale-fit, wildlife-plan,
+ * settlement (best sites first, one id each), places (routes, roadside places, homesteads), scale-fit, wildlife-plan,
  * wildlife-models (these three need the art catalog; without it they are
  * skipped with a warning and the towns are stand-in boxes), env (prints, and
  * writes <content>/bake-env.local.txt, the MMO_* block that starts the server
@@ -24,7 +24,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PATH_FLAGS, resolvePaths } from "./lib/bake-paths.mjs";
-import { STEPS, parseBakeArgs, planSteps, settlementIds, sizeLadder } from "./lib/bake-plan.mjs";
+import { STEPS, parseBakeArgs, planSteps, settlementId, settlementIds, sizeLadder } from "./lib/bake-plan.mjs";
 
 const win = process.platform === "win32";
 const log = (m = "") => console.log(m);
@@ -35,7 +35,7 @@ const HELP = `npm run bake:all -- [options]
   --only a,b             run just these steps (the build is added); steps: ${STEPS.map((s) => s.id).join(", ")}
   --skip a,b             leave these out
   --dry-run              print the plan and commands, run nothing
-  --sites N              towns to bake, best sites first (default 1)
+  --sites N|max          towns to bake, best sites first (default max: as many as the world supports with every constraint; 1 to 200)
   --population N         people per town (default 600); --auto-size falls back to 300 then 100 when no site fits
   --seed N  --settlement-id ID   town seed (default 1234; +1 per extra town) and first id (default 0001; 0002, ...)
 paths (flag, or the variable; flags win): ${PATH_FLAGS.map((f) => `--${f}`).join(" ")}
@@ -110,8 +110,18 @@ const IMPL = {
   settlement: {
     cmds: (c) => [townCommand(c, 0, sizeLadder(c.opts.population, c.opts.autoSize)[0])],
     async run(c) {
-      const ids = settlementIds(c.opts.settlementId, c.opts.sites);
       const ladder = sizeLadder(c.opts.population, c.opts.autoSize);
+      if (c.opts.sites === "max") {
+        const t = listSitesCommand(c, ladder[0]);
+        log(`    counting the sites the world supports for ${ladder[0]} people`);
+        const r = await exec(t.cmd, t.args, { cwd: c.paths.repo, env: c.env, quiet: true });
+        const found = /^SITES (\d+)/m.exec(r.out);
+        if (r.code !== 0 || !found) throw new StepFailure("could not count the world's town sites", t.shown);
+        c.opts.sites = Math.min(200, Number(found[1]));
+        log(`    the world supports ${found[1]} sites; baking ${c.opts.sites}`);
+        if (c.opts.sites === 0) throw new StepFailure(`the world has no site for ${ladder[0]} people (site selection wants flat, low, dry, reachable land); ${c.opts.autoSize ? "try a smaller --population" : "try --auto-size or a smaller --population"}, or a different MMO_WORLD_SPEC`, t.shown);
+      }
+      const ids = settlementIds(c.opts.settlementId, c.opts.sites);
       if (!c.paths.hasCatalog) log(`    WARNING: no art catalog at ${c.paths.catalog}: the towns are stand-in boxes`);
       let from = 0; // the ladder index that fit the last town: later towns start there
       let baked = 0;
@@ -143,6 +153,9 @@ const IMPL = {
       return baked;
     },
   },
+  places: {
+    cmds: (c) => [node(c, "packages/settlement/dist/src/places-cli.js", ["--world", c.paths.worldSpec, "--scenes", c.paths.scenesDir, "--out", join(c.paths.settlementOut, "places.json"), "--seed", String(c.opts.seed)])],
+  },
   "scale-fit": {
     cmds: (c) => [node(c, "packages/settlement/dist/src/scale-fit-cli.js", ["--catalog", c.paths.catalog, "--scale", c.paths.scaleBase, "--out", c.paths.scaleOut])],
   },
@@ -157,8 +170,13 @@ const IMPL = {
   env: { cmds: () => [] },
 };
 
+/** Asks the settlement baker how many sites the world has for towns of this size (it prints `SITES <n>`). */
+function listSitesCommand(c, population) {
+  return node(c, "packages/settlement/dist/src/cli.js", ["--world", c.paths.worldSpec, "--population", String(population), "--scale", c.paths.scaleBase, "--list-sites"]);
+}
+
 function townCommand(c, k, population) {
-  const id = settlementIds(c.opts.settlementId, c.opts.sites)[k];
+  const id = settlementId(c.opts.settlementId, k);
   const args = [
     "--world", c.paths.worldSpec, "--site", String(k + 1), "--id", id, "--seed", String((c.opts.seed + k) >>> 0), "--population", String(population),
     "--scene", "--scale", c.paths.scaleBase, "--out", c.paths.settlementOut, "--scenes", c.paths.scenesDir,
@@ -170,7 +188,11 @@ function townCommand(c, k, population) {
 /** The environment block that starts the server on this bake. */
 function envBlock(c) {
   const { paths: p } = c;
-  const towns = settlementIds(c.opts.settlementId, c.opts.sites).map((id) => readTown(p, id)).filter(Boolean);
+  // With "max" and the settlement step not run this time, the towns are whichever consecutive ids already exist.
+  let ids;
+  if (c.opts.sites === "max") for (ids = []; readTown(p, settlementId(c.opts.settlementId, ids.length)); ) ids.push(settlementId(c.opts.settlementId, ids.length));
+  else ids = settlementIds(c.opts.settlementId, c.opts.sites);
+  const towns = ids.map((id) => readTown(p, id)).filter(Boolean);
   const vars = [["MMO_DATA_DIR", p.dataDir]];
   const notes = [];
   if (towns.length) {
@@ -208,7 +230,9 @@ async function main() {
   log(`[bake:all] ${opts.dryRun ? "plan (dry run)" : "paths"}:`);
   for (const k of ["repo", "dataDir", "contentDir", "assetsDir", "catalog", "worldSpec", "settlementOut", "scenesDir", "scaleOut"]) log(`  ${k.padEnd(14)} ${paths[k]}   (${paths.sources[k]})`);
   if (!paths.hasCatalog) log(`  WARNING: no art catalog: scale-fit and wildlife steps are skipped, towns are stand-in boxes`);
-  log(`  towns: ${opts.sites} x ${opts.population} people${opts.autoSize ? " (auto-size)" : ""}, ids ${settlementIds(opts.settlementId, opts.sites).join(", ")}, seed ${opts.seed}`);
+  log(opts.sites === "max"
+    ? `  towns: as many as the world supports (counted when the settlement step runs) x ${opts.population} people${opts.autoSize ? " (auto-size)" : ""}, first id ${opts.settlementId}, seed ${opts.seed}`
+    : `  towns: ${opts.sites} x ${opts.population} people${opts.autoSize ? " (auto-size)" : ""}, ids ${settlementIds(opts.settlementId, opts.sites).join(", ")}, seed ${opts.seed}`);
   log();
 
   const t0 = Date.now();

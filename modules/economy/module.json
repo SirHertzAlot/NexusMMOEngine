@@ -1,0 +1,1 @@
+{"dependsOn":[],"description":"Gold wallets, player trades, NPC vendors, and the auction house (EC1).","name":"economy","server":{"entry":"server.js","systems":[{"name":"wallet","optional":false},{"name":"trade","optional":false},{"name":"vendor","optional":false},{"name":"auction","optional":false}]},"version":"0.1.0"}

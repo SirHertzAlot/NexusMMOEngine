@@ -51,6 +51,7 @@ import { AnimationLibrary, CharacterAnimator } from "./character/character-anima
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
+import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 
 export interface EntityLayerOptions {
@@ -58,6 +59,8 @@ export interface EntityLayerOptions {
   pcg?: PcgRpcClient;
   /** Decode PCG meshes and build their BVHs off the main thread. */
   workers?: WorkerRequester;
+  /** Materials for a PCG mesh with material slots, by slot name (a dungeon shell's palette). */
+  materialFor?: (slots: readonly string[]) => THREE.Material[] | undefined;
 }
 
 interface TrackedMesh {
@@ -171,7 +174,7 @@ export class EntityLayer {
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
   ) {
-    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers) : null;
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers, opts.materialFor) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
@@ -495,6 +498,16 @@ export class EntityLayer {
     this.vfx.update(dt);
   }
 
+  /** Where the static props showing any of these assets stand (a dungeon's torches give light there). */
+  emitterPositions(hashes: ReadonlySet<number>): [number, number, number][] {
+    return this.props.positionsOf(hashes);
+  }
+
+  /** Matte stand-ins and models (nothing shiny). */
+  matte(): void {
+    this.props.matte();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -632,11 +645,13 @@ export class EntityLayer {
   private makeBodyMesh(wid: bigint, body: BodyConfigRow | undefined, model: THREE.Object3D | null): THREE.Object3D {
     if (model) {
       colorize(model, placeholderColor(wid));
+      applyShading(model, "model");
       return model;
     }
     if (body) {
       const obj = this.assets.bodyMesh(body);
       colorize(obj, placeholderColor(wid));
+      applyShading(obj, "placeholder");
       return obj;
     }
     // Stand-in until the BodyConfig row arrives (spawned entities carry
@@ -646,6 +661,7 @@ export class EntityLayer {
       new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }),
     );
     colorize(obj, placeholderColor(wid));
+    applyShading(obj, "placeholder");
     return obj;
   }
 }

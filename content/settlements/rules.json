@@ -1441,5 +1441,51 @@
     "mountainClearanceM": 300,
     "walkSlopeDeg": 25,
     "requireReachable": true
+  },
+  "places": {
+    "routes": {
+      "extraLinksPerTown": 1,
+      "maxExtraLinkKm": 6,
+      "stride": 4,
+      "walkSlopeDeg": 25,
+      "riverCost": 8,
+      "roadDiscount": 0.35
+    },
+    "roadside": {
+      "outpostSpacingM": 2400,
+      "townClearM": 350,
+      "innMinTownDistM": 900,
+      "innBesideOutpostM": 70,
+      "shackSpacingM": 1300,
+      "shackOffsetM": [
+        25,
+        60
+      ],
+      "campSpacingM": 2600,
+      "campWaterM": 250,
+      "campClearOfGuardM": 700
+    },
+    "homesteads": {
+      "perTown": 3,
+      "familyMin": 2,
+      "familyMax": 10,
+      "spacingM": 700,
+      "townClearM": 700,
+      "routeBandM": [
+        120,
+        1400
+      ],
+      "maxSlopePermille": 100,
+      "clearM": 48,
+      "farmBiomes": [
+        "plains",
+        "forest",
+        "rainforest"
+      ],
+      "ranchBiomes": [
+        "plains"
+      ],
+      "ranchShare": 0.7
+    }
   }
 }

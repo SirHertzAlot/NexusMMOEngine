@@ -140,25 +140,27 @@ whose outputs exist are skipped, so it is safe to run again.
 | 3 | `loot` | rank ladder | `<data>/loot/pool.jsonl` |
 | 4 | `dungeons` | themes, species | `<data>/dungeons/*.dungeon.json` |
 | 5 | `settlement` | world spec (survey, site selection), scale, catalog | `<settlements>/<id>.settlement.json`, `<scenes>/settlement-<id>.scene.json` |
-| 6 | `scale-fit` | catalog, scale | `<scale-out>` (`scale.local.json`) |
-| 7 | `wildlife-plan` | catalog, ecology plan | `<content>/ecology/wildlife.local.ecology.json` |
-| 8 | `wildlife-models` | catalog, wildlife table | `<content>/wildlife/models.local.json` |
-| 9 | `env` | the above | prints the `MMO_*` block, writes `<content>/bake-env.local.txt` |
+| 6 | `places` | world spec, the towns' scenes | `<settlements>/places.json` (routes between the towns; guard outposts, inns, shacks, camp sites along them; homesteads between) |
+| 7 | `scale-fit` | catalog, scale | `<scale-out>` (`scale.local.json`) |
+| 8 | `wildlife-plan` | catalog, ecology plan | `<content>/ecology/wildlife.local.ecology.json` |
+| 9 | `wildlife-models` | catalog, wildlife table | `<content>/wildlife/models.local.json` |
+| 10 | `env` | the above | prints the `MMO_*` block, writes `<content>/bake-env.local.txt` |
 
-Steps 6 to 8 need the art catalog (`assets/catalog.json`, built by
+Steps 7 to 9 need the art catalog (`assets/catalog.json`, built by
 `convert:packs` / `import:glb` from the licensed packs, which this command
 does not run). Without it they are skipped with a warning and the town is
 stand-in boxes. Everything that names a licensed model is gitignored.
 
 ```sh
-npm run bake:all                                   # everything, one town of 600
+npm run bake:all                                   # everything, as many towns of 600 as the world supports
 npm run bake:all -- --dry-run                      # the plan and the commands, nothing run
 npm run bake:all -- --sites 3 --auto-size          # three towns, best sites first; 600, else 300, else 100 people
+npm run bake:all -- --sites max                    # the default: counts the sites (one survey), then bakes them all
 npm run bake:all -- --only settlement,scale-fit    # just those (the build comes along)
 npm run bake:all -- --skip dungeons,loot --force   # rebuild the rest (the world too: stop the server first)
 ```
 
-Options: `--force`, `--only a,b`, `--skip a,b`, `--dry-run`, `--sites N`,
+Options: `--force`, `--only a,b`, `--skip a,b`, `--dry-run`, `--sites N|max` (default `max`: every site the world supports with all the constraints, up to 200),
 `--population N` (600), `--auto-size`, `--seed N` (1234, +1 per extra town),
 `--settlement-id ID` (`0001`, then `0002`, ...). It stops at the first failure,
 names the step and prints the command to rerun.

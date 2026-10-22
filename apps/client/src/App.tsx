@@ -22,7 +22,7 @@ import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState,
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
 import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
-import type { DungeonMessage } from "@mmo-engine/protocol";
+import type { DungeonLook, DungeonMessage } from "@mmo-engine/protocol";
 import type { PouchMaterial } from "@mmo-engine/protocol";
 import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
@@ -61,7 +61,9 @@ import { parseAudioBank, type Listener } from "./audio/sound-logic.js";
 import combatMovesDoc from "virtual:combat-moves";
 import animationDoc from "virtual:animation-doc";
 import materialsDoc from "virtual:materials-doc";
+import vfxBudgetsDoc from "virtual:vfx-budgets";
 import { applyGameContent } from "./render/game-content.js";
+import { setParticleBudgets } from "./render/fx/particle-fx.js";
 import {
   loadBindings,
   prettyCode,
@@ -73,6 +75,11 @@ import {
 /** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
 // The animation-side content (combat moves, locomotion graph, materials) is applied once, before any world is built.
 applyGameContent({ combat: combatMovesDoc, animation: animationDoc, materials: materialsDoc } as Parameters<typeof applyGameContent>[0]);
+// Particle tier budgets (EG10): a bad file keeps the built-in budgets.
+{
+  const problem = setParticleBudgets(vfxBudgetsDoc);
+  if (problem) console.warn(`[content] ${problem}`);
+}
 
 const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
 const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
@@ -222,6 +229,8 @@ export function App(): React.ReactElement {
   const [run, setRun] = useState<DungeonRun | null>(null);
   const runRef = useRef<DungeonRun | null>(null);
   runRef.current = run;
+  // How the run looks (the server's `look`, sent on entering): the canvas reads it each frame; every hop clears it.
+  const lookRef = useRef<DungeonLook | null>(null);
   const [nearEntrance, setNearEntrance] = useState<string | null>(null);
   const regionRef = useRef<{ url: string; token: string } | null>(null);
   // The server and name as of this render, for socket callbacks made in an earlier one
@@ -358,6 +367,7 @@ export function App(): React.ReactElement {
   /** Dungeon messages (D4): a transfer moves the player in; state and the end update the run. */
   const onDungeon = (d: DungeonMessage): void => {
     if (d.op === "transfer") void hop(d.endpoint, d.token, { phase: "entering", dungeon: d.dungeon });
+    else if (d.op === "look") lookRef.current = d.look;
     else if (d.op === "state") setRun((prev) => (prev && prev.phase !== "leaving" ? { phase: "in", dungeon: d.dungeon, state: d, at: performance.now() } : prev));
     else if (d.op === "ended") setRun((prev) => ({ phase: "ended", dungeon: prev?.dungeon ?? "", result: d }));
   };
@@ -370,6 +380,7 @@ export function App(): React.ReactElement {
    */
   const hop = async (endpoint: string, token: string, transit: Extract<DungeonRun, { phase: "entering" | "leaving" }>): Promise<void> => {
     if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url: urlRef.current, token: sessionTokenRef.current };
+    lookRef.current = null;
     setRun(transit);
     setDialog(null);
     setNearDrop(null);
@@ -548,10 +559,11 @@ export function App(): React.ReactElement {
   useEffect(() => {
     if (notice) audio.playEvent("ui-notice");
   }, [audio, notice]);
-  // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
+  // PCG assets (trees, a dungeon's shell, …) come from the Pcg webrpc service on the game port of
+  // the gateway the client joined: the region, or a dungeon instance's own port after a hop.
   const pcg = useMemo(
-    () => (client ? new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken) : undefined),
-    // One service per joined client (the URL it joined with).
+    () => (client ? new PcgRpcClient(httpBaseForGameUrl(client.endpoint ?? url), () => client.sessionToken) : undefined),
+    // One service per joined client (the gateway it joined).
     [client],
   );
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
@@ -639,9 +651,11 @@ export function App(): React.ReactElement {
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
           instance={run !== null}
+          getLook={() => lookRef.current}
           combat={combat}
           onCombat={setCombatView}
           streamingRef={streamingRef}
+          audio={audio}
         />
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">

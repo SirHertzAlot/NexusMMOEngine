@@ -24,7 +24,7 @@
 
 import { BUILTIN_CATALOG, DEFAULT_LADDER, type Catalog, type EntityBundle, type Ladder } from "@mmo-engine/compose/browser";
 import { BUILTIN_MATERIALS, type Material } from "./materials.js";
-import { loadCraftingRules, type CraftingRules } from "./rules.js";
+import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "./rules.js";
 
 export interface Recipe {
   /** The item it makes (its composed id). */
@@ -39,9 +39,9 @@ export interface Recipe {
 }
 
 let shipped: CraftingRules | undefined;
-/** The game's rules (content/crafting/recipes.json), read once. */
+/** The game's rules (content/crafting/recipes.json), read once; empty when the game has no crafting. */
 export function craftingRules(): CraftingRules {
-  return (shipped ??= loadCraftingRules());
+  return (shipped ??= loadCraftingRules() ?? EMPTY_CRAFTING_RULES);
 }
 
 const add = (to: Record<string, number>, id: string, n: number): void => {

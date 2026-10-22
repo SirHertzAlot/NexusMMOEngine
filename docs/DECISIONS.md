@@ -2,6 +2,76 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-20 — Road vertical profile is terrain-conformant A* routing over the heightfield, owned by engine-core.**
+  A straight spline between two junctions will cut through a lake or carve a
+  mountainside. The road router (`packages/engine-core/src/terrain/road-router.ts`)
+  walks each edge with A* over a heightfield grid, mirroring the route walker in
+  `@mmo-engine/settlement`'s `planPlaces` (`walkRoute`): cells at or below the water
+  level (or flagged wet) are blocked, and steps steeper than a cart grade (`maxGrade`,
+  default 8%) are avoided so a road bends around a water body or ridge instead of
+  through it, and falls back to the straight spine only when no gradeable route exists
+  within the detour budget. The grid is corridor-bounded and coarsened per edge so the
+  search stays bounded on 16–32 km worlds; 8-connected with no cutting past a blocked
+  cell, Douglas-Peucker simplified. The terrain version (survey hash) is part of the
+  content key, so a re-baked terrain invalidates cached draped ribbons. Water, sea level,
+  cart grade and detour are `RouteOptions` (data-driven), so a world's rules tune grades
+  without code. `splineRoads` (the smooth spine, PR #326) stays for the gradeable case.
+
+- **2026-10-19 — Road alignment is a content-addressed Catmull-Rom spline spine over the junction graph, owned by engine-core.**
+  Settlement roads ship as mm junctions + edges (`roads.nodes`/`edges`); SG2b
+  computes their horizontal alignment in `packages/engine-core/src/terrain/roads.ts`
+  (not in the slab baker): `buildPaths` chains the graph into runs between degree-2
+  junctions, `catmullRom` smooths each spine (tension 0 = uniform), `splineRoads`
+  drapes the centerline and left/right rails onto a `heightAt(x,z)` surface, and
+  `canonicalRoads` + `roadNetworkHash` reuse the repo's sha256 content-addressed
+  cache-key pattern (`TerrainCache`/`heightsFingerprint`) so splines recompute only
+  when geometry or render density changes. mm units are preserved and scaled at
+  spawn like `Structure` nodes. Client rendering and wiring settlements into
+  scenes is a separate follow-up, deliberately out of `world-bake.ts` to avoid
+  conflicting with `feat/terrain-lazy-cache`.
+
+- **2026-10-15 — The bake materializes the world; the tiles are a cache, and the survey is the only global pass (WX2).**
+  `npm run bake:world` writes the whole world up front: 4 km is 103 MB, 16 km
+  ~1.5 GB, 32 km ~6 GB, linear in area, and 80% of it is `terrain_tiles` — one
+  float32 heightmap per 16 m chunk. The fix is not compression but
+  *not baking what is derived*: the tiles are a cache, not a bake output.
+  Three things already in the tree make this safe — `makeTileChunkSource`
+  falls back to procgen when a tile is absent, so the server runs with no tiles;
+  navmesh tiles are already version-keyed, content-addressed blobs; and
+  `heightsFingerprint()` already hashes a heightfield. So: the survey is
+  content-addressed by a hash of the spec and skipped when the spec is
+  unchanged; tiles are keyed by `(seed, cx, cz, lod, terrainVersion,
+  surveyHash)` in a `terrain_tile_keys` table; `bake:world` gains `--region
+  rx,rz` and `--survey-only`; and the per-chunk tile loop — already independent
+  per chunk — runs across worker threads. `regionsPerSide` already partitions
+  the world square. What does NOT get cheaper is the survey: erosion is global
+  and iterative, so a spec change re-runs it. The win is that the tiles no
+  longer have to be rewritten for free — only the affected regions. Spec:
+  `docs/INCREMENTAL-BAKE.md`.
+
+- **2026-10-15 — Cell shading is a client-side component whose carrier is content, not a replicated ECS component.**
+  Cell shading was hardcoded per renderer: the character kit patched its own
+  material, and props, art-pack models and stand-in shapes each got an
+  `applyToon` call sprinkled where they were built. "Enabling it should be as
+  simple as adding a component" now holds: the client's `render/shading/`
+  holds named shading components (`toon`, the cel look; `standard`, three's own
+  PBR) and applies whichever one a *kind of thing* carries, and which kind
+  carries what is content (`content/materials/materials.json` -> `shading`,
+  validated in `packages/art`), so it is turned on and off from data and no
+  renderer knows about it. Kinds are render paths, not entity classes:
+  `model` (an art-pack or PICG model's own material), `placeholder` (a stand-in
+  shape), `prefab` (a composed entity). Not a replicated component and not a
+  wire field: the server has no business knowing how a surface is lit, and a
+  per-entity flag would ride every snapshot to say something the client alone
+  decides — the same reasoning that keeps the toon look itself in content. The
+  cost is granularity: shading is per kind, not per entity, because the shared
+  prop and atlas materials are what there is to patch (per-model shading would
+  mean splitting those materials, and waits until something needs it).
+  Modular characters are deliberately outside it: the character kit owns its
+  own style and outlines, and folding it in changes a public interface for no
+  behaviour change. `applyToon` also stopped assuming the material already has
+  an `onBeforeCompile` patch, so a plain `MeshStandardMaterial` can be shaded.
+
 - **2026-10-15 — Flat land is made by the terrain, not found by loosening the rules; a stranded flat is not a site.**
   Site selection (3 m of relief over the whole town footprint) found no site
   on the default world for 100, 300 or 600 people: erosion and the biome

@@ -8,8 +8,8 @@
  * client at a node.
  */
 import * as React from "react";
-import { DocBar } from "./doc-bar.js";
-import { duplicateFlowNode, renameFlowNode } from "../flow-context.js";
+import { DocBar } from "../../../apps/editor/src/ui/doc-bar.js";
+import { duplicateFlowNode, renameFlowNode } from "../../../apps/editor/src/flow-context.js";
 import {
   addFlowEdge,
   addFlowNode,
@@ -23,17 +23,17 @@ import {
   type FlowDoc,
   type SceneIssue,
 } from "@mmo-engine/scene";
-import { getFlow, playFromUrl, saveFlow } from "../flow-client.js";
-import { leftRightRoute } from "../graph-view.js";
-import { issueCount } from "../save-outcome.js";
-import { useSaveTask } from "./use-save-task.js";
-import { NodeGraph } from "./node-graph.js";
-import { MIcon, Select } from "./components.js";
-import { useDocActions } from "./doc-actions.js";
-import { useDocument } from "./use-document.js";
-import { getTool, subscribeTool } from "./tool-store.js";
-import { canDragGraphNode } from "./viewport-tools.js";
-import { editorSelection } from "./editor-selection.js";
+import { getFlow, playFromUrl, saveFlow } from "../../../apps/editor/src/flow-client.js";
+import { leftRightRoute } from "../../../apps/editor/src/graph-view.js";
+import { issueCount } from "../../../apps/editor/src/save-outcome.js";
+import { useSaveTask } from "../../../apps/editor/src/ui/use-save-task.js";
+import { NodeGraph } from "../../../apps/editor/src/ui/node-graph.js";
+import { MIcon, Select } from "../../../apps/editor/src/ui/components.js";
+import { useDocActions } from "../../../apps/editor/src/ui/doc-actions.js";
+import { useDocument } from "../../../apps/editor/src/ui/use-document.js";
+import { getTool, subscribeTool } from "../../../apps/editor/src/ui/tool-store.js";
+import { canDragGraphNode } from "../../../apps/editor/src/ui/viewport-tools.js";
+import { editorSelection } from "../../../apps/editor/src/ui/editor-selection.js";
 
 const NODE_W = 140;
 const NODE_H = 44;

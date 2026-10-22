@@ -53,6 +53,7 @@ describe("database host routes", () => {
     },
     apply: async (a) => (calls.push(`apply:${a}`), []),
     log: () => [],
+    dbPerformance: async () => ({}),
     undo: async (a, id) => (calls.push(`undo:${a}:${id}`), {}),
     listDbFunctions: () => ({ functions: [{ name: "character_power", db: "characters", params: ["character_id"] }], problems: [] }),
     runDbFunction: async (name, params) => (calls.push(`run:${name}:${JSON.stringify(params)}`), { rows: [[1]] }),

@@ -45,26 +45,55 @@ export {
   decodeIntentMessage,
   decodeSnapshot,
   encodeDelta,
+  encodeDeltaSoA,
   encodeIntentMessage,
   encodeSnapshot,
+  encodeSnapshotSoA,
 } from "./codec.js";
+export {
+  decodeFastDelta,
+  encodeFastDelta,
+  encodeFastDeltaFromSoA,
+  tryDecodeFastDelta,
+  FAST_PATH_HEADER_BYTES,
+  FAST_PATH_MAGIC,
+  FAST_PATH_RECORD_BYTES,
+  FAST_PATH_VERSION,
+  FastPathError,
+} from "./fast-path.js";
+export type { FastPathDecodeResult, FastPathEntry, FastPathTransformColumns, FastPathVelocityColumns } from "./fast-path.js";
 export type {
+  ActionSoA,
+  AnimationSoA,
+  AppearanceSoA,
   AssetRefRow,
+  AssetSoA,
   BodyConfigRow,
+  BodySoA,
   CharacterRefRow,
+  CharacterRefSoA,
   ChunkRow,
+  ChunkSoA,
   CollectedState,
+  CollectedStateSoA,
   DecodedIntentMessage,
   HealthRow,
+  HealthSoA,
   IntentFields,
   IntentRow,
+  IntentSoA,
   LocomotionRow,
+  LocomotionSoA,
   AppearanceRow,
   ActionRow,
   AnimationRow,
+  SoAColumns,
   StaminaRow,
+  StaminaSoA,
   TransformRow,
+  TransformSoA,
   VelocityRow,
+  VelocitySoA,
 } from "./codec.js";
 export {
   applyBrush,
@@ -87,6 +116,6 @@ export { ARMOUR_SLOT_NAMES, GROUND_ITEM_VARIANT } from "./items.js";
 export type { GatherAction, PouchMaterial, PouchMessage, ResourceNodeView, ResourcesMessage } from "./gathering.js";
 export type { ArmourSlotName, BodyMessage, PartStateName, StanceMessage, TreatMessage, TreatmentMessage, TreatmentName, SkillsMessage, DisciplineRequirement, CastMessage, ManaMessage, SpellMessage, LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView, AbilityTrigger, AbilityMessage, TelegraphShapeView, TelegraphMessage, StatusMessage, DuelAction, DuelMessage, TradeAction, TradeMessage, WalletMessage, VendorAction, VendorMessage, AuctionAction, AuctionMessage } from "./items.js";
 export type { DialogMessage, NpcView, NpcsMessage, QuestLogMessage, QuestOp, QuestStepView, QuestView } from "./quests.js";
-export type { DungeonEntranceView, DungeonMessage, DungeonOp } from "./dungeons.js";
+export type { DungeonEntranceView, DungeonLook, DungeonMessage, DungeonOp } from "./dungeons.js";
 export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";
 export { ClipId, CLIP_NAMES } from "./animation.js";

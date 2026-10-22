@@ -20,18 +20,22 @@ import { Action, Locomotion, PlayerIntent, Stamina } from "../components.js";
 import { Injury } from "../body.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
+import { DEFAULT_MOVEMENT } from "../movement.js";
 
+// The engine defaults; a world spends by its rules (`sim.movement.stamina`,
+// content/rules/movement.json).
+const S = DEFAULT_MOVEMENT.stamina;
 /** Flat costs (stamina points). */
-export const DODGE_COST = 20;
-export const ATTACK_COST = 10;
-export const JUMP_COST = 8;
+export const DODGE_COST = S.dodgeCost;
+export const ATTACK_COST = S.attackCost;
+export const JUMP_COST = S.jumpCost;
 /** Drains (points/second) while the intent drives them. */
-export const SWIM_DRAIN = 10;
-export const RUN_DRAIN = 6;
-/** Ticks after the last spend before regen starts (30 = 1 s). */
-export const REGEN_DELAY_TICKS = 30;
+export const SWIM_DRAIN = S.swimDrainPerSecond;
+export const RUN_DRAIN = S.runDrainPerSecond;
+/** Ticks after the last spend before regen starts (30 = 1 s at 30 Hz). */
+export const REGEN_DELAY_TICKS = Math.round(S.regenDelaySeconds * 30);
 /** Regen when the rules define no `staminaRegen` stat. */
-export const BUILTIN_REGEN = 12;
+export const BUILTIN_REGEN = S.regenPerSecond;
 
 export class StaminaSystem implements SimSystem {
   readonly name = "stamina";
@@ -61,12 +65,14 @@ export class StaminaSystem implements SimSystem {
       for (const e of this.drained.keys()) if (!live.has(e)) this.drained.delete(e);
     }
     const tick = sim.currentTick;
+    const rules = sim.movement.stamina;
+    const delayTicks = Math.round(rules.regenDelaySeconds / dtSeconds);
     for (let i = 0; i < eids.length; i++) {
       const e = eids[i] as number;
       const grounded = !hasComponent(sim.ecs, Locomotion, e) || Locomotion.mode[e] === LocomotionMode.Ground;
       const wantJump = PlayerIntent.jump[e] !== 0;
       if (wantJump && !this.jumpHeld.has(e) && grounded) {
-        this.drain(sim, e, tick, JUMP_COST);
+        this.drain(sim, e, tick, rules.jumpCost);
       }
       if (wantJump) this.jumpHeld.add(e);
       else this.jumpHeld.delete(e);
@@ -75,15 +81,16 @@ export class StaminaSystem implements SimSystem {
       const my = PlayerIntent.my[e];
       const mz = PlayerIntent.mz[e];
       if (hasComponent(sim.ecs, Locomotion, e) && Locomotion.mode[e] === LocomotionMode.Swim) {
-        if (mx !== 0 || my !== 0 || mz !== 0) this.drain(sim, e, tick, SWIM_DRAIN * dtSeconds);
+        if (mx !== 0 || my !== 0 || mz !== 0) this.drain(sim, e, tick, rules.swimDrainPerSecond * dtSeconds);
       } else if (mx !== 0 || mz !== 0) {
-        this.drain(sim, e, tick, RUN_DRAIN * dtSeconds);
+        this.drain(sim, e, tick, rules.runDrainPerSecond * dtSeconds);
       }
 
-      const since = tick - (this.drained.get(e) ?? -REGEN_DELAY_TICKS - 1);
-      if (since > REGEN_DELAY_TICKS && Stamina.current[e] < Stamina.max[e]) {
+      const last = this.drained.get(e);
+      const since = last === undefined ? Infinity : tick - last;
+      if (since > delayTicks && Stamina.current[e] < Stamina.max[e]) {
         // A weakened torso (M2) recovers more slowly.
-        const rate = (sim.stats.get(e, "staminaRegen") ?? BUILTIN_REGEN) * (hasComponent(sim.ecs, Injury, e) ? Injury.stamina[e] : 1);
+        const rate = (sim.stats.get(e, "staminaRegen") ?? rules.regenPerSecond) * (hasComponent(sim.ecs, Injury, e) ? Injury.stamina[e] : 1);
         Stamina.current[e] = Math.min(Stamina.max[e], Stamina.current[e] + rate * dtSeconds);
       }
     }

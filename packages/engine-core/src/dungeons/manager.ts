@@ -23,7 +23,7 @@
 
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
-import { FIGHT_DIFFICULTY, type Weapon } from "../combat.js";
+import type { Weapon } from "../combat.js";
 import type { GameRules } from "../rules/boot.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
@@ -147,6 +147,8 @@ export class InstanceManager implements GatewayExtension {
         entrance: entranceId,
         layout,
         rules,
+        props: content.props,
+        ...(content.looks ? { looks: content.looks } : {}),
         game: this.opts.game(),
         members,
         credentialStore: this.opts.credentialStore,
@@ -205,12 +207,12 @@ export class InstanceManager implements GatewayExtension {
     // never enter the batch.
     const train = this.opts.train;
     if (train) {
-      const techniques = this.opts.game().rules.combat.techniques;
+      const { techniques, resolution } = this.opts.game().rules.combat;
       for (const k of result.kills) {
         const skill = techniques[this.opts.weaponOf?.(k.characterId)?.technique ?? ""]?.skill;
         if (!skill) continue;
         const key = hashId(k.kind);
-        for (let i = 0; i < k.count; i++) train(k.characterId, skill, FIGHT_DIFFICULTY, key);
+        for (let i = 0; i < k.count; i++) train(k.characterId, skill, resolution.fightDifficulty, key);
       }
     }
     this.opts.results.record(result, granted, lost);

@@ -2,6 +2,7 @@
 // contributed instead of hard-wired into the shell.
 import * as React from "react";
 import { ParticlePanel } from "../../../apps/editor/src/ui/particle-panel.js";
+import { VfxBudgetsPanel } from "../../../apps/editor/src/ui/vfx-budgets-panel.js";
 
 export const panels = [
   {
@@ -10,5 +11,13 @@ export const panels = [
     title: "VFX",
     icon: "auto_awesome",
     render: () => <ParticlePanel />,
+  },
+  // Particle tier budgets (EG10): content/vfx/budgets.json as a form.
+  {
+    id: "vfx.budgets",
+    workspace: "artaudio",
+    title: "VFX budgets",
+    icon: "speed",
+    render: () => <VfxBudgetsPanel />,
   },
 ];

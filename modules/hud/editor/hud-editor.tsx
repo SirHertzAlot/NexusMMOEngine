@@ -3,10 +3,10 @@
  * anchors, flag overlaps, save to content/ui/hud.json.
  */
 import * as React from "react";
-import { callEnvelope } from "../api.js";
-import { Select } from "./components.js";
-import { useDrag } from "./use-drag.js";
-import { Pill } from "./widgets.js";
+import { callEnvelope } from "../../../apps/editor/src/api.js";
+import { Select } from "../../../apps/editor/src/ui/components.js";
+import { useDrag } from "../../../apps/editor/src/ui/use-drag.js";
+import { Pill } from "../../../apps/editor/src/ui/widgets.js";
 import {
   widgetRect,
   findOverlaps,
@@ -14,7 +14,7 @@ import {
   type Anchor,
   type WidgetPlacement,
   type WidgetBox,
-} from "./hud-editor-logic.js";
+} from "../../../apps/editor/src/ui/hud-editor-logic.js";
 
 interface Layout {
   widgets: Record<string, WidgetPlacement>;

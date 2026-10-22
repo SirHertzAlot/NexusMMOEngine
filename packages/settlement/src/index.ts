@@ -23,3 +23,5 @@ export * from "./report.js";
 export * from "./fit.js";
 export * from "./guild.js";
 export * from "./region.js";
+export * from "./places.js";
+export * from "./places-scene.js";

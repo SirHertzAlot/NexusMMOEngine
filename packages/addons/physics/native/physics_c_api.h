@@ -74,13 +74,16 @@ void mj_physics_remove_bodies(mj_physics_world_t *world, int n,
 // Push JS-side transforms into native bodies. Kinematic bodies follow
 // (Jolt MoveKinematic); dynamic bodies ignore the call unless
 // MJ_SYNC_TELEPORT is set in flags[i].
+// Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
+// component arrays, indexed by eids[i] (bitECS entity index), NOT by
+// list position. entity_ids[i] is the wire id for the body lookup.
 void mj_physics_sync_bodies(mj_physics_world_t *world, int n,
                             const uint64_t *entity_ids,
-                            const float *pos,    // 3*n
-                            const float *quat,   // 4*n, xyzw
-                            const float *lin_vel,// 3*n (reserved; currently unused)
-                            const float *ang_vel,// 3*n (reserved; currently unused)
-                            const uint8_t *flags,
+                            const int32_t *eids,
+                            const float *px, const float *py,
+                            const float *pz, const float *qx,
+                            const float *qy, const float *qz,
+                            const float *qw, const uint8_t *flags,
                             float dt);
 
 // Advance the simulation by dt seconds, internally substepped
@@ -88,13 +91,16 @@ void mj_physics_sync_bodies(mj_physics_world_t *world, int n,
 // collision step — the fixed-timestep pattern Jolt recommends).
 void mj_physics_step(mj_physics_world_t *world, float dt, int sub_steps);
 
-// Pull results back into caller arrays (packed xyz / xyzw).
+// Pull results back into the caller arrays (bitECS Transform + Velocity
+// component arrays, indexed by eids[i]). Phase 2 zero-copy: C++ writes
+// directly into the SAB-backed component stores.
 void mj_physics_copy_results(mj_physics_world_t *world, int n,
                              const uint64_t *entity_ids,
-                             float *pos,     // 3*n
-                             float *quat,    // 4*n, xyzw
-                             float *lin_vel, // 3*n
-                             float *ang_vel);// 3*n
+                             const int32_t *eids,
+                             float *px, float *py, float *pz,
+                             float *qx, float *qy, float *qz, float *qw,
+                             float *lx, float *ly, float *lz,
+                             float *ax, float *ay, float *az);
 
 // Number of bodies currently in the native world (diagnostics).
 int mj_physics_body_count(mj_physics_world_t *world);

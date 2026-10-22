@@ -74,3 +74,23 @@ export function requiredCounts(population: number, rules: SettlementRules, maste
   for (const [name, p] of Object.entries(m?.professions ?? {})) out[p.master] = { required: mastery.masters[name] ?? 0, max: mastery.masters[name] ?? 0 };
   return out;
 }
+
+/**
+ * The demand the kept parcels can meet: when dry green land leaves too few farm plots, the farms required and the food the
+ * town grows are capped to what its plots can hold (the rest of its food is imported, the trade between towns), rather than
+ * the whole town failing. An archetype of one district kind is capped to the plots of that kind; food to the most the plots
+ * could feed.
+ */
+export function capDemand(demand: Demand, parcels: readonly { kind: string }[], rules: SettlementRules): { demand: Demand; importedFood: number } {
+  const plots = (kinds: readonly string[]): number => parcels.filter((p) => kinds.includes(p.kind)).length;
+  const required = Object.fromEntries(
+    Object.entries(demand.required).map(([id, min]) => {
+      const a = rules.archetypes[id];
+      return [id, a && a.kinds.every((k) => k === "agriculture") ? Math.min(min, plots(a.kinds)) : min];
+    }),
+  );
+  const archetypes = Object.values(rules.archetypes);
+  const mostFed = parcels.reduce((sum, p) => sum + Math.max(0, ...archetypes.filter((a) => a.kinds.includes(p.kind as never)).map((a) => a.feeds)), 0);
+  const foodDemand = Math.min(demand.foodDemand, mostFed);
+  return { demand: { ...demand, required, foodDemand }, importedFood: demand.foodDemand - foodDemand };
+}

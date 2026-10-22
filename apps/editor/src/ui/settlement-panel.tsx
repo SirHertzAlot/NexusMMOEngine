@@ -2,7 +2,9 @@
  * Towns panel: the town generator's rules (content/settlements/rules.json), section by section, and a
  * preview that builds one town from the rules as they stand, saved or not.
  *
- * The sections are the rules file's top-level fields, edited with the Rules panel's tree editor. Save
+ * The sections are the rules file's top-level fields. Those a designer tunes by number have a labelled form
+ * with help (town-rules.ts, roadmap EG4) and can still open the full tree; the rest are edited with the Rules
+ * panel's tree editor. Save
  * checks the whole file on the host (the schema, then every archetype the rules name) and writes it back
  * pretty-printed only when it is clean; problems show per path, inline and in a list. The settlement
  * bakes read the saved file (`npm run settlement:bake`, `bake:all`).
@@ -16,6 +18,8 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Section
 import { sameValue } from "../document-state.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 import { groupIssues, setAtPath, type RuleIssueView } from "../rules-tree.js";
+import { TOWN_FORMS } from "../town-rules.js";
+import { FieldSection } from "./spec-form.js";
 import {
   getSettlementRules,
   LAND_PRESET_LABELS,
@@ -224,6 +228,7 @@ export function SettlementPanel(): React.JSX.Element {
   const [pristine, setPristine] = React.useState<Record<string, unknown> | null>(null);
   const [missing, setMissing] = React.useState(false);
   const [section, setSection] = React.useState("industry");
+  const [showTree, setShowTree] = React.useState(false);
   const task = useSaveTask<RuleIssueView>();
   const { issues, busy: saving } = task;
   const error = task.status?.tone === "bad" ? task.status.text : null;
@@ -274,6 +279,14 @@ export function SettlementPanel(): React.JSX.Element {
   const label = SECTIONS.find(([k]) => k === section)?.[1] ?? section;
   const known = new Set(SECTIONS.map(([k]) => k));
   const extra = content ? Object.keys(content).filter((k) => !known.has(k)) : [];
+  const form = TOWN_FORMS[section];
+  // The spec-form fields look issues up by `<file>.json` and dotted paths.
+  const formIssues = issues.map((i) => ({ file: "rules.json", path: i.path, message: i.message }));
+  const archetypes = Object.keys((content?.archetypes as Record<string, unknown> | undefined) ?? {});
+  const onFormChange = (next: unknown): void => {
+    setContent(next as Record<string, unknown>);
+    task.setStatus(null);
+  };
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_minmax(0,1fr)]">
@@ -288,7 +301,10 @@ export function SettlementPanel(): React.JSX.Element {
             [...SECTIONS.filter(([k]) => k in content), ...extra.map((k) => [k, k, ""] as [string, string, string])].map(([k, l, blurb]) => (
               <button
                 key={k}
-                onClick={() => setSection(k)}
+                onClick={() => {
+                  setSection(k);
+                  setShowTree(false);
+                }}
                 className={"flex w-full flex-col items-start gap-0.5 rounded-md border px-3 py-1.5 text-left text-xs hover:bg-accent " + (section === k ? "border-primary bg-accent" : "border-border")}
               >
                 <span className="flex w-full items-center justify-between gap-2 font-medium">
@@ -337,10 +353,24 @@ export function SettlementPanel(): React.JSX.Element {
               )}
               {error !== null && <p className="text-xs text-red-400">{error}</p>}
               {savedNote !== null && <p className="text-xs text-green-400">{savedNote}</p>}
+              {form && section in content && (
+                <div className="flex flex-col gap-5">
+                  {form.map((f) => (
+                    <FieldSection key={f.title} title={f.title} help={f.help} fields={f.fields} basePath={section} value={content} file="rules" issues={formIssues} lists={{ archetypes }} onChange={onFormChange} narrow />
+                  ))}
+                </div>
+              )}
               <div>
-                <SectionTitle>Values</SectionTitle>
+                <div className="flex items-center justify-between">
+                  <SectionTitle>{form ? "All values" : "Values"}</SectionTitle>
+                  {form && (
+                    <Button size="sm" variant="outline" onClick={() => setShowTree((v) => !v)}>
+                      {showTree ? "Hide tree" : "Show tree"}
+                    </Button>
+                  )}
+                </div>
                 <div className="mt-2">
-                  {section in content ? (
+                  {form && !showTree ? null : section in content ? (
                     <NodeEditor
                       segments={[section]}
                       value={content[section]}

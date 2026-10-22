@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/modules && npm run build --workspace=@mmo-engine/channel && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/world-server && npm run build --workspace=@mmo-engine/scatter && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/rules && npm run build --workspace=@mmo-engine/scene && npm run build --workspace=@mmo-engine/wfc && npm run build --workspace=@mmo-engine/compose && npm run build --workspace=@mmo-engine/placement && npm run build --workspace=@mmo-engine/species && npm run build --workspace=@mmo-engine/crafting && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/modules && node ../../scripts/dep-build.mjs @mmo-engine/channel && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/world-server && node ../../scripts/dep-build.mjs @mmo-engine/scatter && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/rules && node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/placement && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/crafting && tsc -p tsconfig.json",
     "test": "npm run build && node --expose-gc --test --test-skip-pattern=\"latency budget\" \"dist/test/**/*.test.js\" && npm run test:perf",
     "test:perf": "node --expose-gc --test --test-name-pattern=\"latency budget\" dist/test/persist/store.test.js",
     "sim": "npm run build && node dist/src/sim.js",
@@ -18,7 +18,8 @@
     "bake:world": "npm run build && node dist/src/bake-world.js",
     "bake:world:force": "npm run build && node dist/src/bake-world.js --force",
     "preview:world": "npm run build && node dist/src/preview-world.js",
-    "bench:transport": "node dist/src/net/transport-bench.js"
+    "bench:transport": "node dist/src/net/transport-bench.js",
+    "bench:contention": "npm run build && node dist/src/sab-contention-bench.js"
   },
   "types": "dist/src/index.d.ts",
   "version": "0.1.0",

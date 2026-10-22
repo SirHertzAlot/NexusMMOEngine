@@ -251,6 +251,25 @@ into. When those land, veins place like chests and harvest into them.
   are saved as a patch over the baked layout. A re-bake keeps them, and they become
   WFC pins.
 
+### Arrangements (DF1)
+
+A dressing content line (`dressing.ts`) says what a room holds and, optionally, how it is laid out (`arrange`, default
+`scatter`: each item on its own, as before). Patterns, in `arrange.ts`, on the room's distance field:
+
+| `arrange` | what it does | needs |
+|---|---|---|
+| `row` | a straight row along a wall, evenly spaced (`gap` cells apart), facing into the room; the best of a dozen wall spots, then another wall for what is left | |
+| `grid` | a lattice through the room's centre, filled row by row, all facing the anchor's side (snapped to the room's axes) | `anchor` optional |
+| `flank` | pairs either side of the anchor's item, mirrored, facing as it does | `anchor` |
+| `beside` | stacked on one side of the anchor's item (the side with room) | `anchor` |
+| `ring` | evenly round the anchor's item, facing it (`faces: "out"` away) | `anchor` |
+
+`anchor` is the `kind` of another line of the same archetype. Focal pieces (centre items, anchors) and corner items are placed
+first, then arranged lines (an anchor line before the lines that use it), then everything else. What a pattern has no room for
+falls back to scatter, then to `unplaced`. A pattern never walls off a doorway: if it would, its last items go back to scatter.
+Mounted lines cannot be arranged. The dungeon file does not change: `dressing.props` still holds `x, y, rot, kind`, so the
+arrangement shows only in dungeons baked after it (**rebake the pool**); layouts and shells of the same seed are identical.
+
 ## 4. Species and where they live
 
 Species are data (`content/species/*.json`). Each species has:

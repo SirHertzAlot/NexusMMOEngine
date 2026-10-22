@@ -236,22 +236,30 @@ struct mj_physics_world {
     }
   }
 
-  void syncBodies(int n, const uint64_t *entity_ids, const float *pos,
-                  const float *quat, const uint8_t *flags, float dt) {
+  // Phase 2 (zero-copy boundary): sync/copy read and write the
+  // SAB-backed bitECS component arrays DIRECTLY. `entity_ids[i]` is the
+  // wire id used for the native body lookup; `eids[i]` is the bitECS
+  // entity index into the component arrays (px[e], py[e], ...). No
+  // dense scratch arrays, no JS copy loops — the C++ side scatters
+  // into the component arrays the game already reads.
+  void syncBodies(int n, const uint64_t *entity_ids, const int32_t *eids,
+                  const float *px, const float *py, const float *pz,
+                  const float *qx, const float *qy, const float *qz,
+                  const float *qw, const uint8_t *flags, float dt) {
     JPH::BodyInterface &bi = mSystem->GetBodyInterface();
     for (int i = 0; i < n; ++i) {
       auto it = mBodies.find(entity_ids[i]);
       if (it == mBodies.end())
         continue;
       const JPH::BodyID id = it->second.body_id;
+      const int32_t e = eids[i];
       if (it->second.motion_type == MJ_MOTION_KINEMATIC) {
         // Kinematic bodies follow the JS-side transform; Jolt derives
         // their velocity from the frame delta (used to push dynamics).
         bi.MoveKinematic(
             id,
-            JPH::RVec3(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]),
-            JPH::Quat(quat[4 * i], quat[4 * i + 1], quat[4 * i + 2],
-                      quat[4 * i + 3]),
+            JPH::RVec3(px[e], py[e], pz[e]),
+            JPH::Quat(qx[e], qy[e], qz[e], qw[e]),
             dt);
       } else if (it->second.motion_type == MJ_MOTION_DYNAMIC &&
                  (flags[i] & MJ_SYNC_TELEPORT) != 0) {
@@ -259,9 +267,8 @@ struct mj_physics_world {
         // restores). Wakes the body so it keeps simulating.
         bi.SetPositionAndRotation(
             id,
-            JPH::RVec3(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]),
-            JPH::Quat(quat[4 * i], quat[4 * i + 1], quat[4 * i + 2],
-                      quat[4 * i + 3]),
+            JPH::RVec3(px[e], py[e], pz[e]),
+            JPH::Quat(qx[e], qy[e], qz[e], qw[e]),
             JPH::EActivation::Activate);
       }
       // Static bodies: nothing to sync.
@@ -279,31 +286,34 @@ struct mj_physics_world {
     }
   }
 
-  void copyResults(int n, const uint64_t *entity_ids, float *pos,
-                   float *quat, float *lin_vel, float *ang_vel) {
+  void copyResults(int n, const uint64_t *entity_ids, const int32_t *eids,
+                   float *px, float *py, float *pz, float *qx, float *qy,
+                   float *qz, float *qw, float *lx, float *ly, float *lz,
+                   float *ax, float *ay, float *az) {
     const JPH::BodyInterface &bi = mSystem->GetBodyInterface();
     for (int i = 0; i < n; ++i) {
       auto it = mBodies.find(entity_ids[i]);
       if (it == mBodies.end())
         continue;
       const JPH::BodyID id = it->second.body_id;
+      const int32_t e = eids[i];
       const JPH::RVec3 p = bi.GetPosition(id);
       const JPH::Quat q = bi.GetRotation(id);
       const JPH::Vec3 lv = bi.GetLinearVelocity(id);
       const JPH::Vec3 av = bi.GetAngularVelocity(id);
-      pos[3 * i] = p.GetX();
-      pos[3 * i + 1] = p.GetY();
-      pos[3 * i + 2] = p.GetZ();
-      quat[4 * i] = q.GetX();
-      quat[4 * i + 1] = q.GetY();
-      quat[4 * i + 2] = q.GetZ();
-      quat[4 * i + 3] = q.GetW();
-      lin_vel[3 * i] = lv.GetX();
-      lin_vel[3 * i + 1] = lv.GetY();
-      lin_vel[3 * i + 2] = lv.GetZ();
-      ang_vel[3 * i] = av.GetX();
-      ang_vel[3 * i + 1] = av.GetY();
-      ang_vel[3 * i + 2] = av.GetZ();
+      px[e] = p.GetX();
+      py[e] = p.GetY();
+      pz[e] = p.GetZ();
+      qx[e] = q.GetX();
+      qy[e] = q.GetY();
+      qz[e] = q.GetZ();
+      qw[e] = q.GetW();
+      lx[e] = lv.GetX();
+      ly[e] = lv.GetY();
+      lz[e] = lv.GetZ();
+      ax[e] = av.GetX();
+      ay[e] = av.GetY();
+      az[e] = av.GetZ();
     }
   }
 
@@ -412,15 +422,14 @@ void mj_physics_remove_bodies(mj_physics_world_t *world, int n,
 }
 
 void mj_physics_sync_bodies(mj_physics_world_t *world, int n,
-                            const uint64_t *entity_ids, const float *pos,
-                            const float *quat, const float *lin_vel,
-                            const float *ang_vel, const uint8_t *flags,
-                            float dt) {
+                            const uint64_t *entity_ids, const int32_t *eids,
+                            const float *px, const float *py, const float *pz,
+                            const float *qx, const float *qy, const float *qz,
+                            const float *qw, const uint8_t *flags, float dt) {
   if (world == nullptr || n <= 0)
     return;
-  (void)lin_vel;
-  (void)ang_vel;
-  world->syncBodies(n, entity_ids, pos, quat, flags, dt);
+  world->syncBodies(n, entity_ids, eids, px, py, pz, qx, qy, qz, qw, flags,
+                    dt);
 }
 
 void mj_physics_step(mj_physics_world_t *world, float dt, int sub_steps) {
@@ -430,11 +439,15 @@ void mj_physics_step(mj_physics_world_t *world, float dt, int sub_steps) {
 }
 
 void mj_physics_copy_results(mj_physics_world_t *world, int n,
-                             const uint64_t *entity_ids, float *pos,
-                             float *quat, float *lin_vel, float *ang_vel) {
+                             const uint64_t *entity_ids, const int32_t *eids,
+                             float *px, float *py, float *pz, float *qx,
+                             float *qy, float *qz, float *qw, float *lx,
+                             float *ly, float *lz, float *ax, float *ay,
+                             float *az) {
   if (world == nullptr || n <= 0)
     return;
-  world->copyResults(n, entity_ids, pos, quat, lin_vel, ang_vel);
+  world->copyResults(n, entity_ids, eids, px, py, pz, qx, qy, qz, qw, lx,
+                     ly, lz, ax, ay, az);
 }
 
 int mj_physics_body_count(mj_physics_world_t *world) {

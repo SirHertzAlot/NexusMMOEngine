@@ -10,6 +10,11 @@ import { z } from "zod";
 
 const ROLES = ["entrance", "combat", "elite", "treasure", "shrine", "boss"] as const;
 const WHERE = ["floor", "centre", "wall", "corner"] as const;
+/** How a content line's items are laid out in the room (dress.ts): scatter is each on its own, the rest are patterns (arrange.ts). */
+export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring"] as const;
+export type Arrangement = (typeof ARRANGEMENTS)[number];
+/** Patterns that stand round another line's item. */
+const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring"];
 
 export const ContentSchema = z.strictObject({
   /** What it is (the renderer maps kinds to art). */
@@ -25,6 +30,14 @@ export const ContentSchema = z.strictObject({
   minRank: z.number().int().min(1).default(1),
   /** Whether bodies are blocked by it: "solid" (a round collider of its radius) or "none" (walk-through). Default: solid, none when mounted. */
   collision: z.enum(["solid", "none"]).optional(),
+  /** How the items are laid out: scatter (each on its own, the default), a row along a wall, a grid, flanking or beside the anchor's item, a ring round it. */
+  arrange: z.enum(ARRANGEMENTS).default("scatter"),
+  /** Which way the pattern's items face: toward the room's centre or the anchor ("room", "anchor"), or away ("out"). Default: the pattern's own. */
+  faces: z.enum(["room", "anchor", "out"]).optional(),
+  /** The `kind` of another line of the same archetype that flank, beside and ring stand round (and a grid may face). */
+  anchor: z.string().min(1).optional(),
+  /** Cells left between neighbours in a pattern. */
+  gap: z.number().min(0).default(0.3),
 });
 
 export const ArchetypeSchema = z.strictObject({
@@ -76,7 +89,7 @@ export type Vein = z.infer<typeof VeinSchema>;
 export type Dressing = z.infer<typeof DressingSchema>;
 
 const c = (kind: string, where: (typeof WHERE)[number], radius: number, count: [number, number], extra: Partial<Content> = {}): Content => ({
-  kind, where, radius, count, mount: false, minRank: 1, ...extra, collision: extra.collision ?? (extra.mount ? "none" : "solid"),
+  kind, where, radius, count, mount: false, minRank: 1, arrange: "scatter", gap: 0.3, ...extra, collision: extra.collision ?? (extra.mount ? "none" : "solid"),
 });
 const flat: Partial<Content> = { collision: "none" };
 const a = (roles: Archetype["roles"], contents: Content[], extra: Partial<Archetype> = {}): Archetype => ({
@@ -87,32 +100,32 @@ const a = (roles: Archetype["roles"], contents: Content[], extra: Partial<Archet
 export const BUILTIN_DRESSING: Dressing = {
   archetypes: {
     gatehall: a(["entrance"], [c("statue", "wall", 0.7, [1, 2]), c("brazier", "corner", 0.5, [1, 2])]),
-    throne: a(["boss"], [c("throne", "wall", 1.0, [1, 1]), c("statue", "wall", 0.7, [0, 2]), c("brazier", "corner", 0.5, [2, 4])]),
-    vault: a(["treasure"], [c("chest", "wall", 0.6, [1, 2]), c("coin-pile", "floor", 0.5, [1, 3], flat), c("gilded-chest", "wall", 0.6, [0, 1], { minRank: 3 })], {
+    throne: a(["boss"], [c("throne", "wall", 1.0, [1, 1]), c("statue", "wall", 0.7, [0, 2], { arrange: "flank", anchor: "throne" }), c("brazier", "corner", 0.5, [2, 4])]),
+    vault: a(["treasure"], [c("chest", "wall", 0.6, [1, 2], { arrange: "row" }), c("coin-pile", "floor", 0.5, [1, 3], { ...flat, arrange: "beside", anchor: "chest" }), c("gilded-chest", "wall", 0.6, [0, 1], { minRank: 3 })], {
       repeatable: true,
     }),
-    chapel: a(["shrine"], [c("candles", "corner", 0.35, [2, 4], flat), c("pew", "floor", 0.6, [0, 3]), c("reliquary", "wall", 0.5, [0, 1], { minRank: 2 })], {
+    chapel: a(["shrine"], [c("candles", "corner", 0.35, [2, 4], flat), c("pew", "floor", 0.6, [0, 3], { arrange: "grid", faces: "anchor", anchor: "reliquary" }), c("reliquary", "wall", 0.5, [0, 1], { minRank: 2 })], {
       repeatable: true,
     }),
-    crypt: a(["combat", "elite"], [c("sarcophagus", "centre", 1.2, [1, 1]), c("coffin", "wall", 0.6, [1, 3]), c("urn", "corner", 0.35, [1, 4])], {
+    crypt: a(["combat", "elite"], [c("sarcophagus", "centre", 1.2, [1, 1]), c("coffin", "wall", 0.6, [1, 3], { arrange: "row" }), c("urn", "corner", 0.35, [1, 4])], {
       themes: ["grim", "ancient", "frost"], minSize: 7, weight: 2,
     }),
-    armoury: a(["combat", "elite"], [c("weapon-rack", "wall", 0.6, [1, 3]), c("armour-stand", "wall", 0.5, [0, 2]), c("crate", "corner", 0.45, [1, 3])], {
+    armoury: a(["combat", "elite"], [c("weapon-rack", "wall", 0.6, [1, 3], { arrange: "row" }), c("armour-stand", "wall", 0.5, [0, 2], { arrange: "beside", anchor: "weapon-rack" }), c("crate", "corner", 0.45, [1, 3])], {
       max: 2, minSize: 6,
     }),
-    barracks: a(["combat"], [c("bedroll", "floor", 0.6, [2, 5], flat), c("table", "centre", 0.9, [0, 1]), c("barrel", "corner", 0.4, [0, 2])], {
+    barracks: a(["combat"], [c("bedroll", "floor", 0.6, [2, 5], { ...flat, arrange: "row" }), c("table", "centre", 0.9, [0, 1]), c("barrel", "corner", 0.4, [0, 2])], {
       minSize: 7, repeatable: true,
     }),
-    storeroom: a(["combat"], [c("crate", "floor", 0.45, [2, 5]), c("barrel", "corner", 0.4, [1, 3]), c("sack", "floor", 0.35, [0, 3], flat)], {
+    storeroom: a(["combat"], [c("crate", "floor", 0.45, [2, 5], { arrange: "row" }), c("barrel", "corner", 0.4, [1, 3]), c("sack", "floor", 0.35, [0, 3], flat)], {
       near: ["barracks", "armoury"], weight: 1.5,
     }),
-    library: a(["combat", "elite"], [c("bookshelf", "wall", 0.6, [2, 5]), c("desk", "centre", 0.8, [1, 1]), c("candles", "corner", 0.35, [1, 2], flat)], {
+    library: a(["combat", "elite"], [c("bookshelf", "wall", 0.6, [2, 5], { arrange: "row" }), c("desk", "centre", 0.8, [1, 1]), c("candles", "corner", 0.35, [1, 2], flat)], {
       themes: ["ancient", "verdant", "frost"], max: 1, minSize: 8, avoid: ["forge", "ritual"],
     }),
-    ritual: a(["elite", "combat"], [c("ritual-circle", "centre", 1.4, [1, 1]), c("candles", "corner", 0.35, [2, 4], flat), c("cage", "wall", 0.6, [0, 2])], {
+    ritual: a(["elite", "combat"], [c("ritual-circle", "centre", 1.4, [1, 1]), c("candles", "corner", 0.35, [2, 4], { ...flat, arrange: "ring", anchor: "ritual-circle" }), c("cage", "wall", 0.6, [0, 2], { arrange: "row" })], {
       themes: ["grim", "molten", "ancient"], max: 2, minSize: 8, avoid: ["library", "chapel"],
     }),
-    forge: a(["combat", "elite"], [c("anvil", "centre", 0.7, [1, 1]), c("smelter", "wall", 0.9, [1, 1]), c("crate", "corner", 0.45, [0, 2])], {
+    forge: a(["combat", "elite"], [c("anvil", "centre", 0.7, [1, 1], { arrange: "beside", anchor: "smelter" }), c("smelter", "wall", 0.9, [1, 1]), c("crate", "corner", 0.45, [0, 2])], {
       themes: ["molten"], max: 2, minSize: 7, weight: 2,
     }),
     grotto: a(["combat"], [c("mushrooms", "floor", 0.4, [2, 6], flat), c("root-knot", "wall", 0.6, [0, 2])], { themes: ["verdant"], repeatable: true, weight: 2 }),
@@ -154,6 +167,9 @@ export function loadDressing(file?: string): Dressing {
     for (const other of [...arch.avoid, ...arch.near]) if (!merged.archetypes[other]) problems.push(`archetypes.${id}: no archetype "${other}"`);
     arch.contents.forEach((k, i) => {
       if (k.count[0] > k.count[1]) problems.push(`archetypes.${id}.contents[${i}]: count min above max`);
+      if (NEEDS_ANCHOR.includes(k.arrange) && !k.anchor) problems.push(`archetypes.${id}.contents[${i}]: arrange "${k.arrange}" needs an anchor`);
+      if (k.mount && k.arrange !== "scatter") problems.push(`archetypes.${id}.contents[${i}]: a mounted line cannot be arranged (only standing items)`);
+      if (k.anchor && !arch.contents.some((o, j) => j !== i && o.kind === k.anchor)) problems.push(`archetypes.${id}.contents[${i}]: anchor "${k.anchor}" is not another kind in ${id}`);
     });
   }
   if (problems.length) throw new Error(`${file}:\n${problems.map((p) => `  ${p}`).join("\n")}`);

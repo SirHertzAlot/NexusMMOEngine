@@ -25,6 +25,9 @@
  *                              (http://localhost:5174)
  *   npm start -- --no-setup    skip the setup checks
  *   npm start -- --build       run the full `npm run build` first
+ *   npm start -- --shape=continents   the first bake's landmass shape
+ *                              (island, peninsula or continents; only when
+ *                              there is no world yet)
  *
  * `npm run dev` is `npm start -- --dev`.
  */
@@ -40,6 +43,7 @@ const flag = (f) => args.includes(f);
 const dev = flag("--dev");
 const serverOnly = flag("--server");
 const build = flag("--build");
+const shape = args.find((a) => a.startsWith("--shape="))?.slice("--shape=".length);
 
 const log = (msg) => console.log(`[start] ${msg}`);
 
@@ -80,7 +84,7 @@ function setup() {
   const data = resolve(join(root, "packages", "engine-core"), process.env.MMO_DATA_DIR ?? "data");
   if (!existsSync(join(data, "world.db"))) {
     log(`no world in ${data}: baking it`);
-    npm(["run", "bake:world"], { MMO_DATA_DIR: data });
+    npm(["run", "bake:world"], { MMO_DATA_DIR: data, ...(shape ? { MMO_BAKE_SHAPE: shape } : {}) });
   }
   if (!existsSync(join(data, "loot", "pool.jsonl"))) {
     log("no loot pool: baking it");

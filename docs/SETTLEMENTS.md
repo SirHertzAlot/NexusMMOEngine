@@ -121,6 +121,14 @@ surveys the world (several seconds), places the town at its best site and
 writes the scene there. On the shipped 4 x 4 km world that finds two sites
 with the default 1.5 km spacing; `rules.sites` is data like the rest.
 
+`npm run bake:all` bakes as many towns as the world supports by default
+(`--sites max`; `--sites N` for a number): it asks the settlement baker
+(`--list-sites`, which prints `SITES <n>` after one survey) how many sites the
+world has for towns of that size, then bakes each. The spacing is what limits
+the count: on the 8 km continents world at 70% land there are 44 suitable spots
+but only 10 at 1.5 km spacing (17 at 1.2 km); relief, slope and square size
+barely move it.
+
 ### Flat, low land only (SG2c)
 
 Slope alone is deceptive: a gentle grade over a long distance is a big change
@@ -175,6 +183,40 @@ What is still a plain grid: the roads (SG2b brings engineered alignments,
 profiles and drainage, spec §28) and the layout does not yet bend to a river
 or a slope; each building stands on the highest ground under its footprint at spawn.
 
+## §28 Road horizontal alignment (SG2b)
+
+Roads arrive in a settlement manifest as a graph: `roads.nodes` (junctions, `x`/`z`
+in mm) and `roads.edges` (`from`/`to` with `roadClass`, `widthMm`, `surface`). Until
+this slice they are baked as straight `paved_road` slabs along each edge. SG2b turns
+that graph into a smooth, terrain-draped alignment in
+`packages/engine-core/src/terrain/roads.ts` (the horizontal-alignment spine; the
+vertical profile, drainage, earthwork and junction-as-editor come after):
+
+- `buildPaths` chains the graph into runs through degree-2 junctions — long straight
+  streets stay one spline; chains end at corners, T-junctions and crossings. Edges of
+  a different `roadClass` or `widthMm` end a chain, so each ribbon is a single class.
+- `catmullRom` samples each spine at a caller-chosen density with a tension knob
+  (0 = uniform smooth, 1 = linear); endpoints are exact; open curves use mirrored
+  endpoint tangents.
+- `splineRoads` drapes the centerline and left/right rails onto a `heightAt(x,z)`
+  surface (world mm) into a ribbon mesh the renderer draws.
+- `canonicalRoads` + `roadNetworkHash` (sha256) give the baker the same
+  content-addressed key as `TerrainCache`/`heightsFingerprint`: recompute the spline
+  data only when road geometry or render density changes.
+
+Units stay in settlement mm and are scaled at spawn like `Structure` nodes, so roads
+follow buildings without a wire-format change. A standalone render of settlement
+`0003` (44 junctions / 68 edges) draped over a survey is in the PR. The vertical
+profile is the next slice: `road-router.ts` walks each edge with A* over the
+heightfield (mirroring `planPlaces`'s `walkRoute`), blocking cells at or below the
+water level and steering around steps steeper than a cart grade (`maxGrade`, default
+8%), so a road bends around a lake or a mountain face instead of cutting through it —
+and falls back to the straight spine only when no gradeable route exists within the
+detour budget. The terrain version is part of the content key, so a re-baked survey
+invalidates the cached draped ribbons. Client rendering of the ribbons and splicing
+the splines into settlement scenes are a follow-up PR, in part so nothing touches
+`world-bake.ts` while `feat/terrain-lazy-cache` bakes.
+
 ## Showing the town: art models with a box fallback (SG4a)
 
 A `Structure` node may name an art model (`asset`, a catalog id). The server
@@ -200,6 +242,16 @@ The manifest itself holds only archetypes and can be committed.
 Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0182`,
 the client logged in and walking among 288 buildings (12 kinds, all mapped),
 and the same town as stand-in boxes.
+
+## Routes, roadside places and homesteads (SG7, SG8)
+
+`planPlaces` (`src/places.ts`, run by `npm run settlement:places -- --world <spec>` and the `places` step of `bake:all`) reads the baked towns' positions from their scenes and writes `<settlements>/places.json` (format `places/1`, seeded and hashed like the town manifests; its rules are the `places` section of the settlement rules file, `content/settlements/rules.json`, the file the towns read; `--rules` picks another and `--homesteads` overrides the per-town count).
+
+- **Routes** join the towns: a minimum spanning tree plus each town's nearest extra neighbour (within 6 km). Each route is an A* walk over the survey (4-cell blocks), round water and slopes over 25 degrees, fording rivers at a cost, and preferring roads already made so routes share a road where the towns lie in line.
+- **Guard outposts** stand about every 2.4 km along a route. **Inns** stand only within 70 m of an outpost (the guards keep bandits, raiders, thieves and wildlife off them), 900 m from a town (any number of inns, as near each other as the outposts are). **Shacks** (every 1.3 km, a little off the road) and **camp sites** (every 2.6 km, near water where the route passes it, at least 700 m from any inn or outpost) have no guard.
+- **Homesteads** are one family of 2 to 10 on a farm or ranch (ranch where the land round it is mostly plains) on flat dry green land, 3 per town as far as they fit, 700 m from towns and each other, within 1.4 km of a route.
+
+`places-scene.ts` turns the plan into one world scene, `places.scene.json` in the scenes folder (`MMO_SCENE=places`): a Structure node per place (`guard_outpost`, `roadside_inn`, `shack`, `camp_site`, `farmhouse`), a `farm_field` or `ranch_pen` beside each homestead; camp sites and fields are walk-through, and a kind with no art model stays a box. The people (the family, the outpost's guards, the innkeeper) come later; the plan already names them.
 
 ## Baking towns with the rest of the world
 
@@ -539,3 +591,20 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
 Still to do: see "Next steps" in [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)
 (a day by the bells, market days, guild streets, parishes, inner walls), plus roads
 spawned as surfaces and a wall that follows the ground.
+
+## Green squares
+
+`greenMask` / `greenSquares` (engine-core `terrain/green.ts`) read the survey grid, the data the biome preview draws: a
+cell is green when its biome is in `rules.sites.greenBiomes` (plains, forest, rainforest), it is not water, river or ice,
+and it stands `safeFloorM` over the sea. The largest all-green squares are taken greedily, none under
+`rules.sites.minSquareCells` (24 cells). `npm run preview:world -- --squares` outlines them on the biome panel and writes
+`<out>.squares.json`: each square in grid cells and in world metres.
+
+- **Sites** lie inside a square, far enough from its edge for the town's footprint (in a smaller square, at its centre);
+  a site scores by how much of the requested town fits (`Site.fitM`).
+- **Size**: `settlement:bake --world` bakes `min(requested, what fits)` people (`fitHouseholds`) and logs `[square]`.
+- **Farms**: the dry test everywhere in the bake is green land. A farm's field needs half its sample points green, and a
+  lane steps past up to six holdings of wet ground to reach it. When the plots left cannot hold the farms and food the
+  town needs, the demand is capped (`capDemand`, event `farms_capped`): the missing food is imported, the masters are the
+  workplaces that could be built, and a lone farm that overruns a small town's labour is dropped, so the town keeps no
+  farms rather than failing as "too wet".

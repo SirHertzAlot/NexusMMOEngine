@@ -10,18 +10,18 @@
  */
 
 import * as React from "react";
-import { DocBar } from "./doc-bar.js";
-import { useDocument } from "./use-document.js";
-import { useSaveTask } from "./use-save-task.js";
-import { checkStoryRemote, loadStory, saveStory } from "../story-client.js";
+import { DocBar } from "../../../apps/editor/src/ui/doc-bar.js";
+import { useDocument } from "../../../apps/editor/src/ui/use-document.js";
+import { useSaveTask } from "../../../apps/editor/src/ui/use-save-task.js";
+import { checkStoryRemote, loadStory, saveStory } from "../../../apps/editor/src/story-client.js";
 import {
   addDialogNode, addReply, deleteDialogNode, dialogGraph, questGraph, renameDialogNode, startTest,
   type DialogDoc, type DialogReply, type DialogTest, type MockState, type QuestDoc, type QuestState, type QuestsDoc,
-} from "../story-model.js";
-import type { StoryFile, StoryFiles, StoryIssue } from "../story-validate.js";
-import { Button, Input, Select, Field } from "./components.js";
-import { useDocActions } from "./doc-actions.js";
-import { NodeGraph } from "./node-graph.js";
+} from "../../../apps/editor/src/story-model.js";
+import type { StoryFile, StoryFiles, StoryIssue } from "../../../apps/editor/src/story-validate.js";
+import { Button, Input, Select, Field } from "../../../apps/editor/src/ui/components.js";
+import { useDocActions } from "../../../apps/editor/src/ui/doc-actions.js";
+import { NodeGraph } from "../../../apps/editor/src/ui/node-graph.js";
 
 const STATES: QuestState[] = ["available", "active", "ready", "done", "unavailable"];
 type Sel = { kind: "dialog" | "quest"; id: string };

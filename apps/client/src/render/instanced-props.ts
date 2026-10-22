@@ -29,6 +29,7 @@ import { ShapeKind } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
 import { ensureBoundsTree } from "./bvh.js";
 import type { LodLevel } from "./lod.js";
+import { applyShadingToMaterial } from "./shading/shading.js";
 
 /** Smallest dimension drawn (a zero-size body still shows). */
 const MIN_SIZE = 0.05;
@@ -140,6 +141,10 @@ export class InstancedProps {
 
   constructor(private readonly models: PropModels | null = null) {
     this.group.name = "props";
+    // Shaded as content says (materials.json -> shading): a stand-in shape
+    // and a cooked model are different kinds of thing.
+    applyShadingToMaterial(this.placeholderMaterial, "placeholder");
+    applyShadingToMaterial(this.modelMaterial, "model");
   }
 
   /** Props on screen. */
@@ -187,6 +192,23 @@ export class InstancedProps {
 
   wireIds(): IterableIterator<bigint> {
     return this.slots.keys();
+  }
+
+  /** Where the props showing any of these assets (by AssetRef hash) stand: [x, y, z] each. */
+  positionsOf(hashes: ReadonlySet<number>): [number, number, number][] {
+    const out: [number, number, number][] = [];
+    for (const slot of this.slots.values()) {
+      if (slot.asset && hashes.has(slot.asset.assetHash >>> 0)) out.push([slot.transform.px, slot.transform.py, slot.transform.pz]);
+    }
+    return out;
+  }
+
+  /** Matte surfaces: nothing shiny or reflective (a dungeon's stand-ins and models). */
+  matte(): void {
+    for (const m of [this.placeholderMaterial, this.modelMaterial]) {
+      m.roughness = 1;
+      m.metalness = 0;
+    }
   }
 
   /** Add a prop (or refresh it if already here). */

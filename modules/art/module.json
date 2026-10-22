@@ -1,0 +1,11 @@
+{
+  "name": "art",
+  "version": "0.1.0",
+  "description": "Editor module: Art tooling: asset inspector and materials. Disable it and the panels leave their workspaces without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

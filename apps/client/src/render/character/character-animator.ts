@@ -17,7 +17,9 @@
  */
 
 import * as THREE from "three";
+import { AnimationMachine, LinearBlendTree } from "animouse";
 import { createGltfLoader } from "../gltf-loader.js";
+import { FootIk } from "./foot-ik.js";
 import {
   DEFAULT_LOCOMOTION, crossfadeWeights, manifestLocomotion, pickLocomotion, playhead,
   type AnimationClipInfo, type AnimationManifest, type ClipPlan, type LocomotionGraph,
@@ -173,8 +175,12 @@ class ActionLayer {
 
 export class CharacterAnimator {
   private readonly mixer: THREE.AnimationMixer;
+  /** animouse blend tree for locomotion (EA21/TS1): idle → walk → jog → sprint by speed. */
+  private locomotionTree: LinearBlendTree | null = null;
+  /** animouse state machine managing locomotion transitions. */
+  private locomotionMachine: AnimationMachine | null = null;
   private base: { name: string; action: THREE.AnimationAction } | null = null;
-  /** The base clip being left, fading out while the new one fades in. */
+  /** The base clip being left, fading out while the new one fades in (legacy path, replaced by animouse). */
   private leaving: { action: THREE.AnimationAction; elapsed: number; duration: number } | null = null;
   /** The base clip the server asked for (EA21); null: choose from the motion. */
   private serverBase: { name: string; timeScale: number; fade: number } | null = null;
@@ -187,6 +193,12 @@ export class CharacterAnimator {
   private readonly masked = new Map<string, THREE.AnimationClip>();
   private airTime = 0;
   private readonly female: boolean;
+  /** EA21: foot IK for planting feet on uneven ground. */
+  private readonly footIk: FootIk;
+  /** Ground height sampler, set by the world (default: y=0 plane). */
+  groundHeight: (x: number, z: number) => number = () => 0;
+  /** Foot IK weight 0..1 (0: off, e.g. swimming/flying). */
+  footIkWeight = 1;
 
   constructor(
     private readonly root: THREE.Object3D,
@@ -199,6 +211,83 @@ export class CharacterAnimator {
       if ((o as THREE.Bone).isBone || o.name === "Hips") this.bones.push(o);
     });
     this.hips = root.getObjectByName("Hips") ?? null;
+    this.buildLocomotionTree();
+    this.footIk = new FootIk(root);
+  }
+
+  /**
+   * Build the animouse locomotion blend tree (EA21/TS1).
+   * Blends idle → walk → jog → sprint by normalized speed (0..1).
+   */
+  private buildLocomotionTree(): void {
+    const clips: Array<{ name: string; value: number }> = [
+      { name: this.resolve("idle"), value: 0 },
+      { name: this.resolve("walk"), value: 0.33 },
+      { name: this.resolve("jog"), value: 0.66 },
+      { name: this.resolve("sprint"), value: 1 },
+    ];
+    const actions = [];
+    for (const { name, value } of clips) {
+      const clip = this.library.clips.get(name);
+      if (!clip) continue;
+      const action = this.mixer.clipAction(clip);
+      actions.push({ action, value });
+    }
+    if (actions.length >= 2) {
+      this.locomotionTree = new LinearBlendTree(actions);
+      this.locomotionMachine = new AnimationMachine(this.locomotionTree, this.mixer);
+      // Keep the actions for footstep event tracking (EA24).
+      this.locomotionActions = actions;
+    }
+  }
+
+  /** Set locomotion blend by normalized speed (0 = idle, 1 = sprint). */
+  setLocomotionBlend(speed01: number): void {
+    this.locomotionTree?.setBlend(THREE.MathUtils.clamp(speed01, 0, 1));
+  }
+
+  /**
+   * Footstep event callback (EA24). Set by the game loop; called when a foot
+   * strikes the ground based on animation time (not distance).
+   */
+  onFootstep: (() => void) | null = null;
+  /** The locomotion actions for footstep tracking. */
+  private locomotionActions: Array<{ action: THREE.AnimationAction; value: number }> = [];
+  /** Last footstep phase per action, to detect crossings. */
+  private lastStepPhase = new Map<THREE.AnimationAction, number>();
+
+  /**
+   * Check animation-driven footstep events (EA24/TS1).
+   * Called each frame; triggers onFootstep when a foot strikes.
+   * Foot strikes at 1/4 and 3/4 through each locomotion cycle.
+   */
+  private checkFootstepEvents(): void {
+    if (!this.onFootstep || !this.locomotionTree) return;
+    const blend = this.locomotionTree.blendValue;
+    // Find the dominant action (closest to the blend value).
+    let dominant: THREE.AnimationAction | null = null;
+    let bestDist = Infinity;
+    for (const { action, value } of this.locomotionActions) {
+      const d = Math.abs(value - blend);
+      if (d < bestDist) {
+        bestDist = d;
+        dominant = action;
+      }
+    }
+    if (!dominant || bestDist > 0.2) return; // Between clips; skip.
+    const clip = dominant.getClip();
+    if (!clip || clip.duration <= 0) return;
+    const phase = (dominant.time / clip.duration) % 1;
+    const last = this.lastStepPhase.get(dominant) ?? 0;
+    // Foot strikes at 0.25 and 0.75 of the cycle.
+    for (const strike of [0.25, 0.75]) {
+      const crossed = (last < strike && phase >= strike) || (last > phase && (strike >= last || strike < phase));
+      if (crossed) {
+        this.onFootstep();
+        break;
+      }
+    }
+    this.lastStepPhase.set(dominant, phase);
   }
 
   /** The action on show (null: locomotion only). */
@@ -267,8 +356,21 @@ export class CharacterAnimator {
     }
     this.chooseBase(motion, dt);
     this.fadeBase(dt);
-    this.mixer.update(dt);
+    // Drive the animouse state machine (EA21/TS1); falls back to manual mixer when unavailable.
+    if (this.locomotionMachine) {
+      this.locomotionMachine.update(dt);
+      this.checkFootstepEvents();
+    } else {
+      this.mixer.update(dt);
+    }
     this.layer?.apply(dt);
+    // EA21: foot IK after all animation, so feet plant on the ground.
+    // Skipped when not on ground (swim/fly mode, or moving vertically).
+    // LocomotionMode: 0=ground, 1=swim, 2=fly (see locomotion.ts).
+    if (this.footIk.available && this.footIkWeight > 0 && motion.mode === 0 && Math.abs(motion.vy) < 0.5) {
+      this.footIk.weight = this.footIkWeight;
+      this.footIk.update(this.groundHeight);
+    }
   }
 
   /** Take the server's clip: the base for a gait, the action layer for the rest. */
@@ -304,6 +406,13 @@ export class CharacterAnimator {
     let { clip: name, timeScale, fade } = pick;
     // The server's gait and rate; it never sends swimming or airborne, so those stay with the motion.
     if (this.serverBase && pick.medium === "ground") ({ name, timeScale, fade } = this.serverBase);
+    // animouse path (EA21/TS1): blend locomotion by normalized speed when on the ground
+    // with no server override. Falls back to discrete crossfades otherwise.
+    if (this.locomotionTree && !this.serverBase && pick.medium === "ground") {
+      const maxSpeed = 8; // m/s: sprint speed; tune per character
+      this.setLocomotionBlend(m.speed / maxSpeed);
+      return;
+    }
     name = this.resolve(this.library.clips.has(name) ? name : g.idle.ground);
     this.setBase(name, timeScale, fade);
   }

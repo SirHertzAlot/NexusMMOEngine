@@ -20,6 +20,7 @@ import { simplifyLods, type LodLevel } from "./lod.js";
 import { createGltfLoader } from "./gltf-loader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { PropModels } from "./instanced-props.js";
+import { applyShadingToMaterial } from "./shading/shading.js";
 
 export const DEFAULT_ART_URL = "/assets/";
 
@@ -170,6 +171,8 @@ export class SyntyProps implements PropModels {
     const known = this.materials.get(key);
     if (known) return known;
     prepareMaterial(m, url, (u) => this.texture(u));
+    // An art-pack model's own material: shaded as content says.
+    applyShadingToMaterial(m, "model");
     this.materials.set(key, m);
     return m;
   }

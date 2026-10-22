@@ -9,6 +9,7 @@ import { Move } from "@mmo-engine/protocol";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { BotSystem } from "../src/bots.js";
+import { MovementSchema } from "@mmo-engine/rules";
 import { CombatSystem } from "../src/combat.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
 
@@ -41,5 +42,28 @@ describe("BotSystem", () => {
     }
     // Wanderers never fight.
     for (const e of bots.entities.slice(4)) assert.deepEqual([...seen.get(e)!], [Move.None]);
+  });
+});
+
+describe("BotSystem pacing from the movement rules (EG12)", () => {
+  it("a wanderer strolls at the rules' pace, read each step", () => {
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    sim.movement = MovementSchema.parse({ bots: { wanderPace: 0.5 } });
+    const bots = new BotSystem({ count: 1, home: { x: 0, z: 0 }, radius: 8, catalog: null });
+    const intent = (): number => Math.hypot(C.PlayerIntent.mx[bots.entities[0]!]!, C.PlayerIntent.mz[bots.entities[0]!]!);
+    let pace = 0;
+    for (let tick = 1; tick <= 30 * 6 && pace === 0; tick++) {
+      sim.beginTick(tick);
+      bots.step(sim, 1 / 30);
+      sim.endTick();
+      pace = intent();
+    }
+    assert.ok(Math.abs(pace - 0.5) < 1e-6, `strolls at half the walk (${pace})`);
+    sim.movement = MovementSchema.parse({ bots: { wanderPace: 0.2 } });
+    sim.beginTick(10_000);
+    bots.step(sim, 1 / 30);
+    sim.endTick();
+    assert.ok(intent() === 0 || Math.abs(intent() - 0.2) < 1e-6, `a reload changes the pace (${intent()})`);
   });
 });

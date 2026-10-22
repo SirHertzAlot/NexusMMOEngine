@@ -20,7 +20,8 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * Appearance=10) for future compact wire formats; the current
+ * StructuralIntegrity=21) for future compact wire formats; the current
+ * AudioEmitter=20) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -172,6 +173,10 @@ export const COMPONENT_IDS = {
   God: 15,
   Noclip: 16,
   Animation: 17,
+  StructuralIntegrity: 21,
+  FlowRef: 18,
+  VfxEmitter: 19,
+  AudioEmitter: 20,
 } as const;
 
 const U32 = 0xffffffffn;
@@ -366,4 +371,72 @@ export const Animation = defineSABComponent({
   startTick: Types.ui32,
   rate: Types.f32,
   layerMask: Types.ui8,
+});
+
+// ---------------------------------------------------------------------------
+// StructuralIntegrity (ComponentId 21): how much punishment a built
+// structure (wall, gate, building) can still take — current / max,
+// following Health's shape. Set at construction from the build material;
+// damage (siege, decay, sabotage) drains current, and at 0 the structure
+// collapses. Owned by the future structure system. Server-only for now:
+// no wire field yet, so no snapshot/delta wiring (like WorldItem) —
+// replication lands with the structure system.
+// ---------------------------------------------------------------------------
+
+export const StructuralIntegrity = defineSABComponent({
+  current: Types.f32,
+  max: Types.f32,
+});
+
+// Per-object flow/vfx/audio markers (viewport authoring, code-first cut).
+//
+// Set by the designer in the viewport authoring tool; no tick logic —
+// markers only, no systems read them yet. The widgets for flow, VFX, and
+// audio summon on selection only when one of these rows exists on the
+// entity (the "available-to-add shelf" adds it; editing mutates fields).
+// SoA carries no strings (bitECS has no string store type): each id field
+// is the fnv1a32 hash of the content's string id, the same convention as
+// AssetRef.assetHash (packages/art/src/provider.ts, engine-core spawn
+// tables). The runtime resolves the hash back through the content index.
+// ---------------------------------------------------------------------------
+
+/**
+ * FlowRef (ComponentId 18): binds a flow graph to an entity — the authored
+ * trigger/logic (dialog, scripted sequence, trap behavior) that the flow
+ * runtime runs against this object. `graph` is the fnv1a32 hash of the
+ * flow-graph id (content/flow/<id>.flow.json); `enabled` (0/1) is the
+ * gate the runner checks before firing. Owned by the designer; server
+ * only for now (the flow runtime lives on the server — no wire field
+ * yet).
+ */
+export const FlowRef = defineSABComponent({
+  graph: Types.ui32,
+  enabled: Types.ui8,
+});
+
+/**
+ * VfxEmitter (ComponentId 19): per-object particle emitter binding.
+ * `template` is the fnv1a32 hash of the VfxEffect id
+ * (content/vfx/effects/<id>.json — v1 scope is one emitter per effect, so
+ * the effect id selects the emitter template); `intensity` scales the
+ * authored emission (rate/duration multipliers stay in the template).
+ * Owned by the designer; replicated so clients spawn the effect at the
+ * entity's Transform.
+ */
+export const VfxEmitter = defineSABComponent({
+  template: Types.ui32,
+  intensity: Types.f32,
+});
+
+/**
+ * AudioEmitter (ComponentId 20): per-object audio emitter.
+ * `clip` is the fnv1a32 hash of the sound-bank event name
+ * (content/audio/events.json — audio events are named, so the hash of
+ * the name is the id); `radius` is the audible range in meters for
+ * positional falloff. Owned by the designer; replicated so clients play
+ * the event positioned at the entity's Transform.
+ */
+export const AudioEmitter = defineSABComponent({
+  clip: Types.ui32,
+  radius: Types.f32,
 });
