@@ -25,7 +25,7 @@ import { solve, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engin
 import { CELL, type Dungeon } from "./generate.js";
 import { deriveSeed } from "./rng.js";
 import type { Content, Dressing } from "./dressing.js";
-import { layBefore, layFlank, layGrid, layLine, layRing, layRow, reachOf, type ArrangeCtx } from "./arrange.js";
+import { layBefore, layFlank, layGrid, layHead, layLine, layRing, layRow, reachOf, type ArrangeCtx } from "./arrange.js";
 
 export interface DressedProp {
   kind: string;
@@ -269,7 +269,7 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         const its = items.filter((it) => it.line === line);
         const anchor = line.anchor ? poses.get(line.anchor)?.[0] : undefined;
         const template: Item = { kind: line.kind, where: line.where, radius: line.radius, mount: line.mount, collision: line.collision ?? (line.mount ? "none" : "solid"), line };
-        const opts = { ...(line.reach ? { reach: line.reach } : {}), ...(line.mount ? { mounted: true } : {}) };
+        const opts = { ...(line.reach ? { reach: line.reach } : {}), ...(line.mount ? { mounted: true } : {}), ...(line.aisle ? { aisle: line.aisle } : {}) };
         let laid: Placed[] = [];
         if (line.arrange === "row") {
           // Rows on the wall that holds the most (the best of a dozen spots round the walls); what is left over starts another
@@ -278,8 +278,9 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
           for (let pass = 0; pass < 8 && laid.length < its.length; pass++) {
             const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius, ...(line.mount ? { mount: true } : {}) })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: line.mount ? mountedHere : layoutTaken[r], reach: 3 });
             let best: Placed[] = [];
+            const take = Math.min(its.length - laid.length, Math.max(4, Math.ceil(its.length / 2)));
             for (const wall of wallSpots) {
-              const row = wall ? layRow(rowCtx, wall, line.radius, its.length - laid.length, line.gap, opts) : [];
+              const row = wall ? layRow(rowCtx, wall, line.radius, take, line.gap, opts) : [];
               if (row.length > best.length) best = row;
             }
             best = keepOpen(best, line);
@@ -287,6 +288,11 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
             best.forEach((p, k) => record(its[laid.length + k], p, !!line.mount));
             laid = [...laid, ...best];
           }
+        } else if (line.arrange === "head") {
+          // One item at the head of the room: the middle of the longest free run of wall.
+          const seeds = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li)), taken: layoutTaken[r], reach: 3 });
+          laid = keepOpen(layHead(ctx, seeds.filter((p): p is Placed => !!p), line.radius, opts), line);
+          laid.forEach((p, k) => record(its[k], p));
         } else if (line.arrange === "before") {
           // One item in front of each item of the anchor kind; the room's other items keep their places.
           const front = layBefore(ctx, line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, line.gap, opts);

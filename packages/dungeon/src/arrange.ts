@@ -34,6 +34,8 @@ export interface LayOpts {
   reach?: number;
   /** Hung on the wall (a painting): on the wall surface, clear only of other mounted items. */
   mounted?: boolean;
+  /** For a grid: the width (cells) of a lateral gap kept free down its middle, an aisle. */
+  aisle?: number;
 }
 
 /** A pose that remembers its reach (what `layBefore` measures from). */
@@ -100,15 +102,27 @@ export function layGrid(ctx: ArrangeCtx, radius: number, count: number, gap: num
   const rot = faceTo ? Math.round(Math.atan2(faceTo.y - ctx.centre.y, faceTo.x - ctx.centre.x) / (Math.PI / 2)) * (Math.PI / 2) : Math.PI / 2;
   const alongX = Math.abs(Math.cos(rot)) > 0.5;
   const [pitchX, pitchY] = alongX ? [2 * reach + gap, 2 * radius + gap] : [2 * radius + gap, 2 * reach + gap];
+  // Facing an anchor, the lattice is centred on the anchor's axis (the pews are square to the altar), else on the room's centre.
+  const origin = faceTo ? (alongX ? { x: ctx.centre.x, y: faceTo.y } : { x: faceTo.x, y: ctx.centre.y }) : ctx.centre;
   const span = Math.ceil(32 / Math.min(pitchX, pitchY));
   const lattice: { i: number; j: number }[] = [];
   for (let j = -span; j <= span; j++) for (let i = -span; i <= span; i++) lattice.push({ i, j });
-  // Rows run across the facing: for items facing along y a row is constant y (j), facing along x it is constant x (i).
-  lattice.sort((a, b) => (alongX ? Math.abs(a.i) - Math.abs(b.i) || a.i - b.i || Math.abs(a.j) - Math.abs(b.j) || a.j - b.j : Math.abs(a.j) - Math.abs(b.j) || a.j - b.j || Math.abs(a.i) - Math.abs(b.i) || a.i - b.i));
-  for (const { i, j } of lattice) {
+  // Rows run across the facing. Facing an anchor the rows nearest it fill first (the front pews); otherwise from the centre row outward.
+  const rowKey = (l: { i: number; j: number }): number => {
+    if (faceTo) return alongX ? Math.abs(origin.x + l.i * pitchX - faceTo.x) : Math.abs(origin.y + l.j * pitchY - faceTo.y);
+    return alongX ? Math.abs(l.i) : Math.abs(l.j);
+  };
+  const lateral = (l: { i: number; j: number }): number => (alongX ? Math.abs(l.j) : Math.abs(l.i));
+  lattice.sort((a, b) => rowKey(a) - rowKey(b) || (alongX ? a.i - b.i : a.j - b.j) || lateral(a) - lateral(b) || (alongX ? a.j - b.j : a.i - b.i));
+  const aisle = (o.aisle ?? 0) / 2;
+  for (const l of lattice) {
     if (out.length >= count) break;
-    const x = ctx.centre.x + i * pitchX;
-    const y = ctx.centre.y + j * pitchY;
+    const [dx, dy] = [l.i * pitchX, l.j * pitchY];
+    if (aisle > 0 && Math.abs(alongX ? dy : dx) < aisle) continue;
+    const x = origin.x + dx;
+    const y = origin.y + dy;
+    // Facing an anchor, every item is in front of it (at least a cell off), none beside it or behind it.
+    if (faceTo && (faceTo.x - x) * Math.cos(rot) + (faceTo.y - y) * Math.sin(rot) < 1) continue;
     if (fits(ctx, out, x, y, radius, reach)) out.push(pose(x, y, rot, radius, reach));
   }
   return out;
@@ -211,4 +225,27 @@ export function layRing(ctx: ArrangeCtx, anchor: Placed, radius: number, count: 
     if (fits(ctx, out, x, y, radius)) out.push(pose(x, y, face === "in" ? a + Math.PI : a, radius, reach));
   }
   return out;
+}
+
+/**
+ * One item at the head of the room: against the wall, in the middle of that wall's free run (the patron's statue behind an altar).
+ * `seeds` are wall-settled spots round the walls (placement's wall items); each is stretched into the run of wall it sits on, and the
+ * item goes in the middle of the longest run, facing out of the wall. Returns [] when nothing fits.
+ */
+export function layHead(ctx: ArrangeCtx, seeds: readonly Placed[], radius: number, o: LayOpts = {}): Placed[] {
+  const reach = o.reach ?? radius;
+  let best: { run: number; pos: Placed } | null = null;
+  for (const seed of seeds) {
+    // The run: a row of tiny probes along the wall each way from the seed, as far as the wall is straight and free.
+    const probes = layRow(ctx, seed, 0.05, 400, 0, { reach });
+    if (probes.length === 0) continue;
+    const nx = seed.nx ?? Math.cos(seed.rot);
+    const ny = seed.ny ?? Math.sin(seed.rot);
+    const along = probes.map((p) => (p.x - seed.x) * -ny + (p.y - seed.y) * nx);
+    const [lo, hi] = [Math.min(...along), Math.max(...along)];
+    const mid = (lo + hi) / 2;
+    const pos = pose(seed.x - ny * mid, seed.y + nx * mid, seed.rot, radius, reach, { nx, ny });
+    if (fits(ctx, [], pos.x, pos.y, radius, reach) && (!best || hi - lo > best.run)) best = { run: hi - lo, pos };
+  }
+  return best ? [best.pos] : [];
 }

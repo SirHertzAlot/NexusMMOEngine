@@ -11,7 +11,7 @@ import { z } from "zod";
 const ROLES = ["entrance", "combat", "elite", "treasure", "shrine", "boss"] as const;
 const WHERE = ["floor", "centre", "wall", "corner"] as const;
 /** How a content line's items are laid out in the room (dress.ts): scatter is each on its own, the rest are patterns (arrange.ts). */
-export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring", "line", "before"] as const;
+export const ARRANGEMENTS = ["scatter", "row", "grid", "flank", "beside", "ring", "line", "before", "head"] as const;
 export type Arrangement = (typeof ARRANGEMENTS)[number];
 /** Patterns that stand round another line's item. */
 const NEEDS_ANCHOR: readonly Arrangement[] = ["flank", "beside", "ring", "before"];
@@ -42,6 +42,8 @@ export const ContentSchema = z.strictObject({
   reach: z.number().positive().optional(),
   /** For `line`: cells off the centreline of the room's long axis (default 0). */
   at: z.number().optional(),
+  /** For `grid`: the width, in cells, of an aisle kept free down the middle of the grid. */
+  aisle: z.number().min(0).optional(),
 });
 
 export const ArchetypeSchema = z.strictObject({
@@ -128,10 +130,10 @@ export const BUILTIN_DRESSING: Dressing = {
       c("candle-stand", "corner", 0.15, [1, 3]),
     ], { repeatable: true, fill: 0.65 }),
     chapel: a(["shrine"], [
-      c("statue-large", "wall", 0.5, [1, 1]),
+      c("statue-large", "wall", 0.5, [1, 1], { arrange: "head" }),
       c("altar", "floor", 0.5, [1, 1], { arrange: "before", anchor: "statue-large", reach: 0.25, gap: 0.15 }),
       c("candle-stand", "floor", 0.15, [2, 2], { arrange: "flank", anchor: "altar", gap: 0.1 }),
-      c("pew", "floor", 0.45, [6, 20], { arrange: "grid", faces: "anchor", anchor: "altar", reach: 0.13, gap: 0.35 }),
+      c("pew", "floor", 0.45, [6, 20], { arrange: "grid", faces: "anchor", anchor: "altar", reach: 0.13, gap: 0.35, aisle: 1.6 }),
       c("painting", "wall", 0.35, [2, 6], { arrange: "row", mount: true, gap: 0.4 }),
       c("pulpit", "wall", 0.25, [0, 1]),
       c("reliquary", "wall", 0.3, [0, 1], { minRank: 2 }),
