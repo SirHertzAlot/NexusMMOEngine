@@ -45,6 +45,25 @@ piles in front of them. chapel: pews in a grid facing the reliquary or altar wal
 on the far wall facing the room, statues flanking it, braziers either side. gatehall: statues flanking the entrance, braziers
 in the corners. grotto/icehall/hall: scatter (natural). Facing and counts stay in data.
 
+## The pool rebake: why it matters
+The pool (`packages/engine-core/data/dungeons`: 30 dungeons, each a `<id>.dungeon.json` plus `<id>.shell.pcgm`, and an
+`index.json`) is what the server reads when it opens a run. **Dressing is baked into the dungeon file** (`dressing.archetypes`,
+`dressing.props`); the server spawns from the file and never re-dresses. So:
+
+- **Code and data changes do nothing to the existing 30 dungeons.** Arrangements (PR A) appear only in dungeons baked after the
+  change. Until the pool is rebaked, the game shows today's scattered rooms; only the bake output, the preview and the tests
+  show the new arrangements. PR B (art and procedural meshes) needs no rebake: it acts on prop kinds at run time, so it shows
+  on old and new dungeons alike.
+- **What a rebake changes.** Props move (the point). Each file's `hash` changes, and ids that carry a hash prefix
+  (`ancient-944c5398830c`) change with it. Layouts and shells should not change: dressing runs after generation from its own
+  derived seeds, so the same `--seed` should give the same rooms. This is expected but not assumed: PR A compares the room
+  grids before and after and says so.
+- **What can go wrong.** A run open during the rebake reads files that vanish or change; anything keyed by a dungeon id would
+  dangle (entrances name themes, not ids, so they are fine). Rebake with the server stopped, as before (`--fresh`, backup kept
+  at `data/dungeons.bak-<date>`), and restore the backup by renaming it if needed.
+- **What I will and will not do.** All verification in the PRs uses a copy of the pool in the scratch folder. Your pool is
+  rebaked only when you say so, once, after PR A merges.
+
 ## Non-goals
 - Rebalancing the room mix (barracks and storerooms are 36% of rooms) and tying the boss room to its boss: out of scope.
 - New archetypes, new prop kinds (beyond what an arrangement needs, procedural if so), the shell, room layout, lighting.
