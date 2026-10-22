@@ -379,7 +379,7 @@ describe("dungeon instance", () => {
     const look = withLooks.find((m) => m.op === "look")?.look as { theme: string; palette: Record<string, string>; emitters: string[]; maxLights: number; label?: unknown } | undefined;
     assert.ok(look, "a look arrived");
     assert.equal(look.theme, "grim");
-    assert.deepEqual(Object.keys(look.palette).sort(), ["basin", "ceiling", "floor", "wall"]);
+    assert.deepEqual(Object.keys(look.palette).sort(), ["basin", "ceiling", "floor", "wall", ...PROP_SLOTS].sort(), "the shell's slots and the props'");
     assert.ok(look.emitters.includes("dungeon:torch") && look.maxLights > 0);
     assert.equal(look.label, undefined, "the label is for the editor, not the client");
     assert.ok(withLooks.findIndex((m) => m.op === "look") < withLooks.findIndex((m) => m.op === "state"), "the look comes before the first state");
