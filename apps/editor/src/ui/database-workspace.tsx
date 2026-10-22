@@ -310,7 +310,7 @@ export function DatabasePerformancePanel(): React.JSX.Element {
   return (
     <div className="h-full overflow-auto p-3">
       <div className="mb-3 flex items-center gap-2">
-        <Select value={db} onChange={(v) => setDb(v)} aria-label="Database">
+        <Select value={db} onChange={(e) => setDb(e.target.value)} aria-label="Database">
           {dbs.map((d) => (
             <option key={d.name} value={d.name}>{d.name}</option>
           ))}
