@@ -391,7 +391,7 @@ split's slices, not the editor's E items.
 | E5 | Measure the split (`npm run bench:e5`, [`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md)) | ✅ | 0 hung requests through crash, restart and freeze; mirror encoding a little over budget (#108) |
 | E5a | Binary mirror frames on the channel | 📋 | |
 | E5b | Push encode off the tick (if E5a is not enough) | 📋 | |
-| IM | **Interest management**: per-sector deltas encoded once and shared, per-client interest sets with hysteresis, enter/leave via one `DeltaSet` per client per tick assembled at the edge, pinned entities (own avatar, party, targets, quest NPCs), interest snapshots, `all` mode for the debugger and admins | 📋 | Spec: [`2026-10-23-interest-management-design.md`](superpowers/specs/2026-10-23-interest-management-design.md); slices IM0–IM7 (`docs/interest-management-design`) |
+| IM | **Interest management**: per-sector deltas encoded once and shared, per-client interest sets with hysteresis, enter/leave via one `DeltaSet` per client per tick assembled at the edge, pinned entities (own avatar, party, targets, quest NPCs), interest snapshots, `all` mode for the debugger and admins | 📋 | Spec: [`2026-10-23-interest-management-design.md`](superpowers/specs/2026-10-23-interest-management-design.md); slices IM0–IM8 (`docs/interest-management-design`) |
 | E6 | Network health: `/metrics`, JSON network logs, Prometheus and Grafana configs | ✅ | (#117) |
 
 ## 6. World server

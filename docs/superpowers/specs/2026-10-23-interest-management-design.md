@@ -47,8 +47,6 @@ see, and the server's cost should grow with occupied sectors, not with clients.
 5. The editor's play-mode debugger and admins can still see everything.
 
 ## Non-goals
-- Cross-region view near borders (ghost entities from the neighbour region). The grid is in world coordinates, so a
-  later edge can subscribe to the neighbour core's sectors; not now.
 - Line-of-sight or occlusion culling. Distance only.
 - Server-side rate LOD in the first cut (see slice IM7).
 - Changing the sim, systems or the tracker's diff.
@@ -153,6 +151,30 @@ the whole region per client.
 - Admin console commands work by wire id and are unaffected. An admin teleporting is an ordinary interest change.
 - Dungeon instance gateways start with `interest: "all"` for every session (decision 2).
 
+### Cross-region view at borders (IM8)
+A player near a region border sees the neighbour region's entities within range, read-only. Minimal design, built
+from what the fleet already has:
+- **Who decides:** the home core. It knows the neighbours from the world's region registry (`RegionInfo`: chunk range
+  and endpoint), which the migration coordinator already fetches and refreshes on registry changes. While a session's
+  avatar is within `enterM` of a live neighbour's range it sends the client a `Border` control message
+  `{kind:"border", region, endpoint, ticket, exp}` (renewed before `exp`); past `leaveM` it sends
+  `{kind:"border", region, endpoint, leave:true}`.
+- **Ticket:** `HMAC-SHA256(WORLD_API_KEY, "border|<region>|<account>|<exp>")`, 60 s. Every region of a fleet holds
+  `WORLD_API_KEY` already (it registers with it), so the neighbour checks the ticket with no round trip.
+- **The neighbour serves an observer session.** The client opens a second socket to the neighbour's endpoint and says
+  hello with `observe: {region, account, exp, ticket}`. The neighbour welcomes it without a player entity; the session
+  gets IM DeltaSets for an interest set anchored on a position the client reports (`{kind:"observe", x, z}`), and its
+  intents are refused. The neighbour clamps the anchor to within `enterM` of its own range, so an observer sees at most
+  the strip of its world a player at the border would see anyway.
+- **Wire ids stay apart:** each region's ids live in their own mirror (a second `MirrorClient`), so ids from two sims
+  never collide; the client draws the observer's entities beside its own, read-only.
+- **Hand-off:** when the player migrates into the neighbour, the observer socket closes; the old home becomes the
+  neighbour and the same messages start from the other side.
+- Without a fleet (a core alone, editor play, dungeon instances) no `Border` is ever sent.
+- ponytail: the observer anchor is client-reported (clamped to the border strip); a home-signed anchor per tick is the
+  upgrade if the strip leaks too much. Events (hits, casts) from the neighbour ride the observer session's interest
+  like any other session's.
+
 ### Region hand-off
 The target region welcomes the redirected client with an interest snapshot, the normal enter path. The source region
 drops the session when it leaves; nothing extra. Because sectors are in world coordinates the same sector ids name the
@@ -212,14 +234,16 @@ rules file shape, fade timing on the client, and test fixtures. The sector size 
 - **IM6: interest snapshots, the `all` mode and the debugger toggle.** Welcome, periodic and resync snapshots from
   shared sector fulls; `interest: "all"` for editor play, admins and dungeon instances; the play-mode overlay of
   interest sectors. `MMO_INTEREST` on by default.
+- **IM8: cross-region view at borders** (built after IM6; IM7 only if B7 asks). `Border` message and ticket on
+  the home core from the registry, observer hello and anchor on the neighbour, a second mirror in the client.
 - **IM7 (only if B7 asks): rate LOD.** Sectors in the outer ring sent at 10 Hz as the union of the last three ticks'
   changed rows at current values (rows are absolute, so no second baseline is needed).
 
 Ordering with work in flight: IM1 and IM4 touch the same publish path as `perf/drop-tick-delta-push` and E5a; land
 after the first and independent of the second (E5a only makes `wire.sectors` cheaper).
 
-## Open questions
-1. Radius: 96 m in, 128 m out, and 400 m for far entities. Right feel, or bigger for open country?
-2. Local "say" chat: keep region-wide, or make it follow interest too?
-3. OK for dungeon instances to stay "see everything"?
-4. Cross-region view at borders: fine to leave for later?
+## Answered (2026-10-23)
+1. Radius: **96 m in, 128 m out, 400 m for far entities, approved as is.**
+2. Local "say" chat: **stays region-wide.**
+3. Dungeon instances: **keep seeing everything.**
+4. Cross-region view at borders: **not deferred**; built as IM8 (above), after IM6.
