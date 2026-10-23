@@ -28,7 +28,18 @@
         "floor": "#494a4d",
         "wall": "#404247",
         "ceiling": "#3d3f42",
-        "basin": "#323235"
+        "basin": "#323235",
+        "stone": "#54503f",
+        "wood": "#4a3a2a",
+        "metal": "#55585c",
+        "cloth": "#5a3a2c",
+        "gold": "#8a7230",
+        "bone": "#8a8576",
+        "fire": "#c8641e",
+        "ice": "#7a98aa",
+        "moss": "#3e5a34",
+        "earth": "#4a3a2c",
+        "glass": "#5a7a82"
       },
       "torch": {
         "color": "#ff8c3a",
@@ -57,7 +68,18 @@
         "floor": "#3b3733",
         "wall": "#322b29",
         "ceiling": "#342d29",
-        "basin": "#282322"
+        "basin": "#282322",
+        "stone": "#4f4540",
+        "wood": "#4a3a2a",
+        "metal": "#4a4a4e",
+        "cloth": "#6a2a22",
+        "gold": "#7a6428",
+        "bone": "#8a8576",
+        "fire": "#e0701c",
+        "ice": "#7a98aa",
+        "moss": "#3e5a34",
+        "earth": "#4a3a2c",
+        "glass": "#5a7a82"
       },
       "torch": {
         "color": "#ff7326",
@@ -86,7 +108,18 @@
         "floor": "#4e5156",
         "wall": "#474b56",
         "ceiling": "#474b51",
-        "basin": "#35393b"
+        "basin": "#35393b",
+        "stone": "#4a5058",
+        "wood": "#4a4038",
+        "metal": "#55585c",
+        "cloth": "#3a4a5a",
+        "gold": "#7a6428",
+        "bone": "#9aa0a0",
+        "fire": "#c8641e",
+        "ice": "#8aaabc",
+        "moss": "#3e5a34",
+        "earth": "#4a3a2c",
+        "glass": "#5a7a82"
       },
       "torch": {
         "color": "#6fc4ff",
@@ -115,7 +148,18 @@
         "floor": "#41423e",
         "wall": "#363a34",
         "ceiling": "#353734",
-        "basin": "#2b2d29"
+        "basin": "#2b2d29",
+        "stone": "#464644",
+        "wood": "#4a3a2a",
+        "metal": "#55585c",
+        "cloth": "#4a2e30",
+        "gold": "#7a6428",
+        "bone": "#7e7a6e",
+        "fire": "#c8641e",
+        "ice": "#7a98aa",
+        "moss": "#3e5a34",
+        "earth": "#4a3a2c",
+        "glass": "#5a7a82"
       },
       "torch": {
         "color": "#77d94a",
@@ -144,7 +188,18 @@
         "floor": "#464944",
         "wall": "#3c403a",
         "ceiling": "#393d37",
-        "basin": "#2f322d"
+        "basin": "#2f322d",
+        "stone": "#3e4a3c",
+        "wood": "#4a3c26",
+        "metal": "#55585c",
+        "cloth": "#4a3a2a",
+        "gold": "#7a6428",
+        "bone": "#8a8576",
+        "fire": "#c8641e",
+        "ice": "#7a98aa",
+        "moss": "#46683a",
+        "earth": "#4a3a2c",
+        "glass": "#5a7a82"
       },
       "torch": {
         "color": "#4ad98e",

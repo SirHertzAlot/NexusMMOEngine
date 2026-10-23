@@ -18,9 +18,12 @@ export function createSystems(ctx) {
   const config = ctx.config?.quests ?? {};
   const questContent = loadQuestContent(config.questDir);
 
+  // On ctx.stores too: fleet mode carries each character's log in its world record (PL3b).
+  const store = new SqliteQuestStore(config.dataDir + "/quests.db");
+  ctx.stores.questStore = store;
   const quests = new QuestService({
     content: questContent,
-    store: new SqliteQuestStore(config.dataDir + "/quests.db"),
+    store,
     speciesNear: () => config.getSpeciesNear(),
     itemBases: () => config.getItemBases(),
     countInBag: (character, base) => config.countInBag(character, base),

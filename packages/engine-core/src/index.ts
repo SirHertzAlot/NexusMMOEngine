@@ -305,6 +305,7 @@ export type {
   WorldCharacterState,
   WorldCharacterSyncOptions,
   CharacterEconomyView,
+  CharacterExtrasView,
 } from "./world/character-sync.js";
 export {
   recallShardState,

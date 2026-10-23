@@ -787,3 +787,23 @@ test("takeover: replacement registers the same range, recalls the dead shard's s
   ledgerA.close();
   ledgerB.close();
 });
+
+test("the world snapshot's places (node stocks, PL3a) seed the local stores; none, nothing seeded", async () => {
+  const source = memStore();
+  const saved = source.saveWorld(300, buildSim(2, 10));
+  source.close();
+  const places = { resource_nodes: [{ key: "town/oak-1", stock: 2, regrowAt: null }] };
+
+  const client = new FakeRecallClient();
+  client.snapshot = snapRecord(saved.snapshotBytes, 300, 3);
+  (client.snapshot.payload as Record<string, unknown>).places = places;
+  const seeded: unknown[] = [];
+  await recallShardState({ client, store: memStore(), ledger: memLedger(), seedPlaces: (p) => seeded.push(p) });
+  assert.deepEqual(seeded, [places]);
+
+  const bare = new FakeRecallClient();
+  bare.snapshot = snapRecord(saved.snapshotBytes, 300, 3);
+  const none: unknown[] = [];
+  await recallShardState({ client: bare, store: memStore(), ledger: memLedger(), seedPlaces: (p) => none.push(p) });
+  assert.deepEqual(none, [], "a payload from before PL3a seeds nothing");
+});

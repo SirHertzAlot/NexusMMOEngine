@@ -29,6 +29,8 @@ import type {
   PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
+  SocialKind,
+  SocialRecord,
   StoredDungeonRun,
   StoredLedgerEvent,
   TradeCommitInput,
@@ -173,6 +175,27 @@ export class MemoryWorldStore implements WorldStore {
   private characterStates = new Map<number, CharacterStateRecord>();
   private characterLocks = new Map<number, CharacterSessionLock>();
   private characterLockEpochs = new Map<number, number>();
+  private socialRecords = new Map<string, SocialRecord>();
+  private socialIds = new Map<string, number>();
+
+  async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {
+    const r = this.socialRecords.get(`${kind}:${key}`);
+    return r ? { ...r } : null;
+  }
+
+  async putSocialRecord(r: SocialRecord): Promise<void> {
+    this.socialRecords.set(`${r.kind}:${r.key}`, { ...r });
+  }
+
+  async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    return [...this.socialRecords.values()].filter((r) => r.kind === kind).map((r) => ({ ...r }));
+  }
+
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    const first = (this.socialIds.get(kind) ?? 0) + 1;
+    this.socialIds.set(kind, first + count - 1);
+    return Array.from({ length: count }, (_, i) => first + i);
+  }
 
   async issueRangeEpoch(rangeKey: string): Promise<number> {
     const next = (this.rangeEpochs.get(rangeKey) ?? 0) + 1;

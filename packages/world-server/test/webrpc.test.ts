@@ -18,7 +18,6 @@ async function boot() {
     apiKeyHash: await argon2.hash(API_KEY),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
   app.use(createWebrpcRouter(core));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {

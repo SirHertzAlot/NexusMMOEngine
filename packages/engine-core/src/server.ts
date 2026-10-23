@@ -162,8 +162,9 @@ import {
 import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
-import { ShardStateShipper } from "./world/state-shipper.js";
+import { ShardStateShipper, SNAPSHOT_UPLOAD_EVERY_TICKS } from "./world/state-shipper.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
+import { SocialWorldSync } from "./world/social-sync.js";
 import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
@@ -194,7 +195,8 @@ import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
-import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
+import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
+import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
@@ -420,6 +422,15 @@ async function main(): Promise<void> {
         store,
         ledger: itemLedger,
         log: (line) => console.log(`[server] ${line}`),
+        // Node stocks (PL3a) go into gathering.db before the gathering system opens it, below.
+        seedPlaces: (places) => {
+          const nodes = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
+          try {
+            nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
+          } finally {
+            nodes.close();
+          }
+        },
       });
     } else {
       console.warn(`[server] world registration failed; running with local state only`);
@@ -807,6 +818,7 @@ async function main(): Promise<void> {
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
   // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
+  const gatheringStore = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
   const gathering = new GatheringSystem({
     reachM: game.rules.gathering.reachM,
     cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
@@ -814,7 +826,7 @@ async function main(): Promise<void> {
     trainPerTier: game.rules.gathering.trainDifficultyPerTier,
     regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
     regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
-    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    store: gatheringStore,
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);
       if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
@@ -1189,6 +1201,21 @@ async function main(): Promise<void> {
   const socialStore = moduleCtx.stores!.socialStore as import("./index.js").SqliteSocialStore | undefined;
   const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
   const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
+  const questStore = moduleCtx.stores!.questStore as import("./quests/quest-store.js").SqliteQuestStore | undefined;
+  // PL3c: guilds, parties, friends and blocks are world records; the local stores are seeded from them
+  // here, before the gateway's books read them, and written through the sync's tracked stores after.
+  const socialSync =
+    worldClient?.registered && guildStore && partyStore && socialStore
+      ? new SocialWorldSync({
+          client: worldClient,
+          guilds: guildStore,
+          parties: partyStore,
+          social: socialStore,
+          reload: (kind) => gw.reloadSocial(kind),
+          log: (line) => console.log(`[server] ${line}`),
+        })
+      : null;
+  await socialSync?.boot();
   spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
@@ -1232,6 +1259,17 @@ async function main(): Promise<void> {
           client: worldClient,
           store: effectiveCharacterStore,
           economy: economyView ?? undefined,
+          // PL3b: the character's quest log and pouch ride its world record, so they follow it to any region.
+          extras: {
+            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringStore.loadPouch(id) }),
+            seed: (id, extras) => {
+              if (questStore && extras.quests !== undefined) questStore.replace(id, questRecordsOf(extras.quests));
+              if (extras.pouch !== undefined) {
+                gatheringStore.replacePouch(id, materialCountsOf(extras.pouch));
+                gathering.forgetPouch(id);
+              }
+            },
+          },
           log: (line) => console.log(`[server] ${line}`),
         })
       : null;
@@ -1291,9 +1329,9 @@ async function main(): Promise<void> {
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     characterStore: effectiveCharacterStore,
-    guildStore,
-    socialStore,
-    partyStore,
+    guildStore: socialSync?.guildStore ?? guildStore,
+    socialStore: socialSync?.socialStore ?? socialStore,
+    partyStore: socialSync?.partyStore ?? partyStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
@@ -1374,8 +1412,10 @@ async function main(): Promise<void> {
     ? new ShardStateShipper({
         client: worldClient,
         ledger: itemLedger,
-        snapshotIntervalTicks: SAVE_EVERY_TICKS,
+        snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
+        // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
+        places: () => ({ resource_nodes: gatheringStore.allNodes() }),
       })
     : null;
 
@@ -1438,8 +1478,16 @@ async function main(): Promise<void> {
     if (stateShipper && worldClient?.registered) {
       void stateShipper.pump(gw.serverTick);
     }
+    // PL3c: changed guilds, parties, friends and blocks go uphill on the same cycle.
+    void socialSync?.push();
   }, 1000);
   saveTimer.unref();
+  if (socialSync) {
+    gw.socialIds("guild", () => socialSync.takeId("guild"));
+    gw.socialIds("party", () => socialSync.takeId("party"));
+    // Other regions' changes arrive within a minute.
+    setInterval(() => void socialSync.refresh(), 60_000).unref();
+  }
 
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {

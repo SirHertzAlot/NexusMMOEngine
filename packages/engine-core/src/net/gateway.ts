@@ -1068,6 +1068,19 @@ export class Gateway {
     });
   }
 
+  /** Fleet mode (PL3c): another region changed guilds, parties, friends or blocks, and the store holds them now. */
+  reloadSocial(kind: "guild" | "party" | "friends" | "blocks"): void {
+    if (kind === "guild") this.guilds.reload();
+    else if (kind === "party") this.parties.reload();
+    else if (kind === "friends") this.friends.reload();
+    else this.blocks.reload();
+  }
+
+  /** Fleet mode (PL3c): new guilds and parties take world-wide ids from `next` (null: none on hand). */
+  socialIds(kind: "guild" | "party", next: () => number | null): void {
+    (kind === "guild" ? this.guilds : this.parties).ids = next;
+  }
+
   /** Which socket library serves the port ("uws" or "ws"), once listening. */
   get transportName(): string | null {
     return this.transport?.kind ?? null;
