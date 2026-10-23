@@ -1,12 +1,11 @@
 /**
- * SurrealDB-backed WorldStore. Connects to a SurrealDB server over
- * ws:// (see `npm run db` — the world server does NOT embed the DB;
- * WASM-embedded in Node is memory-only and the npm package doesn't
- * even ship the .wasm binary, so a server binary is the honest
- * durable path).
+ * SurrealDB-backed WorldStore. The database runs inside the world
+ * server (`@surrealdb/node`, the native embedded engine): "rocksdb:<abs
+ * path>" is durable on disk, "mem://" is in memory. A "ws://" URL still
+ * reaches a separate SurrealDB server.
  *
  * Env:
- *   WORLD_DB_URL   default ws://127.0.0.1:8000/rpc
+ *   WORLD_DB_URL   default rocksdb:<data dir>/surreal (see server.ts)
  *   WORLD_DB_NS    default mmo
  *   WORLD_DB_DB    default world
  *   WORLD_DB_USER / WORLD_DB_PASS  optional credentials
@@ -16,7 +15,8 @@
  *   statement's result: an array of rows normally, or the single
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
-import { Surreal } from "surrealdb";
+import { createNodeEngines } from "@surrealdb/node";
+import { createRemoteEngines, Surreal } from "surrealdb";
 import {
   applyAuctionSettle,
   applyCraftExecute,
@@ -249,8 +249,13 @@ function stripId<T>(record: Record<string, unknown>): T {
   return rest as T;
 }
 
+/** A client that reaches a server (ws/http) or runs the database in this process (mem, rocksdb). */
+function newClient(): Surreal {
+  return new Surreal({ engines: { ...createRemoteEngines(), ...createNodeEngines() } });
+}
+
 export class SurrealWorldStore implements WorldStore {
-  private db = new Surreal();
+  private db = newClient();
   private readonly opts: SurrealStoreOptions;
 
   constructor(opts: SurrealStoreOptions) {
@@ -284,7 +289,7 @@ export class SurrealWorldStore implements WorldStore {
     } catch (err) {
       if (err instanceof WorldStoreConnectTimeoutError) {
         const halfOpen = this.db;
-        this.db = new Surreal();
+        this.db = newClient();
         let closeTimer: ReturnType<typeof setTimeout> | undefined;
         await Promise.race([
           halfOpen.close().catch(() => undefined),

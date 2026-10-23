@@ -7,9 +7,12 @@
  *
  * Environment:
  *   WORLD_PORT              HTTP listen port (default 7780)
- *   WORLD_DB_URL            "mem:" -> in-memory store (dev/stress, NOT
- *                           durable); "ws://..." -> SurrealDB server
- *                           (durable). Default "mem:".
+ *   WORLD_DATA_DIR          where the embedded database lives (default ./data)
+ *   WORLD_DB_URL            default "rocksdb:<WORLD_DATA_DIR>/surreal": SurrealDB
+ *                           embedded in this process, durable on disk.
+ *                           "mem://" -> embedded, in memory; "ws://..." -> a
+ *                           separate SurrealDB server; "mem:" -> the plain JS
+ *                           in-memory store (stress runs, NOT durable).
  *   WORLD_DB_NS / WORLD_DB_DB / WORLD_DB_USER / WORLD_DB_PASS
  *   WORLD_DB_CONNECT_TIMEOUT_MS  bound on the SurrealDB connect
  *                                handshake (default 10000; unset or
@@ -28,10 +31,11 @@
  *                                for assignment (default: the heartbeat
  *                                timeout)
  *
- * Durable local dev: `npm run db --workspace=@mmo-engine/world-server`
- * (needs the `surrealdb` binary on PATH) with
+ * A separate server instead: `npm run db --workspace=@mmo-engine/world-server`
+ * (needs the `surreal` binary on PATH) with
  * WORLD_DB_URL=ws://127.0.0.1:8000/rpc WORLD_DB_USER=root WORLD_DB_PASS=root.
  */
+import * as path from "node:path";
 import * as argon2 from "argon2";
 import express from "express";
 import { createWebrpcRouter } from "./adapters/webrpc.js";
@@ -41,7 +45,8 @@ import { SurrealWorldStore } from "./surreal-store.js";
 import type { WorldStore } from "./types.js";
 
 const PORT = Number(process.env.WORLD_PORT ?? 7780);
-const DB_URL = process.env.WORLD_DB_URL ?? "mem:";
+// The embedded engine wants "rocksdb:" + an absolute path with forward slashes and no "//" (see engine-core world-catalog.ts).
+const DB_URL = process.env.WORLD_DB_URL ?? `rocksdb:${path.resolve(process.env.WORLD_DATA_DIR ?? "./data", "surreal").split(path.sep).join("/")}`;
 const HEARTBEAT_INTERVAL_MS = Number(
   process.env.WORLD_HEARTBEAT_INTERVAL_MS ?? 5000,
 );

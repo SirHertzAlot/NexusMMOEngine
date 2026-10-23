@@ -21,6 +21,7 @@ import * as argon2 from "argon2";
 import { WorldCoreImpl } from "../src/core.js";
 import { MemoryWorldStore } from "../src/fake-store.js";
 import { SurrealWorldStore } from "../src/surreal-store.js";
+import { surrealTestOptions } from "./surreal-test-db.js";
 import { WorldError, rangeKeyFor, type RegionLease, type WorldStore } from "../src/types.js";
 
 const API_KEY = "test-bootstrap-key-123";
@@ -477,14 +478,8 @@ test("state plane store contract: memory", async () => {
   await statePlaneStoreContract(new MemoryWorldStore());
 });
 
-test("state plane store contract: SurrealDB (WORLD_TEST_DB_URL)", { skip: !process.env.WORLD_TEST_DB_URL && "set WORLD_TEST_DB_URL=ws://127.0.0.1:8000/rpc to run" }, async () => {
-  const store = new SurrealWorldStore({
-    url: process.env.WORLD_TEST_DB_URL!,
-    namespace: "mmo_test",
-    database: "stateplane_" + Date.now(),
-    username: process.env.WORLD_TEST_DB_USER ?? "root",
-    ["pass" + "word"]: process.env[["WORLD_TEST_DB", "PASS"].join("_")] ?? "root",
-  });
+test("state plane store contract: SurrealDB (embedded, or WORLD_TEST_DB_URL)", async () => {
+  const store = new SurrealWorldStore(surrealTestOptions("stateplane_" + Date.now()));
   try {
     await store.connect();
     await statePlaneStoreContract(store);

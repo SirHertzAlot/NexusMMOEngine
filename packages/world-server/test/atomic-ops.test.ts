@@ -14,7 +14,7 @@
  * (vendor/craft sinks and sources, loot creation).
  *
  * Seam: WorldCore over MemoryWorldStore, plus the store contract run
- * against both stores (Surreal auto-skips without WORLD_TEST_DB_URL,
+ * against both stores (Surreal embedded in memory, or WORLD_TEST_DB_URL;
  * the P1 pattern).
  */
 import test from "node:test";
@@ -23,6 +23,7 @@ import * as argon2 from "argon2";
 import { WorldCoreImpl } from "../src/core.js";
 import { MemoryWorldStore } from "../src/fake-store.js";
 import { SurrealWorldStore } from "../src/surreal-store.js";
+import { surrealTestOptions } from "./surreal-test-db.js";
 import {
   WorldError,
   type AtomicOpResult,
@@ -1103,14 +1104,8 @@ test("atomic store contract: memory", async () => {
   await atomicStoreContract(new MemoryWorldStore());
 });
 
-test("atomic store contract: SurrealDB (WORLD_TEST_DB_URL)", { skip: !process.env.WORLD_TEST_DB_URL && "set WORLD_TEST_DB_URL=ws://127.0.0.1:8000/rpc to run" }, async () => {
-  const store = new SurrealWorldStore({
-    url: process.env.WORLD_TEST_DB_URL!,
-    namespace: "mmo_test",
-    database: "atomic_" + Date.now(),
-    username: process.env.WORLD_TEST_DB_USER ?? "root",
-    ["pass" + "word"]: process.env[["WORLD_TEST_DB", "PASS"].join("_")] ?? "root",
-  });
+test("atomic store contract: SurrealDB (embedded, or WORLD_TEST_DB_URL)", async () => {
+  const store = new SurrealWorldStore(surrealTestOptions("atomic_" + Date.now()));
   try {
     await store.connect();
     await atomicStoreContract(store);
