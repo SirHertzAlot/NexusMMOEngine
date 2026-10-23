@@ -123,7 +123,7 @@ import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
-import { sectorTopicFor } from "./sector.js";
+import { REGION_TOPIC } from "./sector.js";
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -2026,14 +2026,17 @@ export class Gateway {
   }
 
   /**
-   * The sector topic for a session's avatar, or null when the session
-   * has no avatar in the world yet (its deltas go per-socket).
+   * The topic a session's deltas are published on, or null when the session
+   * has no avatar in the world yet (its deltas go per-socket). While the delta
+   * is global every session shares one region topic, so a tick is one publish
+   * (IM1: through the edge, a publish per occupied sector was a channel copy
+   * each). Per-sector content comes with interest management (IM3).
    */
   private sectorTopicOf(s: ClientSession): string | null {
     if (s.playerEntity === null) return null;
     const eid = this.world.resolveWireId(s.playerEntity);
     if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) return null;
-    return sectorTopicFor(C.Transform.px[eid], C.Transform.pz[eid]);
+    return REGION_TOPIC;
   }
 
   /**
