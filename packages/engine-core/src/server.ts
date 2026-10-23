@@ -869,29 +869,14 @@ async function main(): Promise<void> {
   // through the @mmo-engine/crafting rules — recipe derivation, mastery
   // check, material consumption, item grant. The service owns no storage:
   // mastery reads the MasterySystem's sheets, the crafted item resolves to
-  // a loot-pool def by (base, rank), and raw materials live in a
-  // per-character pouch. The pouch is in-memory for this slice; persisting
-  // it (a SqliteMaterialStore beside SqliteQuestStore) is the follow-up —
-  // the countMaterial/takeMaterial seam makes that swap mechanical.
-  // Gathering (which fills the pouch) is a later slice.
-  const materialPouch = new Map<number, Map<string, number>>();
-  const pouchOf = (character: number): Map<string, number> => {
-    let p = materialPouch.get(character);
-    if (!p) materialPouch.set(character, (p = new Map()));
-    return p;
-  };
+  // a loot-pool def by (base, rank), and raw materials come from the
+  // gathering pouch — the one pouch gathering fills, persisted in
+  // gathering.db and shipped to the world record by PL3b.
   const craftingService = new CraftingService({
     rules: crafting ?? EMPTY_CRAFTING_RULES,
     masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
-    countMaterial: (character, material) => pouchOf(character).get(material) ?? 0,
-    takeMaterial: (character, material, qty) => {
-      const p = pouchOf(character);
-      const have = p.get(material) ?? 0;
-      if (have < qty) return false;
-      if (have === qty) p.delete(material);
-      else p.set(material, have - qty);
-      return true;
-    },
+    countMaterial: (character, material) => gathering.countOf(character, material),
+    takeMaterial: (character, material, qty) => gathering.take(character, material, qty),
     hasBagRoom: (character) => itemsOf().store.hasRoom(character),
     grantItem: (character, item, rank) => {
       const d = itemsOf().defs;
