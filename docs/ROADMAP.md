@@ -402,6 +402,9 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 | B | Region migration (border hand-off) | ✅ (arbitration #119, live hand-off #122) |
 | C | Accounts on the world server | 📋 (folded into C1 above) |
 | D | Stress harness and the published number | ✅ (`npm run stress:world`, [`WORLD-STRESS-RESULTS.md`](WORLD-STRESS-RESULTS.md), #120) |
+| PL1 | World ingestion accepts real region state: request bodies are sized from the schema caps (snapshots 4 MiB, ledger batches 1 MiB, character state 256 KiB; everything else 256 KiB) inside the webrpc router. Before, the global 256 KB parser was below them, and a 1,377-entity region's snapshot (257 KB in base64) was ~23 entities from being refused on every upload | ✅ (`fix/world-body-limit`) |
+| PL2 | The world server embeds SurrealDB (`@surrealdb/node`, RocksDB in its data dir; no separate DB server), and the SurrealDB store contracts run in `npm test` | 📋 |
+| PL3 | Regions are hot caches: the periodic snapshot upload carries all region state (quests, gathering pouches and node stocks, guilds, social, parties), and a region rebuilt from the world store gets it all back | 📋 |
 
 ## 7. Alpha
 
@@ -442,6 +445,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-23**: PL1 world ingestion (`fix/world-body-limit`): the webrpc router parses its own bodies with caps from the schema (snapshot 4 MiB, ledger 1 MiB, character state 256 KiB). The server and the ten test apps no longer put a 256 KB parser in front of it. New PL2 (embedded SurrealDB) and PL3 (regions as hot caches) on the list.
 - **2026-10-22**: DF1 dungeon furnishing A (`feat/dungeon-furnishing`): dressing content lines can name an arrangement (row, grid, flank, beside, ring) and the built-in rooms use them; scatter-only dressing is byte-identical, layouts and shells unchanged. Rebake the pool to see it.
 - **2026-10-22**: Build repair: `npm run build` on main failed after the arlo merges. `@mmo-engine/art` had lost `export * from "./media/index.js"` (Phase 5 conflict resolution), the editor's dialogue tab and three module editor panels (hud, flow, story) imported files that moved or never existed at those paths, the database workspace and a test had type errors, and `modules/template-native` had no `binding.gyp` or sources so `build:native` failed. All restored; the root build exits 0. No row change.
 - **2026-10-20**: Dungeon look (D4c + D4e, ✅, stacked on #337): dark-fantasy lighting and muted matte materials for dungeon runs from per-theme data (`content/dungeons/looks.json`, sent once as a `look` message): no sky or weather, near-black fog, dim ambient, flat-shaded matte stone by material slot, budgeted flickering torchlight. Palette and light numbers are untuned. Enemy models from data with the stand-in fallback (EM1), the loading screen (LS1) and dungeon resource nodes (RN1) are on the list.

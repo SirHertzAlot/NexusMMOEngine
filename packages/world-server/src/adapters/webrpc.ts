@@ -16,7 +16,7 @@
  * rejects body regionIds that don't match. Authentication happens
  * before validation, validation before the core call.
  */
-import { Router, type Request, type Response } from "express";
+import { json, Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { WorldCoreImpl } from "../core.js";
 import {
@@ -38,6 +38,9 @@ import {
   HeartbeatSchema,
   InventoryMutateSchema,
   LootGrantSchema,
+  MAX_CHARACTER_STATE_BYTES,
+  MAX_LEDGER_BATCH_BYTES,
+  MAX_SNAPSHOT_PAYLOAD_BYTES,
   PutCharacterStateSchema,
   PutShardSnapshotSchema,
   QueryPresenceSchema,
@@ -52,6 +55,15 @@ import {
 import { WorldError } from "../types.js";
 
 const BEARER = /^Bearer ([0-9a-f]{64})$/;
+
+/** Request body caps. Every call gets 256 KiB except the state-plane writes, which get the payload cap their schema enforces plus room for the envelope. */
+const DEFAULT_BODY_BYTES = 256 * 1024;
+const ENVELOPE_BYTES = 64 * 1024;
+const BODY_BYTES: Record<string, number> = {
+  "/rpc/World/PutShardSnapshot": MAX_SNAPSHOT_PAYLOAD_BYTES + ENVELOPE_BYTES,
+  "/rpc/World/AppendLedgerEvents": MAX_LEDGER_BATCH_BYTES + ENVELOPE_BYTES,
+  "/rpc/World/PutCharacterState": MAX_CHARACTER_STATE_BYTES + ENVELOPE_BYTES,
+};
 
 function sendError(res: Response, err: unknown): void {
   if (err instanceof WorldError) {
@@ -86,6 +98,9 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
     }
     next();
   });
+  // The router parses its own bodies: an app-level parser in front of it would cap every call at one size.
+  for (const [path, limit] of Object.entries(BODY_BYTES)) r.use(path, json({ limit }));
+  r.use(json({ limit: DEFAULT_BODY_BYTES }));
 
   // -- RegisterRegion: bootstrap auth via apiKey in the body ------------
   r.post("/rpc/World/RegisterRegion", async (req, res) => {

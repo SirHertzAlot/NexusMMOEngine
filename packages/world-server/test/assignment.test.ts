@@ -357,7 +357,6 @@ async function boot() {
     apiKeyHash: await apiKeyHash(),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.use(createWebrpcRouter(core));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));

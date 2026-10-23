@@ -23,7 +23,6 @@ async function boot() {
     apiKeyHash: await argon2.hash(API_KEY),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.use(createWebrpcRouter(core));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
@@ -158,4 +157,24 @@ test("characters over webrpc: lock, versioned put, conflict 409, release", async
   assert.equal(lockAfter.json["lock"], null);
   const bad = await rpc(base, "AcquireCharacterLock", { input: { ...lockIn, opId: "op-lock-3", ttlMs: 0 } }, a.token);
   assert.equal(bad.status, 400);
+});
+
+test("bodies: a snapshot over 256 KiB lands; past the schema's cap, or on other calls, a big body is refused", async () => {
+  const { base } = await boot();
+  const lease = await register(base, "big", 1000);
+  const key = "1000:1100:0:100";
+  // A real region's snapshot (base64 FlatBuffers) is already ~257 KB at 1,377 entities.
+  const data = "A".repeat(1024 * 1024);
+  const input = { regionId: "big", rangeKey: key, tick: 300, epoch: lease.epoch, digest: "deadbeef", payload: { format: "flatbuffers-base64", data }, opId: "op-big-1" };
+  const put = await rpc(base, "PutShardSnapshot", { input }, lease.token);
+  assert.equal(put.status, 200);
+  const got = await rpc(base, "GetShardSnapshot", { input: { regionId: "big", rangeKey: key } }, lease.token);
+  assert.equal(((got.json["snapshot"] as Record<string, unknown>)["payload"] as { data: string }).data.length, data.length);
+
+  const post = (method: string, body: unknown) =>
+    fetch(`${base}/rpc/World/${method}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${lease.token}` }, body: JSON.stringify(body) });
+  const huge = await post("PutShardSnapshot", { input: { ...input, opId: "op-big-2", payload: { data: "A".repeat(5 * 1024 * 1024) } } });
+  assert.equal(huge.status, 413);
+  const fat = await post("Heartbeat", { input: { regionId: "big", pad: "A".repeat(300 * 1024) } });
+  assert.equal(fat.status, 413);
 });

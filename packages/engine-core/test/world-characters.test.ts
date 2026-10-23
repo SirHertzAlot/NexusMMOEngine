@@ -575,7 +575,6 @@ async function worldHttpServer(defer: (fn: () => unknown) => void): Promise<{ ur
     apiKeyHash: await argon2.hash(API_KEY),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.use(createWebrpcRouter(core));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));

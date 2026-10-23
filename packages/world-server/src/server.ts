@@ -106,7 +106,6 @@ async function main(): Promise<void> {
   });
 
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
   app.use(createWebrpcRouter(core));
 
