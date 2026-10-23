@@ -105,11 +105,11 @@ if (build) npm(["run", "build"]);
 
 // ---- the server and development surface
 
-const SERVER = { name: "server", args: ["run", "server"] };
-// The edge (client WebSocket :3001, HTTP :3000) boots beside the region
-// and links over the core channel; players still connect to the region
-// directly until the client cutover (E3b).
-const EDGE = { name: "edge", args: ["run", "edge"] };
+// The players' port: the edge serves it and relays it to the region over the
+// core channel (E3b), so the region binds no player port of its own.
+const GAME_PORT = process.env.MMO_PORT ?? "7777";
+const SERVER = { name: "server", args: ["run", "server"], env: { MMO_EDGE: "1" } };
+const EDGE = { name: "edge", args: ["run", "edge"], env: { EDGE_GAME_PORT: GAME_PORT } };
 const CLIENT = {
   name: "client",
   args: ["run", "dev", "--workspace=@mmo-engine/client"],
@@ -144,7 +144,7 @@ function kill(child) {
 function run(p, onLine = () => {}) {
   // npm is npm.cmd on Windows, which needs a shell to run.
   // Each in its own process group (POSIX), so stopping it stops everything under it.
-  const child = spawn("npm", p.args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], shell: win, detached: !win });
+  const child = spawn("npm", p.args, { cwd: root, env: { ...process.env, ...p.env }, stdio: ["ignore", "pipe", "pipe"], shell: win, detached: !win });
   children.push(child);
   const prefix = (stream, out, see) => {
     let rest = "";
@@ -168,22 +168,20 @@ function run(p, onLine = () => {}) {
 }
 
 // The server first: its build compiles the shared packages the client
-// needs too, and the client connects to it. The edge boots beside it (it
-// links over the core channel whenever the region is up, independently).
-// The client starts once the server is listening.
+// needs too. The edge boots once the region is listening on its channel,
+// and the client once the edge serves the players' port.
 let clientStarted = serverOnly;
 let edgeStarted = false;
 run(SERVER, (line) => {
-  if (!/listening on/.test(line)) return;
-  if (!edgeStarted) {
-    edgeStarted = true;
-    run(EDGE);
-    log("edge on http://localhost:3000 (health) and ws://localhost:3001");
-  }
-  if (clientStarted) return;
-  clientStarted = true;
-  run(dev ? EDITOR : CLIENT);
-  log(dev ? "open http://localhost:5174 (editor)" : "open http://localhost:5173");
+  if (edgeStarted || !/listening on/.test(line)) return;
+  edgeStarted = true;
+  run(EDGE, (edgeLine) => {
+    if (clientStarted || !/game port :/.test(edgeLine)) return;
+    clientStarted = true;
+    run(dev ? EDITOR : CLIENT);
+    log(dev ? "open http://localhost:5174 (editor)" : "open http://localhost:5173");
+  });
+  log(`edge on ws://localhost:${GAME_PORT} (players), http://localhost:3000 (health)`);
 });
 
 process.on("SIGINT", () => stop(0));

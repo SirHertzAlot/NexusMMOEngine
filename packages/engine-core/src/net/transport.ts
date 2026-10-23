@@ -104,7 +104,8 @@ export interface TransportHandlers {
 }
 
 export interface Transport {
-  readonly kind: "uws" | "ws";
+  /** "edge": the players' sockets are the edge's, relayed over the channel (channel-transport.ts). */
+  readonly kind: "uws" | "ws" | "edge";
   /** Bind `port` (0: any free port); resolves with the port bound. */
   listen(port: number, handlers: TransportHandlers): Promise<number>;
   /** Stop listening and drop every connection on the port. */

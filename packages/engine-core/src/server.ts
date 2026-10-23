@@ -12,6 +12,9 @@
  *
  * Environment:
  *   MMO_PORT       WebSocket listen port (default 7777)
+ *   MMO_EDGE       "1": players connect to the edge (EDGE_GAME_PORT), which
+ *                  relays them over the core channel; the core binds no
+ *                  player port (E3b). Unset: players connect here directly.
  *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
  *                  characters.db (default ./data, relative to the process cwd)
  *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
@@ -228,6 +231,7 @@ import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
+import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
@@ -257,6 +261,7 @@ function abilityNames(bits: number): string {
 }
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
+const EDGE_MODE = process.env.MMO_EDGE === "1";
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
@@ -1272,8 +1277,12 @@ async function main(): Promise<void> {
     ? new WorldAtomicOps({ client: worldClient, fences: worldCharacters })
     : null;
   if (atomicOps) atomicOpsRef.ops = atomicOps;
+  // E3b: with MMO_EDGE=1 the players' sockets are the edge's, relayed over the core channel (started below).
+  const toEdge: { push: EdgePush } = { push: () => {} };
+  const edgeRelay = EDGE_MODE ? new ChannelTransport((type, payload) => toEdge.push(type, payload), coreChannelPort()) : null;
   const gw: Gateway = new Gateway({
     port: PORT,
+    ...(edgeRelay ? { transport: edgeRelay } : {}),
     scale,
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
@@ -1501,15 +1510,20 @@ async function main(): Promise<void> {
 
   // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
   const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
-  const port = await gw.listen();
-  // The edge's channel (E3), beside the player port. A core that cannot
-  // bind it still serves players directly.
+  // The edge's channel (E3), up before the gateway listens. With MMO_EDGE=1 the
+  // players come through it, so it must bind; otherwise it serves the edge
+  // beside the player port, and a core that cannot bind it still serves players.
   const channelPort = coreChannelPort();
-  const coreChannel = await startCoreChannel(gw, channelPort).catch((err: Error) => {
+  const coreChannel = await startCoreChannel(gw, channelPort, {}, undefined, edgeRelay ?? undefined).catch((err: Error) => {
+    if (edgeRelay) throw new Error(`MMO_EDGE=1 needs the core channel on 127.0.0.1:${channelPort}: ${err.message}`);
     console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
     return null;
   });
-  if (coreChannel) console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  if (coreChannel) {
+    toEdge.push = (type, payload) => coreChannel.server.pushToAll(type, payload);
+    console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  }
+  const port = await gw.listen();
   gw.startTicking();
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse
@@ -1525,7 +1539,8 @@ async function main(): Promise<void> {
       /* already gone */
     }
   });
-  console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
+  if (edgeRelay) console.log(`[server] listening on the edge: players connect to the edge's game port, relayed over the core channel :${port}; no player port here`);
+  else console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
   console.log(`[server] ${pcg ? pcg.summary : "no PCG asset library (MMO_PCG_ASSETS)"}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +

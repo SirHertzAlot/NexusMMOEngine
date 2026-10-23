@@ -439,9 +439,10 @@ export interface GatewayOptions {
   /**
    * The socket library behind the port (see ./transport.ts): "uws"
    * (uWebSockets.js), "ws", or "auto" (uws when it loads). Default:
-   * MMO_TRANSPORT, else auto.
+   * MMO_TRANSPORT, else auto. A Transport itself serves the port that way
+   * (the edge's relay, ChannelTransport).
    */
-  transport?: TransportKind;
+  transport?: TransportKind | Transport;
   /**
    * Largest inbound WebSocket frame accepted, bytes. Default 64 KiB
    * (see MAX_CLIENT_PAYLOAD_BYTES).
@@ -921,7 +922,7 @@ export class Gateway {
   private spawnTable: SpawnTable | null = null;
   private readonly scale: ScaleResolver | undefined;
 
-  private readonly transportKind: TransportKind | undefined;
+  private readonly transportKind: TransportKind | Transport | undefined;
   private transport: Transport | null = null;
   /** Per-tick deltas fan out via sector-topic publish (Phase 5, Part A). Default true. */
   private readonly sectorBroadcast: boolean;
@@ -1056,7 +1057,7 @@ export class Gateway {
   /** Bind the port (WebSocket + HTTP). Does NOT start the tick driver. */
   async listen(): Promise<number> {
     if (this.transport) throw new Error("gateway: already listening");
-    const transport = createTransport(this.transportKind);
+    const transport = typeof this.transportKind === "object" ? this.transportKind : createTransport(this.transportKind);
     this.transport = transport;
     return transport.listen(this.opts.port, {
       connection: (socket) => this.onConnection(socket),
