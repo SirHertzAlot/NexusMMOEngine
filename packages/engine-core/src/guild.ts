@@ -129,13 +129,27 @@ export class GuildBook {
   /** Size, invite timeout and text limits (social.json `guild`, EG9); setRules swaps them on a rules reload. */
   limits = { max: GUILD_MAX, inviteMs: GUILD_INVITE_TTL_MS, motdMax: GUILD_MOTD_MAX, logKeep: GUILD_LOG_KEEP };
 
+  /** Fleet mode (PL3c): a new guild's id comes from the world (null: none to hand right now). Unset: counted here. */
+  ids: (() => number | null) | null = null;
+
   constructor(
     private readonly clock: () => number = Date.now,
     private readonly store: GuildStore = memoryGuildStore(),
     max: number = GUILD_MAX,
   ) {
     this.limits.max = max;
-    const { guilds, log } = store.loadAll();
+    this.load();
+  }
+
+  /** Read every guild again from the store (another region changed some, PL3c); invites and who's online stay. */
+  reload(): void {
+    this.guilds.clear();
+    this.byMember.clear();
+    this.load();
+  }
+
+  private load(): void {
+    const { guilds, log } = this.store.loadAll();
     for (const r of guilds) {
       const g: Guild = {
         id: r.id,
@@ -240,8 +254,10 @@ export class GuildBook {
       if (key(g.name) === key(name)) return { ok: false, reason: "guild name is taken" };
       if (g.tag === tag) return { ok: false, reason: "guild tag is taken" };
     }
+    const id = this.ids ? this.ids() : this.nextId++;
+    if (id === null) return { ok: false, reason: "guilds can't be founded this moment; try again shortly" };
     const g: Guild = {
-      id: this.nextId++,
+      id,
       name,
       tag,
       motd: "",

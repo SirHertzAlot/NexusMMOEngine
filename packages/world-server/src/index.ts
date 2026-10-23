@@ -3,6 +3,7 @@ export {
   WorldCoreImpl,
   randomToken,
   DEFAULT_TOTAL_WORLD_CHUNK_SPACE,
+  SOCIAL_ID_BASE,
 } from "./core.js";
 export { MemoryWorldStore } from "./fake-store.js";
 export {

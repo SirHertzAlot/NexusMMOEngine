@@ -22,6 +22,9 @@ import { WorldCoreImpl } from "../core.js";
 import {
   AbortMigrationSchema,
   AcquireCharacterLockSchema,
+  AllocateSocialIdsSchema,
+  GetSocialRecordsSchema,
+  PutSocialRecordSchema,
   AppendLedgerEventsSchema,
   AuctionSettleSchema,
   BeginMigrationSchema,
@@ -324,6 +327,33 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return { character: await core.getCharacterState(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/PutSocialRecord", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = PutSocialRecordSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { record: await core.putSocialRecord(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/GetSocialRecords", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetSocialRecordsSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { records: await core.getSocialRecords(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/AllocateSocialIds", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = AllocateSocialIdsSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { ids: await core.allocateSocialIds(regionId, input) };
     }),
   );
 

@@ -90,3 +90,15 @@ record because:
 - friend lists are read across players (who has me on their list, to tell them I'm online).
 
 Records keyed by owner, like guilds and parties, are their natural home.
+
+**Decided (2026-10-23), PL3c ids:** world-assigned ids. Guilds and parties a region made before fleet mode are
+renumbered once, at its first fleet boot. World ids start at 1,000,000,000 (`SOCIAL_ID_BASE`), so a local id can
+never be mistaken for one.
+
+**As built (PL3c):** the per-kind RPCs above became one record type, `social_record`.
+- Its fields are kind (guild, party, friends, blocks), key, doc and version; a null doc is a tombstone.
+- RPCs: `PutSocialRecord` (version-guarded), `GetSocialRecords` and `AllocateSocialIds`.
+- The region's `SocialWorldSync` boots before the books (renumbering, then seeding the stores).
+- It hands the gateway tracked stores; their writes are pushed on the 1 s save timer.
+- Every 60 s it refreshes the stores from the world and reloads the books.
+- New guilds and parties take ids from a pool the world allocates.

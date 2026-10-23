@@ -161,6 +161,7 @@ import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { ShardStateShipper, SNAPSHOT_UPLOAD_EVERY_TICKS } from "./world/state-shipper.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
+import { SocialWorldSync } from "./world/social-sync.js";
 import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
@@ -1196,6 +1197,20 @@ async function main(): Promise<void> {
   const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
   const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
   const questStore = moduleCtx.stores!.questStore as import("./quests/quest-store.js").SqliteQuestStore | undefined;
+  // PL3c: guilds, parties, friends and blocks are world records; the local stores are seeded from them
+  // here, before the gateway's books read them, and written through the sync's tracked stores after.
+  const socialSync =
+    worldClient?.registered && guildStore && partyStore && socialStore
+      ? new SocialWorldSync({
+          client: worldClient,
+          guilds: guildStore,
+          parties: partyStore,
+          social: socialStore,
+          reload: (kind) => gw.reloadSocial(kind),
+          log: (line) => console.log(`[server] ${line}`),
+        })
+      : null;
+  await socialSync?.boot();
   spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
@@ -1305,9 +1320,9 @@ async function main(): Promise<void> {
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     characterStore: effectiveCharacterStore,
-    guildStore,
-    socialStore,
-    partyStore,
+    guildStore: socialSync?.guildStore ?? guildStore,
+    socialStore: socialSync?.socialStore ?? socialStore,
+    partyStore: socialSync?.partyStore ?? partyStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
@@ -1454,8 +1469,16 @@ async function main(): Promise<void> {
     if (stateShipper && worldClient?.registered) {
       void stateShipper.pump(gw.serverTick);
     }
+    // PL3c: changed guilds, parties, friends and blocks go uphill on the same cycle.
+    void socialSync?.push();
   }, 1000);
   saveTimer.unref();
+  if (socialSync) {
+    gw.socialIds("guild", () => socialSync.takeId("guild"));
+    gw.socialIds("party", () => socialSync.takeId("party"));
+    // Other regions' changes arrive within a minute.
+    setInterval(() => void socialSync.refresh(), 60_000).unref();
+  }
 
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {

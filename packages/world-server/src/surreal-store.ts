@@ -44,6 +44,8 @@ import type {
   PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
+  SocialKind,
+  SocialRecord,
   StoredDungeonRun,
   StoredLedgerEvent,
   TradeCommitInput,
@@ -132,6 +134,9 @@ DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
 DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
+-- PL3c: guilds, parties, friends and blocks every region shares (doc null: a tombstone).
+DEFINE TABLE IF NOT EXISTS social_record SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_social_record_key ON social_record FIELDS kind, key UNIQUE;
 -- Persistence P5: host resource reports (sidecar upserts, TTL'd).
 DEFINE TABLE IF NOT EXISTS host_report SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS hostId ON host_report TYPE string;
@@ -563,6 +568,37 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
     );
     return row === null ? 0 : Number(row["value"] ?? 0);
+  }
+
+  async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY social_record WHERE kind = $kind AND key = $key LIMIT 1", { kind, key }),
+    );
+    return row === null ? null : stripId<SocialRecord>(row);
+  }
+
+  async putSocialRecord(r: SocialRecord): Promise<void> {
+    const existing = await this.getSocialRecord(r.kind, r.key);
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY social_record SET doc=$doc, version=$version, regionId=$region, updatedAt=$updatedAt WHERE kind = $kind AND key = $key",
+        { kind: r.kind, key: r.key, doc: r.doc, version: r.version, region: r.regionId, updatedAt: r.updatedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY social_record CONTENT $data", { data: { ...r } });
+    }
+  }
+
+  async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    const rows = rowList<Record<string, unknown>>(await this.db.query("SELECT * FROM social_record WHERE kind = $kind", { kind }));
+    return rows.map((row) => stripId<SocialRecord>(row));
+  }
+
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    // The epoch counter's read-then-write, one id at a time: the world server is one process (as for epochs).
+    const ids: number[] = [];
+    for (let i = 0; i < count; i++) ids.push(await this.issueEpoch(`social:${kind}`));
+    return ids;
   }
 
   async issueRangeEpoch(rangeKey: string): Promise<number> {
