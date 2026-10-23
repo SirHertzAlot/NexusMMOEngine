@@ -81,6 +81,7 @@
     "packages/world-server",
     "packages/scatter",
     "packages/wfc",
+    "packages/fortify",
     "packages/dungeon",
     "packages/placement",
     "packages/species",
