@@ -7,7 +7,9 @@
  *
  * Requests: player.intent, auth.login, session.validate, core.sync,
  * mythic.grant_item, mythic.spawn_boss, metrics.get. Pushes every tick:
- * tick.events and tick.delta; every 300th tick also snapshot.
+ * tick.events. Players' deltas and snapshots reach the edge as relayed
+ * `wire.*` frames (E3b), so the old base64 tick.delta / snapshot mirror
+ * stream is gone.
  *
  * metrics.get answers the core registry's Prometheus text (E6): the
  * `mmo_core_*` metrics and the channel's core side. The edge folds it into
@@ -16,12 +18,6 @@
 import { channelMetrics, serveChannel, type ChannelMetrics, type ChannelPacket, type ChannelServer } from "@mmo-engine/channel";
 import { netLogger, Registry, type Counter, type Gauge, type Histogram } from "@mmo-engine/nethealth";
 import type { GatewayTick } from "./net/gateway.js";
-
-/** The full-snapshot cadence: tick 0, 300, 600, ... */
-export const SNAPSHOT_EVERY_TICKS = 300;
-export function isSnapshotTick(n: number): boolean {
-  return n % SNAPSHOT_EVERY_TICKS === 0;
-}
 
 /** CORE_CHANNEL_PORT, parsed like the edge's config (copied, not imported). */
 export function coreChannelPort(env: NodeJS.ProcessEnv = process.env): number {
@@ -159,14 +155,9 @@ export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHo
   };
 }
 
-/**
- * Pushes for one finished tick: tick.events and tick.delta always (even with
- * no events), snapshot on snapshot ticks. Binary payloads travel as base64.
- */
+/** Pushes for one finished tick: tick.events, even with no events. */
 export function pushTick(push: (type: string, payload: unknown) => void, t: GatewayTick): void {
   push("tick.events", { tick: t.tick, events: t.events });
-  push("tick.delta", { tick: t.tick, delta: Buffer.from(t.delta).toString("base64") });
-  if (isSnapshotTick(t.tick)) push("snapshot", { tick: t.tick, snapshot: Buffer.from(t.fullState()).toString("base64") });
 }
 
 /** Serve the channel on `port` (loopback) and stream the host's ticks to every edge. */
