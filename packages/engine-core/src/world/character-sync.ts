@@ -123,6 +123,17 @@ export interface CharacterEconomyView {
   ): void;
 }
 
+/**
+ * The character's own state in the region's other stores (PL3b: its quest log, its materials pouch),
+ * carried in the world record as `extras` so it follows the character to any region. Each key is one
+ * store's; a key `extrasOf` leaves out keeps the world's last copy.
+ */
+export interface CharacterExtrasView {
+  extrasOf(characterId: number): Record<string, unknown>;
+  /** Write the world record's extras into the local stores (login, before the character is playable). */
+  seed(characterId: number, extras: Record<string, unknown>): void;
+}
+
 /** The opaque world-tier payload: exactly what the local store keeps. */
 export interface WorldCharacterState {
   state: CharacterState | null;
@@ -130,7 +141,11 @@ export interface WorldCharacterState {
   /** Slice A2: present when the world record carries economy fields. */
   gold?: number;
   inventory?: InventoryItem[];
+  /** PL3b: the character's state in the other stores (CharacterExtrasView). */
+  extras?: Record<string, unknown>;
 }
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** The economy fields of a world record's state, when present and well-formed. */
 export function economyOfState(
@@ -200,6 +215,10 @@ export function parseWorldCharacterState(
     out.gold = eco.gold;
     out.inventory = eco.inventory;
   }
+  if (p["extras"] !== undefined) {
+    if (!isPlainObject(p["extras"])) return null;
+    out.extras = p["extras"];
+  }
   return out;
 }
 
@@ -208,6 +227,7 @@ export function worldCharacterPayload(
   store: CharacterStore,
   characterId: number,
   economy?: CharacterEconomyView,
+  extras?: Record<string, unknown>,
 ): WorldCharacterState {
   const out: WorldCharacterState = {
     state: store.loadState?.(characterId) ?? null,
@@ -217,6 +237,7 @@ export function worldCharacterPayload(
     out.gold = economy.goldOf(characterId);
     out.inventory = economy.inventoryOf(characterId);
   }
+  if (extras) out.extras = extras;
   return out;
 }
 
@@ -226,7 +247,9 @@ export function seedLocalCharacter(
   characterId: number,
   payload: WorldCharacterState,
   economy?: CharacterEconomyView,
+  extras?: CharacterExtrasView,
 ): void {
+  if (extras && payload.extras) extras.seed(characterId, payload.extras);
   if (payload.state && store.saveState) store.saveState(characterId, payload.state);
   if (payload.skills && store.saveSkills) {
     store.saveSkills(characterId, payload.skills);
@@ -246,6 +269,8 @@ export interface WorldCharacterSyncOptions {
    * reconcile the local caches. Absent: P4 behaviour exactly.
    */
   economy?: CharacterEconomyView;
+  /** PL3b: the character's state in the region's other stores (quests, pouch). Absent: not carried. */
+  extras?: CharacterExtrasView;
   /** Session-lock lifetime per acquire (default CHARACTER_LOCK_TTL_MS). */
   lockTtlMs?: number;
   now?: () => number;
@@ -265,6 +290,9 @@ export class WorldCharacterSync {
   private readonly client: CharacterWorldClient;
   private readonly store: CharacterStore;
   private readonly economy: CharacterEconomyView | null;
+  private readonly extras: CharacterExtrasView | null;
+  /** Each held character's extras as the world last had them: a key the view leaves out keeps this copy. */
+  private readonly lastExtras = new Map<number, Record<string, unknown>>();
   private readonly lockTtlMs: number;
   private readonly now: () => number;
   private readonly log: (line: string) => void;
@@ -290,6 +318,7 @@ export class WorldCharacterSync {
     this.client = opts.client;
     this.store = opts.store;
     this.economy = opts.economy ?? null;
+    this.extras = opts.extras ?? null;
     this.lockTtlMs = opts.lockTtlMs ?? CHARACTER_LOCK_TTL_MS;
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
@@ -394,7 +423,8 @@ export class WorldCharacterSync {
         this.versions.set(characterId, record.version);
         const payload = parseWorldCharacterState(record.state);
         if (payload !== null) {
-          seedLocalCharacter(this.store, characterId, payload, this.economy ?? undefined);
+          seedLocalCharacter(this.store, characterId, payload, this.economy ?? undefined, this.extras ?? undefined);
+          if (payload.extras) this.lastExtras.set(characterId, payload.extras);
           seeded = true;
         } else {
           // A record with economy fields but no usable character
@@ -459,11 +489,13 @@ export class WorldCharacterSync {
           }
         }
       }
-      const payload = worldCharacterPayload(this.store, characterId, this.economy ?? undefined);
+      const extras = this.extras ? { ...this.lastExtras.get(characterId), ...this.extras.extrasOf(characterId) } : undefined;
+      const payload = worldCharacterPayload(this.store, characterId, this.economy ?? undefined, extras);
       if (payload.state === null && payload.skills === null) return false;
       try {
         const record = await this.client.putCharacterState(characterId, lock.epoch, payload);
         this.versions.set(characterId, record.version);
+        if (extras) this.lastExtras.set(characterId, extras);
         if (this.economy) {
           // Fleet auction parity: the world drained pending credits
           // into the record during this put, so the returned record's
@@ -507,6 +539,7 @@ export class WorldCharacterSync {
     const lock = this.held.get(characterId);
     this.held.delete(characterId);
     this.versions.delete(characterId);
+    this.lastExtras.delete(characterId);
     if (lock && !this.fenced.has(characterId)) {
       try {
         await this.client.releaseCharacterLock(characterId, lock.epoch);

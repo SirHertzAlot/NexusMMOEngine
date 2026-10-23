@@ -12,7 +12,7 @@ import { addComponent } from "bitecs";
 import Database from "better-sqlite3";
 import { Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
-import { GatheringSystem, SqliteGatheringStore, materialName, type ResourceNodeSpec } from "../../src/gathering/index.js";
+import { GatheringSystem, nodeStocksOf, SqliteGatheringStore, materialName, type ResourceNodeSpec } from "../../src/gathering/index.js";
 import { spawnScene } from "../../src/scene-spawn.js";
 import { GatheringSchema } from "@mmo-engine/rules";
 
@@ -149,5 +149,25 @@ describe("scene resource nodes", () => {
     ]);
     const spot = r.spawned.find((s) => s.id === "res-1")!.entities[0]!;
     assert.ok(Transform.py[spot]! >= 0, "the fishing spot floats on the water");
+  });
+});
+
+describe("node stocks for the range snapshot (PL3a)", () => {
+  it("lists every node and replaces them all with the world's copy", () => {
+    const store = new SqliteGatheringStore(new Database(":memory:"));
+    store.saveNode("town/oak-1", 4, null);
+    store.saveNode("town/ore-1", 0, 1_700_000_000_000);
+    assert.deepEqual(store.allNodes(), [
+      { key: "town/oak-1", stock: 4, regrowAt: null },
+      { key: "town/ore-1", stock: 0, regrowAt: 1_700_000_000_000 },
+    ]);
+    store.replaceNodes([{ key: "town/oak-1", stock: 1, regrowAt: null }]);
+    assert.deepEqual(store.allNodes(), [{ key: "town/oak-1", stock: 1, regrowAt: null }]);
+    assert.equal(store.loadNode("town/ore-1"), undefined, "a node the world doesn't hold is gone");
+  });
+
+  it("keeps only well-formed rows from the world", () => {
+    assert.deepEqual(nodeStocksOf([{ key: "a", stock: 1, regrowAt: null }, { key: "b", stock: -1, regrowAt: null }, { key: 3, stock: 1, regrowAt: null }, null]), [{ key: "a", stock: 1, regrowAt: null }]);
+    assert.deepEqual(nodeStocksOf("nope"), []);
   });
 });

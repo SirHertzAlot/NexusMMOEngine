@@ -22,6 +22,18 @@ CREATE TABLE IF NOT EXISTS quest_log (
 );
 `;
 
+/** The quest records in a world character record's `extras.quests`; anything that isn't one is dropped. */
+export function questRecordsOf(v: unknown): QuestRecord[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter(
+    (r): r is QuestRecord =>
+      typeof r === "object" && r !== null &&
+      typeof r.def === "object" && r.def !== null && typeof r.def.id === "string" &&
+      (r.state === "active" || r.state === "done") &&
+      Number.isInteger(r.step) && Number.isFinite(r.progress) && Number.isFinite(r.acceptedAt),
+  );
+}
+
 export class SqliteQuestStore implements QuestStore {
   private readonly db: Database.Database;
   private readonly upsert: Database.Statement;
@@ -52,6 +64,14 @@ export class SqliteQuestStore implements QuestStore {
 
   remove(characterId: number, questId: string): void {
     this.del.run(characterId, questId);
+  }
+
+  /** Replace a character's whole log with the world's copy (PL3b), in one transaction. */
+  replace(characterId: number, records: readonly QuestRecord[]): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM quest_log WHERE character_id = ?").run(characterId);
+      for (const r of records) this.save(characterId, r);
+    })();
   }
 
   close(): void {

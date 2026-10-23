@@ -26,6 +26,31 @@ CREATE TABLE IF NOT EXISTS pouches (
 );
 `;
 
+/** One node's saved stock (regrowAt: unix ms, null when none is due). */
+export interface NodeStock {
+  key: string;
+  stock: number;
+  regrowAt: number | null;
+}
+
+/** The node stocks in a world snapshot's `places.resource_nodes`; rows that aren't one are dropped. */
+export function nodeStocksOf(v: unknown): NodeStock[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter(
+    (r): r is NodeStock =>
+      typeof r === "object" && r !== null &&
+      typeof r.key === "string" &&
+      Number.isInteger(r.stock) && r.stock >= 0 &&
+      (r.regrowAt === null || Number.isFinite(r.regrowAt)),
+  );
+}
+
+/** The pouch in a world character record's `extras.pouch`: material -> whole count >= 0; other entries dropped. */
+export function materialCountsOf(v: unknown): Record<string, number> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter(([, n]) => Number.isInteger(n) && (n as number) >= 0)) as Record<string, number>;
+}
+
 export class SqliteGatheringStore implements GatheringStore {
   private readonly db: Database.Database;
   private readonly getNode: Database.Statement;
@@ -62,6 +87,19 @@ export class SqliteGatheringStore implements GatheringStore {
     this.putNode.run(key, stock, regrowAt);
   }
 
+  /** Every node's stock, for the range snapshot (PL3a: node stocks are the range's, held by the world). */
+  allNodes(): NodeStock[] {
+    return this.db.prepare("SELECT node_key AS key, stock, regrow_at AS regrowAt FROM resource_nodes ORDER BY node_key").all() as NodeStock[];
+  }
+
+  /** Replace every node's stock with the world's copy (recall), in one transaction. */
+  replaceNodes(rows: readonly NodeStock[]): void {
+    this.db.transaction(() => {
+      this.db.exec("DELETE FROM resource_nodes");
+      for (const r of rows) this.putNode.run(r.key, r.stock, r.regrowAt);
+    })();
+  }
+
   loadPouch(charId: number): Record<string, number> {
     const rows = this.getPouch.all(charId) as Array<{ material: string; count: number }>;
     return Object.fromEntries(rows.map((r) => [r.material, r.count]));
@@ -69,6 +107,14 @@ export class SqliteGatheringStore implements GatheringStore {
 
   savePouch(charId: number, material: string, count: number): void {
     this.putPouch.run(charId, material, count);
+  }
+
+  /** Replace a character's whole pouch with the world's copy (PL3b), in one transaction. */
+  replacePouch(charId: number, pouch: Record<string, number>): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM pouches WHERE character_id = ?").run(charId);
+      for (const [material, count] of Object.entries(pouch)) this.putPouch.run(charId, material, count);
+    })();
   }
 
   /** Close the handle (only when this store opened it). */

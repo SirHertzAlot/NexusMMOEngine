@@ -57,7 +57,13 @@ export class BlockList {
 
   /** Writes through to `store` (SQLite in the server, S2c), so blocks survive a restart. */
   constructor(private readonly store: SocialStore = memorySocialStore()) {
-    for (const r of store.loadBlocks()) {
+    this.reload();
+  }
+
+  /** Read every block list again from the store (another region changed some, PL3c). */
+  reload(): void {
+    this.blocks.clear();
+    for (const r of this.store.loadBlocks()) {
       let set = this.blocks.get(r.blocker);
       if (!set) this.blocks.set(r.blocker, (set = new Map()));
       set.set(r.target, r.name);

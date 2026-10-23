@@ -91,7 +91,6 @@ async function startWorld(tag: string): Promise<WorldHandle> {
     apiKeyHash: await apiKeyHash(),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   if (process.env.DRILL_DEBUG) {
     app.use((req, res, next) => {
       const t0 = Date.now();

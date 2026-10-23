@@ -211,6 +211,11 @@ export class GatheringSystem implements SimSystem {
     return { kind: "pouch", materials, ...(gathered ? { gathered } : {}) };
   }
 
+  /** Drop `holder`'s cached pouch: the store was just given the world's copy (PL3b), read it again on next touch. */
+  forgetPouch(holder: number): void {
+    this.pouches.delete(holder);
+  }
+
   /** How many of `material` character `holder` has. */
   countOf(holder: number, material: string): number {
     return this.pouchOf(holder).get(material) ?? 0;

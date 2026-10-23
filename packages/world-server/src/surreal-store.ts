@@ -1,12 +1,11 @@
 /**
- * SurrealDB-backed WorldStore. Connects to a SurrealDB server over
- * ws:// (see `npm run db` — the world server does NOT embed the DB;
- * WASM-embedded in Node is memory-only and the npm package doesn't
- * even ship the .wasm binary, so a server binary is the honest
- * durable path).
+ * SurrealDB-backed WorldStore. The database runs inside the world
+ * server (`@surrealdb/node`, the native embedded engine): "rocksdb:<abs
+ * path>" is durable on disk, "mem://" is in memory. A "ws://" URL still
+ * reaches a separate SurrealDB server.
  *
  * Env:
- *   WORLD_DB_URL   default ws://127.0.0.1:8000/rpc
+ *   WORLD_DB_URL   default rocksdb:<data dir>/surreal (see server.ts)
  *   WORLD_DB_NS    default mmo
  *   WORLD_DB_DB    default world
  *   WORLD_DB_USER / WORLD_DB_PASS  optional credentials
@@ -16,7 +15,8 @@
  *   statement's result: an array of rows normally, or the single
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
-import { Surreal } from "surrealdb";
+import { createNodeEngines } from "@surrealdb/node";
+import { createRemoteEngines, Surreal } from "surrealdb";
 import {
   applyAuctionSettle,
   applyCraftExecute,
@@ -44,6 +44,8 @@ import type {
   PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
+  SocialKind,
+  SocialRecord,
   StoredDungeonRun,
   StoredLedgerEvent,
   TradeCommitInput,
@@ -132,6 +134,9 @@ DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
 DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
+-- PL3c: guilds, parties, friends and blocks every region shares (doc null: a tombstone).
+DEFINE TABLE IF NOT EXISTS social_record SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_social_record_key ON social_record FIELDS kind, key UNIQUE;
 -- Persistence P5: host resource reports (sidecar upserts, TTL'd).
 DEFINE TABLE IF NOT EXISTS host_report SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS hostId ON host_report TYPE string;
@@ -249,8 +254,13 @@ function stripId<T>(record: Record<string, unknown>): T {
   return rest as T;
 }
 
+/** A client that reaches a server (ws/http) or runs the database in this process (mem, rocksdb). */
+function newClient(): Surreal {
+  return new Surreal({ engines: { ...createRemoteEngines(), ...createNodeEngines() } });
+}
+
 export class SurrealWorldStore implements WorldStore {
-  private db = new Surreal();
+  private db = newClient();
   private readonly opts: SurrealStoreOptions;
 
   constructor(opts: SurrealStoreOptions) {
@@ -284,7 +294,7 @@ export class SurrealWorldStore implements WorldStore {
     } catch (err) {
       if (err instanceof WorldStoreConnectTimeoutError) {
         const halfOpen = this.db;
-        this.db = new Surreal();
+        this.db = newClient();
         let closeTimer: ReturnType<typeof setTimeout> | undefined;
         await Promise.race([
           halfOpen.close().catch(() => undefined),
@@ -558,6 +568,37 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
     );
     return row === null ? 0 : Number(row["value"] ?? 0);
+  }
+
+  async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY social_record WHERE kind = $kind AND key = $key LIMIT 1", { kind, key }),
+    );
+    return row === null ? null : stripId<SocialRecord>(row);
+  }
+
+  async putSocialRecord(r: SocialRecord): Promise<void> {
+    const existing = await this.getSocialRecord(r.kind, r.key);
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY social_record SET doc=$doc, version=$version, regionId=$region, updatedAt=$updatedAt WHERE kind = $kind AND key = $key",
+        { kind: r.kind, key: r.key, doc: r.doc, version: r.version, region: r.regionId, updatedAt: r.updatedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY social_record CONTENT $data", { data: { ...r } });
+    }
+  }
+
+  async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    const rows = rowList<Record<string, unknown>>(await this.db.query("SELECT * FROM social_record WHERE kind = $kind", { kind }));
+    return rows.map((row) => stripId<SocialRecord>(row));
+  }
+
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    // The epoch counter's read-then-write, one id at a time: the world server is one process (as for epochs).
+    const ids: number[] = [];
+    for (let i = 0; i < count; i++) ids.push(await this.issueEpoch(`social:${kind}`));
+    return ids;
   }
 
   async issueRangeEpoch(rangeKey: string): Promise<number> {
