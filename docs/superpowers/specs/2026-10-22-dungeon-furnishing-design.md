@@ -90,8 +90,8 @@ The pool (`packages/engine-core/data/dungeons`: 30 dungeons, each a `<id>.dungeo
 - **Yours:** the licensed art where it matches, procedural shapes as the fallback; furnishing only; drop `decorateShell` and
   extend the existing pipeline.
 - **Mine:** the arrangement vocabulary above; the overlay at `content/dungeons/props.local.json` (git-ignored, like
-  `content/scale.local.json`); procedural meshes in `packages/dungeon/src/propmesh.ts` from a small recipe table, built on the
-  fly; conservative name matching with an explicit per-kind pattern table and a printed contact list for review by eye.
+  `content/scale.local.json`); procedural meshes in `packages/engine-core/src/dungeons/prop-mesh.ts` (the server mounts them, and engine-core already depends on picg) from a
+  small recipe table, built on the fly; conservative name matching with an explicit per-kind pattern table and a printed contact list for review by eye.
 
 ## Left to the builder
 Exact recipes and proportions of procedural shapes; the name patterns; how the overlay handles a model's scale (a per-kind
