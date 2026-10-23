@@ -73,6 +73,44 @@ The Short added three things, all folded in:
   hardening over time (earth → turf → timber → stone) — is the F3 era
   grammar's job and is noted there, not modelled yet.
 
+## Integration with the world bake
+
+The full chain runs in the real bake now:
+
+1. **Adapter** (`src/survey.ts`) — the world survey (engine-core's
+   `Survey`, consumed through a narrow structural interface; fortify
+   never imports engine-core) becomes a tile grid per site:
+   `findSite` picks a mostly-land, flat, water-edged window, and
+   `tilesFromSurvey` derives terrain, diggability, and water table per
+   cell (a real water-table map, when hydrology grows one, overrides
+   the derivation untouched).
+2. **Fortify** — the loop, as above; a doctrine can be stamped first
+   (build log step 0, cost 0).
+3. **Emitter** (`src/emit.ts`) — placements in **world coordinates**:
+   wall runs and the final approach as polylines (vectors stay
+   vectors), towers/gate/keep/barbican as points, moat and lilia as
+   tile sets — every placement carrying its provenance from the build
+   log.
+4. **Decoration** (`src/decorate.ts`) — a style-profile pass attaches
+   material, height, and dressing per placement. Era material tiers
+   (turf-and-timber → stone → ashlar) override profile materials: what
+   a century builds with is a fact, not a taste. This is a stub in the
+   `style-profile.json` shape — corpus-derived profiles feed the same
+   function when they land.
+5. **Persistence** — engine-core's `terrain/fortify-settlements.ts`
+   runs the chain on the bake's own survey (hooked via
+   `bakeWorldTerrain`'s `onSurvey`), and `bake-world` stores the
+   resulting `SettlementBake[]` as world.db meta
+   (`fortified_settlements`), next to `spawn_point` and
+   `world_biomes`. Integration tests run the whole chain on a real
+   `surveyWorld` output.
+
+**Boundary, stated plainly:** the bake product is spawnable data —
+surveyed position, decorated form, provenance — persisted with the
+world. Instantiating placements as live ECS entities in `SimWorld`
+belongs to the town spawner (living-sim S3.5), which will consume
+`fortified_settlements` as its input; that consumer is not built yet.
+
 ## Known prototype limits
 
 - One settlement geometry, south gate; the bend is built for that

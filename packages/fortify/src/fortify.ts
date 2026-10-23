@@ -34,6 +34,10 @@ export interface FortifyOptions {
   seed?: number;
   matrix?: Matrix;
   maxSteps?: number;
+  /** Counters stamped before the loop runs (a culture's doctrine). They
+   *  enter the build log as step 0 at cost 0 — sunk cultural knowledge,
+   *  not the settlement's budget. */
+  doctrine?: CounterId[];
   /** Called with a snapshot after each counter is applied (frame export, tracing). */
   onStep?: (snapshot: Settlement, step: BuildStep) => void;
 }
@@ -226,6 +230,21 @@ const siteKey = (w: Weakness): string => {
   }
 };
 
+/** The minimal weakness a site-agnostic counter answers (doctrine use). */
+export function syntheticWeakness(id: CounterId): Weakness {
+  switch (id) {
+    case "bend-approach":
+    case "lilia":
+    case "barbican":
+      return { kind: "straight-charge", site: { kind: "approach" }, severity: 1, detail: "doctrine" };
+    case "granary":
+    case "internal-well":
+      return { kind: "no-reserve", site: { kind: "interior" }, severity: 1, detail: "doctrine" };
+    default:
+      throw new Error(`doctrine: ${id} is site-specific and cannot be stamped blindly`);
+  }
+}
+
 /**
  * Stamp a doctrine onto a settlement at generation: the culture's
  * compiled answers, applied in order, before the fortify loop ever
@@ -236,21 +255,8 @@ const siteKey = (w: Weakness): string => {
 export function applyDoctrine(s: Settlement, doctrine: CounterId[], seed = 1): CounterId[] {
   const rand = rng(seed);
   const applied: CounterId[] = [];
-  const synthetic = (id: CounterId): Weakness => {
-    switch (id) {
-      case "bend-approach":
-      case "lilia":
-      case "barbican":
-        return { kind: "straight-charge", site: { kind: "approach" }, severity: 1, detail: "doctrine" };
-      case "granary":
-      case "internal-well":
-        return { kind: "no-reserve", site: { kind: "interior" }, severity: 1, detail: "doctrine" };
-      default:
-        throw new Error(`doctrine: ${id} is site-specific and cannot be stamped blindly`);
-    }
-  };
   for (const id of doctrine) {
-    const w = synthetic(id);
+    const w = syntheticWeakness(id);
     if (canApply(s, id, w) && applyCounter(s, id, w, rand)) applied.push(id);
   }
   return applied;
@@ -269,6 +275,23 @@ export function fortify(input: Settlement, opts: FortifyOptions): FortifyResult 
   let spent = 0;
   let stopReason: StopReason = "max-steps";
   let analysis = analyze(s, matrix);
+
+  // Doctrine first: the culture's compiled answers, logged as step 0.
+  for (const id of opts.doctrine ?? []) {
+    const w = syntheticWeakness(id);
+    const before = analyze(s, matrix).total;
+    if (canApply(s, id, w) && applyCounter(s, id, w, rand)) {
+      log.push({
+        step: 0,
+        weaknessKind: w.kind,
+        weaknessDetail: "doctrine",
+        counter: id,
+        cost: 0,
+        totalBefore: before,
+        totalAfter: analyze(s, matrix).total,
+      });
+    }
+  }
 
   for (let step = 1; step <= maxSteps; step++) {
     analysis = analyze(s, matrix);

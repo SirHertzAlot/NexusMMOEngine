@@ -75,6 +75,9 @@ export interface TerrainBakeOptions {
   existingSurveyHash?: string | null;
   /** Number of worker threads for tile generation (default: CPU count). */
   workers?: number;
+  /** Called with the survey as soon as it exists (settlement stages and
+   *  other survey consumers hook in here instead of re-surveying). */
+  onSurvey?: (survey: Survey) => void;
 }
 
 const TILE_BATCH = 2500;
@@ -349,6 +352,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     const t0 = performance.now();
     survey = surveyWorld(spec);
     surveyMs = performance.now() - t0;
+    opts.onSurvey?.(survey);
     sampleRss();
     const biomeRegions: Record<string, number> = {};
     for (const r of survey.regions) {

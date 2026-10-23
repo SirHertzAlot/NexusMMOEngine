@@ -4,3 +4,6 @@ export * from "./generate.js";
 export * from "./analyze.js";
 export * from "./fortify.js";
 export * from "./render.js";
+export * from "./survey.js";
+export * from "./emit.js";
+export * from "./decorate.js";

@@ -319,9 +319,13 @@ export function moatFeasible(s: Settlement, x: number, y: number): boolean {
 }
 
 /** Could a well inside the walls reach water? Somewhere in the
- *  settlement the water table must be within digging depth (6 m). */
+ *  settlement the water table must be within digging depth (6 m) —
+ *  and marshy ground counts: digging through wet soil to water is
+ *  exactly how wells get dug. */
 export function wellFeasible(s: Settlement): boolean {
-  return s.grid.tiles.some((t) => t.terrain === "land" && t.waterDepth <= 6);
+  return s.grid.tiles.some(
+    (t) => (t.terrain === "land" || t.terrain === "marsh") && t.waterDepth <= 6,
+  );
 }
 
 /** Run every probe in the matrix and report exposures + weaknesses. */

@@ -34,6 +34,63 @@ function tile(terrain: TerrainKind, waterDepth: number): Tile {
   return { terrain, diggable: terrain === "land" || terrain === "marsh", waterDepth };
 }
 
+/**
+ * Lay the starting settlement onto a terrain grid: wall ring, south
+ * gate, straight approach road, core, and two square towers on the
+ * north corners — the classic sins, deliberately. Shared by the fixture
+ * generator and the survey adapter (one layout, two terrain sources).
+ *
+ * The grid must be at least 21×21; the ring is centred with a 15×15
+ * footprint. Road tiles keep their underlying waterDepth unless
+ * `roadDepth` is given.
+ */
+export function layoutOnGrid(grid: Grid, name: string, roadDepth?: number): Settlement {
+  const insetX = Math.floor((grid.w - 15) / 2);
+  const insetY = Math.floor((grid.h - 15) / 2);
+  const ring = { x0: insetX, y0: insetY, x1: insetX + 14, y1: insetY + 14 };
+  const gateX = Math.floor((ring.x0 + ring.x1) / 2);
+
+  // The approach: a dead-straight road from the south edge to the gate.
+  for (let y = ring.y1 + 1; y < grid.h; y++) {
+    const i = idx(grid, gateX, y);
+    grid.tiles[i] = {
+      terrain: "road",
+      diggable: true,
+      waterDepth: roadDepth ?? grid.tiles[i].waterDepth,
+    };
+  }
+
+  const walls = new Set<number>();
+  for (let x = ring.x0; x <= ring.x1; x++) {
+    walls.add(idx(grid, x, ring.y0));
+    walls.add(idx(grid, x, ring.y1));
+  }
+  for (let y = ring.y0; y <= ring.y1; y++) {
+    walls.add(idx(grid, ring.x0, y));
+    walls.add(idx(grid, ring.x1, y));
+  }
+
+  return {
+    name,
+    grid,
+    walls,
+    gate: idx(grid, gateX, ring.y1),
+    core: idx(grid, gateX, Math.floor((ring.y0 + ring.y1) / 2)),
+    // Square towers on the north corners only — the classic mistake.
+    towers: [
+      { x: ring.x0, y: ring.y0, form: "square" },
+      { x: ring.x1, y: ring.y0, form: "square" },
+    ],
+    barbican: null,
+    moat: new Set(),
+    islands: new Set(),
+    obstacles: new Set(),
+    // The settlement as generated keeps its well and grain outside the
+    // walls — a siege ends it. The loop will fix that.
+    stores: { well: false, granary: false },
+  };
+}
+
 export function generatePondVillage(profile: TerrainProfile): Settlement {
   const w = GRID_W;
   const h = GRID_H;
@@ -53,48 +110,9 @@ export function generatePondVillage(profile: TerrainProfile): Settlement {
         t = tile("land", 4.5);
         if (profile === "riverside" && x <= 2) t = tile("water", 0);
       }
-      tiles[idx({ w, h, tiles }, x, y)] = t;
+      tiles[y * w + x] = t;
     }
   }
   const grid: Grid = { w, h, tiles };
-
-  // The causeway: a dead-straight road from the south edge to the gate.
-  for (let y = WALL.y1 + 1; y < h; y++) {
-    const i = idx(grid, GATE_X, y);
-    grid.tiles[i] = { terrain: "road", diggable: true, waterDepth: profile === "pond" ? 0.8 : 4.5 };
-  }
-
-  // Wall ring.
-  const walls = new Set<number>();
-  for (let x = WALL.x0; x <= WALL.x1; x++) {
-    walls.add(idx(grid, x, WALL.y0));
-    walls.add(idx(grid, x, WALL.y1));
-  }
-  for (let y = WALL.y0; y <= WALL.y1; y++) {
-    walls.add(idx(grid, WALL.x0, y));
-    walls.add(idx(grid, WALL.x1, y));
-  }
-
-  const gate = idx(grid, GATE_X, WALL.y1);
-  const core = idx(grid, 12, 12);
-
-  return {
-    name: `pond-village (${profile})`,
-    grid,
-    walls,
-    gate,
-    core,
-    // Square towers on the north corners only — the classic mistake.
-    towers: [
-      { x: WALL.x0, y: WALL.y0, form: "square" },
-      { x: WALL.x1, y: WALL.y0, form: "square" },
-    ],
-    barbican: null,
-    moat: new Set(),
-    islands: new Set(),
-    obstacles: new Set(),
-    // The village as generated keeps its well and grain outside the
-    // walls — a siege ends it. The loop will fix that.
-    stores: { well: false, granary: false },
-  };
+  return layoutOnGrid(grid, `pond-village (${profile})`, profile === "pond" ? 0.8 : 4.5);
 }
