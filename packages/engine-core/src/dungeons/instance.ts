@@ -36,8 +36,10 @@ import { Gateway } from "../net/gateway.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
 import { buildSpawn } from "../admin/spawn.js";
+import { fnv1a32 } from "@mmo-engine/picg";
 import { PcgAssetLibrary } from "../pcg/asset-library.js";
 import { mountPcgService } from "../pcg/boot.js";
+import { propMesh } from "./prop-mesh.js";
 import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
@@ -95,6 +97,10 @@ export interface DungeonInstanceOptions {
   props?: DungeonProps;
   /** How the run looks per theme (looks.json); absent: the client keeps the open world's look. */
   looks?: DungeonLooks;
+  /** The local art overlay (props.local.json), kind to catalog model id: a light emitter it remaps keeps giving light. */
+  artAssets?: Record<string, string>;
+  /** The overlay's size factors by kind: a model drawn smaller or larger than a real one of its kind. */
+  artScales?: Record<string, number>;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -216,24 +222,30 @@ export class DungeonInstance {
       ...(opts.clock ? { clock: opts.clock } : opts.now ? { clock: opts.now } : {}),
       ...(opts.transport ? { transport: opts.transport } : {}),
     });
-    this.mountShell();
+    this.mountAssets();
     this.spawnProps();
     this.populate();
   }
 
   /**
-   * The baked shell (walls, floors, ceilings) reaches clients as an ordinary
-   * asset, the way scattered props do: one static entity at the origin carrying
-   * its AssetRef (the generic snapshot replicates it), and the Pcg service on
-   * this gateway serving the mesh. No dungeon-specific message, no client code.
-   * A dungeon baked without a shell runs as before.
+   * What the run serves clients through its own Pcg service, as ordinary assets: the baked shell (walls, floors, ceilings;
+   * one static entity at the origin carrying its AssetRef, which the generic snapshot replicates) and a small procedural
+   * mesh for each kind of prop in the run whose table entry is `dungeon:<kind>` (prop-mesh.ts; a kind a catalog model
+   * stands in for, or with no recipe, is skipped). No dungeon-specific message, no client code. A dungeon baked without
+   * a shell runs as before; one with neither a shell nor props serves nothing.
    */
-  private mountShell(): void {
+  private mountAssets(): void {
     const { layout } = this.opts;
-    if (!layout.shell) return;
     const library = PcgAssetLibrary.empty();
-    const asset = library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name);
+    const shell = layout.shell ? library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name) : null;
+    for (const kind of new Set(layout.props.map((p) => p.kind))) {
+      const id = `dungeon:${kind}`;
+      const mesh = this.opts.props?.archetypes[id]?.asset === id ? propMesh(kind) : null;
+      if (mesh) library.addPrebaked(id, mesh, kind);
+    }
+    if (library.list().length === 0) return;
     mountPcgService(this.gateway, library);
+    if (!shell) return;
     // Every field is written: the SoA stores are process-wide and a recycled slot still holds
     // the entity that died there (a scatter prop's position, say), which would shift the shell.
     const eid = this.world.spawn();
@@ -244,7 +256,7 @@ export class DungeonInstance {
     T.qw[eid] = 1;
     T.sx[eid] = T.sy[eid] = T.sz[eid] = 1;
     addComponent(this.world.ecs, C.AssetRef, eid);
-    C.AssetRef.assetHash[eid] = asset.assetHash;
+    C.AssetRef.assetHash[eid] = shell.assetHash;
     C.AssetRef.variant[eid] = 0;
   }
 
@@ -274,7 +286,13 @@ export class DungeonInstance {
       const lift = table.lift[p.kind];
       const built = buildSpawn(table, asset, p.x, lift ?? 0, p.z, p.yaw);
       if ("error" in built) continue;
-      built.sx = built.sy = built.sz = p.scale;
+      // The table is keyed `dungeon:<kind>`; its `asset` is what the client draws: the same id, or the catalog model the local
+      // art overlay stands in (an entity's AssetRef hash is the hash of that id).
+      if (archetype.asset !== asset) {
+        built.assetId = archetype.asset;
+        built.assetHash = fnv1a32(archetype.asset);
+      }
+      built.sx = built.sy = built.sz = p.scale * (this.opts.artScales?.[p.kind] ?? 1);
       // The bake's own footprint beats the table's default one.
       if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
       spawnScatterEntity(this.world, built);
@@ -397,7 +415,13 @@ export class DungeonInstance {
     const theme = looks?.themes[this.opts.layout.theme];
     if (!looks || !theme) return;
     const { label: _label, ...look } = theme;
-    p.send({ kind: "dungeon", op: "look", look: { theme: this.opts.layout.theme, ...look, emitters: looks.emitters, maxLights: looks.maxLights } });
+    p.send({ kind: "dungeon", op: "look", look: { theme: this.opts.layout.theme, ...look, emitters: this.emitters(looks.emitters), maxLights: looks.maxLights } });
+  }
+
+  /** The assets that give light: looks.json's, and the catalog models the art overlay stands in for them (their entities carry the model's hash). */
+  private emitters(ids: readonly string[]): string[] {
+    const art = this.opts.artAssets ?? {};
+    return [...new Set(ids.flatMap((id) => [id, art[id.replace(/^dungeon:/, "")]].filter((x): x is string => !!x)))];
   }
 
   private onDeath(sim: SimWorld, ev: LifeEvent): void {
