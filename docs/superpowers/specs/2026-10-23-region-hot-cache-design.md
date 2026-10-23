@@ -80,5 +80,13 @@ Batch sizes, the refresh period for guilds and parties (default: on boot and eve
 
 ## Slices (one PR each)
 - PL3a: node stocks in the range snapshot.
-- PL3b: quests, pouch and social in the character record.
-- PL3c: guilds and parties as world records.
+- PL3b: quests and pouch in the character record (`extras`).
+- PL3c: guilds, parties, and friends and blocks as world records.
+
+**Builder's call while building PL3b (2026-10-23):** friends and blocks moved from the character record to PL3c's world
+records. The outcome you decided on is unchanged: they follow the player to every region. They don't fit the character
+record because:
+- blocks are kept per account, not per character;
+- friend lists are read across players (who has me on their list, to tell them I'm online).
+
+Records keyed by owner, like guilds and parties, are their natural home.

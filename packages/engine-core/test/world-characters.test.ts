@@ -21,6 +21,10 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import Database from "better-sqlite3";
 import * as argon2 from "argon2";
 import express from "express";
 import {
@@ -53,10 +57,14 @@ import { WebrpcWorldTransport } from "../src/world/webrpc-transport.js";
 import {
   WorldCharacterSync,
   parseWorldCharacterState,
+  type CharacterExtrasView,
   type CharacterWorldClient,
 } from "../src/world/character-sync.js";
 import { MigrationCoordinator, type MigrationEvent } from "../src/world/migration.js";
 import { HeadlessClient } from "./net/headless-client.js";
+import { materialCountsOf, SqliteGatheringStore } from "../src/gathering/index.js";
+import { questRecordsOf, SqliteQuestStore } from "../src/quests/quest-store.js";
+import type { QuestRecord } from "../src/quests/quest-log.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./net/auth-harness.js";
 
 const RANGE_A = { x0: 0, z0: 0, x1: 100, z1: 100 };
@@ -702,4 +710,77 @@ test("migration commit: source releases the character lock, destination reacquir
   assert.equal(b.sync.lockEpoch(id), lock?.epoch);
   assert.equal(a.sync.lockEpoch(id), null, "the source holds nothing anymore");
   assert.equal(b.store.loadState(id)?.x, 171, "destination cache seeded from the world record");
+});
+
+// ---------------------------------------------------------------------------
+// PL3b: the character's quest log and pouch ride its world record
+// ---------------------------------------------------------------------------
+
+test("a character's quest log and pouch follow it to another region; a store a region lacks keeps the world's copy", async (t) => {
+  const defer = cleanups(t);
+  const { store: worldStore, transport } = await makeWorld();
+  const clientA = makeClient(transport, "region-a", RANGE_A);
+  const clientB = makeClient(transport, "region-b", RANGE_B);
+  await clientA.start();
+  await clientB.start();
+  defer(() => clientB.stop());
+  defer(() => clientA.stop());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pl3b-"));
+  const quest = (id: string): QuestRecord => ({ def: { id } as QuestRecord["def"], state: "active", step: 1, progress: 2, acceptedAt: 1000 });
+
+  // A region's extras view, as server.ts builds it (quests optional, as when the quests module is off).
+  const region = (name: string, withQuests: boolean) => {
+    const quests = withQuests ? new SqliteQuestStore(path.join(dir, `${name}-quests.db`)) : null;
+    const gathering = new SqliteGatheringStore(new Database(":memory:"));
+    const forgotten: number[] = [];
+    const extras: CharacterExtrasView = {
+      extrasOf: (id) => ({ ...(quests ? { quests: quests.load(id) } : {}), pouch: gathering.loadPouch(id) }),
+      seed: (id, x) => {
+        if (quests && x.quests !== undefined) quests.replace(id, questRecordsOf(x.quests));
+        if (x.pouch !== undefined) {
+          gathering.replacePouch(id, materialCountsOf(x.pouch));
+          forgotten.push(id);
+        }
+      },
+    };
+    const store = new MemoryCharacterStore();
+    defer(() => quests?.close());
+    return { quests, gathering, forgotten, store, extras };
+  };
+  const a = region("a", true);
+  const b = region("b", true);
+  const c = region("c", false);
+  const syncA = new WorldCharacterSync({ client: clientA, store: a.store, extras: a.extras });
+  const syncB = new WorldCharacterSync({ client: clientB, store: b.store, extras: b.extras });
+
+  a.store.saveState(7, STATE_A);
+  a.quests!.save(7, quest("wolves"));
+  a.gathering.savePouch(7, "iron-ore", 3);
+  assert.equal((await syncA.login(7)).ok, true);
+  assert.equal(await syncA.logout(7), true);
+  const extras = parseWorldCharacterState((await worldStore.getCharacterState(7))?.state)?.extras;
+  assert.deepEqual(extras, { quests: [quest("wolves")], pouch: { "iron-ore": 3 } });
+
+  // Region B has never seen the character: login seeds both stores from the world, and the pouch cache is dropped.
+  b.quests!.save(7, quest("stale"));
+  assert.deepEqual(await syncB.login(7), { ok: true, seeded: true });
+  assert.deepEqual(b.quests!.load(7), [quest("wolves")], "the world's log replaced the stale local one");
+  assert.deepEqual(b.gathering.loadPouch(7), { "iron-ore": 3 });
+  assert.deepEqual(b.forgotten, [7]);
+  b.gathering.savePouch(7, "iron-ore", 5);
+  assert.equal(await syncB.logout(7), true);
+
+  // Region C runs no quests: its saves carry the pouch, and the world keeps the log it already had.
+  const clientC = makeClient(transport, "region-c", { x0: 200, z0: 0, x1: 300, z1: 100 });
+  await clientC.start();
+  defer(() => clientC.stop());
+  const syncC = new WorldCharacterSync({ client: clientC, store: c.store, extras: c.extras });
+  assert.equal((await syncC.login(7)).ok, true);
+  c.gathering.savePouch(7, "iron-ore", 6);
+  assert.equal(await syncC.save(7), true);
+  assert.deepEqual(parseWorldCharacterState((await worldStore.getCharacterState(7))?.state)?.extras, {
+    quests: [quest("wolves")],
+    pouch: { "iron-ore": 6 },
+  });
+  assert.equal(await syncC.logout(7), true);
 });

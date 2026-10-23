@@ -45,6 +45,12 @@ export function nodeStocksOf(v: unknown): NodeStock[] {
   );
 }
 
+/** The pouch in a world character record's `extras.pouch`: material -> whole count >= 0; other entries dropped. */
+export function materialCountsOf(v: unknown): Record<string, number> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter(([, n]) => Number.isInteger(n) && (n as number) >= 0)) as Record<string, number>;
+}
+
 export class SqliteGatheringStore implements GatheringStore {
   private readonly db: Database.Database;
   private readonly getNode: Database.Statement;
@@ -101,6 +107,14 @@ export class SqliteGatheringStore implements GatheringStore {
 
   savePouch(charId: number, material: string, count: number): void {
     this.putPouch.run(charId, material, count);
+  }
+
+  /** Replace a character's whole pouch with the world's copy (PL3b), in one transaction. */
+  replacePouch(charId: number, pouch: Record<string, number>): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM pouches WHERE character_id = ?").run(charId);
+      for (const [material, count] of Object.entries(pouch)) this.putPouch.run(charId, material, count);
+    })();
   }
 
   /** Close the handle (only when this store opened it). */

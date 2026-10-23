@@ -191,7 +191,8 @@ import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
-import { GatheringSystem, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
+import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
+import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
@@ -1194,6 +1195,7 @@ async function main(): Promise<void> {
   const socialStore = moduleCtx.stores!.socialStore as import("./index.js").SqliteSocialStore | undefined;
   const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
   const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
+  const questStore = moduleCtx.stores!.questStore as import("./quests/quest-store.js").SqliteQuestStore | undefined;
   spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
@@ -1237,6 +1239,17 @@ async function main(): Promise<void> {
           client: worldClient,
           store: effectiveCharacterStore,
           economy: economyView ?? undefined,
+          // PL3b: the character's quest log and pouch ride its world record, so they follow it to any region.
+          extras: {
+            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringStore.loadPouch(id) }),
+            seed: (id, extras) => {
+              if (questStore && extras.quests !== undefined) questStore.replace(id, questRecordsOf(extras.quests));
+              if (extras.pouch !== undefined) {
+                gatheringStore.replacePouch(id, materialCountsOf(extras.pouch));
+                gathering.forgetPouch(id);
+              }
+            },
+          },
           log: (line) => console.log(`[server] ${line}`),
         })
       : null;
