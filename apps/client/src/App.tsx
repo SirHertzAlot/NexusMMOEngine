@@ -353,6 +353,7 @@ export function App(): React.ReactElement {
         if (text) setNotice({ text, at: performance.now() });
       },
       onLife: (l) => combat.life(l),
+      onTelegraph: (tg) => combat.telegraphs.push(tg),
       onTreatment: (t) => {
         const c = clientRef.current;
         const name = c?.body?.parts.find((p) => p.id === t.part)?.name;

@@ -62,6 +62,7 @@ import {
   type SpellMessage,
   type HitMessage,
   type LifeMessage,
+  type TelegraphMessage,
   type IntentFields,
   type NamesMessage,
   type RegisterMessage,
@@ -138,6 +139,8 @@ export interface MirrorEvents {
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
   onLife?(l: LifeMessage): void;
+  /** A ground warning was cast, landed or was cancelled (roadmap M5, protocol 0x1e). */
+  onTelegraph?(t: TelegraphMessage): void;
   /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
   onBody?(b: BodyMessage): void;
   /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
@@ -839,6 +842,9 @@ export class MirrorClient {
         break;
       case MessageType.Life:
         this.events.onLife?.(decodeControl<LifeMessage>(payload));
+        break;
+      case MessageType.Telegraph:
+        this.events.onTelegraph?.(decodeControl<TelegraphMessage>(payload));
         break;
       case MessageType.Body:
         this.body = decodeControl<BodyMessage>(payload);

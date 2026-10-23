@@ -41,6 +41,7 @@ import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
+import { Telegraphs } from "./telegraphs.js";
 import { DungeonAmbience } from "./dungeon-look.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
@@ -313,6 +314,7 @@ interface Runtime {
   resources: ResourceNodes;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
+  telegraphs: Telegraphs;
   streaming: StreamingCoordinator;
   weather: FieldService;
   clouds: CloudVolume;
@@ -425,6 +427,7 @@ function MirrorWorld({
     const resources = new ResourceNodes();
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
+    const telegraphs = new Telegraphs();
     // Weather: the field service (worker-advanced), cloud volumes, and rain curtain.
     const weatherMap = map ?? { cell: 8, width: 1, depth: 1, originX: 0, originZ: 0, heights: new Float32Array([0]), biome: new Uint8Array([0]), biomes: ["plains"], river: new Uint8Array([0]) };
     // The server sends a `climate` block in the welcome's WorldInfo; fall back to defaults.
@@ -434,7 +437,7 @@ function MirrorWorld({
     const rain = new RainCurtain();
     const weatherFeel = new WeatherFeel();
     weatherFeel.setAudio(audio ?? null);
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, clouds.group, rain.mesh);
+    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh);
     ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
     // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
     // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
@@ -509,7 +512,7 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel, ambience };
+    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -531,7 +534,7 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
-      scene.remove(drops.group, npcs.group, entrances.group);
+      scene.remove(drops.group, npcs.group, entrances.group, telegraphs.group);
       if (floor) {
         scene.remove(floor);
         floor.traverse((o) => {
@@ -544,6 +547,7 @@ function MirrorWorld({
       drops.dispose();
       npcs.dispose();
       entrances.dispose();
+      telegraphs.dispose();
       streaming?.streamManager.dispose();
       terrain.dispose();
       workers?.dispose();
@@ -616,7 +620,11 @@ function MirrorWorld({
     if (combat) {
       combat.prune(hasEntity, now / 1000);
       r.layer.setFlashes(combat.flashUntil);
+      // Attack telegraphs (M5): new warnings in, fills and fades advanced.
+      for (const tg of combat.telegraphs) r.telegraphs.apply(tg, client.tickHz, (x, z) => r.terrain.heightAt(x, z), now / 1000);
+      combat.telegraphs.length = 0;
     }
+    r.telegraphs.update(now / 1000);
     // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
     r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
     r.layer.setDepleted(r.resources.depleted);
