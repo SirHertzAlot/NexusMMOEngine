@@ -22,6 +22,9 @@ COLORS = {
     "T": (88, 88, 96),      # square tower
     "O": (88, 88, 96),      # round tower
     "K": (150, 60, 60),     # core / keep
+    "*": (40, 32, 24),      # lilia stake pits
+    "W": (70, 140, 200),    # internal well
+    "R": (222, 184, 92),    # granary
 }
 CAPTION_H = 22
 

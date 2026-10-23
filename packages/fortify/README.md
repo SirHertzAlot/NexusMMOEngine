@@ -52,6 +52,27 @@ table allows it, a moat makes every sap tunnel flood.
   residual instead of papering over it.
 - Era gating works: at era 1 the only counter that exists is the bend.
 
+## The Roman variation (third primer: "How a Field Becomes a Roman Fort")
+
+The Short added three things, all folded in:
+
+- **Lilia** — a forward obstacle belt: hidden stake pits dug into the
+  cheapest path itself. A counter placed on the *terrain*, not the
+  structure; it halves the charge lane's exposure whatever its shape.
+  Era 1, cost 2 — Caesar predates the barbican by centuries.
+- **Siege as a tactic** — it probes for `no-reserve`: no internal well,
+  no granary. Its counters are logistics (stored water, stored
+  calories), and the well has a physical gate: the water table must be
+  within digging depth. In the pond demo the loop now builds the
+  granary *first* — an unbesieged-looking town with no stores is, to
+  the sim, the most vulnerable thing on the map.
+- **Doctrines** (`DOCTRINES.roman`, `applyDoctrine`) — the Roman fort
+  is the loop's output compiled into a culture's standard kit and
+  stamped at generation. The loop still runs afterwards for whatever
+  local terrain makes unusual. The Short's other axis — materials
+  hardening over time (earth → turf → timber → stone) — is the F3 era
+  grammar's job and is noted there, not modelled yet.
+
 ## Known prototype limits
 
 - One settlement geometry, south gate; the bend is built for that
@@ -59,8 +80,8 @@ table allows it, a moat makes every sap tunnel flood.
 - Ladders exposure is the *worst* face's dead fraction, so fixing one
   face can leave total exposure flat until the next face is fixed (the
   build log shows this honestly).
-- Siege endurance and cannon/gun-loops are not yet tactics in the
-  matrix; the shape takes them without code changes.
+- Cannon/gun-loops are not yet tactics in the matrix; the shape takes
+  them without code changes.
 - Next slices (planned): F2 mining/moat against real hydrology output,
   F3 era stages as a full grammar, F4 the reactive living-sim pass
   (fortify weighted by raids a town has actually faced), F5 the same

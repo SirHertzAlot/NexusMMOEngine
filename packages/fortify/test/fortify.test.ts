@@ -9,8 +9,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_MATRIX,
+  DOCTRINES,
   analyze,
   applyCounter,
+  applyDoctrine,
   canApply,
   fortify,
   generatePondVillage,
@@ -18,11 +20,12 @@ import {
   renderAscii,
   rng,
   underminable,
+  wellFeasible,
 } from "../src/index.js";
 
 describe("matrix", () => {
   it("is internally consistent: counters clear real weaknesses, tactics probe real weaknesses", () => {
-    const kinds = new Set(["straight-charge", "dead-ground", "undermine"]);
+    const kinds = new Set(["straight-charge", "dead-ground", "undermine", "no-reserve"]);
     for (const c of DEFAULT_MATRIX.counters) {
       assert.ok(kinds.has(c.clears), `${c.id} clears unknown kind ${c.clears}`);
       assert.ok(c.cost > 0, `${c.id} must cost something`);
@@ -122,8 +125,10 @@ describe("fortify loop", () => {
     assert.ok(r.spent <= 40);
     assert.ok(r.analysis.exposures.charge <= 0.25);
     assert.equal(r.analysis.exposures.ladders, 0);
-    // The first build answers the worst weakness (the charge lane).
-    assert.equal(r.log[0].counter, "bend-approach");
+    assert.equal(r.analysis.exposures.siege, 0, "well and granary end up inside the walls");
+    const built = r.log.map((l) => l.counter);
+    assert.ok(built.includes("bend-approach"), "the causeway gets bent");
+    assert.ok(built.includes("granary") && built.includes("internal-well"), "the siege reserve gets built");
   });
 
   it("rounds the dry village's towers; the gate stays its honest weak point", () => {
@@ -142,10 +147,55 @@ describe("fortify loop", () => {
     assert.equal(r.log.length, 0);
   });
 
-  it("era 1 has only the bend: no towers rise before their time", () => {
+  it("era 1 has no towers and no wells: only the early counters exist", () => {
     const r = fortify(generatePondVillage("pond"), { budget: 60, seed: 7, era: 1 });
-    assert.ok(r.log.every((l) => l.counter === "bend-approach"));
+    assert.ok(
+      r.log.every((l) => ["bend-approach", "lilia", "granary"].includes(l.counter)),
+      `era-1 log: ${JSON.stringify(r.log.map((l) => l.counter))}`,
+    );
     assert.equal(r.settlement.towers.length, 2, "still just the two original towers");
+    assert.equal(r.settlement.stores.well, false, "internal wells are era 2");
     assert.equal(r.stopReason, "no-applicable-counter");
+  });
+});
+
+describe("the Roman variation (from the Short)", () => {
+  it("every fresh village is siege-bait: nothing stored inside the walls", () => {
+    for (const profile of ["pond", "dry", "riverside"] as const) {
+      const a = analyze(generatePondVillage(profile));
+      assert.equal(a.exposures.siege, 1, profile);
+      assert.ok(a.weaknesses.some((w) => w.kind === "no-reserve"), profile);
+    }
+  });
+
+  it("lilia on the path break a charge the walls never touch", () => {
+    const s = generatePondVillage("pond");
+    const before = analyze(s).exposures.charge;
+    const w = analyze(s).weaknesses.find((x) => x.kind === "straight-charge")!;
+    assert.ok(canApply(s, "lilia", w));
+    assert.ok(applyCounter(s, "lilia", w, rng(3)));
+    assert.ok(s.obstacles.size >= 2, "stake pits dug into the approach");
+    const after = analyze(s).exposures.charge;
+    assert.ok(after <= before * 0.55, `${before} -> ${after}`);
+  });
+
+  it("a well needs reachable water: a deep enough table forbids it", () => {
+    const s = generatePondVillage("dry");
+    assert.equal(wellFeasible(s), true, "4.5 m table is diggable");
+    for (const t of s.grid.tiles) if (t.terrain === "land") t.waterDepth = 9;
+    assert.equal(wellFeasible(s), false);
+    const w = analyze(s).weaknesses.find((x) => x.kind === "no-reserve")!;
+    assert.equal(canApply(s, "internal-well", w), false);
+    assert.equal(canApply(s, "granary", w), true, "the granary has no such constraint");
+  });
+
+  it("a doctrine stamps the culture's compiled answers at generation", () => {
+    const s = generatePondVillage("pond");
+    const chargeBefore = analyze(s).exposures.charge;
+    const applied = applyDoctrine(s, DOCTRINES.roman);
+    assert.deepEqual(applied, ["lilia", "granary", "internal-well"]);
+    const a = analyze(s);
+    assert.equal(a.exposures.siege, 0, "the Roman fort does not starve");
+    assert.ok(a.exposures.charge < chargeBefore, "lilia blunt the lane before any local threat is known");
   });
 });

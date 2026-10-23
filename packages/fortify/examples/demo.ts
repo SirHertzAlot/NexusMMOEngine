@@ -15,7 +15,8 @@ for (const profile of ["pond", "dry", "riverside"] as TerrainProfile[]) {
   console.log(renderAscii(s));
   console.log(
     `before: total=${before.total.toFixed(2)} charge=${before.exposures.charge.toFixed(2)} ` +
-      `ladders=${before.exposures.ladders.toFixed(2)} mining=${before.exposures.mining.toFixed(2)}`,
+      `ladders=${before.exposures.ladders.toFixed(2)} mining=${before.exposures.mining.toFixed(2)} ` +
+      `siege=${before.exposures.siege.toFixed(2)}`,
   );
   for (const w of before.weaknesses) console.log(`  weakness [${w.kind}] ${w.detail}`);
 
@@ -30,7 +31,8 @@ for (const profile of ["pond", "dry", "riverside"] as TerrainProfile[]) {
   console.log(renderAscii(r.settlement));
   console.log(
     `after: total=${r.analysis.total.toFixed(2)} charge=${r.analysis.exposures.charge.toFixed(2)} ` +
-      `ladders=${r.analysis.exposures.ladders.toFixed(2)} mining=${r.analysis.exposures.mining.toFixed(2)}`,
+      `ladders=${r.analysis.exposures.ladders.toFixed(2)} mining=${r.analysis.exposures.mining.toFixed(2)} ` +
+      `siege=${r.analysis.exposures.siege.toFixed(2)}`,
   );
   for (const w of r.analysis.weaknesses) console.log(`  residual [${w.kind}] ${w.detail}`);
 }

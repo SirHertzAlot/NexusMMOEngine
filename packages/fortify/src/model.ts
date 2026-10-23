@@ -75,6 +75,13 @@ export interface Settlement {
   moat: Set<number>;
   /** Island tiles inserted into the approach to force a bend. */
   islands: Set<number>;
+  /** Lilia tiles: hidden stake pits dug into the approach field (the
+   *  Roman variation — defence placed on the path, not the structure). */
+  obstacles: Set<number>;
+  /** Siege endurance, stored inside the walls: water and food. The
+   *  water castle's internal well and the Roman raised-floor granary
+   *  are the same counter-class — logistics as fortification. */
+  stores: { well: boolean; granary: boolean };
 }
 
 /** Deep-enough copy for the fortify loop to mutate freely. */
@@ -93,6 +100,8 @@ export function cloneSettlement(s: Settlement): Settlement {
     barbican: s.barbican,
     moat: new Set(s.moat),
     islands: new Set(s.islands),
+    obstacles: new Set(s.obstacles),
+    stores: { ...s.stores },
   };
 }
 

@@ -22,7 +22,7 @@ import {
   type Matrix,
   type WeaknessKind,
 } from "./matrix.js";
-import { analyze, faceSamples, moatFeasible, wallFaces, type Analysis, type Weakness } from "./analyze.js";
+import { analyze, faceSamples, moatFeasible, wallFaces, wellFeasible, type Analysis, type Weakness } from "./analyze.js";
 
 export interface FortifyOptions {
   /** Defence-budget points the settlement may spend. */
@@ -72,8 +72,14 @@ export function canApply(s: Settlement, counter: CounterId, w: Weakness): boolea
   switch (counter) {
     case "bend-approach":
       return w.site.kind === "approach" && !bent(s);
+    case "lilia":
+      return w.site.kind === "approach" && s.obstacles.size === 0;
     case "barbican":
       return w.site.kind === "approach" && s.barbican === null;
+    case "granary":
+      return w.site.kind === "interior" && !s.stores.granary;
+    case "internal-well":
+      return w.site.kind === "interior" && !s.stores.well && wellFeasible(s);
     case "flanking-tower":
       return w.site.kind === "face" && faceSamples(s, w.site.face).dead.length > 0;
     case "round-tower":
@@ -119,6 +125,29 @@ export function applyCounter(s: Settlement, counter: CounterId, w: Weakness, ran
       const old = idx(g, gx, gy + 4);
       s.grid.tiles[old] = { terrain: "water", diggable: false, waterDepth: 0 };
       s.islands.add(old);
+      return true;
+    }
+    case "lilia": {
+      // Dig the stake pits into the cheapest path itself: up to four
+      // tiles spread over the outer half of the approach, never on the
+      // gate/barbican tile an attacker is aiming at.
+      if (w.site.kind !== "approach" || s.obstacles.size > 0) return false;
+      const path = analyze(s).approach.path;
+      if (!path || path.length < 4) return false;
+      const target = s.barbican ?? s.gate;
+      const usable = path.filter((i) => i !== target && !s.walls.has(i));
+      const picks = [0.25, 0.45, 0.65, 0.85].map((f) => usable[Math.floor(f * (usable.length - 1))]);
+      for (const i of new Set(picks)) s.obstacles.add(i);
+      return s.obstacles.size >= 2;
+    }
+    case "granary": {
+      if (w.site.kind !== "interior" || s.stores.granary) return false;
+      s.stores.granary = true;
+      return true;
+    }
+    case "internal-well": {
+      if (w.site.kind !== "interior" || s.stores.well || !wellFeasible(s)) return false;
+      s.stores.well = true;
       return true;
     }
     case "barbican": {
@@ -192,8 +221,40 @@ const siteKey = (w: Weakness): string => {
       return `${w.kind}:${s.face}`;
     case "structure":
       return `${w.kind}:${s.x},${s.y}`;
+    case "interior":
+      return `${w.kind}:interior`;
   }
 };
+
+/**
+ * Stamp a doctrine onto a settlement at generation: the culture's
+ * compiled answers, applied in order, before the fortify loop ever
+ * runs. Returns the counters that were actually applicable. (The Roman
+ * fort arrives already knowing about lilia and granaries; the loop's
+ * job shrinks to whatever local terrain makes unusual.)
+ */
+export function applyDoctrine(s: Settlement, doctrine: CounterId[], seed = 1): CounterId[] {
+  const rand = rng(seed);
+  const applied: CounterId[] = [];
+  const synthetic = (id: CounterId): Weakness => {
+    switch (id) {
+      case "bend-approach":
+      case "lilia":
+      case "barbican":
+        return { kind: "straight-charge", site: { kind: "approach" }, severity: 1, detail: "doctrine" };
+      case "granary":
+      case "internal-well":
+        return { kind: "no-reserve", site: { kind: "interior" }, severity: 1, detail: "doctrine" };
+      default:
+        throw new Error(`doctrine: ${id} is site-specific and cannot be stamped blindly`);
+    }
+  };
+  for (const id of doctrine) {
+    const w = synthetic(id);
+    if (canApply(s, id, w) && applyCounter(s, id, w, rand)) applied.push(id);
+  }
+  return applied;
+}
 
 /** Run the loop. The input settlement is not mutated. */
 export function fortify(input: Settlement, opts: FortifyOptions): FortifyResult {

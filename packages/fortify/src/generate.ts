@@ -92,5 +92,9 @@ export function generatePondVillage(profile: TerrainProfile): Settlement {
     barbican: null,
     moat: new Set(),
     islands: new Set(),
+    obstacles: new Set(),
+    // The village as generated keeps its well and grain outside the
+    // walls — a siege ends it. The loop will fix that.
+    stores: { well: false, granary: false },
   };
 }

@@ -178,11 +178,14 @@ function gateSideSources(s: Settlement): number[] {
   return out;
 }
 
-/** Charge exposure from the approach shape: long final straight = lane. */
-export function chargeExposure(a: ApproachInfo, hasBarbican: boolean): number {
+/** Charge exposure from the approach shape: long final straight = lane.
+ *  A lilia field on the path halves whatever lane remains — a charge
+ *  cannot form up while picking through hidden stake pits. */
+export function chargeExposure(a: ApproachInfo, hasBarbican: boolean, liliaOnPath: boolean): number {
   if (a.path === null) return 0; // No way in at all.
   let e = clamp01((a.finalStraight - 2) / 6);
   if (hasBarbican) e *= 0.35; // The charge must stop and fight twice.
+  if (liliaOnPath) e *= 0.5; // …or never form up at all.
   return e;
 }
 
@@ -315,6 +318,12 @@ export function moatFeasible(s: Settlement, x: number, y: number): boolean {
   return false;
 }
 
+/** Could a well inside the walls reach water? Somewhere in the
+ *  settlement the water table must be within digging depth (6 m). */
+export function wellFeasible(s: Settlement): boolean {
+  return s.grid.tiles.some((t) => t.terrain === "land" && t.waterDepth <= 6);
+}
+
 /** Run every probe in the matrix and report exposures + weaknesses. */
 export function analyze(s: Settlement, matrix: Matrix = DEFAULT_MATRIX): Analysis {
   const weight = (id: TacticId): number => matrix.tactics.find((t) => t.id === id)?.weight ?? 0;
@@ -324,7 +333,9 @@ export function analyze(s: Settlement, matrix: Matrix = DEFAULT_MATRIX): Analysi
   const weaknesses: Weakness[] = [];
 
   // charge → straight-charge
-  const charge = chargeExposure(approach, s.barbican !== null);
+  const liliaOnPath =
+    approach.path !== null && approach.path.filter((i) => s.obstacles.has(i)).length >= 2;
+  const charge = chargeExposure(approach, s.barbican !== null, liliaOnPath);
   if (charge > 0) {
     weaknesses.push({
       kind: "straight-charge",
@@ -372,9 +383,23 @@ export function analyze(s: Settlement, matrix: Matrix = DEFAULT_MATRIX): Analysi
   }
   const mining = s.towers.length + 1 === 0 ? 0 : undermined / (s.towers.length + 1);
 
+  // siege → no-reserve: what's missing from inside the walls?
+  const missing: string[] = [];
+  if (!s.stores.well) missing.push("internal well");
+  if (!s.stores.granary) missing.push("granary");
+  const siege = missing.length / 2;
+  if (siege > 0) {
+    weaknesses.push({
+      kind: "no-reserve",
+      site: { kind: "interior" },
+      severity: weight("siege") * siege,
+      detail: `no ${missing.join(" or ")} inside the walls — a siege only has to wait`,
+    });
+  }
+
   weaknesses.sort((a, b) => b.severity - a.severity);
 
-  const exposures: Record<TacticId, number> = { charge, ladders: worstFace, mining };
+  const exposures: Record<TacticId, number> = { charge, ladders: worstFace, mining, siege };
   const wSum = matrix.tactics.reduce((acc, t) => acc + t.weight, 0);
   const total = matrix.tactics.reduce((acc, t) => acc + t.weight * exposures[t.id], 0) / (wSum || 1);
   return { exposures, total, weaknesses, approach };
