@@ -150,3 +150,16 @@ Every entity moves every tick, so every delta carries all of them (the worst cas
 | 10000 | 732.0 KiB | 21958.8 KiB/s | 1.7661 | 12.8834 | 1250.7 KiB | 16.1394 |
 
 Encode p99 budget < 5 ms: **BREACH** (worst 12.8834 ms).
+
+## B7: Interest bandwidth (2026-10-23)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `3922c955`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 |
+|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.3 KiB | 55.2 KiB | 9.84 | 19.23 | 3547.0 KiB | 3534.5 KiB |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 64.06 | 91.5 | 17583.7 KiB | 17534.5 KiB |
+| global | towns | 1000 | 55.3 KiB | 55.2 KiB | 7.86 | 22.14 | 2739.7 KiB | 2724.5 KiB |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 47.81 | 73.27 | 13578.8 KiB | 13516.2 KiB |
