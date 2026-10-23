@@ -164,6 +164,7 @@ export function BagPanel({
   onDrop,
   onEquip,
   onUnequip,
+  gold = null,
 }: {
   bag: Array<ItemView | null>;
   hands: Hands;
@@ -171,6 +172,8 @@ export function BagPanel({
   onDrop: (item: number) => void;
   onEquip: (item: number) => void;
   onUnequip: (slot: "main" | "off" | ArmourSlotName) => void;
+  /** The wallet balance (0x21); null hides the line (the server runs no economy). */
+  gold?: number | null;
 }): React.ReactElement {
   const [focus, setFocus] = useState<number | null>(null);
   const [hover, setHover] = useState<{ id: number; top: number } | null>(null);
@@ -348,6 +351,12 @@ export function BagPanel({
           </button>
         ))}
       </div>
+      {gold !== null && (
+        <div className="mt-2 flex items-baseline justify-between text-xs" aria-label={t("bag.gold")}>
+          <span className="text-muted-foreground">{t("bag.gold")}</span>
+          <span className="font-semibold tabular-nums text-amber-400">{gold.toLocaleString()}</span>
+        </div>
+      )}
       {hovered && hover && <ItemTooltip item={hovered} hands={hands} worn={worn} top={hover.top} />}
       {shown ? (
         <div className="mt-2 border-t pt-2">

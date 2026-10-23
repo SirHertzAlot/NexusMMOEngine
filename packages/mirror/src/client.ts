@@ -79,6 +79,7 @@ import {
   type PouchMessage,
   type ResourceNodeView,
   type ResourcesMessage,
+  type WalletMessage,
   decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -130,6 +131,8 @@ export interface MirrorEvents {
   onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
+  /** The player's gold balance (on joining and after every change; protocol 0x21, EC1). */
+  onWallet?(w: WalletMessage): void;
   /** Resource nodes were described or changed stock (all on joining; protocol 0x24). */
   onResources?(r: ResourcesMessage): void;
   /** The player's materials pouch (on joining and after every gather; protocol 0x24). */
@@ -214,6 +217,8 @@ export class MirrorClient {
   readonly resources = new Map<bigint, ResourceNodeView>();
   /** The player's materials pouch, from the last pouch message; null until one arrives. */
   pouch: PouchMessage | null = null;
+  /** The player's gold, from the last wallet message; null until one arrives (the server runs no economy). */
+  gold: number | null = null;
   /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
   readonly traffic = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
@@ -832,6 +837,15 @@ export class MirrorClient {
       case MessageType.Inventory: {
         this.inventory = decodeControl<InventoryMessage>(payload);
         this.events.onInventory?.(this.inventory);
+        break;
+      }
+      case MessageType.Trade: {
+        // 0x21 also carries trade, vendor and auction results; the client shows only the wallet so far.
+        const m = decodeControl<WalletMessage | { kind: string }>(payload);
+        if (m.kind === "wallet") {
+          this.gold = (m as WalletMessage).balance;
+          this.events.onWallet?.(m as WalletMessage);
+        }
         break;
       }
       case MessageType.Hit:

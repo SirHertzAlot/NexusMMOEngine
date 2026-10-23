@@ -4085,6 +4085,9 @@ export class Gateway {
     const gathering = this.gathering;
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
+    // The player's gold (catalog 0x21): on join too, not only when it changes.
+    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
     this.deliverSnapshot(
       s,
       encodeEnvelope(

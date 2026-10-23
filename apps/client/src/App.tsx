@@ -217,6 +217,8 @@ export function App(): React.ReactElement {
   const [nearResource, setNearResource] = useState<bigint | null>(null);
   const [, setResourcesSeen] = useState(0);
   const [pouch, setPouch] = useState<PouchMaterial[]>([]);
+  // The wallet (0x21, EC1): null until the server sends a balance.
+  const [gold, setGold] = useState<number | null>(null);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
   const [quests, setQuests] = useState<QuestView[] | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -320,6 +322,7 @@ export function App(): React.ReactElement {
         setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
       onResources: () => setResourcesSeen((n) => n + 1),
+      onWallet: (w) => setGold(w.balance),
       onPouch: (p) => {
         setPouch(p.materials);
         if (p.gathered) {
@@ -789,6 +792,7 @@ export function App(): React.ReactElement {
               bag={bag}
               hands={hands}
               worn={worn}
+              gold={gold}
               onDrop={(id) => client?.dropItem(id)}
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
