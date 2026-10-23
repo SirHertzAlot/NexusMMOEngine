@@ -40,6 +40,9 @@ import type { ItemLedger, LedgerEventRow } from "../persist/item-ledger.js";
  * instead of arriving as one giant request.
  */
 export const LEDGER_BATCH_MAX_EVENTS = 512;
+
+/** Tier 2 cadence: one snapshot upload per range every 300 ticks (10 s at 30 Hz), however often the region saves. */
+export const SNAPSHOT_UPLOAD_EVERY_TICKS = 300;
 export const LEDGER_BATCH_MAX_BYTES = 512 * 1024;
 
 /** The slice of WorldClient the shipper needs (tests substitute a fake). */
@@ -142,13 +145,18 @@ export class ShardStateShipper {
    * re-offer and ignored.
    */
   offerSnapshot(tick: number, digest: string, bytes: Uint8Array): void {
-    if (this.pendingSnapshot && tick <= this.pendingSnapshot.tick) return;
+    const pending = this.pendingSnapshot;
+    if (pending && tick <= pending.tick) return;
+    const every = this.snapshotIntervalTicks;
     this.pendingSnapshot = {
       tick,
       digest,
       bytes,
       contentHash: crypto.createHash("sha256").update(bytes).digest("hex"),
-      dueTick: tick + this.phaseOffsetTicks,
+      // The range's next slot (k * interval + phase). A fresher offer takes over a pending one's
+      // slot and never pushes it back: saves come far oftener than uploads (every second), and a
+      // slot that moved with each offer never came due.
+      dueTick: pending?.dueTick ?? tick + (((this.phaseOffsetTicks - (tick % every)) % every) + every) % every,
     };
   }
 

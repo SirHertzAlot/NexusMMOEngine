@@ -159,7 +159,7 @@ import {
 import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
-import { ShardStateShipper } from "./world/state-shipper.js";
+import { ShardStateShipper, SNAPSHOT_UPLOAD_EVERY_TICKS } from "./world/state-shipper.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
 import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
@@ -1365,7 +1365,7 @@ async function main(): Promise<void> {
     ? new ShardStateShipper({
         client: worldClient,
         ledger: itemLedger,
-        snapshotIntervalTicks: SAVE_EVERY_TICKS,
+        snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
       })
     : null;

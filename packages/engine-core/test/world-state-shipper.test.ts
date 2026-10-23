@@ -439,6 +439,18 @@ test("a fresher checkpoint supersedes a pending older one", async () => {
   assert.deepEqual(new Uint8Array(Buffer.from(payload.data, "base64")), new Uint8Array([2]));
 });
 
+test("the server's save loop (offer every 30 ticks, pump right after) still uploads once per interval", async () => {
+  const client = new FakeStatePlaneClient();
+  const shipper = makeShipper(client, makeLedger());
+  for (let t = 30; t <= 900; t += 30) {
+    shipper.offerSnapshot(t, `d${t}`, new Uint8Array([t & 255, t >> 8]));
+    await shipper.pump(t);
+  }
+  const n = client.snapshotCalls.length;
+  assert.ok(n >= 2 && n <= 4, `three intervals give about three uploads (got ${n})`);
+  for (const c of client.snapshotCalls) assert.equal((c.tick - 30) % 30, 0, "each upload carries a saved checkpoint");
+});
+
 test("unchanged snapshot content skips the upload entirely", async () => {
   const ledger = makeLedger();
   const client = new FakeStatePlaneClient();
