@@ -185,15 +185,8 @@ xychart-beta
   bar [73.8, 1, 366.3, 1]
 ```
 
-```mermaid
-xychart-beta
-  title "Core tick ms (mean), 1k and 5k entities"
-  x-axis ["1k before", "1k after", "5k before", "5k after"]
-  y-axis "ms" 0 --> 20
-  bar [0, 0, 0, 0]
-```
-
-(The tick chart is filled from B7's first run in IM0; it is empty here on purpose rather than invented.)
+A second chart, core tick ms (mean) at 1k and 5k before and after, comes from B7's first run in IM0; it is left out
+here rather than invented.
 
 Towns are the honest worst case: 300 residents inside one 3x3 block is about 17 KiB per tick for a client standing in
 it, a quarter of today's 1k figure, and it does not grow with the rest of the world.
