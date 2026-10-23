@@ -39,6 +39,8 @@ each piece, because they cross region borders differently:
 My recommendation is this split. The alternative, everything in the range snapshot, is simpler but keeps
 cross-region play broken for quests, pouches, guilds and parties.
 
+**Decided (2026-10-23):** the split, as proposed ("sounds perfect").
+
 ## Goals
 1. A region rebuilt from the world (empty data dir, or a takeover) gets every row of the six tables back.
 2. Characters keep their quests, pouch and friends when they cross regions or log in on another region.

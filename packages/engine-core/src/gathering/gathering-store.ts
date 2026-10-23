@@ -26,6 +26,25 @@ CREATE TABLE IF NOT EXISTS pouches (
 );
 `;
 
+/** One node's saved stock (regrowAt: unix ms, null when none is due). */
+export interface NodeStock {
+  key: string;
+  stock: number;
+  regrowAt: number | null;
+}
+
+/** The node stocks in a world snapshot's `places.resource_nodes`; rows that aren't one are dropped. */
+export function nodeStocksOf(v: unknown): NodeStock[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter(
+    (r): r is NodeStock =>
+      typeof r === "object" && r !== null &&
+      typeof r.key === "string" &&
+      Number.isInteger(r.stock) && r.stock >= 0 &&
+      (r.regrowAt === null || Number.isFinite(r.regrowAt)),
+  );
+}
+
 export class SqliteGatheringStore implements GatheringStore {
   private readonly db: Database.Database;
   private readonly getNode: Database.Statement;
@@ -60,6 +79,19 @@ export class SqliteGatheringStore implements GatheringStore {
 
   saveNode(key: string, stock: number, regrowAt: number | null): void {
     this.putNode.run(key, stock, regrowAt);
+  }
+
+  /** Every node's stock, for the range snapshot (PL3a: node stocks are the range's, held by the world). */
+  allNodes(): NodeStock[] {
+    return this.db.prepare("SELECT node_key AS key, stock, regrow_at AS regrowAt FROM resource_nodes ORDER BY node_key").all() as NodeStock[];
+  }
+
+  /** Replace every node's stock with the world's copy (recall), in one transaction. */
+  replaceNodes(rows: readonly NodeStock[]): void {
+    this.db.transaction(() => {
+      this.db.exec("DELETE FROM resource_nodes");
+      for (const r of rows) this.putNode.run(r.key, r.stock, r.regrowAt);
+    })();
   }
 
   loadPouch(charId: number): Record<string, number> {

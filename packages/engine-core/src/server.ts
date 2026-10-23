@@ -191,7 +191,7 @@ import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
-import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
+import { GatheringSystem, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
@@ -415,6 +415,15 @@ async function main(): Promise<void> {
         store,
         ledger: itemLedger,
         log: (line) => console.log(`[server] ${line}`),
+        // Node stocks (PL3a) go into gathering.db before the gathering system opens it, below.
+        seedPlaces: (places) => {
+          const nodes = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
+          try {
+            nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
+          } finally {
+            nodes.close();
+          }
+        },
       });
     } else {
       console.warn(`[server] world registration failed; running with local state only`);
@@ -802,6 +811,7 @@ async function main(): Promise<void> {
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
   // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
+  const gatheringStore = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
   const gathering = new GatheringSystem({
     reachM: game.rules.gathering.reachM,
     cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
@@ -809,7 +819,7 @@ async function main(): Promise<void> {
     trainPerTier: game.rules.gathering.trainDifficultyPerTier,
     regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
     regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
-    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    store: gatheringStore,
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);
       if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
@@ -1367,6 +1377,8 @@ async function main(): Promise<void> {
         ledger: itemLedger,
         snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
+        // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
+        places: () => ({ resource_nodes: gatheringStore.allNodes() }),
       })
     : null;
 

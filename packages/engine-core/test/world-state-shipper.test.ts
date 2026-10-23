@@ -490,3 +490,30 @@ test("a failed snapshot upload stays pending and retries until superseded", asyn
   assert.equal(client.snapshotCalls.length, 2, "retried on the next cycle");
   assert.equal(client.snapshotCalls[1].tick, 300);
 });
+
+test("places (node stocks, PL3a) ride the snapshot, and a change to them alone still uploads", async () => {
+  const client = new FakeStatePlaneClient();
+  let stock = 3;
+  const shipper = new ShardStateShipper({
+    client,
+    ledger: makeLedger(),
+    snapshotIntervalTicks: 300,
+    places: () => ({ resource_nodes: [{ key: "town/oak-1", stock, regrowAt: null }] }),
+  });
+  const offset = shipper.snapshotPhaseOffsetTicks;
+  const bytes = new Uint8Array([7, 7]);
+
+  shipper.offerSnapshot(300, "d1", bytes);
+  await shipper.pump(300 + offset);
+  assert.deepEqual((client.snapshotCalls[0].payload as { places: unknown }).places, { resource_nodes: [{ key: "town/oak-1", stock: 3, regrowAt: null }] });
+
+  shipper.offerSnapshot(600, "d2", bytes);
+  await shipper.pump(600 + offset);
+  assert.equal(client.snapshotCalls.length, 1, "same bytes, same places: skipped");
+
+  stock = 2; // a gather: the ECS bytes are the same, the stock isn't
+  shipper.offerSnapshot(900, "d3", bytes);
+  await shipper.pump(900 + offset);
+  assert.equal(client.snapshotCalls.length, 2);
+  assert.equal(((client.snapshotCalls[1].payload as { places: { resource_nodes: { stock: number }[] } }).places.resource_nodes[0]).stock, 2);
+});
