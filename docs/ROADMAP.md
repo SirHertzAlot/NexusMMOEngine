@@ -385,7 +385,7 @@ split's slices, not the editor's E items.
 | E1 | Edge skeleton + generic packet router (`apps/edge`, `content/edge/routes.json`) | ✅ | (#83) |
 | E2 | Internal channel edge↔core (`packages/channel`): framed TCP, heartbeats, reconnect | ✅ | (#89) |
 | E3 | Core serves the edge channel; durable sessions; tick, delta and snapshot pushes | ✅ | Additive: players still connect to the core (#100) |
-| E3b | Client cutover: the edge serves the client protocol, the core drops its player listener | 📋 | |
+| E3b | Client cutover: the edge serves the client protocol, the core drops its player listener | ✅ | `feat/edge-cutover`, reviving `feat/edge-core-split` (which only removed the listener). With `MMO_EDGE=1` the core's gateway runs on `ChannelTransport` (a third Transport beside uws and ws): the edge's game port (`EDGE_GAME_PORT`, `game-relay.ts`) holds the players' WebSocket and HTTP and relays them over the channel (`wire.*`, `http`), so the core binds no player port. `npm start` runs it so, with the edge on 7777; a core started alone still listens directly (tests, editor play). Checked live: hello, welcome, snapshot, deltas and `/health` through the edge. Sockets close on a core restart (1012) and are not held through it yet |
 | E4 | Degraded mode and resync on the edge | ✅ | The edge holds players through a core outage (#101) |
 | E5 | Measure the split (`npm run bench:e5`, [`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md)) | ✅ | 0 hung requests through crash, restart and freeze; mirror encoding a little over budget (#108) |
 | E5a | Binary mirror frames on the channel | 📋 | |
@@ -441,6 +441,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-23**: E3b client cutover (`feat/edge-cutover`): players reach the core through the edge. The core's gateway serves its port over the channel (`ChannelTransport`) with `MMO_EDGE=1`, and the edge's `EDGE_GAME_PORT` relays WebSocket frames, topic publishes and HTTP (PCG downloads, `/health`). `npm start` runs the region with no player port and the edge on 7777, so the client is unchanged. The SIMD build flags and docs on the old `feat/edge-core-split` branch are left there for their own PRs.
 
 - **2026-10-22**: DF1 dungeon furnishing A (`feat/dungeon-furnishing`): dressing content lines can name an arrangement (row, grid, flank, beside, ring) and the built-in rooms use them; scatter-only dressing is byte-identical, layouts and shells unchanged. Rebake the pool to see it.
 - **2026-10-22**: Build repair: `npm run build` on main failed after the arlo merges. `@mmo-engine/art` had lost `export * from "./media/index.js"` (Phase 5 conflict resolution), the editor's dialogue tab and three module editor panels (hud, flow, story) imported files that moved or never existed at those paths, the database workspace and a test had type errors, and `modules/template-native` had no `binding.gyp` or sources so `build:native` failed. All restored; the root build exits 0. No row change.
