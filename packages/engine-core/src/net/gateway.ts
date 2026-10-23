@@ -1809,6 +1809,7 @@ export class Gateway {
     }
     const eid = this.world.resolveWireId(s.playerEntity);
     this.mastery?.forget(eid);
+    this.forgetDuels(eid);
     this.world.despawn(parseWireEntityId(s.playerEntity).slot);
     s.playerEntity = null;
     this.handoffArrivals.delete(s.clientId);
@@ -2255,6 +2256,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(s.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(slot);
       }
       // The grace period is over: this is the logout. Fleet mode
@@ -2361,10 +2363,22 @@ export class Gateway {
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
+    this.leaveDuel(s);
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
     this.extensionsLeave(s);
+  }
+
+  /** A disconnecting player's duel and challenges end (the opponent is told on 0x20). */
+  private leaveDuel(s: ClientSession): void {
+    if (s.playerEntity !== null) this.forgetDuels(this.world.resolveWireId(s.playerEntity));
+  }
+
+  /** End `eid`'s duel and drop its challenges (disconnect, logout, leaving the region). */
+  private forgetDuels(eid: number): void {
+    if (eid < 0) return;
+    for (const x of this.systems) if (x instanceof DuelSystem) x.forget(eid, this.tick);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -2380,6 +2394,7 @@ export class Gateway {
       const sock = s.socket;
       s.socket = null;
       s.disconnectedAtMs = this.clock();
+      this.leaveDuel(s);
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
@@ -3644,6 +3659,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(other.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(parseWireEntityId(other.playerEntity).slot);
       }
       other.playerEntity = null;

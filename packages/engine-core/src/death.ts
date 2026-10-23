@@ -9,6 +9,10 @@
  * Runs right after CombatSystem (and BodySystem), so a blow's death shows
  * the same tick. With a body, the cause is the body's (a vital part, blood
  * loss), and onRespawn's outcome clears its injuries.
+ *
+ * A duelist felled by their opponent does not die (M5): the duel ends by
+ * first blood and the loser is put right where they stand, with no
+ * penalty, drop or respawn delay.
  */
 
 import { defineQuery, hasComponent } from "bitecs";
@@ -16,6 +20,7 @@ import type { DeathInput, DeathOutcome, RespawnOutcome, RuleHooks } from "@mmo-e
 import { Action, Health, PlayerIntent, Transform, Velocity } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
+import type { DuelSystem } from "./duel.js";
 
 /** A death or a respawn, for the gateway to tell clients. */
 export interface LifeEvent {
@@ -63,6 +68,8 @@ export class DeathSystem implements SimSystem {
     private readonly onDeath?: (sim: SimWorld, ev: LifeEvent) => void,
     /** Body parts (M2): the cause of death, and injuries cleared on respawn. Absent: a torso death. */
     private readonly body?: DeathBody,
+    /** Duels (M5): a duelist felled by their opponent loses the duel instead of dying. */
+    private readonly duels?: Pick<DuelSystem, "wasDuelDeath" | "opponent" | "checkBlood">,
   ) {}
 
   isDead(e: number): boolean {
@@ -93,6 +100,13 @@ export class DeathSystem implements SimSystem {
         continue;
       }
       if (Health.current[e] > 0) continue;
+      const killer = this.lastAttacker?.(e);
+      if (killer !== undefined && this.duels?.wasDuelDeath(e) && this.duels.opponent(e) === killer) {
+        this.duels.checkBlood(e, 0, tick);
+        Health.current[e] = Health.max[e];
+        this.body?.respawned(sim, e, { clearInjuries: true, restoreParts: true });
+        continue;
+      }
       const cause: DeathInput = this.body?.causeOf(e) ?? { cause: "part", part: "torso" };
       const outcome = this.hooks.onDeath(cause);
       const delay = this.delayOf?.(e) ?? outcome.respawnInSeconds;
@@ -105,7 +119,7 @@ export class DeathSystem implements SimSystem {
         tick,
         target: e,
         state: "dead",
-        killer: this.lastAttacker?.(e),
+        killer,
         respawnAt,
         outcome,
         x: Transform.px[e],
