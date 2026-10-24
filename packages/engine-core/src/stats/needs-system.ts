@@ -15,7 +15,7 @@
  * show).
  */
 
-import { defineQuery, hasComponent } from "bitecs";
+import { defineQuery, entityExists, hasComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
 import type { NeedsRules } from "@mmo-engine/rules";
 import { God, Health, Locomotion, Needs, PlayerIntent, Transform } from "../components.js";
@@ -45,6 +45,7 @@ export class NeedsSystem implements SimSystem {
 
   step(sim: SimWorld, dtSeconds: number): void {
     const eids = this.query(sim.ecs);
+    for (const d of this.dead) if (!entityExists(sim.ecs, d)) this.dead.delete(d); // a body despawned while dead
     const { hunger, thirst, exertionFactor } = this.rules;
     for (let i = 0; i < eids.length; i++) {
       const e = eids[i] as number;
