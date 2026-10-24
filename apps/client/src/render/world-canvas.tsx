@@ -155,6 +155,8 @@ export interface WorldCanvasProps {
   onMend?: () => void;
   /** E with nothing in reach: eat or drink the hotkey item, if any. */
   onUseHotkey?: () => void;
+  /** The run's chests (positions when the server sends them): E opens the nearest unopened one in reach. */
+  chests?: ReadonlyArray<{ opened: boolean; x?: number; z?: number }>;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
   /** The resource node in gathering range changed (its wire id; null: none in range). */
@@ -201,6 +203,14 @@ export interface NearDrop {
 const PICKUP_PROMPT_RANGE = 2.3;
 /** How near a resource node's edge must be for the prompt: inside the server's reach (2.5 m). */
 const GATHER_PROMPT_RANGE = 2.3;
+/** How close to a dungeon chest E opens it (the server's chestOpenRadiusM is 3 by default and decides). */
+const CHEST_PROMPT_RANGE = 3;
+
+/** Whether an unopened chest is within reach of the player. */
+function chestInReach(chests: ReadonlyArray<{ opened: boolean; x?: number; z?: number }> | undefined, p: { x: number; z: number } | null): boolean {
+  if (!chests || !p) return false;
+  return chests.some((c) => !c.opened && c.x !== undefined && c.z !== undefined && (c.x - p.x) ** 2 + (c.z - p.z) ** 2 <= CHEST_PROMPT_RANGE ** 2);
+}
 
 installBvh();
 
@@ -346,6 +356,7 @@ function MirrorWorld({
   onTreat,
   onMend,
   onUseHotkey,
+  chests,
   onNearDrop,
   onNearResource,
   onQuests,
@@ -368,8 +379,8 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, chests, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, chests, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -468,6 +479,7 @@ function MirrorWorld({
         else if (resources.nearest !== null) client.gather(resources.nearest);
         else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
         else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
+        else if (chestInReach(latest.current.chests, rt.current?.layer.player ?? null)) client.dungeon({ kind: "dungeon", op: "open" });
         else latest.current.onUseHotkey?.();
       },
     });

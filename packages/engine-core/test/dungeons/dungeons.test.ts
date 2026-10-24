@@ -534,7 +534,7 @@ describe("dungeon instance", () => {
     await until(() => ctl(c).some((m) => m.op === "state"));
     assert.deepEqual(
       ctl(c).find((m) => m.op === "state")!.chests,
-      [{ id: "chest-0", opened: false }],
+      [{ id: "chest-0", opened: false, x: inst.chests[0].x, z: inst.chests[0].z }],
     );
     const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
     C.Transform.px[avatar] = inst.chests[0].x;
@@ -543,7 +543,7 @@ describe("dungeon instance", () => {
     await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
     assert.deepEqual(
       ctl(c).filter((m) => m.op === "state").at(-1)!.chests,
-      [{ id: "chest-0", opened: true }],
+      [{ id: "chest-0", opened: true, x: inst.chests[0].x, z: inst.chests[0].z }],
     );
   });
 
