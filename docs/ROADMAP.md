@@ -393,6 +393,7 @@ split's slices, not the editor's E items.
 | E5 | Measure the split (`npm run bench:e5`, [`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md)) | ✅ | 0 hung requests through crash, restart and freeze; mirror encoding a little over budget (#108) |
 | E5a | Binary mirror frames on the channel | 📋 | |
 | E5b | Push encode off the tick (if E5a is not enough) | 📋 | |
+| IM | **Interest management**: per-sector deltas encoded once and shared, per-client interest sets with hysteresis, enter/leave via one `DeltaSet` per client per tick assembled at the edge, pinned entities (own avatar, party, targets, quest NPCs), interest snapshots, `all` mode for the debugger and admins | 📋 | Spec: [`2026-10-23-interest-management-design.md`](superpowers/specs/2026-10-23-interest-management-design.md); slices IM0–IM8 (`docs/interest-management-design`) |
 | E6 | Network health: `/metrics`, JSON network logs, Prometheus and Grafana configs | ✅ | (#117) |
 
 ## 6. World server
@@ -448,6 +449,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-23**: IM interest management spec (📋, `docs/interest-management-design`): every client gets the whole region delta today (73.8 KiB/tick at 1k, B4), and through the edge each occupied sector topic carries its own copy. Design: per-sector deltas encoded once, a `DeltaSet` per client assembled at the edge, pins, interest snapshots; B7 bench; slices IM0–IM7.
 - **2026-10-23**: E3b client cutover (`feat/edge-cutover`): players reach the core through the edge. The core's gateway serves its port over the channel (`ChannelTransport`) with `MMO_EDGE=1`, and the edge's `EDGE_GAME_PORT` relays WebSocket frames, topic publishes and HTTP (PCG downloads, `/health`). `npm start` runs the region with no player port and the edge on 7777, so the client is unchanged. The SIMD build flags and docs on the old `feat/edge-core-split` branch are left there for their own PRs.
 - **2026-10-23**: PL3c (`feat/social-world-records`), the last PL3 slice: guilds, parties, friends and blocks are world records (`social_record`, `PutSocialRecord`/`GetSocialRecords`/`AllocateSocialIds`). `SocialWorldSync` seeds the region's stores before the books read them, hands the gateway tracked stores whose writes go uphill on the save timer (409: the slower region's edit is dropped and reread), and refreshes every 60 s (books reload). Decided: world-assigned ids from 1,000,000,000; a region's own guilds and parties are renumbered once at its first fleet boot.
 - **2026-10-23**: PL3b (`feat/character-extras`): a character's quest log and materials pouch ride its world record as `extras` (`CharacterExtrasView`), seeded into `quests.db` and `gathering.db` at login (the pouch cache is dropped), so they follow it to any region. A store a region doesn't run keeps the world's last copy. Friends and blocks moved to PL3c as world records (blocks are per account; friend lists are read across players).
