@@ -225,7 +225,7 @@ one propagates to every panel: audit in the project library
 | M6 | `useDrag`, `SelectableList<T>`, `DataTable<Row>` | ✅ | #206, in main with #209; the dungeon prop drag and the quest wire drag stay hand-written |
 | M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | ✅ | #207, in main with #209; flow gained Undo and Redo |
 | M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | ✅ | #210: `useTableDrafts` for the rules tables and gameplay grids, plus `sameValue` |
-| M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 📋 | Audit first, then a shared hook |
+| M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 🚧 | Audit done; added a uniform `create` route to `files-host.ts` (POST /api/editor/files/:kind {name}, template-driven + validated, refused on conflict/invalid — no more hand-rolled `PUT {name}`). 10/10 files-host tests green, editor tsc clean. Remaining stragglers: import/export (missing `doc-io.ts`) and the client `useDocumentLifecycle` (new/import/export/load/retry) hook. |
 | M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
 | M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
 
@@ -250,6 +250,7 @@ labelled form with ranges and help. One PR per item.
 | EG9 | Social and character limits as rules (party, guild, chat, block list, character slots) | ✅ | Audit row 10. Constants in `party.ts`, `guild.ts`, `chat.ts`, `characters/rules.ts`. Merged in #300 |
 | EG10 | VFX tier budgets read from `content/vfx/budgets.json`, editable | ✅ | Audit row 14. No reader of the file today. Merged in #301 |
 | EG11 | Gathering regrow cadence in `gathering.json` | ✅ | Audit row 9. Merged in #302 |
+| EG12 | Gathering takes a cast: `castSeconds` in `gathering.json` (2 s); the gateway checks the gather up front, sends the cast bar over the spell channel (`gather`), and re-checks reach, stock and pouch when it fills | ✅ | Server-authoritative; leaving reach cancels the yield. Branch `feat/gather-cast-bar` |
 | EG12 | Dungeon walls and bot pacing as data (body radius, max step, wander, spar range) | ✅ | Audit row 11. Cell size stays fixed by the bake. Merged in #303 |
 | EG13 | Persistence cadence and query limits as server settings, in the editor | ✅ | Audit row 12. Save interval, snapshots kept, WAL limit, query rows and timeout. Merged in #304 |
 | EG14 | World and time settings in the editor (day length and offset, bots), env still overrides | ✅ | Audit row 13. Seed, chunk size and radius are fixed by the bake and shown read-only. Merged in #305 |
@@ -721,3 +722,4 @@ Newest first. One line per merged PR or decision.
   navmesh.
 - **2026-09-29**: DetourCrowd (#40) and uWebSockets.js (#39) merged.
 - **2026-10-05**: Valgrind dashboard: standalone `scripts/valgrind/dashboard.mjs` (loopback only) with Memcheck, Callgrind and History views, inline SVG charts and plain-language help. Errors classed engine / via engine / runtime with the same rule as `memcheck.mjs`; nothing is suppressed. Hotspot drill-down, compare two runs, Node-version mismatch warning, run/cancel jobs from the page, `valgrind:record` (local, `--promote` to `perf/history.json`), `valgrind:check` gate (new engine errors, callgrind regressions), `valgrind:build-debug` for file:line. Editor Valgrind tab frames it. Perf not re-measured (tooling only).
+- **2026-10-24**: EG12 gather cast bar: gathering now takes `castSeconds` (2 s) with the cast bar; the server re-checks the gather when the bar fills.
