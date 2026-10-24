@@ -21,6 +21,7 @@ import { BodyConfig, Transform } from "../components.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { ChestView } from "@mmo-engine/protocol";
+import type { PlacesStore } from "./places-store.js";
 
 /** An interact request (catalog 0x27): an entity's wire id, or a quest giver's or dungeon entrance's content id. */
 const contentId = z.string().min(1).max(64);
@@ -52,6 +53,8 @@ export interface ChestSystemOptions {
   take?: (holder: number, base: string) => boolean;
   /** How close a player must be to the chest's centre, metres. Default 3. */
   reachM?: number;
+  /** Where open chests and doors are kept across a restart (IX5). */
+  store?: PlacesStore;
   now?: () => number;
 }
 
@@ -83,8 +86,19 @@ export class ChestSystem implements SimSystem {
     this.now = opts.now ?? Date.now;
   }
 
-  register(eid: number, key: string, spec: ChestSpec): void {
-    this.chests.set(eid, { ...spec, eid, key, refillAt: null, doorOpen: false, body: null });
+  /** Make a spawned entity a chest or door; `sim` lets a door that was left open open again. What the store remembers is applied. */
+  register(eid: number, key: string, spec: ChestSpec, sim?: SimWorld): void {
+    const c: Chest = { ...spec, eid, key, refillAt: null, doorOpen: false, body: null };
+    this.chests.set(eid, c);
+    const rec = this.opts.store?.load("chest", key);
+    if (!rec) return;
+    if (c.kind === "door") {
+      if (sim) this.setDoor(sim, c, true);
+    } else if (rec.respawnAt !== null && this.now() < rec.respawnAt) {
+      c.refillAt = rec.respawnAt;
+    } else {
+      this.opts.store!.clear("chest", key); // refilled while the server was down
+    }
   }
 
   has(eid: number): boolean {
@@ -118,9 +132,12 @@ export class ChestSystem implements SimSystem {
     if (opening && c.requires?.consume && !(this.opts.take?.(holder, c.requires.base) ?? false)) return { ok: false, error: locked(c) };
     if (c.kind === "door") {
       this.setDoor(sim, c, !c.doorOpen);
+      if (c.doorOpen) this.opts.store?.save({ kind: "chest", key: c.key, state: "open", at: this.now(), respawnAt: null });
+      else this.opts.store?.clear("chest", c.key);
       return { ok: true, items: 0 };
     }
     c.refillAt = this.now() + (c.refillSeconds ?? 600) * 1000;
+    this.opts.store?.save({ kind: "chest", key: c.key, state: "open", at: this.now(), respawnAt: c.refillAt });
     this.changed.add(c);
     return { ok: true, items: this.opts.drop(sim, c.table ?? "", Transform.px[eid]!, Transform.pz[eid]!, holder > 0 ? holder : 0) };
   }
@@ -147,6 +164,7 @@ export class ChestSystem implements SimSystem {
     for (const c of this.chests.values()) {
       if (c.refillAt !== null && now >= c.refillAt) {
         c.refillAt = null;
+        this.opts.store?.clear("chest", c.key);
         this.changed.add(c);
       }
     }

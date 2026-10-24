@@ -229,7 +229,7 @@ import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
-import { ChestSystem } from "./interact/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
@@ -430,6 +430,13 @@ async function main(): Promise<void> {
             nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
           } finally {
             nodes.close();
+          }
+          // Broken props, opened chests and doors (IX5) go into places.db the same way.
+          const records = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
+          try {
+            records.replaceAll(placeRecordsOf(places["place_records"]));
+          } finally {
+            records.close();
           }
         },
       });
@@ -989,14 +996,29 @@ async function main(): Promise<void> {
   const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);
   // World chests (IX1): scene Structures with a Chest component; opened chests drop their loot table at the chest.
   let chestSeed = 20261024;
+  const dropTable = (s: SimWorld, table: string, x: number, z: number, owner: number): number => {
+    const items = itemsOf();
+    const defs = rollTable(game.rules.loot.tables ?? {}, table, items.defs, rankOrder, () => (chestSeed = (Math.imul(chestSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    defs.forEach((def, i) => items.spawnDrop(s, def, x + Math.cos(i * 2.4) * 0.8, z + Math.sin(i * 2.4) * 0.8, owner));
+    return defs.length;
+  };
+  // What players changed in the world that the snapshot does not keep: broken props, opened chests and doors (IX5).
+  const placesStore = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
   const chests = new ChestSystem({
     has: (holder, base) => itemsOf().countBase(holder, base) > 0,
     take: (holder, base) => itemsOf().takeBase(holder, base),
-    drop: (s, table, x, z, owner) => {
-      const items = itemsOf();
-      const defs = rollTable(game.rules.loot.tables ?? {}, table, items.defs, rankOrder, () => (chestSeed = (Math.imul(chestSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
-      defs.forEach((def, i) => items.spawnDrop(s, def, x + Math.cos(i * 2.4) * 0.8, z + Math.sin(i * 2.4) * 0.8, owner));
-      return defs.length;
+    drop: dropTable,
+    store: placesStore,
+  });
+  // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
+  const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
+    store: placesStore,
+    killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    onBreak: (s, ev) => {
+      if (ev.loot === undefined) return;
+      const killer = ev.killer;
+      const owner = killer !== undefined && hasComponent(s.ecs, CharacterRef, killer) ? CharacterRef.idHi[killer] * 4294967296 + CharacterRef.idLo[killer] : 0;
+      dropTable(s, ev.loot, ev.x, ev.z, owner);
     },
   });
   // Quests and dialog (P1, slice 4): the quests module builds the service
@@ -1044,7 +1066,8 @@ async function main(): Promise<void> {
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
         resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
-        chests: { register: (eid, key, spec) => chests.register(eid, key, spec) },
+        chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
+        breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -1162,6 +1185,7 @@ async function main(): Promise<void> {
         streamer,
         gathering,
         chests,
+        breaks,
       },
     },
     ctx: moduleCtx,
@@ -1441,7 +1465,7 @@ async function main(): Promise<void> {
         snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
         // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
-        places: () => ({ resource_nodes: gatheringStore.allNodes() }),
+        places: () => ({ resource_nodes: gatheringStore.allNodes(), place_records: placesStore.all() }),
       })
     : null;
 

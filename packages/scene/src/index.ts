@@ -131,6 +131,17 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     /** Whether opening uses the key up. */
     consume: { type: "boolean", default: false },
   }),
+  /**
+   * Breakable (IX4, IX5): the node breaks at zero health (combat hurts it like anything with health). `into`: "remove" takes it away,
+   * "variant" leaves it standing broken (no collider); `loot` is a loot.json table rolled for the last attacker; `respawnSeconds`
+   * brings it back (0: it stays broken until repaired). A break survives a restart.
+   */
+  Breakable: component("Breakable", {
+    health: { type: "number", default: 50, min: 1 },
+    into: { type: "enum", default: "remove", options: ["remove", "variant"] },
+    loot: { type: "string", default: "" },
+    respawnSeconds: { type: "number", default: 0, min: 0 },
+  }),
   /** A door (IX3): E opens and shuts it; open, its collider is gone. Takes the same `castSeconds`, `requires` and `consume` as a Chest. */
   Door: component("Door", {
     castSeconds: { type: "number", default: 0, min: 0 },

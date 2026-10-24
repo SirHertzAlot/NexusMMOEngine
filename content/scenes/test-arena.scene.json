@@ -136,6 +136,32 @@
           "consume": false
         }
       }
+    },
+    {
+      "id": "crate-0",
+      "name": "Arena crate",
+      "transform": {
+        "position": [
+          0,
+          0,
+          8
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "crate",
+          "asset": "",
+          "width": 1,
+          "depth": 1,
+          "height": 1
+        },
+        "Breakable": {
+          "health": 40,
+          "into": "remove",
+          "loot": "chest-common",
+          "respawnSeconds": 120
+        }
+      }
     }
   ]
 }
