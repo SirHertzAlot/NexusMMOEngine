@@ -87,7 +87,7 @@ const CRUD: Readonly<Record<string, readonly CrudSpec[]>> = {
     { id: "start-dialogue", label: "Start dialogue", verb: "startDialogue", params: (f) => ({ npc: f.id, player: "" }) },
   ],
   creature: [{ id: "spawn-pack", label: "Spawn pack", verb: "spawnPack", params: (f) => ({ kind: f.creatureKind ?? "", x: 0, z: 0 }) }],
-  dungeons: [{ id: "grant-reward", label: "Give item reward", verb: "giveItem", params: (f) => ({ character: "", def: "" }) }],
+  dungeons: [{ id: "grant-reward", label: "Give item reward", verb: "giveItem", params: () => ({ character: "", def: "" }) }],
   physics: [{ id: "teleport", label: "Teleport here", verb: "teleport", params: (f) => ({ entity: f.id, x: 0, z: 0 }) }],
 };
 
