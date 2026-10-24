@@ -61,6 +61,9 @@ import {
   decodeEnvelope,
   encodeControl,
   encodeEnvelope,
+  encodeDeltaSet,
+  DeltaSetKind,
+  GLOBAL_SECTOR,
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
@@ -1969,7 +1972,12 @@ export class Gateway {
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
-    const deltaEnv = encodeEnvelope(MessageType.Delta, deltaBytes);
+    // IM2: every tick goes out as a DeltaSet; one global entry until
+    // interest management splits it per sector (IM3).
+    const deltaEnv = encodeEnvelope(
+      MessageType.DeltaSet,
+      encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
+    );
     let snapshotEnv: Uint8Array | undefined;
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(

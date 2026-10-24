@@ -16,6 +16,9 @@
 import {
   decodeControl,
   decodeDelta,
+  decodeDeltaSet,
+  DeltaSetKind,
+  GLOBAL_SECTOR,
   decodeEnvelope,
   decodeSnapshot,
   encodeControl,
@@ -741,6 +744,9 @@ export class MirrorClient {
       case MessageType.Delta:
         this.onDelta(payload);
         break;
+      case MessageType.DeltaSet:
+        this.onDeltaSet(payload);
+        break;
       case MessageType.Ping:
         // Heartbeat: echo the payload back as pong (catalog §0x06/0x07).
         if (this.socket) this.send(this.socket, encodeEnvelope(MessageType.Pong, payload));
@@ -919,6 +925,31 @@ export class MirrorClient {
     }
     this.serverTick = s.tick;
     this.events.onState(s.tick);
+    this.flushIntent();
+  }
+
+  private onDeltaSet(payload: Uint8Array): void {
+    const set = decodeDeltaSet(payload);
+    const entries = set.entries.map((e) => ({
+      sector: e.sector,
+      leave: e.kind === DeltaSetKind.Leave,
+      delta: e.kind === DeltaSetKind.Leave ? null : decodeDelta(e.bytes),
+    }));
+    const r = this.state.applyDeltaSet(set.tick, set.replace, entries, GLOBAL_SECTOR);
+    if (set.replace) {
+      this.interpolator.clear();
+      for (const wid of this.names.keys()) if (!this.state.entities.has(wid)) this.names.delete(wid);
+      for (const wid of this.drops.keys()) if (!this.state.entities.has(wid)) this.drops.delete(wid);
+    }
+    this.interpolator.push(set.tick, r.transforms);
+    for (const wid of [...r.despawned, ...r.left]) {
+      this.interpolator.remove(wid);
+      this.names.delete(wid);
+      this.drops.delete(wid);
+      this.resources.delete(wid);
+    }
+    this.serverTick = set.tick;
+    this.events.onState(set.tick);
     this.flushIntent();
   }
 
