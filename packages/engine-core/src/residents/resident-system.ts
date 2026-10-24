@@ -13,10 +13,15 @@
  * they come out of the building they were in (their last anchor) and walk to the next; one headed
  * indoors walks to the door first and is gone on arrival. Without it they simply appear in place.
  *
- * Later slices: tiers by distance, homesteads, raids, attackability.
+ * Tiers (RS3): a town is only simulated near a player. Within `fullM` of its edge its residents walk
+ * (a NavAgent each, up to `maxFull` region-wide); within `coarseM` they stand at their anchor and snap
+ * when their block changes (no crowd slot); farther, the town has no entities at all and is placed from
+ * the schedule when a player comes. A town moves between tiers with 25 m of hysteresis.
+ *
+ * Later slices: homesteads, raids, attackability.
  */
 
-import { addComponent, entityExists } from "bitecs";
+import { addComponent, defineQuery, entityExists, removeComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
 import { HAIR_COLOURS, SKIN_TONES, lookToJson, randomLook, type CharacterLook, type Gender, type ModularCatalog } from "@mmo-engine/art/character";
 import * as C from "../components.js";
@@ -44,6 +49,9 @@ export interface ResidentTown {
   npcs: readonly ResidentNpc[];
   /** World position of an anchor: a structure id, or the square. Undefined: unknown (the resident is not placed). */
   positionOf(anchor: string): { x: number; z: number } | undefined;
+  /** The town's centre and its radius (tiers go by the nearest player's distance to its edge); absent: always fully simulated. */
+  centre?: { x: number; z: number };
+  radius?: number;
 }
 
 export interface ResidentOptions {
@@ -60,7 +68,15 @@ export interface ResidentOptions {
   tickHz?: number;
   /** A navigation crowd runs after this system: residents walk between anchors by NavAgent targets. */
   steer?: boolean;
+  /** A player within this of a town's edge: its residents walk (full tier). Default 150 m. */
+  fullM?: number;
+  /** Within this: they stand at their anchor (coarse tier); beyond, nothing exists. Default 400 m. */
+  coarseM?: number;
+  /** Most walking residents (crowd agents) region-wide. Default 300. */
+  maxFull?: number;
 }
+
+export type ResidentTier = "full" | "coarse" | "none";
 
 /** What a resident is, for the interaction system (R5). */
 export interface ResidentInfo {
@@ -103,6 +119,8 @@ interface Live {
   leaving: boolean;
   /** The target waits for the crowd to take the new agent (it does on the next tick), then is given. */
   giveAt: number;
+  /** Has a NavAgent (a crowd slot). */
+  agent: boolean;
 }
 
 /** Longest a resident walks to an anchor before they are simply there, seconds. */
@@ -118,6 +136,9 @@ export class ResidentSystem implements SimSystem {
   /** Where each resident was last (their anchor, indoors or out): the door they come out of. */
   private readonly lastAnchor = new Map<string, string>();
   private ran = false;
+  private readonly tiers = new Map<string, ResidentTier>();
+  private readonly players = defineQuery([C.Transform, C.CharacterRef]);
+  private agents = 0;
 
   constructor(private readonly opts: ResidentOptions) {
     this.maxEntities = opts.maxEntities ?? 800;
@@ -138,14 +159,34 @@ export class ResidentSystem implements SimSystem {
     return this.live.size;
   }
 
+  /** The tier a town is simulated at now. */
+  tierOf(town: string): ResidentTier {
+    return this.tiers.get(town) ?? "full";
+  }
+
+  /** Resident entities with a crowd slot. */
+  get walking(): number {
+    return this.agents;
+  }
+
   step(sim: SimWorld): void {
     const tick = sim.currentTick;
     // Once a second; the first call places everyone.
     if (this.ran && tick % this.tickHz !== 0) return;
     this.ran = true;
     const t = this.opts.timeOfDay?.(tick) ?? 0.5;
-    const steer = this.opts.steer === true;
-    for (const town of this.opts.towns) {
+    const towns = this.sortedByPlayer(sim);
+    for (const town of towns) {
+      const tier = this.tierFor(town, towns.dists.get(town.id) ?? 0);
+      const prev = this.tiers.get(town.id);
+      this.tiers.set(town.id, tier);
+      if (tier === "none") {
+        if (prev !== "none") for (const npc of town.npcs) if (this.live.has(npc.id)) this.remove(sim, npc.id, this.live.get(npc.id)!);
+        continue; // nothing exists here; placed from the schedule when a player comes
+      }
+      if (tier === "coarse" && prev === "full") for (const npc of town.npcs) this.stopWalking(sim, this.live.get(npc.id));
+      if (prev === "none") for (const npc of town.npcs) this.lastAnchor.delete(npc.id); // placed in place, not walking out of doors
+      const steer = this.opts.steer === true && tier === "full";
       for (const npc of town.npcs) {
         const p = this.opts.place(town, npc, t);
         const have = this.live.get(npc.id);
@@ -156,11 +197,11 @@ export class ResidentSystem implements SimSystem {
         if (!p.outdoors) {
           if (!live) continue;
           const door = town.positionOf(p.anchor);
-          if (steer && door && !live.leaving) {
+          if (steer && live.agent && door && !live.leaving) {
             // Walk to the door of the building; gone when they get there.
             live.leaving = true;
             this.walk(sim, live, npc.id, p.anchor, door, tick);
-          } else if (!steer || !door) this.remove(sim, npc.id, live);
+          } else if (!(steer && live.agent) || !door) this.remove(sim, npc.id, live);
           continue;
         }
         const pos = town.positionOf(p.anchor);
@@ -171,7 +212,7 @@ export class ResidentSystem implements SimSystem {
         if (live && entityExists(sim.ecs, live.eid)) {
           if (live.anchor !== p.anchor || live.leaving) {
             live.leaving = false;
-            if (steer) this.walk(sim, live, npc.id, p.anchor, pos, tick);
+            if (steer && live.agent) this.walk(sim, live, npc.id, p.anchor, pos, tick);
             else this.stand(sim, live.eid, npc.id, p.anchor, pos);
             live.anchor = p.anchor;
           }
@@ -180,9 +221,11 @@ export class ResidentSystem implements SimSystem {
         if (live) this.remove(sim, npc.id, live);
         if (this.live.size >= this.maxEntities) continue;
         const eid = this.spawn(sim, town, npc);
-        const entry: Live = { eid, anchor: p.anchor, walkTo: null, until: 0, leaving: false, giveAt: 0 };
+        const wantAgent = steer && this.agents < (this.opts.maxFull ?? 300);
+        if (wantAgent) this.addAgent(sim, eid);
+        const entry: Live = { eid, anchor: p.anchor, walkTo: null, until: 0, leaving: false, giveAt: 0, agent: wantAgent };
         this.live.set(npc.id, entry);
-        const from = steer && before && before !== p.anchor ? town.positionOf(before) : undefined;
+        const from = wantAgent && before && before !== p.anchor ? town.positionOf(before) : undefined;
         if (from) {
           // They come out of the building they were in and walk to where they are headed.
           this.stand(sim, eid, npc.id, before!, from);
@@ -190,6 +233,53 @@ export class ResidentSystem implements SimSystem {
         } else this.stand(sim, eid, npc.id, p.anchor, pos);
       }
     }
+  }
+
+  /** Towns nearest the nearest player first, with each town's distance (metres from its edge). */
+  private sortedByPlayer(sim: SimWorld): ResidentTown[] & { dists: Map<string, number> } {
+    const ps = this.players(sim.ecs);
+    const dists = new Map<string, number>();
+    for (const t of this.opts.towns) {
+      if (!t.centre) {
+        dists.set(t.id, 0);
+        continue;
+      }
+      let d = Infinity;
+      for (const p of ps) d = Math.min(d, Math.hypot(C.Transform.px[p]! - t.centre.x, C.Transform.pz[p]! - t.centre.z) - (t.radius ?? 0));
+      dists.set(t.id, d);
+    }
+    const sorted = [...this.opts.towns].sort((a, b) => dists.get(a.id)! - dists.get(b.id)!) as ResidentTown[] & { dists: Map<string, number> };
+    sorted.dists = dists;
+    return sorted;
+  }
+
+  /** The tier for a town `d` metres from the nearest player, with 25 m of hysteresis against the tier it has. */
+  private tierFor(town: ResidentTown, d: number): ResidentTier {
+    const full = this.opts.fullM ?? 150;
+    const coarse = this.opts.coarseM ?? 400;
+    const was = this.tiers.get(town.id);
+    const edge = (m: number, tier: ResidentTier): number => m + (was === tier ? 25 : 0);
+    if (d <= edge(full, "full")) return "full";
+    if (d <= edge(coarse, "coarse") || (was === "full" && d <= coarse + 25)) return "coarse";
+    return "none";
+  }
+
+  private addAgent(sim: SimWorld, eid: number): void {
+    addComponent(sim.ecs, C.NavAgent, eid);
+    C.NavAgent.speed[eid] = sim.movement.bots.wanderPace * sim.movement.walkSpeed;
+    C.NavAgent.tx[eid] = NaN;
+    C.NavAgent.seq[eid] = 0;
+    this.agents++;
+  }
+
+  /** A town fell to the coarse tier: its walkers stand where they are and give up their crowd slots. */
+  private stopWalking(sim: SimWorld, live: Live | undefined): void {
+    if (!live || !live.agent || !entityExists(sim.ecs, live.eid)) return;
+    removeComponent(sim.ecs, C.NavAgent, live.eid);
+    live.agent = false;
+    live.walkTo = null;
+    live.giveAt = 0;
+    this.agents--;
   }
 
   /** Send a resident walking to their spot at an anchor (the crowd steers; a resident not on the navmesh is put there). */
@@ -240,6 +330,7 @@ export class ResidentSystem implements SimSystem {
   }
 
   private remove(sim: SimWorld, npc: string, have: Live): void {
+    if (have.agent) this.agents--;
     if (entityExists(sim.ecs, have.eid)) sim.despawn(have.eid);
     this.infoOf.delete(have.eid);
     this.live.delete(npc);
@@ -278,12 +369,6 @@ export class ResidentSystem implements SimSystem {
     C.Locomotion.abilities[eid] = 1;
     C.Locomotion.breath[eid] = 1;
     C.Action.move[eid] = 0;
-    if (this.opts.steer) {
-      addComponent(sim.ecs, C.NavAgent, eid);
-      C.NavAgent.speed[eid] = sim.movement.bots.wanderPace * sim.movement.walkSpeed;
-      C.NavAgent.tx[eid] = NaN;
-      C.NavAgent.seq[eid] = 0;
-    }
     sim.setLook(eid, this.lookOf(npc.id));
     this.infoOf.set(eid, { npc: npc.id, town: town.id, role: npc.role, class: npc.class, cohort: npc.cohort });
     return eid;
