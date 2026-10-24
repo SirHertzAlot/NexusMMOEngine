@@ -154,6 +154,7 @@ describe("scene nodes", () => {
           { id: "wall", name: "wall", transform: { position: [10, 0, 0] }, components: { Structure: { kind: "wall", width: 4, depth: 1, height: 3 }, Breakable: { health: 80, into: "variant", respawnSeconds: 0 } } },
           { id: "box", name: "box", transform: { position: [20, 0, 0] }, components: { Structure: { kind: "chest", width: 1, depth: 1, height: 1 }, Chest: { table: "chest-common", refillSeconds: 30, requires: "key", consume: true } } },
           { id: "gate", name: "gate", transform: { position: [30, 0, 0] }, components: { Structure: { kind: "door", width: 3, depth: 1, height: 3 }, Door: { castSeconds: 1 } } },
+          { id: "stall", name: "stall", transform: { position: [40, 0, 0] }, components: { Structure: { kind: "stall", width: 2, depth: 1, height: 2 }, Vendor: { template: "general-store" } } },
         ],
       },
       {
@@ -161,10 +162,11 @@ describe("scene nodes", () => {
         creatures: { has: () => false, spawnPack: () => [] },
         table: () => null,
         breakables: { register: (_e, key, def) => void seen.push(`break ${key} ${def.health} ${def.into} ${def.respawnS}`) },
+        vendors: { attach: (_e, template) => (seen.push(`vendor ${template}`), null) },
         chests: { register: (_e, key, spec) => void seen.push(`${spec.kind} ${key} ${spec.requires?.base ?? "-"} ${spec.castSeconds}`) },
       },
     );
     assert.deepEqual(r.skipped, []);
-    assert.deepEqual(seen, ["break t/wall 80 variant null", "chest t/box key 0", "door t/gate - 1"]);
+    assert.deepEqual(seen, ["break t/wall 80 variant null", "chest t/box key 0", "door t/gate - 1", "vendor general-store"]);
   });
 });

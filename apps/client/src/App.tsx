@@ -52,6 +52,7 @@ import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel, EMPTY_WORN, type Worn } from "./ui/bag-panel.js";
 import { PouchPanel, tierColor } from "./ui/pouch-panel.js";
+import { nextShop, VendorPanel, type ShopView } from "./ui/vendor-panel.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
@@ -216,6 +217,9 @@ export function App(): React.ReactElement {
   // Gathering (0x24): the resource node in reach (its view re-read when the nodes change) and the materials pouch.
   const [nearResource, setNearResource] = useState<bigint | null>(null);
   const [nearChest, setNearChest] = useState<bigint | null>(null);
+  // The shop E opened (protocol 0x21) and the player's gold.
+  const [shop, setShop] = useState<ShopView | null>(null);
+  const [gold, setGold] = useState<number | null>(null);
   const [, setResourcesSeen] = useState(0);
   const [pouch, setPouch] = useState<PouchMaterial[]>([]);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
@@ -363,6 +367,8 @@ export function App(): React.ReactElement {
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
         setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
+      onVendor: (v) => setShop((prev) => nextShop(prev, v)),
+      onWallet: (w) => setGold(w.balance),
       onResources: () => setResourcesSeen((n) => n + 1),
       onPouch: (p) => {
         setPouch(p.materials);
@@ -736,7 +742,11 @@ export function App(): React.ReactElement {
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {(() => {
               const v = client.chests.get(nearChest);
-              return v?.kind === "ruin" ? (
+              return v?.kind === "vendor" ? (
+                <>
+                  {t("interact.trade")} <span className="text-amber-200">{t("interact.shop")}</span>
+                </>
+              ) : v?.kind === "ruin" ? (
                 <>
                   {t("interact.repair")} <span className="text-amber-200">{t("interact.building")}</span>
                 </>
@@ -859,6 +869,18 @@ export function App(): React.ReactElement {
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
         />
+        {shop && bag && (
+          <HudSlot id="vendor-panel" className="z-10">
+            <VendorPanel
+              shop={shop}
+              gold={gold}
+              bag={bag}
+              onBuy={(def) => client?.vendorBuy(shop.vendor, def)}
+              onSell={(item) => client?.vendorSell(shop.vendor, item)}
+              onClose={() => setShop(null)}
+            />
+          </HudSlot>
+        )}
         {bagOpen && bag && (
           <HudSlot id="bag-panel" className="z-10">
             <div>

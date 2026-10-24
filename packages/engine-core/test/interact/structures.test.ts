@@ -141,3 +141,15 @@ describe("content/structures.json", () => {
     assert.ok(kinds.has("farmhouse"));
   });
 });
+
+describe("content/vendors.json", () => {
+  it("parses, and every stock line names an item base with a price", async () => {
+    const { loadVendorTemplates } = await import("../../src/interact/index.js");
+    const vendors = loadVendorTemplates(fileURLToPath(new URL("../../../../../content/vendors.json", import.meta.url)));
+    assert.ok(vendors.has("general-store"));
+    for (const [id, v] of vendors) {
+      assert.ok(v.stock.length > 0, id);
+      for (const l of v.stock) assert.ok(l.price >= 1 && l.base, `${id}: ${l.base}`);
+    }
+  });
+});

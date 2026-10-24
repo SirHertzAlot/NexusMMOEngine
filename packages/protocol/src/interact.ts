@@ -21,8 +21,8 @@ export interface ChestView {
   z: number;
   /** A chest is open (empty) until it refills; a door is open until shut. */
   open: boolean;
-  /** Absent: a chest. "ruin": a building that stands broken; E mends it while `open` is false. */
-  kind?: "door" | "ruin";
+  /** Absent: a chest. "ruin": a building that stands broken; E mends it while `open` is false. "vendor": E opens its shop (a content-placed vendor). */
+  kind?: "door" | "ruin" | "vendor";
 }
 
 export interface ChestsMessage {
