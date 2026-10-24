@@ -678,7 +678,7 @@ describe("instance manager", () => {
     return { mgr, gw, results, granted, join };
   }
 
-  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "enter", entrance }));
+  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entrance }));
 
   it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
     const r = await region(content);

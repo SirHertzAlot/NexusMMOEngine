@@ -19,7 +19,6 @@ export type ItemHand = "main" | "off" | "both" | "none";
 
 /**
  * C→S (catalog §0x13): act on an item.
- * - pickup: the ground item entity (decimal u64) into the bag;
  * - drop: an item from the bag onto the ground at the player's feet;
  * - equip: an item from the bag into its hand (M3b), swapping what was
  *   there back into the bag (a two-handed item empties both hands);
@@ -29,7 +28,6 @@ export type ItemHand = "main" | "off" | "both" | "none";
  * - unequip: what a hand holds, or an armour slot wears, back into the bag.
  */
 export type ItemAction =
-  | { kind: "item"; action: "pickup"; entity: string }
   | { kind: "item"; action: "drop"; item: number }
   | { kind: "item"; action: "equip"; item: number }
   | { kind: "item"; action: "use"; item: number }

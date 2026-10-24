@@ -75,9 +75,6 @@ interface Node extends ResourceNodeSpec {
   regrowAt: number | null;
 }
 
-/** A gather request (catalog 0x24): the node's wire id. */
-export const GatherActionSchema = z.object({ kind: z.literal("gather"), entity: z.string().regex(/^\d{1,20}$/) }).strict();
-
 const round2 = (v: number): number => Math.round(v * 100) / 100;
 const HOUR_MS = 3_600_000;
 

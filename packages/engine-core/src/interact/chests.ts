@@ -13,8 +13,13 @@ import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { ChestView } from "@mmo-engine/protocol";
 
-/** An interact request (catalog 0x27): the entity's wire id. */
-export const InteractActionSchema = z.object({ kind: z.literal("interact"), entity: z.string().regex(/^\d{1,20}$/) }).strict();
+/** An interact request (catalog 0x27): an entity's wire id, or a quest giver's or dungeon entrance's content id. */
+const contentId = z.string().min(1).max(64);
+export const InteractActionSchema = z.union([
+  z.object({ kind: z.literal("interact"), entity: z.string().regex(/^\d{1,20}$/) }).strict(),
+  z.object({ kind: z.literal("interact"), npc: contentId }).strict(),
+  z.object({ kind: z.literal("interact"), entrance: contentId }).strict(),
+]);
 
 export interface ChestSpec {
   /** A loot.json table the chest rolls when opened. */
