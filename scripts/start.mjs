@@ -3,7 +3,11 @@
  * `npm start`: one command from a fresh clone to a running game. It does
  * whatever setup is missing, then starts the game server, the edge, and
  * the player's client (http://localhost:5173), each line of their output
- * prefixed with its name. Ctrl+C, or any one exiting, stops them all.
+ * prefixed with its name. With --world, the world server (embedded
+ * SurrealDB under <data>/world-server) starts first and the game server
+ * registers with it as one region owning the whole baked world, so a dev
+ * run's state persists there as it would in a fleet. Without it (the default)
+ * the game server runs standalone and keeps its state in its own data folder. Ctrl+C, or any one exiting, stops them all.
  *
  * Setup, each step only when needed (a second start goes straight to the
  * server):
@@ -25,6 +29,9 @@
  *                              (http://localhost:5174)
  *   npm start -- --no-setup    skip the setup checks
  *   npm start -- --build       run the full `npm run build` first
+ *   npm start -- --world       also run the world server (embedded SurrealDB) and
+ *                              register the game server with it as one region
+ *                              owning the whole baked world (fleet mode; opt in)
  *   npm start -- --shape=continents   the first bake's landmass shape
  *                              (island, peninsula or continents; only when
  *                              there is no world yet)
@@ -33,16 +40,18 @@
  */
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { npm as runNpm, root, win } from "./lib/run.mjs";
+import { regionRangeOf } from "./lib/world-range.mjs";
 
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
 const dev = flag("--dev");
 const serverOnly = flag("--server");
 const build = flag("--build");
+let standalone = !flag("--world");
 const shape = args.find((a) => a.startsWith("--shape="))?.slice("--shape=".length);
 
 const log = (msg) => console.log(`[start] ${msg}`);
@@ -53,6 +62,8 @@ const log = (msg) => console.log(`[start] ${msg}`);
 function npm(npmArgs, env = {}, hint = "") {
   runNpm("start", npmArgs, { env, hint, again: "fix that and run npm start again" });
 }
+
+const data = resolve(join(root, "packages", "engine-core"), process.env.MMO_DATA_DIR ?? "data");
 
 function setup() {
   // 1. Dependencies. The stamp records the lockfile they were installed from.
@@ -81,7 +92,6 @@ function setup() {
   if (!existsSync(generated) || statSync(generated).mtimeMs < statSync(schema).mtimeMs) npm(["run", "codegen"]);
 
   // 3-5. Baked data, where the server will look for it.
-  const data = resolve(join(root, "packages", "engine-core"), process.env.MMO_DATA_DIR ?? "data");
   if (!existsSync(join(data, "world.db"))) {
     log(`no world in ${data}: baking it`);
     npm(["run", "bake:world"], { MMO_DATA_DIR: data, ...(shape ? { MMO_BAKE_SHAPE: shape } : {}) });
@@ -109,6 +119,29 @@ if (build) npm(["run", "build"]);
 // core channel (E3b), so the region binds no player port of its own.
 const GAME_PORT = process.env.MMO_PORT ?? "7777";
 const SERVER = { name: "server", args: ["run", "server"], env: { MMO_EDGE: "1" } };
+
+// The world server and the region's place in it: the whole baked world, so
+// the region streams all of it (an assigned range would start at chunk 0,0
+// and miss the three quarters of an origin-centred world below it).
+let WORLD = null;
+if (!standalone) {
+  const { default: Database } = await import("better-sqlite3");
+  let bounds = null;
+  try {
+    const db = new Database(join(data, "world.db"), { readonly: true, fileMustExist: true });
+    bounds = db.prepare("SELECT value FROM meta WHERE key = 'world_bounds'").get()?.value ?? null;
+    db.close();
+  } catch {}
+  if (bounds) {
+    const key = process.env.WORLD_API_KEY ?? randomBytes(16).toString("hex");
+    const port = process.env.WORLD_PORT ?? "7780";
+    WORLD = { name: "world", args: ["run", "world"], env: { WORLD_PORT: port, WORLD_API_KEY: key, WORLD_DATA_DIR: join(data, "world-server") } };
+    Object.assign(SERVER.env, { WORLD_URL: `http://127.0.0.1:${port}`, WORLD_API_KEY: key, REGION_CHUNK_RANGE: regionRangeOf(bounds) });
+  } else {
+    log("no baked world bounds in world.db: running without the world server");
+    standalone = true;
+  }
+}
 const EDGE = { name: "edge", args: ["run", "edge"], env: { EDGE_GAME_PORT: GAME_PORT } };
 const CLIENT = {
   name: "client",
@@ -167,12 +200,14 @@ function run(p, onLine = () => {}) {
   });
 }
 
-// The server first: its build compiles the shared packages the client
-// needs too. The edge boots once the region is listening on its channel,
-// and the client once the edge serves the players' port.
+// The world server first (the region registers with it at boot), then the
+// game server: its build compiles the shared packages the client needs too.
+// The edge boots once the region is listening on its channel, and the
+// client once the edge serves the players' port.
 let clientStarted = serverOnly;
 let edgeStarted = false;
-run(SERVER, (line) => {
+let serverStarted = false;
+const startServer = () => run(SERVER, (line) => {
   if (edgeStarted || !/listening on/.test(line)) return;
   edgeStarted = true;
   run(EDGE, (edgeLine) => {
@@ -183,6 +218,22 @@ run(SERVER, (line) => {
   });
   log(`edge on ws://localhost:${GAME_PORT} (players), http://localhost:3000 (health)`);
 });
+if (standalone) startServer();
+else {
+  // A world server that never says it is listening (port taken, crash) would leave npm start waiting forever.
+  const giveUp = setTimeout(() => {
+    if (serverStarted) return;
+    log("the world server did not come up in 60 s: stopping (run without --world to skip it)");
+    stop(1);
+  }, 60_000);
+  run(WORLD, (line) => {
+  if (serverStarted || !/\[world\] listening on/.test(line)) return;
+  serverStarted = true;
+  clearTimeout(giveUp);
+  log(`world server on http://127.0.0.1:${WORLD.env.WORLD_PORT}, region range ${SERVER.env.REGION_CHUNK_RANGE}`);
+  startServer();
+  });
+}
 
 process.on("SIGINT", () => stop(0));
 process.on("SIGTERM", () => stop(0));
