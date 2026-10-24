@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { entityExists } from "bitecs";
-import { Appearance, Transform } from "../../src/components.js";
+import { Appearance, NavAgent, NavAgentState, Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { ResidentSystem, type ResidentNpc, type ResidentTown } from "../../src/residents/index.js";
 
@@ -121,5 +121,57 @@ describe("ResidentSystem", () => {
     assert.equal(calls, first);
     run(sys, sim, 60);
     assert.equal(calls, first * 2);
+  });
+});
+
+describe("ResidentSystem: walking", () => {
+  const baker = (): ResidentTown => ({
+    id: "t",
+    npcs: [{ id: "npc_3", home: "h0", role: "worker", class: "artisan", cohort: "adult", workplace: "b1" } as ResidentNpc],
+    positionOf: (a) => POS[a],
+  });
+  function make(hour: { v: number }): ResidentSystem {
+    return new ResidentSystem({ towns: [baker()], place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view), timeOfDay: () => hour.v, catalog: null, steer: true });
+  }
+
+  it("comes out of the home it was in, walks to work through the crowd, and stands on arrival", () => {
+    const hour = { v: 3 / 24 };
+    const sim = new SimWorld();
+    const sys = make(hour);
+    run(sys, sim, 30);
+    assert.equal(sys.count, 0, "asleep indoors");
+
+    hour.v = 12 / 24;
+    run(sys, sim, 60);
+    const e = sys.entityOf("npc_3")!;
+    assert.ok(Math.hypot(Transform.px[e]! - POS.h0!.x, Transform.pz[e]! - POS.h0!.z) < 6, "starts at the door of home");
+    NavAgent.state[e] = NavAgentState.Idle; // the crowd has taken the new agent
+    run(sys, sim, 90);
+    assert.ok(Math.hypot(NavAgent.tx[e]! - POS.b1!.x, NavAgent.tz[e]! - POS.b1!.z) < 6, "the crowd is told to go to the bakery");
+
+    // They get there: the next pass has them stand.
+    Transform.px[e] = NavAgent.tx[e]!;
+    Transform.pz[e] = NavAgent.tz[e]!;
+    run(sys, sim, 120);
+    assert.ok(Number.isNaN(NavAgent.tx[e]!), "standing at work");
+  });
+
+  it("walks to the door at day's end and is gone on arrival", () => {
+    const hour = { v: 12 / 24 };
+    const sim = new SimWorld();
+    const sys = make(hour);
+    run(sys, sim, 30);
+    const e = sys.entityOf("npc_3")!;
+    NavAgent.state[e] = NavAgentState.Idle;
+    hour.v = 23 / 24;
+    run(sys, sim, 60);
+    assert.equal(sys.entityOf("npc_3"), e, "still on the street, headed home");
+    run(sys, sim, 90); // the target is given
+    assert.ok(Math.hypot(NavAgent.tx[e]! - POS.h0!.x, NavAgent.tz[e]! - POS.h0!.z) < 6);
+    Transform.px[e] = NavAgent.tx[e]!;
+    Transform.pz[e] = NavAgent.tz[e]!;
+    run(sys, sim, 120);
+    assert.equal(sys.entityOf("npc_3"), undefined, "indoors");
+    assert.equal(sys.count, 0);
   });
 });
