@@ -267,7 +267,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | --- | --- | --- | --- |
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | ✅ | Health, stamina and mana live; mana from 0x1c, plus a cast bar for the player's own casts (#123) |
-| U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); not persisted yet, and `restore()` waits for food and drink items |
+| U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); a respawn fills both meters and standing in or at water refills thirst (`drink` in needs.json); not persisted yet, and food waits for consumable items and a use op |
 | U4 | Settings: graphics quality, controls, audio, UI scale | ✅ | Controls remappable + UI scale 90–125%; audio: Web Audio buses, synthesized first cues, master/combat/interface/ambience volumes and mute, persisted (#106) |
 | U5 | Nameplates (name, guild tag) | ✅ | Built with C3: sprite nameplates from the `names` fan-out, guild tags (S4), creature names (U12a) |
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | ✅ | Say/yell/emote tabs, history, whispers, party and guild commands; `/r` and `/reply` answer the last whisper (#95) |
@@ -466,6 +466,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-23**: U3 needs death loop fixed (`fix/needs-death-loop`): a respawn fills hunger and thirst (NeedsSystem refills a body that rises from 0 Health), and feet within `drink.reachM` of a water surface refill thirst at `drink.perSecond` (`content/rules/needs.json`). Food (consumables, a use op) is the follow-up.
 - **2026-10-23**: M5 duel outcomes (`fix/duel-outcomes`): `DeathSystem` ends a duel by first blood (`checkBlood`) when a duelist is felled by their opponent (`wasDuelDeath`) and puts the loser right with no death penalty; the gateway calls `duels.forget` on disconnect, logout, eviction and handoff, so a duel cannot outlive a player. Both ends go out on 0x20.
 - **2026-10-23**: Crafting fix (`fix/crafting-pouch`): crafts could never succeed, because `CraftingService` read its own in-memory pouch that nothing filled. It now counts and spends the gathering pouch (`GatheringSystem.take`, written through to `gathering.db`, so PL3b's world sync carries it); the dead pouch is gone. Fleet crafts still debit only after the world commits. Follow-up: a client crafting window and a `CraftMessage` in the protocol.
 - **2026-10-23**: IM8 cross-region view at borders (`feat/im8-border-view`, protocol v27): a player within 96 m of a live neighbour region gets a `border` message (0x26) with a 60 s ticket signed with the fleet's `WORLD_API_KEY`; the client opens a read-only observer socket to the neighbour (hello `observe`), reports where it stands (clamped into its home region), receives the neighbour's DeltaSets for that spot in a second mirror, and draws them in their own entity layer; past 128 m it is told to close. Neighbours come from the registry the migration coordinator already reads.

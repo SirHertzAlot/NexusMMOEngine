@@ -743,6 +743,8 @@ export const NeedsSchema = z.strictObject({
   thirst: NeedSchema.default({ max: 100, drainPerMinute: 3, damagePerSecond: 1 }),
   /** Share of the drain that applies while running or swimming (1 = no change). */
   exertionFactor: z.number().min(1).default(1.5),
+  /** Drinking: thirst refills at `perSecond` while the feet are within `reachM` of a water surface (in it or at its edge). */
+  drink: z.strictObject({ reachM: z.number().min(0), perSecond: z.number().min(0) }).default({ reachM: 0.5, perSecond: 10 }),
   /** How long eating or drinking takes (a cast bar that a move or a blow cancels), seconds; 0 at once. */
   eatSeconds: z.number().min(0).default(1),
 });
