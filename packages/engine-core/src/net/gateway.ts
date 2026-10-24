@@ -125,7 +125,7 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
-import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
+import { GatheringSystem } from "../gathering/index.js";
 import { ChestSystem, InteractActionSchema } from "../interact/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
@@ -2722,9 +2722,6 @@ export class Gateway {
       case MessageType.Interact:
         this.onInteract(s, payload);
         break;
-      case MessageType.Gather:
-        this.onGather(s, payload);
-        break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
         break;
@@ -3248,6 +3245,11 @@ export class Gateway {
       const raw = decodeControl<unknown>(payload);
       const ext = typeof raw === "object" && raw !== null ? this.extensions.get(String((raw as { kind?: unknown }).kind)) : undefined;
       if (ext) {
+        const op = (raw as { op?: unknown }).op;
+        if ((ext.kind === "quest" && op === "talk") || (ext.kind === "dungeon" && op === "enter")) {
+          this.sendError(s, 4003, "use interact (0x27)");
+          return;
+        }
         ext.onMessage(this.extensionPlayer(s), raw);
         return;
       }
@@ -5359,15 +5361,7 @@ export class Gateway {
       this.sendError(s, 4003, "malformed item action");
       return;
     }
-    // Pickup requests share the session's pickup bucket (roadmap T1):
-    // past it the request is dropped and counted, never reaching the
-    // item service. Other bag actions are bag-local and stay unthrottled.
-    if (parsed.data.action === "pickup" && !this.takeToken(s, "pickup")) {
-      s.droppedPickups += 1;
-      this.droppedByRateLimitPickups += 1;
-      this.noteViolation(s);
-      return;
-    }
+    // Bag actions are bag-local and stay unthrottled (picking up is interact, 0x27).
     const avatar = this.world.resolveWireId(s.playerEntity);
     if (avatar < 0) {
       this.sendError(s, 4005, "no avatar");
@@ -5376,10 +5370,7 @@ export class Gateway {
     const holder = this.holderOf(s);
     const a = parsed.data;
     let result;
-    if (a.action === "pickup") {
-      const entity = parseEntityArg(a.entity);
-      result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
-    } else if (a.action === "drop") {
+    if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
     } else if (a.action === "use") {
       result = this.items.consume(holder, a.item, (nourish, quench) => {
@@ -5403,8 +5394,7 @@ export class Gateway {
       this.sendError(s, 4005, result.error);
       return;
     }
-    if (a.action === "pickup") this.telemetry.pickup();
-    else if (a.action === "drop") this.telemetry.drop();
+    if (a.action === "drop") this.telemetry.drop();
     this.refreshAvatarLook(avatar, holder);
     this.sendInventory(s);
   }
@@ -5453,13 +5443,13 @@ export class Gateway {
   }
 
   /**
-   * Use an entity (catalog 0x27): today a world chest. In-world sessions
-   * only; a bad shape is 4003, a refusal (too far, empty) 4005. Shares the
-   * pickup rate limit. The loot lands on the ground at the chest.
+   * Interact (catalog 0x27): the one request for everything E does. In-world
+   * sessions only; a bad shape is 4003, a refusal 4005. Shares the pickup
+   * rate limit. The target is a wire entity (a world chest, a ground item,
+   * a resource node) or a content id (a quest giver, a dungeon entrance).
    */
   private onInteract(s: ClientSession, payload: Uint8Array): void {
-    const chests = this.chests;
-    if (!chests || !s.welcomed || s.playerEntity === null) {
+    if (!s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "interaction outside the world");
       return;
     }
@@ -5486,9 +5476,31 @@ export class Gateway {
       this.sendError(s, 4005, "no avatar");
       return;
     }
-    const wire = parseEntityArg(parsed.data.entity);
-    const result = wire === null ? { ok: false as const, error: "nothing to open there" } : chests.open(this.world, this.holderOf(s), avatar, this.world.resolveWireId(wire));
-    if (!result.ok) this.sendError(s, 4005, result.error);
+    const a = parsed.data;
+    // Content targets are not entities: the quest and dungeon extensions take them.
+    if ("npc" in a || "entrance" in a) {
+      const ext = this.extensions.get("npc" in a ? "quest" : "dungeon");
+      if (!ext) return this.sendError(s, 4005, "nothing to use there");
+      ext.onMessage(this.extensionPlayer(s), "npc" in a ? { kind: "quest", op: "talk", npc: a.npc } : { kind: "dungeon", op: "enter", entrance: a.entrance });
+      return;
+    }
+    const wire = parseEntityArg(a.entity);
+    const eid = wire === null ? -1 : this.world.resolveWireId(wire);
+    const holder = this.holderOf(s);
+    if (eid >= 0 && this.chests?.has(eid)) {
+      const result = this.chests.open(this.world, holder, avatar, eid);
+      if (!result.ok) this.sendError(s, 4005, result.error);
+    } else if (eid >= 0 && this.gathering?.has(eid)) {
+      this.startGather(s, this.gathering, holder, avatar, eid);
+    } else if (this.items) {
+      const result = wire === null ? { ok: false as const, error: "nothing to use there" } : this.items.pickup(this.world, holder, avatar, wire);
+      if (!result.ok) return this.sendError(s, 4005, result.error);
+      this.telemetry.pickup();
+      this.refreshAvatarLook(avatar, holder);
+      this.sendInventory(s);
+    } else {
+      this.sendError(s, 4005, "nothing to use there");
+    }
   }
 
   /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
@@ -5500,46 +5512,15 @@ export class Gateway {
   }
 
   /**
-   * Gather once from a resource node (catalog 0x24): in-world sessions
-   * only; a bad shape is 4003, a refusal (too far, worked out, still
-   * gathering, pouch full) 4005. Shares the pickup rate limit. A gather
-   * answers with the whole pouch, naming what was added.
+   * Gather once from a resource node: the gather is checked up front, the
+   * cast bar runs for `castSeconds`, and the real gather re-checks reach,
+   * stock and pouch when the bar fills. A gather answers with the whole
+   * pouch (catalog 0x24), naming what was added.
    */
-  private onGather(s: ClientSession, payload: Uint8Array): void {
-    const gathering = this.gathering;
-    if (!gathering || !s.welcomed || s.playerEntity === null) {
-      this.sendError(s, 4003, "gathering outside the world");
-      return;
-    }
-    let raw: unknown;
-    try {
-      raw = decodeControl<unknown>(payload);
-    } catch {
-      this.sendError(s, 4003, "malformed gather");
-      return;
-    }
-    const parsed = GatherActionSchema.safeParse(raw);
-    if (!parsed.success) {
-      this.sendError(s, 4003, "malformed gather");
-      return;
-    }
-    if (!this.takeToken(s, "pickup")) {
-      s.droppedPickups += 1;
-      this.droppedByRateLimitPickups += 1;
-      this.noteViolation(s);
-      return;
-    }
-    const avatar = this.world.resolveWireId(s.playerEntity);
-    if (avatar < 0) {
-      this.sendError(s, 4005, "no avatar");
-      return;
-    }
-    const wire = parseEntityArg(parsed.data.entity);
-    const holder = this.holderOf(s);
+  private startGather(s: ClientSession, gathering: GatheringSystem, holder: number, avatar: number, node: number): void {
     if (this.gatherCasts.has(s)) return; // already casting one
-    const node = wire === null ? -1 : this.world.resolveWireId(wire);
     const seconds = gathering.castSeconds;
-    const check = node < 0 ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, node, true);
+    const check = gathering.gather(this.world, holder, avatar, node, true);
     if (!check.ok) {
       this.sendError(s, 4005, check.error);
       return;

@@ -335,22 +335,16 @@ export class MirrorClient {
    * broadcasts have no reply; rejections arrive as ErrorMessage through
    * onError. The server trims, filters, and rate-limits.
    */
-  /** Use an entity in the world (0x27): open a chest. The server checks reach and state; a refusal is a 4005 error. */
-  interact(entity: bigint): void {
+  /**
+   * Use something in the world (0x27, what E does): an entity (a world chest,
+   * a ground item, a resource node), a quest giver by id (`{npc}`) or a dungeon
+   * entrance by id (`{entrance}`). The server checks reach and state and answers
+   * through the usual channel (bag, pouch, dialog, dungeon hop) or a 4005 error.
+   */
+  interact(target: bigint | { npc: string } | { entrance: string }): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Interact, encodeControl({ kind: "interact", entity: entity.toString() })));
-  }
-
-  /** Ask to pick a ground item up (M3a, 0x13); the server answers with the bag, or a 4005 refusal. */
-  pickup(entity: bigint): void {
-    if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
-  }
-
-  /** Gather once from a resource node (0x24); the server answers with the pouch, or a 4005 refusal. */
-  gather(entity: bigint): void {
-    if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Gather, encodeControl({ kind: "gather", entity: entity.toString() })));
+    const body = typeof target === "bigint" ? { entity: target.toString() } : target;
+    this.send(this.socket, encodeEnvelope(MessageType.Interact, encodeControl({ kind: "interact", ...body })));
   }
 
   /**

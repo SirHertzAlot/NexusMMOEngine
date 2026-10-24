@@ -494,11 +494,11 @@ function MirrorWorld({
         else if (action === "treat") latest.current.onTreat?.();
         else if (action === "mend") latest.current.onMend?.();
         else if (action === "quests") latest.current.onQuests?.();
-        else if (drops.nearest !== null) client.pickup(drops.nearest);
-        else if (resources.nearest !== null) client.gather(resources.nearest);
+        else if (drops.nearest !== null) client.interact(drops.nearest);
+        else if (resources.nearest !== null) client.interact(resources.nearest);
         else if (nearestChest(client.chests, rt.current?.layer.player ?? null) !== null) client.interact(nearestChest(client.chests, rt.current?.layer.player ?? null)!);
-        else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
-        else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
+        else if (npcs.nearest !== null) client.interact({ npc: npcs.nearest });
+        else if (entrances.nearest !== null) client.interact({ entrance: entrances.nearest });
         else if (chestInReach(latest.current.chests, rt.current?.layer.player ?? null)) client.dungeon({ kind: "dungeon", op: "open" });
         else latest.current.onUseHotkey?.();
       },
