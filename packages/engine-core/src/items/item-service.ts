@@ -397,6 +397,23 @@ export class ItemService implements SimSystem {
     return true;
   }
 
+  /**
+   * Eat or drink an item from the bag: its `nourish` and `quench` stats are the
+   * hunger and thirst it restores. The item is only used up when `apply` took
+   * some (it returns false when both meters were already full).
+   */
+  consume(character: number, item: number, apply: (nourish: number, quench: number) => boolean): ItemResult {
+    if (!this.store.inBagOf(character, item)) return { ok: false, error: "you don't have that" };
+    const def = this.store.defs[this.store.slot(item)];
+    const stats = this.defs.stats[def];
+    const nourish = stats.nourish ?? 0;
+    const quench = stats.quench ?? 0;
+    if (nourish <= 0 && quench <= 0) return { ok: false, error: "you can't eat or drink that" };
+    if (!apply(nourish, quench)) return { ok: false, error: nourish > 0 ? "you're not hungry" : "you're not thirsty" };
+    this.store.destroy(item);
+    return { ok: true, message: `${nourish > 0 ? "ate" : "drank"} ${this.defs.names[def]}` };
+  }
+
   /** How many items of an item base a character carries in their bag (quest checks). */
   countBase(character: number, base: string): number {
     let n = 0;

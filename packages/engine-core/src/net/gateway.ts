@@ -4999,6 +4999,15 @@ export class Gateway {
       result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
     } else if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    } else if (a.action === "use") {
+      result = this.items.consume(holder, a.item, (nourish, quench) => {
+        if (!hasComponent(this.world.ecs, C.Needs, avatar)) return false;
+        const hungry = nourish > 0 && C.Needs.hunger[avatar] < C.Needs.hungerMax[avatar];
+        const thirsty = quench > 0 && C.Needs.thirst[avatar] < C.Needs.thirstMax[avatar];
+        if (hungry) C.Needs.hunger[avatar] = Math.min(C.Needs.hungerMax[avatar], C.Needs.hunger[avatar] + nourish);
+        if (thirsty) C.Needs.thirst[avatar] = Math.min(C.Needs.thirstMax[avatar], C.Needs.thirst[avatar] + quench);
+        return hungry || thirsty;
+      });
     } else if (a.action === "equip") {
       // A maimed or lost hand (M3) can't take hold of anything.
       const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
