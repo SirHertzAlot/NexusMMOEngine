@@ -128,6 +128,7 @@ import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, 
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
+import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
 import { interestSectors, SectorIndex, type InterestRadii, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
@@ -2013,6 +2014,9 @@ export class Gateway {
     // transport (tests driving frame() before listen()) there is no
     // publish target, so everything falls back to per-socket sends.
     const usePublish = !isSnapshotTick && this.sectorBroadcast && this.transport !== null;
+    const edge = frame && this.transport instanceof ChannelTransport ? this.transport : null;
+    const edgeBytes = new Map<string, Uint8Array>();
+    const edgePlans: EdgePlan[] = [];
     const publishSectors = new Map<string, ClientSession[]>();
 
     for (const s of this.sessions.values()) {
@@ -2021,9 +2025,27 @@ export class Gateway {
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (frame) {
         const replace = isSnapshotTick || s.needsResync || !s.interestSet;
-        const env = this.interestDeltaSet(s, frame, replace);
-        if (replace) this.deliverSnapshot(s, env, tick);
-        else this.deliver(s, env, tick);
+        const entries = this.interestEntries(s, frame, replace);
+        const sid = edge && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
+        if (sid !== undefined) {
+          // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
+          const plan: Array<[number, string, string]> = [];
+          for (const e of entries) {
+            const key = `${e.kind}:${e.sector}`;
+            if (e.kind !== DeltaSetKind.Leave) edgeBytes.set(key, e.bytes);
+            plan.push([e.kind, e.sector, key]);
+          }
+          edgePlans.push({ sid, replace, entries: plan });
+          if (replace) {
+            s.needsResync = false;
+            s.lastSnapshotTick = BigInt(tick);
+          }
+          s.lastAckedTick = BigInt(tick);
+        } else {
+          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace, entries }));
+          if (replace) this.deliverSnapshot(s, env, tick);
+          else this.deliver(s, env, tick);
+        }
       } else if (isSnapshotTick || s.needsResync) {
         // Leave the sector topic while resyncing: the next delta tick
         // re-subscribes once the snapshot baseline is in place.
@@ -2048,6 +2070,8 @@ export class Gateway {
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
 
+    if (edge && edgePlans.length > 0) edge.sendSectors(tick, edgeBytes, edgePlans);
+
     // One publish per occupied sector topic. Per-session messages
     // (names/drops above) already flushed each member's queue through
     // deliver(), so the published delta cannot overtake them.
@@ -2062,7 +2086,7 @@ export class Gateway {
    * sectors' shared bytes, full state for sectors it just entered (or all of
    * them on a replace), and a leave for each it dropped.
    */
-  private interestDeltaSet(s: ClientSession, frame: SectorFrame, replace: boolean): Uint8Array {
+  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
     const next = eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
@@ -2078,7 +2102,7 @@ export class Gateway {
     }
     if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
     s.interestSet = next;
-    return encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick: frame.tick, replace, entries }));
+    return entries;
   }
 
   /**

@@ -15,6 +15,9 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import type { ChannelLike } from "@mmo-engine/channel";
+import { encodeDeltaSet, encodeEnvelope, MessageType, type DeltaSetKind } from "@mmo-engine/protocol";
+
+const EMPTY = new Uint8Array(0);
 
 /** Largest client frame (the core's MAX_MESSAGE_BYTES). */
 const MAX_MESSAGE_BYTES = 1 << 20;
@@ -82,6 +85,19 @@ export async function startGameRelay(channel: ChannelLike, port: number, host = 
     for (const sid of members) {
       const ws = sockets.get(sid);
       if (ws?.readyState === WebSocket.OPEN) ws.send(bytes);
+    }
+  });
+  // Interest management (IM4): each sector's bytes arrive once per tick; every session's DeltaSet is
+  // assembled here from them (copies of shared buffers), so the core's channel cost doesn't grow with players.
+  channel.onPush("wire.sectors", (p) => {
+    const { tick, bytes, plans } = p as { tick: number; bytes: Record<string, string>; plans: Array<{ sid: string; replace: boolean; entries: Array<[number, string, string]> }> };
+    const shared = new Map<string, Uint8Array>();
+    for (const [k, v] of Object.entries(bytes)) shared.set(k, Buffer.from(v, "base64"));
+    for (const plan of plans) {
+      const ws = sockets.get(plan.sid);
+      if (ws?.readyState !== WebSocket.OPEN) continue;
+      const entries = plan.entries.map(([kind, sector, key]) => ({ kind: kind as DeltaSetKind, sector, bytes: shared.get(key) ?? EMPTY }));
+      ws.send(encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace: plan.replace, entries })));
     }
   });
   channel.onStatus((s) => {

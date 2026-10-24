@@ -6,7 +6,8 @@
  */
 import { afterEach, it } from "node:test";
 import assert from "node:assert/strict";
-import { decodeDelta, decodeDeltaSet, DeltaSetKind, MessageType } from "@mmo-engine/protocol";
+import { decodeDelta, decodeDeltaSet, DeltaSetKind, encodeControl, encodeEnvelope, MessageType, PROTOCOL_VERSION } from "@mmo-engine/protocol";
+import { ChannelTransport } from "../../src/net/channel-transport.js";
 import { MirrorState } from "@mmo-engine/mirror";
 import { Gateway } from "../../src/net/gateway.js";
 import { interestSectors } from "../../src/net/interest.js";
@@ -92,4 +93,27 @@ it("a client sees only what is near; walking into view and out of it", async () 
   assert.ok(!bob.mirror.entities.has(alice.entity));
   alice.client.close();
   bob.client.close();
+});
+
+it("through the edge: one wire.sectors push per tick carries the shared bytes and each session's plan", async () => {
+  now = 1_000_000;
+  const pushes: Array<{ type: string; payload: Record<string, unknown> }> = [];
+  const transport = new ChannelTransport((type, payload) => pushes.push({ type, payload: payload as Record<string, unknown> }), 4000);
+  gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), interest: { enterM: 96, leaveM: 128 }, transport });
+  await gw.listen();
+  gw.frame(now);
+  await transport.handle({ type: "wire.open", id: "p", payload: { sid: "e-1", ip: "127.0.0.1" } });
+  const hello = encodeEnvelope(MessageType.Hello, encodeControl({ protocol: PROTOCOL_VERSION, client: "t", want_snapshot: true, username: "alice", password: TEST_PASSWORD }));
+  await transport.handle({ type: "wire.msg", id: "p", payload: { sid: "e-1", data: Buffer.from(hello).toString("base64") } });
+  for (let i = 0; i < 300 && !pushes.some((p) => p.type === "wire.send"); i++) await new Promise((r) => setTimeout(r, 10));
+  pushes.length = 0;
+  frames(2);
+  const sectors = pushes.filter((p) => p.type === "wire.sectors");
+  assert.equal(sectors.length, 2, "one push per tick");
+  const plans = sectors[0].payload.plans as Array<{ sid: string; replace: boolean; entries: Array<[number, string, string]> }>;
+  assert.equal(plans[0].sid, "e-1");
+  assert.equal(plans[0].replace, true, "the first tick after welcome is a full replace");
+  const bytes = sectors[0].payload.bytes as Record<string, string>;
+  for (const [, , key] of plans[0].entries) assert.ok(key in bytes || key.startsWith("2:"));
+  assert.ok(!pushes.some((p) => p.type === "wire.send" && Buffer.from(p.payload.data as string, "base64")[0] === MessageType.DeltaSet), "no per-session DeltaSet from the core");
 });
