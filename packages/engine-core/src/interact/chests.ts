@@ -105,6 +105,12 @@ export class ChestSystem implements SimSystem {
     return this.chests.has(eid);
   }
 
+  /** Whether chest `eid` is open now (a chest: until it refills; a door: until shut). */
+  isOpen(eid: number): boolean {
+    const c = this.chests.get(eid);
+    return c !== undefined && (c.kind === "door" ? c.doorOpen : c.refillAt !== null);
+  }
+
   get size(): number {
     return this.chests.size;
   }

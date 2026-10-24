@@ -14,9 +14,7 @@
 
 export type DungeonOp =
   | { kind: "dungeon"; op: "enter"; entrance: string }
-  | { kind: "dungeon"; op: "state" }
-  /** Open the nearest unopened chest in reach (the server picks it). */
-  | { kind: "dungeon"; op: "open" };
+  | { kind: "dungeon"; op: "state" };
 
 export interface DungeonEntranceView {
   id: string;
@@ -53,6 +51,6 @@ export type DungeonMessage =
   | { kind: "dungeon"; op: "transfer"; endpoint: string; token: string; instance: string; dungeon: string }
   /** How the run looks (sent once on entering). */
   | { kind: "dungeon"; op: "look"; look: DungeonLook }
-  | { kind: "dungeon"; op: "state"; dungeon: string; secondsLeft: number; creaturesLeft: number; bossLeft: number; chests: { id: string; opened: boolean; x?: number; z?: number }[]; traps: { id: string; sprung: boolean }[] }
+  | { kind: "dungeon"; op: "state"; dungeon: string; secondsLeft: number; creaturesLeft: number; bossLeft: number; chests: { id: string; opened: boolean }[]; traps: { id: string; sprung: boolean }[] }
   /** `items`: what this character earned, put in their bag in the region. */
   | { kind: "dungeon"; op: "ended"; outcome: "cleared" | "timeout" | "abandoned"; items: number };
