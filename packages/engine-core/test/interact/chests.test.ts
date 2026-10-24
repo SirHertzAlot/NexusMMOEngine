@@ -6,8 +6,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { addComponent } from "bitecs";
-import { Transform } from "../../src/components.js";
+import { addComponent, hasComponent } from "bitecs";
+import { BodyConfig, Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { ChestSystem } from "../../src/interact/index.js";
 
@@ -55,5 +55,55 @@ describe("ChestSystem", () => {
     clock.t += 60_000;
     chests.step();
     assert.deepEqual(chests.drainChanges(sim).map((v) => v.open), [false]);
+  });
+});
+
+describe("ChestSystem: keys, casts and doors", () => {
+  function keyed(consume: boolean) {
+    const clock = { t: 1_000_000 };
+    const bag = new Map<number, number>([[7, 1]]);
+    const chests = new ChestSystem({
+      drop: () => 1,
+      has: (h, base) => base === "key" && (bag.get(h) ?? 0) > 0,
+      take: (h, base) => base === "key" && (bag.get(h) ?? 0) > 0 && (bag.set(h, bag.get(h)! - 1), true),
+      now: () => clock.t,
+    });
+    const sim = new SimWorld();
+    const chest = at(sim, 10, 10);
+    chests.register(chest, "arena/locked", { table: "chest-common", refillSeconds: 60, castSeconds: 3, requires: { base: "key", consume } });
+    return { chests, sim, chest, bag, near: at(sim, 11, 10) };
+  }
+
+  it("asks for a key, says how long it takes, and uses the key up only when told to", () => {
+    const { chests, sim, chest, bag, near } = keyed(true);
+    assert.deepEqual(chests.check(sim, 8, near, chest), { ok: false, error: "it is locked: you need a key" });
+    assert.deepEqual(chests.check(sim, 7, near, chest), { ok: true, castSeconds: 3, spell: "chest" });
+    assert.equal(bag.get(7), 1, "checking costs nothing");
+    assert.equal(chests.open(sim, 7, near, chest).ok, true);
+    assert.equal(bag.get(7), 0, "consumed");
+    const kept = keyed(false);
+    kept.chests.open(kept.sim, 7, kept.near, kept.chest);
+    assert.equal(kept.bag.get(7), 1, "kept");
+  });
+
+  it("a door opens and shuts, and its collider goes while it stands open", () => {
+    const sim = new SimWorld();
+    const chests = new ChestSystem({ drop: () => 0, has: () => true });
+    const door = at(sim, 10, 10);
+    addComponent(sim.ecs, BodyConfig, door);
+    BodyConfig.shapeKind[door] = 0;
+    BodyConfig.halfX[door] = 1.5;
+    BodyConfig.halfY[door] = 1.5;
+    BodyConfig.halfZ[door] = 0.25;
+    BodyConfig.friction[door] = 0.5;
+    chests.register(door, "arena/door", { kind: "door", requires: { base: "key", consume: false } });
+    const near = at(sim, 11, 10);
+    assert.equal(chests.open(sim, 7, near, door).ok, true);
+    assert.equal(hasComponent(sim.ecs, BodyConfig, door), false, "open: no body");
+    assert.deepEqual(chests.views(sim).map((v) => [v.kind, v.open]), [["door", true]]);
+    assert.equal(chests.open(sim, 7, near, door).ok, true);
+    assert.equal(hasComponent(sim.ecs, BodyConfig, door), true, "shut: the body is back");
+    assert.deepEqual([BodyConfig.halfX[door], BodyConfig.halfZ[door], BodyConfig.friction[door]], [1.5, 0.25, 0.5], "as it was");
+    assert.equal(chests.views(sim)[0]!.open, false);
   });
 });

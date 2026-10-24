@@ -8,7 +8,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { addComponent } from "bitecs";
-import { decodeControl, encodeControl, MessageType, type ChestsMessage, type ErrorMessage } from "@mmo-engine/protocol";
+import { decodeControl, encodeControl, MessageType, type ChestsMessage, type ErrorMessage, type SpellMessage } from "@mmo-engine/protocol";
 import { Gateway } from "../../src/net/gateway.js";
 import { ChestSystem } from "../../src/interact/index.js";
 import { Transform } from "../../src/components.js";
@@ -31,7 +31,7 @@ function tick(): void {
   gw!.frame(now);
 }
 
-async function start() {
+async function start(castSeconds = 0) {
   now = 1_000_000;
   const sim = new SimWorld();
   const drops: Array<[string, number]> = [];
@@ -40,7 +40,7 @@ async function start() {
   addComponent(sim.ecs, Transform, chest);
   Transform.px[chest] = 500;
   Transform.pz[chest] = 500;
-  chests.register(chest, "arena/chest-0", { table: "chest-common", refillSeconds: 60 });
+  chests.register(chest, "arena/chest-0", { table: "chest-common", refillSeconds: 60, castSeconds });
   gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world: sim, systems: [chests], spawnPoint: { x: 0, z: 0 } });
   const port = await gw.listen();
   gw.frame(now);
@@ -91,6 +91,36 @@ describe("gateway: world chests", () => {
     assert.equal(err.code, 4005);
     await alice.client.close();
     await bob.client.close();
+  });
+
+  it("a chest with a cast time shows the bar, opens when it fills, and a move cancels it", async () => {
+    const { url, sim, chest, drops } = await start(0.2);
+    const { client, chests } = await join(url, "user-b");
+    const entity = chests.chests[0]!.entity;
+    beside(sim, chest, client);
+    const startedP = client.waitFor(MessageType.Magic, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity }));
+    const started = decodeControl<SpellMessage>((await startedP)[0]!);
+    assert.deepEqual([started.spell, started.state, started.seconds], ["chest", "started", 0.2]);
+    assert.equal(drops.length, 0, "nothing until the bar fills");
+    await new Promise((r) => setTimeout(r, 350));
+    assert.equal(drops.length, 1, "opened when it filled");
+
+    // The chest refills; this time the player walks off mid-cast.
+    now += 61_000;
+    tick();
+    const startedP2 = client.waitFor(MessageType.Magic, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity }));
+    await startedP2;
+    const stoppedP = client.waitFor(MessageType.Error, 1);
+    const avatar = sim.resolveWireId(BigInt(client.welcome!.player_entity));
+    Transform.px[avatar] = Transform.px[avatar]! - 2;
+    tick();
+    const err = decodeControl<ErrorMessage>((await stoppedP)[0]!);
+    assert.match(err.message, /interrupted: you moved/);
+    await new Promise((r) => setTimeout(r, 350));
+    assert.equal(drops.length, 1, "no second open");
+    await client.close();
   });
 
   it("refuses a bad shape (4003)", async () => {

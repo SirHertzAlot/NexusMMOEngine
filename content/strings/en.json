@@ -31,6 +31,8 @@
   "interact.gather": "gather",
   "interact.open": "open",
   "interact.chest": "chest",
+  "interact.door": "door",
+  "interact.close": "close",
   "interact.left": "{count} left",
   "interact.workedOut": "worked out",
   "interact.backIn": "back in about {hours} h",

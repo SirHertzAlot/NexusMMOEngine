@@ -19,7 +19,10 @@ export interface ChestView {
   entity: string;
   x: number;
   z: number;
+  /** A chest is open (empty) until it refills; a door is open until shut. */
   open: boolean;
+  /** Absent: a chest. */
+  kind?: "door";
 }
 
 export interface ChestsMessage {

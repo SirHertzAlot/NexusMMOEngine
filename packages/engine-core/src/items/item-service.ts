@@ -414,6 +414,14 @@ export class ItemService implements SimSystem {
     return { ok: true, message: `${nourish > 0 ? "ate" : "drank"} ${this.defs.names[def]}` };
   }
 
+  /** Use one item of an item base up from a character's bag (a key). False when they carry none. */
+  takeBase(character: number, base: string): boolean {
+    for (const item of this.store.bag(character)) {
+      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) return this.take(character, item);
+    }
+    return false;
+  }
+
   /** How many items of an item base a character carries in their bag (quest checks). */
   countBase(character: number, base: string): number {
     let n = 0;

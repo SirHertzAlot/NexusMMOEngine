@@ -29,6 +29,7 @@
         "bread": { "mass": 0.3, "length": 0.2, "durability": 1 },
     "dried-meat": { "mass": 0.3, "length": 0.2, "durability": 1 },
     "waterskin": { "mass": 0.6, "length": 0.3, "durability": 1 },
+    "key": { "mass": 0.1, "length": 0.1, "durability": 1 },
     "amulet": { "slot": "amulet", "mass": 0.05, "length": 0.3, "hardness": 0.6, "durability": 300,
       "models": ["fantasy-kingdom/SM_Item_Necklace_Flat_01", "fantasy-kingdom/SM_Item_Necklace_Flat_03"] },
     "bite": { "mass": 1.0, "length": 0.5, "edge": 0.9, "point": 0.6, "hardness": 0.9, "balance": 0.8, "durability": 1000, "hand": "none", "technique": "cut", "models": [] },
