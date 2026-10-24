@@ -1332,8 +1332,9 @@ export function encodeSnapshotSoA(
  * Encode a changed-only Delta directly from columnar component stores.
  * Byte-identical to `encodeDelta` for the same world state.
  */
-export function encodeDeltaSoA(s: CollectedStateSoA): Uint8Array {
-  const b = new flatbuffers.Builder(1024);
+export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Builder): Uint8Array {
+  const b = builder ?? new flatbuffers.Builder(1024);
+  if (builder) builder.clear();
   const t = buildTransformBlockSoA(b, s.transforms);
   const v = buildVelocityBlockSoA(b, s.velocities);
   const pi = buildIntentBlockSoA(b, s.intents);
@@ -1369,5 +1370,6 @@ export function encodeDeltaSoA(s: CollectedStateSoA): Uint8Array {
   Delta.addAnimations(b, an);
   const root = Delta.endDelta(b);
   b.finish(root);
-  return b.asUint8Array();
+  // A reused builder's bytes are overwritten by the next encode: copy them out.
+  return builder ? b.asUint8Array().slice() : b.asUint8Array();
 }

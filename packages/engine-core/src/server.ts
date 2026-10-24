@@ -1307,6 +1307,8 @@ async function main(): Promise<void> {
     magic: magicRef!,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
+    // Interest management (IM3), opt-in until IM6.
+    ...(process.env.MMO_INTEREST === "1" ? { interest: game.rules.interest } : {}),
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.

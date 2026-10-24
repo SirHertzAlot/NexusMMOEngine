@@ -46,7 +46,7 @@ async function run(layout, entities, mode) {
     }
   };
   const transport = new ChannelTransport(push, 4000);
-  const gw = await benchGateway({ entities, users: SESSIONS, layout, clock: () => now, transport, ...(mode === "interest" ? { interest: true } : {}) });
+  const gw = await benchGateway({ entities, users: SESSIONS, layout, clock: () => now, transport, ...(mode === "interest" ? { interest: { enterM: 96, leaveM: 128 } } : {}) });
   await gw.listen();
   gw.frame(now);
   for (let i = 0; i < SESSIONS; i++) {

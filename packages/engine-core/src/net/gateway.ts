@@ -64,6 +64,7 @@ import {
   encodeDeltaSet,
   DeltaSetKind,
   GLOBAL_SECTOR,
+  type DeltaSetEntry,
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
@@ -127,6 +128,9 @@ import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, 
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
+import { interestSectors, SectorIndex, type InterestRadii, type SectorFrame } from "./interest.js";
+
+const EMPTY_BYTES = new Uint8Array(0);
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -487,6 +491,12 @@ export interface GatewayOptions {
    * per-socket path either way.
    */
   sectorBroadcast?: boolean;
+  /**
+   * Interest management (IM3): each client gets only the sectors near its
+   * avatar, as a DeltaSet of shared per-sector bytes. Radii in metres;
+   * absent = every client gets the whole region (today's path).
+   */
+  interest?: InterestRadii;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -818,6 +828,7 @@ export class Gateway {
       | "extensions"
       | "items"
       | "sectorBroadcast"
+      | "interest"
       | "worldCharacters"
       | "atomicOps"
     >
@@ -929,6 +940,9 @@ export class Gateway {
   private transport: Transport | null = null;
   /** Per-tick deltas fan out via sector-topic publish (Phase 5, Part A). Default true. */
   private readonly sectorBroadcast: boolean;
+  /** Interest radii, or null when every client sees the whole region. */
+  private readonly interest: InterestRadii | null;
+  private readonly sectorIndex = new SectorIndex();
   private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -1006,6 +1020,7 @@ export class Gateway {
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.sectorBroadcast = opts.sectorBroadcast ?? true;
+    this.interest = opts.interest ?? null;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -1327,11 +1342,15 @@ export class Gateway {
     // Phase 3: the delta encodes directly from the SAB-backed stores —
     // no intermediate CollectedState row copy. Read-only w.r.t. the
     // tracker: commit() still runs below, as on the row path.
-    const deltaBytes = encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource);
+    const frame = this.interest ? this.sectorIndex.frame(sim, tick, this.tracker, this.chunkSource) : null;
+    // With interest on, the global delta is only for tick listeners.
+    const deltaBytes = frame === null || this.tickListeners.length > 0
+      ? encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource)
+      : EMPTY_BYTES;
     this.tracker.commit(sim);
     sim.endTick();
 
-    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
+    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv, frame);
     for (const l of this.tickListeners) {
       l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }) });
     }
@@ -1970,7 +1989,7 @@ export class Gateway {
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */
-  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null): void {
+  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
     // IM2: every tick goes out as a DeltaSet; one global entry until
     // interest management splits it per sector (IM3).
@@ -2000,7 +2019,12 @@ export class Gateway {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
       if (namesEnv) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
-      if (isSnapshotTick || s.needsResync) {
+      if (frame) {
+        const replace = isSnapshotTick || s.needsResync || !s.interestSet;
+        const env = this.interestDeltaSet(s, frame, replace);
+        if (replace) this.deliverSnapshot(s, env, tick);
+        else this.deliver(s, env, tick);
+      } else if (isSnapshotTick || s.needsResync) {
         // Leave the sector topic while resyncing: the next delta tick
         // re-subscribes once the snapshot baseline is in place.
         this.clearSectorSubscription(s);
@@ -2031,6 +2055,30 @@ export class Gateway {
       this.transport!.publish(topic, deltaEnv);
       for (const s of members) s.lastAckedTick = BigInt(tick);
     }
+  }
+
+  /**
+   * One session's DeltaSet this tick (interest management): its interest
+   * sectors' shared bytes, full state for sectors it just entered (or all of
+   * them on a replace), and a leave for each it dropped.
+   */
+  private interestDeltaSet(s: ClientSession, frame: SectorFrame, replace: boolean): Uint8Array {
+    const prev = replace ? null : (s.interestSet ?? null);
+    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    const next = eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
+      ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
+      : new Set([GLOBAL_SECTOR]);
+    const entries: DeltaSetEntry[] = [];
+    for (const sector of next) {
+      if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
+      else {
+        const d = frame.delta(sector);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      }
+    }
+    if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    s.interestSet = next;
+    return encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick: frame.tick, replace, entries }));
   }
 
   /**
@@ -4096,6 +4144,11 @@ export class Gateway {
     const gathering = this.gathering;
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
+    if (this.interest) {
+      // Interest management: the next tick sends a full replace of what this session sees.
+      s.interestSet = null;
+      return;
+    }
     this.deliverSnapshot(
       s,
       encodeEnvelope(

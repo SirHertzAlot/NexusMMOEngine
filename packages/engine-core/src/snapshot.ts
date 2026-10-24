@@ -26,6 +26,7 @@
  * reuse unambiguous.
  */
 
+import * as flatbuffers from "flatbuffers";
 import { defineQuery, hasComponent, type Query } from "bitecs";
 import * as C from "./components.js";
 import { joinU64 } from "./components.js";
@@ -553,13 +554,13 @@ export type {
 // entry points.
 
 /** Slots spawned this tick, for the tracker's spawned fast path. */
-function spawnedSlotsOf(sim: SimWorld): Set<number> {
+export function spawnedSlotsOf(sim: SimWorld): Set<number> {
   return new Set(
     [...sim.spawnedWireIds()].map((w) => parseWireEntityId(w).slot),
   );
 }
 
-interface SoAEidLists {
+export interface SoAEidLists {
   transforms: ArrayLike<number>;
   velocities: ArrayLike<number>;
   intents: ArrayLike<number>;
@@ -605,6 +606,7 @@ function soaState(
   baseTick: number,
   eids: SoAEidLists,
   chunkSource: ChunkDataSource | null,
+  ids?: { spawned: Iterable<bigint>; despawned: Iterable<bigint> },
 ): CollectedStateSoA {
   const wireIdOf = (eid: number): bigint => sim.wireId(eid);
   const heightsOf = heightsOfFor(sim, chunkSource);
@@ -672,8 +674,8 @@ function soaState(
       eids: eids.animations, wireIdOf,
       clipId: AN.clipId, startTick: AN.startTick, rate: AN.rate, layerMask: AN.layerMask,
     },
-    spawned: sim.spawnedWireIds(),
-    despawned: sim.despawnedWireIds(),
+    spawned: ids ? [...ids.spawned] : sim.spawnedWireIds(),
+    despawned: ids ? [...ids.despawned] : sim.despawnedWireIds(),
   };
 }
 
@@ -773,4 +775,41 @@ export function encodeFastDeltaFromSim(
       lz: C.Velocity.lz,
     },
   );
+}
+
+/**
+ * Interest management (IM3): a Delta payload for the caller's own eid
+ * lists and spawn/despawn ids (one sector's share of the tick, or a
+ * sector's full state). Same encoder as encodeDeltaFromSim.
+ */
+export function encodeEidsFromSim(
+  sim: SimWorld,
+  tick: number,
+  baseTick: number,
+  eids: SoAEidLists,
+  ids: { spawned: Iterable<bigint>; despawned: Iterable<bigint> },
+  chunkSource?: ChunkDataSource | null,
+): Uint8Array {
+  return encodeDeltaSoA(soaState(sim, tick, baseTick, eids, chunkSource ?? null, ids), sharedBuilder);
+}
+
+const sharedBuilder = new flatbuffers.Builder(4096);
+
+/** Every tracked component's eids now (the full-state lists). */
+export function fullEidLists(sim: SimWorld): SoAEidLists {
+  return {
+    transforms: qTransform(sim.ecs),
+    velocities: qVelocity(sim.ecs),
+    intents: qIntent(sim.ecs),
+    chunks: qChunk(sim.ecs),
+    healths: qHealth(sim.ecs),
+    staminas: qStamina(sim.ecs),
+    characterRefs: qCharacterRef(sim.ecs),
+    bodies: qBody(sim.ecs),
+    assets: qAssets(sim.ecs),
+    locomotions: qLocomotion(sim.ecs),
+    appearances: qAppearance(sim.ecs),
+    actions: qAction(sim.ecs),
+    animations: qAnimation(sim.ecs),
+  };
 }

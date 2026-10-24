@@ -122,6 +122,8 @@ export interface ClientSession {
    * when the socket closes.
    */
   sectorTopic: string | null;
+  /** Interest management: the sectors this session sees; null = send it a full replace next tick. */
+  interestSet?: Set<string> | null;
 }
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */

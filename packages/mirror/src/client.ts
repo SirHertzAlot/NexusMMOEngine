@@ -936,13 +936,11 @@ export class MirrorClient {
       delta: e.kind === DeltaSetKind.Leave ? null : decodeDelta(e.bytes),
     }));
     const r = this.state.applyDeltaSet(set.tick, set.replace, entries, GLOBAL_SECTOR);
-    if (set.replace) {
-      this.interpolator.clear();
-      for (const wid of this.names.keys()) if (!this.state.entities.has(wid)) this.names.delete(wid);
-      for (const wid of this.drops.keys()) if (!this.state.entities.has(wid)) this.drops.delete(wid);
-    }
+    // A replace keeps names: entities out of view may come back into it.
+    if (set.replace) this.interpolator.clear();
     this.interpolator.push(set.tick, r.transforms);
-    for (const wid of [...r.despawned, ...r.left]) {
+    for (const wid of r.left) this.interpolator.remove(wid); // names stay: it may come back into view
+    for (const wid of r.despawned) {
       this.interpolator.remove(wid);
       this.names.delete(wid);
       this.drops.delete(wid);
