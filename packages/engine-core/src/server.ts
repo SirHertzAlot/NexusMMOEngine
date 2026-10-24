@@ -990,6 +990,8 @@ async function main(): Promise<void> {
   // World chests (IX1): scene Structures with a Chest component; opened chests drop their loot table at the chest.
   let chestSeed = 20261024;
   const chests = new ChestSystem({
+    has: (holder, base) => itemsOf().countBase(holder, base) > 0,
+    take: (holder, base) => itemsOf().takeBase(holder, base),
     drop: (s, table, x, z, owner) => {
       const items = itemsOf();
       const defs = rollTable(game.rules.loot.tables ?? {}, table, items.defs, rankOrder, () => (chestSeed = (Math.imul(chestSeed, 1664525) + 1013904223) >>> 0) / 4294967296);

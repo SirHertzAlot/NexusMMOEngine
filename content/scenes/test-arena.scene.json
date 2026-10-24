@@ -59,6 +59,83 @@
           "refillSeconds": 120
         }
       }
+    },
+    {
+      "id": "key-rack",
+      "name": "Key rack",
+      "transform": {
+        "position": [
+          3,
+          0,
+          6
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "chest",
+          "asset": "",
+          "width": 1,
+          "depth": 0.5,
+          "height": 1.5
+        },
+        "Chest": {
+          "table": "key-rack",
+          "refillSeconds": 30,
+          "castSeconds": 1
+        }
+      }
+    },
+    {
+      "id": "locked-chest",
+      "name": "Locked chest",
+      "transform": {
+        "position": [
+          8,
+          0,
+          6
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "chest",
+          "asset": "",
+          "width": 1.2,
+          "depth": 0.8,
+          "height": 0.8
+        },
+        "Chest": {
+          "table": "chest-common",
+          "refillSeconds": 120,
+          "castSeconds": 3,
+          "requires": "key",
+          "consume": true
+        }
+      }
+    },
+    {
+      "id": "arena-door",
+      "name": "Arena door",
+      "transform": {
+        "position": [
+          12,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "door",
+          "asset": "",
+          "width": 3,
+          "depth": 0.4,
+          "height": 3
+        },
+        "Door": {
+          "castSeconds": 1,
+          "requires": "key",
+          "consume": false
+        }
+      }
     }
   ]
 }

@@ -124,6 +124,18 @@ export const COMPONENTS: Record<string, ComponentDef> = {
   Chest: component("Chest", {
     table: { type: "string", default: "chest-common" },
     refillSeconds: { type: "number", default: 600, min: 1 },
+    /** Seconds opening takes (a cast bar that a move or a blow cancels); 0: at once. */
+    castSeconds: { type: "number", default: 0, min: 0 },
+    /** An item base the opener must carry (a key); empty: none. */
+    requires: { type: "string", default: "" },
+    /** Whether opening uses the key up. */
+    consume: { type: "boolean", default: false },
+  }),
+  /** A door (IX3): E opens and shuts it; open, its collider is gone. Takes the same `castSeconds`, `requires` and `consume` as a Chest. */
+  Door: component("Door", {
+    castSeconds: { type: "number", default: 0, min: 0 },
+    requires: { type: "string", default: "" },
+    consume: { type: "boolean", default: false },
   }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },

@@ -734,7 +734,18 @@ export function App(): React.ReactElement {
         {!nearDrop && !dialog && !resource && nearChest !== null && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
-            {t("interact.open")} <span className="text-amber-200">{t("interact.chest")}</span>
+            {(() => {
+              const v = client.chests.get(nearChest);
+              return v?.kind === "door" ? (
+                <>
+                  {t(v.open ? "interact.close" : "interact.open")} <span className="text-amber-200">{t("interact.door")}</span>
+                </>
+              ) : (
+                <>
+                  {t("interact.open")} <span className="text-amber-200">{t("interact.chest")}</span>
+                </>
+              );
+            })()}
           </div>
         )}
         {!nearDrop && !dialog && !resource && nearChest === null && nearNpc && (

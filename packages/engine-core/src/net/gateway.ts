@@ -1343,6 +1343,7 @@ export class Gateway {
     ];
     this.sendResources(sim);
     this.sendChests(sim);
+    this.checkCasts();
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
@@ -2600,8 +2601,7 @@ export class Gateway {
   }
 
   private onClose(s: ClientSession): void {
-    clearTimeout(this.gatherCasts.get(s));
-    this.gatherCasts.delete(s);
+    this.endCast(s);
     if (!s.welcomed || s.observer) {
       // Never said hello: nothing to keep.
       this.sessions.delete(s.clientId);
@@ -5488,8 +5488,14 @@ export class Gateway {
     const eid = wire === null ? -1 : this.world.resolveWireId(wire);
     const holder = this.holderOf(s);
     if (eid >= 0 && this.chests?.has(eid)) {
-      const result = this.chests.open(this.world, holder, avatar, eid);
-      if (!result.ok) this.sendError(s, 4005, result.error);
+      const chests = this.chests;
+      if (this.casts.has(s)) return; // already casting one
+      const check = chests.check(this.world, holder, avatar, eid);
+      if (!check.ok) return this.sendError(s, 4005, check.error);
+      this.beginCast(s, avatar, check.spell, check.castSeconds, (av) => {
+        const result = chests.open(this.world, holder, av, eid);
+        if (!result.ok) this.sendError(s, 4005, result.error);
+      });
     } else if (eid >= 0 && this.gathering?.has(eid)) {
       this.startGather(s, this.gathering, holder, avatar, eid);
     } else if (this.items) {
@@ -5518,37 +5524,71 @@ export class Gateway {
    * pouch (catalog 0x24), naming what was added.
    */
   private startGather(s: ClientSession, gathering: GatheringSystem, holder: number, avatar: number, node: number): void {
-    if (this.gatherCasts.has(s)) return; // already casting one
-    const seconds = gathering.castSeconds;
+    if (this.casts.has(s)) return; // already casting one
     const check = gathering.gather(this.world, holder, avatar, node, true);
     if (!check.ok) {
       this.sendError(s, 4005, check.error);
       return;
     }
-    const finish = (): void => {
-      this.gatherCasts.delete(s);
-      const av = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-      // The server re-checks reach, stock and the pouch when the bar fills.
-      const result = av < 0 ? { ok: false as const, error: "no avatar" } : gathering.gather(this.world, holder, av, node);
-      if (av >= 0) this.sendGatherCast(s, "done", av);
+    this.beginCast(s, avatar, "gather", gathering.castSeconds, (av) => {
+      const result = gathering.gather(this.world, holder, av, node);
       if (!result.ok) {
         this.sendError(s, 4005, result.error);
         return;
       }
       this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
-    };
-    if (seconds <= 0) return finish();
-    this.sendGatherCast(s, "started", avatar, seconds);
-    this.gatherCasts.set(s, setTimeout(finish, seconds * 1000));
+    });
   }
 
-  /** Gather casts under way, one per session; a timer finishes each. */
-  private readonly gatherCasts = new Map<ClientSession, ReturnType<typeof setTimeout>>();
+  /** Interaction casts under way, one per session: the timer, where the player stood and their health when it began. */
+  private readonly casts = new Map<ClientSession, { timer: ReturnType<typeof setTimeout>; x: number; z: number; hp: number; spell: string; avatar: number }>();
 
-  /** The cast bar start and end for a gather, over the spell channel (catalog 0x1c). */
-  private sendGatherCast(s: ClientSession, state: "started" | "done", avatar: number, seconds?: number): void {
+  /**
+   * Run an interaction that takes `seconds` (0: at once): the cast bar starts
+   * now, `finish` runs with the avatar when it fills. A move of more than
+   * 0.3 m, a blow, a move of their own or a death cancels it (checkCasts).
+   */
+  private beginCast(s: ClientSession, avatar: number, spell: string, seconds: number, finish: (avatar: number) => void): void {
+    const done = (): void => {
+      this.casts.delete(s);
+      const av = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      if (av < 0) return;
+      this.sendCastEvent(s, "done", av, spell);
+      finish(av);
+    };
+    if (seconds <= 0) return done();
+    this.sendCastEvent(s, "started", avatar, spell, seconds);
+    this.casts.set(s, { timer: setTimeout(done, seconds * 1000), x: C.Transform.px[avatar], z: C.Transform.pz[avatar], hp: C.Health.current[avatar], spell, avatar });
+  }
+
+  /** Stop a session's cast without finishing it (they left, or something cancelled it). */
+  private endCast(s: ClientSession): void {
+    const c = this.casts.get(s);
+    if (!c) return;
+    clearTimeout(c.timer);
+    this.casts.delete(s);
+  }
+
+  /** Cancel every cast whose caster moved, was hurt, started a move or died. */
+  private checkCasts(): void {
+    for (const [s, c] of this.casts) {
+      const a = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      let why = "";
+      if (a < 0 || C.Health.current[a] <= 0) why = "you are down";
+      else if (C.Health.current[a] < c.hp) why = "you were hit";
+      else if (C.Action.move[a] !== 0) why = "you attacked";
+      else if ((C.Transform.px[a] - c.x) ** 2 + (C.Transform.pz[a] - c.z) ** 2 > 0.09) why = "you moved";
+      if (!why) continue;
+      this.endCast(s);
+      if (a >= 0) this.sendCastEvent(s, "stopped", a, c.spell);
+      this.sendError(s, 4005, `interrupted: ${why}`);
+    }
+  }
+
+  /** The cast bar's start and end for an interaction, over the spell channel (catalog 0x1c). */
+  private sendCastEvent(s: ClientSession, state: "started" | "done" | "stopped", avatar: number, spell: string, seconds?: number): void {
     const id = String(this.world.wireId(avatar));
-    const m: SpellMessage = { kind: "spell", caster: id, target: id, spell: "gather", state, ...(seconds !== undefined ? { seconds } : {}) };
+    const m: SpellMessage = { kind: "spell", caster: id, target: id, spell, state, ...(seconds !== undefined ? { seconds } : {}) };
     this.sendEnvelope(s, MessageType.Magic, encodeControl(m));
   }
 

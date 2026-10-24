@@ -5,6 +5,9 @@
   "bagSlots": 24,
   "maxGroundItems": 4096,
   "tables": {
+    "key-rack": {
+      "entries": [{ "base": "key", "chance": 1 }]
+    },
     "chest-common": {
       "entries": [
         { "base": "dagger", "chance": 0.3 },

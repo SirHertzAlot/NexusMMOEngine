@@ -75,8 +75,8 @@ describe("compose: the rules hold", () => {
       if (partElements.size) assert.equal(x.bundle.Element, [...partElements][0], `${at}: the entity's element`);
       // Within the budget, above the rank below.
       assert.ok(x.cost <= rank.budget, `${at}: cost ${x.cost} within ${rank.budget}`);
-      if (rankIndex > 0 && !x.tags.includes("food")) assert.ok(x.cost > DEFAULT_LADDER.ranks[rankIndex - 1].budget, `${at}: cost ${x.cost} above the rank below`);
-      assert.equal(x.bundle.Abilities.filter((a) => BUILTIN_CATALOG.components[a].slot === "unique").length, rank.signals.uniqueAbility && !x.tags.includes("food") ? 1 : 0, `${at}: unique ability at the top only`);
+      if (rankIndex > 0 && !x.tags.includes("food") && !x.tags.includes("key")) assert.ok(x.cost > DEFAULT_LADDER.ranks[rankIndex - 1].budget, `${at}: cost ${x.cost} above the rank below`);
+      assert.equal(x.bundle.Abilities.filter((a) => BUILTIN_CATALOG.components[a].slot === "unique").length, rank.signals.uniqueAbility && !x.tags.includes("food") && !x.tags.includes("key") ? 1 : 0, `${at}: unique ability at the top only`);
     }
     assert.ok(n > 500);
   });

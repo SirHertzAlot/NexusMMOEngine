@@ -123,6 +123,8 @@ const items: Record<string, z.input<typeof ItemBaseSchema>> = {
   bread: { name: "Bread", tags: ["food"], stats: { nourish: 25 }, prefab: "bread" },
   "dried-meat": { name: "Dried Meat", tags: ["food"], stats: { nourish: 40 }, prefab: "dried-meat" },
   waterskin: { name: "Waterskin", tags: ["food"], stats: { quench: 40 }, prefab: "waterskin" },
+  // A key opens a locked chest or door (a Chest or Door with `requires: "key"`); like provisions it takes no components.
+  key: { name: "Key", tags: ["key"], stats: {}, prefab: "key" },
 };
 
 const components: Record<string, Component> = {
