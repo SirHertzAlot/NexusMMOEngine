@@ -122,6 +122,8 @@ const earDir = new THREE.Vector3();
 export interface WorldCanvasProps {
   /** A joined mirror client (welcome received). */
   client: MirrorClient;
+  /** Cross-region view (IM8): read-only mirrors of neighbouring regions, drawn beside the client's own. */
+  observers?: () => Iterable<MirrorClient>;
   assets: AssetProvider;
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
@@ -304,6 +306,8 @@ function PhysicalSkyHost({
 }
 
 interface Runtime {
+  /** IM8: one entity layer per neighbouring region's observer mirror. */
+  observerLayers: Map<MirrorClient, EntityLayer>;
   sky: DaySky;
   particles: ParticleFx;
   map: WorldMap | null;
@@ -327,6 +331,7 @@ interface Runtime {
 /** The world's content and frame loop (inside the Canvas). */
 function MirrorWorld({
   client,
+  observers,
   assets,
   pcg,
   lastStateAt,
@@ -363,8 +368,8 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -513,7 +518,8 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel, ambience };
+    const observerLayers = new Map<MirrorClient, EntityLayer>();
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -535,6 +541,7 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
+      for (const ol of observerLayers.values()) ol.dispose();
       scene.remove(drops.group, npcs.group, entrances.group);
       if (floor) {
         scene.remove(floor);
@@ -632,6 +639,20 @@ function MirrorWorld({
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
     }, client.names);
+    // Neighbouring regions near the border (IM8): each in its own layer, so their wire ids never mix
+    // with this region's; their terrain chunks go to a renderer that is never drawn (ours covers it).
+    const seen = new Set<MirrorClient>();
+    for (const o of latest.current.observers?.() ?? []) {
+      seen.add(o);
+      let ol = r.observerLayers.get(o);
+      if (!ol) r.observerLayers.set(o, (ol = new EntityLayer(scene, camera, assets, new TerrainRenderer(16), pcg ? { pcg } : {})));
+      ol.sync(o.state, o.interpolator, alpha, null, { tick: o.serverTick, tickHz: o.tickHz || 30 }, o.names);
+    }
+    for (const [o, ol] of r.observerLayers) {
+      if (seen.has(o)) continue;
+      ol.dispose();
+      r.observerLayers.delete(o);
+    }
     // Ground items: names, beams, and which one the pick-up key would take.
     r.drops.sync(client.state, client.drops, camera, r.layer.player, PICKUP_PROMPT_RANGE);
     if (r.drops.nearest !== l.nearDrop) {

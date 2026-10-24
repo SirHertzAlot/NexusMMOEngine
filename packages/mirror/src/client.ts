@@ -16,6 +16,9 @@
 import {
   decodeControl,
   decodeDelta,
+  decodeDeltaSet,
+  DeltaSetKind,
+  GLOBAL_SECTOR,
   decodeEnvelope,
   decodeSnapshot,
   encodeControl,
@@ -27,6 +30,8 @@ import {
   type AdminCommand,
   type AdminResult,
   type ByeMessage,
+  type BorderMessage,
+  type BorderTicket,
   type ChatBroadcast,
   type ChatChannel,
   type FriendMessage,
@@ -154,6 +159,8 @@ export interface MirrorEvents {
    * region's player entity; `url` is the server the client now talks to.
    */
   onRegionChange?(url: string): void;
+  /** Cross-region view (IM8): the home region says to observe a neighbour (or stop). */
+  onBorder?(msg: Extract<BorderMessage, { kind: "border" }>): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -168,6 +175,8 @@ function releasesPress(held: IntentFields, next: IntentFields): boolean {
 
 export class MirrorClient {
   readonly state = new MirrorState();
+  /** The sectors the server sends this client (interest management; "g" and "pin" included), from its DeltaSets. */
+  readonly interestSectors = new Set<string>();
   readonly interpolator = new Interpolator();
 
   playerEntity: bigint | null = null;
@@ -711,6 +720,23 @@ export class MirrorClient {
     return promise;
   }
 
+  /**
+   * Cross-region view (IM8): connect as a read-only observer of a
+   * neighbour region with the home region's ticket. Its entities arrive
+   * in this client's own `state` (ids never mix with the home region's).
+   */
+  async observe(url: string, clientName: string, ticket: BorderTicket): Promise<WelcomeMessage> {
+    const hello: HelloMessage = { protocol: PROTOCOL_VERSION, client: clientName, want_snapshot: true, observe: ticket };
+    return this.welcomeOf(this.openAndHandshake(url, MessageType.Hello, hello));
+  }
+
+  /** Observer socket (IM8): where the player stands, so the neighbour sends what is near it. */
+  sendObserve(x: number, z: number): void {
+    if (!this.socket || this.closed) return;
+    const msg: BorderMessage = { kind: "observe", x, z };
+    this.send(this.socket, encodeEnvelope(MessageType.Border, encodeControl(msg)));
+  }
+
   // ------------------------------------------------------------ inbound
 
   /** Send one envelope, counting it. */
@@ -746,6 +772,9 @@ export class MirrorClient {
         break;
       case MessageType.Delta:
         this.onDelta(payload);
+        break;
+      case MessageType.DeltaSet:
+        this.onDeltaSet(payload);
         break;
       case MessageType.Ping:
         // Heartbeat: echo the payload back as pong (catalog §0x06/0x07).
@@ -865,6 +894,11 @@ export class MirrorClient {
       case MessageType.Treat:
         this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
         break;
+      case MessageType.Border: {
+        const m = decodeControl<BorderMessage>(payload);
+        if (m.kind === "border") this.events.onBorder?.(m);
+        break;
+      }
       case MessageType.Bye: {
         const bye = decodeControl<ByeMessage>(payload);
         if (bye.redirect) void this.followRedirect(bye.redirect);
@@ -925,6 +959,34 @@ export class MirrorClient {
     }
     this.serverTick = s.tick;
     this.events.onState(s.tick);
+    this.flushIntent();
+  }
+
+  private onDeltaSet(payload: Uint8Array): void {
+    const set = decodeDeltaSet(payload);
+    if (set.replace) this.interestSectors.clear();
+    for (const e of set.entries) {
+      if (e.kind === DeltaSetKind.Full) this.interestSectors.add(e.sector);
+      else if (e.kind === DeltaSetKind.Leave) this.interestSectors.delete(e.sector);
+    }
+    const entries = set.entries.map((e) => ({
+      sector: e.sector,
+      leave: e.kind === DeltaSetKind.Leave,
+      delta: e.kind === DeltaSetKind.Leave ? null : decodeDelta(e.bytes),
+    }));
+    const r = this.state.applyDeltaSet(set.tick, set.replace, entries, GLOBAL_SECTOR);
+    // A replace keeps names: entities out of view may come back into it.
+    if (set.replace) this.interpolator.clear();
+    this.interpolator.push(set.tick, r.transforms);
+    for (const wid of r.left) this.interpolator.remove(wid); // names stay: it may come back into view
+    for (const wid of r.despawned) {
+      this.interpolator.remove(wid);
+      this.names.delete(wid);
+      this.drops.delete(wid);
+      this.resources.delete(wid);
+    }
+    this.serverTick = set.tick;
+    this.events.onState(set.tick);
     this.flushIntent();
   }
 

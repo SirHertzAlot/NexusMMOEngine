@@ -395,8 +395,9 @@ export class EntityLayer {
         tracked = { object: obj, shaped: e.body !== undefined };
         this.meshes.set(wid, tracked);
         this.pickMap.set(obj, wid);
-        // Spawn portal for newly-appearing entities.
-        this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
+        // Spawn portal for newly-spawned entities; one that only came
+        // into view (interest management) appears without it.
+        if (!state.entered.delete(wid)) this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
       } else if (!tracked.shaped && e.body) {
         // BodyConfig arrived after the stand-in: reshape (or batch).
         this.group.remove(tracked.object);

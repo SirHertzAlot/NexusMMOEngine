@@ -19,6 +19,8 @@ export type {
   GuildRank,
   GuildState,
   ByeMessage,
+  BorderMessage,
+  BorderTicket,
   ChatBroadcast,
   ChatChannel,
   ChatMessage,
@@ -119,3 +121,5 @@ export type { DialogMessage, NpcView, NpcsMessage, QuestLogMessage, QuestOp, Que
 export type { DungeonEntranceView, DungeonLook, DungeonMessage, DungeonOp } from "./dungeons.js";
 export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";
 export { ClipId, CLIP_NAMES } from "./animation.js";
+export { decodeDeltaSet, DeltaSetKind, encodeDeltaSet, GLOBAL_SECTOR } from "./deltaset.js";
+export type { DeltaSet, DeltaSetEntry } from "./deltaset.js";
