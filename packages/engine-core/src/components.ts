@@ -106,6 +106,13 @@ export const Needs = defineSABComponent({
 export const God = defineComponent();
 
 /**
+ * Breakable (IX4): a tag, never replicated. A carrier has Health but is a prop, not a body that dies and rises:
+ * DeathSystem skips it and BreakSystem breaks it at zero (what it breaks into comes from its archetype).
+ */
+// Tag: no data, so no SAB backing — plain defineComponent().
+export const Breakable = defineComponent();
+
+/**
  * No-clip (A4): a tag, never replicated. Carriers move freely (vertical
  * intent, no ground clamp, no gravity) and dungeon walls let them pass;
  * the `noclip` admin command adds and removes it.
@@ -173,6 +180,7 @@ export const COMPONENT_IDS = {
   God: 15,
   Noclip: 16,
   Animation: 17,
+  Breakable: 23,
   StructuralIntegrity: 21,
   FlowRef: 18,
   VfxEmitter: 19,

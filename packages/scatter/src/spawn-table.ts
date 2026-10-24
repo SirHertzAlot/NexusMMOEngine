@@ -37,6 +37,21 @@ const CollisionSchema = z.object({
   motion: z.enum(["static", "kinematic", "dynamic"]).default("static"),
 });
 
+/**
+ * Breakable (IX4): health and what happens at zero. "remove" takes the entity away; "variant" leaves it
+ * standing broken (no collider, nothing to use); "debris" swaps it for the `debris` archetype (walk-through).
+ * `loot` is a loot table rolled at the spot, owned by whoever dealt the last blow. `respawnS` (null: stays broken)
+ * is the world's (IX5); runs ignore it.
+ */
+export const BreakableSchema = z.object({
+  health: z.number().positive(),
+  into: z.enum(["remove", "variant", "debris"]).default("remove"),
+  debris: z.string().min(1).optional(),
+  loot: z.string().min(1).optional(),
+  respawnS: z.number().positive().nullable().default(null),
+}).refine((b) => b.into !== "debris" || b.debris !== undefined, { message: "into debris needs a debris archetype", path: ["debris"] });
+export type Breakable = z.infer<typeof BreakableSchema>;
+
 export const SpawnArchetypeSchema = z.object({
   /** Manifest model id (mirrors the record key; kept for readability). */
   asset: z.string().min(1),
@@ -44,6 +59,8 @@ export const SpawnArchetypeSchema = z.object({
   collision: CollisionSchema.optional(),
   /** Kind of object for the global scale (content/scale.json); none means "prop". */
   category: z.enum(["building", "tree", "rock", "plant", "prop"]).optional(),
+  /** Breakable from data (IX4): health, what it breaks into, loot. Takes the place of `health`. */
+  breakable: BreakableSchema.optional(),
   /** Optional health → Health component at spawn. */
   health: z.object({ max: z.number().positive() }).optional(),
   /**
