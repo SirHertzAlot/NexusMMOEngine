@@ -196,3 +196,21 @@ export class SectorIndex {
     return f;
   }
 }
+
+/** The sector name of a session's pinned entry. */
+export const PINNED_SECTOR = "pin";
+
+/**
+ * A session's pinned entry (IM5): entities it always sees, outside its interest sectors. Newly pinned
+ * ones carry all their rows; the rest their Transform and Health each tick (a party and a few foes,
+ * so the per-session encode stays small); `left` are pins dropped while out of view.
+ */
+export function encodePinned(sim: SimWorld, tick: number, fresh: number[], kept: number[], left: bigint[]): Uint8Array {
+  const l = emptyLists();
+  for (const eid of fresh) for (const [k, comp] of KEYS) if (hasComponent(sim.ecs, comp, eid)) l[k].push(eid);
+  for (const eid of kept) {
+    if (hasComponent(sim.ecs, C.Transform, eid)) l.transforms.push(eid);
+    if (hasComponent(sim.ecs, C.Health, eid)) l.healths.push(eid);
+  }
+  return encodeEidsFromSim(sim, tick, tick - 1, l, { spawned: [], despawned: left });
+}

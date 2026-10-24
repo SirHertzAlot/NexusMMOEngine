@@ -129,9 +129,11 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { interestSectors, SectorIndex, type InterestRadii, type SectorFrame } from "./interest.js";
+import { encodePinned, homeSector, interestSectors, PINNED_SECTOR, SectorIndex, type InterestRadii, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
+/** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
+const COMBAT_PIN_TICKS = 300;
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -1387,7 +1389,15 @@ export class Gateway {
       this.dropDisarmed(sim, hits);
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          const h = hits[i];
+          if (this.interest) {
+            // Foes pin each other for 10 s (IM5): an attacker out of its victim's view stays visible.
+            const foe = sim.wireId(h.source) === r.playerEntity ? h.target : sim.wireId(h.target) === r.playerEntity ? h.source : -1;
+            if (foe >= 0) (r.combatPins ??= new Map()).set(sim.wireId(foe), this.tick + COMBAT_PIN_TICKS);
+          }
+          if (this.sees(r, h.source, h.target)) this.sendEnvelope(r, MessageType.Hit, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1521,7 +1531,9 @@ export class Gateway {
       }
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          if (this.sees(r, events[i].target, events[i].killer ?? -1)) this.sendEnvelope(r, MessageType.Life, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1545,7 +1557,7 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Ability, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) if (this.sees(r, events[i].entity)) this.sendEnvelope(r, MessageType.Ability, encodeControl(msgs[i]));
       }
       all.push(...msgs);
     }
@@ -1571,7 +1583,9 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          if (this.sees(r, events[i].source, ...(events[i].hits ?? []).map((h) => h.target))) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1595,7 +1609,7 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Status, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) if (this.sees(r, changes[i].entity)) this.sendEnvelope(r, MessageType.Status, encodeControl(msgs[i]));
       }
       all.push(...msgs);
     }
@@ -2081,6 +2095,42 @@ export class Gateway {
     }
   }
 
+  /** IM5: the wire ids a session always sees: its party in this region and recent foes. */
+  private pinsOf(s: ClientSession): bigint[] {
+    const out: bigint[] = [];
+    const me = s.character?.name ?? s.username;
+    const mates = this.parties.partyOf(me);
+    if (mates.length > 0) {
+      const names = new Set(mates.map((n) => n.toLowerCase()));
+      for (const r of this.sessions.values()) {
+        if (r === s || r.playerEntity === null) continue;
+        if (names.has((r.character?.name ?? r.username).toLowerCase())) out.push(r.playerEntity);
+      }
+    }
+    if (s.combatPins) {
+      for (const [wid, until] of s.combatPins) {
+        if (until < this.tick) s.combatPins.delete(wid);
+        else out.push(wid);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Whether a session is told about events of these entities (IM5): with
+   * interest on, when one stands in its interest sectors or is pinned.
+   */
+  private sees(s: ClientSession, ...eids: number[]): boolean {
+    if (!this.interest || !s.interestSet) return true;
+    for (const eid of eids) {
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      if (s.interestSet.has(homeSector(this.world, eid))) return true;
+      const wid = this.world.wireId(eid);
+      if (wid === s.playerEntity || s.pinnedOut?.has(wid)) return true;
+    }
+    return false;
+  }
+
   /**
    * One session's DeltaSet this tick (interest management): its interest
    * sectors' shared bytes, full state for sectors it just entered (or all of
@@ -2102,6 +2152,26 @@ export class Gateway {
     }
     if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
     s.interestSet = next;
+    // Pinned (IM5): party members and recent foes, wherever they are.
+    const was = replace ? new Set<bigint>() : (s.pinnedOut ?? new Set<bigint>());
+    const out = new Set<bigint>();
+    const fresh: number[] = [], kept: number[] = [];
+    for (const wid of this.pinsOf(s)) {
+      const pe = this.world.resolveWireId(wid);
+      if (pe < 0 || next.has(homeSector(this.world, pe))) continue;
+      out.add(wid);
+      (was.has(wid) ? kept : fresh).push(pe);
+    }
+    const left: bigint[] = [];
+    for (const wid of was) {
+      if (out.has(wid)) continue;
+      const pe = this.world.resolveWireId(wid);
+      if (pe < 0 || !next.has(homeSector(this.world, pe))) left.push(wid);
+    }
+    s.pinnedOut = out;
+    if (fresh.length + kept.length + left.length > 0) {
+      entries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
+    }
     return entries;
   }
 

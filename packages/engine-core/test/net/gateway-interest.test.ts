@@ -117,3 +117,24 @@ it("through the edge: one wire.sectors push per tick carries the shared bytes an
   for (const [, , key] of plans[0].entries) assert.ok(key in bytes || key.startsWith("2:"));
   assert.ok(!pushes.some((p) => p.type === "wire.send" && Buffer.from(p.payload.data as string, "base64")[0] === MessageType.DeltaSet), "no per-session DeltaSet from the core");
 });
+
+it("pinned: a foe far away stays visible through the pinned entry, and leaves when the pin ends", async () => {
+  now = 1_000_000;
+  gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), interest: { enterM: 96, leaveM: 128 } });
+  const url = `ws://127.0.0.1:${await gw.listen()}`;
+  gw.frame(now);
+  const alice = await join(url, "alice");
+  const bob = await join(url, "user-a");
+  assert.equal(applyTeleport(gw.world, bob.entity, 1000, 1000, null).ok, true);
+  await step(2, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity));
+  const sessions = (gw as unknown as { sessions: Map<string, { playerEntity: bigint | null; combatPins?: Map<bigint, number> }> }).sessions;
+  const aliceSession = [...sessions.values()].find((s) => s.playerEntity === alice.entity)!;
+  aliceSession.combatPins = new Map([[bob.entity, Number.MAX_SAFE_INTEGER]]);
+  await step(2, alice, bob);
+  assert.ok(alice.mirror.entities.get(bob.entity)?.transform, "the pinned foe arrives with his rows");
+  assert.equal(alice.mirror.home.get(bob.entity), "pin");
+  aliceSession.combatPins.set(bob.entity, 0);
+  await step(2, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity), "the pin ended: he left view");
+});
