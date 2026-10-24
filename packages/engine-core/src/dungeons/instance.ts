@@ -529,7 +529,7 @@ export class DungeonInstance {
       secondsLeft: Math.max(0, Math.round((this.startedAt + this.opts.rules.timeLimitMinutes * 60_000 - this.now()) / 1000)),
       creaturesLeft: left.creatures,
       bossLeft: left.boss,
-      chests: this.chests.map((c) => ({ id: c.id, opened: c.opened })),
+      chests: this.chests.map((c) => ({ id: c.id, opened: c.opened, x: c.x, z: c.z })),
       traps: this.traps.map((t) => ({ id: t.id, sprung: t.sprung })),
     });
   }

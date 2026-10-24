@@ -699,6 +699,7 @@ export function App(): React.ReactElement {
           onTreat={onTreat}
           onMend={onMend}
           onUseHotkey={onUseHotkey}
+          chests={run?.phase === "in" ? run.state?.chests : undefined}
           onNearDrop={setNearDrop}
           onNearResource={setNearResource}
           onQuests={toggleQuests}
