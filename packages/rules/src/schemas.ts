@@ -504,6 +504,21 @@ export const IngressSchema = z.strictObject({
   maxViolations: z.number().int().min(1).default(100),
 });
 
+// --------------------------------------------------------------- interest
+
+/**
+ * Interest management (IM): a session sees the sectors whose rectangle is
+ * within enterM of its avatar and drops one only past leaveM (hysteresis).
+ * farM is how far a farVisible entity (megafauna, landmarks) is seen.
+ */
+export const InterestSchema = z
+  .strictObject({
+    enterM: z.number().positive().default(96),
+    leaveM: z.number().positive().default(128),
+    farM: z.number().positive().default(400),
+  })
+  .refine((r) => r.leaveM >= r.enterM, { message: "leaveM must be at least enterM" });
+
 // -------------------------------------------------------------- gathering
 
 /** Gathering from resource nodes (tree stands, ore veins, fishing spots): reach, pace, the pouch, training. */
@@ -512,6 +527,8 @@ export const GatheringSchema = z.strictObject({
   reachM: z.number().min(0).default(2.5),
   /** One gather per character this often, seconds. */
   cooldownSeconds: z.number().min(0).default(1.2),
+  /** How long one gather takes (the cast bar), seconds; 0 gathers at once. */
+  castSeconds: z.number().min(0).default(2),
   /** Most of one material a pouch holds. */
   pouchMax: z.number().int().min(1).default(999),
   /** A gather trains the node's skill at this difficulty per material tier (tier 2: twice it), capped at 1. */
@@ -726,6 +743,8 @@ export const NeedsSchema = z.strictObject({
   thirst: NeedSchema.default({ max: 100, drainPerMinute: 3, damagePerSecond: 1 }),
   /** Share of the drain that applies while running or swimming (1 = no change). */
   exertionFactor: z.number().min(1).default(1.5),
+  /** How long eating or drinking takes (a cast bar that a move or a blow cancels), seconds; 0 at once. */
+  eatSeconds: z.number().min(0).default(1),
 });
 
 // ---------------------------------------------------------------- spells
@@ -842,6 +861,7 @@ export const RULE_FILES = {
   creatures: CreaturesSchema,
   needs: NeedsSchema,
   ingress: IngressSchema,
+  interest: InterestSchema,
   spells: SpellsSchema,
   gathering: GatheringSchema,
   movement: MovementSchema,
@@ -870,6 +890,7 @@ export type LootRules = z.infer<typeof LootSchema>;
 export type NeedsRules = z.infer<typeof NeedsSchema>;
 export type NeedRules = z.infer<typeof NeedSchema>;
 export type IngressRules = z.infer<typeof IngressSchema>;
+export type InterestRules = z.infer<typeof InterestSchema>;
 export type GatheringRules = z.infer<typeof GatheringSchema>;
 export type MovementRules = z.infer<typeof MovementSchema>;
 export type SocialRules = z.infer<typeof SocialSchema>;
@@ -892,6 +913,7 @@ export interface Rules {
   items: ItemsRules;
   loot: LootRules;
   ingress: IngressRules;
+  interest: InterestRules;
   creatures: CreaturesRules;
   needs: NeedsRules;
   spells: SpellsRules;

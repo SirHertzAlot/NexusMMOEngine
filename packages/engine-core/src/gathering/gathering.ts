@@ -75,9 +75,6 @@ interface Node extends ResourceNodeSpec {
   regrowAt: number | null;
 }
 
-/** A gather request (catalog 0x24): the node's wire id. */
-export const GatherActionSchema = z.object({ kind: z.literal("gather"), entity: z.string().regex(/^\d{1,20}$/) }).strict();
-
 const round2 = (v: number): number => Math.round(v * 100) / 100;
 const HOUR_MS = 3_600_000;
 
@@ -97,6 +94,8 @@ export class GatheringSystem implements SimSystem {
   private changed = new Set<Node>();
   private reachM: number;
   private cooldownMs: number;
+  /** How long one gather takes, seconds (the cast bar); set by setRules. */
+  castSeconds = 0;
   private pouchMax: number;
   private trainPerTier: number;
   private regrowCheckSeconds: number;
@@ -117,6 +116,7 @@ export class GatheringSystem implements SimSystem {
   setRules(r: GatheringRules): void {
     this.reachM = r.reachM;
     this.cooldownMs = r.cooldownSeconds * 1000;
+    this.castSeconds = r.castSeconds;
     this.pouchMax = r.pouchMax;
     this.trainPerTier = r.trainDifficultyPerTier;
     this.regrowCheckSeconds = r.regrowCheckSeconds;
@@ -144,7 +144,7 @@ export class GatheringSystem implements SimSystem {
   }
 
   /** Gather once from node `eid` as character `holder`, whose avatar is entity `avatar`. */
-  gather(_sim: SimWorld, holder: number, avatar: number, eid: number): GatherResult {
+  gather(_sim: SimWorld, holder: number, avatar: number, eid: number, dryRun = false): GatherResult {
     const node = eid < 0 ? undefined : this.nodes.get(eid);
     if (!node) return { ok: false, error: "nothing to gather there" };
     const dx = Math.max(0, Math.abs(Transform.px[eid]! - Transform.px[avatar]!) - node.halfX);
@@ -160,6 +160,7 @@ export class GatheringSystem implements SimSystem {
     const pouch = this.pouchOf(holder);
     const have = pouch.get(node.material) ?? 0;
     if (have >= this.pouchMax) return { ok: false, error: `your pouch holds no more ${node.name.toLowerCase()}` };
+    if (dryRun) return { ok: true, material: node.material, name: node.name, count: 0 };
     this.lastGather.set(holder, now);
     node.stock -= 1;
     if (node.stock === 0) node.regrowAt = node.regrowHours > 0 ? now + node.regrowHours * this.regrowHourMs : null;
@@ -214,6 +215,17 @@ export class GatheringSystem implements SimSystem {
   /** Drop `holder`'s cached pouch: the store was just given the world's copy (PL3b), read it again on next touch. */
   forgetPouch(holder: number): void {
     this.pouches.delete(holder);
+  }
+
+  /** Use `qty` of `material` up from `holder`'s pouch (a repair). False, and nothing spent, when they have less. */
+  spend(holder: number, material: string, qty: number): boolean {
+    const pouch = this.pouchOf(holder);
+    const have = pouch.get(material) ?? 0;
+    if (have < qty) return false;
+    if (have === qty) pouch.delete(material);
+    else pouch.set(material, have - qty);
+    if (holder >= 0) this.opts.store?.savePouch(holder, material, have - qty);
+    return true;
   }
 
   /** How many of `material` character `holder` has. */
