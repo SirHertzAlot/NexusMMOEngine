@@ -1332,42 +1332,42 @@ export function encodeSnapshotSoA(
  * Encode a changed-only Delta directly from columnar component stores.
  * Byte-identical to `encodeDelta` for the same world state.
  */
-export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Builder): Uint8Array {
+export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Builder, sparse = false): Uint8Array {
   const b = builder ?? new flatbuffers.Builder(1024);
   if (builder) builder.clear();
-  const t = buildTransformBlockSoA(b, s.transforms);
-  const v = buildVelocityBlockSoA(b, s.velocities);
-  const pi = buildIntentBlockSoA(b, s.intents);
-  const ch = buildChunkBlockSoA(b, s.chunks);
-  const h = buildHealthBlockSoA(b, s.healths);
-  const bd = buildBodyBlockSoA(b, s.bodies);
-  const ar = buildAssetRefBlockSoA(b, s.assets);
-  const lo = buildLocomotionBlockSoA(b, s.locomotions);
-  const ap = buildAppearanceBlockSoA(b, s.appearances);
-  const ac = buildActionBlockSoA(b, s.actions);
-  const st = buildStaminaBlockSoA(b, s.staminas);
-  const cr = buildCharacterRefBlockSoA(b, s.characterRefs);
-  const an = buildAnimationBlockSoA(b, s.animations);
+  const t = sparse && s.transforms.eids.length === 0 ? 0 : buildTransformBlockSoA(b, s.transforms);
+  const v = sparse && s.velocities.eids.length === 0 ? 0 : buildVelocityBlockSoA(b, s.velocities);
+  const pi = sparse && s.intents.eids.length === 0 ? 0 : buildIntentBlockSoA(b, s.intents);
+  const ch = sparse && s.chunks.eids.length === 0 ? 0 : buildChunkBlockSoA(b, s.chunks);
+  const h = sparse && s.healths.eids.length === 0 ? 0 : buildHealthBlockSoA(b, s.healths);
+  const bd = sparse && s.bodies.eids.length === 0 ? 0 : buildBodyBlockSoA(b, s.bodies);
+  const ar = sparse && s.assets.eids.length === 0 ? 0 : buildAssetRefBlockSoA(b, s.assets);
+  const lo = sparse && s.locomotions.eids.length === 0 ? 0 : buildLocomotionBlockSoA(b, s.locomotions);
+  const ap = sparse && s.appearances.eids.length === 0 ? 0 : buildAppearanceBlockSoA(b, s.appearances);
+  const ac = sparse && s.actions.eids.length === 0 ? 0 : buildActionBlockSoA(b, s.actions);
+  const st = sparse && s.staminas.eids.length === 0 ? 0 : buildStaminaBlockSoA(b, s.staminas);
+  const cr = sparse && s.characterRefs.eids.length === 0 ? 0 : buildCharacterRefBlockSoA(b, s.characterRefs);
+  const an = sparse && s.animations.eids.length === 0 ? 0 : buildAnimationBlockSoA(b, s.animations);
   const spawned = buildU64Vector(b, s.spawned, (bb, k) => Delta.startSpawnedVector(bb, k));
   const despawned = buildU64Vector(b, s.despawned, (bb, k) => Delta.startDespawnedVector(bb, k));
   Delta.startDelta(b);
   Delta.addTick(b, BigInt(s.tick));
   Delta.addBaseTick(b, BigInt(s.baseTick));
-  Delta.addTransforms(b, t);
-  Delta.addVelocities(b, v);
-  Delta.addIntents(b, pi);
-  Delta.addChunks(b, ch);
-  Delta.addHealths(b, h);
-  Delta.addBodies(b, bd);
-  Delta.addAssets(b, ar);
+  if (t) Delta.addTransforms(b, t);
+  if (v) Delta.addVelocities(b, v);
+  if (pi) Delta.addIntents(b, pi);
+  if (ch) Delta.addChunks(b, ch);
+  if (h) Delta.addHealths(b, h);
+  if (bd) Delta.addBodies(b, bd);
+  if (ar) Delta.addAssets(b, ar);
   Delta.addSpawned(b, spawned);
   Delta.addDespawned(b, despawned);
-  Delta.addLocomotions(b, lo);
-  Delta.addAppearances(b, ap);
-  Delta.addActions(b, ac);
-  Delta.addStaminas(b, st);
-  Delta.addCharacterRefs(b, cr);
-  Delta.addAnimations(b, an);
+  if (lo) Delta.addLocomotions(b, lo);
+  if (ap) Delta.addAppearances(b, ap);
+  if (ac) Delta.addActions(b, ac);
+  if (st) Delta.addStaminas(b, st);
+  if (cr) Delta.addCharacterRefs(b, cr);
+  if (an) Delta.addAnimations(b, an);
   const root = Delta.endDelta(b);
   b.finish(root);
   // A reused builder's bytes are overwritten by the next encode: copy them out.

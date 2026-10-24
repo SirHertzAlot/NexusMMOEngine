@@ -790,7 +790,7 @@ export function encodeEidsFromSim(
   ids: { spawned: Iterable<bigint>; despawned: Iterable<bigint> },
   chunkSource?: ChunkDataSource | null,
 ): Uint8Array {
-  return encodeDeltaSoA(soaState(sim, tick, baseTick, eids, chunkSource ?? null, ids), sharedBuilder);
+  return encodeDeltaSoA(soaState(sim, tick, baseTick, eids, chunkSource ?? null, ids), sharedBuilder, true);
 }
 
 const sharedBuilder = new flatbuffers.Builder(4096);
