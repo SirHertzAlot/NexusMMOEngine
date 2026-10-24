@@ -42,6 +42,15 @@ function setup(store?: SqliteGatheringStore) {
   return { g, sim, tree, vein, me, clock, trained };
 }
 
+describe("GatheringSystem dry run", () => {
+  it("checks a gather without taking stock, starting the cooldown or filling the pouch", () => {
+    const { g, sim, tree, me } = setup();
+    assert.deepEqual(g.gather(sim, 7, me, tree, true), { ok: true, material: "yew-log", name: "Yew log", count: 0 });
+    assert.deepEqual(g.pouchMessage(7).materials, []);
+    assert.equal(g.gather(sim, 7, me, tree).ok, true, "no cooldown from the check");
+  });
+});
+
 describe("GatheringSystem", () => {
   it("gathers one at a time into the pouch, within reach and past the cooldown, training the node's skill", () => {
     const { g, sim, tree, vein, me, clock, trained } = setup();
