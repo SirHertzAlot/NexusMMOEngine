@@ -1256,10 +1256,13 @@ export class Gateway {
   // the edge serves the client protocol.
 
   private readonly tickListeners: Array<(t: GatewayTick) => void> = [];
+  /** Tick listeners that read `GatewayTick.delta`; with interest on, the global delta is only encoded for them. */
+  private deltaListeners = 0;
 
   /** Called after every tick's broadcast. */
-  addTickListener(cb: (t: GatewayTick) => void): void {
+  addTickListener(cb: (t: GatewayTick) => void, needsDelta = true): void {
     this.tickListeners.push(cb);
+    if (needsDelta) this.deltaListeners++;
   }
 
   private readonly tickTimeListeners: Array<(ms: number) => void> = [];
@@ -1364,7 +1367,7 @@ export class Gateway {
     // tracker: commit() still runs below, as on the row path.
     const frame = this.interest ? this.sectorIndex.frame(sim, tick, this.tracker, this.chunkSource) : null;
     // With interest on, the global delta is only for tick listeners.
-    const deltaBytes = frame === null || this.tickListeners.length > 0
+    const deltaBytes = frame === null || this.deltaListeners > 0
       ? encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource)
       : EMPTY_BYTES;
     this.tracker.commit(sim);
@@ -1864,6 +1867,7 @@ export class Gateway {
     }
     const eid = this.world.resolveWireId(s.playerEntity);
     this.mastery?.forget(eid);
+    this.forgetDuels(eid);
     this.world.despawn(parseWireEntityId(s.playerEntity).slot);
     s.playerEntity = null;
     this.handoffArrivals.delete(s.clientId);
@@ -2511,6 +2515,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(s.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(slot);
       }
       // The grace period is over: this is the logout. Fleet mode
@@ -2618,10 +2623,22 @@ export class Gateway {
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
+    this.leaveDuel(s);
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
     this.extensionsLeave(s);
+  }
+
+  /** A disconnecting player's duel and challenges end (the opponent is told on 0x20). */
+  private leaveDuel(s: ClientSession): void {
+    if (s.playerEntity !== null) this.forgetDuels(this.world.resolveWireId(s.playerEntity));
+  }
+
+  /** End `eid`'s duel and drop its challenges (disconnect, logout, leaving the region). */
+  private forgetDuels(eid: number): void {
+    if (eid < 0) return;
+    for (const x of this.systems) if (x instanceof DuelSystem) x.forget(eid, this.tick);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -2642,6 +2659,7 @@ export class Gateway {
       const sock = s.socket;
       s.socket = null;
       s.disconnectedAtMs = this.clock();
+      this.leaveDuel(s);
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
@@ -2828,7 +2846,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -3933,6 +3951,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(other.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(parseWireEntityId(other.playerEntity).slot);
       }
       other.playerEntity = null;
@@ -4376,6 +4395,9 @@ export class Gateway {
     if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
+    // The player's gold (catalog 0x21): on join too, not only when it changes.
+    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
     if (this.interest) {
       // Interest management: the next tick sends a full replace of what this session sees.
       s.interestSet = null;

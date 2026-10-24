@@ -89,6 +89,7 @@
   "presence.online": "online",
   "presence.offline": "offline",
   "bag.title": "bag",
+  "bag.gold": "gold",
   "bag.durability": "durability {value}",
   "bag.versus": "vs {names}",
   "bag.slotIsEmpty": "slot is empty",

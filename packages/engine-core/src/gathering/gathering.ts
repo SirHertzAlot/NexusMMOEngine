@@ -233,6 +233,16 @@ export class GatheringSystem implements SimSystem {
     return this.pouchOf(holder).get(material) ?? 0;
   }
 
+  /** Spend `qty` of `material` from `holder`'s pouch (crafting), written through to the store; false and no change when short. */
+  take(holder: number, material: string, qty: number): boolean {
+    const pouch = this.pouchOf(holder);
+    const have = pouch.get(material) ?? 0;
+    if (!Number.isInteger(qty) || qty < 0 || have < qty) return false;
+    pouch.set(material, have - qty);
+    if (holder >= 0) this.opts.store?.savePouch(holder, material, have - qty);
+    return true;
+  }
+
   private tierOf(material: string): number {
     for (const n of this.nodes.values()) if (n.material === material) return n.tier;
     return 1;

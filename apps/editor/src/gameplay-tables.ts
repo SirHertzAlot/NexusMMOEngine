@@ -54,6 +54,7 @@ export const TABLE_DEFS: Record<GameplayTable, TableDef> = {
       { key: "drops.rolls", label: "Drop rolls", kind: "pair", def: [1, 2], nested: true },
       { key: "drops.chance", label: "Drop chance", ...share, def: 0.8, nested: true },
       { key: "drops.table", label: "Loot table (named drops)", kind: "enum", options: [], optionsFrom: "lootTables", nested: true },
+      { key: "drops.gold", label: "Drop gold (min–max)", kind: "pair", nested: true },
     ],
     newData: (ctx) => newEntry("creatures", [...(ctx.refs.items ?? [])]),
   },

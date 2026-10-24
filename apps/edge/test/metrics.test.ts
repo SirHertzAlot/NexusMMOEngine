@@ -7,11 +7,10 @@ import { ChannelClient, serveChannel, type ChannelPacket } from "@mmo-engine/cha
 import { LIFECYCLE_EVENTS, netLogger, Registry } from "@mmo-engine/nethealth";
 import { createCoreMetricsProxy, createEdgeMetrics, EDGE_METRIC_NAMES, metricsHandler, packetTypeLabel, recordRoute } from "../src/metrics.js";
 
-/** The catalog in docs/EDGE-CORE-SPLIT.md (slice E6), word for word. */
+/** The catalog in docs/EDGE-CORE-SPLIT.md (slice E6), less the two mirror metrics dropped with the mirror stream after E3b. */
 const SPEC_EDGE = [
   "mmo_edge_ws_connections", "mmo_edge_ws_connects_total", "mmo_edge_ws_disconnects_total",
   "mmo_edge_router_requests_total", "mmo_edge_router_errors_total", "mmo_edge_router_latency_ms",
-  "mmo_edge_mirror_deltas_fanned_out_total", "mmo_edge_mirror_snapshot_age_ticks",
   "mmo_edge_core_metrics_stale",
 ];
 const SPEC_CHANNEL = [

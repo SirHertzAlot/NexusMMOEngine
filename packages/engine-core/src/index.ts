@@ -384,9 +384,7 @@ export {
   startCoreChannel,
   createCoreChannelHandler,
   pushTick,
-  isSnapshotTick,
   coreChannelPort,
-  SNAPSHOT_EVERY_TICKS,
   createCoreMetrics,
   CORE_METRIC_NAMES,
 } from "./channel-server.js";

@@ -20,7 +20,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { addComponent, hasComponent } from "bitecs";
+import { addComponent, entityExists, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
@@ -44,7 +44,8 @@ import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { BreakSystem, breakDefsOf, ChestSystem } from "../interact/index.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
-import type { InstanceLayout } from "./pool.js";
+import type { InstanceLayout, LayoutProp } from "./pool.js";
+import { placeChestsAndTraps } from "./placement.js";
 import { DungeonWallSystem } from "./walls.js";
 
 export type InstanceOutcome = "cleared" | "timeout" | "abandoned";
@@ -59,7 +60,7 @@ export interface InstanceMember {
 /** A chest placed for the run: an entity in its room, opened once with E (interact), then it stays open. */
 export interface InstanceChest {
   id: string;
-  /** The chest's entity in the run's world. */
+  /** The chest's entity in the run's world (swapped for an open model when it is opened). */
   eid: number;
   x: number;
   z: number;
@@ -137,6 +138,8 @@ export class DungeonInstance {
   private readonly chestSystem: ChestSystem;
   /** How many chests were open at the last state push (a change pushes the state at once). */
   private openChests = 0;
+  /** Each chest's facing (chests[i]), kept for the open model that replaces it. */
+  private readonly chestYaw: number[] = [];
   /** Traps armed for the run, in room-id order (`trap-0`, …). */
   readonly traps: InstanceTrap[] = [];
   readonly creatures: CreatureSystem;
@@ -254,7 +257,8 @@ export class DungeonInstance {
     const { layout } = this.opts;
     const library = PcgAssetLibrary.empty();
     const shell = layout.shell ? library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name) : null;
-    for (const kind of new Set(layout.props.map((p) => p.kind))) {
+    // The chests the run stands (and the open model they swap to) are served too, whether or not the bake dressed one.
+    for (const kind of new Set([...layout.props.map((p) => p.kind), "chest", "chest-open"])) {
       const id = `dungeon:${kind}`;
       const mesh = this.opts.props?.archetypes[id]?.asset === id ? propMesh(kind) : null;
       if (mesh) library.addPrebaked(id, mesh, kind);
@@ -312,30 +316,44 @@ export class DungeonInstance {
    * A kind with no entry is counted, not spawned (decals wait for art).
    */
   private spawnProps(): void {
-    const table = this.opts.props;
-    if (!table) return;
-    for (const p of this.opts.layout.props) {
-      const asset = `dungeon:${p.kind}`; // the table is keyed by asset id, as the world's spawn tables are (cf. structure:<kind>)
-      const archetype = table.archetypes[asset];
-      if (!archetype) {
-        this.unspawnedProps.set(p.kind, (this.unspawnedProps.get(p.kind) ?? 0) + 1);
-        continue;
-      }
-      const half = archetype.collision?.halfExtents ?? [0.5, 0.5, 0.5];
-      const lift = table.lift[p.kind];
-      const built = buildSpawn(table, asset, p.x, lift ?? 0, p.z, p.yaw);
-      if ("error" in built) continue;
-      // The table is keyed `dungeon:<kind>`; its `asset` is what the client draws: the same id, or the catalog model the local
-      // art overlay stands in (an entity's AssetRef hash is the hash of that id).
-      if (archetype.asset !== asset) {
-        built.assetId = archetype.asset;
-        built.assetHash = fnv1a32(archetype.asset);
-      }
-      built.sx = built.sy = built.sz = p.scale * (this.opts.artScales?.[p.kind] ?? 1);
-      // The bake's own footprint beats the table's default one.
-      if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
-      spawnScatterEntity(this.world, built);
+    if (!this.opts.props) return;
+    // A baked chest the run opens is spawned as the run's chest (populate), not as dressing too.
+    const chests = new Set(this.placement().chests.flatMap((c) => (c.prop === undefined ? [] : [c.prop])));
+    this.opts.layout.props.forEach((p, i) => {
+      if (!chests.has(i)) this.spawnProp(p);
+    });
+  }
+
+  private placedCache: ReturnType<typeof placeChestsAndTraps> | null = null;
+
+  /** Where the run's chests and traps go (placement.ts): free cells clear of the dressing, the same for a layout every time. */
+  private placement(): ReturnType<typeof placeChestsAndTraps> {
+    return (this.placedCache ??= placeChestsAndTraps(this.opts.layout, Math.max(0, this.opts.rules.chestsPerRun), Math.max(0, this.opts.rules.trapsPerRun), this.opts.props));
+  }
+
+  /** One prop's entity (-1: its kind has no table entry). */
+  private spawnProp(p: LayoutProp): number {
+    const table = this.opts.props!;
+    const asset = `dungeon:${p.kind}`; // the table is keyed by asset id, as the world's spawn tables are (cf. structure:<kind>)
+    const archetype = table.archetypes[asset];
+    if (!archetype) {
+      this.unspawnedProps.set(p.kind, (this.unspawnedProps.get(p.kind) ?? 0) + 1);
+      return -1;
     }
+    const half = archetype.collision?.halfExtents ?? [0.5, 0.5, 0.5];
+    const lift = table.lift[p.kind];
+    const built = buildSpawn(table, asset, p.x, lift ?? 0, p.z, p.yaw);
+    if ("error" in built) return -1;
+    // The table is keyed `dungeon:<kind>`; its `asset` is what the client draws: the same id, or the catalog model the local
+    // art overlay stands in (an entity's AssetRef hash is the hash of that id).
+    if (archetype.asset !== asset) {
+      built.assetId = archetype.asset;
+      built.assetHash = fnv1a32(archetype.asset);
+    }
+    built.sx = built.sy = built.sz = p.scale * (this.opts.artScales?.[p.kind] ?? 1);
+    // The bake's own footprint beats the table's default one.
+    if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
+    return spawnScatterEntity(this.world, built);
   }
 
   /** Bind the port and start the tick. Returns the port. */
@@ -412,20 +430,15 @@ export class DungeonInstance {
   // ------------------------------------------------------------- inside
 
   private populate(): void {
-    const trapRooms = this.opts.layout.rooms
-      .filter((r) => r.id !== this.opts.layout.entranceRoom)
-      .sort((a, b) => a.id - b.id)
-      .slice(0, Math.max(0, this.opts.rules.trapsPerRun));
-    trapRooms.forEach((r, i) => this.traps.push({ id: `trap-${i}`, x: r.x, z: r.z, sprung: false }));
-    const chestRooms = this.opts.layout.rooms
-      .filter((r) => r.id !== this.opts.layout.entranceRoom)
-      .sort((a, b) => a.id - b.id)
-      .slice(0, Math.max(0, this.opts.rules.chestsPerRun));
-    chestRooms.forEach((r, i) => {
-      const eid = this.spawnChest(r.x, r.z);
+    const placed = this.placement();
+    placed.traps.forEach((t, i) => this.traps.push({ id: `trap-${i}`, x: t.x, z: t.z, sprung: false }));
+    placed.chests.forEach((p, i) => {
+      const eid = this.spawnChest(p.x, p.z, p.prop === undefined ? undefined : this.opts.layout.props[p.prop]);
       this.chestSystem.register(eid, `chest-${i}`, { table: "run", refillSeconds: 1e9 });
       const sys = this.chestSystem;
-      this.chests.push({ id: `chest-${i}`, eid, x: r.x, z: r.z, get opened() { return sys.isOpen(eid); } });
+      const chest: InstanceChest = { id: `chest-${i}`, eid, x: p.x, z: p.z, get opened() { return sys.isOpen(this.eid); } };
+      this.chests.push(chest);
+      this.chestYaw.push(p.prop === undefined ? 0 : this.opts.layout.props[p.prop]!.yaw);
     });
     const rules = this.opts.game.rules.creatures.creatures;
     const fallback = this.opts.rules.fallbackCreature;
@@ -494,6 +507,7 @@ export class DungeonInstance {
   private direct(): void {
     if (this.outcome) return;
     this.springTraps();
+    this.showOpened();
     const now = this.now();
     if (this.boss.size > 0 && this.remaining().boss === 0) this.end("cleared");
     else if (now - this.startedAt >= this.opts.rules.timeLimitMinutes * 60_000) this.end("timeout");
@@ -505,11 +519,31 @@ export class DungeonInstance {
     }
   }
 
+  /**
+   * An opened chest shows open: its entity is swapped for an open model in the same place (a new entity, so clients that
+   * batch static props draw it afresh) and the chest system follows it. ponytail: a despawn and respawn, not a variant switch.
+   */
+  private showOpened(): void {
+    if (!this.opts.props?.archetypes["dungeon:chest-open"]) return;
+    this.chests.forEach((c, i) => {
+      if (!c.opened || this.shownOpen.has(c.id) || !entityExists(this.world.ecs, c.eid)) return;
+      this.shownOpen.add(c.id);
+      const was = c.eid;
+      const open = this.spawnProp({ kind: "chest-open", x: c.x, z: c.z, yaw: this.chestYaw[i] ?? 0, scale: 1, radius: 0 });
+      if (open < 0) return;
+      this.world.despawn(was);
+      c.eid = open;
+      this.chestSystem.rebind(was, open);
+    });
+  }
+  private readonly shownOpen = new Set<string>();
+
   /** A chest stands in its room: the props table's chest model when there is one, else a bare marker the interaction still finds. */
-  private spawnChest(x: number, z: number): number {
-    const table = this.opts.props;
-    const built = table && table.archetypes["dungeon:chest"] ? buildSpawn(table, "dungeon:chest", x, 0, z, 0) : null;
-    if (table && built && !("error" in built)) return spawnScatterEntity(this.world, built);
+  private spawnChest(x: number, z: number, baked?: LayoutProp): number {
+    if (this.opts.props) {
+      const eid = this.spawnProp(baked ?? { kind: "chest", x, z, yaw: 0, scale: 1, radius: 0 });
+      if (eid >= 0) return eid;
+    }
     const eid = this.world.spawn();
     addComponent(this.world.ecs, C.Transform, eid);
     C.Transform.px[eid] = x;

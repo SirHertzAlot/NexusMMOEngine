@@ -41,7 +41,7 @@
     "network",
     "edge-core"
   ],
-  "description": "Edge/core split network health (docs/EDGE-CORE-SPLIT.md, slice E6). Alerts are documented on the panels, not provisioned: router p99 > 50 ms for 5 min; heartbeat_missed_total increasing; snapshot age > 600 ticks.",
+  "description": "Edge/core split network health (docs/EDGE-CORE-SPLIT.md, slice E6). Alerts are documented on the panels, not provisioned: router p99 > 50 ms for 5 min; heartbeat_missed_total increasing.",
   "refresh": "15s",
   "schemaVersion": 39,
   "version": 1,
@@ -387,7 +387,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Mirror snapshot age (ticks)",
+      "title": "Relayed player frames / s",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -405,35 +405,18 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "mmo_edge_mirror_snapshot_age_ticks",
-          "legendFormat": "snapshot age"
+          "expr": "sum by (type) (rate(mmo_channel_pushes_total{side=\"edge\",type=~\"wire.send|wire.publish\"}[5m]))",
+          "legendFormat": "{{type}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 600
-              }
-            ]
-          },
-          "custom": {
-            "thresholdsStyle": {
-              "mode": "line"
-            }
-          }
+          "custom": {}
         },
         "overrides": []
       },
       "options": {},
-      "description": "Alert: snapshot age > 600 ticks. Snapshots arrive every 300 ticks."
+      "description": "Snapshots and deltas the edge relays to players (E3b), by channel push type."
     },
     {
       "id": 9,

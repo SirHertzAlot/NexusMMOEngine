@@ -15,7 +15,7 @@ import { useDocument } from "../../../apps/editor/src/ui/use-document.js";
 import { useSaveTask } from "../../../apps/editor/src/ui/use-save-task.js";
 import { checkStoryRemote, loadStory, saveStory } from "../../../apps/editor/src/story-client.js";
 import {
-  addDialogNode, addReply, deleteDialogNode, dialogGraph, questGraph, renameDialogNode, startTest,
+  addDialogNode, addReply, deleteDialogNode, dialogGraph, patchReward, questGraph, renameDialogNode, startTest,
   type DialogDoc, type DialogReply, type DialogTest, type MockState, type QuestDoc, type QuestState, type QuestsDoc,
 } from "../../../apps/editor/src/story-model.js";
 import type { StoryFile, StoryFiles, StoryIssue } from "../../../apps/editor/src/story-validate.js";
@@ -177,9 +177,20 @@ function QuestProps({ q, npcs, onEdit }: { q: QuestDoc; npcs: string[]; onEdit: 
         );
       })}
       <Button size="sm" variant="outline" onClick={() => set({ steps: [...q.steps, { id: `step-${q.steps.length + 1}`, text: "...", objective: { ...OBJECTIVES.talk, npc: q.giver } }] })}>Add step</Button>
-      <Field label="Rewards (item bases, comma separated)">
-        <Input value={(q.rewards ?? []).map((r) => r.base).join(", ")} className="h-7 text-xs" onChange={(e) => set({ rewards: e.target.value.split(",").map((s) => s.trim()).filter(Boolean).map((base) => ({ base })) })} />
-      </Field>
+      <p className="text-[11px] font-semibold uppercase text-muted-foreground">Rewards (max 5)</p>
+      {(q.rewards ?? []).map((r, i) => {
+        const rewards = q.rewards ?? [];
+        const int = (v: string): number | undefined => (v.trim() === "" ? undefined : Number(v));
+        return (
+          <div key={i} className="flex gap-1">
+            <Input value={r.base} aria-label="reward item base" placeholder="base" className="h-7 w-24 text-xs" onChange={(e) => set({ rewards: patchReward(rewards, i, { base: e.target.value }) })} />
+            <Input value={r.count ?? ""} aria-label="reward count" placeholder="count 1" inputMode="numeric" className="h-7 w-16 text-xs" onChange={(e) => set({ rewards: patchReward(rewards, i, { count: int(e.target.value) }) })} />
+            <Input value={r.gold ?? ""} aria-label="reward gold" placeholder="gold" inputMode="numeric" className="h-7 w-16 text-xs" onChange={(e) => set({ rewards: patchReward(rewards, i, { gold: int(e.target.value) }) })} />
+            <button type="button" aria-label="delete reward" className="px-1 text-xs hover:text-red-400" onClick={() => set({ rewards: rewards.filter((_, j) => j !== i) })}>x</button>
+          </div>
+        );
+      })}
+      <Button size="sm" variant="outline" disabled={(q.rewards ?? []).length >= 5} onClick={() => set({ rewards: [...(q.rewards ?? []), { base: "" }] })}>Add reward</Button>
     </div>
   );
 }

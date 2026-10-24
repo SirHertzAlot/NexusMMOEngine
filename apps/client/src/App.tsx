@@ -403,6 +403,10 @@ export function App(): React.ReactElement {
         if (text) setNotice({ text, at: performance.now() });
       },
       onLife: (l) => combat.life(l),
+      onTelegraph: (tg) => {
+        combat.telegraphs.push(tg);
+        if (combat.telegraphs.length > 64) combat.telegraphs.shift(); // nothing draws them until the canvas mounts
+      },
       onTreatment: (t) => {
         const c = clientRef.current;
         const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
@@ -888,6 +892,7 @@ export function App(): React.ReactElement {
               bag={bag}
               hands={hands}
               worn={worn}
+              gold={gold}
               onDrop={(id) => client?.dropItem(id)}
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
