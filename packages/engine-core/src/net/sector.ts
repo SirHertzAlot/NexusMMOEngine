@@ -24,6 +24,9 @@
  * topics on the same port.
  */
 
+/** The one topic every session's global delta is published on (IM1). */
+export const REGION_TOPIC = "sector:region";
+
 /** World units per sector side. Tunable; 64 keeps a busy area's crowd in a handful of sectors. */
 export const SECTOR_SIZE = 64;
 

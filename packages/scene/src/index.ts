@@ -117,6 +117,47 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     regrowHours: { type: "number", default: 0, min: 0 },
     town: { type: "string", default: "" },
   }),
+  /**
+   * A world chest (IX1): shared by every player. Whoever opens it first gets the loot table's items on the ground
+   * beside it; it is empty until `refillSeconds` have passed, then full for the next player.
+   */
+  Chest: component("Chest", {
+    table: { type: "string", default: "chest-common" },
+    refillSeconds: { type: "number", default: 600, min: 1 },
+    /** Seconds opening takes (a cast bar that a move or a blow cancels); 0: at once. */
+    castSeconds: { type: "number", default: 0, min: 0 },
+    /** An item base the opener must carry (a key); empty: none. */
+    requires: { type: "string", default: "" },
+    /** Whether opening uses the key up. */
+    consume: { type: "boolean", default: false },
+  }),
+  /**
+   * Breakable (IX4, IX5): the node breaks at zero health (combat hurts it like anything with health). `into`: "remove" takes it away,
+   * "variant" leaves it standing broken (no collider); `loot` is a loot.json table rolled for the last attacker; `respawnSeconds`
+   * brings it back (0: it stays broken until repaired). A break survives a restart.
+   */
+  Breakable: component("Breakable", {
+    health: { type: "number", default: 50, min: 1 },
+    into: { type: "enum", default: "remove", options: ["remove", "variant"] },
+    loot: { type: "string", default: "" },
+    respawnSeconds: { type: "number", default: 0, min: 0 },
+    /** Strength a player needs for a blow to hurt it (0: any). */
+    minStrength: { type: "number", default: 0, min: 0 },
+    /** What mending it takes once it stands broken: this pouch material, `repairCount` of it, over `repairSeconds`. Empty: it stays broken. */
+    repairMaterial: { type: "string", default: "" },
+    repairCount: { type: "number", default: 1, min: 1 },
+    repairSeconds: { type: "number", default: 4, min: 0 },
+  }),
+  /** A shop (IX8): the node is a vendor of the template in content/vendors.json; E opens its shop. */
+  Vendor: component("Vendor", {
+    template: { type: "string", default: "general-store" },
+  }),
+  /** A door (IX3): E opens and shuts it; open, its collider is gone. Takes the same `castSeconds`, `requires` and `consume` as a Chest. */
+  Door: component("Door", {
+    castSeconds: { type: "number", default: 0, min: 0 },
+    requires: { type: "string", default: "" },
+    consume: { type: "boolean", default: false },
+  }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },
   }),

@@ -57,7 +57,7 @@ export function createSystems(ctx) {
     settlements: config.settlements,
   });
 
-  const needs = new NeedsSystem(rules.needs);
+  const needs = new NeedsSystem(rules.needs, config.waterSurfaceAt);
 
   const systems = { creatures, needs };
   if (bots.length > 0) systems.bots = bots[0];

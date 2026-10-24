@@ -11,11 +11,12 @@ import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { DeathSystem } from "../src/death.js";
 import { loadGameRules } from "../src/rules/boot.js";
+import { DuelSystem } from "../src/duel.js";
 
 const { hooks } = loadGameRules();
 const DELAY_TICKS = Math.round(hooks.onDeath({ cause: "part", part: "torso" }).respawnInSeconds * 30);
 
-function setup(place?: (sim: SimWorld, e: number) => boolean, killerOf?: (e: number) => number | undefined) {
+function setup(place?: (sim: SimWorld, e: number) => boolean, killerOf?: (e: number) => number | undefined, duels?: DuelSystem) {
   SimWorld.resetEntityCursorForTesting();
   const sim = new SimWorld();
   const e = sim.spawn();
@@ -26,7 +27,7 @@ function setup(place?: (sim: SimWorld, e: number) => boolean, killerOf?: (e: num
   C.Transform.qw[e] = 1;
   C.Transform.px[e] = 5;
   C.Health.current[e] = C.Health.max[e] = 100;
-  const death = new DeathSystem(hooks, 30, killerOf, place);
+  const death = new DeathSystem(hooks, 30, killerOf, place, undefined, undefined, undefined, duels);
   let tick = 0;
   const run = (ticks: number): void => {
     for (let i = 0; i < ticks; i++) {
@@ -99,5 +100,35 @@ describe("death", () => {
     w.run(DELAY_TICKS + 1);
     assert.equal(C.Health.current[w.e], 100);
     assert.equal(C.Transform.px[w.e], 5);
+  });
+
+  it("a duelist felled by their opponent loses the duel, not their life (M5)", () => {
+    const duels = new DuelSystem(30);
+    const w = setup(undefined, () => 99, duels);
+    duels.challenge(99, w.e, 0);
+    duels.accept(w.e, 0);
+    duels.drainEvents();
+    C.Health.current[w.e] = 0;
+    w.run(1);
+    assert.equal(w.death.drainEvents().length, 0, "no death, no drop, no respawn delay");
+    assert.equal(w.death.isDead(w.e), false);
+    assert.equal(C.Health.current[w.e], 100, "put right where they stand");
+    assert.equal(C.Transform.px[w.e], 5);
+    const [ended] = duels.drainEvents();
+    assert.equal(ended.state, "ended");
+    assert.equal(ended.reason, "blood");
+    assert.equal(ended.winner, 99);
+    assert.equal(duels.inDuel(w.e), false, "first blood ends the duel");
+  });
+
+  it("a duelist killed by someone else dies as usual", () => {
+    const duels = new DuelSystem(30);
+    const w = setup(undefined, () => 7, duels);
+    duels.challenge(99, w.e, 0);
+    duels.accept(w.e, 0);
+    C.Health.current[w.e] = 0;
+    w.run(1);
+    assert.equal(w.death.drainEvents()[0].state, "dead");
+    assert.ok(w.death.isDead(w.e));
   });
 });

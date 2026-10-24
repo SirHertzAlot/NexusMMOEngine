@@ -164,6 +164,10 @@ export function BagPanel({
   onDrop,
   onEquip,
   onUnequip,
+  gold = null,
+  onUse,
+  hotkeyDef = null,
+  onHotkey,
 }: {
   bag: Array<ItemView | null>;
   hands: Hands;
@@ -171,6 +175,12 @@ export function BagPanel({
   onDrop: (item: number) => void;
   onEquip: (item: number) => void;
   onUnequip: (slot: "main" | "off" | ArmourSlotName) => void;
+  /** The wallet balance (0x21); null hides the line (the server runs no economy). */
+  gold?: number | null;
+  /** Eat or drink an item; with onHotkey, the item the E key uses is marked. */
+  onUse?: (item: number) => void;
+  hotkeyDef?: string | null;
+  onHotkey?: (def: string | null) => void;
 }): React.ReactElement {
   const [focus, setFocus] = useState<number | null>(null);
   const [hover, setHover] = useState<{ id: number; top: number } | null>(null);
@@ -345,9 +355,16 @@ export function BagPanel({
             onDragEnd={endDrag}
           >
             {item ? item.base : ""}
+            {item && hotkeyDef === item.def ? " ★" : ""}
           </button>
         ))}
       </div>
+      {gold !== null && (
+        <div className="mt-2 flex items-baseline justify-between text-xs" aria-label={t("bag.gold")}>
+          <span className="text-muted-foreground">{t("bag.gold")}</span>
+          <span className="font-semibold tabular-nums text-amber-400">{gold.toLocaleString()}</span>
+        </div>
+      )}
       {hovered && hover && <ItemTooltip item={hovered} hands={hands} worn={worn} top={hover.top} />}
       {shown ? (
         <div className="mt-2 border-t pt-2">
@@ -364,6 +381,22 @@ export function BagPanel({
               >
                 {t("bag.equip")}
               </button>
+            )}
+            {onUse && (shown.stats.nourish > 0 || shown.stats.quench > 0) && (
+              <>
+                <button type="button" className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => onUse(shown.id)}>
+                  {t("bag.use")}
+                </button>
+                {onHotkey && (
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => onHotkey(hotkeyDef === shown.def ? null : shown.def)}
+                  >
+                    {hotkeyDef === shown.def ? t("bag.hotkeyOn") : t("bag.hotkey")}
+                  </button>
+                )}
+              </>
             )}
             <button
               type="button"

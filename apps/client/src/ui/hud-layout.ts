@@ -69,6 +69,7 @@ export const DEFAULT_LAYOUT: HudLayout = {
     "quest-tracker": { anchor: "top-right", offset: { x: 16, y: 64 }, visible: true },
     "target-frame": { anchor: "top-center", offset: { x: 0, y: 96 }, visible: true },
     "bag-panel": { anchor: "bottom-right", offset: { x: 16, y: 16 }, visible: true },
+    "vendor-panel": { anchor: "top-center", offset: { x: 0, y: 160 }, visible: true },
     "quest-log": { anchor: "bottom-right", offset: { x: 16, y: 200 }, visible: true },
     "character-sheet": { anchor: "bottom-right", offset: { x: 16, y: 400 }, visible: true },
     "party-frame": { anchor: "top-left", offset: { x: 16, y: 64 }, visible: true },

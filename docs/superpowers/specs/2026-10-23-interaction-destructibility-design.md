@@ -1,3 +1,5 @@
+> **Status (2026-10-24): built, with these deviations.** IX1-IX8 and D4f chests are on main (ROADMAP rows IX1a-IX8). The interact op is `0x27`, not `0x25` (`0x25` is DeltaSet). Quest givers and dungeon entrances are content ids (`npc`, `entrance`), not marker entities. Open questions were decided: shared world chests with a refill timer, players with enough strength can break buildings (`minStrength`), broken buildings stay broken until repaired (no auto-return), gathering is a cast, E eats or drinks the hotkey item. Per-damage-kind multipliers, editor fields for `breakable` and world scatter respawn are not built.
+
 # Interaction and destructibility (IX)
 
 ## Intent

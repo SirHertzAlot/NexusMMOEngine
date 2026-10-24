@@ -5,12 +5,6 @@
  * from `resources` and asks to `gather` from it.
  */
 
-/** C→S: gather once from the resource node `entity` (a wire id). */
-export interface GatherAction {
-  kind: "gather";
-  entity: string;
-}
-
 /** A resource node as the client sees it. */
 export interface ResourceNodeView {
   /** The node's entity (wire id). */
