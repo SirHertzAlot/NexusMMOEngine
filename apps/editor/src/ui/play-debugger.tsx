@@ -280,6 +280,11 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       ),
     },
     {
+      id: "interest",
+      title: "interest",
+      content: <InterestPanel client={client} />,
+    },
+    {
       id: "controls",
       title: "controls",
       content: (
@@ -312,5 +317,51 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
     >
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>
+  );
+}
+
+/**
+ * Interest management (IM6): "show everything" (the debugger's default) or "show what the player
+ * sees", and a map of the sectors the server sends this client around the avatar.
+ */
+function InterestPanel({ client }: { client: MirrorClient }): React.JSX.Element {
+  const [all, setAll] = React.useState(true);
+  const [, tick] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+  const me = client.playerEntity !== null ? client.state.get(client.playerEntity)?.transform : undefined;
+  const cx = me ? Math.floor(me.px / 64) : 0, cz = me ? Math.floor(me.pz / 64) : 0;
+  const R = 4, CELL = 14;
+  const cells: React.JSX.Element[] = [];
+  for (let dz = -R; dz <= R; dz++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const on = client.interestSectors.has(`${cx + dx},${cz + dz}`);
+      cells.push(
+        <rect key={`${dx},${dz}`} x={(dx + R) * CELL} y={(dz + R) * CELL} width={CELL - 1} height={CELL - 1}
+          fill={dx === 0 && dz === 0 ? "currentColor" : on ? "rgb(56 189 248 / 0.6)" : "rgb(148 163 184 / 0.15)"} />,
+      );
+    }
+  }
+  const sectors = [...client.interestSectors].filter((s) => s !== "g").length;
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <Button
+        size="sm"
+        className="h-7 px-2 text-xs"
+        variant="outline"
+        onClick={() => {
+          const next = !all;
+          void client.admin("interest", { mode: next ? "all" : "near" }).then(() => setAll(next)).catch(() => undefined);
+        }}
+      >
+        {all ? "show what the player sees" : "show everything"}
+      </Button>
+      <svg width={(2 * R + 1) * CELL} height={(2 * R + 1) * CELL} aria-label="interest sectors around the avatar">{cells}</svg>
+      <div className="text-muted-foreground">
+        {all ? "everything" : "player's view"}: {sectors} sectors, {client.state.entityCount} entities (64 m sectors; the avatar's is filled)
+      </div>
+    </div>
   );
 }

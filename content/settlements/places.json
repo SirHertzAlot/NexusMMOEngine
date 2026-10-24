@@ -1,0 +1,373 @@
+{
+  "format": "places/1",
+  "rulesVersion": "settlement-rules/11",
+  "seed": 1234,
+  "towns": [
+    {
+      "id": "0001",
+      "x": -1672,
+      "z": -504
+    },
+    {
+      "id": "0002",
+      "x": -1640,
+      "z": -472
+    },
+    {
+      "id": "0003",
+      "x": -1584,
+      "z": 112
+    },
+    {
+      "id": "0182",
+      "x": -1672,
+      "z": -504
+    }
+  ],
+  "routes": [
+    {
+      "id": "R001",
+      "from": "0001",
+      "to": "0002",
+      "lengthM": 45,
+      "points": [
+        [
+          -1672,
+          -504
+        ],
+        [
+          -1640,
+          -472
+        ]
+      ]
+    },
+    {
+      "id": "R002",
+      "from": "0001",
+      "to": "0003",
+      "lengthM": 655,
+      "points": [
+        [
+          -1672,
+          -504
+        ],
+        [
+          -1624,
+          -472
+        ],
+        [
+          -1624,
+          -376
+        ],
+        [
+          -1592,
+          -344
+        ],
+        [
+          -1584,
+          112
+        ]
+      ]
+    },
+    {
+      "id": "R003",
+      "from": "0001",
+      "to": "0182",
+      "lengthM": 0,
+      "points": [
+        [
+          -1672,
+          -504
+        ]
+      ]
+    },
+    {
+      "id": "R004",
+      "from": "0002",
+      "to": "0003",
+      "lengthM": 593,
+      "points": [
+        [
+          -1640,
+          -472
+        ],
+        [
+          -1592,
+          -344
+        ],
+        [
+          -1584,
+          112
+        ]
+      ]
+    },
+    {
+      "id": "R005",
+      "from": "0002",
+      "to": "0182",
+      "lengthM": 45,
+      "points": [
+        [
+          -1640,
+          -472
+        ],
+        [
+          -1672,
+          -504
+        ]
+      ]
+    },
+    {
+      "id": "R006",
+      "from": "0003",
+      "to": "0182",
+      "lengthM": 655,
+      "points": [
+        [
+          -1584,
+          112
+        ],
+        [
+          -1592,
+          -344
+        ],
+        [
+          -1624,
+          -376
+        ],
+        [
+          -1624,
+          -472
+        ],
+        [
+          -1672,
+          -504
+        ]
+      ]
+    }
+  ],
+  "places": [
+    {
+      "id": "P0001",
+      "kind": "homestead",
+      "x": -816,
+      "z": -352,
+      "family": 3,
+      "works": "farm",
+      "members": [
+        {
+          "id": "npc_P0001_00",
+          "household": "P0001",
+          "home": "P0001",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0001-farm"
+        },
+        {
+          "id": "npc_P0001_01",
+          "household": "P0001",
+          "home": "P0001",
+          "cohort": "child",
+          "class": "peasant",
+          "role": "child"
+        },
+        {
+          "id": "npc_P0001_02",
+          "household": "P0001",
+          "home": "P0001",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0001-farm"
+        }
+      ]
+    },
+    {
+      "id": "P0002",
+      "kind": "homestead",
+      "x": -352,
+      "z": 576,
+      "family": 5,
+      "works": "farm",
+      "members": [
+        {
+          "id": "npc_P0002_00",
+          "household": "P0002",
+          "home": "P0002",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0002-farm"
+        },
+        {
+          "id": "npc_P0002_01",
+          "household": "P0002",
+          "home": "P0002",
+          "cohort": "child",
+          "class": "peasant",
+          "role": "child"
+        },
+        {
+          "id": "npc_P0002_02",
+          "household": "P0002",
+          "home": "P0002",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0002-farm"
+        },
+        {
+          "id": "npc_P0002_03",
+          "household": "P0002",
+          "home": "P0002",
+          "cohort": "child",
+          "class": "peasant",
+          "role": "child"
+        },
+        {
+          "id": "npc_P0002_04",
+          "household": "P0002",
+          "home": "P0002",
+          "cohort": "adolescent",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0002-farm"
+        }
+      ]
+    },
+    {
+      "id": "P0003",
+      "kind": "homestead",
+      "x": -1048,
+      "z": 1040,
+      "family": 10,
+      "works": "farm",
+      "members": [
+        {
+          "id": "npc_P0003_00",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        },
+        {
+          "id": "npc_P0003_01",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        },
+        {
+          "id": "npc_P0003_02",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        },
+        {
+          "id": "npc_P0003_03",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adolescent",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        },
+        {
+          "id": "npc_P0003_04",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adolescent",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        },
+        {
+          "id": "npc_P0003_05",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "child",
+          "class": "peasant",
+          "role": "child"
+        },
+        {
+          "id": "npc_P0003_06",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "child",
+          "class": "peasant",
+          "role": "child"
+        },
+        {
+          "id": "npc_P0003_07",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        },
+        {
+          "id": "npc_P0003_08",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "elder",
+          "class": "peasant",
+          "role": "elder"
+        },
+        {
+          "id": "npc_P0003_09",
+          "household": "P0003",
+          "home": "P0003",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0003-farm"
+        }
+      ]
+    },
+    {
+      "id": "P0004",
+      "kind": "homestead",
+      "x": -1048,
+      "z": -1048,
+      "family": 2,
+      "works": "farm",
+      "members": [
+        {
+          "id": "npc_P0004_00",
+          "household": "P0004",
+          "home": "P0004",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0004-farm"
+        },
+        {
+          "id": "npc_P0004_01",
+          "household": "P0004",
+          "home": "P0004",
+          "cohort": "adult",
+          "class": "peasant",
+          "role": "farmer",
+          "workplace": "P0004-farm"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "guard_outpost": 0,
+    "inn": 0,
+    "shack": 0,
+    "camp_site": 0,
+    "homestead": 4
+  },
+  "hash": "028029bb4101cee7af276e3ec588e9566fc654c129717080f9c4565c2de70ef7"
+}

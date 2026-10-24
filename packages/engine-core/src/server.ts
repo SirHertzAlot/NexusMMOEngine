@@ -203,6 +203,7 @@ import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
+import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
@@ -228,7 +229,8 @@ import type { RaidSettlement } from "./creatures.js";
 import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
-import { lineDef } from "./items/index.js";
+import { lineDef, rollTable } from "./items/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendorTemplates, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
@@ -429,6 +431,13 @@ async function main(): Promise<void> {
             nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
           } finally {
             nodes.close();
+          }
+          // Broken props, opened chests and doors (IX5) go into places.db the same way.
+          const records = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
+          try {
+            records.replaceAll(placeRecordsOf(places["place_records"]));
+          } finally {
+            records.close();
           }
         },
       });
@@ -869,29 +878,14 @@ async function main(): Promise<void> {
   // through the @mmo-engine/crafting rules — recipe derivation, mastery
   // check, material consumption, item grant. The service owns no storage:
   // mastery reads the MasterySystem's sheets, the crafted item resolves to
-  // a loot-pool def by (base, rank), and raw materials live in a
-  // per-character pouch. The pouch is in-memory for this slice; persisting
-  // it (a SqliteMaterialStore beside SqliteQuestStore) is the follow-up —
-  // the countMaterial/takeMaterial seam makes that swap mechanical.
-  // Gathering (which fills the pouch) is a later slice.
-  const materialPouch = new Map<number, Map<string, number>>();
-  const pouchOf = (character: number): Map<string, number> => {
-    let p = materialPouch.get(character);
-    if (!p) materialPouch.set(character, (p = new Map()));
-    return p;
-  };
+  // a loot-pool def by (base, rank), and raw materials come from the
+  // gathering pouch — the one pouch gathering fills, persisted in
+  // gathering.db and shipped to the world record by PL3b.
   const craftingService = new CraftingService({
     rules: crafting ?? EMPTY_CRAFTING_RULES,
     masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
-    countMaterial: (character, material) => pouchOf(character).get(material) ?? 0,
-    takeMaterial: (character, material, qty) => {
-      const p = pouchOf(character);
-      const have = p.get(material) ?? 0;
-      if (have < qty) return false;
-      if (have === qty) p.delete(material);
-      else p.set(material, have - qty);
-      return true;
-    },
+    countMaterial: (character, material) => gathering.countOf(character, material),
+    takeMaterial: (character, material, qty) => gathering.take(character, material, qty),
     hasBagRoom: (character) => itemsOf().store.hasRoom(character),
     grantItem: (character, item, rank) => {
       const d = itemsOf().defs;
@@ -986,6 +980,38 @@ async function main(): Promise<void> {
   // Quests and dialog (P1): the gateway's "quest" extension and a system
   // checking places and bags; kills come through the death hook below.
   const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);
+  // World chests (IX1): scene Structures with a Chest component; opened chests drop their loot table at the chest.
+  let chestSeed = 20261024;
+  const dropTable = (s: SimWorld, table: string, x: number, z: number, owner: number): number => {
+    const items = itemsOf();
+    const defs = rollTable(game.rules.loot.tables ?? {}, table, items.defs, rankOrder, () => (chestSeed = (Math.imul(chestSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    defs.forEach((def, i) => items.spawnDrop(s, def, x + Math.cos(i * 2.4) * 0.8, z + Math.sin(i * 2.4) * 0.8, owner));
+    return defs.length;
+  };
+  // What players changed in the world that the snapshot does not keep: broken props, opened chests and doors (IX5).
+  const placesStore = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
+  const chests = new ChestSystem({
+    has: (holder, base) => itemsOf().countBase(holder, base) > 0,
+    take: (holder, base) => itemsOf().takeBase(holder, base),
+    drop: dropTable,
+    store: placesStore,
+  });
+  // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
+  // Shops placed in scenes (IX8): content/vendors.json templates, defined on the economy's vendor system the first time a node names one.
+  const vendorTemplates = loadVendorTemplates(process.env.MMO_VENDORS || path.join(REPO_ROOT, "content", "vendors.json"));
+  const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
+  const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
+    store: placesStore,
+    // Mending a building spends the pouch (gathered materials).
+    materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
+    killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    onBreak: (s, ev) => {
+      if (ev.loot === undefined) return;
+      const killer = ev.killer;
+      const owner = killer !== undefined && hasComponent(s.ecs, CharacterRef, killer) ? CharacterRef.idHi[killer] * 4294967296 + CharacterRef.idLo[killer] : 0;
+      dropTable(s, ev.loot, ev.x, ev.z, owner);
+    },
+  });
   // Quests and dialog (P1, slice 4): the quests module builds the service
   // from this config during assembly. See modules/quests/server.js.
   const questsConfig = {
@@ -1031,6 +1057,29 @@ async function main(): Promise<void> {
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
         resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
+        chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
+        breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
+        structureBreakable: (kind) => structureKinds.get(kind),
+        vendors: {
+          attach: (eid, template) => {
+            const vs = assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined;
+            if (!vs) return "this server has no economy";
+            const t = vendorTemplates.get(template);
+            if (!t) return `no vendor template "${template}"`;
+            if (!vs.templateIds().includes(template)) {
+              vs.define({
+                id: template,
+                name: t.name,
+                buybackRate: t.buybackRate,
+                stock: t.stock.flatMap((l) => {
+                  const def = lineDef(itemsOf().defs, { base: l.base, rank: l.rank }, rankOrder);
+                  return def < 0 ? [] : [{ def, price: l.price, quantity: l.quantity }];
+                }),
+              });
+            }
+            return vs.attach(eid, template) ? null : "could not attach";
+          },
+        },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -1100,6 +1149,8 @@ async function main(): Promise<void> {
   // Combat domain (M2/M5, slice 5): the combat module builds the full cluster
   // from this config during assembly. See modules/combat/server.js.
   const combatConfig = {
+    // A building holds out against a blow from anyone below its minStrength (IX6).
+    canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
     rules: game.rules,
     hooks,
     combatSkills,
@@ -1107,7 +1158,8 @@ async function main(): Promise<void> {
     getWornFactor: wornFactor,
     getCreaturesPlace: (s: unknown, e: number) => creaturesOf().place(sim, e),
     getGateway: () => gw,
-    getRespawnSeconds: (e: number) => creaturesOf().respawnSeconds(e),
+    // A fallen resident lies where it fell (ResidentSystem removes it and brings someone new later); creatures rise on their own timers.
+    getRespawnSeconds: (e: number) => ((assembled.byName["residents"] as unknown as import("./residents/index.js").ResidentSystem | undefined)?.isResident(e) ? Number.POSITIVE_INFINITY : creaturesOf().respawnSeconds(e)),
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
@@ -1133,11 +1185,31 @@ async function main(): Promise<void> {
   // The module context outlives the assembly call: modules publish domain
   // stores on ctx.stores during createSystems (character, social, dungeons,
   // economy), and server.ts reads them back post-assembly below.
+  // The towns' people (SG3b): the boot scene's structure positions by node id (a structure's node id is its structure id), and the baked manifests.
+  const residentsConfig = {
+    structurePositions: (): Map<string, { x: number; z: number }> | null => {
+      if (!process.env.MMO_SCENE) return null;
+      const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+      const doc = expandPrefabs(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), prefabs).doc;
+      return new Map(worldNodes(doc).map((w) => [w.node.id, { x: w.position[0], z: w.position[2] }]));
+    },
+    manifestsDir: process.env.MMO_SETTLEMENTS || path.join(REPO_ROOT, "content", "settlements"),
+    catalog: characterCatalog,
+    timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
+    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
+    maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
+    maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
+    // Deaths are kept (places.db); someone new moves in three game days after.
+    raided: () => creaturesOf().raids(),
+    store: placesStore,
+    replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
+    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,
+  };
   const moduleCtx: ServerModuleContext = {
     sim,
     log: (m) => console.log(m),
     // Slices 2-6: modules read their bootstrap config from here.
-    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR } },
+    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig },
   };
   const assembled = await assembleServerSystems({
     modulesDir: path.join(REPO_ROOT, "modules"),
@@ -1147,6 +1219,8 @@ async function main(): Promise<void> {
         reloader,
         streamer,
         gathering,
+        chests,
+        breaks,
       },
     },
     ctx: moduleCtx,
@@ -1292,6 +1366,7 @@ async function main(): Promise<void> {
     chatRules: await loadChatRules(),
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
+    needs: game.rules.needs,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
@@ -1307,6 +1382,8 @@ async function main(): Promise<void> {
     magic: magicRef!,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
+    // Interest management: on unless MMO_INTEREST=0 (dungeon instances run their own gateway, which sees everything).
+    ...(process.env.MMO_INTEREST === "0" ? {} : { interest: game.rules.interest }),
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
@@ -1386,9 +1463,18 @@ async function main(): Promise<void> {
     gw.setMigrationAcceptor((id, verify) => coordinator.accept(id, false, verify));
     if (worldClient.registered) {
       await coordinator.refreshRegistry().catch(() => {});
+      // Cross-region view (IM8): neighbours from the registry, tickets signed with the fleet key.
+      const toRect = (r: { x0: number; x1: number; z0: number; z1: number }) => ({ x0: r.x0 * CHUNK_SIZE, x1: r.x1 * CHUNK_SIZE, z0: r.z0 * CHUNK_SIZE, z1: r.z1 * CHUNK_SIZE });
+      const borderKey = process.env.WORLD_API_KEY ?? "";
       migrationTimer = setInterval(() => {
         void coordinator.observe(gw.migrationPositions()).catch((err: unknown) =>
           console.warn(`[server] migration observe: ${(err as Error).message}`));
+        if (borderKey) {
+          gw.setBorders(
+            { regionId: worldClient!.regionId, key: borderKey, rect: toRect(chunkRange) },
+            coordinator.knownRegions.filter((r) => r.live).map((r) => ({ regionId: r.regionId, endpoint: r.endpoint, rect: toRect(r.chunkRange) })),
+          );
+        }
       }, 250);
       migrationTimer.unref();
       // Cross-region presence (S2): refresh friends lists from the world
@@ -1415,7 +1501,7 @@ async function main(): Promise<void> {
         snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
         // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
-        places: () => ({ resource_nodes: gatheringStore.allNodes() }),
+        places: () => ({ resource_nodes: gatheringStore.allNodes(), place_records: placesStore.all() }),
       })
     : null;
 

@@ -75,7 +75,7 @@ describe("gateway: gathering", () => {
     besides(sim, node, alice.client);
 
     const pouchP = alice.client.waitFor(MessageType.Gather, 1);
-    alice.client.sendRaw(MessageType.Gather, encodeControl({ kind: "gather", entity: view.entity }));
+    alice.client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: view.entity }));
     const pouch = decodeControl<PouchMessage>((await pouchP)[0]!);
     assert.deepEqual(pouch, { kind: "pouch", materials: [{ material: "yew-log", name: "Yew log", tier: 2, count: 1 }], gathered: { material: "yew-log", name: "Yew log", count: 1 } });
 
@@ -87,6 +87,24 @@ describe("gateway: gathering", () => {
     await bob.client.close();
   });
 
+  it("a gather with a cast time starts the bar, then fills the pouch when it ends, and gathers once", async () => {
+    const { url, sim, node, gathering } = await start();
+    gathering.castSeconds = 0.15;
+    const { client } = await join(url, "user-c");
+    const entity = sim.wireId(node).toString();
+    besides(sim, node, client);
+    const startedP = client.waitFor(MessageType.Magic, 1);
+    const pouchP = client.waitFor(MessageType.Gather, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity }));
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity })); // already casting: ignored
+    const started = decodeControl<{ kind: string; spell: string; state: string; seconds?: number }>((await startedP)[0]!);
+    assert.deepEqual([started.spell, started.state, started.seconds], ["gather", "started", 0.15]);
+    const pouch = decodeControl<PouchMessage>((await pouchP)[0]!);
+    assert.equal(pouch.gathered?.count, 1);
+    assert.equal(pouch.materials[0]!.count, 1, "one gather, not two");
+    await client.close();
+  });
+
   it("refuses a node worked out (4005) and a bad shape (4003)", async () => {
     const { url, sim, node } = await start();
     const { client } = await join(url, "user-b");
@@ -94,16 +112,16 @@ describe("gateway: gathering", () => {
     besides(sim, node, client);
     for (let i = 0; i < 2; i++) {
       const p = client.waitFor(MessageType.Gather, 1);
-      client.sendRaw(MessageType.Gather, encodeControl({ kind: "gather", entity }));
+      client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity }));
       await p;
     }
     let errP = client.waitFor(MessageType.Error, 1);
-    client.sendRaw(MessageType.Gather, encodeControl({ kind: "gather", entity }));
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity }));
     let err = decodeControl<ErrorMessage>((await errP)[0]!);
     assert.equal(err.code, 4005);
     assert.match(err.message, /worked out/);
     errP = client.waitFor(MessageType.Error, 1);
-    client.sendRaw(MessageType.Gather, encodeControl({ kind: "gather", entity: "not a number" }));
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: "not a number" }));
     err = decodeControl<ErrorMessage>((await errP)[0]!);
     assert.equal(err.code, 4003);
     await client.close();
