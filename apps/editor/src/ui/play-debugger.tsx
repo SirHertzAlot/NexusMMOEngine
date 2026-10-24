@@ -16,7 +16,9 @@
  * - controls: the key bindings
  * - selection (E6): the entity picked with a left click in the view, its
  *   components and, for a PICG asset, its graph parameters
- *   (inspectors/selection.ts)
+ *   (inspectors/selection.ts); whitelisted fields edit through `set`, and
+ *   server inspect, heal, teleport-me-here and despawn act on it (A2/A3,
+ *   inspectors/entity-actions.ts)
  */
 
 import * as React from "react";
@@ -119,6 +121,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [combat] = React.useState(() => new CombatFeedback());
   const library = usePcgLibrary();
   const [card, setCard] = React.useState<SelectionCard | null>(null);
+  const [picked, setPicked] = React.useState<SelectedEntity | null>(null);
   const selectedWireId = React.useRef<string | null>(null);
   React.useEffect(() => {
     const read = (): void => {
@@ -126,6 +129,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       const entity = target !== null ? client.state.get(target) : undefined;
       const next = entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null;
       setCard(next);
+      setPicked(entity ? (entity as unknown as SelectedEntity) : null);
       if (next?.wireId === selectedWireId.current) return;
       selectedWireId.current = next?.wireId ?? null;
       if (!next) {
@@ -271,7 +275,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
               clear
             </Button>
           </div>
-          <SelectionCardView card={card} libraryError={library.error} />
+          <SelectionCardView card={card} libraryError={library.error} entity={picked} admin={client} />
         </>
       ),
     },
