@@ -15,9 +15,9 @@
  * penalty, drop or respawn delay.
  */
 
-import { defineQuery, hasComponent } from "bitecs";
+import { defineQuery, hasComponent, Not } from "bitecs";
 import type { DeathInput, DeathOutcome, RespawnOutcome, RuleHooks } from "@mmo-engine/rules";
-import { Action, Health, PlayerIntent, Transform, Velocity } from "./components.js";
+import { Action, Breakable, Health, PlayerIntent, Transform, Velocity } from "./components.js";
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 import type { DuelSystem } from "./duel.js";
@@ -51,7 +51,7 @@ interface Corpse {
 
 export class DeathSystem implements SimSystem {
   readonly name = "death";
-  private readonly bodies = defineQuery([Transform, Health]);
+  private readonly bodies = defineQuery([Transform, Health, Not(Breakable)]);
   private readonly dead = new Map<number, Corpse>();
   private events: LifeEvent[] = [];
 

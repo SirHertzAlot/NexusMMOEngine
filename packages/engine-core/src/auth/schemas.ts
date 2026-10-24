@@ -51,6 +51,20 @@ export const HelloMigrationSchema = helloBase
   })
   .strict();
 
+/** Observe a neighbour's border (IM8): the home region's ticket, no player. */
+export const HelloObserveSchema = helloBase
+  .extend({
+    observe: z.strictObject({
+      region: z.string().min(1).max(128),
+      from: z.string().min(1).max(128),
+      account: z.string().min(1).max(64),
+      exp: z.number().int(),
+      ticket: z.string().regex(/^[0-9a-f]{64}$/),
+    }),
+  })
+  .strict();
+
+export type HelloObserve = z.infer<typeof HelloObserveSchema>;
 export type HelloCredentials = z.infer<typeof HelloCredentialsSchema>;
 export type HelloToken = z.infer<typeof HelloTokenSchema>;
 export type HelloMigration = z.infer<typeof HelloMigrationSchema>;
@@ -100,6 +114,7 @@ export function parseHello(
   | { kind: "credentials"; value: HelloCredentials }
   | { kind: "token"; value: HelloToken }
   | { kind: "migration"; value: HelloMigration }
+  | { kind: "observe"; value: HelloObserve }
   | null {
   const creds = HelloCredentialsSchema.safeParse(raw);
   if (creds.success) return { kind: "credentials", value: creds.data };
@@ -107,5 +122,7 @@ export function parseHello(
   if (tok.success) return { kind: "token", value: tok.data };
   const mig = HelloMigrationSchema.safeParse(raw);
   if (mig.success) return { kind: "migration", value: mig.data };
+  const obs = HelloObserveSchema.safeParse(raw);
+  if (obs.success) return { kind: "observe", value: obs.data };
   return null;
 }

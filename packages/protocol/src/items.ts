@@ -14,22 +14,29 @@
 /** AssetRef.variant of an item lying on the ground (scenery uses 0). */
 export const GROUND_ITEM_VARIANT = 0xffff;
 
+/**
+ * AssetRef variant of a prop that broke and stays (IX4, `breakable.into: "variant"`): the client draws the
+ * kind's broken look (the stand-in tipped and darkened) instead of the whole model.
+ */
+export const BROKEN_VARIANT = 0xfffe;
+
 /** The hand an item is held in ("both": two-handed; "none": not held). */
 export type ItemHand = "main" | "off" | "both" | "none";
 
 /**
  * C→S (catalog §0x13): act on an item.
- * - pickup: the ground item entity (decimal u64) into the bag;
  * - drop: an item from the bag onto the ground at the player's feet;
  * - equip: an item from the bag into its hand (M3b), swapping what was
  *   there back into the bag (a two-handed item empties both hands);
  *   armour goes to its slot instead (U10);
+ * - use: eat or drink a provision from the bag (it restores hunger or
+ *   thirst and is used up);
  * - unequip: what a hand holds, or an armour slot wears, back into the bag.
  */
 export type ItemAction =
-  | { kind: "item"; action: "pickup"; entity: string }
   | { kind: "item"; action: "drop"; item: number }
   | { kind: "item"; action: "equip"; item: number }
+  | { kind: "item"; action: "use"; item: number }
   | { kind: "item"; action: "unequip"; hand: "main" | "off" }
   | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 

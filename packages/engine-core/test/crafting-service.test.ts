@@ -13,6 +13,8 @@ import { CraftingService, CraftMessageSchema } from "../src/crafting/crafting-se
 import type { ExtensionPlayer } from "../src/net/extension.js";
 import type { EntityBundle } from "@mmo-engine/compose";
 import type { CraftingRules, Recipe } from "@mmo-engine/crafting";
+import Database from "better-sqlite3";
+import { GatheringSystem, SqliteGatheringStore } from "../src/gathering/index.js";
 
 const BUNDLE = {
   Identity: { id: "sword", name: "Sword", base: "sword", kind: "item" },
@@ -257,5 +259,79 @@ describe("CraftingService defaults", () => {
     assert.equal(typeof r.skill, "string");
     assert.ok(r.mastery >= 0 && r.mastery <= 1);
     assert.ok(Object.keys(r.inputs).length > 0);
+  });
+});
+
+describe("CraftingService on the gathering pouch", () => {
+  /** Wired as server.ts wires it: the gathering pouch is the craft's material source, written through to gathering.db. */
+  function onPouch(pouch: Record<string, number>, atomicCraft?: () => Promise<{ ok: true } | { ok: false; message: string }>) {
+    const store = new SqliteGatheringStore(new Database(":memory:"));
+    for (const [m, n] of Object.entries(pouch)) store.savePouch(7, m, n);
+    const gathering = new GatheringSystem({ store });
+    const granted: string[] = [];
+    const svc = new CraftingService({
+      rules: RULES,
+      composeItem: () => BUNDLE,
+      deriveRecipe: () => RECIPE,
+      masteryOf: () => 1,
+      countMaterial: (c, m) => gathering.countOf(c, m),
+      takeMaterial: (c, m, q) => gathering.take(c, m, q),
+      hasBagRoom: () => true,
+      grantItem: (_c, item) => (granted.push(item), true),
+      ...(atomicCraft
+        ? {
+            atomicCraft: { craft: atomicCraft },
+            defOfItem: () => 1,
+            allocateItem: () => 5,
+            discardItem: () => {},
+            itemInBag: () => true,
+          }
+        : {}),
+    });
+    return { svc, store, gathering, granted };
+  }
+
+  it("a craft takes the inputs from the pouch (and gathering.db) and delivers the item", () => {
+    const { svc, store, gathering, granted } = onPouch({ "iron-ore": 5, coal: 1 });
+    const sent: object[] = [];
+    svc.onMessage(player(sent), craft);
+    assert.deepEqual(sent, [{ kind: "craft", op: "crafted", item: "sword", rank: "common" }]);
+    assert.deepEqual(granted, ["sword"]);
+    assert.equal(gathering.countOf(7, "iron-ore"), 2);
+    assert.deepEqual(store.loadPouch(7), { "iron-ore": 2, coal: 0 }, "written through for PL3b's world sync");
+    assert.deepEqual(gathering.pouchMessage(7).materials.map((m) => [m.material, m.count]), [["iron-ore", 2]]);
+  });
+
+  it("a craft short of materials fails and changes nothing", () => {
+    const { svc, store, granted } = onPouch({ "iron-ore": 2, coal: 1 });
+    const sent: object[] = [];
+    svc.onMessage(player(sent), craft);
+    assert.equal((sent[0] as { text: string }).text, "you need 3x iron-ore");
+    assert.deepEqual(granted, []);
+    assert.deepEqual(store.loadPouch(7), { "iron-ore": 2, coal: 1 });
+  });
+
+  it("fleet: the pouch is debited only once the world commits", async () => {
+    const ok = onPouch({ "iron-ore": 3, coal: 1 }, async () => ({ ok: true }));
+    const sent: object[] = [];
+    ok.svc.onMessage(player(sent), craft);
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(sent, [{ kind: "craft", op: "crafted", item: "sword", rank: "common" }]);
+    assert.deepEqual(ok.store.loadPouch(7), { "iron-ore": 0, coal: 0 });
+
+    const refused = onPouch({ "iron-ore": 3, coal: 1 }, async () => ({ ok: false, message: "no" }));
+    refused.svc.onMessage(player(sent), craft);
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(refused.store.loadPouch(7), { "iron-ore": 3, coal: 1 });
+  });
+});
+
+describe("GatheringSystem.take", () => {
+  it("refuses more than the pouch holds, and bad quantities, without changing it", () => {
+    const g = new GatheringSystem();
+    assert.equal(g.take(7, "iron-ore", 1), false);
+    assert.equal(g.take(7, "iron-ore", -1), false);
+    assert.equal(g.take(7, "iron-ore", 0.5), false);
+    assert.equal(g.countOf(7, "iron-ore"), 0);
   });
 });

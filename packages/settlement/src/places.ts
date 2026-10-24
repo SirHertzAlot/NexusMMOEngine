@@ -19,6 +19,7 @@
 import { z } from "zod";
 import { canonical, contentHash } from "./hash.js";
 import { Streams } from "./rng.js";
+import { hashOf } from "./schedule.js";
 import type { TerrainFields } from "./sites.js";
 
 export const PLACE_KINDS = ["guard_outpost", "inn", "shack", "camp_site", "homestead"] as const;
@@ -113,6 +114,52 @@ export interface Place {
   /** A homesteads: the family's size, and what it works. */
   family?: number;
   works?: "farm" | "ranch";
+  /** The people who live and work here (homesteads: the family; an inn: its keeper; an outpost: its guards). Baked, so they are the same on every boot. */
+  members?: PlaceMember[];
+}
+
+/** One person of a place: a baked npc whose home and workplace are the place (or its field). */
+export interface PlaceMember {
+  id: string;
+  household: string;
+  home: string;
+  cohort: "child" | "adolescent" | "adult" | "elder";
+  class: string;
+  role: string;
+  /** Where they work: the place itself, or a homestead's field or pen (`<id>-farm`, `<id>-ranch`). */
+  workplace?: string;
+}
+
+/**
+ * The people of a place, derived from its id alone (no random stream, so planning is unchanged and the
+ * same place always has the same people). A homestead's family is its `family` count: an adult head and
+ * the rest by the town demographics' age mix, the grown working the farm or ranch and the young and old
+ * about the house. An inn has a keeper and a hand; a guard outpost three guards.
+ */
+export function placeMembers(p: Pick<Place, "id" | "kind" | "family" | "works">): PlaceMember[] {
+  const member = (i: number, cohort: PlaceMember["cohort"], cls: string, role: string, workplace?: string): PlaceMember => ({
+    id: `npc_${p.id}_${String(i).padStart(2, "0")}`,
+    household: p.id,
+    home: p.id,
+    cohort,
+    class: cls,
+    role,
+    ...(workplace ? { workplace } : {}),
+  });
+  if (p.kind === "inn") return [member(0, "adult", "merchant", "innkeeper", p.id), member(1, "adult", "peasant", "inn hand", p.id)];
+  if (p.kind === "guard_outpost") return [0, 1, 2].map((i) => member(i, "adult", "guard", "outpost guard", p.id));
+  if (p.kind !== "homestead" || !p.family) return [];
+  const field = `${p.id}-${p.works ?? "farm"}`;
+  const job = p.works === "ranch" ? "rancher" : "farmer";
+  return Array.from({ length: p.family }, (_, i) => {
+    if (i === 0) return member(i, "adult", "peasant", job, field); // the head of the household
+    const r = (hashOf(`${p.id}|${i}`) % 1000) / 1000;
+    // The age mix of the town demographics: 28% children, 17% adolescents, 41% adults, 14% elders.
+    if (r < 0.28) return member(i, "child", "peasant", "child");
+    if (r < 0.45) return member(i, "adolescent", "peasant", job, field);
+    if (r < 0.86) return member(i, "adult", "peasant", job, field);
+    return member(i, "elder", "peasant", "elder");
+  });
 }
 
 export interface PlacesPlan {
@@ -524,6 +571,10 @@ export function planPlaces(input: { towns: PlaceTown[]; terrain: TerrainFields; 
     for (const h of homes) places.push({ ...h, id: nextId() });
   }
 
+  for (let i = 0; i < places.length; i++) {
+    const members = placeMembers(places[i]!);
+    if (members.length) places[i] = { ...places[i]!, members };
+  }
   const counts = Object.fromEntries(PLACE_KINDS.map((k) => [k, places.filter((p) => p.kind === k).length])) as Record<PlaceKind, number>;
   const body = { format: "places/1" as const, rulesVersion: input.rulesVersion ?? "builtin", seed: input.seed, towns, routes, places, counts };
   return { ...body, hash: contentHash(JSON.parse(canonical(body))) };
