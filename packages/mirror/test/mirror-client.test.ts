@@ -620,6 +620,19 @@ describe("MirrorClient items (0x13-0x15)", () => {
     assert.deepEqual(inv, bag);
   });
 
+  it("keeps the wallet balance and ignores other 0x21 messages", async () => {
+    let seen: unknown = null;
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    (client as unknown as { events: { onWallet?: (w: unknown) => void } }).events.onWallet = (w) => (seen = w);
+    assert.equal(client.wallet, null);
+    const w = { kind: "wallet", tick: 3, balance: 125 };
+    socket.receive(encodeEnvelope(MessageType.Trade, encodeControl(w)));
+    assert.equal(client.wallet, 125);
+    assert.deepEqual(seen, w);
+    socket.receive(encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", tick: 4, vendor: "1", state: "listed" })));
+    assert.equal(client.wallet, 125);
+  });
+
   it("sends pickups and drops as item actions", async () => {
     const { client, socket } = await connectClient({ username: "u", password: "p" });
     client.interact(12n);

@@ -4392,6 +4392,9 @@ export class Gateway {
     if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
+    // The player's gold (catalog 0x21): on join too, not only when it changes.
+    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
     if (this.interest) {
       // Interest management: the next tick sends a full replace of what this session sees.
       s.interestSet = null;

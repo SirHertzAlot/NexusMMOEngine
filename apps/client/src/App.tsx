@@ -892,6 +892,7 @@ export function App(): React.ReactElement {
               bag={bag}
               hands={hands}
               worn={worn}
+              gold={gold}
               onDrop={(id) => client?.dropItem(id)}
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
