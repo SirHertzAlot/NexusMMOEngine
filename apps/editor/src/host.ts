@@ -1499,7 +1499,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, problemsReply.status, problemsReply.body);
             return;
           }
-          // Rename / duplicate / delete for the documents the editor owns (files-host.ts).
+          // Create / rename / duplicate / delete for the documents the editor owns (files-host.ts).
           const filesReply = await handleFilesRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "POST" ? await readBody(req) : undefined);
           if (filesReply) {
             sendJson(res, filesReply.status, filesReply.body);
