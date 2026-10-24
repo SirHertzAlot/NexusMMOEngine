@@ -858,7 +858,7 @@ async function main(): Promise<void> {
     dataDir: DATA_DIR,
     rules: game.rules,
     tickHz: 30,
-    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
+    groundHeightAt: (x: number, z: number) => characterRef ? characterOf().groundHeight(x, z) : 0 /* items restore before the character module exists; ground drops are short-lived */,
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
     ledger: itemLedger,
     kindOf: (e: number) => creaturesOf().kindOf(e),
