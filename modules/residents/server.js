@@ -76,6 +76,7 @@ export function createSystems(ctx) {
     coarseM: config.coarseM,
     maxFull: config.maxFull,
     store: config.store,
+    raided: config.raided,
     replaceMs: config.replaceMs,
     steer: ctx.shared?.navBackend?.crowd !== undefined, // a crowd runs: residents walk between anchors
   });

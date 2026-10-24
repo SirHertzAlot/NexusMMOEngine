@@ -216,6 +216,17 @@ export class CreatureSystem implements SimSystem {
     return this.brains.get(e)?.mode;
   }
 
+  /** The settlements being raided now (a creature in raid mode is on its way or fighting there), for the townspeople to take cover. */
+  raids(): RaidSettlement[] {
+    const list = this.opts.settlements?.();
+    if (!list) return [];
+    const out = new Set<RaidSettlement>();
+    for (const b of this.brains.values()) {
+      if (b.mode === "raid" && b.raidIdx >= 0 && list[b.raidIdx]) out.add(list[b.raidIdx]!);
+    }
+    return [...out];
+  }
+
   /** Seconds before a dead creature rises, or undefined if `e` is not one. */
   respawnSeconds(e: number): number | undefined {
     const b = this.brains.get(e);
