@@ -24,8 +24,10 @@ Tests: `apps/editor/test/authoring-{relevance,add-shelf,verbs,hierarchy,widgets}
 
 ## The UI — Design workspace
 
-`apps/editor/src/ui/authoring-view.tsx`, registered in `App.tsx` as the first
-workspace, **Design** (Designer surface):
+`apps/editor/src/ui/authoring-view.tsx`. The **Design** workspace is declared
+in `App.tsx` (first tab); its panel is contributed by the new `authoring`
+module (`modules/authoring/editor`) through the module registry, like every
+other panel — the shell hardcodes no panel views.
 
 - **Hierarchy pane** — scene picker (the editor's real scene documents via
   `scenes-client`), the containment tree, role-filter chips, name/recent sort,
@@ -44,6 +46,69 @@ workspace, **Design** (Designer surface):
 Every other workspace is the **Developer surface** (data/IDE tooling over the
 same pipeline); two left-dock titles say so ("Tables · Developer surface",
 "Schema · Developer surface") as the labeling pattern to extend.
+
+## The templating system — pseudo version control for presentation
+
+`apps/editor/src/authoring/templates.ts` (pure, tested in
+`authoring-templates.test.ts`). A **view template** is data, not code:
+`{ id, slot, version, status, definition }` where the definition names a
+layout, its panes, and — by reference only — the widget ids it can summon
+and the hierarchy role filters it exposes (both validated against the
+registries in `relevance.ts` / `hierarchy.ts`). No component code lives in
+a template, so a template version can be created, pinned and rolled back
+without a build.
+
+- **Version immutability.** Published versions never change. An edit
+  creates the next version as a draft; the earlier published version is
+  byte-identical afterwards.
+- **Status chain.** draft → published → deprecated → retired, one step at
+  a time, every transition carrying a 5W1H provenance entry validated by
+  the same `validateProvenance` the verb layer uses.
+- **Presentation pins decide everything.** A per-project pin map
+  `{ slot → templateId@version }` with its own provenance-carrying history
+  is the ONLY thing that decides which UI a slot presents. Rollback is
+  re-pinning the previous target from that history.
+- **Defensive resolution.** The resolver refuses a pin that is unknown,
+  draft, retired, or whose definition references an unknown widget/filter,
+  and falls back to the last known-good resolution for the slot (or the
+  built-in legacy template), reporting the reason. It never yields a blank
+  view. A deprecated-but-pinned version still resolves, flagged as
+  deprecated. A retired version cannot be newly pinned.
+- **Builtins, addressable from day one.** Slot `authoring` has two:
+  `legacy-data-editor@1` (published — the old modules/ECS-inspector
+  presentation) and `viewport-authoring@1` (published — this view). Both
+  are versions 1 of their own template id; the pin, not the code, chooses.
+
+**UI:** the Authoring view's header is the presentation control — it shows
+the active template@version + status (plus any fallback reason), and its
+pin buttons switch the presented UI for real: *Legacy view* renders the
+actual `ModulesPanel` + `EcsInspectorPanel`; *Authoring view* renders this
+designer surface; *Roll back pin* re-pins the previous target. Pins are
+mirrored to the editor's local prefs (`authoring-presentation-pins`) so a
+restart keeps the choice. Pin changes validate provenance through the same
+envelope rules as verb calls.
+
+### Retirement playbook (how the old view goes away gracefully)
+
+1. **Register, don't delete.** The old presentation becomes the legacy
+   template (done: `legacy-data-editor@1`). It stays fully runnable.
+2. **Move the pin.** Retirement of the old view = pinning the slot to the
+   new template for the project. That is the whole step — reversible by
+   construction.
+3. **Grace period.** The legacy template is deprecated (not retired)
+   while the pin stays on the new view. If anything regresses, **rollback
+   is one pin move**: *Roll back pin* in the presentation control, or
+   re-pin `legacy-data-editor@1` — no code change, no rebuild.
+4. **Retire.** Only when the criteria below hold, retire the legacy
+   version through the gate — which REFUSES while any slot still pins it,
+   so retirement can never strand a project on a dead template.
+5. **Delete (Phase C only).** The legacy template registration and the old
+   panels behind it are deleted when ALL of these documented criteria
+   hold: (a) the project pin has been on the new template for the whole
+   grace window the team sets; (b) the pin history shows no rollback to
+   legacy inside that window; (c) the widget that replaces each old panel
+   is live AND dispatching (per the slate below). These are criteria for a
+   human decision — no automation performs the deletion.
 
 ## Phase C — panel removal slate (nothing deleted in Phase B)
 
@@ -84,6 +149,12 @@ a re-homing, not a deletion.
 - **History is in-memory.** The `VerbHistory` lives for the editor session;
   persistence, VCS commit metadata, and concurrent-edit surfacing from the
   design are not built.
+- **Templates are builtins-only in this slice.** The registry, pins and
+  resolver are fully general and tested with hand-registered templates,
+  but the UI ships the two builtin templates and pin/rollback controls —
+  there is no template editor (creating/editing template versions from the
+  UI) yet, and template definitions are not persisted to project files;
+  pins are the only presentation state persisted (local prefs).
 - **Procgen quick-start is not in this slice.** Hand-place and procgen
   converge on the same facts/widgets by construction (a baked scene doc
   loads identically), but the rule-editor widget is future work.
