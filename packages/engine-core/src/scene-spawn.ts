@@ -85,6 +85,8 @@ export interface SceneSpawnDeps {
   /** Resource nodes (a Structure with a ResourceNode: tree stands, ore veins, fishing spots): `register` makes the spawned entity gatherable, keyed by scene and node id. */
   resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
   /** World chests (a Structure with a Chest component: loot `table`, `refillSeconds`): `register` makes the spawned entity openable. */
+  /** Breakable props (a Structure with a Breakable component): `register` makes the spawned entity break at zero health, under the scene and node id. */
+  breakables?: { register(eid: number, key: string, def: { health: number; into: "remove" | "variant" | "debris"; debris?: string; loot?: string; respawnS: number | null }): void };
   chests?: { register(eid: number, key: string, spec: { kind?: "chest" | "door"; table?: string; refillSeconds?: number; castSeconds?: number; requires?: { base: string; consume: boolean } }): void };
 }
 
@@ -277,6 +279,17 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             refillSeconds: Number(chest.refillSeconds ?? 600),
             castSeconds: Number(chest.castSeconds ?? 0),
             ...(requires ? { requires: { base: requires, consume: chest.consume === true } } : {}),
+          });
+        }
+        const brk = node.components?.Breakable;
+        if (brk && deps.breakables) {
+          const into = str(brk.into);
+          deps.breakables.register(building, `${doc.name}/${node.id}`, {
+            health: Number(brk.health ?? 50),
+            into: into === "variant" || into === "debris" ? into : "remove",
+            ...(str(brk.debris) ? { debris: str(brk.debris) } : {}),
+            ...(str(brk.loot) ? { loot: str(brk.loot) } : {}),
+            respawnS: Number(brk.respawnSeconds ?? 0) > 0 ? Number(brk.respawnSeconds) : null,
           });
         }
         out.spawned.push({ id: node.id, what: chest ? (node.components?.Door ? "door" : "chest") : resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
