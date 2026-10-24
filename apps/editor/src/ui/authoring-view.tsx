@@ -26,8 +26,13 @@ import type { SceneDoc, SceneNode } from "@mmo-engine/scene";
 import { getScene, listScenes } from "../scenes-client.js";
 import { nodeSelection } from "../viewport-model.js";
 import {
+  AUTHORING_TEMPLATE_ID,
+  LEGACY_TEMPLATE_ID,
+  PresentationPins,
+  PresentationResolver,
   buildHierarchy,
   buildWidgets,
+  createBuiltinRegistry,
   deserializeSavedView,
   evaluateRelevance,
   makeFacts,
@@ -41,6 +46,8 @@ import {
   ROLE_FILTERS,
   type AppliedState,
   type HierarchyNode,
+  type PresentationPin,
+  type Provenance,
   type RoleFilterId,
   type SavedView,
   type SceneNodeData,
@@ -48,13 +55,130 @@ import {
   type SortMode,
   type VerbCall,
 } from "../authoring/index.js";
-import { Button, Chip, EmptyState, Input, MIcon, SectionTitle, Select, notify } from "./components.js";
+import { Button, Chip, EmptyState, Input, MIcon, SectionTitle, Select, notify, useLocalStorage } from "./components.js";
+import { EcsInspectorPanel } from "./ecs-inspector.js";
+import { ModulesPanel } from "./modules-panel.js";
 import { browserStorage, currentProfile } from "./editor-prefs.js";
 import { editorSelection, useEditorSelection, type EditorSelection } from "./editor-selection.js";
 import { ModalTabs } from "./merged-modals.js";
 
 /** Session history of every verb call this view produced (the provenance log, in-memory for this slice). */
 export const authoringHistory = new VerbHistory();
+
+// ------------------------------------------------- presentation templates
+
+const bootstrapProvenance: Provenance = {
+  who: { id: "editor", role: "developer" },
+  what: "authoring slot presentation",
+  when: 1_800_000_000_000,
+  where: "Design / Authoring",
+  why: "built-in template registration",
+};
+
+/** The template registry + pins for the authoring slot (session state; pins are mirrored to local prefs below). */
+export const presentationRegistry = createBuiltinRegistry(bootstrapProvenance);
+export const presentationPins = new PresentationPins();
+export const presentationResolver = new PresentationResolver();
+presentationPins.pin("authoring", { templateId: AUTHORING_TEMPLATE_ID, version: 1 }, { ...bootstrapProvenance, why: "default pin: the new authoring view" }, presentationRegistry);
+
+/** The legacy presentation: the old data/module-first panels, kept alive as a template — retired by pin, not deletion. */
+function LegacyPresentation(): React.JSX.Element {
+  return (
+    <div className="flex h-full min-h-0 gap-3 overflow-hidden p-3">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <SectionTitle>Legacy presentation — modules (data-first)</SectionTitle>
+        <ModulesPanel />
+      </div>
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <SectionTitle>Legacy presentation — ECS inspector (component-first)</SectionTitle>
+        <EcsInspectorPanel />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The shell of the Design workspace's panel: a presentation control over
+ * the templating system, then whichever presentation the pin resolves to.
+ * Switching the pin switches the rendered presentation for real.
+ */
+export function AuthoringView(): React.JSX.Element {
+  const [pinTick, setPinTick] = React.useState(0);
+  const [storedPins, setStoredPins] = useLocalStorage<Record<string, PresentationPin>>("authoring-presentation-pins", {
+    authoring: { templateId: AUTHORING_TEMPLATE_ID, version: 1 },
+  });
+  const actor = React.useMemo(() => ({ id: currentProfile(browserStorage()) || "designer", role: "designer" as const }), []);
+
+  // Restore the persisted pin once (pins are the only thing that decides presentation).
+  React.useEffect(() => {
+    const saved = storedPins.authoring;
+    const current = presentationPins.get("authoring");
+    if (saved && (saved.templateId !== current?.templateId || saved.version !== current?.version)) {
+      try {
+        presentationPins.pin("authoring", saved, { who: actor, what: "authoring slot presentation", when: Date.now(), where: "Design / Authoring", why: "restore persisted pin" }, presentationRegistry);
+        setPinTick((t) => t + 1);
+      } catch {
+        // A persisted pin that no longer resolves is refused; the resolver falls back safely.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  void pinTick;
+  const resolution = presentationResolver.resolve("authoring", presentationPins, presentationRegistry);
+  const active = resolution.template;
+
+  const pinTo = (target: PresentationPin, why: string): void => {
+    try {
+      presentationPins.pin("authoring", target, { who: actor, what: "authoring slot presentation", when: Date.now(), where: "Design / Authoring", why }, presentationRegistry);
+      setStoredPins({ authoring: target });
+      setPinTick((t) => t + 1);
+      notify(`Pinned the authoring slot to ${target.templateId}@${target.version}.`);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const rollback = (): void => {
+    try {
+      const back = presentationPins.rollback("authoring", { who: actor, what: "authoring slot presentation", when: Date.now(), where: "Design / Authoring", why: "roll back the presentation pin" }, presentationRegistry);
+      setStoredPins({ authoring: back });
+      setPinTick((t) => t + 1);
+      notify(`Rolled the authoring pin back to ${back.templateId}@${back.version}.`);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-none flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--m3-outline-variant)" }}>
+        <SectionTitle>Presentation</SectionTitle>
+        <span className="text-[13px]">
+          {active.id}@{active.version} · {active.status}
+          {resolution.deprecated && " · deprecated — still resolving because it is pinned"}
+        </span>
+        {resolution.fallbackReason && (
+          <span className="text-[13px]" style={{ color: "var(--m3-error)" }}>
+            {resolution.fallbackReason}
+          </span>
+        )}
+        <span className="ml-auto flex gap-1.5">
+          <Button size="sm" variant={active.id === AUTHORING_TEMPLATE_ID ? "default" : "outline"} onClick={() => pinTo({ templateId: AUTHORING_TEMPLATE_ID, version: 1 }, "pin the new authoring view")}>
+            Authoring view
+          </Button>
+          <Button size="sm" variant={active.id === LEGACY_TEMPLATE_ID ? "default" : "outline"} onClick={() => pinTo({ templateId: LEGACY_TEMPLATE_ID, version: 1 }, "pin the legacy presentation (retirement rehearsal / rollback)")}>
+            Legacy view
+          </Button>
+          <Button size="sm" variant="ghost" onClick={rollback}>
+            Roll back pin
+          </Button>
+        </span>
+      </div>
+      <div className="min-h-0 flex-1">{active.id === LEGACY_TEMPLATE_ID ? <LegacyPresentation /> : <AuthoringPresentation />}</div>
+    </div>
+  );
+}
 
 // ------------------------------------------------------------- adapters
 
@@ -167,7 +291,7 @@ const DEFAULT_VIEWS: readonly SavedView[] = [
   { name: "Recently changed objects", role: "all", sort: "recent" },
 ];
 
-export function AuthoringView(): React.JSX.Element {
+function AuthoringPresentation(): React.JSX.Element {
   const selection = useEditorSelection();
   const [sceneNames, setSceneNames] = React.useState<string[]>([]);
   const [sceneName, setSceneName] = React.useState<string>("");
