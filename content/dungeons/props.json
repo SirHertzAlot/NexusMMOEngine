@@ -1,7 +1,7 @@
 {
   "version": 1,
   "archetypes": {
-    "dungeon:debris": {"asset":"dungeon:rubble","category":"prop","collision":{"shape":"none"}},
+    "dungeon:debris": {"asset":"dungeon:rubble","category":"prop","collision":{"shape":"none","halfExtents":[0.5,0.6,0.5]}},
     "dungeon:pillar": {"asset":"dungeon:pillar","category":"prop","collision":{"halfExtents":[0.5,5.2,0.5],"motion":"static","shape":"box"}},
     "dungeon:brazier": {"asset":"dungeon:brazier","category":"prop","collision":{"halfExtents":[0.5,1.2,0.5],"motion":"static","shape":"box"}},
     "dungeon:banner": {"asset":"dungeon:banner","category":"prop","collision":{"halfExtents":[0.5,1.1,0.05],"motion":"static","shape":"box"}},
