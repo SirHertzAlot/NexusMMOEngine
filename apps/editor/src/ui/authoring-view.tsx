@@ -8,6 +8,10 @@
  * the selection summons its widget stack + add shelf from the relevance
  * rules — no module panels, no component tables.
  *
+ * Layout discipline — rule of thirds (Joey, 2026-10-24): the workspace
+ * is a thirds grid, Find | See | Act across, and inside the stage
+ * identity / relationships / provenance down. See docs/EDITOR-AUTHORING.md.
+ *
  * Honest scope of this slice:
  * - The stage is a panel, not the 3D viewport: it shows the selected
  *   object's identity and its reference edges. The live viewport stays
@@ -374,9 +378,16 @@ function AuthoringPresentation(): React.JSX.Element {
     : sortNodes(role === "all" ? model.flat : model.flat.filter((n) => roleFilterById(role as RoleFilterId).test(n)), sort);
 
   return (
-    <div className="flex h-full min-h-0 gap-3 overflow-hidden p-3">
-      {/* ------------------------------------------------ hierarchy pane */}
-      <div className="flex w-72 flex-none flex-col gap-2 overflow-y-auto pr-1">
+    // Rule of thirds (Joey, 2026-10-24): the workspace is a thirds grid.
+    // Horizontally each function owns one third, in the order the work
+    // flows — Find (hierarchy) | See (stage) | Act (widgets + shelf) —
+    // so the eye's focal intersections land on the stage's selected
+    // object (left intersection of the middle third) and on the primary
+    // widget actions (right intersection). No fixed-width side rails:
+    // the old w-72 / w-80 rails put both gridlines in the wrong place.
+    <div className="grid h-full min-h-0 gap-3 overflow-hidden p-3" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+      {/* ------------------------------------------------ hierarchy pane — left third: Find */}
+      <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
         <SectionTitle>Hierarchy — relationships</SectionTitle>
         <Select value={sceneName} onChange={(e) => setSceneName(e.target.value)} aria-label="Scene">
           {sceneNames.length === 0 && <option value="">No scenes reachable</option>}
@@ -461,8 +472,11 @@ function AuthoringPresentation(): React.JSX.Element {
         </div>
       </div>
 
-      {/* ------------------------------------------------------- stage */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto">
+      {/* ------------------------------------------ stage — middle third: See.
+          Vertical thirds inside the stage: identity at the top third,
+          the object's relationships / viewport focus in the middle
+          third, provenance history along the bottom third. */}
+      <div className="flex min-w-0 flex-col gap-2 overflow-y-auto">
         <SectionTitle>Stage — Designer surface</SectionTitle>
         {!facts && (
           <EmptyState
@@ -489,19 +503,26 @@ function AuthoringPresentation(): React.JSX.Element {
                 </span>
               </div>
               <p className="mt-1 text-[13px] text-muted-foreground">{where}</p>
-              {model && model.edges.filter((e) => e.from === facts.id || e.to === facts.id).length > 0 && (
-                <ul className="mt-2 text-[13px]">
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state in the right third is read from the selection's own component fields.
+              </p>
+            </div>
+            {/* Middle vertical third — the object's relationships / viewport focus. */}
+            <div className="flex flex-1 flex-col rounded-lg border border-dashed p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
+              <SectionTitle>Relationships — follow the thread</SectionTitle>
+              {model && model.edges.filter((e) => e.from === facts.id || e.to === facts.id).length > 0 ? (
+                <ul className="mt-1 text-[13px]">
                   {model.edges
                     .filter((e) => e.from === facts.id || e.to === facts.id)
                     .map((e) => (
                       <li key={`${e.kind}:${e.from}->${e.to}`}>↔ {e.label}</li>
                     ))}
                 </ul>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">No reference edges in the scene data for this object yet (quest → giver, vendor → template, creature → patrol land here when the data carries them). The live 3D viewport stays in the Scenes workspace — selection is shared, so this object is the selected object there too.</p>
               )}
-              <p className="mt-2 text-[13px] text-muted-foreground">
-                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state below is read from the selection's own component fields.
-              </p>
             </div>
+            {/* Bottom vertical third — provenance. */}
             <SectionTitle>Session history for this object</SectionTitle>
             {history.length === 0 && <p className="text-[13px] text-muted-foreground">No verb calls recorded yet — widget and shelf actions land here with their 5W1H envelope.</p>}
             <ul className="flex flex-col gap-1 text-[13px]">
@@ -515,8 +536,8 @@ function AuthoringPresentation(): React.JSX.Element {
         )}
       </div>
 
-      {/* ------------------------------------------- widgets + add shelf */}
-      <div className="flex w-80 flex-none flex-col gap-2 overflow-y-auto pr-1">
+      {/* --------------------------------- widgets + add shelf — right third: Act */}
+      <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
         <SectionTitle>Selection widgets</SectionTitle>
         <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
           Why (intent — required on every action)

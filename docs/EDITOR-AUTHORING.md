@@ -47,6 +47,60 @@ Every other workspace is the **Developer surface** (data/IDE tooling over the
 same pipeline); two left-dock titles say so ("Tables · Developer surface",
 "Schema · Developer surface") as the labeling pattern to extend.
 
+### Layout — rule of thirds (Joey, 2026-10-24)
+
+The Authoring presentation is composed on a thirds grid, horizontally and
+vertically — the grid is a discipline, not decoration:
+
+- **Across (Find | See | Act):** the workspace is three equal columns
+  (`grid-template-columns: repeat(3, 1fr)`). The left third is the hierarchy
+  (find and navigate), the middle third is the stage (see the selected
+  object), the right third is the widget stack + add shelf (act on it). The
+  work flows left → right, and the grid's focal intersections land on the
+  selected object's identity (top of the middle third) and on the primary
+  widget actions (top of the right third). This replaces the earlier
+  fixed-width rails (288px hierarchy / flexible stage / 320px widgets),
+  which put both gridlines wherever the rails happened to end.
+- **Down the stage (identity / relationships / provenance):** the middle
+  third is itself split in thirds — the object's identity card at the top,
+  its relationships / viewport focus in the middle (reference edges live
+  here now), and the session provenance history along the bottom. The
+  presentation header sits above the first horizontal gridline: context
+  first, work below it.
+- **What the rule does NOT do:** it does not make the stage a 3D viewport
+  (still a panel — see gaps), and it is not applied to the Legacy
+  presentation, whose whole point is to preserve the old layout untouched
+  behind its pin.
+
+## End-to-end authoring — is the loop completable?
+
+Walked step by step against the built code (2026-10-24). The skeleton is
+coherent: every hand-off uses the same facts, the same shared selection
+store, and the same verb/envelope types — there are no dead ends in the
+model. The loop breaks at exactly one place: execution.
+
+| # | Step | Status |
+|---|---|---|
+| 1 | Choose the presentation (template pin / rollback) | Live — builtins only |
+| 2 | Load a scene | Live (scenes-client; errors surface) |
+| 3 | Navigate / filter / save a view of the hierarchy | Live — saved views are session state, not persisted |
+| 4 | Select an object | Live — shared `editorSelection`; picking here is picking in Scenes |
+| 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs |
+| 6 | Read what's applied | **Partial** — selection-local component fields only, not live system reads |
+| 7 | Add what's missing (add shelf) | **Partial** — establishability is live; component adds only announce themselves |
+| 8 | Act (widget CRUD) | **Partial** — VerbCalls built, enveloped, validated, recorded; **not dispatched** |
+| 9 | Provenance history | **Partial** — in-memory session log, per-object; not persisted / not VCS metadata |
+| 10 | See the result in 3D | **Gap** — viewport is in the Scenes workspace; no in-place feedback, no viewport overlays |
+| 11 | Quick-start procgen parity | **Gap** — converges by construction via scene docs; no rule-editor widget |
+
+**Verdict:** authoring is viable and navigable end to end as a model, and
+not yet completable end to end as work — an author can find, select,
+inspect and *intend* a change, but cannot yet make it happen and see it.
+The single slice that closes the loop is live dispatch (step 8) with its
+result reflected back through selection (steps 6/10); everything after
+that (persistent history, viewport overlays, procgen rules) is depth,
+not viability.
+
 ## The templating system — pseudo version control for presentation
 
 `apps/editor/src/authoring/templates.ts` (pure, tested in
