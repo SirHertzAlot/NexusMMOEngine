@@ -3,10 +3,11 @@
  * `npm start`: one command from a fresh clone to a running game. It does
  * whatever setup is missing, then starts the game server, the edge, and
  * the player's client (http://localhost:5173), each line of their output
- * prefixed with its name. Unless --standalone, the world server (embedded
+ * prefixed with its name. With --world, the world server (embedded
  * SurrealDB under <data>/world-server) starts first and the game server
  * registers with it as one region owning the whole baked world, so a dev
- * run's state persists there as it would in a fleet. Ctrl+C, or any one exiting, stops them all.
+ * run's state persists there as it would in a fleet. Without it (the default)
+ * the game server runs standalone and keeps its state in its own data folder. Ctrl+C, or any one exiting, stops them all.
  *
  * Setup, each step only when needed (a second start goes straight to the
  * server):
@@ -28,8 +29,9 @@
  *                              (http://localhost:5174)
  *   npm start -- --no-setup    skip the setup checks
  *   npm start -- --build       run the full `npm run build` first
- *   npm start -- --standalone  no world server: the game server keeps its
- *                              state in its own data folder only
+ *   npm start -- --world       also run the world server (embedded SurrealDB) and
+ *                              register the game server with it as one region
+ *                              owning the whole baked world (fleet mode; opt in)
  *   npm start -- --shape=continents   the first bake's landmass shape
  *                              (island, peninsula or continents; only when
  *                              there is no world yet)
@@ -49,7 +51,7 @@ const flag = (f) => args.includes(f);
 const dev = flag("--dev");
 const serverOnly = flag("--server");
 const build = flag("--build");
-let standalone = flag("--standalone");
+let standalone = !flag("--world");
 const shape = args.find((a) => a.startsWith("--shape="))?.slice("--shape=".length);
 
 const log = (msg) => console.log(`[start] ${msg}`);
@@ -217,12 +219,21 @@ const startServer = () => run(SERVER, (line) => {
   log(`edge on ws://localhost:${GAME_PORT} (players), http://localhost:3000 (health)`);
 });
 if (standalone) startServer();
-else run(WORLD, (line) => {
+else {
+  // A world server that never says it is listening (port taken, crash) would leave npm start waiting forever.
+  const giveUp = setTimeout(() => {
+    if (serverStarted) return;
+    log("the world server did not come up in 60 s: stopping (run without --world to skip it)");
+    stop(1);
+  }, 60_000);
+  run(WORLD, (line) => {
   if (serverStarted || !/\[world\] listening on/.test(line)) return;
   serverStarted = true;
+  clearTimeout(giveUp);
   log(`world server on http://127.0.0.1:${WORLD.env.WORLD_PORT}, region range ${SERVER.env.REGION_CHUNK_RANGE}`);
   startServer();
-});
+  });
+}
 
 process.on("SIGINT", () => stop(0));
 process.on("SIGTERM", () => stop(0));

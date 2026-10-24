@@ -17,15 +17,34 @@ function mulberry32(seed) {
   };
 }
 
+/** B7 town centres (towns layout): five 150 m towns inside the 2 km square. */
+export const TOWNS = [[-600, -600], [600, -500], [0, 0], [-500, 550], [650, 600]];
+
+/**
+ * A position for layout: "packed" (B3/B4: a 100 m square), "spread" (a 2 km square) or
+ * "towns" (70% inside five 150 m towns, the rest spread).
+ */
+export function placeIn(layout, prng) {
+  if (layout === "packed") return [(prng() - 0.5) * 100, (prng() - 0.5) * 100];
+  if (layout === "towns" && prng() < 0.7) {
+    const [cx, cz] = TOWNS[Math.floor(prng() * TOWNS.length)];
+    return [cx + (prng() - 0.5) * 150, cz + (prng() - 0.5) * 150];
+  }
+  return [(prng() - 0.5) * 2000, (prng() - 0.5) * 2000];
+}
+
+export { mulberry32 };
+
 /** N entities with Transform + Velocity: every one moves, so every one is in every delta. */
-export function populatedWorld(n, seed = 1337) {
+export function populatedWorld(n, seed = 1337, layout = "packed") {
   const sim = new SimWorld();
   const prng = mulberry32(seed);
   for (let i = 0; i < n; i++) {
     const eid = sim.spawn();
     addComponent(sim.ecs, Transform, eid);
     addComponent(sim.ecs, Velocity, eid);
-    Transform.px[eid] = (prng() - 0.5) * 100; Transform.py[eid] = 0; Transform.pz[eid] = (prng() - 0.5) * 100;
+    const [x, z] = placeIn(layout, prng);
+    Transform.px[eid] = x; Transform.py[eid] = 0; Transform.pz[eid] = z;
     Transform.qw[eid] = 1; Transform.sx[eid] = 1; Transform.sy[eid] = 1; Transform.sz[eid] = 1;
     Velocity.lx[eid] = (prng() - 0.5) * 4; Velocity.lz[eid] = (prng() - 0.5) * 4;
   }
@@ -41,9 +60,10 @@ export async function benchCredentials(n) {
   return store;
 }
 
-export async function benchGateway({ entities = 0, users = 0, clock } = {}) {
+export async function benchGateway({ entities = 0, users = 0, clock, layout = "packed", ...rest } = {}) {
   return new Gateway({
-    world: populatedWorld(entities),
+    ...rest,
+    world: populatedWorld(entities, 1337, layout),
     systems: [new IntentSystem(), new IntegrateSystem()],
     credentialStore: await benchCredentials(users),
     ...(clock ? { clock } : {}),
