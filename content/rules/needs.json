@@ -1,5 +1,6 @@
 {
   "hunger": { "max": 100, "drainPerMinute": 2, "damagePerSecond": 1 },
   "thirst": { "max": 100, "drainPerMinute": 3, "damagePerSecond": 1 },
-  "exertionFactor": 1.5
+  "exertionFactor": 1.5,
+  "drink": { "reachM": 0.5, "perSecond": 10 }
 }
