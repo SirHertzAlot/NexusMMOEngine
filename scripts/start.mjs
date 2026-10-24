@@ -20,6 +20,8 @@
  *   5. dungeons: `npm run dungeon:bake` when the dungeon pool is empty
  *   6. the native entries of the modules under modules/: `npm run build:native`
  *      (skips every one already built)
+ * With baked towns in the scenes dir (bake:all) and no MMO_SCENE, the server
+ * spawns them all plus the places scene (MMO_SCENE=world).
  * The data folder is MMO_DATA_DIR, else packages/engine-core/data, where
  * the server keeps it.
  *
@@ -118,7 +120,10 @@ if (build) npm(["run", "build"]);
 // The players' port: the edge serves it and relays it to the region over the
 // core channel (E3b), so the region binds no player port of its own.
 const GAME_PORT = process.env.MMO_PORT ?? "7777";
-const SERVER = { name: "server", args: ["run", "server"], env: { MMO_EDGE: "1" } };
+// Baked towns (bake:all) in the scenes dir: the server spawns all of them and the places between (MMO_SCENE=world), unless MMO_SCENE says otherwise.
+const scenesDir = process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || join(root, "content", "scenes");
+const bakedTowns = existsSync(scenesDir) && readdirSync(scenesDir).some((f) => /^settlement-.+\.scene\.json$/.test(f));
+const SERVER = { name: "server", args: ["run", "server"], env: { MMO_EDGE: "1", ...(!process.env.MMO_SCENE && bakedTowns ? { MMO_SCENE: "world" } : {}) } };
 
 // The world server and the region's place in it: the whole baked world, so
 // the region streams all of it (an assigned range would start at chunk 0,0

@@ -29,3 +29,8 @@ export function sceneSettlements(scene: SceneDoc, prefabs?: PrefabLookup): RaidS
   for (const [px, pz] of pts) radius = Math.max(radius, Math.hypot(px - x, pz - z));
   return [{ x, z, size: pts.length, radius }];
 }
+
+/** One settlement per town scene (each is one town). The places scene is no town: its homesteads and inns lie strewn between the towns. */
+export function townSettlements(scenes: readonly SceneDoc[], prefabs?: PrefabLookup): RaidSettlement[] {
+  return scenes.filter((s) => s.name !== "places").flatMap((s) => sceneSettlements(s, prefabs));
+}
