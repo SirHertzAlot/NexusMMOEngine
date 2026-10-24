@@ -1213,6 +1213,7 @@ async function main(): Promise<void> {
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
     maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
+    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,
   };
   const moduleCtx: ServerModuleContext = {
     sim,

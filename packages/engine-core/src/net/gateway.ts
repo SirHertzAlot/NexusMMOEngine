@@ -127,6 +127,7 @@ import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn
 import { parseEntityArg, type ItemService } from "../items/index.js";
 import { GatheringSystem } from "../gathering/index.js";
 import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/index.js";
+import { ResidentSystem } from "../residents/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
@@ -5458,6 +5459,11 @@ export class Gateway {
     return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
   }
 
+  /** The server's settlement residents (E talks to one), if it runs any. */
+  private get residents(): ResidentSystem | undefined {
+    return this.systems.find((g): g is ResidentSystem => g instanceof ResidentSystem);
+  }
+
   /** The server's vendors (E opens a shop), if it runs any. */
   private get vendors(): VendorSystem | undefined {
     return this.systems.find((g): g is VendorSystem => g instanceof VendorSystem);
@@ -5521,7 +5527,15 @@ export class Gateway {
     const wire = parseEntityArg(a.entity);
     const eid = wire === null ? -1 : this.world.resolveWireId(wire);
     const holder = this.holderOf(s);
-    if (eid >= 0 && this.vendors?.vendorOf(eid)) {
+    if (eid >= 0 && this.residents?.describe(eid)) {
+      // A resident of a town answers with a line made for who they are, the hour and the day (quest dialog channel, no replies).
+      const dx = C.Transform.px[eid]! - C.Transform.px[avatar]!;
+      const dz = C.Transform.pz[eid]! - C.Transform.pz[avatar]!;
+      if (dx * dx + dz * dz > 16) return this.sendError(s, 4005, "too far away");
+      const talk = this.residents!.talk(eid, this.tick);
+      if (!talk) return this.sendError(s, 4005, "they have nothing to say");
+      this.sendEnvelope(s, MessageType.Chat, encodeControl({ kind: "dialog", npc: talk.npc, name: talk.name, text: talk.text, replies: [] }));
+    } else if (eid >= 0 && this.vendors?.vendorOf(eid)) {
       // A shop: the same list the vendor action answers with; buying and selling stay on 0x21.
       this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
     } else if (eid >= 0 && this.breaks?.hasRuin(eid)) {

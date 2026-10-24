@@ -66,6 +66,10 @@ export interface ResidentOptions {
   /** Most resident entities at once, region-wide. Default 800. */
   maxEntities?: number;
   tickHz?: number;
+  /** What a resident says (generated; settlement's barkFor). */
+  bark?: (town: ResidentTown, npc: ResidentNpc, ctx: { timeOfDay: number; day: number; raid: boolean }) => string;
+  /** The game day number at a tick (the line changes with it). */
+  dayOf?: (tick: number) => number;
   /** A navigation crowd runs after this system: residents walk between anchors by NavAgent targets. */
   steer?: boolean;
   /** A player within this of a town's edge: its residents walk (full tier). Default 150 m. */
@@ -139,10 +143,12 @@ export class ResidentSystem implements SimSystem {
   private readonly tiers = new Map<string, ResidentTier>();
   private readonly players = defineQuery([C.Transform, C.CharacterRef]);
   private agents = 0;
+  private readonly index = new Map<string, { town: ResidentTown; npc: ResidentNpc }>();
 
   constructor(private readonly opts: ResidentOptions) {
     this.maxEntities = opts.maxEntities ?? 800;
     this.tickHz = opts.tickHz ?? 30;
+    for (const town of opts.towns) for (const npc of town.npcs) this.index.set(npc.id, { town, npc });
   }
 
   /** The resident an entity is (undefined: not one). */
@@ -157,6 +163,16 @@ export class ResidentSystem implements SimSystem {
 
   get count(): number {
     return this.live.size;
+  }
+
+  /** What the resident `eid` says now, and their display name; undefined when it is not a resident. */
+  talk(eid: number, tick: number): { npc: string; name: string; text: string } | undefined {
+    const info = this.infoOf.get(eid);
+    const entry = info ? this.index.get(info.npc) : undefined;
+    if (!info || !entry) return undefined;
+    const timeOfDay = this.opts.timeOfDay?.(tick) ?? 0.5;
+    const text = this.opts.bark?.(entry.town, entry.npc, { timeOfDay, day: this.opts.dayOf?.(tick) ?? 0, raid: false }) ?? "...";
+    return { npc: info.npc, name: info.role.charAt(0).toUpperCase() + info.role.slice(1), text };
   }
 
   /** The tier a town is simulated at now. */

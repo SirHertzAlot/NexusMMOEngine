@@ -26,3 +26,4 @@ export * from "./region.js";
 export * from "./places.js";
 export * from "./places-scene.js";
 export * from "./schedule.js";
+export * from "./barks.js";
