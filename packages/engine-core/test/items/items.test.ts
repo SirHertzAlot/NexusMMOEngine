@@ -36,6 +36,7 @@ const POOL: PoolItemLike[] = [
   poolItem("a", "sword", "common", "mob", 0, { power: 10 }),
   poolItem("b", "sword", "rare", "boss", 1, { power: 20 }),
   poolItem("c", "ring", "common", "mob", 2, { spell: 3 }),
+  poolItem("d", "bread", "common", "mob", 3, { nourish: 25 }),
 ];
 
 function loot(over: Partial<LootRules> = {}): LootRules {
@@ -95,7 +96,7 @@ describe("ItemStore", () => {
 describe("ItemDefs", () => {
   it("joins pool items with the rules' physics, picks a model by seed, and indexes by source and base", () => {
     const d = new ItemDefs(POOL, RULES);
-    assert.equal(d.count, 3);
+    assert.equal(d.count, 4);
     assert.equal(d.models[0], "pack/SM_Wep_Sword_01");
     assert.equal(d.models[1], "pack/SM_Wep_Sword_02");
     assert.equal(d.assetHash[0], fnv1a32("pack/SM_Wep_Sword_01"));
@@ -103,7 +104,7 @@ describe("ItemDefs", () => {
     assert.equal(d.power[1], 20);
     assert.equal(d.models[2], "", "a base with no rules falls back, with no model");
     assert.equal(d.technique[2], RULES.items.fallback.technique);
-    assert.deepEqual([...d.ofSource("mob")], [0, 2]);
+    assert.deepEqual([...d.ofSource("mob")], [0, 2, 3]);
     assert.deepEqual([...d.ofBase("sword")], [0, 1]);
     assert.equal(d.indexOf("b"), 1);
     assert.equal(d.starter("sword", ["common", "rare"]), 0);
@@ -364,6 +365,20 @@ describe("ItemService economy verbs (viewport authoring)", () => {
     items.give(1, 1); // item 2
     assert.equal(items.take(2, 2), false, "char 2 does not hold it");
     assert.ok(items.store.exists(2), "still there");
+  });
+
+  it("consume: uses a provision up only when the caller took some of it", () => {
+    const items = svc();
+    items.give(1, 3); // item 1: bread
+    items.give(1, 0); // item 2: a sword
+    assert.deepEqual(items.consume(1, 2, () => true), { ok: false, error: "you can't eat or drink that" });
+    assert.deepEqual(items.consume(1, 1, () => false), { ok: false, error: "you're not hungry" });
+    assert.ok(items.store.exists(1), "kept when nothing was taken");
+    let got = 0;
+    assert.equal(items.consume(1, 1, (n) => ((got = n), true)).ok, true);
+    assert.equal(got, 25);
+    assert.ok(!items.store.exists(1), "used up");
+    assert.deepEqual(items.consume(2, 1, () => true), { ok: false, error: "you don't have that" });
   });
 
   it("countBase: counts bag items of an item base (what quests check)", () => {

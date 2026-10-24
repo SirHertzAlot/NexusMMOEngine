@@ -12,6 +12,12 @@
       },
       {
         "name": "gathering"
+      },
+      {
+        "name": "chests"
+      },
+      {
+        "name": "breaks"
       }
     ]
   },

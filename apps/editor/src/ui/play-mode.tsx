@@ -165,6 +165,8 @@ export function PlayModePanel(): React.JSX.Element {
           // The Play menu's simulated-latency option, honored here.
           { latency: loadLastSetup().latency },
         );
+        // The debugger sees everything by default (IM6); its interest panel switches to the player's view.
+        void c.admin("interest", { mode: "all" }).catch(() => undefined);
         setMirror(c);
         return {
           debug: (q) => c.debug(q as DebugQuery),
