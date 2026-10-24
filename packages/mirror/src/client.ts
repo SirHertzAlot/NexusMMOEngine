@@ -84,6 +84,8 @@ import {
   type PouchMessage,
   type ResourceNodeView,
   type ResourcesMessage,
+  type ChestsMessage,
+  type ChestView,
   decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -135,6 +137,8 @@ export interface MirrorEvents {
   onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
+  /** World chests were described or changed (all on joining; protocol 0x27). */
+  onChests?(c: ChestsMessage): void;
   /** Resource nodes were described or changed stock (all on joining; protocol 0x24). */
   onResources?(r: ResourcesMessage): void;
   /** The player's materials pouch (on joining and after every gather; protocol 0x24). */
@@ -221,6 +225,8 @@ export class MirrorClient {
   inventory: InventoryMessage | null = null;
   /** The resource nodes (catalog 0x24) by entity wire id: what each gives and how much it has left. */
   readonly resources = new Map<bigint, ResourceNodeView>();
+  /** World chests by wire id (protocol 0x27). */
+  readonly chests = new Map<bigint, ChestView>();
   /** The player's materials pouch, from the last pouch message; null until one arrives. */
   pouch: PouchMessage | null = null;
   /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
@@ -329,6 +335,12 @@ export class MirrorClient {
    * broadcasts have no reply; rejections arrive as ErrorMessage through
    * onError. The server trims, filters, and rate-limits.
    */
+  /** Use an entity in the world (0x27): open a chest. The server checks reach and state; a refusal is a 4005 error. */
+  interact(entity: bigint): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Interact, encodeControl({ kind: "interact", entity: entity.toString() })));
+  }
+
   /** Ask to pick a ground item up (M3a, 0x13); the server answers with the bag, or a 4005 refusal. */
   pickup(entity: bigint): void {
     if (!this.socket || this.closed) return;
@@ -861,6 +873,14 @@ export class MirrorClient {
         } else {
           this.pouch = m;
           this.events.onPouch?.(m);
+        }
+        break;
+      }
+      case MessageType.Interact: {
+        const m = decodeControl<ChestsMessage>(payload);
+        if (m.kind === "chests") {
+          for (const c of m.chests) this.chests.set(BigInt(c.entity), c);
+          this.events.onChests?.(m);
         }
         break;
       }

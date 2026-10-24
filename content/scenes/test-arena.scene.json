@@ -2,20 +2,63 @@
   "version": 1,
   "name": "test-arena",
   "kind": "arena",
-  "modules": ["core"],
+  "modules": [
+    "core"
+  ],
   "nodes": [
     {
       "id": "spawn",
       "name": "Player spawn",
       "kind": "spawn-point",
-      "transform": { "position": [0, 0, 0] }
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
     },
     {
       "id": "camp",
       "name": "Goblin camp",
       "prefab": "camps/goblin",
-      "transform": { "position": [20, 0, -10] },
-      "components": { "Spawner": { "creature": "goblin", "respawnSeconds": 60 } }
+      "transform": {
+        "position": [
+          20,
+          0,
+          -10
+        ]
+      },
+      "components": {
+        "Spawner": {
+          "creature": "goblin",
+          "respawnSeconds": 60
+        }
+      }
+    },
+    {
+      "id": "chest-0",
+      "name": "Arena chest",
+      "transform": {
+        "position": [
+          6,
+          0,
+          4
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "chest",
+          "asset": "",
+          "width": 1.2,
+          "depth": 0.8,
+          "height": 0.8
+        },
+        "Chest": {
+          "table": "chest-common",
+          "refillSeconds": 120
+        }
+      }
     }
   ]
 }

@@ -94,6 +94,7 @@ import {
   type TradeMessage,
   type WalletMessage,
   type ResourcesMessage,
+  type ChestsMessage,
   type VendorAction,
   type VendorMessage,
   type AuctionMessage,
@@ -125,6 +126,7 @@ import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../adm
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
 import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
+import { ChestSystem, InteractActionSchema } from "../interact/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
@@ -1340,6 +1342,7 @@ export class Gateway {
       ...this.sendAuctions(sim, tick),
     ];
     this.sendResources(sim);
+    this.sendChests(sim);
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
@@ -2715,6 +2718,9 @@ export class Gateway {
         break;
       case MessageType.TileRequest:
         this.onTileRequest(s, payload);
+        break;
+      case MessageType.Interact:
+        this.onInteract(s, payload);
         break;
       case MessageType.Gather:
         this.onGather(s, payload);
@@ -4359,6 +4365,8 @@ export class Gateway {
     if (drops) this.deliver(s, drops, this.tick);
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
+    const chests = this.chests;
+    if (chests && chests.size > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: chests.views(this.world) } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     if (this.interest) {
@@ -5429,6 +5437,58 @@ export class Gateway {
   /** The server's gathering system (resource nodes and pouches), if it runs one. */
   private get gathering(): GatheringSystem | undefined {
     return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
+  }
+
+  /** The server's world chests, if it runs any. */
+  private get chests(): ChestSystem | undefined {
+    return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
+  }
+
+  /** Tell every player in the world about the chests that opened or refilled this tick (catalog 0x27). */
+  private sendChests(sim: SimWorld): void {
+    const list = this.chests?.drainChanges(sim) ?? [];
+    if (list.length === 0) return;
+    const bytes = encodeControl({ kind: "chests", chests: list } satisfies ChestsMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Interact, bytes);
+  }
+
+  /**
+   * Use an entity (catalog 0x27): today a world chest. In-world sessions
+   * only; a bad shape is 4003, a refusal (too far, empty) 4005. Shares the
+   * pickup rate limit. The loot lands on the ground at the chest.
+   */
+  private onInteract(s: ClientSession, payload: Uint8Array): void {
+    const chests = this.chests;
+    if (!chests || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "interaction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed interact");
+      return;
+    }
+    const parsed = InteractActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed interact");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) {
+      this.sendError(s, 4005, "no avatar");
+      return;
+    }
+    const wire = parseEntityArg(parsed.data.entity);
+    const result = wire === null ? { ok: false as const, error: "nothing to open there" } : chests.open(this.world, this.holderOf(s), avatar, this.world.resolveWireId(wire));
+    if (!result.ok) this.sendError(s, 4005, result.error);
   }
 
   /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */

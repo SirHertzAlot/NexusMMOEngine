@@ -215,6 +215,7 @@ export function App(): React.ReactElement {
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
   // Gathering (0x24): the resource node in reach (its view re-read when the nodes change) and the materials pouch.
   const [nearResource, setNearResource] = useState<bigint | null>(null);
+  const [nearChest, setNearChest] = useState<bigint | null>(null);
   const [, setResourcesSeen] = useState(0);
   const [pouch, setPouch] = useState<PouchMaterial[]>([]);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
@@ -702,6 +703,7 @@ export function App(): React.ReactElement {
           chests={run?.phase === "in" ? run.state?.chests : undefined}
           onNearDrop={setNearDrop}
           onNearResource={setNearResource}
+          onNearChest={setNearChest}
           onQuests={toggleQuests}
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
@@ -729,7 +731,13 @@ export function App(): React.ReactElement {
             </span>
           </div>
         )}
-        {!nearDrop && !dialog && !resource && nearNpc && (
+        {!nearDrop && !dialog && !resource && nearChest !== null && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            {t("interact.open")} <span className="text-amber-200">{t("interact.chest")}</span>
+          </div>
+        )}
+        {!nearDrop && !dialog && !resource && nearChest === null && nearNpc && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.talkTo")} <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>

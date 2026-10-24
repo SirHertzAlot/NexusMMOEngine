@@ -117,6 +117,14 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     regrowHours: { type: "number", default: 0, min: 0 },
     town: { type: "string", default: "" },
   }),
+  /**
+   * A world chest (IX1): shared by every player. Whoever opens it first gets the loot table's items on the ground
+   * beside it; it is empty until `refillSeconds` have passed, then full for the next player.
+   */
+  Chest: component("Chest", {
+    table: { type: "string", default: "chest-common" },
+    refillSeconds: { type: "number", default: 600, min: 1 },
+  }),
   CharacterPreview: component("Character preview", {
     framing: { type: "enum", default: "body", options: ["body", "face"] },
   }),

@@ -87,6 +87,24 @@ describe("gateway: gathering", () => {
     await bob.client.close();
   });
 
+  it("a gather with a cast time starts the bar, then fills the pouch when it ends, and gathers once", async () => {
+    const { url, sim, node, gathering } = await start();
+    gathering.castSeconds = 0.15;
+    const { client } = await join(url, "user-c");
+    const entity = sim.wireId(node).toString();
+    besides(sim, node, client);
+    const startedP = client.waitFor(MessageType.Magic, 1);
+    const pouchP = client.waitFor(MessageType.Gather, 1);
+    client.sendRaw(MessageType.Gather, encodeControl({ kind: "gather", entity }));
+    client.sendRaw(MessageType.Gather, encodeControl({ kind: "gather", entity })); // already casting: ignored
+    const started = decodeControl<{ kind: string; spell: string; state: string; seconds?: number }>((await startedP)[0]!);
+    assert.deepEqual([started.spell, started.state, started.seconds], ["gather", "started", 0.15]);
+    const pouch = decodeControl<PouchMessage>((await pouchP)[0]!);
+    assert.equal(pouch.gathered?.count, 1);
+    assert.equal(pouch.materials[0]!.count, 1, "one gather, not two");
+    await client.close();
+  });
+
   it("refuses a node worked out (4005) and a bad shape (4003)", async () => {
     const { url, sim, node } = await start();
     const { client } = await join(url, "user-b");
