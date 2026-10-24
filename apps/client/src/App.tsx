@@ -706,7 +706,6 @@ export function App(): React.ReactElement {
           onTreat={onTreat}
           onMend={onMend}
           onUseHotkey={onUseHotkey}
-          chests={run?.phase === "in" ? run.state?.chests : undefined}
           onNearDrop={setNearDrop}
           onNearResource={setNearResource}
           onNearChest={setNearChest}
@@ -777,7 +776,7 @@ export function App(): React.ReactElement {
         )}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
-            <DungeonHud run={run} onOpen={() => clientRef.current?.dungeon({ kind: "dungeon", op: "open" })} />
+            <DungeonHud run={run} />
           </div>
         )}
         {run?.phase === "ended" && (
