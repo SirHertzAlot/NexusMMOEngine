@@ -61,6 +61,11 @@ import {
   decodeEnvelope,
   encodeControl,
   encodeEnvelope,
+  encodeDeltaSet,
+  DeltaSetKind,
+  GLOBAL_SECTOR,
+  type DeltaSetEntry,
+  type BorderMessage,
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
@@ -89,6 +94,7 @@ import {
   type TradeMessage,
   type WalletMessage,
   type ResourcesMessage,
+  type ChestsMessage,
   type VendorAction,
   type VendorMessage,
   type AuctionMessage,
@@ -119,11 +125,22 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
-import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
+import { GatheringSystem } from "../gathering/index.js";
+import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/index.js";
+import { ResidentSystem } from "../residents/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
-import { sectorTopicFor } from "./sector.js";
+import { REGION_TOPIC } from "./sector.js";
+import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
+import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+
+const EMPTY_BYTES = new Uint8Array(0);
+/** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
+const COMBAT_PIN_TICKS = 300;
+/** IM8: a border ticket lives 60 s and is renewed with 20 s left. */
+const BORDER_TICKET_S = 60;
+const BORDER_RENEW_S = 20;
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -312,6 +329,8 @@ export interface GatewayOptions {
    * EG9). Absent: the built-in constants. setSocial replaces them live.
    */
   social?: SocialRules;
+  /** Needs rules: how long eating and drinking take (a cast; 0 at once). */
+  needs?: { eatSeconds: number };
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -484,6 +503,12 @@ export interface GatewayOptions {
    * per-socket path either way.
    */
   sectorBroadcast?: boolean;
+  /**
+   * Interest management (IM3): each client gets only the sectors near its
+   * avatar, as a DeltaSet of shared per-sector bytes. Radii in metres;
+   * absent = every client gets the whole region (today's path).
+   */
+  interest?: InterestRadii;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -813,8 +838,10 @@ export class Gateway {
       | "spawnTable"
       | "scale"
       | "extensions"
+      | "needs"
       | "items"
       | "sectorBroadcast"
+      | "interest"
       | "worldCharacters"
       | "atomicOps"
     >
@@ -926,6 +953,13 @@ export class Gateway {
   private transport: Transport | null = null;
   /** Per-tick deltas fan out via sector-topic publish (Phase 5, Part A). Default true. */
   private readonly sectorBroadcast: boolean;
+  /** Interest radii, or null when every client sees the whole region. */
+  private readonly interest: InterestRadii | null;
+  private readonly sectorIndex = new SectorIndex();
+  /** IM8: this region's border identity, or null outside a fleet. */
+  private border: { regionId: string; key: string; rect: RegionRect } | null = null;
+  /** IM8: live neighbouring regions (from the world's registry). */
+  private borderNeighbours: Array<{ regionId: string; endpoint: string; rect: RegionRect }> = [];
   private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -980,6 +1014,7 @@ export class Gateway {
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.fixedMaxCharacters = opts.maxCharacters !== undefined;
     if (opts.social) this.setSocial(opts.social);
+    this.eatSeconds = opts.needs?.eatSeconds ?? 0;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -1003,6 +1038,7 @@ export class Gateway {
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
     this.sectorBroadcast = opts.sectorBroadcast ?? true;
+    this.interest = opts.interest ?? null;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -1311,6 +1347,8 @@ export class Gateway {
       ...this.sendAuctions(sim, tick),
     ];
     this.sendResources(sim);
+    this.sendChests(sim);
+    this.checkCasts();
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
@@ -1324,16 +1362,21 @@ export class Gateway {
     // Phase 3: the delta encodes directly from the SAB-backed stores —
     // no intermediate CollectedState row copy. Read-only w.r.t. the
     // tracker: commit() still runs below, as on the row path.
-    const deltaBytes = encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource);
+    const frame = this.interest ? this.sectorIndex.frame(sim, tick, this.tracker, this.chunkSource) : null;
+    // With interest on, the global delta is only for tick listeners.
+    const deltaBytes = frame === null || this.tickListeners.length > 0
+      ? encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource)
+      : EMPTY_BYTES;
     this.tracker.commit(sim);
     sim.endTick();
 
-    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
+    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv, frame);
     for (const l of this.tickListeners) {
       l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }) });
     }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
+    if (this.border && tick % TICK_HZ === 0) this.updateBorders();
   }
 
   /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
@@ -1364,7 +1407,15 @@ export class Gateway {
       this.dropDisarmed(sim, hits);
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          const h = hits[i];
+          if (this.interest) {
+            // Foes pin each other for 10 s (IM5): an attacker out of its victim's view stays visible.
+            const foe = sim.wireId(h.source) === r.playerEntity ? h.target : sim.wireId(h.target) === r.playerEntity ? h.source : -1;
+            if (foe >= 0) (r.combatPins ??= new Map()).set(sim.wireId(foe), this.tick + COMBAT_PIN_TICKS);
+          }
+          if (this.sees(r, h.source, h.target)) this.sendEnvelope(r, MessageType.Hit, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1498,7 +1549,9 @@ export class Gateway {
       }
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          if (this.sees(r, events[i].target, events[i].killer ?? -1)) this.sendEnvelope(r, MessageType.Life, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1522,7 +1575,7 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Ability, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) if (this.sees(r, events[i].entity)) this.sendEnvelope(r, MessageType.Ability, encodeControl(msgs[i]));
       }
       all.push(...msgs);
     }
@@ -1548,7 +1601,9 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          if (this.sees(r, events[i].source, ...(events[i].hits ?? []).map((h) => h.target))) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1572,7 +1627,7 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Status, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) if (this.sees(r, changes[i].entity)) this.sendEnvelope(r, MessageType.Status, encodeControl(msgs[i]));
       }
       all.push(...msgs);
     }
@@ -1809,6 +1864,7 @@ export class Gateway {
     }
     const eid = this.world.resolveWireId(s.playerEntity);
     this.mastery?.forget(eid);
+    this.forgetDuels(eid);
     this.world.despawn(parseWireEntityId(s.playerEntity).slot);
     s.playerEntity = null;
     this.handoffArrivals.delete(s.clientId);
@@ -1967,9 +2023,14 @@ export class Gateway {
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */
-  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null): void {
+  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
-    const deltaEnv = encodeEnvelope(MessageType.Delta, deltaBytes);
+    // IM2: every tick goes out as a DeltaSet; one global entry until
+    // interest management splits it per sector (IM3).
+    const deltaEnv = encodeEnvelope(
+      MessageType.DeltaSet,
+      encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
+    );
     let snapshotEnv: Uint8Array | undefined;
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(
@@ -1986,13 +2047,39 @@ export class Gateway {
     // transport (tests driving frame() before listen()) there is no
     // publish target, so everything falls back to per-socket sends.
     const usePublish = !isSnapshotTick && this.sectorBroadcast && this.transport !== null;
+    const edge = frame && this.transport instanceof ChannelTransport ? this.transport : null;
+    const edgeBytes = new Map<string, Uint8Array>();
+    const edgePlans: EdgePlan[] = [];
     const publishSectors = new Map<string, ClientSession[]>();
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
       if (namesEnv) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
-      if (isSnapshotTick || s.needsResync) {
+      if (frame) {
+        const replace = isSnapshotTick || s.needsResync || !s.interestSet;
+        const entries = this.interestEntries(s, frame, replace);
+        const sid = edge && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
+        if (sid !== undefined) {
+          // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
+          const plan: Array<[number, string, string]> = [];
+          for (const e of entries) {
+            const key = `${e.kind}:${e.sector}`;
+            if (e.kind !== DeltaSetKind.Leave) edgeBytes.set(key, e.bytes);
+            plan.push([e.kind, e.sector, key]);
+          }
+          edgePlans.push({ sid, replace, entries: plan });
+          if (replace) {
+            s.needsResync = false;
+            s.lastSnapshotTick = BigInt(tick);
+          }
+          s.lastAckedTick = BigInt(tick);
+        } else {
+          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace, entries }));
+          if (replace) this.deliverSnapshot(s, env, tick);
+          else this.deliver(s, env, tick);
+        }
+      } else if (isSnapshotTick || s.needsResync) {
         // Leave the sector topic while resyncing: the next delta tick
         // re-subscribes once the snapshot baseline is in place.
         this.clearSectorSubscription(s);
@@ -2016,6 +2103,8 @@ export class Gateway {
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
 
+    if (edge && edgePlans.length > 0) edge.sendSectors(tick, edgeBytes, edgePlans);
+
     // One publish per occupied sector topic. Per-session messages
     // (names/drops above) already flushed each member's queue through
     // deliver(), so the published delta cannot overtake them.
@@ -2026,14 +2115,182 @@ export class Gateway {
   }
 
   /**
-   * The sector topic for a session's avatar, or null when the session
-   * has no avatar in the world yet (its deltas go per-socket).
+   * Cross-region view (IM8): this region's id and ground, the fleet's shared
+   * key (WORLD_API_KEY) that signs and checks border tickets, and the live
+   * neighbours from the world's registry. server.ts refreshes it.
+   */
+  setBorders(self: { regionId: string; key: string; rect: RegionRect }, regions: Array<{ regionId: string; endpoint: string; rect: RegionRect }>): void {
+    this.border = self;
+    this.borderNeighbours = regions.filter((r) => r.regionId !== self.regionId);
+  }
+
+  /**
+   * IM8, home side: tell each player near a neighbour's ground where to
+   * observe it from (a ticket, renewed before it expires), and when to stop.
+   */
+  private updateBorders(): void {
+    const b = this.border!;
+    const r = this.interest ?? { enterM: 96, leaveM: 128 };
+    const nowS = Math.floor(Date.now() / 1000);
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || !s.socket || s.observer || s.playerEntity === null) continue;
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      const x = C.Transform.px[eid], z = C.Transform.pz[eid];
+      for (const n of this.borderNeighbours) {
+        const d = rectDistance(n.rect, x, z);
+        const exp = s.borders?.get(n.regionId);
+        if (d <= r.enterM && (exp === undefined || exp - nowS < BORDER_RENEW_S)) {
+          const e = nowS + BORDER_TICKET_S;
+          (s.borders ??= new Map()).set(n.regionId, e);
+          const msg: BorderMessage = { kind: "border", region: n.regionId, endpoint: n.endpoint, from: b.regionId, account: s.username, exp: e, ticket: borderTicket(b.key, n.regionId, b.regionId, s.username, e) };
+          this.sendEnvelope(s, MessageType.Border, encodeControl(msg));
+        } else if (exp !== undefined && d > r.leaveM) {
+          s.borders!.delete(n.regionId);
+          const msg: BorderMessage = { kind: "border", region: n.regionId, endpoint: n.endpoint, leave: true };
+          this.sendEnvelope(s, MessageType.Border, encodeControl(msg));
+        }
+      }
+    }
+  }
+
+  /** IM8, neighbour side: a home region's ticket for this region lets a read-only observer in. */
+  private acceptObserver(s: ClientSession, t: { region: string; from: string; account: string; exp: number; ticket: string }): void {
+    const b = this.border;
+    const home = this.borderNeighbours.find((n) => n.regionId === t.from);
+    const ok = b !== null && home !== undefined && this.interest !== null && t.region === b.regionId
+      && t.exp > Date.now() / 1000 && ticketOk(b.key, t.region, t.from, t.account, t.exp, t.ticket);
+    s.joining = false;
+    if (!ok) {
+      this.rateLimiter.recordFailure(s.remoteIp);
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    s.observer = { x: NaN, z: NaN, home: home!.rect };
+    s.welcomed = true;
+    s.interestSet = null;
+    const welcome: WelcomeMessage = {
+      protocol: PROTOCOL_VERSION,
+      player_entity: "0",
+      server_tick: this.tick,
+      tick_hz: TICK_HZ,
+      snapshot_every: this.opts.snapshotEveryTicks,
+      session_token: "",
+    };
+    this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
+  }
+
+  /** IM8: where the observer's player stands, clamped into its home region. */
+  private onObserve(s: ClientSession, payload: Uint8Array): void {
+    let m: { kind?: unknown; x?: unknown; z?: unknown };
+    try {
+      m = decodeControl(payload);
+    } catch {
+      return;
+    }
+    if (m.kind !== "observe" || typeof m.x !== "number" || typeof m.z !== "number" || !Number.isFinite(m.x) || !Number.isFinite(m.z)) return;
+    // ponytail: the anchor is client-reported, kept inside its home region, so it sees at most the
+    // strip a player at the border would; a home-signed anchor is the upgrade if that leaks too much.
+    const home = s.observer!.home;
+    s.observer = { ...clampInto(home, m.x, m.z), home };
+  }
+
+  /** IM5: the wire ids a session always sees: its party in this region and recent foes. */
+  private pinsOf(s: ClientSession): bigint[] {
+    const out: bigint[] = [];
+    const me = s.character?.name ?? s.username;
+    const mates = this.parties.partyOf(me);
+    if (mates.length > 0) {
+      const names = new Set(mates.map((n) => n.toLowerCase()));
+      for (const r of this.sessions.values()) {
+        if (r === s || r.playerEntity === null) continue;
+        if (names.has((r.character?.name ?? r.username).toLowerCase())) out.push(r.playerEntity);
+      }
+    }
+    if (s.combatPins) {
+      for (const [wid, until] of s.combatPins) {
+        if (until < this.tick) s.combatPins.delete(wid);
+        else out.push(wid);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Whether a session is told about events of these entities (IM5): with
+   * interest on, when one stands in its interest sectors or is pinned.
+   */
+  private sees(s: ClientSession, ...eids: number[]): boolean {
+    if (!this.interest || !s.interestSet) return true;
+    for (const eid of eids) {
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      if (s.interestSet.has(homeSector(this.world, eid))) return true;
+      const wid = this.world.wireId(eid);
+      if (wid === s.playerEntity || s.pinnedOut?.has(wid)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * One session's DeltaSet this tick (interest management): its interest
+   * sectors' shared bytes, full state for sectors it just entered (or all of
+   * them on a replace), and a leave for each it dropped.
+   */
+  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
+    const prev = replace ? null : (s.interestSet ?? null);
+    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    const next = s.observer
+      ? (Number.isFinite(s.observer.x) ? interestSectors(s.observer.x, s.observer.z, this.interest!, prev) : new Set([GLOBAL_SECTOR]))
+      : s.interestAll && s.isAdmin
+      ? frame.occupied()
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
+      ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
+      : new Set([GLOBAL_SECTOR]);
+    const entries: DeltaSetEntry[] = [];
+    for (const sector of next) {
+      if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
+      else {
+        const d = frame.delta(sector);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      }
+    }
+    if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    s.interestSet = next;
+    // Pinned (IM5): party members and recent foes, wherever they are.
+    const was = replace ? new Set<bigint>() : (s.pinnedOut ?? new Set<bigint>());
+    const out = new Set<bigint>();
+    const fresh: number[] = [], kept: number[] = [];
+    for (const wid of this.pinsOf(s)) {
+      const pe = this.world.resolveWireId(wid);
+      if (pe < 0 || next.has(homeSector(this.world, pe))) continue;
+      out.add(wid);
+      (was.has(wid) ? kept : fresh).push(pe);
+    }
+    const left: bigint[] = [];
+    for (const wid of was) {
+      if (out.has(wid)) continue;
+      const pe = this.world.resolveWireId(wid);
+      if (pe < 0 || !next.has(homeSector(this.world, pe))) left.push(wid);
+    }
+    s.pinnedOut = out;
+    if (fresh.length + kept.length + left.length > 0) {
+      entries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
+    }
+    return entries;
+  }
+
+  /**
+   * The topic a session's deltas are published on, or null when the session
+   * has no avatar in the world yet (its deltas go per-socket). While the delta
+   * is global every session shares one region topic, so a tick is one publish
+   * (IM1: through the edge, a publish per occupied sector was a channel copy
+   * each). Per-sector content comes with interest management (IM3).
    */
   private sectorTopicOf(s: ClientSession): string | null {
     if (s.playerEntity === null) return null;
     const eid = this.world.resolveWireId(s.playerEntity);
     if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) return null;
-    return sectorTopicFor(C.Transform.px[eid], C.Transform.pz[eid]);
+    return REGION_TOPIC;
   }
 
   /**
@@ -2255,6 +2512,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(s.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(slot);
       }
       // The grace period is over: this is the logout. Fleet mode
@@ -2350,7 +2608,8 @@ export class Gateway {
   }
 
   private onClose(s: ClientSession): void {
-    if (!s.welcomed) {
+    this.endCast(s);
+    if (!s.welcomed || s.observer) {
       // Never said hello: nothing to keep.
       this.sessions.delete(s.clientId);
       return;
@@ -2361,10 +2620,22 @@ export class Gateway {
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
+    this.leaveDuel(s);
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
     this.extensionsLeave(s);
+  }
+
+  /** A disconnecting player's duel and challenges end (the opponent is told on 0x20). */
+  private leaveDuel(s: ClientSession): void {
+    if (s.playerEntity !== null) this.forgetDuels(this.world.resolveWireId(s.playerEntity));
+  }
+
+  /** End `eid`'s duel and drop its challenges (disconnect, logout, leaving the region). */
+  private forgetDuels(eid: number): void {
+    if (eid < 0) return;
+    for (const x of this.systems) if (x instanceof DuelSystem) x.forget(eid, this.tick);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -2374,12 +2645,18 @@ export class Gateway {
     } catch {
       /* ignore */
     }
+    if (s.observer) {
+      // An observer has nothing to keep through a grace period.
+      this.sessions.delete(s.clientId);
+      return;
+    }
     // The close event fires async; mark it now so a slow close can't
     // keep the session looking live.
     if (s.socket) {
       const sock = s.socket;
       s.socket = null;
       s.disconnectedAtMs = this.clock();
+      this.leaveDuel(s);
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
@@ -2398,6 +2675,12 @@ export class Gateway {
       ({ type, payload } = decodeEnvelope(buf));
     } catch {
       this.sendError(s, 4003, "bad envelope");
+      return;
+    }
+    if (s.observer) {
+      // IM8: an observer only reports where its player stands (and keeps the socket alive).
+      if (type === MessageType.Border) this.onObserve(s, payload);
+      else if (type === MessageType.Ping) this.sendEnvelope(s, MessageType.Pong, payload);
       return;
     }
     switch (type) {
@@ -2456,8 +2739,8 @@ export class Gateway {
       case MessageType.TileRequest:
         this.onTileRequest(s, payload);
         break;
-      case MessageType.Gather:
-        this.onGather(s, payload);
+      case MessageType.Interact:
+        this.onInteract(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -2560,7 +2843,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2633,6 +2916,17 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "interest") {
+      // IM6: the play-mode debugger's "show everything / show what the player sees".
+      const mode = (cmd.args as { mode?: unknown } | undefined)?.mode;
+      if (mode !== "all" && mode !== "near") {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "interest: args.mode must be \"all\" or \"near\"");
+        return;
+      }
+      s.interestAll = mode === "all";
+      s.interestSet = null; // a full replace of the new view next tick
+      res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
     } else if (cmd.command === "noclip") {
       const parsed = NoclipArgsSchema.safeParse(cmd.args ?? {});
       if (!parsed.success) {
@@ -2971,6 +3265,11 @@ export class Gateway {
       const raw = decodeControl<unknown>(payload);
       const ext = typeof raw === "object" && raw !== null ? this.extensions.get(String((raw as { kind?: unknown }).kind)) : undefined;
       if (ext) {
+        const op = (raw as { op?: unknown }).op;
+        if ((ext.kind === "quest" && op === "talk") || (ext.kind === "dungeon" && op === "enter")) {
+          this.sendError(s, 4003, "use interact (0x27)");
+          return;
+        }
         ext.onMessage(this.extensionPlayer(s), raw);
         return;
       }
@@ -3471,6 +3770,11 @@ export class Gateway {
       return;
     }
 
+    if (parsed.kind === "observe") {
+      this.acceptObserver(s, parsed.value.observe);
+      return;
+    }
+
     // Narrowed by parsed.kind: credentials vs token variant.
     const clientLabel = JSON.stringify(parsed.value.client);
     let sessionToken: string;
@@ -3644,6 +3948,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(other.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(parseWireEntityId(other.playerEntity).slot);
       }
       other.playerEntity = null;
@@ -4083,11 +4388,18 @@ export class Gateway {
     if (drops) this.deliver(s, drops, this.tick);
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
+    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world) ?? [])];
+    if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     // The player's gold (catalog 0x21): on join too, not only when it changes.
     const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
     if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
+    if (this.interest) {
+      // Interest management: the next tick sends a full replace of what this session sees.
+      s.interestSet = null;
+      return;
+    }
     this.deliverSnapshot(
       s,
       encodeEnvelope(
@@ -5073,15 +5385,7 @@ export class Gateway {
       this.sendError(s, 4003, "malformed item action");
       return;
     }
-    // Pickup requests share the session's pickup bucket (roadmap T1):
-    // past it the request is dropped and counted, never reaching the
-    // item service. Other bag actions are bag-local and stay unthrottled.
-    if (parsed.data.action === "pickup" && !this.takeToken(s, "pickup")) {
-      s.droppedPickups += 1;
-      this.droppedByRateLimitPickups += 1;
-      this.noteViolation(s);
-      return;
-    }
+    // Bag actions are bag-local and stay unthrottled (picking up is interact, 0x27).
     const avatar = this.world.resolveWireId(s.playerEntity);
     if (avatar < 0) {
       this.sendError(s, 4005, "no avatar");
@@ -5090,11 +5394,37 @@ export class Gateway {
     const holder = this.holderOf(s);
     const a = parsed.data;
     let result;
-    if (a.action === "pickup") {
-      const entity = parseEntityArg(a.entity);
-      result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
-    } else if (a.action === "drop") {
+    if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    } else if (a.action === "use") {
+      const items = this.items;
+      const apply = (av: number) => (nourish: number, quench: number, dryRun: boolean): boolean => {
+        if (!hasComponent(this.world.ecs, C.Needs, av)) return false;
+        const hungry = nourish > 0 && C.Needs.hunger[av] < C.Needs.hungerMax[av];
+        const thirsty = quench > 0 && C.Needs.thirst[av] < C.Needs.thirstMax[av];
+        if (!dryRun && hungry) C.Needs.hunger[av] = Math.min(C.Needs.hungerMax[av], C.Needs.hunger[av] + nourish);
+        if (!dryRun && thirsty) C.Needs.thirst[av] = Math.min(C.Needs.thirstMax[av], C.Needs.thirst[av] + quench);
+        return hungry || thirsty;
+      };
+      if (this.casts.has(s)) return; // already casting one
+      if (this.eatSeconds > 0) {
+        // Eating takes a moment: checked now, done when the bar fills (a move or a blow cancels it).
+        const check = items.consume(holder, a.item, apply(avatar), true);
+        if (!check.ok) {
+          this.sendError(s, 4005, check.error);
+          return;
+        }
+        this.beginCast(s, avatar, check.message.startsWith("ate") ? "eat" : "drink", this.eatSeconds, (av) => {
+          const done = items.consume(holder, a.item, apply(av));
+          if (!done.ok) {
+            this.sendError(s, 4005, done.error);
+            return;
+          }
+          this.sendInventory(s);
+        });
+        return;
+      }
+      result = items.consume(holder, a.item, apply(avatar));
     } else if (a.action === "equip") {
       // A maimed or lost hand (M3) can't take hold of anything.
       const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
@@ -5108,8 +5438,7 @@ export class Gateway {
       this.sendError(s, 4005, result.error);
       return;
     }
-    if (a.action === "pickup") this.telemetry.pickup();
-    else if (a.action === "drop") this.telemetry.drop();
+    if (a.action === "drop") this.telemetry.drop();
     this.refreshAvatarLook(avatar, holder);
     this.sendInventory(s);
   }
@@ -5144,36 +5473,55 @@ export class Gateway {
     return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
   }
 
-  /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
-  private sendResources(sim: SimWorld): void {
-    const nodes = this.gathering?.drainChanges(sim) ?? [];
-    if (nodes.length === 0) return;
-    const bytes = encodeControl({ kind: "resources", nodes } satisfies ResourcesMessage);
-    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Gather, bytes);
+  /** The server's world chests, if it runs any. */
+  private get chests(): ChestSystem | undefined {
+    return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
+  }
+
+  /** The server's settlement residents (E talks to one), if it runs any. */
+  private get residents(): ResidentSystem | undefined {
+    return this.systems.find((g): g is ResidentSystem => g instanceof ResidentSystem);
+  }
+
+  /** The server's vendors (E opens a shop), if it runs any. */
+  private get vendors(): VendorSystem | undefined {
+    return this.systems.find((g): g is VendorSystem => g instanceof VendorSystem);
+  }
+
+  /** The server's breakable props (ruins can be mended), if it runs any. */
+  private get breaks(): BreakSystem | undefined {
+    return this.systems.find((g): g is BreakSystem => g instanceof BreakSystem);
+  }
+
+  /** Tell every player in the world about the chests, doors and ruins that changed this tick (catalog 0x27). */
+  private sendChests(sim: SimWorld): void {
+    const list = [...(this.chests?.drainChanges(sim) ?? []), ...(this.breaks?.drainChanges(sim) ?? [])];
+    if (list.length === 0) return;
+    const bytes = encodeControl({ kind: "chests", chests: list } satisfies ChestsMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Interact, bytes);
   }
 
   /**
-   * Gather once from a resource node (catalog 0x24): in-world sessions
-   * only; a bad shape is 4003, a refusal (too far, worked out, still
-   * gathering, pouch full) 4005. Shares the pickup rate limit. A gather
-   * answers with the whole pouch, naming what was added.
+   * Interact (catalog 0x27): the one request for everything E does. In-world
+   * sessions only; a bad shape is 4003, a refusal 4005. Shares the pickup
+   * rate limit. The target is a wire entity (a world chest, a ground item,
+   * a resource node) or a content id (a quest giver, a dungeon entrance).
    */
-  private onGather(s: ClientSession, payload: Uint8Array): void {
-    const gathering = this.gathering;
-    if (!gathering || !s.welcomed || s.playerEntity === null) {
-      this.sendError(s, 4003, "gathering outside the world");
+  private onInteract(s: ClientSession, payload: Uint8Array): void {
+    if (!s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "interaction outside the world");
       return;
     }
     let raw: unknown;
     try {
       raw = decodeControl<unknown>(payload);
     } catch {
-      this.sendError(s, 4003, "malformed gather");
+      this.sendError(s, 4003, "malformed interact");
       return;
     }
-    const parsed = GatherActionSchema.safeParse(raw);
+    const parsed = InteractActionSchema.safeParse(raw);
     if (!parsed.success) {
-      this.sendError(s, 4003, "malformed gather");
+      this.sendError(s, 4003, "malformed interact");
       return;
     }
     if (!this.takeToken(s, "pickup")) {
@@ -5187,14 +5535,143 @@ export class Gateway {
       this.sendError(s, 4005, "no avatar");
       return;
     }
-    const wire = parseEntityArg(parsed.data.entity);
-    const holder = this.holderOf(s);
-    const result = wire === null ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, this.world.resolveWireId(wire));
-    if (!result.ok) {
-      this.sendError(s, 4005, result.error);
+    const a = parsed.data;
+    // Content targets are not entities: the quest and dungeon extensions take them.
+    if ("npc" in a || "entrance" in a) {
+      const ext = this.extensions.get("npc" in a ? "quest" : "dungeon");
+      if (!ext) return this.sendError(s, 4005, "nothing to use there");
+      ext.onMessage(this.extensionPlayer(s), "npc" in a ? { kind: "quest", op: "talk", npc: a.npc } : { kind: "dungeon", op: "enter", entrance: a.entrance });
       return;
     }
-    this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    const wire = parseEntityArg(a.entity);
+    const eid = wire === null ? -1 : this.world.resolveWireId(wire);
+    const holder = this.holderOf(s);
+    if (eid >= 0 && this.residents?.describe(eid)) {
+      // A resident of a town answers with a line made for who they are, the hour and the day (quest dialog channel, no replies).
+      const dx = C.Transform.px[eid]! - C.Transform.px[avatar]!;
+      const dz = C.Transform.pz[eid]! - C.Transform.pz[avatar]!;
+      if (dx * dx + dz * dz > 16) return this.sendError(s, 4005, "too far away");
+      const talk = this.residents!.talk(eid, this.tick);
+      if (!talk) return this.sendError(s, 4005, "they have nothing to say");
+      this.sendEnvelope(s, MessageType.Chat, encodeControl({ kind: "dialog", npc: talk.npc, name: talk.name, text: talk.text, replies: [] }));
+    } else if (eid >= 0 && this.vendors?.vendorOf(eid)) {
+      // A shop: the same list the vendor action answers with; buying and selling stay on 0x21.
+      this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
+    } else if (eid >= 0 && this.breaks?.hasRuin(eid)) {
+      const breaks = this.breaks;
+      if (this.casts.has(s)) return; // already casting one
+      const check = breaks.checkRepair(holder, avatar, eid);
+      if (!check.ok) return this.sendError(s, 4005, check.error);
+      this.beginCast(s, avatar, check.spell, check.castSeconds, (av) => {
+        const result = breaks.repair(this.world, holder, av, eid);
+        if (!result.ok) this.sendError(s, 4005, result.error);
+      });
+    } else if (eid >= 0 && this.chests?.has(eid)) {
+      const chests = this.chests;
+      if (this.casts.has(s)) return; // already casting one
+      const check = chests.check(this.world, holder, avatar, eid);
+      if (!check.ok) return this.sendError(s, 4005, check.error);
+      this.beginCast(s, avatar, check.spell, check.castSeconds, (av) => {
+        const result = chests.open(this.world, holder, av, eid);
+        if (!result.ok) this.sendError(s, 4005, result.error);
+      });
+    } else if (eid >= 0 && this.gathering?.has(eid)) {
+      this.startGather(s, this.gathering, holder, avatar, eid);
+    } else if (this.items) {
+      const result = wire === null ? { ok: false as const, error: "nothing to use there" } : this.items.pickup(this.world, holder, avatar, wire);
+      if (!result.ok) return this.sendError(s, 4005, result.error);
+      this.telemetry.pickup();
+      this.refreshAvatarLook(avatar, holder);
+      this.sendInventory(s);
+    } else {
+      this.sendError(s, 4005, "nothing to use there");
+    }
+  }
+
+  /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
+  private sendResources(sim: SimWorld): void {
+    const nodes = this.gathering?.drainChanges(sim) ?? [];
+    if (nodes.length === 0) return;
+    const bytes = encodeControl({ kind: "resources", nodes } satisfies ResourcesMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Gather, bytes);
+  }
+
+  /**
+   * Gather once from a resource node: the gather is checked up front, the
+   * cast bar runs for `castSeconds`, and the real gather re-checks reach,
+   * stock and pouch when the bar fills. A gather answers with the whole
+   * pouch (catalog 0x24), naming what was added.
+   */
+  private startGather(s: ClientSession, gathering: GatheringSystem, holder: number, avatar: number, node: number): void {
+    if (this.casts.has(s)) return; // already casting one
+    const check = gathering.gather(this.world, holder, avatar, node, true);
+    if (!check.ok) {
+      this.sendError(s, 4005, check.error);
+      return;
+    }
+    this.beginCast(s, avatar, "gather", gathering.castSeconds, (av) => {
+      const result = gathering.gather(this.world, holder, av, node);
+      if (!result.ok) {
+        this.sendError(s, 4005, result.error);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    });
+  }
+
+  /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
+  private readonly eatSeconds: number;
+
+  /** Interaction casts under way, one per session: the timer, where the player stood and their health when it began. */
+  private readonly casts = new Map<ClientSession, { timer: ReturnType<typeof setTimeout>; x: number; z: number; hp: number; spell: string; avatar: number }>();
+
+  /**
+   * Run an interaction that takes `seconds` (0: at once): the cast bar starts
+   * now, `finish` runs with the avatar when it fills. A move of more than
+   * 0.3 m, a blow, a move of their own or a death cancels it (checkCasts).
+   */
+  private beginCast(s: ClientSession, avatar: number, spell: string, seconds: number, finish: (avatar: number) => void): void {
+    const done = (): void => {
+      this.casts.delete(s);
+      const av = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      if (av < 0) return;
+      this.sendCastEvent(s, "done", av, spell);
+      finish(av);
+    };
+    if (seconds <= 0) return done();
+    this.sendCastEvent(s, "started", avatar, spell, seconds);
+    this.casts.set(s, { timer: setTimeout(done, seconds * 1000), x: C.Transform.px[avatar], z: C.Transform.pz[avatar], hp: C.Health.current[avatar], spell, avatar });
+  }
+
+  /** Stop a session's cast without finishing it (they left, or something cancelled it). */
+  private endCast(s: ClientSession): void {
+    const c = this.casts.get(s);
+    if (!c) return;
+    clearTimeout(c.timer);
+    this.casts.delete(s);
+  }
+
+  /** Cancel every cast whose caster moved, was hurt, started a move or died. */
+  private checkCasts(): void {
+    for (const [s, c] of this.casts) {
+      const a = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      let why = "";
+      if (a < 0 || C.Health.current[a] <= 0) why = "you are down";
+      else if (C.Health.current[a] < c.hp) why = "you were hit";
+      else if (C.Action.move[a] !== 0) why = "you attacked";
+      else if ((C.Transform.px[a] - c.x) ** 2 + (C.Transform.pz[a] - c.z) ** 2 > 0.09) why = "you moved";
+      if (!why) continue;
+      this.endCast(s);
+      if (a >= 0) this.sendCastEvent(s, "stopped", a, c.spell);
+      this.sendError(s, 4005, `interrupted: ${why}`);
+    }
+  }
+
+  /** The cast bar's start and end for an interaction, over the spell channel (catalog 0x1c). */
+  private sendCastEvent(s: ClientSession, state: "started" | "done" | "stopped", avatar: number, spell: string, seconds?: number): void {
+    const id = String(this.world.wireId(avatar));
+    const m: SpellMessage = { kind: "spell", caster: id, target: id, spell, state, ...(seconds !== undefined ? { seconds } : {}) };
+    this.sendEnvelope(s, MessageType.Magic, encodeControl(m));
   }
 
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */

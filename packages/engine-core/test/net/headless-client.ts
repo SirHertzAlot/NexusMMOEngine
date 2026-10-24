@@ -17,7 +17,9 @@
 import { WebSocket } from "ws";
 import {
   decodeControl,
+  decodeDeltaSet,
   decodeEnvelope,
+  DeltaSetKind,
   encodeControl,
   encodeEnvelope,
   MessageType,
@@ -243,6 +245,13 @@ export class HeadlessClient {
   private onMessage(buf: Uint8Array): void {
     const { type, payload } = decodeEnvelope(buf);
     this.record(type).push(payload);
+    // A DeltaSet's entries also arrive as plain Deltas, so tests written
+    // against per-tick Deltas read the same bytes (interest management).
+    if (type === MessageType.DeltaSet) {
+      for (const e of decodeDeltaSet(payload).entries) {
+        if (e.kind !== DeltaSetKind.Leave) this.onMessage(encodeEnvelope(MessageType.Delta, e.bytes));
+      }
+    }
 
     switch (type) {
       case MessageType.Welcome:

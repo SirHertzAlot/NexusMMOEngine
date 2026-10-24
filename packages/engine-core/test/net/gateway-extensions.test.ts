@@ -46,7 +46,7 @@ describe("gateway: extensions", () => {
     await c.hello("alice", { username: "alice", password: TEST_PASSWORD });
     await snap;
     await until(() => events.includes("enter alice"));
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "quest", op: "talk", npc: "warden" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", npc: "warden" }));
     await until(() => c.payloads(MessageType.Chat).some((f) => decodeControl<{ kind: string }>(f).kind === "quests"));
     assert.ok(events.includes('msg {"kind":"quest","op":"talk","npc":"warden"} entity true'));
     // Other kinds still reach the chat handler.

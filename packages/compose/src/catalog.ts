@@ -119,6 +119,12 @@ const items: Record<string, z.input<typeof ItemBaseSchema>> = {
   greaves: { name: "Greaves", tags: ["armour", "metal"], stats: { armour: 4 }, prefab: "greaves" },
   ring: { name: "Ring", tags: ["jewel"], stats: {}, prefab: "ring" },
   amulet: { name: "Amulet", tags: ["jewel"], stats: { spell: 2 }, prefab: "amulet" },
+  // Provisions: eaten or drunk from the bag (hotkey + E); `nourish`/`quench` are the hunger/thirst points restored. No components.
+  bread: { name: "Bread", tags: ["food"], stats: { nourish: 25 }, prefab: "bread" },
+  "dried-meat": { name: "Dried Meat", tags: ["food"], stats: { nourish: 40 }, prefab: "dried-meat" },
+  waterskin: { name: "Waterskin", tags: ["food"], stats: { quench: 40 }, prefab: "waterskin" },
+  // A key opens a locked chest or door (a Chest or Door with `requires: "key"`); like provisions it takes no components.
+  key: { name: "Key", tags: ["key"], stats: {}, prefab: "key" },
 };
 
 const components: Record<string, Component> = {
