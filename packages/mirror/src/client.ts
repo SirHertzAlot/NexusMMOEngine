@@ -1033,6 +1033,7 @@ export class MirrorClient {
       this.names.delete(wid);
       this.drops.delete(wid);
       this.resources.delete(wid);
+      this.chests.delete(wid);
     }
     this.serverTick = set.tick;
     this.events.onState(set.tick);
@@ -1048,6 +1049,7 @@ export class MirrorClient {
       this.names.delete(wid);
       this.drops.delete(wid);
       this.resources.delete(wid);
+      this.chests.delete(wid);
     }
     this.serverTick = d.tick;
     this.events.onState(d.tick);

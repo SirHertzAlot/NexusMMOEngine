@@ -20,7 +20,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { addComponent, hasComponent } from "bitecs";
+import { addComponent, entityExists, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
@@ -60,7 +60,7 @@ export interface InstanceMember {
 /** A chest placed for the run: an entity in its room, opened once with E (interact), then it stays open. */
 export interface InstanceChest {
   id: string;
-  /** The chest's entity in the run's world. */
+  /** The chest's entity in the run's world (swapped for an open model when it is opened). */
   eid: number;
   x: number;
   z: number;
@@ -138,6 +138,8 @@ export class DungeonInstance {
   private readonly chestSystem: ChestSystem;
   /** How many chests were open at the last state push (a change pushes the state at once). */
   private openChests = 0;
+  /** Each chest's facing (chests[i]), kept for the open model that replaces it. */
+  private readonly chestYaw: number[] = [];
   /** Traps armed for the run, in room-id order (`trap-0`, …). */
   readonly traps: InstanceTrap[] = [];
   readonly creatures: CreatureSystem;
@@ -255,7 +257,8 @@ export class DungeonInstance {
     const { layout } = this.opts;
     const library = PcgAssetLibrary.empty();
     const shell = layout.shell ? library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name) : null;
-    for (const kind of new Set(layout.props.map((p) => p.kind))) {
+    // The chests the run stands (and the open model they swap to) are served too, whether or not the bake dressed one.
+    for (const kind of new Set([...layout.props.map((p) => p.kind), "chest", "chest-open"])) {
       const id = `dungeon:${kind}`;
       const mesh = this.opts.props?.archetypes[id]?.asset === id ? propMesh(kind) : null;
       if (mesh) library.addPrebaked(id, mesh, kind);
@@ -433,7 +436,9 @@ export class DungeonInstance {
       const eid = this.spawnChest(p.x, p.z, p.prop === undefined ? undefined : this.opts.layout.props[p.prop]);
       this.chestSystem.register(eid, `chest-${i}`, { table: "run", refillSeconds: 1e9 });
       const sys = this.chestSystem;
-      this.chests.push({ id: `chest-${i}`, eid, x: p.x, z: p.z, get opened() { return sys.isOpen(eid); } });
+      const chest: InstanceChest = { id: `chest-${i}`, eid, x: p.x, z: p.z, get opened() { return sys.isOpen(this.eid); } };
+      this.chests.push(chest);
+      this.chestYaw.push(p.prop === undefined ? 0 : this.opts.layout.props[p.prop]!.yaw);
     });
     const rules = this.opts.game.rules.creatures.creatures;
     const fallback = this.opts.rules.fallbackCreature;
@@ -502,6 +507,7 @@ export class DungeonInstance {
   private direct(): void {
     if (this.outcome) return;
     this.springTraps();
+    this.showOpened();
     const now = this.now();
     if (this.boss.size > 0 && this.remaining().boss === 0) this.end("cleared");
     else if (now - this.startedAt >= this.opts.rules.timeLimitMinutes * 60_000) this.end("timeout");
@@ -512,6 +518,25 @@ export class DungeonInstance {
       for (const p of this.online.values()) this.pushState(p);
     }
   }
+
+  /**
+   * An opened chest shows open: its entity is swapped for an open model in the same place (a new entity, so clients that
+   * batch static props draw it afresh) and the chest system follows it. ponytail: a despawn and respawn, not a variant switch.
+   */
+  private showOpened(): void {
+    if (!this.opts.props?.archetypes["dungeon:chest-open"]) return;
+    this.chests.forEach((c, i) => {
+      if (!c.opened || this.shownOpen.has(c.id) || !entityExists(this.world.ecs, c.eid)) return;
+      this.shownOpen.add(c.id);
+      const was = c.eid;
+      const open = this.spawnProp({ kind: "chest-open", x: c.x, z: c.z, yaw: this.chestYaw[i] ?? 0, scale: 1, radius: 0 });
+      if (open < 0) return;
+      this.world.despawn(was);
+      c.eid = open;
+      this.chestSystem.rebind(was, open);
+    });
+  }
+  private readonly shownOpen = new Set<string>();
 
   /** A chest stands in its room: the props table's chest model when there is one, else a bare marker the interaction still finds. */
   private spawnChest(x: number, z: number, baked?: LayoutProp): number {

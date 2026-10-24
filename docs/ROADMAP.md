@@ -782,3 +782,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-24**: RS4 homestead families and roadside people baked into places.json.
 - **2026-10-24**: D4f chest and trap placement on free cells (from #366, reworked onto entity chests).
 - **2026-10-24**: PL4 is opt-in (`npm start -- --world`), with a 60 s give-up if the world server does not come up.
+- **2026-10-24**: D4f opened run chests show an open model (ported from #366).
