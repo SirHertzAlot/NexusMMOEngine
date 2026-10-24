@@ -2597,6 +2597,8 @@ export class Gateway {
   }
 
   private onClose(s: ClientSession): void {
+    clearTimeout(this.gatherCasts.get(s));
+    this.gatherCasts.delete(s);
     if (!s.welcomed || s.observer) {
       // Never said hello: nothing to keep.
       this.sessions.delete(s.clientId);
@@ -5371,6 +5373,15 @@ export class Gateway {
       result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
     } else if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    } else if (a.action === "use") {
+      result = this.items.consume(holder, a.item, (nourish, quench) => {
+        if (!hasComponent(this.world.ecs, C.Needs, avatar)) return false;
+        const hungry = nourish > 0 && C.Needs.hunger[avatar] < C.Needs.hungerMax[avatar];
+        const thirsty = quench > 0 && C.Needs.thirst[avatar] < C.Needs.thirstMax[avatar];
+        if (hungry) C.Needs.hunger[avatar] = Math.min(C.Needs.hungerMax[avatar], C.Needs.hunger[avatar] + nourish);
+        if (thirsty) C.Needs.thirst[avatar] = Math.min(C.Needs.thirstMax[avatar], C.Needs.thirst[avatar] + quench);
+        return hungry || thirsty;
+      });
     } else if (a.action === "equip") {
       // A maimed or lost hand (M3) can't take hold of anything.
       const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
@@ -5465,12 +5476,39 @@ export class Gateway {
     }
     const wire = parseEntityArg(parsed.data.entity);
     const holder = this.holderOf(s);
-    const result = wire === null ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, this.world.resolveWireId(wire));
-    if (!result.ok) {
-      this.sendError(s, 4005, result.error);
+    if (this.gatherCasts.has(s)) return; // already casting one
+    const node = wire === null ? -1 : this.world.resolveWireId(wire);
+    const seconds = gathering.castSeconds;
+    const check = node < 0 ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, node, true);
+    if (!check.ok) {
+      this.sendError(s, 4005, check.error);
       return;
     }
-    this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    const finish = (): void => {
+      this.gatherCasts.delete(s);
+      const av = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      // The server re-checks reach, stock and the pouch when the bar fills.
+      const result = av < 0 ? { ok: false as const, error: "no avatar" } : gathering.gather(this.world, holder, av, node);
+      if (av >= 0) this.sendGatherCast(s, "done", av);
+      if (!result.ok) {
+        this.sendError(s, 4005, result.error);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    };
+    if (seconds <= 0) return finish();
+    this.sendGatherCast(s, "started", avatar, seconds);
+    this.gatherCasts.set(s, setTimeout(finish, seconds * 1000));
+  }
+
+  /** Gather casts under way, one per session; a timer finishes each. */
+  private readonly gatherCasts = new Map<ClientSession, ReturnType<typeof setTimeout>>();
+
+  /** The cast bar start and end for a gather, over the spell channel (catalog 0x1c). */
+  private sendGatherCast(s: ClientSession, state: "started" | "done", avatar: number, seconds?: number): void {
+    const id = String(this.world.wireId(avatar));
+    const m: SpellMessage = { kind: "spell", caster: id, target: id, spell: "gather", state, ...(seconds !== undefined ? { seconds } : {}) };
+    this.sendEnvelope(s, MessageType.Magic, encodeControl(m));
   }
 
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */

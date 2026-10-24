@@ -24,12 +24,15 @@ export type ItemHand = "main" | "off" | "both" | "none";
  * - equip: an item from the bag into its hand (M3b), swapping what was
  *   there back into the bag (a two-handed item empties both hands);
  *   armour goes to its slot instead (U10);
+ * - use: eat or drink a provision from the bag (it restores hunger or
+ *   thirst and is used up);
  * - unequip: what a hand holds, or an armour slot wears, back into the bag.
  */
 export type ItemAction =
   | { kind: "item"; action: "pickup"; entity: string }
   | { kind: "item"; action: "drop"; item: number }
   | { kind: "item"; action: "equip"; item: number }
+  | { kind: "item"; action: "use"; item: number }
   | { kind: "item"; action: "unequip"; hand: "main" | "off" }
   | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 

@@ -636,6 +636,14 @@ export function App(): React.ReactElement {
   const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
+  // E with nothing in reach eats or drinks the selected hotkey item (any bag item of that definition).
+  const [hotkeyDef, setHotkeyDef] = useState<string | null>(null);
+  const bagRef = useRef(bag);
+  bagRef.current = bag;
+  const onUseHotkey = useCallback(() => {
+    const item = hotkeyDef === null ? undefined : bagRef.current?.find((i) => i?.def === hotkeyDef);
+    if (item) clientRef.current?.use(item.id);
+  }, [hotkeyDef]);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
 
@@ -690,6 +698,7 @@ export function App(): React.ReactElement {
           onStance={onStance}
           onTreat={onTreat}
           onMend={onMend}
+          onUseHotkey={onUseHotkey}
           onNearDrop={setNearDrop}
           onNearResource={setNearResource}
           onQuests={toggleQuests}
@@ -837,6 +846,9 @@ export function App(): React.ReactElement {
               onDrop={(id) => client?.dropItem(id)}
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
+              onUse={(id) => client?.use(id)}
+              hotkeyDef={hotkeyDef}
+              onHotkey={setHotkeyDef}
             />
             </div>
           </HudSlot>

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "paperclip": {
+      "source": "paperclipai/paperclip",
+      "sourceType": "github",
+      "skillPath": "skills/paperclip/SKILL.md",
+      "computedHash": "95a7eda2924ef0851049b148e89906fa598c177be746646211d54bb5813613d7"
+    }
+  }
+}

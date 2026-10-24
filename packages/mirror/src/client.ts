@@ -402,6 +402,12 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "equip", item })));
   }
 
+  /** Ask to eat or drink a bag item (0x13); the server restores hunger or thirst and uses it up. */
+  use(item: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "use", item })));
+  }
+
   /** Ask to put what a hand holds, or an armour slot wears, back in the bag (M3b/U10, 0x13). */
   unequip(slot: "main" | "off" | ArmourSlotName): void {
     if (!this.socket || this.closed) return;
