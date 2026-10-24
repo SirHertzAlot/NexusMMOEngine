@@ -46,10 +46,12 @@ import { QuestDetailsLive, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
 import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
+import { AuthoringView } from "./authoring-view.js";
 
 // ---------------------------------------------------------------- config
 
 type WorkspaceId =
+  | "design"
   | "world"
   | "scene"
   | "scenes"
@@ -78,6 +80,13 @@ interface Workspace {
 
 const WORKSPACES: Workspace[] = [
   {
+    // The Designer surface (Phase B): view-centered, no-code authoring. Every other
+    // workspace below is the Developer surface — data/IDE tooling over the same pipeline.
+    id: "design", label: "Design", icon: "design_services",
+    views: [{ id: "authoring", label: "Authoring", icon: "design_services", kind: "panel", panel: <AuthoringView /> }],
+    leftTitle: "Hierarchy",
+  },
+  {
     id: "world", label: "World", icon: "public",
     views: [], // contributed by the terrain module (modules/terrain/editor)
     leftTitle: "Outliner",
@@ -105,7 +114,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "gameplay", label: "Gameplay", icon: "table_view",
     views: [], // contributed by the gameplay module (modules/gameplay/editor)
-    leftTitle: "Tables",
+    leftTitle: "Tables · Developer surface",
   },
   {
     id: "dungeons", label: "Dungeons & PCG", icon: "castle",
@@ -135,7 +144,7 @@ const WORKSPACES: Workspace[] = [
   {
     id: "database", label: "Database", icon: "database",
     views: [], // contributed by the database module (modules/database/editor)
-    leftTitle: "Schema",
+    leftTitle: "Schema · Developer surface",
   },
   {
     id: "story", label: "Story", icon: "auto_stories",
@@ -175,6 +184,7 @@ moduleRegistry.subscribe(syncModuleViews);
 
 /** Words that find a view in Ctrl K beyond its label. */
 const VIEW_KEYWORDS: Record<string, string> = {
+  authoring: "authoring design designer viewport widgets hierarchy no-code verbs provenance",
   terrain: "terrain sculpt brush heightmap regenerate world map",
   ecs: "ecs inspector entities components live",
   scene: "scene document outliner nodes viewport place",
