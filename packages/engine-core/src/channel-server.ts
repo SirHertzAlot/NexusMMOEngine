@@ -30,7 +30,7 @@ export function coreChannelPort(env: NodeJS.ProcessEnv = process.env): number {
 /** What the channel needs from the running core; the Gateway provides all of it. */
 export interface CoreChannelHost {
   readonly serverTick: number;
-  addTickListener(cb: (t: GatewayTick) => void): void;
+  addTickListener(cb: (t: GatewayTick) => void, needsDelta?: boolean): void;
   /** Each tick's wall time in ms; without it `tick_duration_ms` stays empty. */
   addTickTimeListener?(cb: (ms: number) => void): void;
   channelLogin(username: string, password: string): Promise<{ ok: true; token: string; playerId: string } | { ok: false; reason: string }>;
@@ -169,7 +169,7 @@ export async function startCoreChannel(host: CoreChannelHost, port: number, myth
     if (!open) return;
     pushTick((type, payload) => server.pushToAll(type, payload), t);
     metrics.tickEventsPushed.inc();
-  });
+  }, false); // events only: the gateway need not encode the global delta for this listener
   host.addTickTimeListener?.((ms) => { if (open) metrics.tickDuration.observe(ms); });
   return {
     server,

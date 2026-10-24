@@ -1256,10 +1256,13 @@ export class Gateway {
   // the edge serves the client protocol.
 
   private readonly tickListeners: Array<(t: GatewayTick) => void> = [];
+  /** Tick listeners that read `GatewayTick.delta`; with interest on, the global delta is only encoded for them. */
+  private deltaListeners = 0;
 
   /** Called after every tick's broadcast. */
-  addTickListener(cb: (t: GatewayTick) => void): void {
+  addTickListener(cb: (t: GatewayTick) => void, needsDelta = true): void {
     this.tickListeners.push(cb);
+    if (needsDelta) this.deltaListeners++;
   }
 
   private readonly tickTimeListeners: Array<(ms: number) => void> = [];
@@ -1364,7 +1367,7 @@ export class Gateway {
     // tracker: commit() still runs below, as on the row path.
     const frame = this.interest ? this.sectorIndex.frame(sim, tick, this.tracker, this.chunkSource) : null;
     // With interest on, the global delta is only for tick listeners.
-    const deltaBytes = frame === null || this.tickListeners.length > 0
+    const deltaBytes = frame === null || this.deltaListeners > 0
       ? encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource)
       : EMPTY_BYTES;
     this.tracker.commit(sim);
