@@ -265,7 +265,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | --- | --- | --- | --- |
 | U1 | Login, character select and create (live 3D preview) | ✅ | |
 | U2 | **Player frame**: health, mana and stamina bars | ✅ | Health, stamina and mana live; mana from 0x1c, plus a cast bar for the player's own casts (#123) |
-| U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); not persisted yet, and `restore()` waits for food and drink items |
+| U3 | Hunger and thirst meters | ✅ | Meters in the player frame from the stats message (#110); a respawn fills both meters and standing in or at water refills thirst (`drink` in needs.json); not persisted yet, and food waits for consumable items and a use op |
 | U4 | Settings: graphics quality, controls, audio, UI scale | ✅ | Controls remappable + UI scale 90–125%; audio: Web Audio buses, synthesized first cues, master/combat/interface/ambience volumes and mute, persisted (#106) |
 | U5 | Nameplates (name, guild tag) | ✅ | Built with C3: sprite nameplates from the `names` fan-out, guild tags (S4), creature names (U12a) |
 | U6 | Chat panel: channel tabs, `/w /p /g /y /e`, reply | ✅ | Say/yell/emote tabs, history, whispers, party and guild commands; `/r` and `/reply` answer the last whisper (#95) |
@@ -446,6 +446,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 
+- **2026-10-23**: U3 needs death loop fixed (`fix/needs-death-loop`): a respawn fills hunger and thirst (NeedsSystem refills a body that rises from 0 Health), and feet within `drink.reachM` of a water surface refill thirst at `drink.perSecond` (`content/rules/needs.json`). Food (consumables, a use op) is the follow-up.
 - **2026-10-23**: E3b client cutover (`feat/edge-cutover`): players reach the core through the edge. The core's gateway serves its port over the channel (`ChannelTransport`) with `MMO_EDGE=1`, and the edge's `EDGE_GAME_PORT` relays WebSocket frames, topic publishes and HTTP (PCG downloads, `/health`). `npm start` runs the region with no player port and the edge on 7777, so the client is unchanged. The SIMD build flags and docs on the old `feat/edge-core-split` branch are left there for their own PRs.
 - **2026-10-23**: PL3c (`feat/social-world-records`), the last PL3 slice: guilds, parties, friends and blocks are world records (`social_record`, `PutSocialRecord`/`GetSocialRecords`/`AllocateSocialIds`). `SocialWorldSync` seeds the region's stores before the books read them, hands the gateway tracked stores whose writes go uphill on the save timer (409: the slower region's edit is dropped and reread), and refreshes every 60 s (books reload). Decided: world-assigned ids from 1,000,000,000; a region's own guilds and parties are renumbered once at its first fleet boot.
 - **2026-10-23**: PL3b (`feat/character-extras`): a character's quest log and materials pouch ride its world record as `extras` (`CharacterExtrasView`), seeded into `quests.db` and `gathering.db` at login (the pouch cache is dropped), so they follow it to any region. A store a region doesn't run keeps the world's last copy. Friends and blocks moved to PL3c as world records (blocks are per account; friend lists are read across players).
