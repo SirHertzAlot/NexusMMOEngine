@@ -126,7 +126,7 @@ import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../adm
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
 import { GatheringSystem } from "../gathering/index.js";
-import { ChestSystem, InteractActionSchema } from "../interact/index.js";
+import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
@@ -4367,8 +4367,8 @@ export class Gateway {
     if (drops) this.deliver(s, drops, this.tick);
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
-    const chests = this.chests;
-    if (chests && chests.size > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: chests.views(this.world) } satisfies ChestsMessage));
+    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? [])];
+    if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     if (this.interest) {
@@ -5434,9 +5434,14 @@ export class Gateway {
     return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
   }
 
-  /** Tell every player in the world about the chests that opened or refilled this tick (catalog 0x27). */
+  /** The server's breakable props (ruins can be mended), if it runs any. */
+  private get breaks(): BreakSystem | undefined {
+    return this.systems.find((g): g is BreakSystem => g instanceof BreakSystem);
+  }
+
+  /** Tell every player in the world about the chests, doors and ruins that changed this tick (catalog 0x27). */
   private sendChests(sim: SimWorld): void {
-    const list = this.chests?.drainChanges(sim) ?? [];
+    const list = [...(this.chests?.drainChanges(sim) ?? []), ...(this.breaks?.drainChanges(sim) ?? [])];
     if (list.length === 0) return;
     const bytes = encodeControl({ kind: "chests", chests: list } satisfies ChestsMessage);
     for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Interact, bytes);
@@ -5487,7 +5492,16 @@ export class Gateway {
     const wire = parseEntityArg(a.entity);
     const eid = wire === null ? -1 : this.world.resolveWireId(wire);
     const holder = this.holderOf(s);
-    if (eid >= 0 && this.chests?.has(eid)) {
+    if (eid >= 0 && this.breaks?.hasRuin(eid)) {
+      const breaks = this.breaks;
+      if (this.casts.has(s)) return; // already casting one
+      const check = breaks.checkRepair(holder, avatar, eid);
+      if (!check.ok) return this.sendError(s, 4005, check.error);
+      this.beginCast(s, avatar, check.spell, check.castSeconds, (av) => {
+        const result = breaks.repair(this.world, holder, av, eid);
+        if (!result.ok) this.sendError(s, 4005, result.error);
+      });
+    } else if (eid >= 0 && this.chests?.has(eid)) {
       const chests = this.chests;
       if (this.casts.has(s)) return; // already casting one
       const check = chests.check(this.world, holder, avatar, eid);

@@ -78,8 +78,7 @@ over a generated one.
 
 **Not built**
 
-1. Settlement buildings carry no `Health`, so raiders can fight players and livestock but there is nothing to
-   smash: destructible structures are the next piece (a raid on an empty town ends after the raider lingers).
+1. ~~Settlement buildings carry no `Health`~~ Built (IX6): scene Structure kinds in `content/structures.json` spawn with `Health` and the `Breakable` tag, so raiders target them by the `structure` weight and smash them into ruins; players below a building's `minStrength` cannot hurt it, and a ruin is mended with pouch materials (E on it). Not yet checked with a live raid on an empty town.
 2. No wandering: creatures stand at home until they notice something. Herds do not graze or move.
 3. Per-species animation (walk, bite, rear up) and an animal Look: models are static meshes.
 4. Pack roles beyond left/right flankers (no pincer timing, no retreat of wounded wolves).

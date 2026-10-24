@@ -31,7 +31,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
+import { fnv1a32, type Breakable as BreakableDef, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
 import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
 import { BodyConfig, ShapeKind } from "./components.js";
@@ -86,7 +86,9 @@ export interface SceneSpawnDeps {
   resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
   /** World chests (a Structure with a Chest component: loot `table`, `refillSeconds`): `register` makes the spawned entity openable. */
   /** Breakable props (a Structure with a Breakable component): `register` makes the spawned entity break at zero health, under the scene and node id. */
-  breakables?: { register(eid: number, key: string, def: { health: number; into: "remove" | "variant" | "debris"; debris?: string; loot?: string; respawnS: number | null }): void };
+  breakables?: { register(eid: number, key: string, def: BreakableDef): void };
+  /** What a Structure `kind` breaks like when its node has no Breakable component of its own (content/structures.json): buildings, walls, gates. */
+  structureBreakable?: (kind: string) => BreakableDef | undefined;
   chests?: { register(eid: number, key: string, spec: { kind?: "chest" | "door"; table?: string; refillSeconds?: number; castSeconds?: number; requires?: { base: string; consume: boolean } }): void };
 }
 
@@ -282,6 +284,8 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           });
         }
         const brk = node.components?.Breakable;
+        const byKind = !brk && deps.breakables ? deps.structureBreakable?.(kind) : undefined;
+        if (byKind && deps.breakables) deps.breakables.register(building, `${doc.name}/${node.id}`, byKind);
         if (brk && deps.breakables) {
           const into = str(brk.into);
           deps.breakables.register(building, `${doc.name}/${node.id}`, {
@@ -290,6 +294,8 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             ...(str(brk.debris) ? { debris: str(brk.debris) } : {}),
             ...(str(brk.loot) ? { loot: str(brk.loot) } : {}),
             respawnS: Number(brk.respawnSeconds ?? 0) > 0 ? Number(brk.respawnSeconds) : null,
+            ...(Number(brk.minStrength ?? 0) > 0 ? { minStrength: Number(brk.minStrength) } : {}),
+            ...(str(brk.repairMaterial) ? { repair: { material: str(brk.repairMaterial), count: Math.max(1, Math.round(Number(brk.repairCount ?? 1))), castSeconds: Number(brk.repairSeconds ?? 4) } } : {}),
           });
         }
         out.spawned.push({ id: node.id, what: chest ? (node.components?.Door ? "door" : "chest") : resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });

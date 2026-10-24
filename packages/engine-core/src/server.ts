@@ -229,7 +229,7 @@ import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
-import { BreakSystem, breakDefsOf, ChestSystem, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
@@ -1011,8 +1011,11 @@ async function main(): Promise<void> {
     store: placesStore,
   });
   // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
+  const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
     store: placesStore,
+    // Mending a building spends the pouch (gathered materials).
+    materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
     killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
     onBreak: (s, ev) => {
       if (ev.loot === undefined) return;
@@ -1068,6 +1071,7 @@ async function main(): Promise<void> {
         resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
         chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
         breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
+        structureBreakable: (kind) => structureKinds.get(kind),
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -1137,6 +1141,8 @@ async function main(): Promise<void> {
   // Combat domain (M2/M5, slice 5): the combat module builds the full cluster
   // from this config during assembly. See modules/combat/server.js.
   const combatConfig = {
+    // A building holds out against a blow from anyone below its minStrength (IX6).
+    canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
     rules: game.rules,
     hooks,
     combatSkills,

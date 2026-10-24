@@ -736,7 +736,11 @@ export function App(): React.ReactElement {
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {(() => {
               const v = client.chests.get(nearChest);
-              return v?.kind === "door" ? (
+              return v?.kind === "ruin" ? (
+                <>
+                  {t("interact.repair")} <span className="text-amber-200">{t("interact.building")}</span>
+                </>
+              ) : v?.kind === "door" ? (
                 <>
                   {t(v.open ? "interact.close" : "interact.open")} <span className="text-amber-200">{t("interact.door")}</span>
                 </>

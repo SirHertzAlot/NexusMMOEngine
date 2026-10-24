@@ -10,8 +10,8 @@ import assert from "node:assert/strict";
 import { addComponent } from "bitecs";
 import { decodeControl, encodeControl, MessageType, type ChestsMessage, type ErrorMessage, type SpellMessage } from "@mmo-engine/protocol";
 import { Gateway } from "../../src/net/gateway.js";
-import { ChestSystem } from "../../src/interact/index.js";
-import { Transform } from "../../src/components.js";
+import { BreakSystem, ChestSystem } from "../../src/interact/index.js";
+import { AssetRef, Health, Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { HeadlessClient } from "./headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
@@ -130,5 +130,53 @@ describe("gateway: world chests", () => {
     client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: "not a number" }));
     assert.equal(decodeControl<ErrorMessage>((await errP)[0]!).code, 4003);
     await client.close();
+  });
+});
+
+describe("gateway: broken buildings", () => {
+  it("a ruin is listed on joining; mending it needs the materials and a cast, and every player sees it stand again", async () => {
+    now = 1_000_000;
+    const sim = new SimWorld();
+    const pouch = new Map<string, number>();
+    const breaks = new BreakSystem(new Map(), {
+      materials: { count: (_h, m) => pouch.get(m) ?? 0, spend: (_h, m, n) => ((pouch.get(m) ?? 0) >= n ? (pouch.set(m, pouch.get(m)! - n), true) : false) },
+      repairReachM: 100,
+    });
+    const house = sim.spawn();
+    addComponent(sim.ecs, Transform, house);
+    Transform.px[house] = 3;
+    Transform.pz[house] = 0;
+    addComponent(sim.ecs, AssetRef, house);
+    breaks.register(sim, house, "t/house", { health: 10, into: "variant", respawnS: null, repair: { material: "yew-log", count: 2, castSeconds: 0.1 } });
+    Health.current[house] = 0;
+    breaks.step(sim);
+    gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world: sim, systems: [breaks], spawnPoint: { x: 0, z: 0 } });
+    const port = await gw.listen();
+    gw.frame(now);
+    const { client, chests } = await join(`ws://127.0.0.1:${port}`, "alice");
+    const bob = await join(`ws://127.0.0.1:${port}`, "user-a");
+    const view = chests.chests[0]!;
+    assert.deepEqual([view.kind, view.open, view.entity], ["ruin", false, sim.wireId(house).toString()]);
+
+    let errP = client.waitFor(MessageType.Error, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: view.entity }));
+    assert.match(decodeControl<ErrorMessage>((await errP)[0]!).message, /takes 2 yew-log/);
+
+    pouch.set("yew-log", 2);
+    const startedP = client.waitFor(MessageType.Magic, 1);
+    const seenP = bob.client.waitFor(MessageType.Interact, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: view.entity }));
+    const started = decodeControl<SpellMessage>((await startedP)[0]!);
+    assert.deepEqual([started.spell, started.state], ["repair", "started"]);
+    await new Promise((r) => setTimeout(r, 250));
+    tick();
+    const seen = decodeControl<ChestsMessage>((await seenP)[0]!).chests[0]!;
+    assert.deepEqual([seen.kind, seen.open], ["ruin", true]);
+    assert.equal(pouch.get("yew-log"), 0, "spent");
+    errP = client.waitFor(MessageType.Error, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: view.entity }));
+    assert.match(decodeControl<ErrorMessage>((await errP)[0]!).message, /nothing to use there|nothing to pick up/);
+    await client.close();
+    await bob.client.close();
   });
 });
