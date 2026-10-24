@@ -1,0 +1,1 @@
+{"dependsOn":["core"],"description":"Editor module: the Design workspace's Authoring panel — view-centered, no-code authoring (hierarchy navigator, selection widgets, add shelf) over the shared verb layer. Disable it and the panel leaves the workspace without a restart.","editor":{"entry":"editor/index.tsx"},"name":"authoring","version":"0.1.0"}

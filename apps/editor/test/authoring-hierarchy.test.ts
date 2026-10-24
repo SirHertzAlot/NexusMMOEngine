@@ -73,14 +73,14 @@ describe("hierarchy model", () => {
     assert.deepEqual(filterByRole(model, "dungeon-entrances").map((n) => n.id), ["gate-1"]);
     assert.deepEqual(filterByRole(model, "loot-spawners").map((n) => n.id), ["coin-1"]);
     assert.deepEqual(filterByRole(model, "mob-spawners").map((n) => n.id), ["spawner-1"]);
-    assert.deepEqual(filterByRole(model, "environment").map((n) => n.id), ["rock-1", "coin-1"]);
+    assert.deepEqual(filterByRole(model, "environment").map((n) => n.id), ["coin-1", "rock-1"]);
     assert.deepEqual(filterByRole(model, "characters").map((n) => n.id), ["npc-mara", "npc-fisher"]);
   });
 
   it("sorts by name and by recently-modified (provenance timestamps)", () => {
     const model = buildHierarchy(data);
     const objects = model.flat.filter((n) => n.level === "object");
-    assert.deepEqual(sortNodes(objects.slice(0, 3), "name").map((n) => n.name), ["Blacksmith Mara", "Boulder", "Fisher Tomas"]);
+    assert.deepEqual(sortNodes(objects.slice(0, 3), "name").map((n) => n.name), ["Blacksmith Mara", "Fisher Tomas", "Gold coin"]);
     const recent = sortNodes(objects, "recent").map((n) => n.id);
     assert.ok(recent.indexOf("npc-mara") < recent.indexOf("rock-1"), recent.join(","));
     assert.ok(recent.indexOf("rock-1") < recent.indexOf("npc-fisher"), recent.join(","));

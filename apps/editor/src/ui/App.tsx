@@ -46,7 +46,6 @@ import { QuestDetailsLive, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
 import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
-import { AuthoringView } from "./authoring-view.js";
 
 // ---------------------------------------------------------------- config
 
@@ -83,7 +82,7 @@ const WORKSPACES: Workspace[] = [
     // The Designer surface (Phase B): view-centered, no-code authoring. Every other
     // workspace below is the Developer surface — data/IDE tooling over the same pipeline.
     id: "design", label: "Design", icon: "design_services",
-    views: [{ id: "authoring", label: "Authoring", icon: "design_services", kind: "panel", panel: <AuthoringView /> }],
+    views: [], // contributed by the authoring module (modules/authoring/editor)
     leftTitle: "Hierarchy",
   },
   {
