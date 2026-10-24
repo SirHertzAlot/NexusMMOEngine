@@ -1337,6 +1337,7 @@ async function main(): Promise<void> {
     chatRules: await loadChatRules(),
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
+    needs: game.rules.needs,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
