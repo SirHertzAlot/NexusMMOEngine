@@ -500,10 +500,10 @@ describe("dungeon instance", () => {
     // Stand on the chest and open it: its rolls join the result loot.
     C.Transform.px[avatar] = inst.chests[0].x;
     C.Transform.pz[avatar] = inst.chests[0].z;
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await until(() => inst.chests[0].opened);
     // Opening again finds it empty: still one opened chest, no run yet.
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await sleep(100);
     assert.equal(inst.chests.filter((ch) => ch.opened).length, 1);
     assert.equal(results.length, 0);
@@ -539,7 +539,7 @@ describe("dungeon instance", () => {
     const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
     C.Transform.px[avatar] = inst.chests[0].x;
     C.Transform.pz[avatar] = inst.chests[0].z;
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
     assert.deepEqual(
       ctl(c).filter((m) => m.op === "state").at(-1)!.chests,
@@ -678,7 +678,7 @@ describe("instance manager", () => {
     return { mgr, gw, results, granted, join };
   }
 
-  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "enter", entrance }));
+  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entrance }));
 
   it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
     const r = await region(content);

@@ -123,6 +123,8 @@ const earDir = new THREE.Vector3();
 export interface WorldCanvasProps {
   /** A joined mirror client (welcome received). */
   client: MirrorClient;
+  /** Cross-region view (IM8): read-only mirrors of neighbouring regions, drawn beside the client's own. */
+  observers?: () => Iterable<MirrorClient>;
   assets: AssetProvider;
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
@@ -152,10 +154,14 @@ export interface WorldCanvasProps {
   onTreat?: () => void;
   /** G: cast Mend on yourself. */
   onMend?: () => void;
+  /** E with nothing in reach: eat or drink the hotkey item, if any. */
+  onUseHotkey?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
   /** The resource node in gathering range changed (its wire id; null: none in range). */
   onNearResource?: (node: bigint | null) => void;
+  /** The world chest E would open (its wire id; null: none in reach). */
+  onNearChest?: (chest: bigint | null) => void;
   /** The quest log key (P1/U11). */
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
@@ -198,6 +204,38 @@ export interface NearDrop {
 const PICKUP_PROMPT_RANGE = 2.3;
 /** How near a resource node's edge must be for the prompt: inside the server's reach (2.5 m). */
 const GATHER_PROMPT_RANGE = 2.3;
+/** How close to a dungeon chest E opens it (the server's chestOpenRadiusM is 3 by default and decides). */
+const CHEST_PROMPT_RANGE = 3;
+
+/** How close E talks to a person (a resident) under the cursor or targeted. */
+const TALK_RANGE = 4;
+
+/** The person to talk to: the hovered or targeted body that wears a look, has no player name and stands within reach (a resident). */
+function personInReach(client: MirrorClient, wids: ReadonlyArray<bigint | null>, p: { x: number; z: number } | null): bigint | null {
+  if (!p) return null;
+  for (const wid of wids) {
+    if (wid === null || wid === client.playerEntity || client.names.has(wid)) continue;
+    const e = client.state.entities.get(wid);
+    if (!e?.appearance || !e.transform) continue;
+    if ((e.transform.px - p.x) ** 2 + (e.transform.pz - p.z) ** 2 <= TALK_RANGE ** 2) return wid;
+  }
+  return null;
+}
+
+/** The nearest unopened world chest within reach of the player (its wire id), or null. */
+function nearestChest(chests: ReadonlyMap<bigint, { x: number; z: number; open: boolean; kind?: "door" | "ruin" | "vendor" }>, p: { x: number; z: number } | null): bigint | null {
+  if (!p) return null;
+  let best: bigint | null = null;
+  let bestD2 = CHEST_PROMPT_RANGE ** 2;
+  for (const [id, c] of chests) {
+    const d2 = (c.x - p.x) ** 2 + (c.z - p.z) ** 2;
+    if ((c.kind === "door" || !c.open) && d2 <= bestD2) {
+      best = id;
+      bestD2 = d2;
+    }
+  }
+  return best;
+}
 
 installBvh();
 
@@ -303,6 +341,8 @@ function PhysicalSkyHost({
 }
 
 interface Runtime {
+  /** IM8: one entity layer per neighbouring region's observer mirror. */
+  observerLayers: Map<MirrorClient, EntityLayer>;
   sky: DaySky;
   particles: ParticleFx;
   map: WorldMap | null;
@@ -327,6 +367,7 @@ interface Runtime {
 /** The world's content and frame loop (inside the Canvas). */
 function MirrorWorld({
   client,
+  observers,
   assets,
   pcg,
   lastStateAt,
@@ -340,8 +381,10 @@ function MirrorWorld({
   onStance,
   onTreat,
   onMend,
+  onUseHotkey,
   onNearDrop,
   onNearResource,
+  onNearChest,
   onQuests,
   onNearNpc,
   onNearEntrance,
@@ -362,8 +405,8 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onNearResource, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
+  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -377,6 +420,7 @@ function MirrorWorld({
     pointerMoved: false,
     nearDrop: null as bigint | null,
     nearResource: null as bigint | null,
+    nearChest: null as bigint | null,
     nearNpc: null as string | null,
     nearEntrance: null as string | null,
     hp: NaN,
@@ -459,10 +503,13 @@ function MirrorWorld({
         else if (action === "treat") latest.current.onTreat?.();
         else if (action === "mend") latest.current.onMend?.();
         else if (action === "quests") latest.current.onQuests?.();
-        else if (drops.nearest !== null) client.pickup(drops.nearest);
-        else if (resources.nearest !== null) client.gather(resources.nearest);
-        else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
-        else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
+        else if (drops.nearest !== null) client.interact(drops.nearest);
+        else if (resources.nearest !== null) client.interact(resources.nearest);
+        else if (nearestChest(client.chests, rt.current?.layer.player ?? null) !== null) client.interact(nearestChest(client.chests, rt.current?.layer.player ?? null)!);
+        else if (npcs.nearest !== null) client.interact({ npc: npcs.nearest });
+        else if (entrances.nearest !== null) client.interact({ entrance: entrances.nearest });
+        else if (personInReach(client, [layer.hovered, latest.current.combat?.target ?? null], rt.current?.layer.player ?? null) !== null) client.interact(personInReach(client, [layer.hovered, latest.current.combat?.target ?? null], rt.current?.layer.player ?? null)!);
+        else latest.current.onUseHotkey?.();
       },
     });
     // Chunk streaming: request tiles around the camera from the region server.
@@ -512,7 +559,8 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
+    const observerLayers = new Map<MirrorClient, EntityLayer>();
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
@@ -534,6 +582,7 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
+      for (const ol of observerLayers.values()) ol.dispose();
       scene.remove(drops.group, npcs.group, entrances.group, telegraphs.group);
       if (floor) {
         scene.remove(floor);
@@ -628,6 +677,11 @@ function MirrorWorld({
     // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
     r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
     r.layer.setDepleted(r.resources.depleted);
+    const chest = nearestChest(client.chests, r.layer.player);
+    if (chest !== l.nearChest) {
+      l.nearChest = chest;
+      latest.current.onNearChest?.(chest);
+    }
     if (r.resources.nearest !== l.nearResource) {
       l.nearResource = r.resources.nearest;
       latest.current.onNearResource?.(l.nearResource);
@@ -636,6 +690,20 @@ function MirrorWorld({
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
     }, client.names);
+    // Neighbouring regions near the border (IM8): each in its own layer, so their wire ids never mix
+    // with this region's; their terrain chunks go to a renderer that is never drawn (ours covers it).
+    const seen = new Set<MirrorClient>();
+    for (const o of latest.current.observers?.() ?? []) {
+      seen.add(o);
+      let ol = r.observerLayers.get(o);
+      if (!ol) r.observerLayers.set(o, (ol = new EntityLayer(scene, camera, assets, new TerrainRenderer(16), pcg ? { pcg } : {})));
+      ol.sync(o.state, o.interpolator, alpha, null, { tick: o.serverTick, tickHz: o.tickHz || 30 }, o.names);
+    }
+    for (const [o, ol] of r.observerLayers) {
+      if (seen.has(o)) continue;
+      ol.dispose();
+      r.observerLayers.delete(o);
+    }
     // Ground items: names, beams, and which one the pick-up key would take.
     r.drops.sync(client.state, client.drops, camera, r.layer.player, PICKUP_PROMPT_RANGE);
     if (r.drops.nearest !== l.nearDrop) {

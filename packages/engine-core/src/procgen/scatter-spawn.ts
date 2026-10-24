@@ -47,6 +47,7 @@ import { addComponent } from "bitecs";
 import {
   AssetRef,
   BodyConfig,
+  Breakable,
   Health,
   MotionType,
   ShapeKind,
@@ -210,11 +211,14 @@ export function spawnScatterEntity(world: SimWorld, s: EntitySpawn, bounds?: Mod
   A.variant[eid] = s.variant;
 
   // Breakable resources: the archetype's health becomes a live component.
-  if (s.archetype.health) {
+  const hp = s.archetype.breakable?.health ?? s.archetype.health?.max;
+  if (hp !== undefined) {
     const H = Health;
     addComponent(world.ecs, H, eid);
-    H.current[eid] = s.archetype.health.max;
-    H.max[eid] = s.archetype.health.max;
+    H.current[eid] = hp;
+    H.max[eid] = hp;
+    // A breakable prop (IX4) breaks at zero instead of dying and rising (DeathSystem skips the tag).
+    if (s.archetype.breakable) addComponent(world.ecs, Breakable, eid);
   }
 
   // Collision: every prop is a physics body unless its data says

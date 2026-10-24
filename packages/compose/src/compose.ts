@@ -134,6 +134,7 @@ function compose(kind: EntityKind, base: Base, rankId: string, o: ComposeOptions
 
   const allowed = (k: number, slot: SlotKind): boolean => {
     const comp = comps[k - 1];
+    if ((baseTags.has("food") || baseTags.has("key")) && !SIGNAL_SLOTS.includes(slot)) return false; // provisions take no parts (the rank tint stays)
     // Materials sit outside the power budget; their cost is their grade, which the rank caps (common: up to 1).
     const graded = slot !== "material" || comp.cost <= index + 1;
     return comp.slot === slot && graded && index >= comp.minRank && (comp.fits.length === 0 || comp.fits.some((t) => baseTags.has(t))) && !clash(0, k);

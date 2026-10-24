@@ -31,7 +31,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
+import { fnv1a32, type Breakable as BreakableDef, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
 import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
 import { BodyConfig, ShapeKind } from "./components.js";
@@ -84,6 +84,14 @@ export interface SceneSpawnDeps {
   quests?: { place(quest: string, x: number, z: number): string | null };
   /** Resource nodes (a Structure with a ResourceNode: tree stands, ore veins, fishing spots): `register` makes the spawned entity gatherable, keyed by scene and node id. */
   resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
+  /** World chests (a Structure with a Chest component: loot `table`, `refillSeconds`): `register` makes the spawned entity openable. */
+  /** Breakable props (a Structure with a Breakable component): `register` makes the spawned entity break at zero health, under the scene and node id. */
+  breakables?: { register(eid: number, key: string, def: BreakableDef): void };
+  /** What a Structure `kind` breaks like when its node has no Breakable component of its own (content/structures.json): buildings, walls, gates. */
+  structureBreakable?: (kind: string) => BreakableDef | undefined;
+  /** A shop (a node with a Vendor component): `attach` makes the spawned entity a vendor of the named template; returns an error text, or null. */
+  vendors?: { attach(eid: number, template: string): string | null };
+  chests?: { register(eid: number, key: string, spec: { kind?: "chest" | "door"; table?: string; refillSeconds?: number; castSeconds?: number; requires?: { base: string; consume: boolean } }): void };
 }
 
 export interface SceneSpawnResult {
@@ -266,7 +274,38 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             halfZ: hd,
           });
         }
-        out.spawned.push({ id: node.id, what: resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
+        const chest = node.components?.Chest ?? node.components?.Door;
+        if (chest && deps.chests) {
+          const requires = str(chest.requires);
+          deps.chests.register(building, `${doc.name}/${node.id}`, {
+            kind: node.components?.Door ? "door" : "chest",
+            table: str(chest.table),
+            refillSeconds: Number(chest.refillSeconds ?? 600),
+            castSeconds: Number(chest.castSeconds ?? 0),
+            ...(requires ? { requires: { base: requires, consume: chest.consume === true } } : {}),
+          });
+        }
+        const shop = node.components?.Vendor;
+        if (shop && deps.vendors) {
+          const problem = deps.vendors.attach(building, str(shop.template));
+          if (problem) out.skipped.push({ id: node.id, reason: `vendor not attached: ${problem}` });
+        }
+        const brk = node.components?.Breakable;
+        const byKind = !brk && deps.breakables ? deps.structureBreakable?.(kind) : undefined;
+        if (byKind && deps.breakables) deps.breakables.register(building, `${doc.name}/${node.id}`, byKind);
+        if (brk && deps.breakables) {
+          const into = str(brk.into);
+          deps.breakables.register(building, `${doc.name}/${node.id}`, {
+            health: Number(brk.health ?? 50),
+            into: into === "variant" || into === "debris" ? into : "remove",
+            ...(str(brk.debris) ? { debris: str(brk.debris) } : {}),
+            ...(str(brk.loot) ? { loot: str(brk.loot) } : {}),
+            respawnS: Number(brk.respawnSeconds ?? 0) > 0 ? Number(brk.respawnSeconds) : null,
+            ...(Number(brk.minStrength ?? 0) > 0 ? { minStrength: Number(brk.minStrength) } : {}),
+            ...(str(brk.repairMaterial) ? { repair: { material: str(brk.repairMaterial), count: Math.max(1, Math.round(Number(brk.repairCount ?? 1))), castSeconds: Number(brk.repairSeconds ?? 4) } } : {}),
+          });
+        }
+        out.spawned.push({ id: node.id, what: chest ? (node.components?.Door ? "door" : "chest") : resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
       }
       continue;
     }

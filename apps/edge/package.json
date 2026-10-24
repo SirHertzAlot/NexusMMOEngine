@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/src/index.js",
   "scripts": {
-    "build": "node ../../scripts/dep-build.mjs @mmo-engine/channel && node ../../scripts/dep-build.mjs @mmo-engine/modules && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/channel && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/modules && tsc -p tsconfig.json",
     "server": "npm run build && node dist/src/index.js",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\""
   },
@@ -14,6 +14,7 @@
     "@mmo-engine/channel": "^0.1.0",
     "@mmo-engine/modules": "^0.1.0",
     "@mmo-engine/nethealth": "^0.1.0",
+    "@mmo-engine/protocol": "^0.1.0",
     "express": "^5.1.0",
     "ws": "^8.22.0"
   },

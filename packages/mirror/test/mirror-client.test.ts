@@ -622,8 +622,8 @@ describe("MirrorClient items (0x13-0x15)", () => {
 
   it("sends pickups and drops as item actions", async () => {
     const { client, socket } = await connectClient({ username: "u", password: "p" });
-    client.pickup(12n);
-    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Item)).payload), { kind: "item", action: "pickup", entity: "12" });
+    client.interact(12n);
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Interact)).payload), { kind: "interact", entity: "12" });
     client.dropItem(3);
     assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Item)).payload), { kind: "item", action: "drop", item: 3 });
   });
