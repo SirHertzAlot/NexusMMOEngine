@@ -245,6 +245,24 @@ export function App(): React.ReactElement {
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
   const streamingRef = useRef<{ onRegionChange: (endpoint: string) => void } | null>(null);
+  // Cross-region view (IM8): a read-only mirror per neighbouring region the player stands near.
+  const observersRef = useRef(new Map<string, MirrorClient>());
+  const closeObservers = (): void => {
+    for (const o of observersRef.current.values()) o.disconnect();
+    observersRef.current.clear();
+  };
+  useEffect(() => {
+    // Tell each neighbour where the player stands, so it sends what is near.
+    const id = setInterval(() => {
+      const c = clientRef.current;
+      const me = c?.playerEntity != null ? c.state.get(c.playerEntity)?.transform : undefined;
+      if (me) for (const o of observersRef.current.values()) o.sendObserve(me.px, me.pz);
+    }, 250);
+    return () => {
+      clearInterval(id);
+      closeObservers();
+    };
+  }, []);
   // The last skills message (M4): a discipline new since it is announced.
   const skillsRef = useRef<SkillsMessage | null>(null);
   const [mastery, setMastery] = useState<SkillsMessage | null>(null);
@@ -287,7 +305,32 @@ export function App(): React.ReactElement {
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
       // asset requests go to the server that has the player now.
+      onBorder: (b) => {
+        if (clientRef.current !== c) return;
+        const open = observersRef.current.get(b.region);
+        if (b.leave) {
+          open?.disconnect();
+          observersRef.current.delete(b.region);
+          return;
+        }
+        if (open) return; // a renewed ticket: the open observer socket stays
+        const o = new MirrorClient((u) => new BrowserSocket(u), {
+          onWelcome: () => {},
+          onState: () => {},
+          onError: () => {},
+          onClose: () => {
+            if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
+          },
+        });
+        observersRef.current.set(b.region, o);
+        const { region, from, account, exp, ticket } = b;
+        void o.observe(b.endpoint, "mmo-client-observer", { region, from, account, exp, ticket }).catch(() => {
+          if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
+        });
+      },
       onRegionChange: (endpoint: string) => {
+        // The neighbours are different from the new region: they come again as border messages.
+        closeObservers();
         setUrl(endpoint);
         streamingRef.current?.onRegionChange(endpoint);
       },
@@ -514,6 +557,7 @@ export function App(): React.ReactElement {
     (mode === "login" || password === confirmPassword);
 
   const disconnect = (): void => {
+    closeObservers();
     clientRef.current?.disconnect();
     clientRef.current = null;
     setAccount(null);
@@ -630,6 +674,7 @@ export function App(): React.ReactElement {
       <div className="relative h-full w-full">
         <WorldCanvas
           client={client}
+          observers={() => observersRef.current.values()}
           assets={assets}
           pcg={pcg}
           lastStateAt={() => lastStateAtRef.current}

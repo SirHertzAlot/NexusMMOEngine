@@ -65,6 +65,7 @@ import {
   DeltaSetKind,
   GLOBAL_SECTOR,
   type DeltaSetEntry,
+  type BorderMessage,
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
@@ -129,11 +130,14 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { encodePinned, homeSector, interestSectors, PINNED_SECTOR, SectorIndex, type InterestRadii, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
 const COMBAT_PIN_TICKS = 300;
+/** IM8: a border ticket lives 60 s and is renewed with 20 s left. */
+const BORDER_TICKET_S = 60;
+const BORDER_RENEW_S = 20;
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -946,6 +950,10 @@ export class Gateway {
   /** Interest radii, or null when every client sees the whole region. */
   private readonly interest: InterestRadii | null;
   private readonly sectorIndex = new SectorIndex();
+  /** IM8: this region's border identity, or null outside a fleet. */
+  private border: { regionId: string; key: string; rect: RegionRect } | null = null;
+  /** IM8: live neighbouring regions (from the world's registry). */
+  private borderNeighbours: Array<{ regionId: string; endpoint: string; rect: RegionRect }> = [];
   private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -1359,6 +1367,7 @@ export class Gateway {
     }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
+    if (this.border && tick % TICK_HZ === 0) this.updateBorders();
   }
 
   /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
@@ -2095,6 +2104,87 @@ export class Gateway {
     }
   }
 
+  /**
+   * Cross-region view (IM8): this region's id and ground, the fleet's shared
+   * key (WORLD_API_KEY) that signs and checks border tickets, and the live
+   * neighbours from the world's registry. server.ts refreshes it.
+   */
+  setBorders(self: { regionId: string; key: string; rect: RegionRect }, regions: Array<{ regionId: string; endpoint: string; rect: RegionRect }>): void {
+    this.border = self;
+    this.borderNeighbours = regions.filter((r) => r.regionId !== self.regionId);
+  }
+
+  /**
+   * IM8, home side: tell each player near a neighbour's ground where to
+   * observe it from (a ticket, renewed before it expires), and when to stop.
+   */
+  private updateBorders(): void {
+    const b = this.border!;
+    const r = this.interest ?? { enterM: 96, leaveM: 128 };
+    const nowS = Math.floor(Date.now() / 1000);
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || !s.socket || s.observer || s.playerEntity === null) continue;
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      const x = C.Transform.px[eid], z = C.Transform.pz[eid];
+      for (const n of this.borderNeighbours) {
+        const d = rectDistance(n.rect, x, z);
+        const exp = s.borders?.get(n.regionId);
+        if (d <= r.enterM && (exp === undefined || exp - nowS < BORDER_RENEW_S)) {
+          const e = nowS + BORDER_TICKET_S;
+          (s.borders ??= new Map()).set(n.regionId, e);
+          const msg: BorderMessage = { kind: "border", region: n.regionId, endpoint: n.endpoint, from: b.regionId, account: s.username, exp: e, ticket: borderTicket(b.key, n.regionId, b.regionId, s.username, e) };
+          this.sendEnvelope(s, MessageType.Border, encodeControl(msg));
+        } else if (exp !== undefined && d > r.leaveM) {
+          s.borders!.delete(n.regionId);
+          const msg: BorderMessage = { kind: "border", region: n.regionId, endpoint: n.endpoint, leave: true };
+          this.sendEnvelope(s, MessageType.Border, encodeControl(msg));
+        }
+      }
+    }
+  }
+
+  /** IM8, neighbour side: a home region's ticket for this region lets a read-only observer in. */
+  private acceptObserver(s: ClientSession, t: { region: string; from: string; account: string; exp: number; ticket: string }): void {
+    const b = this.border;
+    const home = this.borderNeighbours.find((n) => n.regionId === t.from);
+    const ok = b !== null && home !== undefined && this.interest !== null && t.region === b.regionId
+      && t.exp > Date.now() / 1000 && ticketOk(b.key, t.region, t.from, t.account, t.exp, t.ticket);
+    s.joining = false;
+    if (!ok) {
+      this.rateLimiter.recordFailure(s.remoteIp);
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    s.observer = { x: NaN, z: NaN, home: home!.rect };
+    s.welcomed = true;
+    s.interestSet = null;
+    const welcome: WelcomeMessage = {
+      protocol: PROTOCOL_VERSION,
+      player_entity: "0",
+      server_tick: this.tick,
+      tick_hz: TICK_HZ,
+      snapshot_every: this.opts.snapshotEveryTicks,
+      session_token: "",
+    };
+    this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
+  }
+
+  /** IM8: where the observer's player stands, clamped into its home region. */
+  private onObserve(s: ClientSession, payload: Uint8Array): void {
+    let m: { kind?: unknown; x?: unknown; z?: unknown };
+    try {
+      m = decodeControl(payload);
+    } catch {
+      return;
+    }
+    if (m.kind !== "observe" || typeof m.x !== "number" || typeof m.z !== "number" || !Number.isFinite(m.x) || !Number.isFinite(m.z)) return;
+    // ponytail: the anchor is client-reported, kept inside its home region, so it sees at most the
+    // strip a player at the border would; a home-signed anchor is the upgrade if that leaks too much.
+    const home = s.observer!.home;
+    s.observer = { ...clampInto(home, m.x, m.z), home };
+  }
+
   /** IM5: the wire ids a session always sees: its party in this region and recent foes. */
   private pinsOf(s: ClientSession): bigint[] {
     const out: bigint[] = [];
@@ -2139,7 +2229,9 @@ export class Gateway {
   private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    const next = s.interestAll && s.isAdmin
+    const next = s.observer
+      ? (Number.isFinite(s.observer.x) ? interestSectors(s.observer.x, s.observer.z, this.interest!, prev) : new Set([GLOBAL_SECTOR]))
+      : s.interestAll && s.isAdmin
       ? frame.occupied()
       : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
       ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
@@ -2505,7 +2597,7 @@ export class Gateway {
   }
 
   private onClose(s: ClientSession): void {
-    if (!s.welcomed) {
+    if (!s.welcomed || s.observer) {
       // Never said hello: nothing to keep.
       this.sessions.delete(s.clientId);
       return;
@@ -2528,6 +2620,11 @@ export class Gateway {
       s.socket?.close(4000, reason);
     } catch {
       /* ignore */
+    }
+    if (s.observer) {
+      // An observer has nothing to keep through a grace period.
+      this.sessions.delete(s.clientId);
+      return;
     }
     // The close event fires async; mark it now so a slow close can't
     // keep the session looking live.
@@ -2553,6 +2650,12 @@ export class Gateway {
       ({ type, payload } = decodeEnvelope(buf));
     } catch {
       this.sendError(s, 4003, "bad envelope");
+      return;
+    }
+    if (s.observer) {
+      // IM8: an observer only reports where its player stands (and keeps the socket alive).
+      if (type === MessageType.Border) this.onObserve(s, payload);
+      else if (type === MessageType.Ping) this.sendEnvelope(s, MessageType.Pong, payload);
       return;
     }
     switch (type) {
@@ -3634,6 +3737,11 @@ export class Gateway {
         4002,
         "auth failed: too many attempts, try again later",
       );
+      return;
+    }
+
+    if (parsed.kind === "observe") {
+      this.acceptObserver(s, parsed.value.observe);
       return;
     }
 
