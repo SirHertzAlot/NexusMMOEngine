@@ -203,6 +203,7 @@ import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
+import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
@@ -1198,11 +1199,25 @@ async function main(): Promise<void> {
   // The module context outlives the assembly call: modules publish domain
   // stores on ctx.stores during createSystems (character, social, dungeons,
   // economy), and server.ts reads them back post-assembly below.
+  // The towns' people (SG3b): the boot scene's structure positions by node id (a structure's node id is its structure id), and the baked manifests.
+  const residentsConfig = {
+    structurePositions: (): Map<string, { x: number; z: number }> | null => {
+      if (!process.env.MMO_SCENE) return null;
+      const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+      const doc = expandPrefabs(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), prefabs).doc;
+      return new Map(worldNodes(doc).map((w) => [w.node.id, { x: w.position[0], z: w.position[2] }]));
+    },
+    manifestsDir: process.env.MMO_SETTLEMENTS || path.join(REPO_ROOT, "content", "settlements"),
+    catalog: characterCatalog,
+    timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
+    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
+    maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
+  };
   const moduleCtx: ServerModuleContext = {
     sim,
     log: (m) => console.log(m),
     // Slices 2-6: modules read their bootstrap config from here.
-    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR } },
+    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig },
   };
   const assembled = await assembleServerSystems({
     modulesDir: path.join(REPO_ROOT, "modules"),
