@@ -61,6 +61,7 @@ export function createSystems(ctx) {
     catalog: config.catalog ?? null,
     groundHeightAt: config.groundHeightAt,
     maxEntities: config.maxEntities,
+    steer: ctx.shared?.navBackend?.crowd !== undefined, // a crowd runs: residents walk between anchors
   });
   ctx.log(`[residents] ${towns.length} town(s), ${towns.reduce((n, t) => n + t.npcs.length, 0)} people`);
   return { residents };
