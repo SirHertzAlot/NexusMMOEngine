@@ -105,6 +105,17 @@ export class ChestSystem implements SimSystem {
     return this.chests.has(eid);
   }
 
+  /** The chest's entity changed (a run swaps an opened chest for an open model): same state, new entity, and clients hear of it. */
+  rebind(oldEid: number, newEid: number): void {
+    const c = this.chests.get(oldEid);
+    if (!c) return;
+    this.chests.delete(oldEid);
+    this.changed.delete(c);
+    c.eid = newEid;
+    this.chests.set(newEid, c);
+    this.changed.add(c);
+  }
+
   /** Whether chest `eid` is open now (a chest: until it refills; a door: until shut). */
   isOpen(eid: number): boolean {
     const c = this.chests.get(eid);

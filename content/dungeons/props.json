@@ -20,6 +20,7 @@
     "dungeon:bookshelf": {"asset":"dungeon:bookshelf","category":"prop","collision":{"halfExtents":[0.6,2.2,0.6],"motion":"static","shape":"box"},"breakable":{"health":60,"into":"variant"}},
     "dungeon:cage": {"asset":"dungeon:cage","category":"prop","collision":{"halfExtents":[0.6,1.6,0.6],"motion":"static","shape":"box"}},
     "dungeon:candles": {"asset":"dungeon:candles","category":"prop","collision":{"halfExtents":[0.35,0.3,0.35],"motion":"static","shape":"box"}},
+    "dungeon:chest-open": {"asset":"dungeon:chest-open","category":"prop","collision":{"halfExtents":[0.6,1.1,0.6],"motion":"static","shape":"box"}},
     "dungeon:chest": {"asset":"dungeon:chest","category":"prop","collision":{"halfExtents":[0.6,0.8,0.6],"motion":"static","shape":"box"}},
     "dungeon:coffin": {"asset":"dungeon:coffin","category":"prop","collision":{"halfExtents":[0.6,0.7,0.6],"motion":"static","shape":"box"}},
     "dungeon:coin-pile": {"asset":"dungeon:coin-pile","category":"prop","collision":{"halfExtents":[0.5,0.2,0.5],"motion":"static","shape":"box"}},
