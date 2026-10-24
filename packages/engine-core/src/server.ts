@@ -1215,6 +1215,7 @@ async function main(): Promise<void> {
     maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
     maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
     // Deaths are kept (places.db); someone new moves in three game days after.
+    raided: () => creaturesOf().raids(),
     store: placesStore,
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,

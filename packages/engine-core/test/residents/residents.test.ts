@@ -297,3 +297,53 @@ describe("ResidentSystem: attackable", () => {
     assert.equal(store.load("resident", "npc_9")?.state, "alive:1");
   });
 });
+
+describe("ResidentSystem: raids", () => {
+  const people: ResidentNpc[] = [
+    { id: "npc_a", home: "h0", role: "baker", class: "artisan", cohort: "adult" },
+    { id: "npc_b", home: "h1", role: "resident", class: "peasant", cohort: "adult" },
+    { id: "npc_g", home: "h1", role: "town guard", class: "guard", cohort: "adult" },
+  ];
+  const t: ResidentTown = { id: "t", npcs: people, positionOf: (a) => POS[a] ?? POS.h0, centre: { x: 40, z: 0 }, radius: 50 };
+
+  /** A player in the town, so it is simulated. */
+  const near = (sim: SimWorld): void => {
+    const e = sim.spawn();
+    addComponent(sim.ecs, Transform, e);
+    addComponent(sim.ecs, CharacterRef, e);
+    Transform.px[e] = 40;
+  };
+
+  it("everyone outdoors but the guard takes cover while raiders are there, and they come out again after a pause", () => {
+    let raid = false;
+    const sim = new SimWorld();
+    near(sim);
+    const sys = new ResidentSystem({
+      towns: [t],
+      place: () => ({ anchor: "sq", outdoors: true, activity: "idle" }),
+      raided: () => (raid ? [{ x: 60, z: 0, radius: 20 }] : []),
+      bark: (_t, _n, c) => (c.raid ? "Raiders!" : "Hello"),
+      catalog: null,
+    });
+    run(sys, sim, 30);
+    assert.equal(sys.count, 3);
+    raid = true;
+    run(sys, sim, 60);
+    assert.deepEqual([sys.count, sys.entityOf("npc_g") !== undefined, sys.underRaid("t")], [1, true, true], "only the guard holds");
+    assert.equal(sys.talk(sys.entityOf("npc_g")!, 60)?.text, "Raiders!");
+    raid = false;
+    run(sys, sim, 90);
+    assert.equal(sys.count, 1, "still in cover just after");
+    run(sys, sim, 90 + 30 * 70); // past the longest pause
+    assert.equal(sys.count, 3, "carrying on again");
+    assert.equal(sys.underRaid("t"), false);
+  });
+
+  it("a town far from the raiders is left alone", () => {
+    const sim = new SimWorld();
+    near(sim);
+    const sys = new ResidentSystem({ towns: [t], place: () => ({ anchor: "sq", outdoors: true, activity: "idle" }), raided: () => [{ x: 5000, z: 5000, radius: 30 }], catalog: null });
+    run(sys, sim, 30);
+    assert.equal(sys.count, 3);
+  });
+});

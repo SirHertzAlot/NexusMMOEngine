@@ -24,7 +24,11 @@
  * id, a new generation, so a new look. Deaths are kept in the places store (kind "resident"), so a
  * restart does not bring the dead back.
  *
- * Later slices: homesteads, raids.
+ * Raids (RS6): when raiders are at a town, everyone outdoors runs for their home (sprinting if they
+ * can walk) and is gone on arrival; guards and the watch hold their posts. Twenty to sixty seconds
+ * (seeded) after the raid ends, schedules resume, and talk is in the raid's voice meanwhile.
+ *
+ * Later slices: homesteads.
  */
 
 import { addComponent, defineQuery, entityExists, removeComponent } from "bitecs";
@@ -84,6 +88,10 @@ export interface ResidentOptions {
   replaceMs?: number;
   /** How long a body lies where it fell, seconds. Default 10. */
   corpseSeconds?: number;
+  /** The settlements raiders are at now (a town within their reach is under raid). */
+  raided?: () => ReadonlyArray<{ x: number; z: number; radius: number }>;
+  /** Who stays at their post in a raid (default: guards, the watch, soldiers). */
+  holds?: (npc: ResidentNpc) => boolean;
   /** A navigation crowd runs after this system: residents walk between anchors by NavAgent targets. */
   steer?: boolean;
   /** A player within this of a town's edge: its residents walk (full tier). Default 150 m. */
@@ -162,6 +170,8 @@ export class ResidentSystem implements SimSystem {
   private readonly tiers = new Map<string, ResidentTier>();
   private readonly players = defineQuery([C.Transform, C.CharacterRef]);
   private agents = 0;
+  /** Towns under raid, and (once it ends) when they carry on again. */
+  private readonly raidClear = new Map<string, number>();
   private readonly index = new Map<string, { town: ResidentTown; npc: ResidentNpc }>();
   /** Per npc: how many have lived in their slot (a new one moves in after a death) and, while dead, when the next arrives (ms). */
   private readonly fate = new Map<string, { generation: number; backAt: number | null }>();
@@ -218,8 +228,13 @@ export class ResidentSystem implements SimSystem {
     const entry = info ? this.index.get(info.npc) : undefined;
     if (!info || !entry) return undefined;
     const timeOfDay = this.opts.timeOfDay?.(tick) ?? 0.5;
-    const text = this.opts.bark?.(entry.town, entry.npc, { timeOfDay, day: this.opts.dayOf?.(tick) ?? 0, raid: false }) ?? "...";
+    const text = this.opts.bark?.(entry.town, entry.npc, { timeOfDay, day: this.opts.dayOf?.(tick) ?? 0, raid: this.raidClear.has(entry.town.id) }) ?? "...";
     return { npc: info.npc, name: info.role.charAt(0).toUpperCase() + info.role.slice(1), text };
+  }
+
+  /** Whether a town is under raid now, or has not yet recovered from one. */
+  underRaid(town: string): boolean {
+    return this.raidClear.has(town);
   }
 
   /** The tier a town is simulated at now. */
@@ -250,6 +265,7 @@ export class ResidentSystem implements SimSystem {
       if (tier === "coarse" && prev === "full") for (const npc of town.npcs) this.stopWalking(sim, this.live.get(npc.id));
       if (prev === "none") for (const npc of town.npcs) this.lastAnchor.delete(npc.id); // placed in place, not walking out of doors
       const steer = this.opts.steer === true && tier === "full";
+      const raid = this.raidState(town, tick);
       for (const npc of town.npcs) {
         const fate = this.fateOf(npc.id);
         const have0 = this.live.get(npc.id);
@@ -260,7 +276,9 @@ export class ResidentSystem implements SimSystem {
           fate.backAt = null;
           this.opts.store?.save({ kind: "resident", key: npc.id, state: `alive:${fate.generation}`, at: this.now(), respawnAt: null });
         }
-        const p = this.opts.place(town, npc, t);
+        let p = this.opts.place(town, npc, t);
+        // Raiders at the gates: anyone outdoors who is not on guard takes cover at home.
+        if (raid && p.outdoors && !this.holds(npc) && npc.home) p = { anchor: npc.home, outdoors: false, activity: "hide" };
         const have = this.live.get(npc.id);
         const before = this.lastAnchor.get(npc.id);
         this.lastAnchor.set(npc.id, p.anchor);
@@ -272,7 +290,7 @@ export class ResidentSystem implements SimSystem {
           if (steer && live.agent && door && !live.leaving) {
             // Walk to the door of the building; gone when they get there.
             live.leaving = true;
-            this.walk(sim, live, npc.id, p.anchor, door, tick);
+            this.walk(sim, live, npc.id, p.anchor, door, tick, raid);
           } else if (!(steer && live.agent) || !door) this.remove(sim, npc.id, live);
           continue;
         }
@@ -355,8 +373,9 @@ export class ResidentSystem implements SimSystem {
   }
 
   /** Send a resident walking to their spot at an anchor (the crowd steers; a resident not on the navmesh is put there). */
-  private walk(sim: SimWorld, live: Live, npc: string, anchor: string, pos: { x: number; z: number }, tick: number): void {
+  private walk(sim: SimWorld, live: Live, npc: string, anchor: string, pos: { x: number; z: number }, tick: number, run = false): void {
     const spot = this.spotAt(npc, anchor, pos);
+    if (live.agent) C.NavAgent.speed[live.eid] = sim.movement.bots.wanderPace * sim.movement.walkSpeed * (run ? 2.2 : 1);
     live.walkTo = spot;
     live.until = tick + WALK_LIMIT_S * this.tickHz;
     // A fresh agent is not on the crowd yet: give the target on the next pass.
@@ -409,6 +428,35 @@ export class ResidentSystem implements SimSystem {
       this.opts.store?.save({ kind: "resident", key: npc, state: `dead:${fate.generation}`, at: this.now(), respawnAt: fate.backAt });
     }
     if (tick - live.fellAt >= (this.opts.corpseSeconds ?? 10) * this.tickHz) this.remove(sim, npc, live);
+  }
+
+  private holds(npc: ResidentNpc): boolean {
+    return this.opts.holds ? this.opts.holds(npc) : npc.class === "guard" || /guard|watch|soldier/i.test(npc.role);
+  }
+
+  /**
+   * Whether `town` is under raid at this tick: raiders are at it now, or the raid ended too recently
+   * (20 to 60 s, seeded by the town) for people to come out.
+   */
+  private raidState(town: ResidentTown, tick: number): boolean {
+    const raided = this.opts.raided?.() ?? [];
+    const c = town.centre;
+    const now = c !== undefined && raided.some((s) => Math.hypot(s.x - c.x, s.z - c.z) <= (town.radius ?? 0) + s.radius + 30);
+    if (now) {
+      this.raidClear.set(town.id, Infinity);
+      return true;
+    }
+    const until = this.raidClear.get(town.id);
+    if (until === undefined) return false;
+    if (until === Infinity) {
+      this.raidClear.set(town.id, tick + (20 + (hashOf(town.id) % 41)) * this.tickHz);
+      return true;
+    }
+    if (tick >= until) {
+      this.raidClear.delete(town.id);
+      return false;
+    }
+    return true;
   }
 
   private remove(sim: SimWorld, npc: string, have: Live): void {
