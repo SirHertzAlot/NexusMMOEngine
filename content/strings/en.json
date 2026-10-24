@@ -32,6 +32,8 @@
   "interact.open": "open",
   "interact.chest": "chest",
   "interact.door": "door",
+  "interact.repair": "repair",
+  "interact.building": "broken building",
   "interact.close": "close",
   "interact.left": "{count} left",
   "interact.workedOut": "worked out",

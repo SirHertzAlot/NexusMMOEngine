@@ -141,6 +141,12 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     into: { type: "enum", default: "remove", options: ["remove", "variant"] },
     loot: { type: "string", default: "" },
     respawnSeconds: { type: "number", default: 0, min: 0 },
+    /** Strength a player needs for a blow to hurt it (0: any). */
+    minStrength: { type: "number", default: 0, min: 0 },
+    /** What mending it takes once it stands broken: this pouch material, `repairCount` of it, over `repairSeconds`. Empty: it stays broken. */
+    repairMaterial: { type: "string", default: "" },
+    repairCount: { type: "number", default: 1, min: 1 },
+    repairSeconds: { type: "number", default: 4, min: 0 },
   }),
   /** A door (IX3): E opens and shuts it; open, its collider is gone. Takes the same `castSeconds`, `requires` and `consume` as a Chest. */
   Door: component("Door", {

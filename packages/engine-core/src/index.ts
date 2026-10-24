@@ -39,7 +39,6 @@ export {
   Appearance,
   Action,
   WorldItem,
-  StructuralIntegrity,
 } from "./components.js";
 export * from "./items/index.js";
 

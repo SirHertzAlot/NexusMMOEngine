@@ -217,6 +217,17 @@ export class GatheringSystem implements SimSystem {
     this.pouches.delete(holder);
   }
 
+  /** Use `qty` of `material` up from `holder`'s pouch (a repair). False, and nothing spent, when they have less. */
+  spend(holder: number, material: string, qty: number): boolean {
+    const pouch = this.pouchOf(holder);
+    const have = pouch.get(material) ?? 0;
+    if (have < qty) return false;
+    if (have === qty) pouch.delete(material);
+    else pouch.set(material, have - qty);
+    if (holder >= 0) this.opts.store?.savePouch(holder, material, have - qty);
+    return true;
+  }
+
   /** How many of `material` character `holder` has. */
   countOf(holder: number, material: string): number {
     return this.pouchOf(holder).get(material) ?? 0;

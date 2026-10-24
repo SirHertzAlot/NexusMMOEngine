@@ -20,8 +20,7 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * StructuralIntegrity=21) for future compact wire formats; the current
- * AudioEmitter=20) for future compact wire formats; the current
+ * AudioEmitter=20; 21 is unused, 23=Breakable) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -181,7 +180,6 @@ export const COMPONENT_IDS = {
   Noclip: 16,
   Animation: 17,
   Breakable: 23,
-  StructuralIntegrity: 21,
   FlowRef: 18,
   VfxEmitter: 19,
   AudioEmitter: 20,
@@ -381,20 +379,8 @@ export const Animation = defineSABComponent({
   layerMask: Types.ui8,
 });
 
-// ---------------------------------------------------------------------------
-// StructuralIntegrity (ComponentId 21): how much punishment a built
-// structure (wall, gate, building) can still take — current / max,
-// following Health's shape. Set at construction from the build material;
-// damage (siege, decay, sabotage) drains current, and at 0 the structure
-// collapses. Owned by the future structure system. Server-only for now:
-// no wire field yet, so no snapshot/delta wiring (like WorldItem) —
-// replication lands with the structure system.
-// ---------------------------------------------------------------------------
-
-export const StructuralIntegrity = defineSABComponent({
-  current: Types.f32,
-  max: Types.f32,
-});
+// ComponentId 21 was StructuralIntegrity, reserved for buildings. Buildings are Health + Breakable (IX6), so the component is gone
+// and its id stays unused.
 
 // Per-object flow/vfx/audio markers (viewport authoring, code-first cut).
 //
