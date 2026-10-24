@@ -30,7 +30,7 @@ test("AssetRef is registered as component id 8, Locomotion as 9, Appearance as 1
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(
     [...ids].sort((a, b) => a - b),
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23],
   );
 });
 
