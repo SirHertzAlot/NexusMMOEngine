@@ -642,6 +642,15 @@ describe("MirrorClient combat events (0x16-0x17)", () => {
     socket.receive(encodeEnvelope(MessageType.Life, encodeControl(life)));
     assert.deepEqual(seen, [hit, life]);
   });
+
+  it("passes telegraphs to onTelegraph", async () => {
+    const seen: unknown[] = [];
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    (client as unknown as { events: { onTelegraph?: (m: unknown) => void } }).events.onTelegraph = (m) => seen.push(m);
+    const warned = { kind: "telegraph", tick: 5, id: 1, source: "7", shape: { kind: "cone", x: 1, z: 2, yaw: 0.5, range: 6, halfAngle: 0.7 }, state: "warned", ticksUntilHit: 30 };
+    socket.receive(encodeEnvelope(MessageType.Telegraph, encodeControl(warned)));
+    assert.deepEqual(seen, [warned]);
+  });
 });
 
 describe("MirrorClient characters", () => {
