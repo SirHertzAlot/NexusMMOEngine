@@ -15,3 +15,4 @@ export * from "./verbs.js";
 export * from "./add-shelf.js";
 export * from "./hierarchy.js";
 export * from "./widgets.js";
+export * from "./templates.js";

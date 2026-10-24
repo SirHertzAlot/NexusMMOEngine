@@ -60,6 +60,26 @@ export interface RelevanceResult {
 /** Modules that can only ever appear on scene/region selection (audit rules 10, 14, 15). */
 export const SCENE_LEVEL_MODULES: readonly ModuleId[] = ["chat", "hud", "scenes"];
 
+/** Every widget id the relevance evaluator can summon — the registry view templates reference by id. */
+export const WIDGET_IDS: readonly string[] = [
+  "transform",
+  "vendor",
+  "character",
+  "combat",
+  "creature",
+  "physics",
+  "items",
+  "quests",
+  "dungeons",
+  "intent",
+  "flow",
+  "vfx",
+  "audio",
+  "chat",
+  "hud",
+  "scenes",
+];
+
 /**
  * Evaluate rules 1–18 against one object selection.
  * Order is presentation order: identity first (transform), person next,

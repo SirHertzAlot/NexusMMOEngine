@@ -81,15 +81,14 @@ export function verbByName(name: string): VerbDef | undefined {
 }
 
 /**
- * Validate a verb call's envelope. Returns every problem; an empty list
- * means the call may execute. Missing who (identity or role) or missing
- * why are rejections — anonymous mutations never pass.
+ * Validate a provenance envelope on its own — the shared check every
+ * provenance-carrying record in the authoring layer uses (verb calls,
+ * template transitions, pin changes). Missing who (identity or role) or
+ * missing why are rejections: anonymous mutations never pass.
  */
-export function validateVerbCall(call: VerbCall): string[] {
+export function validateProvenance(p: Provenance | undefined): string[] {
+  if (!p) return ["missing provenance envelope"];
   const problems: string[] = [];
-  if (!verbByName(call.verb)) problems.push(`unknown verb "${call.verb}" — authoring speaks only the 13 canonical verbs`);
-  const p = call.provenance;
-  if (!p) return [...problems, "missing provenance envelope"];
   if (!p.who || !p.who.id || p.who.id.trim() === "") problems.push("anonymous mutation rejected: provenance.who.id is required");
   if (!p.who || (p.who.role !== "designer" && p.who.role !== "developer")) problems.push("anonymous mutation rejected: provenance.who.role must be designer or developer");
   if (!p.why || p.why.trim() === "") problems.push("mutation rejected: provenance.why (intent) is required");
@@ -97,6 +96,16 @@ export function validateVerbCall(call: VerbCall): string[] {
   if (!p.where || p.where.trim() === "") problems.push("provenance.where (hierarchy path) is required");
   if (!Number.isFinite(p.when) || p.when <= 0) problems.push("provenance.when must be a positive epoch-ms timestamp");
   return problems;
+}
+
+/**
+ * Validate a verb call: a canonical verb plus a valid envelope.
+ * Returns every problem; an empty list means the call may execute.
+ */
+export function validateVerbCall(call: VerbCall): string[] {
+  const problems: string[] = [];
+  if (!verbByName(call.verb)) problems.push(`unknown verb "${call.verb}" — authoring speaks only the 13 canonical verbs`);
+  return [...problems, ...validateProvenance(call.provenance)];
 }
 
 /** Build a verb call, throwing on an invalid envelope — the one construction path widgets use. */
