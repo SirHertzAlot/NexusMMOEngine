@@ -487,13 +487,13 @@ test("auction settle: buyer on one shard, seller on another — the world commit
 
   const sellerWorld = await worldEconomy(worldStore, 7);
   const buyerWorld = await worldEconomy(worldStore, 8);
-  assert.equal(sellerWorld?.gold, 300, "the seller received the full price at the world tier");
+  assert.equal(sellerWorld?.gold, 285, "the seller received the price net of the 5% house cut (300 - 15)");
   assert.equal(buyerWorld?.gold, 700);
   assert.deepEqual(buyerWorld?.inventory.map((i) => i.instanceId), [itemInstanceId(sword)]);
   assert.equal(sellerWorld?.inventory.length, 0);
 
   // The initiating shard reconciled its held participant at once.
-  assert.equal(a.wallet.balanceOf(7), 300);
+  assert.equal(a.wallet.balanceOf(7), 285);
   assert.equal(a.items.store.inBagOf(7, sword), false);
   // The buyer's shard still holds its pre-settle cache — until its
   // next save, which refreshes from the world BEFORE writing, so
@@ -507,6 +507,90 @@ test("auction settle: buyer on one shard, seller on another — the world commit
   assert.deepEqual(buyerAfter?.inventory.map((i) => i.instanceId), [itemInstanceId(sword)]);
   const ledger = await worldStore.getAtomicLedger();
   assert.ok(ledger.some((e) => e.op === "auctionSettle"), "the settlement is in the world item ledger");
+});
+
+test("auction settle: an offline seller's buyout succeeds (was a 409 fail-closed) and pays net of cut", async (t) => {
+  const defer = cleanups(t);
+  const { store: worldStore, transport } = await makeWorld();
+  const clientA = makeClient(transport, "region-a", RANGE_A);
+  const clientB = makeClient(transport, "region-b", RANGE_B);
+  await clientA.start();
+  await clientB.start();
+  defer(() => clientB.stop());
+  defer(() => clientA.stop());
+  const a = makeRig(clientA);
+  const b = makeRig(clientB);
+
+  const [sword] = await seedCharacter(a, 7, 10, [0]);
+  await seedCharacter(b, 8, 1000, []);
+  // The seller logs off: final commit uphill, lock released. The
+  // listing's item and 10 gold sit in the world record, lock-free.
+  assert.equal(await a.sync.logout(7), true);
+  assert.equal(await worldStore.getCharacterLock(7), null, "the seller is offline (no live lock)");
+
+  // The buyer's region settles anyway: the seller fence is built
+  // from world reads without throwing, and the world pays the
+  // seller directly into its record, net of the house cut.
+  const result = await b.ops.auction({
+    buyer: 8, seller: 7, instanceId: itemInstanceId(sword), price: 300,
+  });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const sellerWorld = await worldEconomy(worldStore, 7);
+  const buyerWorld = await worldEconomy(worldStore, 8);
+  assert.equal(sellerWorld?.gold, 295, "offline seller credited directly: 10 + (300 - 15 fee)");
+  assert.equal(sellerWorld?.inventory.length, 0);
+  assert.equal(buyerWorld?.gold, 700);
+  assert.deepEqual(buyerWorld?.inventory.map((i) => i.instanceId), [itemInstanceId(sword)]);
+  assert.deepEqual(await worldStore.listPendingCredits(7), [], "the offline path is direct — no pending credit");
+  assert.equal(b.wallet.balanceOf(8), 700, "the buyer's shard reconciled at settle");
+  assert.equal(b.items.store.inBagOf(8, sword), true);
+
+  // The seller's next login seeds the settled outcome from the world.
+  assert.equal((await a.sync.login(7)).ok, true);
+  assert.equal(a.wallet.balanceOf(7), 295, "the seller's wallet seeds with the proceeds included");
+  assert.equal(a.items.store.inBagOf(7, sword), false);
+});
+
+test("auction settle: a seller online on another region gets exactly one pending credit, visible after its next save", async (t) => {
+  const defer = cleanups(t);
+  const { store: worldStore, transport } = await makeWorld();
+  const clientA = makeClient(transport, "region-a", RANGE_A);
+  const clientB = makeClient(transport, "region-b", RANGE_B);
+  await clientA.start();
+  await clientB.start();
+  defer(() => clientB.stop());
+  defer(() => clientA.stop());
+  const a = makeRig(clientA);
+  const b = makeRig(clientB);
+
+  const [sword] = await seedCharacter(a, 7, 10, [0]);
+  await seedCharacter(b, 8, 1000, []);
+
+  // The BUYER's region settles while the seller stays online on A:
+  // the settle succeeds now, the item moves, and the proceeds wait
+  // as a pending credit instead of touching the seller's balance.
+  const result = await b.ops.auction({
+    buyer: 8, seller: 7, instanceId: itemInstanceId(sword), price: 300,
+  });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const sellerWorld = await worldEconomy(worldStore, 7);
+  assert.equal(sellerWorld?.gold, 10, "the seller's world gold is untouched until its own region saves");
+  assert.equal(sellerWorld?.inventory.length, 0, "the item is out of the seller's world record");
+  const credits = await worldStore.listPendingCredits(7);
+  assert.equal(credits.length, 1, "exactly one pending credit");
+  assert.equal(credits[0].amount, 285, "the credit is the exact post-cut amount (300 - 15)");
+  assert.equal(credits[0].opId, result.opId);
+  assert.equal(b.wallet.balanceOf(8), 700);
+  assert.equal(b.items.store.inBagOf(8, sword), true);
+  assert.equal(a.wallet.balanceOf(7), 10, "the seller's local wallet is untouched until its next save");
+
+  // The seller's next save drains the credit: world record and
+  // local wallet both land on pre-credit balance + proceeds.
+  assert.equal(await a.sync.save(7), true);
+  assert.equal((await worldEconomy(worldStore, 7))?.gold, 295, "the save's put folded the credit in");
+  assert.equal(a.wallet.balanceOf(7), 295, "the drained credit reached the seller's wallet in the same cycle");
+  assert.equal(a.items.store.inBagOf(7, sword), false);
+  assert.deepEqual(await worldStore.listPendingCredits(7), [], "the credit was consumed exactly once");
 });
 
 test("craft execution in fleet mode commits via craftExecute; standalone crafts locally with no world write", async (t) => {
@@ -911,7 +995,6 @@ async function worldHttpServer(defer: (fn: () => unknown) => void): Promise<{ ur
     apiKeyHash: await argon2.hash(API_KEY),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.use(createWebrpcRouter(core));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
@@ -1087,7 +1170,7 @@ test("gateway vendor: buy and sell commit via vendorTransact; a world rejection 
   assert.equal((await worldEconomy(worldStore, 1))?.gold, 450);
 });
 
-test("gateway auction: a buyout commits via auctionSettle at the full price", async (t) => {
+test("gateway auction: a buyout commits via auctionSettle, seller paid net of the house cut", async (t) => {
   const defer = cleanups(t);
   const { store: worldStore, transport } = await makeWorld();
   const clientA = makeClient(transport, "region-a", RANGE_A);
@@ -1125,16 +1208,17 @@ test("gateway auction: a buyout commits via auctionSettle at the full price", as
   const sold = decodeControl<AuctionMessage>((await soldP)[0]);
   assert.equal(sold.state, "sold");
 
-  // The world tier conserves gold exactly: the seller receives the
-  // full 300 (no local 5% house cut on a world-settled sale).
-  assert.equal(a.wallet.balanceOf(1), 300);
+  // Fleet parity with a local settle: the buyer pays the full 300
+  // and the seller receives it net of the same 5% house cut (285);
+  // the 15 fee is a sink at the world tier too.
+  assert.equal(a.wallet.balanceOf(1), 285);
   assert.equal(a.wallet.balanceOf(2), 700);
   assert.equal(a.items.store.inBagOf(2, sword), true);
   assert.equal(a.items.store.inBagOf(1, sword), false);
   assert.equal(a.auction.browse().length, 0);
   const w1 = await worldEconomy(worldStore, 1);
   const w2 = await worldEconomy(worldStore, 2);
-  assert.equal(w1?.gold, 300);
+  assert.equal(w1?.gold, 285);
   assert.equal(w2?.gold, 700);
   assert.deepEqual(w2?.inventory.map((i) => i.instanceId), [itemInstanceId(sword)]);
 });

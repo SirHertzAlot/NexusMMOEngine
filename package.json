@@ -96,6 +96,13 @@
     "packages/playtest"
   ],
   "dependencies": {
-    "@surrealdb/node": "^3.0.3"
+    "@surrealdb/node": "^3.0.3",
+    "argon2": "^0.45.1"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true,
+    "esbuild@0.25.12": true,
+    "sharp@0.33.5": true,
+    "better-sqlite3@13.0.3": true
   }
 }

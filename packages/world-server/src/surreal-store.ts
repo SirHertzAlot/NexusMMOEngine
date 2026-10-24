@@ -1,12 +1,11 @@
 /**
- * SurrealDB-backed WorldStore. Connects to a SurrealDB server over
- * ws:// (see `npm run db` — the world server does NOT embed the DB;
- * WASM-embedded in Node is memory-only and the npm package doesn't
- * even ship the .wasm binary, so a server binary is the honest
- * durable path).
+ * SurrealDB-backed WorldStore. The database runs inside the world
+ * server (`@surrealdb/node`, the native embedded engine): "rocksdb:<abs
+ * path>" is durable on disk, "mem://" is in memory. A "ws://" URL still
+ * reaches a separate SurrealDB server.
  *
  * Env:
- *   WORLD_DB_URL   default ws://127.0.0.1:8000/rpc
+ *   WORLD_DB_URL   default rocksdb:<data dir>/surreal (see server.ts)
  *   WORLD_DB_NS    default mmo
  *   WORLD_DB_DB    default world
  *   WORLD_DB_USER / WORLD_DB_PASS  optional credentials
@@ -16,7 +15,8 @@
  *   statement's result: an array of rows normally, or the single
  *   unwrapped value for `... ONLY ...` (null when nothing matched).
  */
-import { Surreal } from "surrealdb";
+import { createNodeEngines } from "@surrealdb/node";
+import { createRemoteEngines, Surreal } from "surrealdb";
 import {
   applyAuctionSettle,
   applyCraftExecute,
@@ -41,8 +41,11 @@ import type {
   LootGrantInput,
   MigrationRecord,
   MigrationState,
+  PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
+  SocialKind,
+  SocialRecord,
   StoredDungeonRun,
   StoredLedgerEvent,
   TradeCommitInput,
@@ -56,6 +59,31 @@ export interface SurrealStoreOptions {
   database: string;
   username?: string;
   password?: string;
+  /** Max time `connect()` waits for the SDK handshake before giving up. */
+  connectTimeoutMs?: number;
+}
+
+/** Default bound on `SurrealWorldStore.connect()`'s SDK handshake. */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+
+/**
+ * Thrown when the SurrealDB SDK's `connect()` does not settle within
+ * the configured timeout. The SDK can pend indefinitely on an
+ * unreachable server (the promise never settles and no handles
+ * remain), which would otherwise hang process boot forever.
+ */
+export class WorldStoreConnectTimeoutError extends Error {
+  readonly url: string;
+  readonly timeoutMs: number;
+
+  constructor(url: string, timeoutMs: number) {
+    super(
+      `timed out connecting to SurrealDB at ${url} after ${timeoutMs} ms`,
+    );
+    this.name = "WorldStoreConnectTimeoutError";
+    this.url = url;
+    this.timeoutMs = timeoutMs;
+  }
 }
 
 const SCHEMA = `
@@ -106,6 +134,9 @@ DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
 DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
+-- PL3c: guilds, parties, friends and blocks every region shares (doc null: a tombstone).
+DEFINE TABLE IF NOT EXISTS social_record SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_social_record_key ON social_record FIELDS kind, key UNIQUE;
 -- Persistence P5: host resource reports (sidecar upserts, TTL'd).
 DEFINE TABLE IF NOT EXISTS host_report SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS hostId ON host_report TYPE string;
@@ -122,7 +153,66 @@ DEFINE TABLE IF NOT EXISTS atomic_ledger SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_atomic_ledger_seq ON atomic_ledger FIELDS seq UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_atomic_ledger_op ON atomic_ledger FIELDS opId;
 DEFINE TABLE IF NOT EXISTS atomic_meta SCHEMALESS;
+-- Fleet auction parity: gold credits owed to sellers who were not
+-- payable directly at settle time, drained by applyPendingCredits.
+DEFINE TABLE IF NOT EXISTS pending_credit SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_pending_credit_op ON pending_credit FIELDS opId UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_pending_credit_char ON pending_credit FIELDS characterId;
 `;
+
+/**
+ * Slice 3: the six atomic ops commit through stored SurrealQL
+ * functions — one `fn::<op>` per operation, all six bodies generated
+ * from this ONE template (the ops differ only in name; the semantics
+ * still live in src/atomic.ts, whose commit the store serializes into
+ * the call). The body mirrors statement-for-statement the
+ * BEGIN…COMMIT transaction string this replaced: the ledger seq
+ * counter is the optimistic lock (guarded read, THROW on mismatch,
+ * then the bump), every pre-existing record write is
+ * version-guarded, new records go through CREATE (the characterId
+ * unique index races a concurrent create to failure), and the ledger
+ * entries + pending credits are created inside the same invocation.
+ * A THROW anywhere in the body aborts the whole invocation —
+ * verified live against SurrealDB 2.7.0 by
+ * test/define-functions.test.ts: a bad version guard on the second
+ * record leaves records, ledger, and counter byte-identical.
+ *
+ * Definition form: plain `DEFINE FUNCTION` errors on re-definition
+ * ("already exists"), so connect() ships the `IF NOT EXISTS` form —
+ * verified accepted by 2.7.0 and idempotent across reconnects.
+ */
+const ATOMIC_FN_NAMES: Record<AtomicOpKind, string> = {
+  tradeCommit: "trade_commit",
+  vendorTransact: "vendor_transact",
+  auctionSettle: "auction_settle",
+  craftExecute: "craft_execute",
+  lootGrant: "loot_grant",
+  inventoryMutate: "inventory_mutate",
+};
+
+function defineAtomicFn(name: string): string {
+  return `
+DEFINE FUNCTION IF NOT EXISTS fn::${name}($base_seq: int, $new_seq: int, $records: array, $entries: array, $credits: array) {
+  LET $ctr = (SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger);
+  IF $ctr = NONE OR $ctr.seq != $base_seq { THROW "VERSION_CONFLICT"; };
+  UPDATE ONLY atomic_meta SET seq = $new_seq WHERE id = atomic_meta:ledger;
+  FOR $r IN $records {
+    IF $r.existed {
+      LET $u = (UPDATE ONLY character_state SET state = $r.state, version = $r.version, epoch = $r.epoch, regionId = $r.regionId, updatedAt = $r.updatedAt WHERE characterId = $r.characterId AND version = $r.expectedVersion RETURN AFTER);
+      IF $u = NONE { THROW "VERSION_CONFLICT"; };
+    } ELSE {
+      CREATE ONLY character_state CONTENT { characterId: $r.characterId, state: $r.state, version: $r.version, epoch: $r.epoch, regionId: $r.regionId, updatedAt: $r.updatedAt };
+    };
+  };
+  FOR $e IN $entries { CREATE ONLY atomic_ledger CONTENT $e; };
+  FOR $c IN $credits { CREATE ONLY pending_credit CONTENT $c; };
+  RETURN true;
+};`;
+}
+
+const DEFINE_ATOMIC_FUNCTIONS = Object.values(ATOMIC_FN_NAMES)
+  .map(defineAtomicFn)
+  .join("\n");
 
 /** First (only) statement's result. */
 function stmt(result: unknown): unknown {
@@ -164,8 +254,13 @@ function stripId<T>(record: Record<string, unknown>): T {
   return rest as T;
 }
 
+/** A client that reaches a server (ws/http) or runs the database in this process (mem, rocksdb). */
+function newClient(): Surreal {
+  return new Surreal({ engines: { ...createRemoteEngines(), ...createNodeEngines() } });
+}
+
 export class SurrealWorldStore implements WorldStore {
-  private db = new Surreal();
+  private db = newClient();
   private readonly opts: SurrealStoreOptions;
 
   constructor(opts: SurrealStoreOptions) {
@@ -173,7 +268,47 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async connect(): Promise<void> {
-    await this.db.connect(this.opts.url);
+    // Race the SDK handshake against a timeout: on an unreachable
+    // server `db.connect()` can pend indefinitely (observed live —
+    // the promise never settles), hanging boot with no error to act
+    // on. On timeout, close the half-open client best-effort (itself
+    // raced, so a pending close can't hang the error path), swap in a
+    // fresh client so the store is not poisoned for a retry, and
+    // throw the typed timeout error.
+    const timeoutMs =
+      this.opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.db.connect(this.opts.url),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new WorldStoreConnectTimeoutError(this.opts.url, timeoutMs),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      if (err instanceof WorldStoreConnectTimeoutError) {
+        const halfOpen = this.db;
+        this.db = newClient();
+        let closeTimer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          halfOpen.close().catch(() => undefined),
+          new Promise<void>((resolve) => {
+            closeTimer = setTimeout(resolve, 1_000);
+          }),
+        ]).finally(() => {
+          if (closeTimer) clearTimeout(closeTimer);
+        });
+      }
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     // Sign in before `use`: on SurrealDB 3.2 selecting a namespace that
     // doesn't exist yet fails unless the session may create it.
     if (this.opts.username) {
@@ -187,6 +322,7 @@ export class SurrealWorldStore implements WorldStore {
       database: this.opts.database,
     });
     await this.db.query(SCHEMA);
+    await this.db.query(DEFINE_ATOMIC_FUNCTIONS);
     const meta = singleRow<Record<string, unknown>>(
       await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
     );
@@ -434,6 +570,37 @@ export class SurrealWorldStore implements WorldStore {
     return row === null ? 0 : Number(row["value"] ?? 0);
   }
 
+  async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY social_record WHERE kind = $kind AND key = $key LIMIT 1", { kind, key }),
+    );
+    return row === null ? null : stripId<SocialRecord>(row);
+  }
+
+  async putSocialRecord(r: SocialRecord): Promise<void> {
+    const existing = await this.getSocialRecord(r.kind, r.key);
+    if (existing !== null) {
+      await this.db.query(
+        "UPDATE ONLY social_record SET doc=$doc, version=$version, regionId=$region, updatedAt=$updatedAt WHERE kind = $kind AND key = $key",
+        { kind: r.kind, key: r.key, doc: r.doc, version: r.version, region: r.regionId, updatedAt: r.updatedAt },
+      );
+    } else {
+      await this.db.query("CREATE ONLY social_record CONTENT $data", { data: { ...r } });
+    }
+  }
+
+  async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    const rows = rowList<Record<string, unknown>>(await this.db.query("SELECT * FROM social_record WHERE kind = $kind", { kind }));
+    return rows.map((row) => stripId<SocialRecord>(row));
+  }
+
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    // The epoch counter's read-then-write, one id at a time: the world server is one process (as for epochs).
+    const ids: number[] = [];
+    for (let i = 0; i < count; i++) ids.push(await this.issueEpoch(`social:${kind}`));
+    return ids;
+  }
+
   async issueRangeEpoch(rangeKey: string): Promise<number> {
     return this.issueEpoch(`range:${rangeKey}`);
   }
@@ -565,13 +732,14 @@ export class SurrealWorldStore implements WorldStore {
   // Semantics come from src/atomic.ts, shared with the fake store:
   // the records and locks are read in ONE query, the pure transition
   // validates everything and computes the commit, and the commit —
-  // character records plus item-ledger entries — is persisted in ONE
-  // transaction. Every record write is version-guarded
+  // character records plus item-ledger entries — is persisted by ONE
+  // invocation of the op's stored SurrealQL function (fn::<op>,
+  // defined in connect()). Every record write is version-guarded
   // (WHERE version = <the version the transition read>) and the
   // ledger seq counter is guarded the same way; a guard tripping
-  // THROWs inside the transaction, SurrealDB cancels it, and nothing
-  // commits — the caller sees a VERSION_CONFLICT rejection instead.
-  // A business rejection never opens a transaction at all.
+  // THROWs inside the function, SurrealDB aborts the invocation, and
+  // nothing commits — the caller sees a VERSION_CONFLICT rejection
+  // instead. A business rejection never invokes the function at all.
 
   /** One statement's single-row value from a multi-statement query result. */
   private static rowValue(v: unknown): Record<string, unknown> | null {
@@ -619,47 +787,38 @@ export class SurrealWorldStore implements WorldStore {
       seq: baseSeq + j + 1,
       at: now,
     }));
-    const txParams: Record<string, unknown> = {
-      baseSeq,
-      newSeq: baseSeq + entries.length,
-    };
-    const tx: string[] = ["BEGIN TRANSACTION"];
-    // The seq counter is the transaction's optimistic lock: if a
-    // concurrent operation committed first, this aborts untouched.
-    tx.push("LET $ctr = (SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger)");
-    tx.push('IF $ctr = NONE OR $ctr.seq != $baseSeq { THROW "VERSION_CONFLICT" }');
-    tx.push("UPDATE ONLY atomic_meta SET seq = $newSeq WHERE id = atomic_meta:ledger");
-    outcome.commit.records.forEach((r, i) => {
-      txParams[`cid${i}`] = r.characterId;
-      txParams[`st${i}`] = r.state;
-      txParams[`ver${i}`] = r.version;
-      txParams[`ep${i}`] = r.epoch;
-      txParams[`rg${i}`] = r.regionId;
-      txParams[`up${i}`] = r.updatedAt;
-      txParams[`ev${i}`] = r.version - 1;
-      if ((records.get(r.characterId) ?? null) !== null) {
-        tx.push(
-          `LET $u${i} = (UPDATE ONLY character_state SET state = $st${i}, version = $ver${i}, epoch = $ep${i}, regionId = $rg${i}, updatedAt = $up${i} WHERE characterId = $cid${i} AND version = $ev${i} RETURN AFTER)`,
-        );
-        tx.push(`IF $u${i} = NONE { THROW "VERSION_CONFLICT" }`);
-      } else {
-        // The characterId unique index makes a raced create fail the
-        // whole transaction rather than overwrite a fresher record.
-        tx.push(
-          `CREATE ONLY character_state CONTENT { characterId: $cid${i}, state: $st${i}, version: $ver${i}, epoch: $ep${i}, regionId: $rg${i}, updatedAt: $up${i} }`,
-        );
-      }
-    });
-    entries.forEach((e, j) => {
-      txParams[`led${j}`] = { ...e };
-      tx.push(`CREATE ONLY atomic_ledger CONTENT $led${j}`);
-    });
-    tx.push("COMMIT TRANSACTION");
+    // Serialize the commit for the stored function: each record
+    // carries whether it existed at read time and the version the
+    // function's write must be guarded on (the value the replaced
+    // transaction string built as its per-record guard).
+    const fnRecords = outcome.commit.records.map((r) => ({
+      characterId: r.characterId,
+      state: r.state,
+      version: r.version,
+      epoch: r.epoch,
+      regionId: r.regionId,
+      updatedAt: r.updatedAt,
+      existed: (records.get(r.characterId) ?? null) !== null,
+      expectedVersion: r.version - 1,
+    }));
+    const fnCredits = (outcome.commit.pendingCredits ?? []).map((c) => ({
+      ...c,
+      createdAt: now,
+    }));
     try {
-      await this.db.query(tx.join(";\n"), txParams);
+      await this.db.query(
+        `RETURN fn::${ATOMIC_FN_NAMES[op]}($baseSeq, $newSeq, $records, $entries, $credits);`,
+        {
+          baseSeq,
+          newSeq: baseSeq + entries.length,
+          records: fnRecords,
+          entries,
+          credits: fnCredits,
+        },
+      );
     } catch (err) {
-      // A guard tripped or an index raced: the transaction was
-      // cancelled and nothing committed.
+      // A guard tripped or an index raced: the function invocation
+      // was aborted and nothing committed.
       return {
         ok: false,
         opId,
@@ -716,6 +875,88 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM atomic_ledger ORDER BY seq ASC"),
     );
     return rows.map((r) => stripId<AtomicLedgerEntry>(r));
+  }
+
+  // -- pending credits (fleet auction parity) --
+  //
+  // NOT live-verified yet (no SurrealDB binary in the dev sandbox;
+  // slice 3's gate): built only from constructs this file already
+  // uses live-proven — one read query, a pure JS fold, then ONE
+  // BEGIN…COMMIT transaction with a version-guarded record update
+  // (THROW on NONE, the runAtomic shape) and per-credit DELETEs.
+
+  async listPendingCredits(characterId: number): Promise<PendingCredit[]> {
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM pending_credit WHERE characterId = $id", {
+        id: characterId,
+      }),
+    );
+    return rows
+      .map((r) => stripId<PendingCredit>(r))
+      .sort((a, b) => a.createdAt - b.createdAt || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0));
+  }
+
+  async applyPendingCredits(
+    characterId: number,
+  ): Promise<{ total: number; record: CharacterStateRecord | null }> {
+    const results = (await this.db.query(
+      [
+        "SELECT * FROM pending_credit WHERE characterId = $id",
+        "SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1",
+      ].join(";\n"),
+      { id: characterId },
+    )) as unknown[];
+    const creditRows = results[0];
+    const credits: PendingCredit[] = (
+      creditRows == null ? [] : Array.isArray(creditRows) ? creditRows : [creditRows]
+    ).map((r) => stripId<PendingCredit>(r as Record<string, unknown>));
+    const recRow = SurrealWorldStore.rowValue(results[1]);
+    const current =
+      recRow === null ? null : stripId<CharacterStateRecord>(recRow);
+    if (current === null) return { total: 0, record: null };
+    const state =
+      current.state !== null && typeof current.state === "object" && !Array.isArray(current.state)
+        ? (current.state as Record<string, unknown>)
+        : null;
+    const gold = state?.["gold"];
+    if (credits.length === 0 || state === null || typeof gold !== "number" || !Number.isFinite(gold)) {
+      return { total: 0, record: current };
+    }
+    const total = credits.reduce((sum, c) => sum + c.amount, 0);
+    const now = Date.now();
+    const newState = { ...state, gold: gold + total };
+    const updated: CharacterStateRecord = {
+      ...current,
+      state: newState,
+      version: current.version + 1,
+      updatedAt: now,
+    };
+    const txParams: Record<string, unknown> = {
+      id: characterId,
+      newState,
+      newVersion: updated.version,
+      readVersion: current.version,
+      now,
+    };
+    const tx: string[] = ["BEGIN TRANSACTION"];
+    tx.push(
+      "LET $u = (UPDATE ONLY character_state SET state = $newState, version = $newVersion, updatedAt = $now WHERE characterId = $id AND version = $readVersion RETURN AFTER)",
+    );
+    tx.push('IF $u = NONE { THROW "VERSION_CONFLICT" }');
+    credits.forEach((c, j) => {
+      txParams[`op${j}`] = c.opId;
+      tx.push(`DELETE pending_credit WHERE opId = $op${j}`);
+    });
+    tx.push("COMMIT TRANSACTION");
+    try {
+      await this.db.query(tx.join(";\n"), txParams);
+    } catch {
+      // The version guard tripped (a concurrent write landed first):
+      // the transaction was cancelled, no credit was consumed, and
+      // the caller retries the drain at its next cycle.
+      return { total: 0, record: null };
+    }
+    return { total, record: updated };
   }
 
   // -- host reports (persistence P5) --

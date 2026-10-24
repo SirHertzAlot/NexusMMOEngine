@@ -23,20 +23,22 @@
  * these operations. Every other key is preserved verbatim — the
  * operations never interpret the rest of the record.
  */
-import type {
-  AtomicLedgerEntry,
-  AtomicOpKind,
-  AtomicRejectionCode,
-  AuctionSettleInput,
-  CharacterSessionLock,
-  CharacterStateRecord,
-  CraftExecuteInput,
-  InventoryItem,
-  InventoryMutateInput,
-  LootGrantInput,
-  ParticipantFence,
-  TradeCommitInput,
-  VendorTransactInput,
+import {
+  AUCTION_HOUSE_CUT_RATE,
+  AUCTION_HOUSE_SINK,
+  type AtomicLedgerEntry,
+  type AtomicOpKind,
+  type AtomicRejectionCode,
+  type AuctionSettleInput,
+  type CharacterSessionLock,
+  type CharacterStateRecord,
+  type CraftExecuteInput,
+  type InventoryItem,
+  type InventoryMutateInput,
+  type LootGrantInput,
+  type ParticipantFence,
+  type TradeCommitInput,
+  type VendorTransactInput,
 } from "./types.js";
 
 /** A ledger entry before the store assigns its seq / timestamp. */
@@ -47,6 +49,13 @@ export interface AtomicCommit {
   records: CharacterStateRecord[];
   /** Item/gold movements to append to the world item ledger, in order. */
   ledger: AtomicLedgerDraft[];
+  /**
+   * Gold credits owed to characters whose records could not be paid
+   * directly in this commit (auctionSettle's pending seller path);
+   * the stores persist them in the same transaction / critical
+   * section and stamp `createdAt`. Empty for every other operation.
+   */
+  pendingCredits: Array<{ opId: string; characterId: number; amount: number }>;
 }
 
 export type AtomicOutcome =
@@ -296,6 +305,7 @@ export function applyTradeCommit(
     commit: {
       records: [recordOf(ctx, a, input.a.epoch), recordOf(ctx, b, input.b.epoch)],
       ledger,
+      pendingCredits: [],
     },
   };
 }
@@ -370,15 +380,36 @@ export function applyVendorTransact(
   }
   return {
     ok: true,
-    commit: { records: [recordOf(ctx, v, input.participant.epoch)], ledger },
+    commit: { records: [recordOf(ctx, v, input.participant.epoch)], ledger, pendingCredits: [] },
   };
 }
 
 // ---------------------------------------------------------------------------
-// auctionSettle: buyer pays the price, seller receives the price, the
-// item moves buyer-ward — three facts, one transaction. Per the
-// atomic spec the seller receives the full price (no house cut at
-// this tier), so gold is conserved exactly.
+// auctionSettle: buyer pays the price, the item moves buyer-ward, and
+// the seller receives the price NET of the house cut — parity with
+// the standalone auction house (engine-core's AUCTION_FEE): the fee
+// is floor(price * AUCTION_HOUSE_CUT_RATE), ledgered to
+// AUCTION_HOUSE_SINK and granted nowhere — a pure gold sink. The
+// buyer is always debited the full price; debit = proceeds + fee.
+//
+// The BUYER is fenced in full, as for every other operation. The
+// SELLER is the exception (fleet auction parity): a buyout must not
+// fail just because the seller is offline or playing on another
+// region, so the seller's presented epoch/expectedVersion are not
+// checked — the store's read-fresh + version-guarded write is the
+// concurrency control. Two seller paths:
+//
+// - DIRECT: the seller has no live lock (offline / expired), or its
+//   live lock is held by the initiating region and the presented
+//   fence checks out in full. The proceeds land in the seller's
+//   record inside this commit.
+// - PENDING: the seller's live lock is held by another region, or
+//   held by the caller but the presented fence is invalid. The
+//   seller's record is written with the item out ONLY (gold
+//   untouched — its own region's caches own that balance right now)
+//   and the proceeds become a pending credit, drained into the
+//   record by the seller's next putCharacterState / lock acquire
+//   (see WorldStore.applyPendingCredits).
 // ---------------------------------------------------------------------------
 
 export function applyAuctionSettle(
@@ -388,8 +419,8 @@ export function applyAuctionSettle(
   if (input.buyer.characterId === input.seller.characterId) {
     return reject("VERSION_CONFLICT", "auction buyer and seller must be different characters");
   }
-  const fenced = fenceAll(ctx, [input.buyer, input.seller]);
-  if (fenced !== null) return fenced;
+  const buyerFenced = checkFence(ctx, input.buyer);
+  if (buyerFenced !== null) return reject(buyerFenced.rejection, buyerFenced.message);
   const buyer = viewOf(ctx, input.buyer.characterId);
   const seller = viewOf(ctx, input.seller.characterId);
   const item = findItem(seller, input.instanceId);
@@ -405,11 +436,34 @@ export function applyAuctionSettle(
       `character ${buyer.characterId} has ${buyer.gold} gold, auction price is ${input.price}`,
     );
   }
+  const fee = Math.floor(input.price * AUCTION_HOUSE_CUT_RATE);
+  const proceeds = input.price - fee;
+  const sellerLock = ctx.locks.get(input.seller.characterId) ?? null;
+  const sellerLive = sellerLock !== null && sellerLock.expiresAt > ctx.now;
+  const directOnline =
+    sellerLive &&
+    sellerLock.regionId === ctx.regionId &&
+    checkFence(ctx, input.seller) === null;
+  const direct = !sellerLive || directOnline;
+  // The epoch stamped on the seller's written record: the presented
+  // fence's on the direct-online path; the record's own epoch when
+  // offline (0 when there is no record — unreachable in practice,
+  // the item check above rejects first); the live lock's epoch on
+  // the pending path (that lock's holder owns the record).
+  const sellerEpoch = direct
+    ? directOnline
+      ? input.seller.epoch
+      : (ctx.records.get(input.seller.characterId)?.epoch ?? 0)
+    : sellerLock!.epoch;
   const taken = takeWhole(seller, input.instanceId)!;
   const bad = giveTo(buyer, taken, undefined);
   if (bad !== null) return reject(bad.rejection, bad.message);
   buyer.gold -= input.price;
-  seller.gold += input.price;
+  if (direct) seller.gold += proceeds;
+  const pendingCredits =
+    !direct && proceeds > 0
+      ? [{ opId: input.opId, characterId: input.seller.characterId, amount: proceeds }]
+      : [];
   const ledger: AtomicLedgerDraft[] = [
     {
       opId: input.opId, op: "auctionSettle", kind: "item", instanceId: taken.instanceId,
@@ -417,10 +471,16 @@ export function applyAuctionSettle(
       count: taken.count,
     },
   ];
-  if (input.price > 0) {
+  if (proceeds > 0) {
     ledger.push({
       opId: input.opId, op: "auctionSettle", kind: "gold",
-      from: charRef(buyer.characterId), to: charRef(seller.characterId), amount: input.price,
+      from: charRef(buyer.characterId), to: charRef(seller.characterId), amount: proceeds,
+    });
+  }
+  if (fee > 0) {
+    ledger.push({
+      opId: input.opId, op: "auctionSettle", kind: "gold",
+      from: charRef(buyer.characterId), to: AUCTION_HOUSE_SINK, amount: fee,
     });
   }
   return {
@@ -428,9 +488,10 @@ export function applyAuctionSettle(
     commit: {
       records: [
         recordOf(ctx, buyer, input.buyer.epoch),
-        recordOf(ctx, seller, input.seller.epoch),
+        recordOf(ctx, seller, sellerEpoch),
       ],
       ledger,
+      pendingCredits,
     },
   };
 }
@@ -490,7 +551,7 @@ export function applyCraftExecute(
   }
   return {
     ok: true,
-    commit: { records: [recordOf(ctx, v, input.participant.epoch)], ledger },
+    commit: { records: [recordOf(ctx, v, input.participant.epoch)], ledger, pendingCredits: [] },
   };
 }
 
@@ -523,6 +584,7 @@ export function applyLootGrant(
           count: input.count ?? 1,
         },
       ],
+      pendingCredits: [],
     },
   };
 }
@@ -607,6 +669,6 @@ export function applyInventoryMutate(
   }
   return {
     ok: true,
-    commit: { records: [recordOf(ctx, v, input.participant.epoch)], ledger },
+    commit: { records: [recordOf(ctx, v, input.participant.epoch)], ledger, pendingCredits: [] },
   };
 }

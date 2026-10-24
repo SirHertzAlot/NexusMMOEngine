@@ -23,6 +23,8 @@ import {
   type RegionInfo,
   type RegionLease,
   type ShardSnapshotRecord,
+  type SocialKind,
+  type SocialRecord,
   type StoredLedgerEvent,
   type TradeCommitInput,
   type VendorTransactInput,
@@ -492,6 +494,32 @@ export class WorldClient {
       this.token(),
     );
     return (res["character"] as CharacterStateRecord | null) ?? null;
+  }
+
+  /** PL3c: write a guild, party, friends or blocks record; a stale `expectedVersion` throws (409). */
+  async putSocialRecord(kind: SocialKind, key: string, doc: unknown, expectedVersion: number): Promise<SocialRecord> {
+    const res = await this.transport.call(
+      "PutSocialRecord",
+      { input: { regionId: this.opts.regionId, kind, key, doc, expectedVersion, opId: newOpId() } },
+      this.token(),
+    );
+    return res["record"] as SocialRecord;
+  }
+
+  /** PL3c: every record of a kind, tombstones included. */
+  async getSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    const res = await this.transport.call("GetSocialRecords", { input: { regionId: this.opts.regionId, kind } }, this.token());
+    return (res["records"] as SocialRecord[] | undefined) ?? [];
+  }
+
+  /** PL3c: world-wide fresh guild or party ids. */
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    const res = await this.transport.call(
+      "AllocateSocialIds",
+      { input: { regionId: this.opts.regionId, kind, count, opId: newOpId() } },
+      this.token(),
+    );
+    return res["ids"] as number[];
   }
 
   /**

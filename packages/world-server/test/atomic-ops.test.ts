@@ -14,7 +14,7 @@
  * (vendor/craft sinks and sources, loot creation).
  *
  * Seam: WorldCore over MemoryWorldStore, plus the store contract run
- * against both stores (Surreal auto-skips without WORLD_TEST_DB_URL,
+ * against both stores (Surreal embedded in memory, or WORLD_TEST_DB_URL;
  * the P1 pattern).
  */
 import test from "node:test";
@@ -23,6 +23,7 @@ import * as argon2 from "argon2";
 import { WorldCoreImpl } from "../src/core.js";
 import { MemoryWorldStore } from "../src/fake-store.js";
 import { SurrealWorldStore } from "../src/surreal-store.js";
+import { surrealTestOptions } from "./surreal-test-db.js";
 import {
   WorldError,
   type AtomicOpResult,
@@ -410,7 +411,7 @@ test("vendorTransact atomicity: a buy the character cannot afford changes nothin
 
 // ------------------------------------------------------------ auctionSettle
 
-test("auctionSettle: buyer pays, seller receives the full price, item moves — gold conserved", async () => {
+test("auctionSettle: buyer pays the full price, seller receives it net of the house cut, item moves", async () => {
   const { core, store } = await makeCore();
   await register(core, "r1", RANGE_A);
   const buyer = await seedCharacter(core, store, "r1", 1, 200, []);
@@ -424,11 +425,27 @@ test("auctionSettle: buyer pays, seller receives the full price, item moves — 
     price: 120,
   });
   assert.equal(res.ok, true);
-  assert.equal(await goldOf(store, 1), 80);
-  assert.equal(await goldOf(store, 2), 130);
-  assert.equal((await goldOf(store, 1)) + (await goldOf(store, 2)), 210, "gold conserved");
+  // Price 120: fee = floor(120 * 0.05) = 6 (a pure sink), proceeds 114.
+  assert.equal(await goldOf(store, 1), 80, "the buyer is debited the full price");
+  assert.equal(await goldOf(store, 2), 124, "the seller receives price - fee");
+  assert.equal(
+    (await goldOf(store, 1)) + (await goldOf(store, 2)),
+    204,
+    "buyer debit = proceeds + fee; the fee left circulation",
+  );
   assert.deepEqual(await inventoryOf(store, 1), [item("bow-1", 40, 0)]);
   assert.deepEqual(await inventoryOf(store, 2), []);
+  // Local-seller direct path: proceeds landed immediately, no credit.
+  assert.deepEqual(await store.listPendingCredits(2), []);
+  const goldLegs = (await store.getAtomicLedger()).filter((e) => e.kind === "gold");
+  assert.deepEqual(
+    goldLegs.map((e) => [e.from, e.to, e.amount]),
+    [
+      ["char:1", "char:2", 114],
+      ["char:1", "system:auction-house", 6],
+    ],
+    "ledger shows the proceeds leg and the house-cut leg",
+  );
 });
 
 test("auctionSettle atomicity: missing item or short buyer leaves all three facts unmoved", async () => {
@@ -470,6 +487,271 @@ test("auctionSettle atomicity: missing item or short buyer leaves all three fact
     settled,
   );
   assert.equal(await snapshot(store, [1, 2]), afterSettle);
+});
+
+test("auctionSettle: an offline seller settles end-to-end (direct path, net of cut)", async () => {
+  const { core, store } = await makeCore();
+  await register(core, "r1", RANGE_A);
+  const buyer = await seedCharacter(core, store, "r1", 1, 200, []);
+  // The seller has a world record (with the item) but NO session lock.
+  await store.putCharacterState({
+    characterId: 2,
+    state: { gold: 10, inventory: [item("bow-1", 40, 0)] },
+    version: 1,
+    epoch: 3,
+    regionId: "r1",
+    updatedAt: Date.now(),
+  });
+  const res = await core.auctionSettle("r1", {
+    regionId: "r1",
+    opId: opId("auction"),
+    buyer: buyer.fence,
+    seller: { characterId: 2, epoch: 0, expectedVersion: 1 },
+    instanceId: "bow-1",
+    price: 120,
+  });
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.equal(await goldOf(store, 1), 80);
+  assert.equal(await goldOf(store, 2), 124, "offline seller credited proceeds directly (120 - 6 fee)");
+  assert.deepEqual(await inventoryOf(store, 1), [item("bow-1", 40, 0)]);
+  assert.deepEqual(await inventoryOf(store, 2), []);
+  assert.deepEqual(await store.listPendingCredits(2), [], "the direct path leaves no pending credit");
+  const sellerRec = await store.getCharacterState(2);
+  assert.equal(sellerRec?.epoch, 3, "the offline write keeps the seller record's existing epoch");
+});
+
+test("auctionSettle: an expired-lock seller settles end-to-end (direct path)", async () => {
+  const { core, store } = await makeCore();
+  await register(core, "r1", RANGE_A);
+  const buyer = await seedCharacter(core, store, "r1", 1, 200, []);
+  const seller = await seedCharacter(core, store, "r1", 2, 10, [item("bow-1", 40, 0)]);
+  // The seller's lock has expired (never stolen): no longer live.
+  await store.putCharacterLock({
+    characterId: 2,
+    regionId: "r1",
+    epoch: seller.epoch,
+    expiresAt: Date.now() - 1,
+  });
+  const res = await core.auctionSettle("r1", {
+    regionId: "r1",
+    opId: opId("auction"),
+    buyer: buyer.fence,
+    seller: { characterId: 2, epoch: 0, expectedVersion: 1 },
+    instanceId: "bow-1",
+    price: 100,
+  });
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.equal(await goldOf(store, 1), 100);
+  assert.equal(await goldOf(store, 2), 105, "proceeds 95 (100 - 5 fee) landed directly");
+  assert.deepEqual(await inventoryOf(store, 2), []);
+  assert.deepEqual(await store.listPendingCredits(2), []);
+});
+
+test("auctionSettle: a seller online on another region settles NOW — item out, gold untouched, one pending credit", async () => {
+  const { core, store } = await makeCore();
+  await register(core, "r1", RANGE_A);
+  await register(core, "r2", RANGE_B);
+  const buyer = await seedCharacter(core, store, "r1", 1, 200, []);
+  const seller = await seedCharacter(core, store, "r2", 2, 10, [item("bow-1", 40, 0)]);
+  const settleOp = opId("auction");
+  const input = {
+    regionId: "r1",
+    opId: settleOp,
+    buyer: buyer.fence,
+    seller: seller.fence,
+    instanceId: "bow-1",
+    price: 120,
+  };
+  const res = await core.auctionSettle("r1", input);
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.equal(await goldOf(store, 1), 80, "the buyer is debited the full price now");
+  assert.deepEqual(await inventoryOf(store, 1), [item("bow-1", 40, 0)], "the buyer holds the item now");
+  assert.equal(await goldOf(store, 2), 10, "the seller's gold is untouched — its region owns that balance");
+  assert.deepEqual(await inventoryOf(store, 2), [], "the item is out of the seller's record");
+  const sellerRec = await store.getCharacterState(2);
+  assert.equal(sellerRec?.epoch, seller.epoch, "the pending write carries the live lock's epoch");
+  const credits = await store.listPendingCredits(2);
+  assert.equal(credits.length, 1, "exactly one pending credit");
+  assert.equal(credits[0].opId, settleOp);
+  assert.equal(credits[0].characterId, 2);
+  assert.equal(credits[0].amount, 114, "the credit is the post-cut proceeds (120 - 6)");
+  // Replaying the same opId returns the stored result, no second credit.
+  const replay = await core.auctionSettle("r1", input);
+  assert.deepEqual(replay, res);
+  assert.equal((await store.listPendingCredits(2)).length, 1, "a replay creates no second credit");
+  assert.equal(await goldOf(store, 1), 80, "a replay does not debit twice");
+});
+
+test("pending credits drain on the seller's next putCharacterState, exactly once", async () => {
+  const { core, store } = await makeCore();
+  await register(core, "r1", RANGE_A);
+  await register(core, "r2", RANGE_B);
+  const buyer = await seedCharacter(core, store, "r1", 1, 200, []);
+  const seller = await seedCharacter(core, store, "r2", 2, 10, [item("bow-1", 40, 0)]);
+  const res = await core.auctionSettle("r1", {
+    regionId: "r1",
+    opId: opId("auction"),
+    buyer: buyer.fence,
+    seller: seller.fence,
+    instanceId: "bow-1",
+    price: 120,
+  });
+  assert.equal(res.ok, true);
+  assert.equal((await store.listPendingCredits(2)).length, 1);
+  // The seller's region saves with its pre-credit balance (10) as the
+  // payload gold: the stored record must carry payload + proceeds.
+  const put = await core.putCharacterState("r2", {
+    regionId: "r2",
+    characterId: 2,
+    epoch: seller.epoch,
+    state: { gold: 10, inventory: [] },
+    opId: opId("put"),
+  });
+  assert.equal((put.state as { gold: number }).gold, 124, "stored gold = payload gold + drained proceeds");
+  assert.equal(await goldOf(store, 2), 124);
+  assert.deepEqual(await store.listPendingCredits(2), [], "the drain consumed the credit");
+  // A second put adds nothing.
+  const put2 = await core.putCharacterState("r2", {
+    regionId: "r2",
+    characterId: 2,
+    epoch: seller.epoch,
+    state: { gold: 124, inventory: [] },
+    opId: opId("put"),
+  });
+  assert.equal((put2.state as { gold: number }).gold, 124);
+  assert.equal(await goldOf(store, 2), 124);
+});
+
+test("pending credits drain on acquireCharacterLock, before any put", async () => {
+  const { core, store } = await makeCore();
+  await register(core, "r1", RANGE_A);
+  await register(core, "r2", RANGE_B);
+  const buyer = await seedCharacter(core, store, "r1", 1, 200, []);
+  const seller = await seedCharacter(core, store, "r2", 2, 10, [item("bow-1", 40, 0)]);
+  const res = await core.auctionSettle("r1", {
+    regionId: "r1",
+    opId: opId("auction"),
+    buyer: buyer.fence,
+    seller: seller.fence,
+    instanceId: "bow-1",
+    price: 120,
+  });
+  assert.equal(res.ok, true);
+  assert.equal((await store.listPendingCredits(2)).length, 1);
+  // The seller logs out (lock released), then logs back in anywhere:
+  // the acquire itself drains the credit into the record.
+  await core.releaseCharacterLock("r2", {
+    regionId: "r2",
+    characterId: 2,
+    epoch: seller.epoch,
+    opId: opId("release"),
+  });
+  await core.acquireCharacterLock("r1", {
+    regionId: "r1",
+    characterId: 2,
+    ttlMs: 60_000,
+    opId: opId("lock"),
+  });
+  assert.equal(await goldOf(store, 2), 124, "the record already includes the proceeds before any put");
+  assert.deepEqual(await store.listPendingCredits(2), []);
+});
+
+test("applyPendingCredits: no record and no credits both fold nothing and consume nothing", async () => {
+  const store = new MemoryWorldStore();
+  assert.deepEqual(await store.applyPendingCredits(999), { total: 0, record: null });
+  assert.deepEqual(await store.listPendingCredits(999), []);
+  await store.putCharacterState({
+    characterId: 5,
+    state: { gold: 42, inventory: [] },
+    version: 1,
+    epoch: 1,
+    regionId: "r1",
+    updatedAt: Date.now(),
+  });
+  const none = await store.applyPendingCredits(5);
+  assert.equal(none.total, 0);
+  assert.equal(none.record?.version, 1, "no credits: the record is untouched");
+  assert.equal(await goldOf(store, 5), 42);
+});
+
+test("auctionSettle atomicity (offline seller): a short buyer leaves seller, buyer, ledger and credits untouched", async () => {
+  const { core, store } = await makeCore();
+  await register(core, "r1", RANGE_A);
+  const buyer = await seedCharacter(core, store, "r1", 1, 50, []);
+  await store.putCharacterState({
+    characterId: 2,
+    state: { gold: 10, inventory: [item("bow-1", 40, 0)] },
+    version: 1,
+    epoch: 3,
+    regionId: "r1",
+    updatedAt: Date.now(),
+  });
+  const before = await snapshot(store, [1, 2]);
+  expectRejection(
+    await core.auctionSettle("r1", {
+      regionId: "r1",
+      opId: opId("auction"),
+      buyer: buyer.fence,
+      seller: { characterId: 2, epoch: 0, expectedVersion: 1 },
+      instanceId: "bow-1",
+      price: 120,
+    }),
+    "INSUFFICIENT_FUNDS",
+  );
+  await expectUnchanged(store, [1, 2], before);
+  assert.deepEqual(await store.listPendingCredits(2), [], "no credit was created by the rejected settle");
+});
+
+test("auctionSettle cut parity: fee = floor(price * 0.05) and debit = proceeds + fee in the direct, offline and pending paths", async () => {
+  // Store-level (no core): fast, and the same cases run against the
+  // live store through the store contract below where parameterized.
+  const prices = [1, 19, 20, 21, 99, 100, 101, 999];
+  for (const path of ["direct", "offline", "pending"] as const) {
+    for (const price of prices) {
+      const store = new MemoryWorldStore();
+      const now = Date.now();
+      const seedRec = async (characterId: number, gold: number, inventory: InventoryItem[]) => {
+        await store.putCharacterState({
+          characterId, state: { gold, inventory }, version: 1, epoch: 1,
+          regionId: "r1", updatedAt: now,
+        });
+      };
+      await seedRec(1, 2000, []);
+      await seedRec(2, 10, [item("bow-1", 40, 0)]);
+      await store.putCharacterLock({ characterId: 1, regionId: "r1", epoch: 1, expiresAt: now + 60_000 });
+      if (path === "direct") {
+        await store.putCharacterLock({ characterId: 2, regionId: "r1", epoch: 1, expiresAt: now + 60_000 });
+      } else if (path === "pending") {
+        await store.putCharacterLock({ characterId: 2, regionId: "r2", epoch: 1, expiresAt: now + 60_000 });
+      }
+      const fee = Math.floor(price * 0.05);
+      const proceeds = price - fee;
+      const res = await store.auctionSettle({
+        regionId: "r1",
+        opId: `cut-${path}-${price}`,
+        buyer: { characterId: 1, epoch: 1, expectedVersion: 1 },
+        seller: { characterId: 2, epoch: path === "offline" ? 0 : 1, expectedVersion: 1 },
+        instanceId: "bow-1",
+        price,
+      });
+      assert.equal(res.ok, true, `${path} @ ${price}: ${JSON.stringify(res)}`);
+      assert.equal(await goldOf(store, 1), 2000 - price, `${path} @ ${price}: buyer debit = price`);
+      const credits = await store.listPendingCredits(2);
+      if (path === "pending") {
+        assert.equal(await goldOf(store, 2), 10, `${path} @ ${price}: seller gold untouched`);
+        assert.deepEqual(credits.map((c) => c.amount), proceeds > 0 ? [proceeds] : [], `${path} @ ${price}: credit = proceeds`);
+      } else {
+        assert.equal(await goldOf(store, 2), 10 + proceeds, `${path} @ ${price}: seller credited proceeds`);
+        assert.deepEqual(credits, [], `${path} @ ${price}: no credit on the direct/offline path`);
+      }
+      const ledger = await store.getAtomicLedger();
+      const feeLeg = ledger.find((e) => e.kind === "gold" && e.to === "system:auction-house");
+      assert.equal(feeLeg?.amount ?? 0, fee, `${path} @ ${price}: fee leg = floor(price * 0.05)`);
+      const proceedsLeg = ledger.find((e) => e.kind === "gold" && e.to === "char:2");
+      assert.equal(proceedsLeg?.amount ?? 0, proceeds, `${path} @ ${price}: proceeds leg`);
+      assert.equal(proceeds + fee, price, `${path} @ ${price}: debit = proceeds + fee`);
+    }
+  }
 });
 
 // ------------------------------------------------------------ craftExecute
@@ -784,20 +1066,46 @@ async function atomicStoreContract(store: WorldStore): Promise<void> {
     }),
     before,
   );
+
+  // Auction pending path + credit drain (fleet auction parity):
+  // after the trade above char 1 holds 75 gold / no items at v2 and
+  // char 2 holds 25 gold / x-1 at v2. Char 2's lock moves to another
+  // region, so a settle by r1 pays char 2 by pending credit only.
+  await store.putCharacterLock({
+    characterId: 2, regionId: "r2", epoch: 1, expiresAt: now + 60_000,
+  });
+  const settled = await store.auctionSettle({
+    regionId: "r1", opId: "contract-auction-1",
+    buyer: { characterId: 1, epoch: 1, expectedVersion: 2 },
+    seller: { characterId: 2, epoch: 1, expectedVersion: 2 },
+    instanceId: "x-1", price: 20,
+  });
+  assert.equal(settled.ok, true, JSON.stringify(settled));
+  assert.equal(((await store.getCharacterState(1))?.state as { gold: number }).gold, 55, "buyer debited the full price");
+  assert.equal(((await store.getCharacterState(2))?.state as { gold: number }).gold, 25, "pending seller's gold untouched");
+  assert.deepEqual(
+    ((await store.getCharacterState(2))?.state as { inventory: InventoryItem[] }).inventory,
+    [],
+    "the item left the seller's record",
+  );
+  const credits = await store.listPendingCredits(2);
+  assert.equal(credits.length, 1);
+  assert.equal(credits[0].opId, "contract-auction-1");
+  assert.equal(credits[0].amount, 19, "credit = proceeds (20 - floor(20 * 0.05) fee)");
+  const drained = await store.applyPendingCredits(2);
+  assert.equal(drained.total, 19);
+  assert.equal(((await store.getCharacterState(2))?.state as { gold: number }).gold, 44, "the drain folded the credit into the record");
+  assert.deepEqual(await store.listPendingCredits(2), [], "the drain consumed the credit");
+  const again = await store.applyPendingCredits(2);
+  assert.equal(again.total, 0, "a second drain folds nothing");
 }
 
 test("atomic store contract: memory", async () => {
   await atomicStoreContract(new MemoryWorldStore());
 });
 
-test("atomic store contract: SurrealDB (WORLD_TEST_DB_URL)", { skip: !process.env.WORLD_TEST_DB_URL && "set WORLD_TEST_DB_URL=ws://127.0.0.1:8000/rpc to run" }, async () => {
-  const store = new SurrealWorldStore({
-    url: process.env.WORLD_TEST_DB_URL!,
-    namespace: "mmo_test",
-    database: "atomic_" + Date.now(),
-    username: process.env.WORLD_TEST_DB_USER ?? "root",
-    ["pass" + "word"]: process.env[["WORLD_TEST_DB", "PASS"].join("_")] ?? "root",
-  });
+test("atomic store contract: SurrealDB (embedded, or WORLD_TEST_DB_URL)", async () => {
+  const store = new SurrealWorldStore(surrealTestOptions("atomic_" + Date.now()));
   try {
     await store.connect();
     await atomicStoreContract(store);

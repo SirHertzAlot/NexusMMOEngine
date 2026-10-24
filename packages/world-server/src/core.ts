@@ -54,8 +54,18 @@ import {
   type SetPresenceInput,
   type ShardSnapshotRecord,
   type SnapshotReportInput,
+  type SocialRecord,
   type StoredLedgerEvent,
+  type AllocateSocialIdsInput,
+  type GetSocialRecordsInput,
+  type PutSocialRecordInput,
 } from "./types.js";
+
+/**
+ * World guild and party ids start here (PL3c): a region's own ids from before fleet mode count up from 1,
+ * so they can never be mistaken for a world id at its first fleet boot.
+ */
+export const SOCIAL_ID_BASE = 1_000_000_000;
 
 function rangesOverlap(a: ChunkRange, b: ChunkRange): boolean {
   return a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
@@ -543,10 +553,31 @@ export class WorldCoreImpl implements WorldCore {
     if (lock.expiresAt <= Date.now()) {
       throw new WorldError(409, `character lock for ${input.characterId} has expired`);
     }
+    // Fleet auction parity: drain any pending credits into the world
+    // record FIRST (one store-level fold), then build this put on top
+    // of it — the payload's gold is the region's pre-credit balance,
+    // so the drained total is added back here and the put never
+    // overwrites a credit that landed since the payload was built.
+    const drained = await this.store.applyPendingCredits(input.characterId);
     const existing = await this.store.getCharacterState(input.characterId);
+    let state = input.state;
+    if (
+      drained.total > 0 &&
+      state !== null &&
+      typeof state === "object" &&
+      !Array.isArray(state)
+    ) {
+      const carried = (state as Record<string, unknown>)["gold"];
+      state = {
+        ...(state as Record<string, unknown>),
+        gold:
+          (typeof carried === "number" && Number.isFinite(carried) ? carried : 0) +
+          drained.total,
+      };
+    }
     const record: CharacterStateRecord = {
       characterId: input.characterId,
-      state: input.state,
+      state,
       version: (existing?.version ?? 0) + 1,
       epoch: input.epoch,
       regionId: caller,
@@ -560,6 +591,43 @@ export class WorldCoreImpl implements WorldCore {
   async getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null> {
     await this.knownRegion(caller, input.regionId);
     return this.store.getCharacterState(input.characterId);
+  }
+
+  /** PL3c: a guild, party, friends or blocks record; version-guarded (409 when the writer's view is stale). */
+  async putSocialRecord(caller: string, input: PutSocialRecordInput): Promise<SocialRecord> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as SocialRecord;
+    const existing = await this.store.getSocialRecord(input.kind, input.key);
+    const stored = existing?.version ?? 0;
+    if (stored !== input.expectedVersion) {
+      throw new WorldError(409, `${input.kind} ${input.key} is at version ${stored}, not ${input.expectedVersion}`);
+    }
+    const record: SocialRecord = {
+      kind: input.kind,
+      key: input.key,
+      doc: input.doc,
+      version: stored + 1,
+      regionId: caller,
+      updatedAt: Date.now(),
+    };
+    await this.store.putSocialRecord(record);
+    await this.store.storeOpResult(input.opId, record);
+    return record;
+  }
+
+  async getSocialRecords(caller: string, input: GetSocialRecordsInput): Promise<SocialRecord[]> {
+    await this.knownRegion(caller, input.regionId);
+    return this.store.listSocialRecords(input.kind);
+  }
+
+  async allocateSocialIds(caller: string, input: AllocateSocialIdsInput): Promise<number[]> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as number[];
+    const ids = (await this.store.allocateSocialIds(input.kind, input.count)).map((n) => SOCIAL_ID_BASE + n);
+    await this.store.storeOpResult(input.opId, ids);
+    return ids;
   }
 
   /**
@@ -603,6 +671,11 @@ export class WorldCoreImpl implements WorldCore {
       expiresAt: now + input.ttlMs,
     };
     await this.store.putCharacterLock(lock);
+    // Fleet auction parity: a fresh holder starts from a drained
+    // record — pending credits fold in here, before any put, so the
+    // login seed already carries them. (A refused acquire throws
+    // above, before the lock write, and never reaches this drain.)
+    await this.store.applyPendingCredits(input.characterId);
     await this.store.storeOpResult(input.opId, lock);
     return lock;
   }

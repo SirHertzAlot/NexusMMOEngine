@@ -17,6 +17,11 @@
  * reconnects, slow consumers, and later interest filtering have
  * somewhere to live.
  *
+ * Fan-out (Phase 5, Part A): the once-encoded delta is published once
+ * per occupied sector topic (see ./sector.ts) instead of one send per
+ * socket; snapshot ticks and resyncing sessions stay per-socket. Same
+ * bytes, zero client changes.
+ *
  * Reconnect semantics (auth slice): the server-issued SESSION TOKEN
  * doubles as the client identity. Reconnecting with the same token inside
  * the disconnect grace period re-attaches the SAME player entity (fresh
@@ -118,6 +123,7 @@ import { GatherActionSchema, GatheringSystem } from "../gathering/index.js";
 import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
+import { sectorTopicFor } from "./sector.js";
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -137,13 +143,9 @@ import {
   type SessionStore,
 } from "../auth/index.js";
 import {
-  attachChunkHeights,
-  collectDeltaState,
-  collectFullState,
   DeltaTracker,
-  encodeDelta,
-  encodeSnapshot,
-  type CollectedState,
+  encodeDeltaFromSim,
+  encodeSnapshotFromSim,
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
@@ -437,9 +439,10 @@ export interface GatewayOptions {
   /**
    * The socket library behind the port (see ./transport.ts): "uws"
    * (uWebSockets.js), "ws", or "auto" (uws when it loads). Default:
-   * MMO_TRANSPORT, else auto.
+   * MMO_TRANSPORT, else auto. A Transport itself serves the port that way
+   * (the edge's relay, ChannelTransport).
    */
-  transport?: TransportKind;
+  transport?: TransportKind | Transport;
   /**
    * Largest inbound WebSocket frame accepted, bytes. Default 64 KiB
    * (see MAX_CLIENT_PAYLOAD_BYTES).
@@ -472,6 +475,15 @@ export interface GatewayOptions {
    * when they enter and leave (see ./extension.ts).
    */
   extensions?: GatewayExtension[];
+  /**
+   * Per-tick deltas fan out via sector-topic publish (Phase 5, Part A):
+   * one publish per occupied sector topic instead of one send per
+   * socket, with identical FlatBuffers bytes. Default true; false keeps
+   * the per-socket send loop (e.g. when a transport's publish is
+   * suspected). Snapshot ticks and resyncing sessions always use the
+   * per-socket path either way.
+   */
+  sectorBroadcast?: boolean;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -802,6 +814,7 @@ export class Gateway {
       | "scale"
       | "extensions"
       | "items"
+      | "sectorBroadcast"
       | "worldCharacters"
       | "atomicOps"
     >
@@ -909,8 +922,10 @@ export class Gateway {
   private spawnTable: SpawnTable | null = null;
   private readonly scale: ScaleResolver | undefined;
 
-  private readonly transportKind: TransportKind | undefined;
+  private readonly transportKind: TransportKind | Transport | undefined;
   private transport: Transport | null = null;
+  /** Per-tick deltas fan out via sector-topic publish (Phase 5, Part A). Default true. */
+  private readonly sectorBroadcast: boolean;
   private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -987,6 +1002,7 @@ export class Gateway {
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
+    this.sectorBroadcast = opts.sectorBroadcast ?? true;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -1003,18 +1019,6 @@ export class Gateway {
     const startTick = this.opts.startTick;
     this.loop = new TickLoop((i) => this.onTick(i + startTick));
     this.tracker.commit(this.world); // baseline: empty world
-  }
-
-  /**
-   * Terrain-height channel: fill authoritative heights on chunk rows
-   * when a chunk source is configured. Identity when absent (tests,
-   * addon-less environments) — snapshots then carry metadata only.
-   */
-  private withHeights(state: CollectedState): CollectedState {
-    if (this.chunkSource !== null) {
-      attachChunkHeights(state, this.chunkSource);
-    }
-    return state;
   }
 
   /** Last completed server tick. */
@@ -1053,7 +1057,7 @@ export class Gateway {
   /** Bind the port (WebSocket + HTTP). Does NOT start the tick driver. */
   async listen(): Promise<number> {
     if (this.transport) throw new Error("gateway: already listening");
-    const transport = createTransport(this.transportKind);
+    const transport = typeof this.transportKind === "object" ? this.transportKind : createTransport(this.transportKind);
     this.transport = transport;
     return transport.listen(this.opts.port, {
       connection: (socket) => this.onConnection(socket),
@@ -1062,6 +1066,19 @@ export class Gateway {
       // close the connection (ws: 1009) instead of buffering the payload.
       maxMessageBytes: this.maxClientPayloadBytes,
     });
+  }
+
+  /** Fleet mode (PL3c): another region changed guilds, parties, friends or blocks, and the store holds them now. */
+  reloadSocial(kind: "guild" | "party" | "friends" | "blocks"): void {
+    if (kind === "guild") this.guilds.reload();
+    else if (kind === "party") this.parties.reload();
+    else if (kind === "friends") this.friends.reload();
+    else this.blocks.reload();
+  }
+
+  /** Fleet mode (PL3c): new guilds and parties take world-wide ids from `next` (null: none on hand). */
+  socialIds(kind: "guild" | "party", next: () => number | null): void {
+    (kind === "guild" ? this.guilds : this.parties).ids = next;
   }
 
   /** Which socket library serves the port ("uws" or "ws"), once listening. */
@@ -1299,18 +1316,21 @@ export class Gateway {
     this.sendTreatments(sim);
     this.sendSpells(sim);
 
-    const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
     // that first shows them (catalog §0x12).
-    const namesEnv = this.namesFor(state.spawned);
-    const dropsEnv = this.dropsFor(state.spawned);
-    const deltaBytes = encodeDelta(state);
+    const spawned = sim.spawnedWireIds();
+    const namesEnv = this.namesFor(spawned);
+    const dropsEnv = this.dropsFor(spawned);
+    // Phase 3: the delta encodes directly from the SAB-backed stores —
+    // no intermediate CollectedState row copy. Read-only w.r.t. the
+    // tracker: commit() still runs below, as on the row path.
+    const deltaBytes = encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource);
     this.tracker.commit(sim);
     sim.endTick();
 
     this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
     for (const l of this.tickListeners) {
-      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshot(this.withHeights(collectFullState(this.world, tick))) });
+      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }) });
     }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
@@ -1845,6 +1865,7 @@ export class Gateway {
       character: st.character ? { id: st.character.id, name: st.character.name } : null,
       isAdmin: this.devServer || this.admins.has(st.username),
       lastChatMs: {},
+      sectorTopic: null,
     };
     this.authSessions.rebind(s.token, s.clientId);
     const auth = this.authSessions.get(s.token);
@@ -1953,15 +1974,39 @@ export class Gateway {
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(
         MessageType.Snapshot,
-        encodeSnapshot(this.withHeights(collectFullState(this.world, tick))),
+        encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }),
       ));
+
+    // Phase 5, Part A: on delta ticks, sessions with a sector
+    // subscription get the once-encoded delta via one publish per
+    // occupied sector topic instead of one send per socket. Snapshot
+    // ticks and resyncing sessions stay on the per-socket path: a
+    // snapshot is a per-session baseline, and a resyncing session must
+    // not receive a delta it has no baseline for. Without a live
+    // transport (tests driving frame() before listen()) there is no
+    // publish target, so everything falls back to per-socket sends.
+    const usePublish = !isSnapshotTick && this.sectorBroadcast && this.transport !== null;
+    const publishSectors = new Map<string, ClientSession[]>();
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
       if (namesEnv) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (isSnapshotTick || s.needsResync) {
+        // Leave the sector topic while resyncing: the next delta tick
+        // re-subscribes once the snapshot baseline is in place.
+        this.clearSectorSubscription(s);
         this.deliverSnapshot(s, snapshotFor(), tick);
+      } else if (usePublish) {
+        this.syncSectorSubscription(s);
+        if (s.sectorTopic) {
+          const members = publishSectors.get(s.sectorTopic);
+          if (members) members.push(s);
+          else publishSectors.set(s.sectorTopic, [s]);
+        } else {
+          // No sector (no player entity yet): per-socket, as before.
+          this.deliver(s, deltaEnv, tick);
+        }
       } else {
         this.deliver(s, deltaEnv, tick);
       }
@@ -1969,6 +2014,51 @@ export class Gateway {
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendMana(s, tick);
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
+    }
+
+    // One publish per occupied sector topic. Per-session messages
+    // (names/drops above) already flushed each member's queue through
+    // deliver(), so the published delta cannot overtake them.
+    for (const [topic, members] of publishSectors) {
+      this.transport!.publish(topic, deltaEnv);
+      for (const s of members) s.lastAckedTick = BigInt(tick);
+    }
+  }
+
+  /**
+   * The sector topic for a session's avatar, or null when the session
+   * has no avatar in the world yet (its deltas go per-socket).
+   */
+  private sectorTopicOf(s: ClientSession): string | null {
+    if (s.playerEntity === null) return null;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) return null;
+    return sectorTopicFor(C.Transform.px[eid], C.Transform.pz[eid]);
+  }
+
+  /**
+   * Move a session's subscription onto its avatar's current sector
+   * (no-op when it hasn't crossed a boundary). Called on delta ticks
+   * only — snapshot ticks and resyncs go through deliverSnapshot.
+   */
+  private syncSectorSubscription(s: ClientSession): void {
+    if (!s.socket || !s.socket.isOpen) return;
+    const topic = this.sectorTopicOf(s);
+    if (topic === s.sectorTopic) return;
+    if (s.sectorTopic) s.socket.unsubscribe(s.sectorTopic);
+    s.sectorTopic = topic;
+    if (topic) s.socket.subscribe(topic);
+  }
+
+  /** Leave the subscribed sector topic, if any, and forget it. */
+  private clearSectorSubscription(s: ClientSession): void {
+    if (s.sectorTopic) {
+      try {
+        s.socket?.unsubscribe(s.sectorTopic);
+      } catch {
+        /* a dying socket's subscription dies with it */
+      }
+      s.sectorTopic = null;
     }
   }
 
@@ -2242,6 +2332,7 @@ export class Gateway {
       character: null,
       isAdmin: false,
       lastChatMs: {},
+      sectorTopic: null,
     };
     this.sessions.set(s.clientId, s);
     this.route(s, socket);
@@ -2259,6 +2350,8 @@ export class Gateway {
   }
 
   private onClose(s: ClientSession): void {
+    clearTimeout(this.gatherCasts.get(s));
+    this.gatherCasts.delete(s);
     if (!s.welcomed) {
       // Never said hello: nothing to keep.
       this.sessions.delete(s.clientId);
@@ -2266,6 +2359,7 @@ export class Gateway {
     }
     // Park the session: the player entity survives the grace period so a
     // quick reconnect re-attaches seamlessly.
+    this.clearSectorSubscription(s); // the closing socket's subscription dies with it
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
@@ -3790,6 +3884,10 @@ export class Gateway {
    */
   private attachSocket(s: ClientSession, socket: WireSocket): void {
     const old = s.socket;
+    // The old socket holds the sector subscription (if any): leave the
+    // topic before it is replaced, so the new socket re-subscribes
+    // cleanly on the next delta tick.
+    if (old) this.clearSectorSubscription(s);
     s.socket = socket;
     s.disconnectedAtMs = null;
     s.missedHeartbeats = 0;
@@ -3993,9 +4091,7 @@ export class Gateway {
       s,
       encodeEnvelope(
         MessageType.Snapshot,
-        encodeSnapshot(
-          this.withHeights(collectFullState(this.world, this.tick)),
-        ),
+        encodeSnapshotFromSim(this.world, this.tick, { chunkSource: this.chunkSource }),
       ),
       this.tick,
     );
@@ -4501,9 +4597,8 @@ export class Gateway {
    * region-side negotiation and run through the ordinary handler.
    * A buyout validates region-side, then routes the settlement
    * through the world-tier `auctionSettle` (buyer pays the full
-   * price, seller receives it — the world tier conserves gold
-   * exactly, so the local 5% house cut does not apply to a
-   * world-settled sale). When the buyer is their own top bidder,
+   * price, seller receives it net of the same 5% house cut a local
+   * settle takes — fleet auction parity). When the buyer is their own top bidder,
    * their escrow is first released locally and the made-whole
    * balance uploaded, so the world charges the full price exactly
    * once. A rejection or an outage refuses with 4005; the listing
@@ -5102,12 +5197,39 @@ export class Gateway {
     }
     const wire = parseEntityArg(parsed.data.entity);
     const holder = this.holderOf(s);
-    const result = wire === null ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, this.world.resolveWireId(wire));
-    if (!result.ok) {
-      this.sendError(s, 4005, result.error);
+    if (this.gatherCasts.has(s)) return; // already casting one
+    const node = wire === null ? -1 : this.world.resolveWireId(wire);
+    const seconds = gathering.castSeconds;
+    const check = node < 0 ? { ok: false as const, error: "nothing to gather there" } : gathering.gather(this.world, holder, avatar, node, true);
+    if (!check.ok) {
+      this.sendError(s, 4005, check.error);
       return;
     }
-    this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    const finish = (): void => {
+      this.gatherCasts.delete(s);
+      const av = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      // The server re-checks reach, stock and the pouch when the bar fills.
+      const result = av < 0 ? { ok: false as const, error: "no avatar" } : gathering.gather(this.world, holder, av, node);
+      if (av >= 0) this.sendGatherCast(s, "done", av);
+      if (!result.ok) {
+        this.sendError(s, 4005, result.error);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    };
+    if (seconds <= 0) return finish();
+    this.sendGatherCast(s, "started", avatar, seconds);
+    this.gatherCasts.set(s, setTimeout(finish, seconds * 1000));
+  }
+
+  /** Gather casts under way, one per session; a timer finishes each. */
+  private readonly gatherCasts = new Map<ClientSession, ReturnType<typeof setTimeout>>();
+
+  /** The cast bar start and end for a gather, over the spell channel (catalog 0x1c). */
+  private sendGatherCast(s: ClientSession, state: "started" | "done", avatar: number, seconds?: number): void {
+    const id = String(this.world.wireId(avatar));
+    const m: SpellMessage = { kind: "spell", caster: id, target: id, spell: "gather", state, ...(seconds !== undefined ? { seconds } : {}) };
+    this.sendEnvelope(s, MessageType.Magic, encodeControl(m));
   }
 
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */

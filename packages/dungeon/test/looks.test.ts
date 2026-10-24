@@ -22,9 +22,11 @@ describe("content/dungeons/looks.json", () => {
     assert.deepEqual(Object.keys(looks.themes).sort(), Object.keys(BUILTIN_THEMES).sort());
   });
 
-  it("colours each of the shell's material slots in every theme", () => {
+  it("colours each of the shell's material slots in every theme, and the props' (engine-core's PROP_SLOTS) beside them", () => {
+    const shell = ["basin", "ceiling", "floor", "wall"];
+    const props = ["stone", "wood", "metal", "cloth", "gold", "bone", "fire", "ice", "moss", "earth", "glass"];
     for (const [theme, l] of Object.entries(looks.themes)) {
-      assert.deepEqual(Object.keys(l.palette).sort(), ["basin", "ceiling", "floor", "wall"], `${theme}: palette slots`);
+      assert.deepEqual(Object.keys(l.palette).sort(), [...shell, ...props].sort(), `${theme}: palette slots`);
     }
   });
 

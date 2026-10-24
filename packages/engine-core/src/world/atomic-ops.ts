@@ -18,6 +18,13 @@
  *      lock/state reads, never from a parallel local source. A
  *      participant with no live world lock fails the operation
  *      closed (WorldTransportError 409) before any world call.
+ *      ONE exception: the auction SELLER (see `sellerFenceFor`). A
+ *      buyout must not fail because the seller logged off or plays
+ *      on another shard, so the seller's fence is built from world
+ *      reads without throwing and the world tier decides how the
+ *      proceeds land (directly, or as a pending credit) — the
+ *      buyer, and every other operation's participants, still fail
+ *      closed exactly as above.
  *   2. The settled outcome — success OR a typed rejection — is
  *      returned to the caller as a value. A transport failure throws
  *      WorldTransportError, distinguishable from a rejection: an
@@ -158,12 +165,38 @@ export class WorldAtomicOps {
     return this.settle(this.client.vendorTransact({ ...rest, participant }));
   }
 
-  /** `auctionSettle`: buyer pays, seller receives, the item moves. */
+  /**
+   * The auction seller's fence — the one fence that never fails
+   * closed. Locally held sellers are fenced from the sync, exactly
+   * like any participant. Otherwise the fence is built from the
+   * world's own reads WITHOUT throwing: a live lock contributes its
+   * epoch; no (or an expired) lock contributes epoch 0; either way
+   * the expected version is the world record's current version. The
+   * world tier does not fence-check the seller — this fence only
+   * tells it which path the proceeds take (see applyAuctionSettle
+   * at the world tier: direct vs pending credit).
+   */
+  private async sellerFenceFor(characterId: number): Promise<ParticipantFence> {
+    const local = await this.fences.fence(characterId);
+    if (local !== null) return local;
+    const lock = await this.client.getCharacterLock(characterId);
+    const record = await this.client.getCharacterState(characterId);
+    if (lock !== null && lock.expiresAt > this.now()) {
+      return {
+        characterId,
+        epoch: lock.epoch,
+        expectedVersion: record?.version ?? 0,
+      };
+    }
+    return { characterId, epoch: 0, expectedVersion: record?.version ?? 0 };
+  }
+
+  /** `auctionSettle`: buyer pays, seller receives (net of the house cut), the item moves. */
   async auction(
     input: Omit<AuctionSettleRequest, "buyer" | "seller"> & { buyer: number; seller: number },
   ): Promise<AtomicOpResult> {
     const { buyer, seller, ...rest } = input;
-    const [fb, fs] = await Promise.all([this.fenceFor(buyer), this.fenceFor(seller)]);
+    const [fb, fs] = await Promise.all([this.fenceFor(buyer), this.sellerFenceFor(seller)]);
     return this.settle(this.client.auctionSettle({ ...rest, buyer: fb, seller: fs }));
   }
 

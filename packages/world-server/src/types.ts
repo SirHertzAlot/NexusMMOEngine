@@ -275,6 +275,45 @@ export interface GetCharacterStateInput {
   characterId: number;
 }
 
+/** PL3c: shared social state every region sees — a guild, a party, a friends list, a block list. */
+export type SocialKind = "guild" | "party" | "friends" | "blocks";
+
+/** One social record at the world tier. */
+export interface SocialRecord {
+  kind: SocialKind;
+  /** The guild's or party's world id, or the owner's lowercase name (friends, blocks). */
+  key: string;
+  /** Opaque content, stored verbatim; null once deleted (a tombstone, so no region uploads it again). */
+  doc: unknown;
+  /** Assigned by the world: 1 for the first put, +1 per accepted put. */
+  version: number;
+  /** The region that wrote this version. */
+  regionId: string;
+  updatedAt: number; // epoch ms
+}
+
+export interface PutSocialRecordInput {
+  regionId: string;
+  kind: SocialKind;
+  key: string;
+  doc: unknown;
+  /** The version the writer last saw (0: it believes the record is new); any other stored version is a 409. */
+  expectedVersion: number;
+  opId: string;
+}
+
+export interface GetSocialRecordsInput {
+  regionId: string;
+  kind: SocialKind;
+}
+
+export interface AllocateSocialIdsInput {
+  regionId: string;
+  kind: "guild" | "party";
+  count: number;
+  opId: string;
+}
+
 /**
  * A character session lock (slice P4 contract): while held and
  * unexpired no other region may acquire it; after expiry it may be
@@ -430,6 +469,29 @@ export interface VendorTransactInput {
   /** Buy only: the slot to place the item in; lowest free when omitted. */
   slot?: number;
 }
+
+/**
+ * A gold credit owed to a character that could not be paid into its
+ * world record at settle time (fleet auction parity): the seller was
+ * online on another region, so the proceeds wait here until the
+ * character's own region next interacts with the world tier — its
+ * next `putCharacterState` or `acquireCharacterLock` drains every
+ * pending credit into the record in one store-level fold (see
+ * WorldStore.applyPendingCredits). One row per settled operation
+ * (opId is unique), consumed exactly once by the drain.
+ */
+export interface PendingCredit {
+  opId: string;
+  characterId: number;
+  amount: number;
+  createdAt: number; // epoch ms, stamped by the store at commit
+}
+
+/** The auction house's cut of every settled price (mirrors engine-core's AUCTION_FEE; parity-tested). */
+export const AUCTION_HOUSE_CUT_RATE = 0.05;
+
+/** The world-tier identity the auction house cut is ledgered to (a pure gold sink). */
+export const AUCTION_HOUSE_SINK = "system:auction-house";
 
 /** `auctionSettle`: buyer pays, seller receives, item moves buyer-ward. */
 export interface AuctionSettleInput {
@@ -690,6 +752,15 @@ export interface WorldStore {
    */
   issueCharacterLockEpoch(characterId: number): Promise<number>;
 
+  // -- social records (PL3c) --
+  getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null>;
+  /** Store a record verbatim (the core assigns its version). */
+  putSocialRecord(r: SocialRecord): Promise<void>;
+  /** Every record of a kind, tombstones included. */
+  listSocialRecords(kind: SocialKind): Promise<SocialRecord[]>;
+  /** `count` fresh ids for a kind, never issued before (a world-wide counter per kind). */
+  allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]>;
+
   // -- atomic operations (slice A1) --
   // Each method IS the operation: validation, the state change, and
   // the item-ledger append happen inside it as one transaction /
@@ -703,6 +774,17 @@ export interface WorldStore {
   inventoryMutate(input: InventoryMutateInput): Promise<AtomicOpResult>;
   /** The world item ledger written by atomic operations, in seq order. */
   getAtomicLedger(): Promise<AtomicLedgerEntry[]>;
+  /** A character's unconsumed pending credits, oldest first. */
+  listPendingCredits(characterId: number): Promise<PendingCredit[]>;
+  /**
+   * Fold ALL pending credits for the character into its CURRENT world
+   * record in one store-level operation: gold += total, version + 1,
+   * updatedAt = now, the credit rows are consumed, and the updated
+   * record is returned. When there is no record, or the record's state
+   * carries no numeric `gold`, or there are no credits: consume
+   * NOTHING and return `{ total: 0, record: <current or null> }`.
+   */
+  applyPendingCredits(characterId: number): Promise<{ total: number; record: CharacterStateRecord | null }>;
 
   // -- host reports (persistence P5) --
   /** Store a host's latest resource report (one per hostId, replaced). */
@@ -793,6 +875,17 @@ export interface WorldCore {
   releaseCharacterLock(caller: string, input: ReleaseCharacterLockInput): Promise<void>;
   /** A character's current session lock; null when unheld. */
   getCharacterLock(caller: string, input: GetCharacterLockInput): Promise<CharacterSessionLock | null>;
+
+  // -- social records (PL3c): guilds, parties, friends and blocks every region shares --
+  /**
+   * Write a social record. Version-guarded: `expectedVersion` must be the stored version (0 for a new
+   * record), else 409 and the writer rereads. Idempotent on opId.
+   */
+  putSocialRecord(caller: string, input: PutSocialRecordInput): Promise<SocialRecord>;
+  /** Every record of a kind, tombstones included (a region's boot and periodic refresh). */
+  getSocialRecords(caller: string, input: GetSocialRecordsInput): Promise<SocialRecord[]>;
+  /** World-wide fresh guild or party ids. Idempotent on opId. */
+  allocateSocialIds(caller: string, input: AllocateSocialIdsInput): Promise<number[]>;
 
   // -- atomic operations (slice A1) --
   // Each core op is idempotent on opId (a replay returns the stored

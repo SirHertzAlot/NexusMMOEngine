@@ -25,6 +25,7 @@ import type { AddressInfo } from "node:net";
 import { WorldCoreImpl } from "../src/core.js";
 import { MemoryWorldStore } from "../src/fake-store.js";
 import { SurrealWorldStore } from "../src/surreal-store.js";
+import { surrealTestOptions } from "./surreal-test-db.js";
 import { createWebrpcRouter } from "../src/adapters/webrpc.js";
 import {
   DefaultChunkAssignmentPolicy,
@@ -330,14 +331,8 @@ test("host report store contract: memory", async () => {
   await hostReportStoreContract(new MemoryWorldStore());
 });
 
-test("host report store contract: SurrealDB (WORLD_TEST_DB_URL)", { skip: !process.env.WORLD_TEST_DB_URL && "set WORLD_TEST_DB_URL=ws://127.0.0.1:8000/rpc to run" }, async () => {
-  const store = new SurrealWorldStore({
-    url: process.env.WORLD_TEST_DB_URL!,
-    namespace: "mmo_test",
-    database: "hostreports_" + Date.now(),
-    username: process.env.WORLD_TEST_DB_USER ?? "root",
-    ["pass" + "word"]: process.env[["WORLD_TEST_DB", "PASS"].join("_")] ?? "root",
-  });
+test("host report store contract: SurrealDB (embedded, or WORLD_TEST_DB_URL)", async () => {
+  const store = new SurrealWorldStore(surrealTestOptions("hostreports_" + Date.now()));
   try {
     await store.connect();
     await hostReportStoreContract(store);
@@ -357,7 +352,6 @@ async function boot() {
     apiKeyHash: await apiKeyHash(),
   });
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
   app.use(createWebrpcRouter(core));
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));

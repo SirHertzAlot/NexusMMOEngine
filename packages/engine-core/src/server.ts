@@ -12,6 +12,9 @@
  *
  * Environment:
  *   MMO_PORT       WebSocket listen port (default 7777)
+ *   MMO_EDGE       "1": players connect to the edge (EDGE_GAME_PORT), which
+ *                  relays them over the core channel; the core binds no
+ *                  player port (E3b). Unset: players connect here directly.
  *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
  *                  characters.db (default ./data, relative to the process cwd)
  *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
@@ -159,8 +162,9 @@ import {
 import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
-import { ShardStateShipper } from "./world/state-shipper.js";
+import { ShardStateShipper, SNAPSHOT_UPLOAD_EVERY_TICKS } from "./world/state-shipper.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
+import { SocialWorldSync } from "./world/social-sync.js";
 import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
@@ -191,7 +195,8 @@ import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
-import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
+import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
+import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
@@ -200,7 +205,7 @@ import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
-import { loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
+import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { CraftingService } from "./crafting/crafting-service.js";
 import { assertEngineSkillContract } from "./rules/skill-contract.js";
 import { loadScatterContent } from "./procgen/scatter-spawn.js";
@@ -226,6 +231,7 @@ import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef } from "./items/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
+import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
@@ -255,6 +261,7 @@ function abilityNames(bits: number): string {
 }
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
+const EDGE_MODE = process.env.MMO_EDGE === "1";
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
@@ -415,6 +422,15 @@ async function main(): Promise<void> {
         store,
         ledger: itemLedger,
         log: (line) => console.log(`[server] ${line}`),
+        // Node stocks (PL3a) go into gathering.db before the gathering system opens it, below.
+        seedPlaces: (places) => {
+          const nodes = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
+          try {
+            nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
+          } finally {
+            nodes.close();
+          }
+        },
       });
     } else {
       console.warn(`[server] world registration failed; running with local state only`);
@@ -802,6 +818,7 @@ async function main(): Promise<void> {
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
   // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
+  const gatheringStore = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
   const gathering = new GatheringSystem({
     reachM: game.rules.gathering.reachM,
     cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
@@ -809,7 +826,7 @@ async function main(): Promise<void> {
     trainPerTier: game.rules.gathering.trainDifficultyPerTier,
     regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
     regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
-    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    store: gatheringStore,
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);
       if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
@@ -864,7 +881,7 @@ async function main(): Promise<void> {
     return p;
   };
   const craftingService = new CraftingService({
-    rules: crafting,
+    rules: crafting ?? EMPTY_CRAFTING_RULES,
     masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
     countMaterial: (character, material) => pouchOf(character).get(material) ?? 0,
     takeMaterial: (character, material, qty) => {
@@ -1184,6 +1201,21 @@ async function main(): Promise<void> {
   const socialStore = moduleCtx.stores!.socialStore as import("./index.js").SqliteSocialStore | undefined;
   const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
   const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
+  const questStore = moduleCtx.stores!.questStore as import("./quests/quest-store.js").SqliteQuestStore | undefined;
+  // PL3c: guilds, parties, friends and blocks are world records; the local stores are seeded from them
+  // here, before the gateway's books read them, and written through the sync's tracked stores after.
+  const socialSync =
+    worldClient?.registered && guildStore && partyStore && socialStore
+      ? new SocialWorldSync({
+          client: worldClient,
+          guilds: guildStore,
+          parties: partyStore,
+          social: socialStore,
+          reload: (kind) => gw.reloadSocial(kind),
+          log: (line) => console.log(`[server] ${line}`),
+        })
+      : null;
+  await socialSync?.boot();
   spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
@@ -1227,6 +1259,17 @@ async function main(): Promise<void> {
           client: worldClient,
           store: effectiveCharacterStore,
           economy: economyView ?? undefined,
+          // PL3b: the character's quest log and pouch ride its world record, so they follow it to any region.
+          extras: {
+            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringStore.loadPouch(id) }),
+            seed: (id, extras) => {
+              if (questStore && extras.quests !== undefined) questStore.replace(id, questRecordsOf(extras.quests));
+              if (extras.pouch !== undefined) {
+                gatheringStore.replacePouch(id, materialCountsOf(extras.pouch));
+                gathering.forgetPouch(id);
+              }
+            },
+          },
           log: (line) => console.log(`[server] ${line}`),
         })
       : null;
@@ -1234,8 +1277,12 @@ async function main(): Promise<void> {
     ? new WorldAtomicOps({ client: worldClient, fences: worldCharacters })
     : null;
   if (atomicOps) atomicOpsRef.ops = atomicOps;
+  // E3b: with MMO_EDGE=1 the players' sockets are the edge's, relayed over the core channel (started below).
+  const toEdge: { push: EdgePush } = { push: () => {} };
+  const edgeRelay = EDGE_MODE ? new ChannelTransport((type, payload) => toEdge.push(type, payload), coreChannelPort()) : null;
   const gw: Gateway = new Gateway({
     port: PORT,
+    ...(edgeRelay ? { transport: edgeRelay } : {}),
     scale,
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
@@ -1282,9 +1329,9 @@ async function main(): Promise<void> {
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     characterStore: effectiveCharacterStore,
-    guildStore,
-    socialStore,
-    partyStore,
+    guildStore: socialSync?.guildStore ?? guildStore,
+    socialStore: socialSync?.socialStore ?? socialStore,
+    partyStore: socialSync?.partyStore ?? partyStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
@@ -1365,8 +1412,10 @@ async function main(): Promise<void> {
     ? new ShardStateShipper({
         client: worldClient,
         ledger: itemLedger,
-        snapshotIntervalTicks: SAVE_EVERY_TICKS,
+        snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
+        // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
+        places: () => ({ resource_nodes: gatheringStore.allNodes() }),
       })
     : null;
 
@@ -1429,8 +1478,16 @@ async function main(): Promise<void> {
     if (stateShipper && worldClient?.registered) {
       void stateShipper.pump(gw.serverTick);
     }
+    // PL3c: changed guilds, parties, friends and blocks go uphill on the same cycle.
+    void socialSync?.push();
   }, 1000);
   saveTimer.unref();
+  if (socialSync) {
+    gw.socialIds("guild", () => socialSync.takeId("guild"));
+    gw.socialIds("party", () => socialSync.takeId("party"));
+    // Other regions' changes arrive within a minute.
+    setInterval(() => void socialSync.refresh(), 60_000).unref();
+  }
 
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
@@ -1453,15 +1510,20 @@ async function main(): Promise<void> {
 
   // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
   const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
-  const port = await gw.listen();
-  // The edge's channel (E3), beside the player port. A core that cannot
-  // bind it still serves players directly.
+  // The edge's channel (E3), up before the gateway listens. With MMO_EDGE=1 the
+  // players come through it, so it must bind; otherwise it serves the edge
+  // beside the player port, and a core that cannot bind it still serves players.
   const channelPort = coreChannelPort();
-  const coreChannel = await startCoreChannel(gw, channelPort).catch((err: Error) => {
+  const coreChannel = await startCoreChannel(gw, channelPort, {}, undefined, edgeRelay ?? undefined).catch((err: Error) => {
+    if (edgeRelay) throw new Error(`MMO_EDGE=1 needs the core channel on 127.0.0.1:${channelPort}: ${err.message}`);
     console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
     return null;
   });
-  if (coreChannel) console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  if (coreChannel) {
+    toEdge.push = (type, payload) => coreChannel.server.pushToAll(type, payload);
+    console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  }
+  const port = await gw.listen();
   gw.startTicking();
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse
@@ -1477,7 +1539,8 @@ async function main(): Promise<void> {
       /* already gone */
     }
   });
-  console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
+  if (edgeRelay) console.log(`[server] listening on the edge: players connect to the edge's game port, relayed over the core channel :${port}; no player port here`);
+  else console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
   console.log(`[server] ${pcg ? pcg.summary : "no PCG asset library (MMO_PCG_ASSETS)"}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +

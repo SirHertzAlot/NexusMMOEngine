@@ -97,6 +97,8 @@ export class GatheringSystem implements SimSystem {
   private changed = new Set<Node>();
   private reachM: number;
   private cooldownMs: number;
+  /** How long one gather takes, seconds (the cast bar); set by setRules. */
+  castSeconds = 0;
   private pouchMax: number;
   private trainPerTier: number;
   private regrowCheckSeconds: number;
@@ -117,6 +119,7 @@ export class GatheringSystem implements SimSystem {
   setRules(r: GatheringRules): void {
     this.reachM = r.reachM;
     this.cooldownMs = r.cooldownSeconds * 1000;
+    this.castSeconds = r.castSeconds;
     this.pouchMax = r.pouchMax;
     this.trainPerTier = r.trainDifficultyPerTier;
     this.regrowCheckSeconds = r.regrowCheckSeconds;
@@ -144,7 +147,7 @@ export class GatheringSystem implements SimSystem {
   }
 
   /** Gather once from node `eid` as character `holder`, whose avatar is entity `avatar`. */
-  gather(_sim: SimWorld, holder: number, avatar: number, eid: number): GatherResult {
+  gather(_sim: SimWorld, holder: number, avatar: number, eid: number, dryRun = false): GatherResult {
     const node = eid < 0 ? undefined : this.nodes.get(eid);
     if (!node) return { ok: false, error: "nothing to gather there" };
     const dx = Math.max(0, Math.abs(Transform.px[eid]! - Transform.px[avatar]!) - node.halfX);
@@ -160,6 +163,7 @@ export class GatheringSystem implements SimSystem {
     const pouch = this.pouchOf(holder);
     const have = pouch.get(node.material) ?? 0;
     if (have >= this.pouchMax) return { ok: false, error: `your pouch holds no more ${node.name.toLowerCase()}` };
+    if (dryRun) return { ok: true, material: node.material, name: node.name, count: 0 };
     this.lastGather.set(holder, now);
     node.stock -= 1;
     if (node.stock === 0) node.regrowAt = node.regrowHours > 0 ? now + node.regrowHours * this.regrowHourMs : null;
@@ -209,6 +213,11 @@ export class GatheringSystem implements SimSystem {
       .map(([material, count]) => ({ material, name: materialName(material), tier: BUILTIN_MATERIALS[material]?.tier ?? this.tierOf(material), count }))
       .sort((a, b) => b.tier - a.tier || a.name.localeCompare(b.name));
     return { kind: "pouch", materials, ...(gathered ? { gathered } : {}) };
+  }
+
+  /** Drop `holder`'s cached pouch: the store was just given the world's copy (PL3b), read it again on next touch. */
+  forgetPouch(holder: number): void {
+    this.pouches.delete(holder);
   }
 
   /** How many of `material` character `holder` has. */

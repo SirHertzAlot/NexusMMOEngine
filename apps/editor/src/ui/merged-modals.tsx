@@ -27,7 +27,15 @@
 import * as React from "react";
 import { EmptyState, MIcon } from "./components.js";
 import { CharacterRecordPanel } from "./character-view.js";
-import { StoryEditorPanel } from "./story-editor.js";
+
+// The story module's editor panel lives with the module (roadmap EA13), outside this package's source root, so it is
+// loaded the way the modules panel loads module editors: by glob, when the dialogue tab is first opened.
+const storyEditor = import.meta.glob<{ StoryEditorPanel: React.ComponentType }>("../../../../modules/story/editor/story-editor.tsx");
+const StoryEditorPanel = React.lazy(async () => {
+  const load = Object.values(storyEditor)[0];
+  if (!load) throw new Error("the story module's editor is not installed");
+  return { default: (await load()).StoryEditorPanel };
+});
 import { ShellDialog } from "./shell-dialogs.js";
 
 // ---------------------------------------------------------------- ModalTabs
@@ -169,7 +177,11 @@ export function QuestGiverModal({ title, onClose }: MergedModalProps): React.JSX
           shows="The future quest-list widget (quests module) will show the quests this NPC gives, with objectives and rewards."
         />
       )}
-      {tab === "dialogue" && <StoryEditorPanel />}
+      {tab === "dialogue" && (
+        <React.Suspense fallback={<EmptyState icon="account_tree" title="Loading the dialogue editor" body="One moment." />}>
+          <StoryEditorPanel />
+        </React.Suspense>
+      )}
     </ShellDialog>
   );
 }

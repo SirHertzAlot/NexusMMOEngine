@@ -26,8 +26,11 @@ import type {
   LootGrantInput,
   MigrationRecord,
   MigrationState,
+  PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
+  SocialKind,
+  SocialRecord,
   StoredDungeonRun,
   StoredLedgerEvent,
   TradeCommitInput,
@@ -172,6 +175,27 @@ export class MemoryWorldStore implements WorldStore {
   private characterStates = new Map<number, CharacterStateRecord>();
   private characterLocks = new Map<number, CharacterSessionLock>();
   private characterLockEpochs = new Map<number, number>();
+  private socialRecords = new Map<string, SocialRecord>();
+  private socialIds = new Map<string, number>();
+
+  async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {
+    const r = this.socialRecords.get(`${kind}:${key}`);
+    return r ? { ...r } : null;
+  }
+
+  async putSocialRecord(r: SocialRecord): Promise<void> {
+    this.socialRecords.set(`${r.kind}:${r.key}`, { ...r });
+  }
+
+  async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    return [...this.socialRecords.values()].filter((r) => r.kind === kind).map((r) => ({ ...r }));
+  }
+
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    const first = (this.socialIds.get(kind) ?? 0) + 1;
+    this.socialIds.set(kind, first + count - 1);
+    return Array.from({ length: count }, (_, i) => first + i);
+  }
 
   async issueRangeEpoch(rangeKey: string): Promise<number> {
     const next = (this.rangeEpochs.get(rangeKey) ?? 0) + 1;
@@ -296,6 +320,9 @@ export class MemoryWorldStore implements WorldStore {
     for (const r of outcome.commit.records) {
       this.characterStates.set(r.characterId, structuredClone(r));
     }
+    for (const c of outcome.commit.pendingCredits ?? []) {
+      this.pendingCredits.push({ ...c, createdAt: now });
+    }
     this.atomicLedgerEntries.push(...entries);
     return {
       ok: true,
@@ -348,6 +375,49 @@ export class MemoryWorldStore implements WorldStore {
 
   async getAtomicLedger(): Promise<AtomicLedgerEntry[]> {
     return this.atomicLedgerEntries.map((e) => ({ ...e }));
+  }
+
+  // -- pending credits (fleet auction parity) --
+
+  private pendingCredits: PendingCredit[] = [];
+
+  async listPendingCredits(characterId: number): Promise<PendingCredit[]> {
+    return this.pendingCredits
+      .filter((c) => c.characterId === characterId)
+      .sort((a, b) => a.createdAt - b.createdAt || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0))
+      .map((c) => ({ ...c }));
+  }
+
+  /**
+   * The credit drain, as one synchronous fold (no awaits mid-fold,
+   * mirroring runAtomic's critical section): every pending credit
+   * for the character lands in its current record at once, or —
+   * no record, no numeric gold, no credits — nothing is consumed.
+   */
+  async applyPendingCredits(
+    characterId: number,
+  ): Promise<{ total: number; record: CharacterStateRecord | null }> {
+    const current = this.characterStates.get(characterId) ?? null;
+    if (current === null) return { total: 0, record: null };
+    const credits = this.pendingCredits.filter((c) => c.characterId === characterId);
+    const state =
+      current.state !== null && typeof current.state === "object" && !Array.isArray(current.state)
+        ? (current.state as Record<string, unknown>)
+        : null;
+    const gold = state?.["gold"];
+    if (credits.length === 0 || state === null || typeof gold !== "number" || !Number.isFinite(gold)) {
+      return { total: 0, record: { ...current } };
+    }
+    const total = credits.reduce((sum, c) => sum + c.amount, 0);
+    const updated: CharacterStateRecord = {
+      ...current,
+      state: { ...state, gold: gold + total },
+      version: current.version + 1,
+      updatedAt: Date.now(),
+    };
+    this.characterStates.set(characterId, structuredClone(updated));
+    this.pendingCredits = this.pendingCredits.filter((c) => c.characterId !== characterId);
+    return { total, record: structuredClone(updated) };
   }
 
   // -- host reports (persistence P5) --

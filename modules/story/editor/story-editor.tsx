@@ -17,7 +17,7 @@ import { checkStoryRemote, loadStory, saveStory } from "../../../apps/editor/src
 import {
   addDialogNode, addReply, deleteDialogNode, dialogGraph, questGraph, renameDialogNode, startTest,
   type DialogDoc, type DialogReply, type DialogTest, type MockState, type QuestDoc, type QuestState, type QuestsDoc,
-} from "../story-model.js";
+} from "../../../apps/editor/src/story-model.js";
 import type { StoryFile, StoryFiles, StoryIssue } from "../../../apps/editor/src/story-validate.js";
 import { Button, Input, Select, Field } from "../../../apps/editor/src/ui/components.js";
 import { useDocActions } from "../../../apps/editor/src/ui/doc-actions.js";

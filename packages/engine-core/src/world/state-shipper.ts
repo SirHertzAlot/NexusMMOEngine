@@ -40,6 +40,9 @@ import type { ItemLedger, LedgerEventRow } from "../persist/item-ledger.js";
  * instead of arriving as one giant request.
  */
 export const LEDGER_BATCH_MAX_EVENTS = 512;
+
+/** Tier 2 cadence: one snapshot upload per range every 300 ticks (10 s at 30 Hz), however often the region saves. */
+export const SNAPSHOT_UPLOAD_EVERY_TICKS = 300;
 export const LEDGER_BATCH_MAX_BYTES = 512 * 1024;
 
 /** The slice of WorldClient the shipper needs (tests substitute a fake). */
@@ -58,9 +61,14 @@ export interface StatePlaneClient {
 export interface ShardStateShipperOptions {
   client: StatePlaneClient;
   ledger: ItemLedger;
-  /** Checkpoint cadence in ticks (the store's saveEveryTicks). */
+  /** Upload cadence in ticks (SNAPSHOT_UPLOAD_EVERY_TICKS in the server). */
   snapshotIntervalTicks: number;
   log?: (line: string) => void;
+  /**
+   * The range's place state outside the ECS (PL3a: resource node stocks), read when a checkpoint is
+   * offered and uploaded with it as `places`. Recall seeds it back (state-recall.ts).
+   */
+  places?: () => Record<string, unknown>;
 }
 
 /** A checkpoint waiting for its phase-offset upload slot. */
@@ -70,8 +78,12 @@ interface PendingSnapshot {
   digest: string;
   /** The exact bytes the local save persisted. */
   bytes: Uint8Array;
-  /** sha256 of `bytes` — the skip comparison and payload provenance. */
+  /** sha256 of `bytes`: the payload's provenance (recall checks it). */
   contentHash: string;
+  /** The range's places at the same save, if the server ships any. */
+  places: Record<string, unknown> | undefined;
+  /** sha256 of the bytes and the places: an upload is skipped when this matches the last acked. */
+  skipKey: string;
   /** First tick at which this snapshot may be uploaded. */
   dueTick: number;
 }
@@ -99,6 +111,7 @@ export class ShardStateShipper {
   private readonly ledger: ItemLedger;
   private readonly snapshotIntervalTicks: number;
   private readonly log: (line: string) => void;
+  private readonly places: (() => Record<string, unknown>) | undefined;
   /** Deterministic in [0, snapshotIntervalTicks): hash of the rangeKey. */
   private readonly phaseOffsetTicks: number;
 
@@ -115,6 +128,7 @@ export class ShardStateShipper {
     this.ledger = opts.ledger;
     this.snapshotIntervalTicks = Math.max(1, opts.snapshotIntervalTicks);
     this.log = opts.log ?? (() => {});
+    this.places = opts.places;
     const h = crypto.createHash("sha256").update(this.client.rangeKey).digest();
     this.phaseOffsetTicks = h.readUInt32BE(0) % this.snapshotIntervalTicks;
   }
@@ -142,13 +156,22 @@ export class ShardStateShipper {
    * re-offer and ignored.
    */
   offerSnapshot(tick: number, digest: string, bytes: Uint8Array): void {
-    if (this.pendingSnapshot && tick <= this.pendingSnapshot.tick) return;
+    const pending = this.pendingSnapshot;
+    if (pending && tick <= pending.tick) return;
+    const every = this.snapshotIntervalTicks;
+    const contentHash = crypto.createHash("sha256").update(bytes).digest("hex");
+    const places = this.places?.();
     this.pendingSnapshot = {
       tick,
       digest,
       bytes,
-      contentHash: crypto.createHash("sha256").update(bytes).digest("hex"),
-      dueTick: tick + this.phaseOffsetTicks,
+      contentHash,
+      places,
+      skipKey: places === undefined ? contentHash : crypto.createHash("sha256").update(contentHash).update(JSON.stringify(places)).digest("hex"),
+      // The range's next slot (k * interval + phase). A fresher offer takes over a pending one's
+      // slot and never pushes it back: saves come far oftener than uploads (every second), and a
+      // slot that moved with each offer never came due.
+      dueTick: pending?.dueTick ?? tick + (((this.phaseOffsetTicks - (tick % every)) % every) + every) % every,
     };
   }
 
@@ -204,8 +227,8 @@ export class ShardStateShipper {
   private async shipDueSnapshot(currentTick: number): Promise<void> {
     const pending = this.pendingSnapshot;
     if (!pending || currentTick < pending.dueTick) return;
-    if (pending.contentHash === this.lastAckedSnapshotHash) {
-      // Unchanged world: the world already holds these exact bytes.
+    if (pending.skipKey === this.lastAckedSnapshotHash) {
+      // Unchanged world: the world already holds these exact bytes and places.
       this.pendingSnapshot = null;
       this.log(
         `world snapshot tick ${pending.tick} skipped (content unchanged)`,
@@ -219,10 +242,11 @@ export class ShardStateShipper {
         format: "flatbuffers-base64",
         contentHash: pending.contentHash,
         data: Buffer.from(pending.bytes).toString("base64"),
+        ...(pending.places !== undefined ? { places: pending.places } : {}),
       },
     });
     if (!stored) return; // stays pending; retried until superseded
-    this.lastAckedSnapshotHash = pending.contentHash;
+    this.lastAckedSnapshotHash = pending.skipKey;
     if (this.pendingSnapshot === pending) this.pendingSnapshot = null;
     this.log(`world snapshot tick ${pending.tick} uploaded`);
   }

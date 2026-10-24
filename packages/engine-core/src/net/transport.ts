@@ -44,6 +44,16 @@ export interface WireSocket {
    * moving onto a re-attached session). `close` fires once.
    */
   listen(on: SocketListener): void;
+  /**
+   * Join a publish topic (Phase 5, Part A): the socket then receives
+   * Transport.publish(topic, bytes). Joining twice is a no-op.
+   */
+  subscribe(topic: string): void;
+  /**
+   * Leave a publish topic. Leaving a topic never joined is a no-op.
+   * A closed socket's subscriptions die with it.
+   */
+  unsubscribe(topic: string): void;
 }
 
 export interface SocketListener {
@@ -94,11 +104,21 @@ export interface TransportHandlers {
 }
 
 export interface Transport {
-  readonly kind: "uws" | "ws";
+  /** "edge": the players' sockets are the edge's, relayed over the channel (channel-transport.ts). */
+  readonly kind: "uws" | "ws" | "edge";
   /** Bind `port` (0: any free port); resolves with the port bound. */
   listen(port: number, handlers: TransportHandlers): Promise<number>;
   /** Stop listening and drop every connection on the port. */
   close(): Promise<void>;
+  /**
+   * Fan `bytes` out to every socket subscribed to `topic` (Phase 5,
+   * Part A): one call replaces one send per subscriber. uWS publishes
+   * natively; `ws` emulates it with a subscriber loop. The bytes are
+   * never mutated, so the same buffer may be published to several
+   * topics. A no-op for a topic with no subscribers, and before
+   * listen() / after close().
+   */
+  publish(topic: string, bytes: Uint8Array): void;
 }
 
 export type TransportKind = "auto" | "uws" | "ws";
@@ -140,16 +160,54 @@ const NO_LISTENER: SocketListener = { message() {}, close() {} };
 
 // ---------------------------------------------------------------- ws
 
+/**
+ * The `ws` fallback's topic registry (Phase 5 pub/sub): uWS fans out
+ * natively, but `ws` has no publish, so the transport tracks who
+ * subscribed to what and publish() loops over the topic's members.
+ * Members are dropped when their socket closes (forget), so a dead
+ * socket never holds a subscription.
+ */
+class TopicRegistry {
+  private readonly topics = new Map<string, Set<WsSocket>>();
+
+  subscribe(s: WsSocket, topic: string): void {
+    let members = this.topics.get(topic);
+    if (!members) {
+      members = new Set();
+      this.topics.set(topic, members);
+    }
+    members.add(s);
+  }
+
+  unsubscribe(s: WsSocket, topic: string): void {
+    this.topics.get(topic)?.delete(s);
+  }
+
+  forget(s: WsSocket): void {
+    for (const members of this.topics.values()) members.delete(s);
+  }
+
+  /** A snapshot: publish never iterates a live set a send could mutate. */
+  members(topic: string): WsSocket[] {
+    return [...(this.topics.get(topic) ?? [])];
+  }
+}
+
 class WsSocket implements WireSocket {
   private on: SocketListener = NO_LISTENER;
   private closed = false;
 
-  constructor(private readonly ws: WebSocket, readonly remoteIp: string) {
+  constructor(
+    private readonly ws: WebSocket,
+    readonly remoteIp: string,
+    private readonly registry: TopicRegistry,
+  ) {
     ws.on("message", (data: WebSocket.RawData) => this.on.message(toBytes(data)));
     ws.on("close", () => {
       if (this.closed) return;
       this.closed = true;
       this.on.close();
+      this.registry.forget(this);
     });
     ws.on("error", () => {
       /* the close event follows and does the cleanup */
@@ -170,6 +228,14 @@ class WsSocket implements WireSocket {
 
   listen(on: SocketListener): void {
     this.on = on;
+  }
+
+  subscribe(topic: string): void {
+    this.registry.subscribe(this, topic);
+  }
+
+  unsubscribe(topic: string): void {
+    this.registry.unsubscribe(this, topic);
   }
 }
 
@@ -244,6 +310,13 @@ export class WsTransport implements Transport {
   private wss: WebSocketServer | null = null;
   /** Every socket on the port (HTTP and upgraded): closed with the transport. */
   private readonly sockets = new Set<Socket>();
+  /** Phase 5 pub/sub registry for the `ws` fallback. */
+  private readonly registry = new TopicRegistry();
+
+  /** Fan `bytes` out to `topic`'s subscribers (emulated: one send per member). */
+  publish(topic: string, bytes: Uint8Array): void {
+    for (const s of this.registry.members(topic)) s.send(bytes);
+  }
 
   async listen(port: number, handlers: TransportHandlers): Promise<number> {
     if (this.server) throw new Error("transport: already listening");
@@ -258,7 +331,7 @@ export class WsTransport implements Transport {
     });
     const wss = new WebSocketServer({ server, maxPayload: handlers.maxMessageBytes ?? MAX_MESSAGE_BYTES });
     wss.on("connection", (ws: WebSocket, req: IncomingMessage) =>
-      handlers.connection(new WsSocket(ws, req.socket.remoteAddress ?? "unknown")),
+      handlers.connection(new WsSocket(ws, req.socket.remoteAddress ?? "unknown", this.registry)),
     );
     this.server = server;
     this.wss = wss;
@@ -306,6 +379,8 @@ interface UwsApp {
   any(pattern: string, handler: (res: UwsResponse, req: UwsRequest) => void): UwsApp;
   listen(port: number, cb: (token: unknown) => void): UwsApp;
   close?(): UwsApp;
+  /** Native fan-out to a topic's subscribers (Phase 5, Part A). */
+  publish(topic: string, message: Uint8Array, isBinary?: boolean, compress?: boolean): boolean;
 }
 
 interface UwsRequest {
@@ -334,6 +409,10 @@ interface UwsWebSocket {
   send(message: Uint8Array, isBinary?: boolean, compress?: boolean): number;
   end(code?: number, reason?: string): void;
   close(): void;
+  /** Join a publish topic (Phase 5, Part A). */
+  subscribe(topic: string): boolean;
+  /** Leave a publish topic. */
+  unsubscribe(topic: string): boolean;
 }
 
 interface UwsSocketData {
@@ -371,6 +450,15 @@ class UwsSocket implements WireSocket {
   /** Drop the connection at once (shutdown). */
   terminate(): void {
     if (!this.closed) this.ws.close();
+  }
+
+  subscribe(topic: string): void {
+    // A closed uWS socket must never be touched (native use-after-free guard).
+    if (!this.closed) this.ws.subscribe(topic);
+  }
+
+  unsubscribe(topic: string): void {
+    if (!this.closed) this.ws.unsubscribe(topic);
   }
 
   listen(on: SocketListener): void {
@@ -498,6 +586,11 @@ export class UwsTransport implements Transport {
   private readonly sockets = new Set<UwsSocket>();
 
   constructor(private readonly uws: UwsModule) {}
+
+  /** Native fan-out to `topic`'s subscribers (Phase 5, Part A). No-op before listen(). */
+  publish(topic: string, bytes: Uint8Array): void {
+    this.app?.publish(topic, bytes, true, false);
+  }
 
   async listen(port: number, handlers: TransportHandlers): Promise<number> {
     if (this.app) throw new Error("transport: already listening");

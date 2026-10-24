@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@surrealdb/node": "^3.0.3",
     "argon2": "^0.45.1",
     "express": "^5.1.0",
     "surrealdb": "^2.0.8",
@@ -19,7 +20,7 @@
     "db": "surreal start --user root --pass root --bind 127.0.0.1:8000 rocksdb:./data/surrealdb",
     "server": "npm run build && node dist/src/server.js",
     "sidecar": "npm run build && node dist/src/host-sidecar.js",
-    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+    "test": "npm run build && node --test --test-force-exit \"dist/test/**/*.test.js\""
   },
   "type": "module",
   "types": "dist/src/index.d.ts",

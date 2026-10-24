@@ -8,3 +8,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): EdgeConfig {
   };
   return { httpPort: p("EDGE_HTTP_PORT", 3000), wsPort: p("EDGE_WS_PORT", 3001), coreChannelPort: p("CORE_CHANNEL_PORT", 4000) };
 }
+
+/** EDGE_GAME_PORT: the players' port this edge relays to the core (E3b, game-relay.ts); unset, none. */
+export function gamePort(env: NodeJS.ProcessEnv = process.env): number | null {
+  const raw = env.EDGE_GAME_PORT;
+  if (raw === undefined || raw === "") return null;
+  const n = parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`Invalid port in EDGE_GAME_PORT: ${raw}`);
+  return n;
+}

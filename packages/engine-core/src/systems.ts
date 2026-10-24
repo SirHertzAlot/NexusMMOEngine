@@ -507,24 +507,49 @@ export interface PhysicsBackend {
   readonly name: string;
   addBodies(batch: PhysicsAddBatch): void;
   removeBodies(entityIds: BigUint64Array): void;
+  /**
+   * Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
+   * component arrays, indexed by eids[i]. entityIds[i] is the wire id
+   * for the native body lookup. The backend reads kinematic/teleport
+   * targets directly from the component arrays — no scratch gather.
+   */
   syncBodies(
     count: number,
     entityIds: BigUint64Array,
-    pos: Float32Array,
-    quat: Float32Array,
-    linVel: Float32Array,
-    angVel: Float32Array,
+    eids: Int32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    qx: Float32Array,
+    qy: Float32Array,
+    qz: Float32Array,
+    qw: Float32Array,
     flags: Uint8Array,
     dtSeconds: number,
   ): void;
   step(dtSeconds: number, subSteps: number): void;
+  /**
+   * Phase 2 (zero-copy): px..az are the SAB-backed bitECS Transform +
+   * Velocity component arrays, indexed by eids[i]. The backend writes
+   * results directly into them — no dense scratch, no JS copy-back.
+   */
   copyResults(
     count: number,
     entityIds: BigUint64Array,
-    pos: Float32Array,
-    quat: Float32Array,
-    linVel: Float32Array,
-    angVel: Float32Array,
+    eids: Int32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    qx: Float32Array,
+    qy: Float32Array,
+    qz: Float32Array,
+    qw: Float32Array,
+    lx: Float32Array,
+    ly: Float32Array,
+    lz: Float32Array,
+    ax: Float32Array,
+    ay: Float32Array,
+    az: Float32Array,
   ): void;
   bodyCount(): number;
   destroy(): void;
@@ -612,16 +637,10 @@ export class PhysicsSystem implements SimSystem {
   };
   private remIds = new BigUint64Array(0);
   private syncIds = new BigUint64Array(0);
-  private syncPos = new Float32Array(0);
-  private syncQuat = new Float32Array(0);
-  private syncZero = new Float32Array(0);
+  private syncEids = new Int32Array(0);
   private syncFlags = new Uint8Array(0);
   private copyIds = new BigUint64Array(0);
   private copyEids = new Int32Array(0);
-  private copyPos = new Float32Array(0);
-  private copyQuat = new Float32Array(0);
-  private copyLin = new Float32Array(0);
-  private copyAng = new Float32Array(0);
 
   /**
    * @param backend injected physics backend (Jolt addon or mock).
@@ -750,6 +769,9 @@ export class PhysicsSystem implements SimSystem {
 
     // Sync: kinematic bodies follow the JS-side transform every tick;
     // dynamic bodies only when teleported. Static bodies are skipped.
+    // Phase 2 (zero-copy): only id/eid/flag lists are built here — the
+    // backend reads Transform directly from the SAB-backed component
+    // arrays, so there is no scratch gather.
     let syncN = 0;
     const teleports = this.teleports;
     for (let w = 0; w < nextIds.length; w++) {
@@ -758,13 +780,7 @@ export class PhysicsSystem implements SimSystem {
       const isTele = teleports.has(nextIds[w]);
       if (mt === MotionType.Kinematic || (mt === MotionType.Dynamic && isTele)) {
         this.syncIds[syncN] = nextIds[w];
-        this.syncPos[syncN * 3] = T.px[e];
-        this.syncPos[syncN * 3 + 1] = T.py[e];
-        this.syncPos[syncN * 3 + 2] = T.pz[e];
-        this.syncQuat[syncN * 4] = T.qx[e];
-        this.syncQuat[syncN * 4 + 1] = T.qy[e];
-        this.syncQuat[syncN * 4 + 2] = T.qz[e];
-        this.syncQuat[syncN * 4 + 3] = T.qw[e];
+        this.syncEids[syncN] = e;
         this.syncFlags[syncN] = isTele ? SYNC_FLAG_TELEPORT : 0;
         syncN++;
       }
@@ -774,10 +790,8 @@ export class PhysicsSystem implements SimSystem {
       this.backend.syncBodies(
         syncN,
         this.syncIds.subarray(0, syncN),
-        this.syncPos.subarray(0, syncN * 3),
-        this.syncQuat.subarray(0, syncN * 4),
-        this.syncZero.subarray(0, syncN * 3),
-        this.syncZero.subarray(0, syncN * 3),
+        this.syncEids.subarray(0, syncN),
+        T.px, T.py, T.pz, T.qx, T.qy, T.qz, T.qw,
         this.syncFlags.subarray(0, syncN),
         dtSeconds,
       );
@@ -797,30 +811,16 @@ export class PhysicsSystem implements SimSystem {
       copyN++;
     }
     if (copyN > 0) {
+      // Phase 2 (zero-copy): the backend writes results directly into
+      // the SAB-backed Transform + Velocity component arrays. No dense
+      // scratch, no JS copy-back loop.
       this.backend.copyResults(
         copyN,
         this.copyIds.subarray(0, copyN),
-        this.copyPos.subarray(0, copyN * 3),
-        this.copyQuat.subarray(0, copyN * 4),
-        this.copyLin.subarray(0, copyN * 3),
-        this.copyAng.subarray(0, copyN * 3),
+        this.copyEids.subarray(0, copyN),
+        T.px, T.py, T.pz, T.qx, T.qy, T.qz, T.qw,
+        V.lx, V.ly, V.lz, V.ax, V.ay, V.az,
       );
-      for (let k = 0; k < copyN; k++) {
-        const e = this.copyEids[k];
-        T.px[e] = this.copyPos[k * 3];
-        T.py[e] = this.copyPos[k * 3 + 1];
-        T.pz[e] = this.copyPos[k * 3 + 2];
-        T.qx[e] = this.copyQuat[k * 4];
-        T.qy[e] = this.copyQuat[k * 4 + 1];
-        T.qz[e] = this.copyQuat[k * 4 + 2];
-        T.qw[e] = this.copyQuat[k * 4 + 3];
-        V.lx[e] = this.copyLin[k * 3];
-        V.ly[e] = this.copyLin[k * 3 + 1];
-        V.lz[e] = this.copyLin[k * 3 + 2];
-        V.ax[e] = this.copyAng[k * 3];
-        V.ay[e] = this.copyAng[k * 3 + 1];
-        V.az[e] = this.copyAng[k * 3 + 2];
-      }
     }
   }
 
@@ -876,16 +876,10 @@ export class PhysicsSystem implements SimSystem {
     this.addAng = new Float32Array(cap * 3);
     this.remIds = new BigUint64Array(cap);
     this.syncIds = new BigUint64Array(cap);
-    this.syncPos = new Float32Array(cap * 3);
-    this.syncQuat = new Float32Array(cap * 4);
-    this.syncZero = new Float32Array(cap * 3);
+    this.syncEids = new Int32Array(cap);
     this.syncFlags = new Uint8Array(cap);
     this.copyIds = new BigUint64Array(cap);
     this.copyEids = new Int32Array(cap);
-    this.copyPos = new Float32Array(cap * 3);
-    this.copyQuat = new Float32Array(cap * 4);
-    this.copyLin = new Float32Array(cap * 3);
-    this.copyAng = new Float32Array(cap * 3);
     this.addDesc.entityIds = this.addIds;
     this.addDesc.shapeKind = this.addShape;
     this.addDesc.halfExtents = this.addHalf;
@@ -911,10 +905,14 @@ interface JoltAddonModule {
     syncBodies(
       count: number,
       entityIds: BigUint64Array,
-      pos: Float32Array,
-      quat: Float32Array,
-      linVel: Float32Array,
-      angVel: Float32Array,
+      eids: Int32Array,
+      px: Float32Array,
+      py: Float32Array,
+      pz: Float32Array,
+      qx: Float32Array,
+      qy: Float32Array,
+      qz: Float32Array,
+      qw: Float32Array,
       flags: Uint8Array,
       dt: number,
     ): void;
@@ -922,10 +920,20 @@ interface JoltAddonModule {
     copyResults(
       count: number,
       entityIds: BigUint64Array,
-      pos: Float32Array,
-      quat: Float32Array,
-      linVel: Float32Array,
-      angVel: Float32Array,
+      eids: Int32Array,
+      px: Float32Array,
+      py: Float32Array,
+      pz: Float32Array,
+      qx: Float32Array,
+      qy: Float32Array,
+      qz: Float32Array,
+      qw: Float32Array,
+      lx: Float32Array,
+      ly: Float32Array,
+      lz: Float32Array,
+      ax: Float32Array,
+      ay: Float32Array,
+      az: Float32Array,
     ): void;
     bodyCount(): number;
     destroy(): void;
@@ -954,11 +962,11 @@ export function createJoltBackend(): PhysicsBackend {
     name: "jolt",
     addBodies: (batch) => world.addBodies(batch),
     removeBodies: (entityIds) => world.removeBodies(entityIds),
-    syncBodies: (count, entityIds, pos, quat, linVel, angVel, flags, dt) =>
-      world.syncBodies(count, entityIds, pos, quat, linVel, angVel, flags, dt),
+    syncBodies: (count, entityIds, eids, px, py, pz, qx, qy, qz, qw, flags, dt) =>
+      world.syncBodies(count, entityIds, eids, px, py, pz, qx, qy, qz, qw, flags, dt),
     step: (dt, subSteps) => world.step(dt, subSteps),
-    copyResults: (count, entityIds, pos, quat, linVel, angVel) =>
-      world.copyResults(count, entityIds, pos, quat, linVel, angVel),
+    copyResults: (count, entityIds, eids, px, py, pz, qx, qy, qz, qw, lx, ly, lz, ax, ay, az) =>
+      world.copyResults(count, entityIds, eids, px, py, pz, qx, qy, qz, qw, lx, ly, lz, ax, ay, az),
     bodyCount: () => world.bodyCount(),
     destroy: () => world.destroy(),
     addTerrain: (key, originX, originZ, spacing, samples, friction) =>

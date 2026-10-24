@@ -85,8 +85,14 @@ export {
   attachChunkHeights,
   encodeSnapshot,
   encodeDelta,
+  encodeSnapshotFromSim,
+  encodeDeltaFromSim,
+  encodeFastDeltaFromSim,
+  encodeSnapshotSoA,
+  encodeDeltaSoA,
   decodeSnapshot,
   decodeDelta,
+  decodeFastDelta,
   DeltaTracker,
 } from "./snapshot.js";
 export type {
@@ -101,6 +107,7 @@ export type {
   AppearanceRow,
   ActionRow,
   CollectedState,
+  CollectedStateSoA,
   DiffResult,
 } from "./snapshot.js";
 
@@ -298,6 +305,7 @@ export type {
   WorldCharacterState,
   WorldCharacterSyncOptions,
   CharacterEconomyView,
+  CharacterExtrasView,
 } from "./world/character-sync.js";
 export {
   recallShardState,

@@ -512,6 +512,8 @@ export const GatheringSchema = z.strictObject({
   reachM: z.number().min(0).default(2.5),
   /** One gather per character this often, seconds. */
   cooldownSeconds: z.number().min(0).default(1.2),
+  /** How long one gather takes (the cast bar), seconds; 0 gathers at once. */
+  castSeconds: z.number().min(0).default(2),
   /** Most of one material a pouch holds. */
   pouchMax: z.number().int().min(1).default(999),
   /** A gather trains the node's skill at this difficulty per material tier (tier 2: twice it), capped at 1. */
