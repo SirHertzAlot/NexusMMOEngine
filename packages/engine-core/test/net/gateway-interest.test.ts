@@ -138,3 +138,32 @@ it("pinned: a foe far away stays visible through the pinned entry, and leaves wh
   await step(2, alice, bob);
   assert.ok(!alice.mirror.entities.has(bob.entity), "the pin ended: he left view");
 });
+
+it("interest all: an admin (the play debugger) sees everything; near again on request", async () => {
+  now = 1_000_000;
+  gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), interest: { enterM: 96, leaveM: 128 }, admins: ["alice"] });
+  const url = `ws://127.0.0.1:${await gw.listen()}`;
+  gw.frame(now);
+  const alice = await join(url, "alice");
+  const bob = await join(url, "user-a");
+  assert.equal(applyTeleport(gw.world, bob.entity, 1000, 1000, null).ok, true);
+  await step(2, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity));
+  const admin = (mode: string) => alice.client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "interest", args: { mode } }));
+  const ok = alice.client.waitFor(MessageType.Admin, 1);
+  admin("all");
+  await ok;
+  await step(2, alice, bob);
+  assert.ok(alice.mirror.entities.has(bob.entity), "all: bob 1.4 km away is shown");
+  const back = alice.client.waitFor(MessageType.Admin, 1);
+  admin("near");
+  await back;
+  await step(2, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity), "near: the player's view again");
+  // Bob is no admin: his request is refused and changes nothing.
+  const err = bob.client.waitFor(MessageType.Error, 1);
+  bob.client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "interest", args: { mode: "all" } }));
+  await err;
+  await step(2, alice, bob);
+  assert.ok(!bob.mirror.entities.has(alice.entity));
+});

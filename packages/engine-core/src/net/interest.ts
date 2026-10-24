@@ -94,6 +94,12 @@ export class SectorFrame {
     return b;
   }
 
+  /** Every sector something lives in now, plus "g" (the `all` mode's interest set). */
+  occupied(): Set<string> {
+    this.buckets ??= bucketAll(this.sim);
+    return new Set([GLOBAL_SECTOR, ...this.buckets.keys()]);
+  }
+
   /** A sector's full state now (every entity homed there, all rows), encoded once per tick. */
   full(sector: string): Uint8Array {
     let b = this.fulls.get(sector);

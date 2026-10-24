@@ -2139,7 +2139,9 @@ export class Gateway {
   private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    const next = eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
+    const next = s.interestAll && s.isAdmin
+      ? frame.occupied()
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
       ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
       : new Set([GLOBAL_SECTOR]);
     const entries: DeltaSetEntry[] = [];
@@ -2713,7 +2715,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2786,6 +2788,17 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "interest") {
+      // IM6: the play-mode debugger's "show everything / show what the player sees".
+      const mode = (cmd.args as { mode?: unknown } | undefined)?.mode;
+      if (mode !== "all" && mode !== "near") {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "interest: args.mode must be \"all\" or \"near\"");
+        return;
+      }
+      s.interestAll = mode === "all";
+      s.interestSet = null; // a full replace of the new view next tick
+      res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
     } else if (cmd.command === "noclip") {
       const parsed = NoclipArgsSchema.safeParse(cmd.args ?? {});
       if (!parsed.success) {

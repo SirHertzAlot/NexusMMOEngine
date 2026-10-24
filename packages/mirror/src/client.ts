@@ -171,6 +171,8 @@ function releasesPress(held: IntentFields, next: IntentFields): boolean {
 
 export class MirrorClient {
   readonly state = new MirrorState();
+  /** The sectors the server sends this client (interest management; "g" and "pin" included), from its DeltaSets. */
+  readonly interestSectors = new Set<string>();
   readonly interpolator = new Interpolator();
 
   playerEntity: bigint | null = null;
@@ -930,6 +932,11 @@ export class MirrorClient {
 
   private onDeltaSet(payload: Uint8Array): void {
     const set = decodeDeltaSet(payload);
+    if (set.replace) this.interestSectors.clear();
+    for (const e of set.entries) {
+      if (e.kind === DeltaSetKind.Full) this.interestSectors.add(e.sector);
+      else if (e.kind === DeltaSetKind.Leave) this.interestSectors.delete(e.sector);
+    }
     const entries = set.entries.map((e) => ({
       sector: e.sector,
       leave: e.kind === DeltaSetKind.Leave,

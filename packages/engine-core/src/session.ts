@@ -124,6 +124,8 @@ export interface ClientSession {
   sectorTopic: string | null;
   /** Interest management: the sectors this session sees; null = send it a full replace next tick. */
   interestSet?: Set<string> | null;
+  /** IM6: an admin's "show everything" (editor play debugger): every occupied sector. */
+  interestAll?: boolean;
   /** IM5: pinned wire ids sent through the pinned entry last tick (out of the interest sectors). */
   pinnedOut?: Set<bigint>;
   /** IM5: foes this session hit or was hit by, pinned until the tick given. */
