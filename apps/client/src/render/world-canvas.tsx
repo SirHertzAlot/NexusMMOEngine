@@ -209,7 +209,7 @@ const GATHER_PROMPT_RANGE = 2.3;
 const CHEST_PROMPT_RANGE = 3;
 
 /** The nearest unopened world chest within reach of the player (its wire id), or null. */
-function nearestChest(chests: ReadonlyMap<bigint, { x: number; z: number; open: boolean; kind?: "door" | "ruin" }>, p: { x: number; z: number } | null): bigint | null {
+function nearestChest(chests: ReadonlyMap<bigint, { x: number; z: number; open: boolean; kind?: "door" | "ruin" | "vendor" }>, p: { x: number; z: number } | null): bigint | null {
   if (!p) return null;
   let best: bigint | null = null;
   let bestD2 = CHEST_PROMPT_RANGE ** 2;

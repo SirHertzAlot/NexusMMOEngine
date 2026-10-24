@@ -148,6 +148,10 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     repairCount: { type: "number", default: 1, min: 1 },
     repairSeconds: { type: "number", default: 4, min: 0 },
   }),
+  /** A shop (IX8): the node is a vendor of the template in content/vendors.json; E opens its shop. */
+  Vendor: component("Vendor", {
+    template: { type: "string", default: "general-store" },
+  }),
   /** A door (IX3): E opens and shuts it; open, its collider is gone. Takes the same `castSeconds`, `requires` and `consume` as a Chest. */
   Door: component("Door", {
     castSeconds: { type: "number", default: 0, min: 0 },

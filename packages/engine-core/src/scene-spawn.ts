@@ -89,6 +89,8 @@ export interface SceneSpawnDeps {
   breakables?: { register(eid: number, key: string, def: BreakableDef): void };
   /** What a Structure `kind` breaks like when its node has no Breakable component of its own (content/structures.json): buildings, walls, gates. */
   structureBreakable?: (kind: string) => BreakableDef | undefined;
+  /** A shop (a node with a Vendor component): `attach` makes the spawned entity a vendor of the named template; returns an error text, or null. */
+  vendors?: { attach(eid: number, template: string): string | null };
   chests?: { register(eid: number, key: string, spec: { kind?: "chest" | "door"; table?: string; refillSeconds?: number; castSeconds?: number; requires?: { base: string; consume: boolean } }): void };
 }
 
@@ -282,6 +284,11 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             castSeconds: Number(chest.castSeconds ?? 0),
             ...(requires ? { requires: { base: requires, consume: chest.consume === true } } : {}),
           });
+        }
+        const shop = node.components?.Vendor;
+        if (shop && deps.vendors) {
+          const problem = deps.vendors.attach(building, str(shop.template));
+          if (problem) out.skipped.push({ id: node.id, reason: `vendor not attached: ${problem}` });
         }
         const brk = node.components?.Breakable;
         const byKind = !brk && deps.breakables ? deps.structureBreakable?.(kind) : undefined;

@@ -162,6 +162,29 @@
           "respawnSeconds": 120
         }
       }
+    },
+    {
+      "id": "shop-0",
+      "name": "Arena shop",
+      "transform": {
+        "position": [
+          -6,
+          0,
+          6
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "stall",
+          "asset": "",
+          "width": 2,
+          "depth": 1.2,
+          "height": 2
+        },
+        "Vendor": {
+          "template": "general-store"
+        }
+      }
     }
   ]
 }

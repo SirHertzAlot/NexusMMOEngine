@@ -4371,7 +4371,7 @@ export class Gateway {
     if (drops) this.deliver(s, drops, this.tick);
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
-    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? [])];
+    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world) ?? [])];
     if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
@@ -5458,6 +5458,11 @@ export class Gateway {
     return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
   }
 
+  /** The server's vendors (E opens a shop), if it runs any. */
+  private get vendors(): VendorSystem | undefined {
+    return this.systems.find((g): g is VendorSystem => g instanceof VendorSystem);
+  }
+
   /** The server's breakable props (ruins can be mended), if it runs any. */
   private get breaks(): BreakSystem | undefined {
     return this.systems.find((g): g is BreakSystem => g instanceof BreakSystem);
@@ -5516,7 +5521,10 @@ export class Gateway {
     const wire = parseEntityArg(a.entity);
     const eid = wire === null ? -1 : this.world.resolveWireId(wire);
     const holder = this.holderOf(s);
-    if (eid >= 0 && this.breaks?.hasRuin(eid)) {
+    if (eid >= 0 && this.vendors?.vendorOf(eid)) {
+      // A shop: the same list the vendor action answers with; buying and selling stay on 0x21.
+      this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
+    } else if (eid >= 0 && this.breaks?.hasRuin(eid)) {
       const breaks = this.breaks;
       if (this.casts.has(s)) return; // already casting one
       const check = breaks.checkRepair(holder, avatar, eid);

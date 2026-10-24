@@ -86,6 +86,8 @@ import {
   type ResourcesMessage,
   type ChestsMessage,
   type ChestView,
+  type VendorMessage,
+  type WalletMessage,
   decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -137,6 +139,10 @@ export interface MirrorEvents {
   onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
+  /** A shop answered (the price list when E opened it, or a buy / sell confirmed; protocol 0x21). */
+  onVendor?(v: VendorMessage): void;
+  /** The player's gold changed (protocol 0x21). */
+  onWallet?(w: WalletMessage): void;
   /** World chests were described or changed (all on joining; protocol 0x27). */
   onChests?(c: ChestsMessage): void;
   /** Resource nodes were described or changed stock (all on joining; protocol 0x24). */
@@ -225,6 +231,8 @@ export class MirrorClient {
   inventory: InventoryMessage | null = null;
   /** The resource nodes (catalog 0x24) by entity wire id: what each gives and how much it has left. */
   readonly resources = new Map<bigint, ResourceNodeView>();
+  /** The player's gold, once the server has said (protocol 0x21 wallet). */
+  wallet: number | null = null;
   /** World chests by wire id (protocol 0x27). */
   readonly chests = new Map<bigint, ChestView>();
   /** The player's materials pouch, from the last pouch message; null until one arrives. */
@@ -335,6 +343,18 @@ export class MirrorClient {
    * broadcasts have no reply; rejections arrive as ErrorMessage through
    * onError. The server trims, filters, and rate-limits.
    */
+  /** Buy one `def` from a shop (0x21); the server answers with the vendor and wallet messages, or a 4005 refusal. */
+  vendorBuy(vendor: string, def: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", action: "buy", vendor, def })));
+  }
+
+  /** Sell a bag item to a shop (0x21). */
+  vendorSell(vendor: string, item: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", action: "sell", vendor, item })));
+  }
+
   /**
    * Use something in the world (0x27, what E does): an entity (a world chest,
    * a ground item, a resource node), a quest giver by id (`{npc}`) or a dungeon
@@ -867,6 +887,15 @@ export class MirrorClient {
         } else {
           this.pouch = m;
           this.events.onPouch?.(m);
+        }
+        break;
+      }
+      case MessageType.Trade: {
+        const m = decodeControl<VendorMessage | WalletMessage | { kind: string }>(payload);
+        if (m.kind === "vendor") this.events.onVendor?.(m as VendorMessage);
+        else if (m.kind === "wallet") {
+          this.wallet = (m as WalletMessage).balance;
+          this.events.onWallet?.(m as WalletMessage);
         }
         break;
       }
