@@ -159,19 +159,20 @@ from what the fleet already has:
   avatar is within `enterM` of a live neighbour's range it sends the client a `Border` control message
   `{kind:"border", region, endpoint, ticket, exp}` (renewed before `exp`); past `leaveM` it sends
   `{kind:"border", region, endpoint, leave:true}`.
-- **Ticket:** `HMAC-SHA256(WORLD_API_KEY, "border|<region>|<account>|<exp>")`, 60 s. Every region of a fleet holds
+- **Ticket:** `HMAC-SHA256(WORLD_API_KEY, "border|<region>|<from>|<account>|<exp>")`, 60 s (`from` is the home
+  region). Every region of a fleet holds
   `WORLD_API_KEY` already (it registers with it), so the neighbour checks the ticket with no round trip.
 - **The neighbour serves an observer session.** The client opens a second socket to the neighbour's endpoint and says
-  hello with `observe: {region, account, exp, ticket}`. The neighbour welcomes it without a player entity; the session
+  hello with `observe: {region, from, account, exp, ticket}`. The neighbour welcomes it without a player entity; the session
   gets IM DeltaSets for an interest set anchored on a position the client reports (`{kind:"observe", x, z}`), and its
-  intents are refused. The neighbour clamps the anchor to within `enterM` of its own range, so an observer sees at most
-  the strip of its world a player at the border would see anyway.
+  intents are refused. The neighbour clamps the anchor into the home region's range, so an observer sees at most the
+  strip of its world a player at the border would see anyway.
 - **Wire ids stay apart:** each region's ids live in their own mirror (a second `MirrorClient`), so ids from two sims
   never collide; the client draws the observer's entities beside its own, read-only.
 - **Hand-off:** when the player migrates into the neighbour, the observer socket closes; the old home becomes the
   neighbour and the same messages start from the other side.
 - Without a fleet (a core alone, editor play, dungeon instances) no `Border` is ever sent.
-- ponytail: the observer anchor is client-reported (clamped to the border strip); a home-signed anchor per tick is the
+- ponytail: the observer anchor is client-reported (clamped into the home region); a home-signed anchor per tick is the
   upgrade if the strip leaks too much. Events (hits, casts) from the neighbour ride the observer session's interest
   like any other session's.
 
