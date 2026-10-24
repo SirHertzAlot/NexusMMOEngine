@@ -2,7 +2,9 @@
  * Residents module server entry (SG3b, R1).
  *
  * The baked towns' people in the world: for every settlement manifest whose town is in the boot scene
- * (its square node `square-<id>` is there), a town of residents whose days come from settlement's
+ * (its square node `square-<id>` is there), a town of residents; likewise every baked homestead,
+ * roadside inn and guard outpost of places.json whose node is in the scene (its family, keeper or
+ * guards, with the farm field or pen as the workplace). Days come from settlement's
  * `scheduleAt` and whose anchors are the scene's structure positions (a structure's node id is its
  * structure id). Off unless the scene and a manifest match, or when MMO_RESIDENTS=0.
  *
@@ -57,6 +59,27 @@ export function createSystems(ctx) {
       view,
       positionOf: (anchor) => (anchor === SQUARE ? square : positions.get(anchor)),
     });
+  }
+  // Homesteads, inns and outposts (SG7, SG8): each place is a little town of its own.
+  const placesFile = config.placesFile ?? join(config.manifestsDir, "places.json");
+  if (existsSync(placesFile)) {
+    const plan = JSON.parse(readFileSync(placesFile, "utf8"));
+    for (const place of plan.places ?? []) {
+      const house = positions.get(place.id);
+      if (!house || !place.members?.length) continue;
+      const field = place.works ? `${place.id}-${place.works}` : undefined;
+      const archetype = new Map([[place.id, place.kind === "homestead" ? "farmhouse" : place.kind === "inn" ? "inn" : place.kind]]);
+      if (field) archetype.set(field, place.works === "ranch" ? "ranch_pen" : "farm_field");
+      towns.push({
+        id: place.id,
+        centre: house,
+        radius: field ? 45 : 15,
+        npcs: place.members,
+        view: { archetypeOf: (id) => archetype.get(id), tavernNear: () => undefined },
+        // The family's "square" is the yard before the house.
+        positionOf: (anchor) => (anchor === SQUARE ? house : positions.get(anchor)),
+      });
+    }
   }
   if (towns.length === 0) return {};
 

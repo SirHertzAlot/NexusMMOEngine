@@ -33,7 +33,7 @@ export interface TownView {
 /** Archetypes where the work is done out in the open, or the keeper stands at the front. */
 export const OUTDOOR_ARCHETYPES: ReadonlySet<string> = new Set([
   "market", "farmstead", "master_farmstead", "sawmill", "fishery", "master_fishery", "mine", "guardhouse",
-  "watch_hq", "barracks", "park", "garden", "churchyard", "smithy", "master_smithy", "shop", "bakery", "master_bakery", "mill",
+  "watch_hq", "barracks", "guard_outpost", "farm_field", "ranch_pen", "park", "garden", "churchyard", "smithy", "master_smithy", "shop", "bakery", "master_bakery", "mill",
 ]);
 
 /** A stable 32-bit hash of a string (FNV-1a). */
