@@ -228,7 +228,8 @@ import type { RaidSettlement } from "./creatures.js";
 import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
-import { lineDef } from "./items/index.js";
+import { lineDef, rollTable } from "./items/index.js";
+import { ChestSystem } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
@@ -986,6 +987,16 @@ async function main(): Promise<void> {
   // Quests and dialog (P1): the gateway's "quest" extension and a system
   // checking places and bags; kills come through the death hook below.
   const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);
+  // World chests (IX1): scene Structures with a Chest component; opened chests drop their loot table at the chest.
+  let chestSeed = 20261024;
+  const chests = new ChestSystem({
+    drop: (s, table, x, z, owner) => {
+      const items = itemsOf();
+      const defs = rollTable(game.rules.loot.tables ?? {}, table, items.defs, rankOrder, () => (chestSeed = (Math.imul(chestSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
+      defs.forEach((def, i) => items.spawnDrop(s, def, x + Math.cos(i * 2.4) * 0.8, z + Math.sin(i * 2.4) * 0.8, owner));
+      return defs.length;
+    },
+  });
   // Quests and dialog (P1, slice 4): the quests module builds the service
   // from this config during assembly. See modules/quests/server.js.
   const questsConfig = {
@@ -1031,6 +1042,7 @@ async function main(): Promise<void> {
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
         resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
+        chests: { register: (eid, key, spec) => chests.register(eid, key, spec) },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -1147,6 +1159,7 @@ async function main(): Promise<void> {
         reloader,
         streamer,
         gathering,
+        chests,
       },
     },
     ctx: moduleCtx,

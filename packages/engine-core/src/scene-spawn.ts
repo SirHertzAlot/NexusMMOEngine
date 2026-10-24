@@ -84,6 +84,8 @@ export interface SceneSpawnDeps {
   quests?: { place(quest: string, x: number, z: number): string | null };
   /** Resource nodes (a Structure with a ResourceNode: tree stands, ore veins, fishing spots): `register` makes the spawned entity gatherable, keyed by scene and node id. */
   resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
+  /** World chests (a Structure with a Chest component: loot `table`, `refillSeconds`): `register` makes the spawned entity openable. */
+  chests?: { register(eid: number, key: string, spec: { table: string; refillSeconds: number }): void };
 }
 
 export interface SceneSpawnResult {
@@ -266,7 +268,11 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             halfZ: hd,
           });
         }
-        out.spawned.push({ id: node.id, what: resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
+        const chest = node.components?.Chest;
+        if (chest && deps.chests) {
+          deps.chests.register(building, `${doc.name}/${node.id}`, { table: str(chest.table), refillSeconds: Number(chest.refillSeconds ?? 600) });
+        }
+        out.spawned.push({ id: node.id, what: chest ? "chest" : resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
       }
       continue;
     }

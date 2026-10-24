@@ -29,6 +29,8 @@
   "interact.enter": "enter",
   "interact.withParty": "with your party",
   "interact.gather": "gather",
+  "interact.open": "open",
+  "interact.chest": "chest",
   "interact.left": "{count} left",
   "interact.workedOut": "worked out",
   "interact.backIn": "back in about {hours} h",
