@@ -36,7 +36,7 @@ export function secondsLeft(state: DungeonState, at: number, now: number): numbe
   return Math.max(0, state.secondsLeft - (now - at) / 1000);
 }
 
-/** Ids of the run's chests still closed (the HUD's open button). */
+/** Ids of the run's chests still closed. */
 export function unopenedChests(state: DungeonState | null): string[] {
   if (!state) return [];
   return state.chests.filter((c) => !c.opened).map((c) => c.id);
@@ -54,8 +54,8 @@ export function outcomeText(r: DungeonEnded): { title: string; tone: string; lin
   return { title: t(`dungeon.${r.outcome}.title`), tone: OUTCOME_TONE[r.outcome], line: t(`dungeon.${r.outcome}.line`), loot };
 }
 
-/** Top-centre while inside: the dungeon's name, the clock, what's left to kill, and the chest button. */
-export function DungeonHud({ run, onOpen }: { run: Extract<DungeonRun, { phase: "in" }>; onOpen: () => void }): React.ReactElement {
+/** Top-centre while inside: the dungeon's name, the clock, what's left to kill, and and the chests left (E opens one in reach). */
+export function DungeonHud({ run }: { run: Extract<DungeonRun, { phase: "in" }> }): React.ReactElement {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(performance.now()), 500);
@@ -74,16 +74,7 @@ export function DungeonHud({ run, onOpen }: { run: Extract<DungeonRun, { phase: 
           <span className={s.bossLeft > 0 ? "text-red-300" : "text-yellow-300"}>{s.bossLeft > 0 ? t("dungeon.bossAwaits") : t("dungeon.bossSlain")}</span>
         </div>
       )}
-      {closed.length > 0 && (
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={t("dungeon.openChestLabel", { count: closed.length })}
-          className="m3-focus pointer-events-auto mt-1.5 w-full rounded-full border border-amber-300/40 px-3 py-1 text-xs text-amber-200"
-        >
-          🎁 {t("dungeon.openChest", { count: closed.length })}
-        </button>
-      )}
+      {closed.length > 0 && <div className="mt-1 text-xs text-amber-200">🎁 {t("dungeon.chestsLeft", { count: closed.length })}</div>}
     </div>
   );
 }

@@ -3,10 +3,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { addComponent } from "bitecs";
-import { parseRules } from "@mmo-engine/rules";
+import { createHooks, parseRules } from "@mmo-engine/rules";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { NeedsSystem } from "../src/stats/needs-system.js";
+import { DeathSystem } from "../src/death.js";
 
 const DT = 1 / 30;
 const rules = parseRules({}).needs;
@@ -15,7 +16,7 @@ function setup(): { sim: SimWorld; e: number; sys: NeedsSystem; run(ticks: numbe
   SimWorld.resetEntityCursorForTesting();
   const sim = new SimWorld();
   const e = sim.spawn();
-  for (const c of [C.Needs, C.Health, C.PlayerIntent]) {
+  for (const c of [C.Needs, C.Health, C.PlayerIntent, C.Transform, C.Velocity]) {
     addComponent(sim.ecs, c, e);
     for (const store of Object.values(c) as unknown as Array<{ [i: number]: number }>) store[e] = 0;
   }
@@ -87,5 +88,41 @@ describe("NeedsSystem", () => {
     sys.step(sim, DT);
     assert.equal(C.Needs.hungerMax[e], 200);
     assert.equal(C.Needs.hunger[e], 100);
+  });
+
+  it("refills both meters when a starved player respawns", () => {
+    const { sim, e, sys } = setup();
+    const death = new DeathSystem(createHooks(parseRules({})), 30, undefined, undefined, () => 1);
+    C.Needs.hunger[e] = 0;
+    C.Needs.thirst[e] = 0;
+    C.Health.current[e] = 1;
+    for (let tick = 1; tick <= 3 * 30; tick++) {
+      sim.beginTick(tick);
+      death.step(sim);
+      sys.step(sim, DT);
+      sim.endTick();
+    }
+    assert.equal(C.Health.current[e], C.Health.max[e]);
+    assert.ok(C.Needs.hunger[e] > 99 && C.Needs.thirst[e] > 99, `hunger ${C.Needs.hunger[e]}, thirst ${C.Needs.thirst[e]}`);
+  });
+
+  it("refills thirst while standing at water, not on dry ground", () => {
+    const { sim, e } = setup();
+    // A lake with its surface at y=0 for x<10, no water beyond.
+    const sys = new NeedsSystem(rules, (x) => (x < 10 ? 0 : null));
+    const second = (tick: number): void => {
+      sim.beginTick(tick);
+      sys.step(sim, 1);
+      sim.endTick();
+    };
+    C.Needs.thirst[e] = 20;
+    C.Transform.px[e] = 5;
+    C.Transform.py[e] = 0.3; // at the edge, within reach
+    second(1);
+    assert.ok(Math.abs(C.Needs.thirst[e] - (20 - 3 / 60 + rules.drink.perSecond)) < 0.01, `thirst ${C.Needs.thirst[e]}`);
+    const before = C.Needs.thirst[e];
+    C.Transform.px[e] = 20; // dry ground
+    second(2);
+    assert.ok(C.Needs.thirst[e] < before);
   });
 });

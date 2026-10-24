@@ -317,7 +317,7 @@ describe("dungeon instance", () => {
     const base = `http://127.0.0.1:${port}`;
     const auth = { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` };
     const { assets } = (await (await fetch(`${base}/rpc/Pcg/ListAssets`, { method: "POST", headers: auth, body: "{}" })).json()) as { assets: { id: string; assetHash: number }[] };
-    assert.deepEqual(assets.map((a) => a.id).sort(), ["dungeon:barrel", "dungeon:grim-abc", "dungeon:pillar", "dungeon:sarcophagus", "dungeon:torch"], "the shell and one mesh per kind in the run; none for a kind with no table entry");
+    assert.deepEqual(assets.map((a) => a.id).sort(), ["dungeon:barrel", "dungeon:chest", "dungeon:chest-open", "dungeon:grim-abc", "dungeon:pillar", "dungeon:sarcophagus", "dungeon:torch"], "the shell and one mesh per kind in the run (and the chests it stands, closed and open); none for a kind with no table entry");
     const barrel = assets.find((a) => a.id === "dungeon:barrel")!;
     assert.equal(barrel.assetHash, fnv1a32("dungeon:barrel"), "listed under the hash its entities carry");
     const ask = await fetch(`${base}/rpc/Pcg/GetAssetMesh`, { method: "POST", headers: auth, body: JSON.stringify({ assetHash: barrel.assetHash, variant: 0 }) });
@@ -344,8 +344,8 @@ describe("dungeon instance", () => {
       const res = await fetch(`http://127.0.0.1:${port}/rpc/Pcg/ListAssets`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` }, body: "{}" });
       return res.status === 200 ? ((await res.json()) as { assets: { id: string }[] }).assets.map((a) => a.id) : [];
     };
-    assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, content.props), ["dungeon:pillar"]);
-    assert.deepEqual(await list(fixture(), content.props), [], "no props, no shell: no Pcg service to serve");
+    assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, content.props), ["dungeon:pillar", "dungeon:chest", "dungeon:chest-open"]);
+    assert.deepEqual(await list(fixture(), content.props), ["dungeon:chest", "dungeon:chest-open"], "no baked props, no shell: only the chests the run stands");
     assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, undefined), [], "no table: nothing spawns, nothing to serve");
   });
 
@@ -500,10 +500,10 @@ describe("dungeon instance", () => {
     // Stand on the chest and open it: its rolls join the result loot.
     C.Transform.px[avatar] = inst.chests[0].x;
     C.Transform.pz[avatar] = inst.chests[0].z;
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await until(() => inst.chests[0].opened);
     // Opening again finds it empty: still one opened chest, no run yet.
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await sleep(100);
     assert.equal(inst.chests.filter((ch) => ch.opened).length, 1);
     assert.equal(results.length, 0);
@@ -539,7 +539,7 @@ describe("dungeon instance", () => {
     const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
     C.Transform.px[avatar] = inst.chests[0].x;
     C.Transform.pz[avatar] = inst.chests[0].z;
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
     assert.deepEqual(
       ctl(c).filter((m) => m.op === "state").at(-1)!.chests,
@@ -678,7 +678,7 @@ describe("instance manager", () => {
     return { mgr, gw, results, granted, join };
   }
 
-  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "enter", entrance }));
+  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entrance }));
 
   it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
     const r = await region(content);

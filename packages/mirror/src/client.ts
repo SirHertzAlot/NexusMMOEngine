@@ -16,6 +16,9 @@
 import {
   decodeControl,
   decodeDelta,
+  decodeDeltaSet,
+  DeltaSetKind,
+  GLOBAL_SECTOR,
   decodeEnvelope,
   decodeSnapshot,
   encodeControl,
@@ -27,6 +30,8 @@ import {
   type AdminCommand,
   type AdminResult,
   type ByeMessage,
+  type BorderMessage,
+  type BorderTicket,
   type ChatBroadcast,
   type ChatChannel,
   type FriendMessage,
@@ -62,6 +67,7 @@ import {
   type SpellMessage,
   type HitMessage,
   type LifeMessage,
+  type TelegraphMessage,
   type IntentFields,
   type NamesMessage,
   type RegisterMessage,
@@ -79,6 +85,10 @@ import {
   type PouchMessage,
   type ResourceNodeView,
   type ResourcesMessage,
+  type ChestsMessage,
+  type ChestView,
+  type VendorMessage,
+  type WalletMessage,
   decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -130,6 +140,12 @@ export interface MirrorEvents {
   onWeather?(w: WeatherMessage): void;
   /** The player's bag changed (also on joining; roadmap M3a, protocol 0x14). */
   onInventory?(inv: InventoryMessage): void;
+  /** A shop answered (the price list when E opened it, or a buy / sell confirmed; protocol 0x21). */
+  onVendor?(v: VendorMessage): void;
+  /** The player's gold changed (protocol 0x21). */
+  onWallet?(w: WalletMessage): void;
+  /** World chests were described or changed (all on joining; protocol 0x27). */
+  onChests?(c: ChestsMessage): void;
   /** Resource nodes were described or changed stock (all on joining; protocol 0x24). */
   onResources?(r: ResourcesMessage): void;
   /** The player's materials pouch (on joining and after every gather; protocol 0x24). */
@@ -138,6 +154,8 @@ export interface MirrorEvents {
   onHit?(h: HitMessage): void;
   /** An entity died or came back (roadmap M2b/U12a, protocol 0x17). */
   onLife?(l: LifeMessage): void;
+  /** A ground warning was cast, landed or was cancelled (roadmap M5, protocol 0x1e). */
+  onTelegraph?(t: TelegraphMessage): void;
   /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
   onBody?(b: BodyMessage): void;
   /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
@@ -154,6 +172,8 @@ export interface MirrorEvents {
    * region's player entity; `url` is the server the client now talks to.
    */
   onRegionChange?(url: string): void;
+  /** Cross-region view (IM8): the home region says to observe a neighbour (or stop). */
+  onBorder?(msg: Extract<BorderMessage, { kind: "border" }>): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -168,6 +188,8 @@ function releasesPress(held: IntentFields, next: IntentFields): boolean {
 
 export class MirrorClient {
   readonly state = new MirrorState();
+  /** The sectors the server sends this client (interest management; "g" and "pin" included), from its DeltaSets. */
+  readonly interestSectors = new Set<string>();
   readonly interpolator = new Interpolator();
 
   playerEntity: bigint | null = null;
@@ -212,6 +234,10 @@ export class MirrorClient {
   inventory: InventoryMessage | null = null;
   /** The resource nodes (catalog 0x24) by entity wire id: what each gives and how much it has left. */
   readonly resources = new Map<bigint, ResourceNodeView>();
+  /** The player's gold, once the server has said (protocol 0x21 wallet). */
+  wallet: number | null = null;
+  /** World chests by wire id (protocol 0x27). */
+  readonly chests = new Map<bigint, ChestView>();
   /** The player's materials pouch, from the last pouch message; null until one arrives. */
   pouch: PouchMessage | null = null;
   /** Bytes and messages received and sent on this client's sockets, since it was made (the HUD's network rates). */
@@ -320,16 +346,28 @@ export class MirrorClient {
    * broadcasts have no reply; rejections arrive as ErrorMessage through
    * onError. The server trims, filters, and rate-limits.
    */
-  /** Ask to pick a ground item up (M3a, 0x13); the server answers with the bag, or a 4005 refusal. */
-  pickup(entity: bigint): void {
+  /** Buy one `def` from a shop (0x21); the server answers with the vendor and wallet messages, or a 4005 refusal. */
+  vendorBuy(vendor: string, def: number): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: entity.toString() })));
+    this.send(this.socket, encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", action: "buy", vendor, def })));
   }
 
-  /** Gather once from a resource node (0x24); the server answers with the pouch, or a 4005 refusal. */
-  gather(entity: bigint): void {
+  /** Sell a bag item to a shop (0x21). */
+  vendorSell(vendor: string, item: number): void {
     if (!this.socket || this.closed) return;
-    this.send(this.socket, encodeEnvelope(MessageType.Gather, encodeControl({ kind: "gather", entity: entity.toString() })));
+    this.send(this.socket, encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", action: "sell", vendor, item })));
+  }
+
+  /**
+   * Use something in the world (0x27, what E does): an entity (a world chest,
+   * a ground item, a resource node), a quest giver by id (`{npc}`) or a dungeon
+   * entrance by id (`{entrance}`). The server checks reach and state and answers
+   * through the usual channel (bag, pouch, dialog, dungeon hop) or a 4005 error.
+   */
+  interact(target: bigint | { npc: string } | { entrance: string }): void {
+    if (!this.socket || this.closed) return;
+    const body = typeof target === "bigint" ? { entity: target.toString() } : target;
+    this.send(this.socket, encodeEnvelope(MessageType.Interact, encodeControl({ kind: "interact", ...body })));
   }
 
   /**
@@ -391,6 +429,12 @@ export class MirrorClient {
   equip(item: number): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "equip", item })));
+  }
+
+  /** Ask to eat or drink a bag item (0x13); the server restores hunger or thirst and uses it up. */
+  use(item: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "use", item })));
   }
 
   /** Ask to put what a hand holds, or an armour slot wears, back in the bag (M3b/U10, 0x13). */
@@ -705,6 +749,23 @@ export class MirrorClient {
     return promise;
   }
 
+  /**
+   * Cross-region view (IM8): connect as a read-only observer of a
+   * neighbour region with the home region's ticket. Its entities arrive
+   * in this client's own `state` (ids never mix with the home region's).
+   */
+  async observe(url: string, clientName: string, ticket: BorderTicket): Promise<WelcomeMessage> {
+    const hello: HelloMessage = { protocol: PROTOCOL_VERSION, client: clientName, want_snapshot: true, observe: ticket };
+    return this.welcomeOf(this.openAndHandshake(url, MessageType.Hello, hello));
+  }
+
+  /** Observer socket (IM8): where the player stands, so the neighbour sends what is near it. */
+  sendObserve(x: number, z: number): void {
+    if (!this.socket || this.closed) return;
+    const msg: BorderMessage = { kind: "observe", x, z };
+    this.send(this.socket, encodeEnvelope(MessageType.Border, encodeControl(msg)));
+  }
+
   // ------------------------------------------------------------ inbound
 
   /** Send one envelope, counting it. */
@@ -740,6 +801,9 @@ export class MirrorClient {
         break;
       case MessageType.Delta:
         this.onDelta(payload);
+        break;
+      case MessageType.DeltaSet:
+        this.onDeltaSet(payload);
         break;
       case MessageType.Ping:
         // Heartbeat: echo the payload back as pong (catalog §0x06/0x07).
@@ -829,6 +893,23 @@ export class MirrorClient {
         }
         break;
       }
+      case MessageType.Trade: {
+        const m = decodeControl<VendorMessage | WalletMessage | { kind: string }>(payload);
+        if (m.kind === "vendor") this.events.onVendor?.(m as VendorMessage);
+        else if (m.kind === "wallet") {
+          this.wallet = (m as WalletMessage).balance;
+          this.events.onWallet?.(m as WalletMessage);
+        }
+        break;
+      }
+      case MessageType.Interact: {
+        const m = decodeControl<ChestsMessage>(payload);
+        if (m.kind === "chests") {
+          for (const c of m.chests) this.chests.set(BigInt(c.entity), c);
+          this.events.onChests?.(m);
+        }
+        break;
+      }
       case MessageType.Inventory: {
         this.inventory = decodeControl<InventoryMessage>(payload);
         this.events.onInventory?.(this.inventory);
@@ -839,6 +920,9 @@ export class MirrorClient {
         break;
       case MessageType.Life:
         this.events.onLife?.(decodeControl<LifeMessage>(payload));
+        break;
+      case MessageType.Telegraph:
+        this.events.onTelegraph?.(decodeControl<TelegraphMessage>(payload));
         break;
       case MessageType.Body:
         this.body = decodeControl<BodyMessage>(payload);
@@ -859,6 +943,11 @@ export class MirrorClient {
       case MessageType.Treat:
         this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
         break;
+      case MessageType.Border: {
+        const m = decodeControl<BorderMessage>(payload);
+        if (m.kind === "border") this.events.onBorder?.(m);
+        break;
+      }
       case MessageType.Bye: {
         const bye = decodeControl<ByeMessage>(payload);
         if (bye.redirect) void this.followRedirect(bye.redirect);
@@ -922,6 +1011,35 @@ export class MirrorClient {
     this.flushIntent();
   }
 
+  private onDeltaSet(payload: Uint8Array): void {
+    const set = decodeDeltaSet(payload);
+    if (set.replace) this.interestSectors.clear();
+    for (const e of set.entries) {
+      if (e.kind === DeltaSetKind.Full) this.interestSectors.add(e.sector);
+      else if (e.kind === DeltaSetKind.Leave) this.interestSectors.delete(e.sector);
+    }
+    const entries = set.entries.map((e) => ({
+      sector: e.sector,
+      leave: e.kind === DeltaSetKind.Leave,
+      delta: e.kind === DeltaSetKind.Leave ? null : decodeDelta(e.bytes),
+    }));
+    const r = this.state.applyDeltaSet(set.tick, set.replace, entries, GLOBAL_SECTOR);
+    // A replace keeps names: entities out of view may come back into it.
+    if (set.replace) this.interpolator.clear();
+    this.interpolator.push(set.tick, r.transforms);
+    for (const wid of r.left) this.interpolator.remove(wid); // names stay: it may come back into view
+    for (const wid of r.despawned) {
+      this.interpolator.remove(wid);
+      this.names.delete(wid);
+      this.drops.delete(wid);
+      this.resources.delete(wid);
+      this.chests.delete(wid);
+    }
+    this.serverTick = set.tick;
+    this.events.onState(set.tick);
+    this.flushIntent();
+  }
+
   private onDelta(payload: Uint8Array): void {
     const d = decodeDelta(payload);
     this.state.applyDelta(d);
@@ -931,6 +1049,7 @@ export class MirrorClient {
       this.names.delete(wid);
       this.drops.delete(wid);
       this.resources.delete(wid);
+      this.chests.delete(wid);
     }
     this.serverTick = d.tick;
     this.events.onState(d.tick);

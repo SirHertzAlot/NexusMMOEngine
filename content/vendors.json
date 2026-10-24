@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendors": {
+    "general-store": {
+      "name": "General store",
+      "buybackRate": 0.3,
+      "stock": [
+        { "base": "bread", "price": 5 },
+        { "base": "dried-meat", "price": 8 },
+        { "base": "waterskin", "price": 4 },
+        { "base": "key", "price": 50, "quantity": 3 },
+        { "base": "dagger", "price": 60 }
+      ]
+    }
+  }
+}

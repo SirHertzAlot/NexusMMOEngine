@@ -2,7 +2,7 @@
  * B6: soak. A core process and the edge for E5_B6_SECONDS (default 600),
  * 20 players in the world each sending player.intent at 5 Hz, the tick
  * stream flowing. Asserts: no unhandled rejections (edge or core), no
- * dropped tick.delta pushes (tick numbers strictly sequential at the edge),
+ * dropped tick.events pushes (tick numbers strictly sequential at the edge),
  * RSS growth < 100 MB over the run (edge and core each). The players run in
  * their own process (players-proc.mjs) so the edge's RSS is the edge's alone.
  */
@@ -47,7 +47,7 @@ ${SECONDS} s, ${PLAYERS} players in the world each sending \`player.intent\` at 
 | Check | Result |
 |---|---|
 | Unhandled rejections (edge + core) | ${allUnhandled.length} |
-| \`tick.delta\` pushes received / gaps in tick numbers | ${ticks} / ${edge.ticks.gaps} |
+| \`tick.events\` pushes received / gaps in tick numbers | ${ticks} / ${edge.ticks.gaps} |
 | Intents sent / accepted / refused / other answers | ${sent} / ${accepted} / ${refused} / ${other} |
 | RSS growth, edge | ${growth.edge} MiB (${round(rss0.edge, 1)} → ${round(rss1.edge, 1)}) |
 | RSS growth, core | ${growth.core} MiB (${round(rss0.core, 1)} → ${round(rss1.core, 1)}) |

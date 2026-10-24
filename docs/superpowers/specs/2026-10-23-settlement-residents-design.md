@@ -1,3 +1,5 @@
+> **Status (2026-10-24): built except two parts.** RS1-RS7 are on main (ROADMAP rows RS1-RS7; the spec names them R1-R7). Decisions made: residents are attackable (they lie 10 s, stay dead three game days, then someone new moves in), homestead families are baked into `places.json`, dialogue is generated (`barkFor`), `maxFull` 300 / `maxEntities` 800 stand. Not built: the `residents-tick` valgrind workload (no valgrind on the dev host) and the editor overlay, and the `trade`, `quest` and `learn` options. The residents live in a `residents` module, not in engine-core.
+
 # Settlement residents: the people who live in the baked towns and homesteads (SG3b, SG7)
 
 ## Intent

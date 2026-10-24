@@ -210,17 +210,17 @@ describe("gateway: pickup rate limits", () => {
 
     // At a legitimate pace the pickup works: the bag answers.
     const invP = attacker.client.waitFor(MessageType.Inventory, 1);
-    attacker.client.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: wid }));
+    attacker.client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wid }));
     const bag = decodeControl<InventoryMessage>((await invP)[0]).bag;
     assert.equal(bag.filter((s) => s !== null).length, 1, "one pickup lands in the bag");
 
     // The item is gone, so the next request reaches the service and is
     // refused — then the flood: 18 requests in the same millisecond.
     const refused = await nextError(attacker.client, () =>
-      attacker.client.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: wid })));
+      attacker.client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wid })));
     assert.equal(refused.code, 4005);
     for (let i = 0; i < 18; i++) {
-      attacker.client.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: wid }));
+      attacker.client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wid }));
     }
     await attacker.client.waitForClose();
     assert.equal(attacker.client.closeCode, 4000, "sustained abuse disconnects the session");
@@ -268,7 +268,7 @@ describe("gateway: untrusted input", () => {
 
     // An out-of-range entity id: no such ground item, refused — never applied.
     const noEntity = await nextError(attacker.client, () =>
-      attacker.client.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: "18446744073709551615" })));
+      attacker.client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: "18446744073709551615" })));
     assert.equal(noEntity.code, 4005);
 
     // A drop at the attacker's feet, then 50 m away: too far to pick up.
@@ -279,7 +279,7 @@ describe("gateway: untrusted input", () => {
     const wid = dropped.message.split(" ").at(-1)!;
     attacker.client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "teleport", args: { x: 50, z: 50 } }));
     const tooFar = await nextError(attacker.client, () =>
-      attacker.client.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: wid })));
+      attacker.client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wid })));
     assert.equal(tooFar.code, 4005);
     assert.match(tooFar.message, /too far/);
 

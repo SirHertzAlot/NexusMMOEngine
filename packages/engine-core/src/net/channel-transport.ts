@@ -11,6 +11,8 @@
  * Core -> edge, channel pushes:
  *   wire.send {sid, data}  wire.end {sid, code, reason}  wire.sub / wire.unsub {sid, topic}
  *   wire.publish {topic, data}  (the edge fans it out to its sockets on the topic)
+ *   wire.sectors {tick, bytes: {key: data}, plans: [{sid, replace, entries: [[kind, sector, key]]}]}
+ *     (interest management, IM4: each sector's bytes once; the edge assembles every session's DeltaSet)
  * Bytes travel as base64. The edge's apps/edge/src/game-relay.ts is the other end.
  *
  * ponytail: one edge per core (an edge that goes away ends every relayed socket); base64 in JSON frames
@@ -28,6 +30,14 @@ import {
   type TransportHandlers,
   type WireSocket,
 } from "./transport.js";
+
+/** One session's DeltaSet this tick, as entries naming shared bytes (wire.sectors). */
+export interface EdgePlan {
+  sid: string;
+  replace: boolean;
+  /** [DeltaSetKind, sector, key into the push's bytes] */
+  entries: Array<[number, string, string]>;
+}
 
 /** Send one push to the edge. */
 export type EdgePush = (type: string, payload: unknown) => void;
@@ -125,6 +135,14 @@ export class ChannelTransport implements Transport {
 
   publish(topic: string, bytes: Uint8Array): void {
     if (this.handlers) this.push("wire.publish", { topic, data: b64(bytes) });
+  }
+
+  /** IM4: one tick's shared sector bytes and every relayed session's plan, in one push. */
+  sendSectors(tick: number, bytes: Map<string, Uint8Array>, plans: EdgePlan[]): void {
+    if (!this.handlers) return;
+    const out: Record<string, string> = {};
+    for (const [k, b] of bytes) out[k] = b64(b);
+    this.push("wire.sectors", { tick, bytes: out, plans });
   }
 
   /** Sockets the edge holds open for the gateway now. */

@@ -19,8 +19,6 @@ export const EDGE_METRIC_NAMES = [
   "mmo_edge_router_requests_total",
   "mmo_edge_router_errors_total",
   "mmo_edge_router_latency_ms",
-  "mmo_edge_mirror_deltas_fanned_out_total",
-  "mmo_edge_mirror_snapshot_age_ticks",
   "mmo_edge_core_metrics_stale",
 ] as const;
 
@@ -44,8 +42,6 @@ export interface EdgeMetrics {
   routerRequests: Counter;
   routerErrors: Counter;
   routerLatency: Histogram;
-  mirrorDeltasFannedOut: Counter;
-  mirrorSnapshotAgeTicks: Gauge;
   coreMetricsStale: Gauge;
 }
 
@@ -59,8 +55,6 @@ export function createEdgeMetrics(): EdgeMetrics {
     routerRequests: registry.counter("edge_router_requests_total", "Packets routed, by packet type.", ["packet_type"]),
     routerErrors: registry.counter("edge_router_errors_total", "Routed packets answered with an error, by packet type and error.", ["packet_type", "error"]),
     routerLatency: registry.histogram("edge_router_latency_ms", "Time to route a packet and produce its answer, in ms.", ["packet_type"]),
-    mirrorDeltasFannedOut: registry.counter("edge_mirror_deltas_fanned_out_total", "Tick deltas the mirror buffer took in and handed to its listeners."),
-    mirrorSnapshotAgeTicks: registry.gauge("edge_mirror_snapshot_age_ticks", "Ticks between the newest delta and the newest snapshot."),
     coreMetricsStale: registry.gauge("edge_core_metrics_stale", "1 while the core's metrics could not be fetched (the scrape then has edge metrics only)."),
     channel: channelMetrics(registry),
   };

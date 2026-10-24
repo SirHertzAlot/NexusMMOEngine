@@ -43,7 +43,7 @@ export async function startEdge(channelPort, { heartbeatMs = 5000, maxMissed = 3
   const ctx = { channel, modules: { ping: pingHandler } };
   const timings = { core: [], local: [] };
   const ticks = { count: 0, gaps: 0, last: -1 };
-  channel.onPush("tick.delta", (p) => {
+  channel.onPush("tick.events", (p) => {
     if (ticks.last >= 0 && p.tick !== ticks.last + 1) ticks.gaps++;
     ticks.last = p.tick; ticks.count++;
   });

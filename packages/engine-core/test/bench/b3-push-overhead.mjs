@@ -19,7 +19,7 @@ async function run(withPushes) {
   if (withPushes) {
     core = await startCoreChannel(gw, 0);
     client = new ChannelClient({ port: core.server.port });
-    client.onPush("tick.delta", () => received++);
+    client.onPush("tick.events", () => received++);
     await client.connect();
     await new Promise((r) => setTimeout(r, 20));
   }
@@ -49,6 +49,6 @@ ${ENTITIES} moving entities, ${TICKS} measured ticks after ${WARMUP} warm-up, sa
 | disabled | ${off.tickMs.mean} | ${off.tickMs.p50} | ${off.tickMs.p99} | ${off.tickMs.max} |
 | enabled (1 edge connected) | ${on.tickMs.mean} | ${on.tickMs.p50} | ${on.tickMs.p99} | ${on.tickMs.max} |
 
-Added mean per tick: **${added} ms** (budget < 0.5 ms): **${pass ? "PASS" : "BREACH"}**. The edge received ${on.received} \`tick.delta\` pushes.
+Added mean per tick: **${added} ms** (budget < 0.5 ms): **${pass ? "PASS" : "BREACH"}**. The edge received ${on.received} \`tick.events\` pushes.
 `);
 process.exit(0);

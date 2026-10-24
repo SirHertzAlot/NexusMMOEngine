@@ -5,7 +5,7 @@
  * Plain mutable state, not React state: hits arrive many times a second.
  */
 
-import type { HitMessage, LifeMessage } from "@mmo-engine/protocol";
+import type { HitMessage, LifeMessage, TelegraphMessage } from "@mmo-engine/protocol";
 
 /** How long a struck body glows red, seconds. */
 export const FLASH_SECONDS = 0.15;
@@ -15,6 +15,8 @@ export class CombatFeedback {
   target: bigint | null = null;
   /** Wire id -> when its hit flash ends (performance.now() seconds). */
   readonly flashUntil = new Map<bigint, number>();
+  /** Telegraph messages (0x1e) not yet drawn; the frame loop drains it. */
+  readonly telegraphs: TelegraphMessage[] = [];
 
   /**
    * A blow landed. Hits and blocks flash the target; a blow between the
