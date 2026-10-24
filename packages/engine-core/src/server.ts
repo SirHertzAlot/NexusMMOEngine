@@ -66,7 +66,8 @@
  *                  the settlements (livestock ring, safe radius, raids).
  *                  MMO_WILDLIFE_LOG=1 logs each pack spawned.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
- *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
+ *                  creatures, props, items and quest posts (roadmap EA6); a comma-separated
+ *                  list spawns each, `world` every baked town plus places; MMO_SCENES
  *                  overrides the scenes dir (alias MMO_SCENES_DIR, as bake:all names it),
  *                  MMO_PREFABS the prefab files (content/prefabs)
  *   MMO_SPECIES    the species overlay file (default content/species/species.json),
@@ -204,7 +205,8 @@ import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
-import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
+import type { SceneDoc } from "@mmo-engine/scene";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { CraftingService } from "./crafting/crafting-service.js";
@@ -224,7 +226,7 @@ import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from ".
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./procgen/wildlife-table.js";
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
-import { sceneSettlements } from "./procgen/wildlife-settlements.js";
+import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
 import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
@@ -267,6 +269,10 @@ const EDGE_MODE = process.env.MMO_EDGE === "1";
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
+/** The scenes MMO_SCENE names (read once: the spawn, the settlements and the residents share them). */
+let bootScenesRead: SceneDoc[] | null = null;
+const bootScenes = (): SceneDoc[] =>
+  (bootScenesRead ??= loadScenes(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE ?? ""));
 // Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
 const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
 if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
@@ -738,9 +744,7 @@ async function main(): Promise<void> {
     return ids[n % ids.length];
   };
   const wildlifeSettlements: RaidSettlement[] =
-    wildlifeTable && process.env.MMO_SCENE
-      ? sceneSettlements(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR))
-      : [];
+    wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
   const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
   const creaturesConfig = {
@@ -1047,10 +1051,10 @@ async function main(): Promise<void> {
   // After items and quests exist, so item and quest nodes have somewhere to go: this runs once the systems are assembled.
   const spawnBootScene = (): void => {
   if (process.env.MMO_SCENE) {
-    const scene = loadSceneFile(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const scenes = bootScenes();
     const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
     const r = spawnSceneOnBoot(
-      scene,
+      scenes,
       {
         sim,
         creatures: creaturesOf(),
@@ -1073,6 +1077,13 @@ async function main(): Promise<void> {
         },
         resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
         chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
+        // A region shard spawns only what stands in its chunks (the migration.ts convention: x0 <= cx < x1).
+        inRange: fleetChunkRange
+          ? (x, z) => {
+              const r = fleetChunkRange!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+              return cx >= r.x0 && cx < r.x1 && cz >= r.z0 && cz < r.z1;
+            }
+          : undefined,
         breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
         structureBreakable: (kind) => structureKinds.get(kind),
         vendors: {
@@ -1111,7 +1122,7 @@ async function main(): Promise<void> {
       store,
     );
     console.log(
-      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
+      `[scene] ${scenes.map((s) => s.name).join(", ")}: ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
         (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
     );
   }
@@ -1205,8 +1216,7 @@ async function main(): Promise<void> {
     structurePositions: (): Map<string, { x: number; z: number }> | null => {
       if (!process.env.MMO_SCENE) return null;
       const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
-      const doc = expandPrefabs(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), prefabs).doc;
-      return new Map(worldNodes(doc).map((w) => [w.node.id, { x: w.position[0], z: w.position[2] }]));
+      return new Map(bootScenes().flatMap((s) => worldNodes(expandPrefabs(s, prefabs).doc)).map((w) => [w.node.id, { x: w.position[0], z: w.position[2] }]));
     },
     manifestsDir: process.env.MMO_SETTLEMENTS || path.join(REPO_ROOT, "content", "settlements"),
     catalog: characterCatalog,

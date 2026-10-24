@@ -205,9 +205,11 @@ MMO_DATA_DIR=/d/bake/data MMO_CONTENT_DIR=/d/bake/content npm run bake:all -- --
 ```
 
 When it ends it prints the block that starts the server on what it baked
-(`MMO_DATA_DIR`, `MMO_SCENES`, `MMO_SCENE=settlement-<id>`, `MMO_SPAWN_OVERRIDE`
-at the best town's centre, `MMO_SCALE`, `MMO_ECOLOGY`), for PowerShell and for
-Git Bash, and writes it to `<content>/bake-env.local.txt`.
+(`MMO_DATA_DIR`, `MMO_SCENES`, `MMO_SCENE=world`: every baked town plus the
+places between them, `MMO_SPAWN_OVERRIDE` at the best town's centre, `MMO_SCALE`, `MMO_ECOLOGY`), for PowerShell and for
+Git Bash, and writes it to `<content>/bake-env.local.txt`. `MMO_SCENE` also takes a
+comma-separated list (`settlement-0001,places`), and `npm start` sets
+`MMO_SCENE=world` itself when the scenes folder has baked towns.
 
 ## Memory and performance checks (valgrind)
 
