@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS place_records (
 );
 `;
 
-/** "break": a breakable prop (state "broken"); "chest": a chest or door (state "open"). */
-export type PlaceKind = "break" | "chest";
+/** "break": a breakable prop (state "broken"); "chest": a chest or door (state "open"); "resident": a townsperson (state "dead:<n>" until replaced, then "alive:<n>"). */
+export type PlaceKind = "break" | "chest" | "resident";
 
 export interface PlaceRecord {
   kind: PlaceKind;
@@ -50,7 +50,7 @@ export function placeRecordsOf(v: unknown): PlaceRecord[] {
   return v.filter(
     (r): r is PlaceRecord =>
       typeof r === "object" && r !== null &&
-      (r.kind === "break" || r.kind === "chest") &&
+      (r.kind === "break" || r.kind === "chest" || r.kind === "resident") &&
       typeof r.key === "string" && typeof r.state === "string" &&
       Number.isFinite(r.at) && (r.respawnAt === null || Number.isFinite(r.respawnAt)),
   );

@@ -18,13 +18,20 @@
  * when their block changes (no crowd slot); farther, the town has no entities at all and is placed from
  * the schedule when a player comes. A town moves between tiers with 25 m of hysteresis.
  *
- * Later slices: homesteads, raids, attackability.
+ * Attackable (RS7): residents have health and anyone may hurt them (the weak points of a town are its
+ * people). One who falls lies there for `corpseSeconds`, then is gone, and that npc stays dead until
+ * `replaceMs` have passed; then "someone new has moved in" into the same household slot: the same npc
+ * id, a new generation, so a new look. Deaths are kept in the places store (kind "resident"), so a
+ * restart does not bring the dead back.
+ *
+ * Later slices: homesteads, raids.
  */
 
 import { addComponent, defineQuery, entityExists, removeComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
 import { HAIR_COLOURS, SKIN_TONES, lookToJson, randomLook, type CharacterLook, type Gender, type ModularCatalog } from "@mmo-engine/art/character";
 import * as C from "../components.js";
+import type { PlacesStore } from "../interact/places-store.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 
@@ -70,6 +77,13 @@ export interface ResidentOptions {
   bark?: (town: ResidentTown, npc: ResidentNpc, ctx: { timeOfDay: number; day: number; raid: boolean }) => string;
   /** The game day number at a tick (the line changes with it). */
   dayOf?: (tick: number) => number;
+  /** Where deaths are kept across a restart (places.db, kind "resident"). */
+  store?: PlacesStore;
+  now?: () => number;
+  /** How long a dead resident stays dead before someone new moves in, ms. Default three game days of an hour each. */
+  replaceMs?: number;
+  /** How long a body lies where it fell, seconds. Default 10. */
+  corpseSeconds?: number;
   /** A navigation crowd runs after this system: residents walk between anchors by NavAgent targets. */
   steer?: boolean;
   /** A player within this of a town's edge: its residents walk (full tier). Default 150 m. */
@@ -125,6 +139,8 @@ interface Live {
   giveAt: number;
   /** Has a NavAgent (a crowd slot). */
   agent: boolean;
+  /** The tick they fell (0: standing). */
+  fellAt: number;
 }
 
 /** Longest a resident walks to an anchor before they are simply there, seconds. */
@@ -137,6 +153,9 @@ export class ResidentSystem implements SimSystem {
   private readonly live = new Map<string, Live>();
   private readonly infoOf = new Map<number, ResidentInfo>();
   private readonly looks = new Map<string, string>();
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
   /** Where each resident was last (their anchor, indoors or out): the door they come out of. */
   private readonly lastAnchor = new Map<string, string>();
   private ran = false;
@@ -144,6 +163,8 @@ export class ResidentSystem implements SimSystem {
   private readonly players = defineQuery([C.Transform, C.CharacterRef]);
   private agents = 0;
   private readonly index = new Map<string, { town: ResidentTown; npc: ResidentNpc }>();
+  /** Per npc: how many have lived in their slot (a new one moves in after a death) and, while dead, when the next arrives (ms). */
+  private readonly fate = new Map<string, { generation: number; backAt: number | null }>();
 
   constructor(private readonly opts: ResidentOptions) {
     this.maxEntities = opts.maxEntities ?? 800;
@@ -163,6 +184,32 @@ export class ResidentSystem implements SimSystem {
 
   get count(): number {
     return this.live.size;
+  }
+
+  /** Whether `eid` is a resident, so DeathSystem leaves its body lying (it does not rise). */
+  isResident(eid: number): boolean {
+    return this.infoOf.has(eid);
+  }
+
+  /** How many have died in an npc's slot so far (their look changes with it). */
+  generationOf(npc: string): number {
+    return this.fateOf(npc).generation;
+  }
+
+  /** The npc's slot: how many have lived there, and when the next arrives while it stands empty. Read from the store once. */
+  private fateOf(npc: string): { generation: number; backAt: number | null } {
+    let f = this.fate.get(npc);
+    if (!f) {
+      f = { generation: 0, backAt: null };
+      const rec = this.opts.store?.load("resident", npc);
+      if (rec) {
+        const n = Number(rec.state.split(":")[1] ?? 0);
+        f.generation = Number.isFinite(n) ? n : 0;
+        f.backAt = rec.state.startsWith("dead") ? rec.respawnAt : null;
+      }
+      this.fate.set(npc, f);
+    }
+    return f;
   }
 
   /** What the resident `eid` says now, and their display name; undefined when it is not a resident. */
@@ -204,6 +251,15 @@ export class ResidentSystem implements SimSystem {
       if (prev === "none") for (const npc of town.npcs) this.lastAnchor.delete(npc.id); // placed in place, not walking out of doors
       const steer = this.opts.steer === true && tier === "full";
       for (const npc of town.npcs) {
+        const fate = this.fateOf(npc.id);
+        const have0 = this.live.get(npc.id);
+        if (have0 && entityExists(sim.ecs, have0.eid) && C.Health.current[have0.eid]! <= 0) this.fall(sim, npc.id, have0, tick, fate);
+        if (fate.backAt !== null) {
+          if (this.now() < fate.backAt) continue; // lies dead, or the slot stands empty
+          fate.generation++; // someone new has moved in
+          fate.backAt = null;
+          this.opts.store?.save({ kind: "resident", key: npc.id, state: `alive:${fate.generation}`, at: this.now(), respawnAt: null });
+        }
         const p = this.opts.place(town, npc, t);
         const have = this.live.get(npc.id);
         const before = this.lastAnchor.get(npc.id);
@@ -239,7 +295,7 @@ export class ResidentSystem implements SimSystem {
         const eid = this.spawn(sim, town, npc);
         const wantAgent = steer && this.agents < (this.opts.maxFull ?? 300);
         if (wantAgent) this.addAgent(sim, eid);
-        const entry: Live = { eid, anchor: p.anchor, walkTo: null, until: 0, leaving: false, giveAt: 0, agent: wantAgent };
+        const entry: Live = { eid, anchor: p.anchor, walkTo: null, until: 0, leaving: false, giveAt: 0, agent: wantAgent, fellAt: 0 };
         this.live.set(npc.id, entry);
         const from = wantAgent && before && before !== p.anchor ? town.positionOf(before) : undefined;
         if (from) {
@@ -345,6 +401,16 @@ export class ResidentSystem implements SimSystem {
     if (live.leaving) this.remove(sim, npc, live);
   }
 
+  /** A resident fell: record the death, leave the body a while, then it goes. */
+  private fall(sim: SimWorld, npc: string, live: Live, tick: number, fate: { generation: number; backAt: number | null }): void {
+    if (live.fellAt === 0) {
+      live.fellAt = tick;
+      fate.backAt = this.now() + (this.opts.replaceMs ?? 3 * 3_600_000);
+      this.opts.store?.save({ kind: "resident", key: npc, state: `dead:${fate.generation}`, at: this.now(), respawnAt: fate.backAt });
+    }
+    if (tick - live.fellAt >= (this.opts.corpseSeconds ?? 10) * this.tickHz) this.remove(sim, npc, live);
+  }
+
   private remove(sim: SimWorld, npc: string, have: Live): void {
     if (have.agent) this.agents--;
     if (entityExists(sim.ecs, have.eid)) sim.despawn(have.eid);
@@ -392,9 +458,12 @@ export class ResidentSystem implements SimSystem {
 
   /** The same look for the same npc on every boot (computed once, then cached). */
   private lookOf(npc: string): string {
-    let look = this.looks.get(npc);
+    // A new arrival in a dead resident's slot looks different: the generation joins the seed.
+    const gen = this.fateOf(npc).generation;
+    const key = gen > 0 ? `${npc}#${gen}` : npc;
+    let look = this.looks.get(key);
     if (look === undefined) {
-      const h = hashOf(npc);
+      const h = hashOf(key);
       const rng = seeded(h);
       const gender: Gender = h & 1 ? "female" : "male";
       if (this.opts.catalog) look = lookToJson(randomLook(this.opts.catalog, gender, rng));
@@ -402,7 +471,7 @@ export class ResidentSystem implements SimSystem {
         const l: CharacterLook = { gender, parts: {}, colours: { skin: SKIN_TONES[Math.floor(rng() * SKIN_TONES.length)], hair: HAIR_COLOURS[Math.floor(rng() * HAIR_COLOURS.length)] } };
         look = lookToJson(l);
       }
-      this.looks.set(npc, look);
+      this.looks.set(key, look);
     }
     return look;
   }

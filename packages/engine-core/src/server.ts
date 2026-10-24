@@ -1173,7 +1173,8 @@ async function main(): Promise<void> {
     getWornFactor: wornFactor,
     getCreaturesPlace: (s: unknown, e: number) => creaturesOf().place(sim, e),
     getGateway: () => gw,
-    getRespawnSeconds: (e: number) => creaturesOf().respawnSeconds(e),
+    // A fallen resident lies where it fell (ResidentSystem removes it and brings someone new later); creatures rise on their own timers.
+    getRespawnSeconds: (e: number) => ((assembled.byName["residents"] as unknown as import("./residents/index.js").ResidentSystem | undefined)?.isResident(e) ? Number.POSITIVE_INFINITY : creaturesOf().respawnSeconds(e)),
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
@@ -1213,6 +1214,9 @@ async function main(): Promise<void> {
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
     maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
+    // Deaths are kept (places.db); someone new moves in three game days after.
+    store: placesStore,
+    replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,
   };
   const moduleCtx: ServerModuleContext = {

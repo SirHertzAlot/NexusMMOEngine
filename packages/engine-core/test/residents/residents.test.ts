@@ -7,8 +7,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { entityExists } from "bitecs";
+import Database from "better-sqlite3";
 import { addComponent } from "bitecs";
-import { Appearance, CharacterRef, NavAgent, NavAgentState, Transform } from "../../src/components.js";
+import { Appearance, CharacterRef, Health, NavAgent, NavAgentState, Transform } from "../../src/components.js";
+import { SqlitePlacesStore } from "../../src/interact/index.js";
 import { SimWorld } from "../../src/world.js";
 import { ResidentSystem, type ResidentNpc, type ResidentTown } from "../../src/residents/index.js";
 
@@ -231,5 +233,67 @@ describe("ResidentSystem: tiers", () => {
     Transform.px[p] = 40 + 50 + 300;
     run(sys, sim, 60);
     assert.equal(sys.walking, 0);
+  });
+});
+
+describe("ResidentSystem: attackable", () => {
+  const one = (): ResidentTown => ({
+    id: "t",
+    npcs: [{ id: "npc_9", home: null, role: "resident", class: "peasant", cohort: "adult" } as ResidentNpc],
+    positionOf: () => ({ x: 10, z: 10 }),
+  });
+  function make(clock: { t: number }, store?: SqlitePlacesStore): ResidentSystem {
+    return new ResidentSystem({
+      towns: [one()],
+      place: () => ({ anchor: "sq", outdoors: true, activity: "idle" }),
+      catalog: null,
+      store,
+      now: () => clock.t,
+      replaceMs: 1000,
+      corpseSeconds: 2,
+    });
+  }
+
+  it("a fallen resident lies a while, is gone, and stays dead until someone new moves in with a new look", () => {
+    const clock = { t: 1_000_000 };
+    const sim = new SimWorld();
+    const sys = make(clock);
+    run(sys, sim, 30);
+    const eid = sys.entityOf("npc_9")!;
+    assert.equal(sys.isResident(eid), true);
+    const firstLook = sim.lookJson(Appearance.look[eid]!);
+    Health.current[eid] = 0;
+    run(sys, sim, 60);
+    assert.equal(sys.entityOf("npc_9"), eid, "the body lies there");
+    run(sys, sim, 120); // past two seconds of corpse
+    assert.equal(sys.entityOf("npc_9"), undefined);
+    run(sys, sim, 150);
+    assert.equal(sys.count, 0, "stays dead");
+    clock.t += 1500;
+    run(sys, sim, 180);
+    const again = sys.entityOf("npc_9")!;
+    assert.ok(again !== undefined, "someone new moved in");
+    assert.equal(sys.generationOf("npc_9"), 1);
+    assert.notEqual(sim.lookJson(Appearance.look[again]!), firstLook, "a new face");
+  });
+
+  it("a death survives a restart", () => {
+    const store = new SqlitePlacesStore(new Database(":memory:"));
+    const clock = { t: 5_000_000 };
+    const sim1 = new SimWorld();
+    const a = make(clock, store);
+    run(a, sim1, 30);
+    Health.current[a.entityOf("npc_9")!] = 0;
+    run(a, sim1, 60);
+    assert.equal(store.load("resident", "npc_9")?.state, "dead:0");
+
+    const sim2 = new SimWorld();
+    const b = make(clock, store);
+    run(b, sim2, 30);
+    assert.equal(b.count, 0, "still dead after the restart");
+    clock.t += 2000;
+    run(b, sim2, 60);
+    assert.equal(b.count, 1, "replaced on schedule");
+    assert.equal(store.load("resident", "npc_9")?.state, "alive:1");
   });
 });
