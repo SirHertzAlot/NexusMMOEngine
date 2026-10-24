@@ -328,6 +328,8 @@ export interface GatewayOptions {
    * EG9). Absent: the built-in constants. setSocial replaces them live.
    */
   social?: SocialRules;
+  /** Needs rules: how long eating and drinking take (a cast; 0 at once). */
+  needs?: { eatSeconds: number };
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -835,6 +837,7 @@ export class Gateway {
       | "spawnTable"
       | "scale"
       | "extensions"
+      | "needs"
       | "items"
       | "sectorBroadcast"
       | "interest"
@@ -1010,6 +1013,7 @@ export class Gateway {
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.fixedMaxCharacters = opts.maxCharacters !== undefined;
     if (opts.social) this.setSocial(opts.social);
+    this.eatSeconds = opts.needs?.eatSeconds ?? 0;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -5373,14 +5377,34 @@ export class Gateway {
     if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
     } else if (a.action === "use") {
-      result = this.items.consume(holder, a.item, (nourish, quench) => {
-        if (!hasComponent(this.world.ecs, C.Needs, avatar)) return false;
-        const hungry = nourish > 0 && C.Needs.hunger[avatar] < C.Needs.hungerMax[avatar];
-        const thirsty = quench > 0 && C.Needs.thirst[avatar] < C.Needs.thirstMax[avatar];
-        if (hungry) C.Needs.hunger[avatar] = Math.min(C.Needs.hungerMax[avatar], C.Needs.hunger[avatar] + nourish);
-        if (thirsty) C.Needs.thirst[avatar] = Math.min(C.Needs.thirstMax[avatar], C.Needs.thirst[avatar] + quench);
+      const items = this.items;
+      const apply = (av: number) => (nourish: number, quench: number, dryRun: boolean): boolean => {
+        if (!hasComponent(this.world.ecs, C.Needs, av)) return false;
+        const hungry = nourish > 0 && C.Needs.hunger[av] < C.Needs.hungerMax[av];
+        const thirsty = quench > 0 && C.Needs.thirst[av] < C.Needs.thirstMax[av];
+        if (!dryRun && hungry) C.Needs.hunger[av] = Math.min(C.Needs.hungerMax[av], C.Needs.hunger[av] + nourish);
+        if (!dryRun && thirsty) C.Needs.thirst[av] = Math.min(C.Needs.thirstMax[av], C.Needs.thirst[av] + quench);
         return hungry || thirsty;
-      });
+      };
+      if (this.casts.has(s)) return; // already casting one
+      if (this.eatSeconds > 0) {
+        // Eating takes a moment: checked now, done when the bar fills (a move or a blow cancels it).
+        const check = items.consume(holder, a.item, apply(avatar), true);
+        if (!check.ok) {
+          this.sendError(s, 4005, check.error);
+          return;
+        }
+        this.beginCast(s, avatar, check.message.startsWith("ate") ? "eat" : "drink", this.eatSeconds, (av) => {
+          const done = items.consume(holder, a.item, apply(av));
+          if (!done.ok) {
+            this.sendError(s, 4005, done.error);
+            return;
+          }
+          this.sendInventory(s);
+        });
+        return;
+      }
+      result = items.consume(holder, a.item, apply(avatar));
     } else if (a.action === "equip") {
       // A maimed or lost hand (M3) can't take hold of anything.
       const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
@@ -5553,6 +5577,9 @@ export class Gateway {
       this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
     });
   }
+
+  /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
+  private readonly eatSeconds: number;
 
   /** Interaction casts under way, one per session: the timer, where the player stood and their health when it began. */
   private readonly casts = new Map<ClientSession, { timer: ReturnType<typeof setTimeout>; x: number; z: number; hp: number; spell: string; avatar: number }>();
