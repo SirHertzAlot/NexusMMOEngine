@@ -16,6 +16,7 @@ export const ItemActionSchema = z.union([
   z.object({ kind: z.literal("item"), action: z.literal("pickup"), entity: z.string().regex(/^\d{1,20}$/) }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("drop"), item: z.number().int().positive() }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("equip"), item: z.number().int().positive() }).strict(),
+  z.object({ kind: z.literal("item"), action: z.literal("use"), item: z.number().int().positive() }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("unequip"), hand: z.enum(["main", "off"]) }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("unequip"), slot: z.enum(["head", "chest", "hands", "legs", "ring", "amulet"]) }).strict(),
 ]);
