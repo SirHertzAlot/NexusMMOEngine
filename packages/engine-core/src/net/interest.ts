@@ -12,6 +12,7 @@
  * ponytail: terrain chunks are global (sent to everyone, cheap: they almost never change); a chunk
  * ring of their own (spec `chunkM`) when terrain bytes show up in B7.
  */
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { hasComponent } from "bitecs";
 import { GLOBAL_SECTOR } from "@mmo-engine/protocol";
 import * as C from "../components.js";
@@ -219,4 +220,34 @@ export function encodePinned(sim: SimWorld, tick: number, fresh: number[], kept:
     if (hasComponent(sim.ecs, C.Health, eid)) l.healths.push(eid);
   }
   return encodeEidsFromSim(sim, tick, tick - 1, l, { spawned: [], despawned: left });
+}
+
+/** A region's ground in world units (IM8): [x0, x1) x [z0, z1). */
+export interface RegionRect {
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+}
+
+/** Distance from (x, z) to a region's rectangle (0 inside). */
+export function rectDistance(r: RegionRect, x: number, z: number): number {
+  return Math.hypot(Math.max(r.x0 - x, 0, x - r.x1), Math.max(r.z0 - z, 0, z - r.z1));
+}
+
+/** The point of a rectangle nearest (x, z): an observer's anchor stays in its home region. */
+export function clampInto(r: RegionRect, x: number, z: number): { x: number; z: number } {
+  return { x: Math.min(Math.max(x, r.x0), r.x1), z: Math.min(Math.max(z, r.z0), r.z1) };
+}
+
+/** A ticket is the right HMAC (constant time). */
+export function ticketOk(key: string, region: string, from: string, account: string, exp: number, ticket: string): boolean {
+  const want = Buffer.from(borderTicket(key, region, from, account, exp), "hex");
+  const got = Buffer.from(ticket, "hex");
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+/** The border ticket (IM8): HMAC-SHA256(key, "border|region|from|account|exp"), hex. */
+export function borderTicket(key: string, region: string, from: string, account: string, exp: number): string {
+  return createHmac("sha256", key).update(`border|${region}|${from}|${account}|${exp}`).digest("hex");
 }

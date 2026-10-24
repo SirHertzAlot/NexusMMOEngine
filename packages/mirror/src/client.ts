@@ -30,6 +30,8 @@ import {
   type AdminCommand,
   type AdminResult,
   type ByeMessage,
+  type BorderMessage,
+  type BorderTicket,
   type ChatBroadcast,
   type ChatChannel,
   type FriendMessage,
@@ -157,6 +159,8 @@ export interface MirrorEvents {
    * region's player entity; `url` is the server the client now talks to.
    */
   onRegionChange?(url: string): void;
+  /** Cross-region view (IM8): the home region says to observe a neighbour (or stop). */
+  onBorder?(msg: Extract<BorderMessage, { kind: "border" }>): void;
 }
 
 const CONNECT_TIMEOUT_MS = 8000;
@@ -396,6 +400,12 @@ export class MirrorClient {
   equip(item: number): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "equip", item })));
+  }
+
+  /** Ask to eat or drink a bag item (0x13); the server restores hunger or thirst and uses it up. */
+  use(item: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "use", item })));
   }
 
   /** Ask to put what a hand holds, or an armour slot wears, back in the bag (M3b/U10, 0x13). */
@@ -710,6 +720,23 @@ export class MirrorClient {
     return promise;
   }
 
+  /**
+   * Cross-region view (IM8): connect as a read-only observer of a
+   * neighbour region with the home region's ticket. Its entities arrive
+   * in this client's own `state` (ids never mix with the home region's).
+   */
+  async observe(url: string, clientName: string, ticket: BorderTicket): Promise<WelcomeMessage> {
+    const hello: HelloMessage = { protocol: PROTOCOL_VERSION, client: clientName, want_snapshot: true, observe: ticket };
+    return this.welcomeOf(this.openAndHandshake(url, MessageType.Hello, hello));
+  }
+
+  /** Observer socket (IM8): where the player stands, so the neighbour sends what is near it. */
+  sendObserve(x: number, z: number): void {
+    if (!this.socket || this.closed) return;
+    const msg: BorderMessage = { kind: "observe", x, z };
+    this.send(this.socket, encodeEnvelope(MessageType.Border, encodeControl(msg)));
+  }
+
   // ------------------------------------------------------------ inbound
 
   /** Send one envelope, counting it. */
@@ -867,6 +894,11 @@ export class MirrorClient {
       case MessageType.Treat:
         this.events.onTreatment?.(decodeControl<TreatmentMessage>(payload));
         break;
+      case MessageType.Border: {
+        const m = decodeControl<BorderMessage>(payload);
+        if (m.kind === "border") this.events.onBorder?.(m);
+        break;
+      }
       case MessageType.Bye: {
         const bye = decodeControl<ByeMessage>(payload);
         if (bye.redirect) void this.followRedirect(bye.redirect);

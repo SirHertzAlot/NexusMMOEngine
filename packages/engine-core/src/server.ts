@@ -1388,9 +1388,18 @@ async function main(): Promise<void> {
     gw.setMigrationAcceptor((id, verify) => coordinator.accept(id, false, verify));
     if (worldClient.registered) {
       await coordinator.refreshRegistry().catch(() => {});
+      // Cross-region view (IM8): neighbours from the registry, tickets signed with the fleet key.
+      const toRect = (r: { x0: number; x1: number; z0: number; z1: number }) => ({ x0: r.x0 * CHUNK_SIZE, x1: r.x1 * CHUNK_SIZE, z0: r.z0 * CHUNK_SIZE, z1: r.z1 * CHUNK_SIZE });
+      const borderKey = process.env.WORLD_API_KEY ?? "";
       migrationTimer = setInterval(() => {
         void coordinator.observe(gw.migrationPositions()).catch((err: unknown) =>
           console.warn(`[server] migration observe: ${(err as Error).message}`));
+        if (borderKey) {
+          gw.setBorders(
+            { regionId: worldClient!.regionId, key: borderKey, rect: toRect(chunkRange) },
+            coordinator.knownRegions.filter((r) => r.live).map((r) => ({ regionId: r.regionId, endpoint: r.endpoint, rect: toRect(r.chunkRange) })),
+          );
+        }
       }, 250);
       migrationTimer.unref();
       // Cross-region presence (S2): refresh friends lists from the world

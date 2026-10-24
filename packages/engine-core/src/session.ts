@@ -126,6 +126,10 @@ export interface ClientSession {
   interestSet?: Set<string> | null;
   /** IM6: an admin's "show everything" (editor play debugger): every occupied sector. */
   interestAll?: boolean;
+  /** IM8: a read-only observer from a neighbour region's border, anchored where its player stands. */
+  observer?: { x: number; z: number; home: { x0: number; z0: number; x1: number; z1: number } };
+  /** IM8: the neighbours this session was sent a border ticket for, by region id -> ticket expiry (s). */
+  borders?: Map<string, number>;
   /** IM5: pinned wire ids sent through the pinned entry last tick (out of the interest sectors). */
   pinnedOut?: Set<bigint>;
   /** IM5: foes this session hit or was hit by, pinned until the tick given. */

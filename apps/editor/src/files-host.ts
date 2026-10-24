@@ -3,23 +3,27 @@
  * Loopback routes wired in host.ts:
  *
  *   GET    /api/editor/files/:kind                  → { names }
+ *   POST   /api/editor/files/:kind  { name }        → create a document of that kind from its template (409 if it exists)
  *   POST   /api/editor/files/:kind/:name/rename     { to }
  *   POST   /api/editor/files/:kind/:name/duplicate  { to? }   (default "<name>-copy")
  *   DELETE /api/editor/files/:kind/:name
  *
  * Only whitelisted kinds (scene, playtest, build) in their own folder; a name
  * is a plain lowercase identifier and the resolved path is checked to sit
- * inside that folder, so no route can touch any other file. The renamed or
- * copied document is validated first (with the same validator its own save
- * uses) and carries its new name; an existing target is never overwritten; a
- * scene the game flow uses cannot be renamed or deleted. A refused request
- * writes nothing.
+ * inside that folder, so no route can touch any other file. The created,
+ * renamed or copied document is validated first (with the same validator its
+ * own save uses) and carries its new name; an existing target is never
+ * overwritten; a scene used by the game flow cannot be created over, renamed
+ * or deleted. New-document creation is template-driven: a kind with no
+ * `defaultDoc` (playtest, build) is refused with 400 — the route never writes
+ * arbitrary content, which is what the per-host hand-rolled `PUT` was getting
+ * wrong. A refused request writes nothing.
  */
 
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { loadProfile } from "@mmo-engine/build";
-import { validateScene } from "@mmo-engine/scene";
+import { emptyScene, validateScene } from "@mmo-engine/scene";
 import { isSceneName } from "./scenes-host.js";
 import { writeJsonAtomic } from "./json-file.js";
 import type { RouteReply } from "./api.js";
@@ -32,10 +36,12 @@ interface KindSpec {
   isName(name: string): boolean;
   /** Problems with `doc` as the file called `name` (empty = fine). */
   check(repoRoot: string, doc: unknown, name: string): string[] | Promise<string[]>;
+  /** A template for a brand-new document of this kind. Absent: the kind can't be created here (still rename/dup/delete-able). */
+  defaultDoc?: (name: string) => unknown;
 }
 
 const issueText = (i: { path?: string; message: string }): string => (i.path ? `${i.path}: ${i.message}` : i.message);
-const named = (d: unknown, n: string): string[] => ((d as { name?: unknown } | null)?.name === n ? [] : [`name: must match the file name "${n}"`]);
+const named = (d: unknown, n: string): string[] => ((d as { name?: unknown } | null)?.name === n ? [] : [`name: must match the file name \"${n}\"`]);
 const reason = (e: unknown): string[] => {
   const issues = (e as { issues?: Array<{ path?: unknown[]; message: string }> }).issues;
   return issues ? issues.map((i) => issueText({ path: i.path?.join("."), message: i.message })) : [e instanceof Error ? e.message : String(e)];
@@ -47,6 +53,8 @@ const SPECS: Record<FileKind, KindSpec> = {
     suffix: ".scene.json",
     isName: isSceneName,
     check: (_r, d, n) => [...validateScene(d).map(issueText), ...named(d, n)],
+    /** A fresh world scene: the spawner fills it with Structure nodes (EA4/E6). */
+    defaultDoc: (name: string) => emptyScene(name, "world"),
   },
   playtest: {
     dir: ["content", "playtests"],
@@ -95,7 +103,7 @@ const dirOf = (repoRoot: string, kind: FileKind): string => resolve(repoRoot, ..
 
 function pathOf(repoRoot: string, kind: FileKind, name: string): string {
   const spec = SPECS[kind];
-  if (!spec.isName(name)) throw new Refused(400, `bad ${kind} name "${name}" (lowercase letters, digits and dashes)`);
+  if (!spec.isName(name)) throw new Refused(400, `bad ${kind} name \"${name}\" (lowercase letters, digits and dashes)`);
   const dir = dirOf(repoRoot, kind);
   const abs = join(dir, `${name}${spec.suffix}`);
   if (!abs.startsWith(dir + sep)) throw new Refused(400, "path escapes the content folder");
@@ -119,7 +127,7 @@ function usedBy(repoRoot: string, kind: FileKind, name: string): string[] {
     const flow = JSON.parse(readFileSync(join(repoRoot, "content", "flow", "game.flow.json"), "utf8")) as { nodes?: Record<string, { scene?: unknown }> };
     return Object.entries(flow.nodes ?? {})
       .filter(([, n]) => n.scene === name)
-      .map(([id]) => `flow node "${id}"`);
+      .map(([id]) => `flow node \"${id}\"`);
   } catch {
     return [];
   }
@@ -138,7 +146,7 @@ function readDoc(file: string, label: string): unknown {
 async function asNamed(repoRoot: string, kind: FileKind, doc: unknown, to: string): Promise<unknown> {
   const out = typeof doc === "object" && doc !== null && !Array.isArray(doc) && "name" in doc ? { ...(doc as Record<string, unknown>), name: to } : doc;
   const problems = await SPECS[kind].check(repoRoot, out, to);
-  if (problems.length > 0) throw new Refused(400, `${kind} "${to}" would be invalid: ${problems.slice(0, 3).join("; ")}${problems.length > 3 ? ` (+${problems.length - 3} more)` : ""}`);
+  if (problems.length > 0) throw new Refused(400, `${kind} \"${to}\" would be invalid: ${problems.slice(0, 3).join("; ")}${problems.length > 3 ? ` (+${problems.length - 3} more)` : ""}`);
   return out;
 }
 
@@ -147,9 +155,9 @@ export async function renameFile(repoRoot: string, kind: FileKind, from: string,
   const dst = pathOf(repoRoot, kind, to);
   if (from === to) throw new Refused(400, "the new name is the same");
   const uses = usedBy(repoRoot, kind, from);
-  if (uses.length > 0) throw new Refused(409, `"${from}" is used by ${uses.join(", ")}; change those first`);
-  const doc = await asNamed(repoRoot, kind, readDoc(src, `${kind} "${from}"`), to);
-  if (existsSync(dst)) throw new Refused(409, `${kind} "${to}" already exists`);
+  if (uses.length > 0) throw new Refused(409, `\"${from}\" is used by ${uses.join(', ')}; change those first`);
+  const doc = await asNamed(repoRoot, kind, readDoc(src, `${kind} \"${from}\"`), to);
+  if (existsSync(dst)) throw new Refused(409, `${kind} \"${to}\" already exists`);
   writeJsonAtomic(dst, doc);
   rmSync(src);
 }
@@ -162,18 +170,32 @@ export async function duplicateFile(repoRoot: string, kind: FileKind, from: stri
     for (let i = 2; existsSync(pathOf(repoRoot, kind, target)); i++) target = `${from}-copy-${i}`;
   }
   const dst = pathOf(repoRoot, kind, target);
-  const doc = await asNamed(repoRoot, kind, readDoc(src, `${kind} "${from}"`), target);
-  if (existsSync(dst)) throw new Refused(409, `${kind} "${target}" already exists`);
+  const doc = await asNamed(repoRoot, kind, readDoc(src, `${kind} \"${from}\"`), target);
+  if (existsSync(dst)) throw new Refused(409, `${kind} \"${target}\" already exists`);
   writeJsonAtomic(dst, doc);
   return target;
 }
 
 export function deleteFile(repoRoot: string, kind: FileKind, name: string): void {
   const file = pathOf(repoRoot, kind, name);
-  if (!existsSync(file)) throw new Refused(404, `no ${kind} "${name}"`);
+  if (!existsSync(file)) throw new Refused(404, `no ${kind} \"${name}\"`);
   const uses = usedBy(repoRoot, kind, name);
-  if (uses.length > 0) throw new Refused(409, `"${name}" is used by ${uses.join(", ")}; change those first`);
+  if (uses.length > 0) throw new Refused(409, `\"${name}\" is used by ${uses.join(', ')}; change those first`);
   rmSync(file);
+}
+
+/** Create a fresh document of `kind` named `name` from its template. Refused (400) if the kind has no template, (409) if the name is taken; validates before writing. */
+export async function createFile(repoRoot: string, kind: FileKind, name: string): Promise<void> {
+  const spec = SPECS[kind];
+  if (!spec.defaultDoc) throw new Refused(400, `cannot create a ${kind} document without a template`);
+  const uses = usedBy(repoRoot, kind, name);
+  if (uses.length > 0) throw new Refused(409, `name \"${name}\" is used by ${uses.join(', ')}; change those first`);
+  const file = pathOf(repoRoot, kind, name);
+  if (existsSync(file)) throw new Refused(409, `${kind} \"${name}\" already exists`);
+  const doc = spec.defaultDoc(name);
+  const problems = await spec.check(repoRoot, doc, name);
+  if (problems.length > 0) throw new Refused(400, `${kind} \"${name}\" would be invalid: ${problems.slice(0, 3).join("; ")}${problems.length > 3 ? ` (+${problems.length - 3} more)` : ""}`);
+  writeJsonAtomic(file, doc);
 }
 
 /** Handle one request; null when the path is not a files route. */
@@ -187,28 +209,33 @@ export async function handleFilesRoute(repoRoot: string, method: string, pathnam
     return fail(400, "bad path");
   }
   const [kind, name, action] = parts;
-  if (!kind || !isKind(kind)) return fail(404, `unknown kind "${kind ?? ""}" (${FILE_KINDS.join(", ")})`);
+  if (!kind || !isKind(kind)) return fail(404, `unknown kind \"${kind ?? ''}\" (${FILE_KINDS.join(', ')})`);
   try {
     if (parts.length === 1 && method === "GET") return { status: 200, body: { ok: true, names: listFiles(repoRoot, kind) } };
-    let json: { to?: unknown } = {};
+    let json: { name?: unknown; to?: unknown } = {};
     if (body !== undefined && body !== "") {
       try {
-        json = JSON.parse(body) as { to?: unknown };
+        json = JSON.parse(body) as { name?: unknown; to?: unknown };
       } catch {
         return fail(400, "request body is not valid JSON");
       }
+    }
+    if (parts.length === 1 && method === "POST") {
+      if (typeof json.name !== "string") return fail(400, 'need {\"name\": \"<new name>\"}');
+      await createFile(repoRoot, kind, json.name);
+      return { status: 200, body: { ok: true, name: json.name } };
     }
     if (parts.length === 2 && method === "DELETE") {
       deleteFile(repoRoot, kind, name);
       return { status: 200, body: { ok: true, name } };
     }
     if (parts.length === 3 && method === "POST" && action === "rename") {
-      if (typeof json.to !== "string") return fail(400, 'need {"to": "<new name>"}');
+      if (typeof json.to !== "string") return fail(400, 'need {\"to\": \"<new name>\"}');
       await renameFile(repoRoot, kind, name, json.to);
       return { status: 200, body: { ok: true, name: json.to } };
     }
     if (parts.length === 3 && method === "POST" && action === "duplicate") {
-      if (json.to !== undefined && typeof json.to !== "string") return fail(400, '"to" is a name');
+      if (json.to !== undefined && typeof json.to !== "string") return fail(400, '\"to\" is a name');
       return { status: 200, body: { ok: true, name: await duplicateFile(repoRoot, kind, name, json.to) } };
     }
     return fail(404, "not found");

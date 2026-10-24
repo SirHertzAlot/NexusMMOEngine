@@ -210,3 +210,16 @@ Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0
 | interest | spread | 5000 | 10.5 KiB | 12.2 KiB | 14.46 | 22.77 | 495.6 KiB | 496.4 KiB | 1.335 |
 | interest | towns | 1000 | 9.8 KiB | 15.5 KiB | 5.42 | 10.75 | 149.9 KiB | 152.5 KiB | 0.742 |
 | interest | towns | 5000 | 32.0 KiB | 48.1 KiB | 17.45 | 63.63 | 450.8 KiB | 454.8 KiB | 1.597 |
+
+## B7: Interest bandwidth (2026-10-24)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `0b2614ad`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 | edge assembly ms mean |
+|---|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.4 KiB | 55.2 KiB | 1.18 | 2.8 | 97.7 KiB | 73.7 KiB | 0 |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 4.3 | 14.1 | 471.8 KiB | 365.3 KiB | 0 |
+| global | towns | 1000 | 55.4 KiB | 55.2 KiB | 1.08 | 3.13 | 97.7 KiB | 73.7 KiB | 0 |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 4.35 | 16.93 | 471.8 KiB | 365.3 KiB | 0 |
