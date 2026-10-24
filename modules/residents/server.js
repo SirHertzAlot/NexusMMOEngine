@@ -75,6 +75,8 @@ export function createSystems(ctx) {
     fullM: config.fullM,
     coarseM: config.coarseM,
     maxFull: config.maxFull,
+    store: config.store,
+    replaceMs: config.replaceMs,
     steer: ctx.shared?.navBackend?.crowd !== undefined, // a crowd runs: residents walk between anchors
   });
   ctx.log(`[residents] ${towns.length} town(s), ${towns.reduce((n, t) => n + t.npcs.length, 0)} people`);
