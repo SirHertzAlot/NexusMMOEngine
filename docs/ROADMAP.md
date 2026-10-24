@@ -776,3 +776,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-24**: RS7 residents can be killed; replaced three game days later.
 - **2026-10-24**: RS6 residents take cover from raids; guards hold.
 - **2026-10-24**: RS4 homestead families and roadside people baked into places.json.
+- **2026-10-24**: D4f chest and trap placement on free cells (from #366, reworked onto entity chests).
