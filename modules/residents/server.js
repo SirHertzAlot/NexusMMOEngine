@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ResidentSystem } from "../../packages/engine-core/dist/src/residents/index.js";
-import { scheduleAt, SQUARE } from "../../packages/settlement/dist/src/index.js";
+import { barkFor, scheduleAt, SQUARE } from "../../packages/settlement/dist/src/index.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.residents ?? {};
@@ -64,6 +64,11 @@ export function createSystems(ctx) {
     towns,
     place: (town, npc, t) => scheduleAt(npc, t, towns.find((x) => x.id === town.id).view),
     timeOfDay: config.timeOfDay,
+    dayOf: config.dayOf,
+    bark: (town, npc, c) => {
+      const view = towns.find((x) => x.id === town.id).view;
+      return barkFor(npc, { ...c, workplace: npc.workplace ? view.archetypeOf(npc.workplace) : undefined, town: town.id });
+    },
     catalog: config.catalog ?? null,
     groundHeightAt: config.groundHeightAt,
     maxEntities: config.maxEntities,

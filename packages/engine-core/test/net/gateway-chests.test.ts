@@ -11,6 +11,7 @@ import { addComponent } from "bitecs";
 import { decodeControl, encodeControl, MessageType, type ChestsMessage, type ErrorMessage, type SpellMessage } from "@mmo-engine/protocol";
 import { Gateway } from "../../src/net/gateway.js";
 import { BreakSystem, ChestSystem } from "../../src/interact/index.js";
+import { ResidentSystem } from "../../src/residents/index.js";
 import { AssetRef, Health, Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { HeadlessClient } from "./headless-client.js";
@@ -178,5 +179,43 @@ describe("gateway: broken buildings", () => {
     assert.match(decodeControl<ErrorMessage>((await errP)[0]!).message, /nothing to use there|nothing to pick up/);
     await client.close();
     await bob.client.close();
+  });
+});
+
+describe("gateway: talking to a resident", () => {
+  it("E on a resident in reach answers with a generated line; a far one is refused", async () => {
+    now = 1_000_000;
+    const sim = new SimWorld();
+    const lines: string[] = [];
+    const residents = new ResidentSystem({
+      towns: [{ id: "t", npcs: [{ id: "npc_1", home: null, role: "worker", class: "artisan", cohort: "adult" }], positionOf: () => ({ x: 300, z: 300 }) }],
+      place: () => ({ anchor: "sq", outdoors: true, activity: "idle" }),
+      bark: (_t, npc, c) => (lines.push(npc.id), `Day ${c.day}: hello`),
+      dayOf: () => 4,
+      catalog: null,
+    });
+    gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world: sim, systems: [residents], spawnPoint: { x: 0, z: 0 } });
+    const port = await gw.listen();
+    gw.frame(now);
+    const client = new HeadlessClient();
+    await client.connect(`ws://127.0.0.1:${port}`);
+    await client.hello("alice", { username: "alice", password: TEST_PASSWORD });
+    tick();
+    const eid = residents.entityOf("npc_1")!;
+    assert.ok(eid !== undefined);
+    const wire = sim.wireId(eid).toString();
+
+    let errP = client.waitFor(MessageType.Error, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wire }));
+    assert.match(decodeControl<ErrorMessage>((await errP)[0]!).message, /too far/);
+
+    const avatar = sim.resolveWireId(BigInt(client.welcome!.player_entity));
+    Transform.px[avatar] = Transform.px[eid]!;
+    Transform.pz[avatar] = Transform.pz[eid]!;
+    const chatP = client.waitFor(MessageType.Chat, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wire }));
+    const dialog = decodeControl<{ kind: string; npc: string; name: string; text: string; replies: unknown[] }>((await chatP)[0]!);
+    assert.deepEqual([dialog.kind, dialog.npc, dialog.name, dialog.text, dialog.replies], ["dialog", "npc_1", "Worker", "Day 4: hello", []]);
+    await client.close();
   });
 });

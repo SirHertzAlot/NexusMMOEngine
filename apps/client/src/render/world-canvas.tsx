@@ -206,6 +206,21 @@ const GATHER_PROMPT_RANGE = 2.3;
 /** How close to a dungeon chest E opens it (the server's chestOpenRadiusM is 3 by default and decides). */
 const CHEST_PROMPT_RANGE = 3;
 
+/** How close E talks to a person (a resident) under the cursor or targeted. */
+const TALK_RANGE = 4;
+
+/** The person to talk to: the hovered or targeted body that wears a look, has no player name and stands within reach (a resident). */
+function personInReach(client: MirrorClient, wids: ReadonlyArray<bigint | null>, p: { x: number; z: number } | null): bigint | null {
+  if (!p) return null;
+  for (const wid of wids) {
+    if (wid === null || wid === client.playerEntity || client.names.has(wid)) continue;
+    const e = client.state.entities.get(wid);
+    if (!e?.appearance || !e.transform) continue;
+    if ((e.transform.px - p.x) ** 2 + (e.transform.pz - p.z) ** 2 <= TALK_RANGE ** 2) return wid;
+  }
+  return null;
+}
+
 /** The nearest unopened world chest within reach of the player (its wire id), or null. */
 function nearestChest(chests: ReadonlyMap<bigint, { x: number; z: number; open: boolean; kind?: "door" | "ruin" | "vendor" }>, p: { x: number; z: number } | null): bigint | null {
   if (!p) return null;
@@ -490,6 +505,7 @@ function MirrorWorld({
         else if (nearestChest(client.chests, rt.current?.layer.player ?? null) !== null) client.interact(nearestChest(client.chests, rt.current?.layer.player ?? null)!);
         else if (npcs.nearest !== null) client.interact({ npc: npcs.nearest });
         else if (entrances.nearest !== null) client.interact({ entrance: entrances.nearest });
+        else if (personInReach(client, [layer.hovered, latest.current.combat?.target ?? null], rt.current?.layer.player ?? null) !== null) client.interact(personInReach(client, [layer.hovered, latest.current.combat?.target ?? null], rt.current?.layer.player ?? null)!);
         else latest.current.onUseHotkey?.();
       },
     });
