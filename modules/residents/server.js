@@ -45,8 +45,14 @@ export function createSystems(ctx) {
         return best;
       },
     };
+    // The town's centre and radius, from its structures (the tiers go by a player's distance to its edge).
+    const spots = manifest.structures.map((st) => positions.get(st.id)).filter(Boolean);
+    const centre = spots.length ? { x: spots.reduce((n, p) => n + p.x, 0) / spots.length, z: spots.reduce((n, p) => n + p.z, 0) / spots.length } : square;
+    const radius = spots.reduce((m, p) => Math.max(m, Math.hypot(p.x - centre.x, p.z - centre.z)), 0);
     towns.push({
       id: manifest.settlementId,
+      centre,
+      radius,
       npcs: manifest.occupancy.npcs,
       view,
       positionOf: (anchor) => (anchor === SQUARE ? square : positions.get(anchor)),
@@ -61,6 +67,9 @@ export function createSystems(ctx) {
     catalog: config.catalog ?? null,
     groundHeightAt: config.groundHeightAt,
     maxEntities: config.maxEntities,
+    fullM: config.fullM,
+    coarseM: config.coarseM,
+    maxFull: config.maxFull,
     steer: ctx.shared?.navBackend?.crowd !== undefined, // a crowd runs: residents walk between anchors
   });
   ctx.log(`[residents] ${towns.length} town(s), ${towns.reduce((n, t) => n + t.npcs.length, 0)} people`);

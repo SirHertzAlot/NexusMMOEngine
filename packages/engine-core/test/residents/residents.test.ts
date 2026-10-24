@@ -7,7 +7,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { entityExists } from "bitecs";
-import { Appearance, NavAgent, NavAgentState, Transform } from "../../src/components.js";
+import { addComponent } from "bitecs";
+import { Appearance, CharacterRef, NavAgent, NavAgentState, Transform } from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { ResidentSystem, type ResidentNpc, type ResidentTown } from "../../src/residents/index.js";
 
@@ -173,5 +174,62 @@ describe("ResidentSystem: walking", () => {
     run(sys, sim, 120);
     assert.equal(sys.entityOf("npc_3"), undefined, "indoors");
     assert.equal(sys.count, 0);
+  });
+});
+
+describe("ResidentSystem: tiers", () => {
+  const far = (n = 6): ResidentTown => ({ ...town(n), centre: { x: 40, z: 0 }, radius: 50 });
+  function player(sim: SimWorld, x: number): number {
+    const e = sim.spawn();
+    addComponent(sim.ecs, Transform, e);
+    addComponent(sim.ecs, CharacterRef, e);
+    Transform.px[e] = x;
+    Transform.pz[e] = 0;
+    return e;
+  }
+  function make(extra: { maxFull?: number } = {}): ResidentSystem {
+    return new ResidentSystem({ towns: [far(12)], place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view), timeOfDay: () => 0.5, catalog: null, steer: true, fullM: 150, coarseM: 400, ...extra });
+  }
+
+  it("has nobody where no player is near, places them when one comes, and walks them only close up", () => {
+    const sim = new SimWorld();
+    const sys = make();
+    const p = player(sim, 1000); // 910 m from the town's edge
+    run(sys, sim, 30);
+    assert.deepEqual([sys.tierOf("t"), sys.count], ["none", 0]);
+    Transform.px[p] = 40 + 50 + 300; // coarse: 300 m from the edge
+    run(sys, sim, 60);
+    assert.equal(sys.tierOf("t"), "coarse");
+    assert.ok(sys.count > 0);
+    assert.equal(sys.walking, 0, "no crowd slots");
+    Transform.px[p] = 40 + 50 + 100; // full
+    run(sys, sim, 90);
+    assert.equal(sys.tierOf("t"), "full");
+  });
+
+  it("holds a tier for 25 m past its edge", () => {
+    const sim = new SimWorld();
+    const sys = make();
+    const p = player(sim, 40 + 50 + 100);
+    run(sys, sim, 30);
+    assert.equal(sys.tierOf("t"), "full");
+    Transform.px[p] = 40 + 50 + 160; // 10 m past the full edge: still full
+    run(sys, sim, 60);
+    assert.equal(sys.tierOf("t"), "full");
+    Transform.px[p] = 40 + 50 + 200;
+    run(sys, sim, 90);
+    assert.equal(sys.tierOf("t"), "coarse");
+  });
+
+  it("gives crowd slots only up to maxFull and frees them when the town goes coarse", () => {
+    const sim = new SimWorld();
+    const sys = make({ maxFull: 3 });
+    const p = player(sim, 40 + 50 + 100);
+    run(sys, sim, 30);
+    assert.ok(sys.count > 3);
+    assert.equal(sys.walking, 3);
+    Transform.px[p] = 40 + 50 + 300;
+    run(sys, sim, 60);
+    assert.equal(sys.walking, 0);
   });
 });

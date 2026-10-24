@@ -1212,6 +1212,7 @@ async function main(): Promise<void> {
     timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
     maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
+    maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
   };
   const moduleCtx: ServerModuleContext = {
     sim,
