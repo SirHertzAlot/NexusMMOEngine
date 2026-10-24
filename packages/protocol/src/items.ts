@@ -14,6 +14,12 @@
 /** AssetRef.variant of an item lying on the ground (scenery uses 0). */
 export const GROUND_ITEM_VARIANT = 0xffff;
 
+/**
+ * AssetRef variant of a prop that broke and stays (IX4, `breakable.into: "variant"`): the client draws the
+ * kind's broken look (the stand-in tipped and darkened) instead of the whole model.
+ */
+export const BROKEN_VARIANT = 0xfffe;
+
 /** The hand an item is held in ("both": two-handed; "none": not held). */
 export type ItemHand = "main" | "off" | "both" | "none";
 

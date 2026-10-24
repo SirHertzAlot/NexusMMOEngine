@@ -42,6 +42,7 @@ import { mountPcgService } from "../pcg/boot.js";
 import { propMesh } from "./prop-mesh.js";
 import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
+import { BreakSystem, breakDefsOf } from "../interact/index.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout } from "./pool.js";
 import { DungeonWallSystem } from "./walls.js";
@@ -181,6 +182,12 @@ export class DungeonInstance {
       (s, ev) => this.onDeath(s, ev),
     );
     const director: SimSystem = { name: "dungeon-director", step: () => this.direct() };
+    // Props that break (IX4): barrels, crates, urns. The run's blows hurt them like anything with Health; a break rolls loot for the last attacker.
+    const breaks = new BreakSystem(breakDefsOf(opts.props), {
+      killerOf: (e) => combat.lastAttacker(e),
+      onBreak: (_s, ev) => this.onPropBroken(ev.killer, ev.loot !== undefined),
+      spawnDebris: (s, debris, x, y, z, yaw) => this.spawnDebris(s, debris, x, y, z, yaw),
+    });
     // Its position, health and stamina here are the run's, never the character's saved state.
     const store: CharacterStore = {
       list: (u) => opts.characterStore.list(u),
@@ -205,7 +212,7 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), breaks, new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
@@ -258,6 +265,29 @@ export class DungeonInstance {
     addComponent(this.world.ecs, C.AssetRef, eid);
     C.AssetRef.assetHash[eid] = shell.assetHash;
     C.AssetRef.variant[eid] = 0;
+  }
+
+  /** A breakable prop broke: with loot to give, the last attacker (if a member) earns a roll from the run's loot pool. */
+  private onPropBroken(killer: number | undefined, hasLoot: boolean): void {
+    if (!hasLoot || killer === undefined || !hasComponent(this.world.ecs, C.CharacterRef, killer)) return;
+    const id = C.CharacterRef.idHi[killer] * 4294967296 + C.CharacterRef.idLo[killer];
+    const pool = this.opts.lootPool ?? [];
+    if (pool.length > 0 && this.members.has(id)) this.loot.push({ characterId: id, def: pool[Math.floor(this.rand() * pool.length)] });
+  }
+
+  /** The debris archetype of a broken prop, standing where it was (walk-through; the table says so). */
+  private spawnDebris(sim: SimWorld, debris: string, x: number, y: number, z: number, yaw: number): void {
+    const table = this.opts.props;
+    const archetype = table?.archetypes[debris];
+    if (!table || !archetype) return;
+    const built = buildSpawn(table, debris, x, 0, z, yaw);
+    if ("error" in built) return;
+    built.y = y;
+    if (archetype.asset !== debris) {
+      built.assetId = archetype.asset;
+      built.assetHash = fnv1a32(archetype.asset);
+    }
+    spawnScatterEntity(sim, built);
   }
 
   /** Prop kinds the bake placed that props.json has no entry for (so nothing spawned): kind -> count. */

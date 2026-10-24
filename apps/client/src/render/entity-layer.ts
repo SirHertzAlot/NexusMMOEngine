@@ -31,7 +31,7 @@
 
 import * as THREE from "three";
 import { labelSprite } from "./element-fx.js";
-import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
+import { BROKEN_VARIANT, combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
 import { parseLook, heldOf, lostOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
@@ -319,9 +319,9 @@ export class EntityLayer {
     this.depleted = ids;
   }
 
-  /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node. */
-  private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null): [TransformRow, BodyConfigRow | null] {
-    if (!this.depleted.has(wid)) {
+  /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node or broken (BROKEN_VARIANT). */
+  private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null, asset?: AssetRefRow): [TransformRow, BodyConfigRow | null] {
+    if (!this.depleted.has(wid) && asset?.variant !== BROKEN_VARIANT) {
       this.lowRows.delete(wid);
       return [t, b];
     }
@@ -375,7 +375,7 @@ export class EntityLayer {
       // Batched static props: follow their rows (unchanged rows cost nothing).
       if (this.props.has(wid)) {
         if (e.transform) {
-          const [t, b] = this.shown(wid, e.transform, e.body ?? null);
+          const [t, b] = this.shown(wid, e.transform, e.body ?? null, e.asset);
           this.props.update(wid, t, b);
         }
         continue;
@@ -387,7 +387,7 @@ export class EntityLayer {
         const model = this.modelFor(e.asset);
         if (!model && isStaticProp(e.body, e.asset)) {
           // Scenery: no spawn portal (a streamed ring brings hundreds at once).
-          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null), placeholderColor(wid), propAsset(e.asset));
+          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null, e.asset), placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
@@ -410,7 +410,7 @@ export class EntityLayer {
           detachPlate(tracked);
           this.detachWeapons(tracked);
           this.meshes.delete(wid);
-          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null), placeholderColor(wid), propAsset(e.asset));
+          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null, e.asset), placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
