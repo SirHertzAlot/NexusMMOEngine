@@ -21,12 +21,21 @@
  *   object's identity and its reference edges. The live viewport stays
  *   in the Scenes workspace; selection is shared, so picking here is
  *   picking there.
- * - Widget CRUD buttons and shelf verb actions are resolved to full
- *   VerbCalls and recorded in the session VerbHistory shown under the
- *   stage. They are NOT dispatched to the live verb layer yet — the
- *   button feedback says so, every time.
+ * - Dispatch is LIVE (dispatch slice): widget CRUD and shelf verb
+ *   actions are mapped by ../authoring/dispatch.ts to real admin
+ *   commands and executed over the shared serverLink when a play
+ *   server is live; the outcome (dispatched / refused / unsupported /
+ *   offline, with the server's message) is recorded beside the call in
+ *   the session history, and a dispatched mutation re-inspects its
+ *   target so the stage shows the read-back. Verbs with no honest
+ *   admin home stay unsupported — the mapper says why, per verb.
+ *   Component-shaped shelf additions (add Health+Stamina, bind a
+ *   marker) are unsupported for a real reason: admin `set` cannot add
+ *   a component.
  * - Applied-state lines come from the selection's own component fields
- *   (what the editor already read), never invented server state.
+ *   (what the editor already read), never invented server state; after
+ *   a dispatch whose read-back target IS this selection, the inspect
+ *   lines join them.
  */
 
 import * as React from "react";
@@ -43,16 +52,20 @@ import {
   createBuiltinRegistry,
   deserializeSavedView,
   evaluateRelevance,
+  executeDispatch,
+  inspectTargetForCall,
   makeFacts,
   makeVerbCall,
   roleFilterById,
   sceneLevelWidgets,
   serializeSavedView,
+  shelfComponentPlan,
   sortNodes,
   visibleShelf,
   VerbHistory,
   ROLE_FILTERS,
   type AppliedState,
+  type DispatchOutcome,
   type HierarchyNode,
   type PresentationPin,
   type Provenance,
@@ -69,6 +82,7 @@ import { ModulesPanel } from "./modules-panel.js";
 import { browserStorage, currentProfile } from "./editor-prefs.js";
 import { editorSelection, useEditorSelection, type EditorSelection } from "./editor-selection.js";
 import { ModalTabs } from "./merged-modals.js";
+import { serverLink, useServerLink } from "./server-gate.js";
 
 /** Session history of every verb call this view produced (the provenance log, in-memory for this slice). */
 export const authoringHistory = new VerbHistory();
@@ -291,6 +305,25 @@ export function appliedStateFromSelection(sel: EditorSelection): Readonly<Record
   return out;
 }
 
+/** Fold live inspect read-back lines ("Health: 40/50") into the applied state, under the same component→widget map. */
+export function mergeInspectLines(state: Readonly<Record<string, AppliedState>>, lines: readonly string[]): Record<string, { identity?: string; lines: string[] }> {
+  const out: Record<string, { identity?: string; lines: string[] }> = {};
+  for (const [k, v] of Object.entries(state)) out[k] = { ...(v.identity !== undefined ? { identity: v.identity } : {}), lines: [...v.lines] };
+  for (const line of lines) {
+    const m = line.match(/^([^:]+):\s*(.*)$/);
+    if (!m) continue;
+    const widgetId = COMPONENT_WIDGET[m[1].trim().toLowerCase()];
+    if (!widgetId) continue;
+    (out[widgetId] ??= { lines: [] }).lines.push(`live · ${line}`);
+  }
+  return out;
+}
+
+/** A read-back joins a selection's applied state only when it names that selection's own id ("me" is the caller's avatar, never a scene selection). */
+export function inspectTargetMatches(target: string, sel: EditorSelection): boolean {
+  return target === sel.id;
+}
+
 // ------------------------------------------------------------- the view
 
 const DEFAULT_VIEWS: readonly SavedView[] = [
@@ -312,6 +345,14 @@ function AuthoringPresentation(): React.JSX.Element {
   const [why, setWhy] = React.useState("hand tweak");
   const [historyTick, setHistoryTick] = React.useState(0);
   const [tabByWidget, setTabByWidget] = React.useState<Readonly<Record<string, string>>>({});
+  /** Dispatch outcomes by the exact VerbCall object (history entries are the same references). */
+  const [outcomes, setOutcomes] = React.useState<ReadonlyMap<VerbCall, DispatchOutcome>>(new Map());
+  /** The latest live inspect read-back: which target it describes, and its lines. */
+  const [readBack, setReadBack] = React.useState<{ target: string; lines: readonly string[] } | null>(null);
+  /** Shelf component-add attempts and their (unsupported) outcomes — they have no canonical verb, so they live outside VerbHistory. */
+  const [shelfLog, setShelfLog] = React.useState<readonly { id: number; title: string; detail: string }[]>([]);
+  const link = useServerLink();
+  const serverLive = link.phase === "live";
 
   React.useEffect(() => {
     let live = true;
@@ -358,14 +399,58 @@ function AuthoringPresentation(): React.JSX.Element {
   const actor = React.useMemo(() => ({ id: currentProfile(browserStorage()) || "designer", role: "designer" as const }), []);
   const facts = selection ? factsFromSelection(selection) : null;
   const where = (model && selection && model.byId.get(selection.id)?.path) || selection?.label || "";
-  const widgets = facts && selection ? buildWidgets(facts, { actor, why: why.trim() || "hand tweak", where, state: appliedStateFromSelection(selection) }) : [];
+  // The reflection: a read-back whose target IS this selection joins its applied state (labelled "live ·").
+  const appliedState = selection
+    ? readBack !== null && inspectTargetMatches(readBack.target, selection)
+      ? mergeInspectLines(appliedStateFromSelection(selection), readBack.lines)
+      : appliedStateFromSelection(selection)
+    : {};
+  const widgets = facts && selection ? buildWidgets(facts, { actor, why: why.trim() || "hand tweak", where, state: appliedState }) : [];
   const shelf = facts ? visibleShelf(facts) : [];
   const history = authoringHistory.forObject(where);
 
+  /**
+   * Record the intent, then dispatch it for real over the shared link.
+   * No live server → the executor's transport is null and the outcome is
+   * `offline`, said plainly. A dispatched mutation's read-back lands in
+   * the stage (and in the widgets, when its target is this selection).
+   */
   const dispatch = (call: VerbCall): void => {
     authoringHistory.append(call);
     setHistoryTick((t) => t + 1);
-    notify(`${call.verb} recorded in the authoring history — live dispatch is not wired in this slice.`);
+    const transport = serverLive
+      ? {
+          admin: (command: string, args?: Record<string, unknown>) => serverLink.admin(command, args),
+          inspect: (entity: string) => serverLink.admin("inspect", { entity }),
+        }
+      : null;
+    void (async () => {
+      const outcome = await executeDispatch(call, transport);
+      setOutcomes((prev) => new Map(prev).set(call, outcome));
+      setHistoryTick((t) => t + 1);
+      if (outcome.status === "dispatched") {
+        notify(`${call.verb} dispatched — ${outcome.message}`);
+        if (outcome.readResult !== undefined && outcome.plan.kind !== "read") {
+          const target = inspectTargetForCall(call);
+          if (target !== null) setReadBack({ target, lines: outcome.readResult.split("\n").filter((l) => l.trim() !== "") });
+        }
+      } else if (outcome.status === "refused") {
+        notify(`${call.verb} refused by the server — ${outcome.message}`);
+      } else if (outcome.status === "offline") {
+        notify(`${call.verb} recorded — the play server isn't running, so nothing was dispatched.`);
+      } else {
+        notify(`${call.verb} can't be dispatched — ${outcome.message}`);
+      }
+    })();
+  };
+
+  /** Component-shaped shelf actions: no canonical verb exists, so the mapper's verdict is the outcome. */
+  const dispatchShelfComponents = (label: string, components: readonly string[]): void => {
+    const plan = shelfComponentPlan({ label, addComponents: components });
+    const detail = plan !== null && plan.kind === "unsupported" ? plan.reason : "no dispatch plan for a component addition";
+    setShelfLog((prev) => [...prev, { id: prev.length + 1, title: `${label} (${components.join(" + ")})`, detail }]);
+    setHistoryTick((t) => t + 1);
+    notify(`${label}: not dispatchable — admin set cannot add a component. The full reason is in the session history.`);
   };
 
   const pickNode = (node: HierarchyNode): void => {
@@ -510,7 +595,7 @@ function AuthoringPresentation(): React.JSX.Element {
               </div>
               <p className="mt-1 text-[13px] text-muted-foreground">{where}</p>
               <p className="mt-2 text-[13px] text-muted-foreground">
-                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state in the right quarter is read from the selection's own component fields.
+                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state in the right quarter is read from the selection's own component fields — joined by the live inspect read-back (marked "live ·") after a dispatched action whose target is this object.
               </p>
             </div>
             {/* Middle vertical third — the object's relationships / viewport focus. */}
@@ -528,13 +613,40 @@ function AuthoringPresentation(): React.JSX.Element {
                 <p className="text-[13px] text-muted-foreground">No reference edges in the scene data for this object yet (quest → giver, vendor → template, creature → patrol land here when the data carries them). The live 3D viewport stays in the Scenes workspace — selection is shared, so this object is the selected object there too.</p>
               )}
             </div>
+            {readBack !== null && (
+              <div className="rounded-lg border p-3" style={{ borderColor: "var(--m3-primary)" }}>
+                <SectionTitle>Live read-back — inspect {readBack.target}</SectionTitle>
+                <ul className="mt-1 font-mono text-[12px]">
+                  {readBack.lines.map((l) => (
+                    <li key={l}>{l}</li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-[12px] text-muted-foreground">Read from the running server after the last dispatched action on this target — this is the result, reflected back.</p>
+              </div>
+            )}
             {/* Bottom of the stage — provenance, kept compact: the middle zone above is the viewpoint and grows. */}
             <SectionTitle>Session history for this object</SectionTitle>
-            {history.length === 0 && <p className="text-[13px] text-muted-foreground">No verb calls recorded yet — widget and shelf actions land here with their 5W1H envelope.</p>}
+            {history.length === 0 && shelfLog.length === 0 && <p className="text-[13px] text-muted-foreground">No verb calls recorded yet — widget and shelf actions land here with their 5W1H envelope and their dispatch outcome.</p>}
             <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto text-[13px]">
-              {history.map((c, i) => (
-                <li key={`${historyTick}-${i}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
-                  <strong>{c.verb}</strong> — {c.provenance.why} · by {c.provenance.who.id} ({c.provenance.who.role})
+              {history.map((c, i) => {
+                const o = outcomes.get(c);
+                return (
+                  <li key={`${historyTick}-${i}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
+                    <strong>{c.verb}</strong> — {c.provenance.why} · by {c.provenance.who.id} ({c.provenance.who.role})
+                    {o !== undefined && (
+                      <span className="mt-0.5 block text-[12px]" style={{ color: o.status === "dispatched" ? "var(--m3-primary)" : o.status === "refused" ? "var(--m3-error)" : "var(--m3-on-surface-variant)" }}>
+                        → {o.status}: {o.message}
+                        {o.plan.kind === "read" && o.readResult !== undefined ? ` — answer: ${o.readResult}` : ""}
+                      </span>
+                    )}
+                    {o === undefined && <span className="mt-0.5 block text-[12px] text-muted-foreground">→ dispatching…</span>}
+                  </li>
+                );
+              })}
+              {shelfLog.map((s) => (
+                <li key={`shelf-${s.id}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
+                  <strong>{s.title}</strong>
+                  <span className="mt-0.5 block text-[12px] text-muted-foreground">→ unsupported: {s.detail}</span>
                 </li>
               ))}
             </ul>
@@ -545,6 +657,9 @@ function AuthoringPresentation(): React.JSX.Element {
       {/* --------------------------------- widgets + add shelf — right quarter: Act (supporting) */}
       <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
         <SectionTitle>Selection widgets</SectionTitle>
+        <p className="text-[12px]" style={{ color: serverLive ? "var(--m3-primary)" : "var(--m3-error)" }}>
+          {serverLive ? "Server live — actions dispatch to the running server for real." : "Server not running — actions record intent only; their outcome reads offline and nothing is dispatched."}
+        </p>
         <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
           Why (intent — required on every action)
           <Input value={why} onChange={(e) => setWhy(e.target.value)} aria-label="Intent for verb calls" />
@@ -593,7 +708,7 @@ function AuthoringPresentation(): React.JSX.Element {
                 if (e.action.verb) {
                   dispatch(makeVerbCall(e.action.verb, e.action.params ?? {}, { who: actor, what: facts.label, when: Date.now(), where, why: why.trim() || "hand tweak" }));
                 } else {
-                  notify(`Would add ${e.action.addComponents?.join(" + ") ?? "the precondition"} to ${facts.label} — component editing is not wired in this slice.`);
+                  dispatchShelfComponents(e.action.label, e.action.addComponents ?? []);
                 }
               }}
             >
