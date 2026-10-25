@@ -128,7 +128,8 @@ import { parseEntityArg, type ItemService } from "../items/index.js";
 import { GatheringSystem } from "../gathering/index.js";
 import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/index.js";
 import { ResidentSystem } from "../residents/index.js";
-import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
+import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
+import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
@@ -2846,7 +2847,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2867,6 +2868,13 @@ export class Gateway {
       }
     } else if (cmd.command === "set") {
       res = this.runSet(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "addcomponent") {
+      res = this.runAddComponent(s, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -3057,6 +3065,27 @@ export class Gateway {
     const r = applySet(this.world, target.wireId, parsed.data.component, parsed.data.field, parsed.data.value);
     if (!r.ok) return { kind: "admin", command: "set", ok: false, message: r.message };
     return { kind: "admin", command: "set", ok: true, message: r.message };
+  }
+
+  /**
+   * `addcomponent` (viewport authoring): give an entity a component it
+   * lacks, initialised to the component's defaults (admin/add-component
+   * owns the addable set). Args: {entity: "<u64>" | "me", component}.
+   * Adding a present component, a component with no defined defaults,
+   * and unknown entities/components read as errors, never throw.
+   */
+  private runAddComponent(s: ClientSession, args: unknown): AdminResult {
+    const parsed = AddComponentArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "addcomponent", ok: false, message: "usage: addcomponent {entity, component}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "addcomponent", ok: false, message: target.error };
+    }
+    const r = applyAddComponent(this.world, target.wireId, parsed.data.component);
+    if (!r.ok) return { kind: "admin", command: "addcomponent", ok: false, message: r.message };
+    return { kind: "admin", command: "addcomponent", ok: true, message: r.message };
   }
 
   /**
@@ -5693,9 +5722,47 @@ export class Gateway {
     const items = this.items;
     if (!items) return fail("no items on this server");
     if (command === "items") {
-      const a = ItemPickArgsSchema.safeParse(args ?? {});
-      if (!a.success) return fail("usage: items {base?, rank?, source?}");
-      return { kind: "admin", command, ok: true, message: describeMatches(items.defs, a.data) };
+      const a = ItemsCommandArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail('usage: items {base?, rank?, source?} or {sub: "take"|"move"|"defof"|"countbase", item?, base?, from?, to?}');
+      const d = a.data;
+      if (d.sub === undefined) {
+        return { kind: "admin", command, ok: true, message: describeMatches(items.defs, d) };
+      }
+      if (d.sub === "defof") {
+        // A pure store read — no bag, so no player entity needed.
+        if (d.item === undefined) return fail("usage: items {sub: \"defof\", item}");
+        const def = items.defOf(d.item);
+        if (def < 0) return fail(`item ${d.item} is not a live item`);
+        return { kind: "admin", command, ok: true, message: `item ${d.item}: ${items.defs.names[def]} [${items.defs.ranks[def]} ${items.defs.bases[def]}] ${items.defs.ids[def]}` };
+      }
+      // The bag sub-actions act on the console holder's bag, like give.
+      if (s.playerEntity === null) return fail("no player entity (not in the world)");
+      const holder = this.holderOf(s);
+      if (d.sub === "take") {
+        if (d.item !== undefined) {
+          const def = items.defOf(d.item);
+          if (!items.take(holder, d.item)) return fail(`item ${d.item} is not in your bag`);
+          this.sendInventory(s);
+          return { kind: "admin", command, ok: true, message: `took ${def >= 0 ? items.defs.names[def] : "item"} (item ${d.item}) from your bag` };
+        }
+        if (d.base !== undefined) {
+          if (!items.takeBase(holder, d.base)) return fail(`no ${d.base} in your bag`);
+          this.sendInventory(s);
+          return { kind: "admin", command, ok: true, message: `took one ${d.base} from your bag` };
+        }
+        return fail("usage: items {sub: \"take\", item} or {sub: \"take\", base}");
+      }
+      if (d.sub === "move") {
+        if (d.item === undefined || d.to === undefined) return fail("usage: items {sub: \"move\", item, to, from?}");
+        const from = d.from ?? holder;
+        if (!items.moveItem(d.item, from, d.to)) return fail(`move refused: item ${d.item} is not in character ${from}'s bag, or character ${d.to}'s bag is full`);
+        if (from === holder || d.to === holder) this.sendInventory(s);
+        return { kind: "admin", command, ok: true, message: `moved item ${d.item} from character ${from} to character ${d.to}` };
+      }
+      // countbase
+      if (d.base === undefined) return fail("usage: items {sub: \"countbase\", base}");
+      const n = items.countBase(holder, d.base);
+      return { kind: "admin", command, ok: true, message: `you carry ${n} × ${d.base}` };
     }
     if (s.playerEntity === null) return fail("no player entity (not in the world)");
     const avatar = this.world.resolveWireId(s.playerEntity);
@@ -5729,18 +5796,30 @@ export class Gateway {
         ? { kind: "admin", command, ok: true, message: `dropped ${dropped} mob drop${dropped === 1 ? "" : "s"} around you` }
         : fail("no mob drops in the pool");
     }
+    if (command === "drop") {
+      const a = DropArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail("usage: drop {def? | base?, rank?, source?, x?, z?, fixture?}");
+      if ((a.data.x === undefined) !== (a.data.z === undefined)) return fail("drop needs x and z together");
+      const def = pickDef(items.defs, a.data, seed);
+      if (def < 0) return fail("no items match");
+      const at = a.data.x !== undefined && a.data.z !== undefined ? { x: a.data.x, z: a.data.z } : { x: x + 1, z };
+      if (a.data.fixture) {
+        const { item, eid } = items.placeFixture(this.world, def, at.x, at.z);
+        return { kind: "admin", command, ok: true, message: `placed ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)} at ${at.x}, ${at.z} — a fixture, it stays` };
+      }
+      const { item, eid } = items.spawnDrop(this.world, def, at.x, at.z, 0);
+      const where = a.data.x !== undefined ? ` at ${at.x}, ${at.z}` : "";
+      return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}${where}` };
+    }
     const a = ItemPickArgsSchema.safeParse(args ?? {});
     if (!a.success) return fail(`usage: ${command} {def? | base?, rank?, source?}`);
     const def = pickDef(items.defs, a.data, seed);
     if (def < 0) return fail("no items match");
-    if (command === "give") {
-      const r = items.give(this.holderOf(s), def);
-      if (!r.ok) return fail(r.error);
-      this.sendInventory(s);
-      return { kind: "admin", command, ok: true, message: r.message };
-    }
-    const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
-    return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
+    // give (the only command left sharing this tail)
+    const r = items.give(this.holderOf(s), def);
+    if (!r.ok) return fail(r.error);
+    this.sendInventory(s);
+    return { kind: "admin", command, ok: true, message: r.message };
   }
 
   /**
