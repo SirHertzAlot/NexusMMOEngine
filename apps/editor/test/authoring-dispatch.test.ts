@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import {
   executeDispatch,
   executePlan,
+  fieldEditPlan,
+  fieldEditTarget,
   inspectTargetForCall,
   makeVerbCall,
   planDispatch,
+  removeComponentPlan,
   shelfComponentPlan,
+  vendorStockPlan,
   type DispatchTransport,
   type Provenance,
   type VerbCall,
@@ -357,5 +361,154 @@ describe("inspect target selection", () => {
     assert.equal(inspectTargetForCall(call("teleport", { entity: "77", x: 0, z: 0 })), "77");
     assert.equal(inspectTargetForCall(call("giveGold", { character: "me", amount: 5 })), "me");
     assert.equal(inspectTargetForCall(call("spawnCreature", { kind: "goblin", x: 0, z: 0 })), null);
+  });
+});
+
+// ---------------------------------------------------- component removal
+
+describe("dispatch mapper — component removal (the unbind)", () => {
+  it("maps to one removecomponent admin step against the entity", () => {
+    assert.deepEqual(removeComponentPlan("12345", "FlowRef"), {
+      kind: "admin", verb: "removeComponent", command: "removecomponent", args: { entity: "12345", component: "FlowRef" },
+    });
+  });
+
+  it("no entity is unsupported with the reason — never an invented target", () => {
+    const plan = removeComponentPlan("", "FlowRef");
+    assert.equal(plan.kind, "unsupported");
+    assert.match(plan.kind === "unsupported" ? plan.reason : "", /needs the selected entity/);
+  });
+
+  it("the executor dispatches the removal and re-inspects the target", async () => {
+    const t = fakeTransport(() => ({ ok: true, message: "FlowRef removed from 12345" }), "entity 12345 (slot 7)\nHealth: 100/100");
+    const out = await executePlan(removeComponentPlan("12345", "FlowRef"), t, "12345");
+    assert.equal(out.status, "dispatched");
+    assert.match(out.message, /FlowRef removed/);
+    assert.deepEqual(t.calls, ["removecomponent", "inspect"]);
+    assert.equal(out.readResult, "entity 12345 (slot 7)\nHealth: 100/100");
+  });
+
+  it("a removal the server refuses is refused, never dispatched", async () => {
+    const t = fakeTransport(() => ({ ok: false, message: "entity 12345 has no FlowRef" }));
+    const out = await executePlan(removeComponentPlan("12345", "FlowRef"), t, "12345");
+    assert.equal(out.status, "refused");
+    assert.equal(out.message, "entity 12345 has no FlowRef");
+  });
+});
+
+// ------------------------------------------------------------- field edits
+
+describe("field edits — what an applied-state line exposes", () => {
+  it("a Component.field: number line exposes that field, canonicalised to the server's spelling", () => {
+    assert.deepEqual(fieldEditTarget("Health.current: 37"), { component: "Health", field: "current", value: 37 });
+    assert.deepEqual(fieldEditTarget("health.max: 100"), { component: "Health", field: "max", value: 100 });
+    assert.deepEqual(fieldEditTarget("FlowRef.graph: 3"), { component: "FlowRef", field: "graph", value: 3 });
+    assert.deepEqual(fieldEditTarget("Velocity.lx: -2.5"), { component: "Velocity", field: "lx", value: -2.5 });
+    assert.deepEqual(fieldEditTarget("VfxEmitter.intensity: 0.5"), { component: "VfxEmitter", field: "intensity", value: 0.5 });
+  });
+
+  it("lines that expose no single numeric field expose nothing", () => {
+    assert.equal(fieldEditTarget("Transform.position: 0, 0, 0"), null); // a vector, not one field
+    assert.equal(fieldEditTarget("Health.current: abc"), null); // non-numeric value
+    assert.equal(fieldEditTarget("Health: 100/100"), null); // inspect shape — no named field
+    assert.equal(fieldEditTarget("live · FlowRef: graph 0 enabled 1"), null); // read-back lines are reflections, not editors
+    assert.equal(fieldEditTarget("intent.mx: 1"), null); // "intent" merely resembles PlayerIntent — no invented mapping
+    assert.equal(fieldEditTarget("Spawn count: 3"), null); // no component.field shape at all
+    assert.equal(fieldEditTarget(""), null);
+  });
+
+  it("the helper is syntactic about FIELDS: a named field it cannot verify still plans — and the server's whitelist refuses it", () => {
+    // "character" is not one of CharacterRef's set fields (idHi/idLo
+    // are); the editor does not duplicate the server's field table, so
+    // the line exposes a target and the refusal arrives as the outcome.
+    assert.deepEqual(fieldEditTarget("CharacterRef.character: 51"), { component: "CharacterRef", field: "character", value: 51 });
+    assert.deepEqual(fieldEditTarget("CharacterRef.idLo: 51"), { component: "CharacterRef", field: "idLo", value: 51 });
+  });
+
+  it("fieldEditPlan builds the admin set step for the exposed field", () => {
+    assert.deepEqual(fieldEditPlan("12345", "Health.current: 37", 55), {
+      kind: "admin", verb: "setField", command: "set", args: { entity: "12345", component: "Health", field: "current", value: 55 },
+    });
+  });
+
+  it("fieldEditPlan is null when the line exposes nothing, the entity is missing, or the value is not finite", () => {
+    assert.equal(fieldEditPlan("12345", "Transform.position: 0, 0, 0", 1), null);
+    assert.equal(fieldEditPlan("", "Health.current: 37", 55), null);
+    assert.equal(fieldEditPlan("12345", "Health.current: 37", Number.NaN), null);
+  });
+
+  it("the executor dispatches a field edit as admin set and reflects the read-back", async () => {
+    const seen: { command: string; args?: Record<string, unknown> }[] = [];
+    const t: DispatchTransport = {
+      async admin(command, args) {
+        seen.push({ command, ...(args ? { args } : {}) });
+        return { ok: true, message: "Health.current = 55 on 12345" };
+      },
+      async inspect() {
+        return { ok: true, message: "entity 12345 (slot 7)\nHealth: 55/100" };
+      },
+    };
+    const plan = fieldEditPlan("12345", "Health.current: 37", 55);
+    assert.ok(plan);
+    const out = await executePlan(plan, t, "12345");
+    assert.equal(out.status, "dispatched");
+    assert.deepEqual(seen, [{ command: "set", args: { entity: "12345", component: "Health", field: "current", value: 55 } }]);
+    assert.equal(out.readResult, "entity 12345 (slot 7)\nHealth: 55/100");
+  });
+
+  it("a field the server's whitelist refuses stays a refusal — the executor never pre-approves", async () => {
+    const t = fakeTransport(() => ({ ok: false, message: "unknown field \"bogus\" on Health" }));
+    const plan = fieldEditPlan("12345", "Health.bogus: 1", 2);
+    assert.ok(plan);
+    const out = await executePlan(plan, t, "12345");
+    assert.equal(out.status, "refused");
+    assert.match(out.message, /unknown field/);
+  });
+});
+
+// ------------------------------------------------------------ vendor stock
+
+describe("dispatch mapper — vendor stock (plan, not a verb)", () => {
+  it("maps to vendor {sub: stock, id, name, price} — qty omitted when not chosen (the gateway's infinite default)", () => {
+    assert.deepEqual(vendorStockPlan({ templateId: "smoke-shop", itemName: "Flaming Mithril Sword", price: 250 }), {
+      kind: "admin", verb: "vendorStock", command: "vendor", args: { sub: "stock", id: "smoke-shop", name: "Flaming Mithril Sword", price: 250 },
+    });
+  });
+
+  it("carries an explicit qty, and -1 (infinite) is a real choice", () => {
+    assert.deepEqual(vendorStockPlan({ templateId: "t", itemName: "Sword", price: 10, qty: 5 }), {
+      kind: "admin", verb: "vendorStock", command: "vendor", args: { sub: "stock", id: "t", name: "Sword", price: 10, qty: 5 },
+    });
+    const inf = vendorStockPlan({ templateId: "t", itemName: "Sword", price: 10, qty: -1 });
+    assert.equal(inf.kind, "admin");
+    assert.equal(inf.kind === "admin" ? inf.args.qty : undefined, -1);
+  });
+
+  it("missing template, missing def name, bad price and bad qty are unsupported with reasons", () => {
+    const cases: [Parameters<typeof vendorStockPlan>[0], RegExp][] = [
+      [{ itemName: "Sword", price: 10 }, /needs a vendor template/],
+      [{ templateId: "t", price: 10 }, /exact def name/],
+      [{ templateId: "t", itemName: "Sword", price: 0 }, /positive integer price/],
+      [{ templateId: "t", itemName: "Sword", price: 2.5 }, /positive integer price/],
+      [{ templateId: "t", itemName: "Sword", price: 10, qty: 0 }, /positive integer, or -1/],
+    ];
+    for (const [params, reason] of cases) {
+      const plan = vendorStockPlan(params);
+      assert.equal(plan.kind, "unsupported", JSON.stringify(params));
+      assert.match(plan.kind === "unsupported" ? plan.reason : "", reason);
+    }
+  });
+
+  it("the executor dispatches stock through the vendor command; an undefined template's refusal is carried", async () => {
+    const ok = fakeTransport(() => ({ ok: true, message: "stocked Flaming Mithril Sword at 250g" }));
+    const out = await executePlan(vendorStockPlan({ templateId: "smoke-shop", itemName: "Flaming Mithril Sword", price: 250 }), ok, null);
+    assert.equal(out.status, "dispatched");
+    assert.match(out.message, /stocked/);
+    assert.deepEqual(ok.calls, ["vendor"]);
+
+    const refused = fakeTransport(() => ({ ok: false, message: "unknown vendor or bad price" }));
+    const out2 = await executePlan(vendorStockPlan({ templateId: "nope", itemName: "Sword", price: 10 }), refused, null);
+    assert.equal(out2.status, "refused");
+    assert.equal(out2.message, "unknown vendor or bad price");
   });
 });

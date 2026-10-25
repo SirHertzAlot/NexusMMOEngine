@@ -39,6 +39,11 @@
  *   executor as `addcomponent` plans (the server adds the component
  *   at its defaults); the shelf names that are not ECS components
  *   (QuestGiver, DungeonEntrance) stay unsupported with the reason.
+ *   The same executor also runs the non-verb affordances: component
+ *   removals (the flow widget's unbind → `removecomponent`), per-field
+ *   edits of applied state on live server entities (→ `set`; scene
+ *   selections stay read-only), and vendor stocking (→ `vendor`
+ *   stock, by exact def name).
  * - Actions that need a value render real input fields (the model's
  *   input descriptors): item bases and creature kinds come from the
  *   gameplay snapshot the editor already loads; vendor templates from
@@ -69,11 +74,15 @@ import {
   evaluateRelevance,
   executeDispatch,
   executePlan,
+  fieldEditPlan,
+  fieldEditTarget,
   inputValue,
   inspectTargetForCall,
   makeFacts,
   makeVerbCall,
+  parseInputNumber,
   parseVendorTemplateList,
+  removeComponentPlan,
   roleFilterById,
   sceneLevelWidgets,
   serializeSavedView,
@@ -85,7 +94,9 @@ import {
   ROLE_FILTERS,
   type ActionInput,
   type AppliedState,
+  type ComponentRemoval,
   type DispatchOutcome,
+  type DispatchPlan,
   type HierarchyNode,
   type InputValues,
   type PickerSource,
@@ -99,6 +110,7 @@ import {
   type SortMode,
   type VerbCall,
   type WidgetAction,
+  type WidgetPlanAction,
 } from "../authoring/index.js";
 import { Button, Chip, EmptyState, Input, MIcon, SectionTitle, Select, notify, useLocalStorage } from "./components.js";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
@@ -456,6 +468,98 @@ function WidgetActionRow({ action, pickerFor, onDispatch }: { action: WidgetActi
   );
 }
 
+/** The outcome line shared by the plan-driven rows (removals, plan actions, field edits), coloured like the history's. */
+function PlanOutcomeLine({ outcome }: { outcome: DispatchOutcome }): React.JSX.Element {
+  return (
+    <span
+      className="text-[12px]"
+      style={{ color: outcome.status === "dispatched" ? "var(--m3-primary)" : outcome.status === "refused" ? "var(--m3-error)" : "var(--m3-on-surface-variant)" }}
+    >
+      → {outcome.status}: {outcome.message}
+    </span>
+  );
+}
+
+/**
+ * A component-removal row (a widget's unbind): the button runs the
+ * removal's dispatch plan through the caller's executor and shows the
+ * outcome under itself. Owns only its outcome — the caller keys it by
+ * selection, like WidgetActionRow.
+ */
+function RemovalRow({ removal, onRemove }: { removal: ComponentRemoval; onRemove: (removal: ComponentRemoval) => Promise<DispatchOutcome> }): React.JSX.Element {
+  const [outcome, setOutcome] = React.useState<DispatchOutcome | null>(null);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button size="sm" variant="outline" onClick={() => void onRemove(removal).then(setOutcome)}>
+          {removal.label}
+        </Button>
+      </div>
+      {removal.note && <p className="text-[12px] text-muted-foreground">{removal.note}</p>}
+      {outcome && <PlanOutcomeLine outcome={outcome} />}
+    </div>
+  );
+}
+
+/**
+ * A plan-action row (vendor stock): declared input fields + the action
+ * button, like WidgetActionRow — but firing builds a dispatch plan
+ * (not a verb call) and hands it to the caller's executor, showing the
+ * outcome under itself.
+ */
+function PlanActionRow({ action, pickerFor, onRun }: { action: WidgetPlanAction; pickerFor: PickerResolver; onRun: (plan: DispatchPlan) => Promise<DispatchOutcome> }): React.JSX.Element {
+  const [values, setValues] = React.useState<InputValues>({});
+  const [outcome, setOutcome] = React.useState<DispatchOutcome | null>(null);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {action.inputs.map((input) => (
+          <ActionField key={input.id} input={input} value={inputValue(values, input)} onChange={(v) => setValues((prev) => ({ ...prev, [input.id]: v }))} pickerFor={pickerFor} />
+        ))}
+        <Button size="sm" variant="outline" onClick={() => void onRun(action.buildPlan(values)).then(setOutcome)}>
+          {action.label}
+        </Button>
+      </div>
+      {action.note && <p className="text-[12px] text-muted-foreground">{action.note}</p>}
+      {outcome && <PlanOutcomeLine outcome={outcome} />}
+    </div>
+  );
+}
+
+/**
+ * One applied-state line in a widget. On a live server entity, a line
+ * that exposes a single numeric field (fieldEditTarget) renders an
+ * inline editor: a number box starting at the current value + Apply,
+ * dispatching admin `set` through the caller's executor. Every other
+ * line — and every line when the selection is not a live entity — is
+ * plain read-only text.
+ */
+function AppliedLineRow({ line, editable, onApply }: { line: string; editable: boolean; onApply: (line: string, value: number) => Promise<DispatchOutcome> }): React.JSX.Element {
+  const target = editable ? fieldEditTarget(line) : null;
+  const [raw, setRaw] = React.useState<string | null>(null);
+  const [outcome, setOutcome] = React.useState<DispatchOutcome | null>(null);
+  if (target === null) return <li>{line}</li>;
+  const parsed = parseInputNumber(raw ?? String(target.value));
+  return (
+    <li>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span>{line}</span>
+        <Input
+          style={{ width: 76 }}
+          value={raw ?? String(target.value)}
+          inputMode="decimal"
+          aria-label={`Edit ${target.component}.${target.field}`}
+          onChange={(e) => setRaw(e.target.value)}
+        />
+        <Button size="sm" variant="outline" disabled={parsed === undefined} onClick={() => parsed !== undefined && void onApply(line, parsed).then(setOutcome)}>
+          Apply
+        </Button>
+      </div>
+      {outcome && <PlanOutcomeLine outcome={outcome} />}
+    </li>
+  );
+}
+
 /** A shelf entry whose verb action declares inputs: the fields render inline and the values ride the button. */
 function ShelfActionRow({ entry, pickerFor, onFire }: { entry: ShelfEntry; pickerFor: PickerResolver; onFire: (entry: ShelfEntry, values: InputValues) => void }): React.JSX.Element {
   const [values, setValues] = React.useState<InputValues>({});
@@ -661,6 +765,58 @@ function AuthoringPresentation(): React.JSX.Element {
       }
     })();
   };
+
+  /**
+   * Run one dispatch plan — the non-verb affordances (a component
+   * removal, a per-field edit, a vendor stock) — through the SAME
+   * executor as verb calls, with the same outcome reporting, the same
+   * read-back reflection, and a vendor-template refresh after vendor
+   * plans (the pickers re-read the server's template list).
+   */
+  const runPlanAction = async (plan: DispatchPlan, inspectTarget: string | null, label: string): Promise<DispatchOutcome> => {
+    const transport = serverLive
+      ? {
+          admin: (command: string, args?: Record<string, unknown>) => serverLink.admin(command, args),
+          inspect: (entity: string) => serverLink.admin("inspect", { entity }),
+        }
+      : null;
+    const outcome = await executePlan(plan, transport, inspectTarget);
+    if (outcome.status === "dispatched") {
+      notify(`${label} dispatched — ${outcome.message}`);
+      if (outcome.readResult !== undefined && inspectTarget !== null) {
+        setReadBack({ target: inspectTarget, lines: outcome.readResult.split("\n").filter((l) => l.trim() !== "") });
+      }
+      if (plan.kind !== "unsupported" && plan.kind !== "composite" && plan.command === "vendor") void refreshVendorTemplates();
+    } else if (outcome.status === "refused") {
+      notify(`${label} refused by the server — ${outcome.message}`);
+    } else if (outcome.status === "offline") {
+      notify(`${label} recorded — the play server isn't running, so nothing was dispatched.`);
+    } else {
+      notify(`${label} can't be dispatched — ${outcome.message}`);
+    }
+    return outcome;
+  };
+
+  const applyRemoval = (removal: ComponentRemoval): Promise<DispatchOutcome> =>
+    runPlanAction(removeComponentPlan(facts?.id ?? "", removal.component), facts?.id ?? null, removal.label);
+
+  const applyPlanAction = (plan: DispatchPlan): Promise<DispatchOutcome> => runPlanAction(plan, facts?.id ?? null, plan.verb);
+
+  const applyFieldEdit = (line: string, value: number): Promise<DispatchOutcome> => {
+    const plan = facts ? fieldEditPlan(facts.id, line, value) : null;
+    if (plan === null) {
+      // Unreachable through the UI (a row renders an editor only for a
+      // line fieldEditTarget accepts) — an honest outcome, never a
+      // fake dispatch.
+      const reason = "that applied-state line exposes no editable numeric field";
+      return Promise.resolve({ status: "unsupported", verb: "setField", plan: { kind: "unsupported", verb: "setField", reason }, message: reason, stepsRun: 0, stepsTotal: 0 });
+    }
+    const target = fieldEditTarget(line);
+    return runPlanAction(plan, facts?.id ?? null, target ? `Set ${target.component}.${target.field}` : "Field edit");
+  };
+
+  /** Field edits target live server entities: the entity-list pick (kind "entity", a decimal wire id). Scene-document selections keep read-only applied state. */
+  const isLiveEntity = selection?.kind === "entity" && /^\d+$/.test(selection.id);
 
   /** Fire a shelf entry: verb actions merge their input values over the placeholder params (the mapper gates the result); component-shaped ones have no verb. */
   const fireShelf = (e: ShelfEntry, values: InputValues): void => {
@@ -968,15 +1124,26 @@ function AuthoringPresentation(): React.JSX.Element {
                     {w.applied.length > 0 ? (
                       <ul className="mt-1 list-inside list-disc text-[13px]">
                         {w.applied.map((line) => (
-                          <li key={line}>{line}</li>
+                          <AppliedLineRow key={line} line={line} editable={isLiveEntity} onApply={applyFieldEdit} />
                         ))}
                       </ul>
                     ) : (
                       <p className="mt-1 text-[13px] text-muted-foreground">No live state read for this widget yet.</p>
                     )}
+                    {!isLiveEntity && w.applied.some((line) => fieldEditTarget(line) !== null) && (
+                      <p className="mt-1 text-[12px] text-muted-foreground">
+                        Per-field edits dispatch to live server entities (pick one in the ECS inspector's entity list) — this is a scene selection, so its applied state is read-only here.
+                      </p>
+                    )}
                     <div className="mt-2 flex flex-col gap-2">
                       {w.actions.map((a) => (
                         <WidgetActionRow key={`${facts.id}:${a.id}`} action={a} pickerFor={pickerFor} onDispatch={dispatch} />
+                      ))}
+                      {w.removals.map((r) => (
+                        <RemovalRow key={`${facts.id}:${r.id}`} removal={r} onRemove={applyRemoval} />
+                      ))}
+                      {w.planActions.map((a) => (
+                        <PlanActionRow key={`${facts.id}:${a.id}`} action={a} pickerFor={pickerFor} onRun={applyPlanAction} />
                       ))}
                     </div>
                   </div>

@@ -18,7 +18,7 @@ Pure TypeScript, no React, no stores, no I/O. The UI is a thin renderer over it.
 | `add-shelf.ts` | For each non-applied module, an establishability verdict grounded in the facts: *establishable* (with the one-click action — a canonical verb call such as `attachVendor`, or a component addition such as Health+Stamina) or *never-for-this-kind* (hidden by the UI — a plain prop/rock never offers the character sheet). |
 | `hierarchy.ts` | Containment (scene → region → POI → object) plus reference edges (quest → giver, vendor → template, creature → patrol route / dialogue graph). Role filters are defined **as** relevance rules over the same facts (quest givers, vendors, loot spawners, mob spawners, dungeon entrances, environment, characters). Sorting by name or by provenance timestamp ("recently modified"). Saved views (role + sort + query) serialize/deserialize/apply. |
 | `verbs.ts` | The 13 canonical verbs of audit §4 as a typed registry (name, aliases for the paired rows `spawnPack`/`detachVendor`, canonical home, signature). The `VerbCall` envelope requires who (actor + role), what, when, where (hierarchy path), why (intent), how (verb + params); validation rejects anonymous mutations (no actor, no role, no why). `VerbHistory` is the append-only log, queryable per object and per actor. |
-| `widgets.ts` | The widget builder: relevance + caller-supplied applied state → view-models with the three anatomy zones (what it is / what's applied / CRUD), every CRUD affordance resolved to a `VerbCall` with a full envelope. Where no canonical verb honestly covers an action (binding a flow graph, adding an emitter), the widget carries no fake verb — the add shelf establishes those preconditions instead. |
+| `widgets.ts` | The widget builder: relevance + caller-supplied applied state → view-models with the three anatomy zones (what it is / what's applied / CRUD), every CRUD affordance resolved to a `VerbCall` with a full envelope. Where no canonical verb honestly covers an action (binding a flow graph, adding an emitter), the widget carries no fake verb — the add shelf establishes those preconditions instead. Two non-verb affordance kinds ride as dispatch plans: component removals (the flow widget's unbind) and plan actions (vendor stocking). |
 | `inputs.ts` | Action input descriptors as data: each widget/shelf action that needs a designer-supplied value declares its fields (picker with a named real source — `item-bases` / `creature-kinds` / `vendor-templates` — or a number), with prefills where the facts carry one (a vendor's current template, a creature's kind, teleport x/z from the selection's Transform position). `WidgetAction.callWith(values)` rebuilds the call with the values in its params; unfilled fields leave the placeholder and the dispatch mapper refuses it — the mapper is the single gate. Also the parser for the admin `vendor list` answer. |
 
 Tests: `apps/editor/test/authoring-{relevance,add-shelf,verbs,hierarchy,widgets,templates,dispatch,inputs}.test.ts`.
@@ -206,9 +206,9 @@ stay unsupported, by design, until the server grows one.
 | 3 | Navigate / filter / save a view of the hierarchy | Live — saved views are session state, not persisted |
 | 4 | Select an object | Live — shared `editorSelection`; picking here is picking in Scenes |
 | 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs; the widgets float in the view pane, summoned by the selection (dismissible, re-summoned on the next pick) |
-| 6 | Read what's applied | **Partial** — selection-local component fields, PLUS the live `inspect` read-back (its lines join the widgets when the read-back's target is this selection); still not live system reads (vendor stock, dialogue graphs, abilities) |
+| 6 | Read what's applied | **Partial** — selection-local component fields, PLUS the live `inspect` read-back (its lines join the widgets when the read-back's target is this selection); still not live system reads (vendor stock, dialogue graphs, abilities). On live-entity selections the selection-local lines are also the edit surface (step 8's per-field edits) |
 | 7 | Add what's missing (add shelf) | **Live for ECS-shaped additions** — establishability is live; verb-shaped shelf actions dispatch with real input fields (step 8); component-shaped additions dispatch as `addcomponent` steps (the server adds the component at its defaults) for every shelf name that is an ECS component — Health+Stamina, CharacterRef, PlayerIntent, FlowRef, VfxEmitter, AudioEmitter, and Collider (whose ECS form is BodyConfig). **Unsupported, with reasons:** QuestGiver and DungeonEntrance — scene-document names with no ECS component to add (see gaps) |
-| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Actions render real input fields (item-base / creature-kind / vendor-template pickers fed by real lists, amount and coordinate numbers with Transform prefills), so the dispatching verbs dispatch from clicks with designer-chosen values — live-smoked end to end (give, vendor attach, spawn, and — after the server-homes slice — take, countbase/defof reads, addcomponent). Dispatching: giveItem & giveGold (console holder only), takeItem & moveItem (the `items` bag sub-actions — console holder's bag; moveItem's destination is a character id), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, placeItemFixture (`drop` at an exact position, as a fixture), grantQuestReward (composite give+gold, console holder); reads: resolveBase, defOf, countBase (via `items`). **Unsupported, with the reason:** startDialogue alone — dialogue is player-initiated and no honest admin trigger exists |
+| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Actions render real input fields (item-base / creature-kind / vendor-template pickers fed by real lists, amount and coordinate numbers with Transform prefills), so the dispatching verbs dispatch from clicks with designer-chosen values — live-smoked end to end (give, vendor attach, spawn, and — after the server-homes slice — take, countbase/defof reads, addcomponent). Dispatching: giveItem & giveGold (console holder only), takeItem & moveItem (the `items` bag sub-actions — console holder's bag; moveItem's destination is a character id), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, placeItemFixture (`drop` at an exact position, as a fixture), grantQuestReward (composite give+gold, console holder); reads: resolveBase, defOf, countBase (via `items`). The non-verb affordances dispatch too, as plans through the same executor: the flow widget's unbind (`removecomponent`), per-field edits of applied-state lines on live-entity selections (`set` — scene selections stay read-only), and the vendor widget's stock action (`vendor stock`, by exact def name; template must already be defined). **Unsupported, with the reason:** startDialogue alone — dialogue is player-initiated and no honest admin trigger exists |
 | 9 | Provenance history | **Partial** — in-memory session log, per-object, now carrying each call's dispatch outcome + server message; not persisted / not VCS metadata |
 | 10 | See the result | **Partial** — a dispatched mutation re-inspects its target and the stage shows the read-back dump (and the widgets absorb it when the target is the selection). Seeing it in the 3D viewport is still a **gap** — viewport is in the Scenes workspace; no in-place 3D feedback, no viewport overlays |
 | 11 | Quick-start procgen parity | **Gap** — converges by construction via scene docs; no rule-editor widget |
@@ -230,7 +230,12 @@ in `authoring-dispatch.test.ts`). A VerbCall maps to a **DispatchPlan**:
   (`give`, `gold`, `spawn`, `teleport`, `vendor attach/detach`,
   `items` bag sub-actions for takeItem/moveItem, `drop` with an exact
   position + the fixture flag for placeItemFixture, `addcomponent`
-  for shelf component additions).
+  for shelf component additions, `removecomponent` for component
+  removals — the flow widget's unbind, `set` for per-field edits of
+  applied state, and `vendor` `stock` for the vendor widget's stock
+  action — the last three are plan-shaped affordances, not canonical
+  verbs, built by `removeComponentPlan` / `fieldEditPlan` /
+  `vendorStockPlan` in the same mapper).
 - `{ kind: "composite", steps }` — an honest sequence
   (grantQuestReward → repeated `give` steps + `gold` steps, in order;
   a refusal stops the sequence and names the step; a multi-component
@@ -252,6 +257,28 @@ mutation the executor re-inspects the acted-on entity through the same
 link, and the view shows that read-back in the stage (the reflection
 step); when the server isn't running, the action still records and its
 outcome reads `offline — nothing was dispatched`.
+
+### Admin home: `removecomponent` (authoring-depth slice)
+
+The flow widget's unbind needed a server home, and it now has one:
+admin `removecomponent {entity, component}` (engine-core
+`admin/remove-component.ts`, beside `addcomponent` in the same style;
+cookbook covers it). It rides bitECS `removeComponent` through the
+live world, so queries, systems and `inspect` stop seeing the
+component. Refusals: unknown entity, unknown component, component
+absent — and **God / Noclip**, which stay with their `god` / `noclip`
+toggle commands (the toggles own the session-facing side of those
+states, exactly as `addcomponent` leaves the tags to them). No other
+guard set: the engine's systems select by component presence
+(defineQuery) and its registration-driven subsystems (nav obstacles,
+physics bodies) subscribe to enter/exit queries, so removal is a
+normal ECS event — despawn itself removes every component through
+this path. Like `set`/`addcomponent` it is an admin power tool whose
+writes land in the command log.
+
+The same slice's other two affordances needed no new server surface:
+per-field edits ride the existing `set` (its whitelist is the gate),
+and vendor stocking rides the existing `vendor stock` sub-action.
 
 ## The templating system — pseudo version control for presentation
 
@@ -321,14 +348,14 @@ envelope rules as verb calls.
 A standalone panel is removed only when the widget that replaces it is live
 **and dispatching** (see gaps). Slated, in order:
 
-| Standalone panel today | Replaced by | Remove when | Status after the server-homes slice (2026-10-24) |
+| Standalone panel today | Replaced by | Remove when | Status after the authoring-depth slice (2026-10-24) |
 |---|---|---|---|
-| ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits | **Blocked** — deletion criteria (a)/(b) unmet (below), and (c) unmet: widget CRUD dispatches, and component *adds* dispatch, but the widgets offer no per-field component editing, which is what the inspector's tables do |
+| ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits | **Blocked** — deletion criteria (a)/(b) unmet (below); (c) met for what the widgets expose: per-field editing now dispatches from the widgets' applied-state lines on live-entity selections (numeric fields via admin `set`, the set whitelist gating; `fieldEditTarget`/`fieldEditPlan` in dispatch.ts). The widgets' applied lines remain selection-local fields + read-backs, not the inspector's full live component tables — the inspector also stays the live-entity picker that feeds those selections |
 | Characters workspace Records panel | Merged Character widget (Sheet + Records tabs) | The widget's Records tab renders the panel (Phase A modal already proves the merge) | **Blocked** — (a)/(b) unmet; (c) unmet: the merged widget carries the Sheet + Records tabs, but renders applied-state lines, not the Records panel's record data (no live character-record read feeds it) |
 | Story workspace quest & dialog panels | Merged Quests & dialogue widget (Quests + Dialogue tabs) | Same — widget renders both tabs against live quest content | **Blocked** — (a)/(b) unmet; (c) unmet: the tabs render as structure, not against live quest content, and dialogue has no dispatch at all (startDialogue has no admin home) |
-| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Blocked** — (a)/(b) unmet; (c) half met: binding now dispatches (shelf `addcomponent` FlowRef), unbinding cannot — no admin remove-component command exists, and the flow widget itself carries no actions yet |
-| Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget | **Blocked** — (a)/(b) unmet; (c) half met: emitter *attach* dispatches (shelf `addcomponent`), and the server now accepts field edits for the emitters via `set` — but the widgets carry no edit actions to dispatch them |
-| Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live | **Blocked** — (a)/(b) unmet; (c) half met: attach/detach dispatch live (proven), stock CRUD does not — the vendor widget has no stock actions |
+| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Blocked** — (a)/(b) unmet; (c) **met**: binding dispatches (shelf `addcomponent` FlowRef) and unbinding now dispatches from the flow widget itself (`removecomponent` FlowRef, the admin home this slice added) |
+| Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget | **Blocked** — (a)/(b) unmet; (c) half met, narrowed: emitter *attach* dispatches (shelf `addcomponent`), and the per-field edit path now exists for emitter fields too (VfxEmitter.template/intensity, AudioEmitter.clip/radius are `set`-writable and field-editable when a selection's applied lines expose them) — but today's live entity picks project only transform/velocity/intent/chunk/health/body through the mirror, so emitter fields do not yet appear on live selections to be edited; the remaining (c) gap is that exposure, not the edit path |
+| Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live | **Blocked** — (a)/(b) unmet; (c) **met**: attach/detach dispatch live (proven), and stock now dispatches from the vendor widget (template picker + exact def name + price + qty → `vendor stock`; the template must already be defined on the server — the precondition is named on the action, and an undefined template returns the server's refusal) |
 
 **Why nothing was deleted in this slice (the playbook applied
 literally):** playbook step 5 allows deletion only when (a) the
@@ -338,10 +365,14 @@ that window, and (c) each replacing widget is live AND dispatching.
 No grace window has been set, and pins live in per-user local prefs —
 so (a) and (b) cannot be shown to hold for any project today, and
 deleting on that evidence would violate the playbook. Every entry
-above is therefore advanced to its correct pre-removal state: its
-(c) gap is named exactly, and the two half-met entries (flow,
-art/audio, vendor) moved closer in this slice. Deletion waits on a
-human setting the grace window and the (c) gaps closing.
+above is therefore advanced to its correct pre-removal state: after
+the authoring-depth slice the (c) gaps stand at — flow **met**,
+vendor **met**, ECS inspector **met for the fields the widgets
+expose**, art/audio narrowed to an exposure gap (emitter fields are
+not yet projected onto live selections), characters and story
+unchanged (they need live content reads, not dispatch). Deletion
+itself still waits on a human setting the grace window: (a)/(b)
+remain Joey's call, and no panel was deleted in this slice.
 
 Scene-level panels (Scenes document, HUD layout, region chat) are **not**
 slated for removal — the design makes them scene-selection widgets, which is
@@ -386,7 +417,27 @@ a re-homing, not a deletion.
   server's refusal as the recorded outcome — for scene-document
   selections, whose ids are node ids; and takeItem's widget offers a
   base picker or an instance id (the service's take-by-instance is
-  the precise form; take-by-base destroys one of that base).
+  the precise form; take-by-base destroys one of that base). The
+  authoring-depth slice's plan-shaped affordances carry their own
+  exact limits: vendor **stock** addresses defs by exact name (a
+  typed field — the editor holds no def-name list, and admin stock
+  has no base arg), needs the template already defined on the
+  server, and has no read-back — `vendor list` names defined
+  templates, not their stock, so the stock dispatch reply is the
+  confirmation; **removecomponent** refuses God/Noclip by name
+  (their toggle commands own them) as well as absent components.
+- **Per-field edits ride selection-local lines, on live entities
+  only.** A widget's applied-state line edits only when it exposes
+  one numeric field (`Component.field: value`, the selection-local
+  shape) and the selection is a live server entity (an entity-list
+  pick with a wire id) — scene-document selections stay read-only,
+  and the card says so. Live read-back lines are reflections, not
+  editors (the inspect dump packs fields under display labels).
+  Which components a live pick exposes is bounded by the mirror's
+  projection (transform / velocity / intent / chunk / health /
+  body today): emitter fields (VfxEmitter, AudioEmitter) are
+  `set`-writable and field-editable in the model, but do not yet
+  appear on live selections to be edited.
 - **Stage is not the viewport.** The panels are embedded in the
   Design workspace's view pane (docks at its edges, collapsible) and
   the selection widgets float inside that pane, summoned by the
