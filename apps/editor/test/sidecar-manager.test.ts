@@ -171,8 +171,9 @@ describe("SidecarManager", () => {
 
   it("restarts a healthy sidecar that exits unexpectedly (EA11 supervision)", async () => {
     const port = nextPort++;
-    // A stub that exits after 300ms — the manager should restart it.
-    const crashStub = `\nconst http = require("http");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nsetTimeout(() => process.exit(1), 300);\n`;
+    // A stub that exits 300ms into its first life only (a marker file says it already crashed): the manager restarts it and it stays up.
+    const marker = join(dir, `crashed-${port}`);
+    const crashStub = `\nconst http = require("http");\nconst fs = require("fs");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nif (!fs.existsSync(${JSON.stringify(marker)})) { fs.writeFileSync(${JSON.stringify(marker)}, "1"); setTimeout(() => process.exit(1), 300); }\n`;
     writeFileSync(join(dir, "crash.js"), crashStub, "utf8");
     const mgr = tracked(
       new SidecarManager({
@@ -185,11 +186,12 @@ describe("SidecarManager", () => {
       { dir, manifest: { name: "crasher", sidecar: { command: `node crash.js ${port}`, port, health: "/health" } } },
     ]);
     assert.equal(report.status, "healthy");
-    // Wait for the crash + restart: the sidecar should come back.
-    assert.ok(await portOpenSoon(port, 60), "sidecar should be listening after restart");
-    // Give the restart a moment to register as healthy.
-    await new Promise((r) => setTimeout(r, 800));
+    // Wait for the crash and the restart: the sidecar comes back and stays.
+    await new Promise((r) => setTimeout(r, 500));
+    const deadline = Date.now() + 6000;
+    while (mgr.statusOf("crasher") !== "healthy" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
     assert.equal(mgr.statusOf("crasher"), "healthy");
+    assert.ok(await portOpenSoon(port, 60), "sidecar should be listening after restart");
     await mgr.stop();
   });
 
