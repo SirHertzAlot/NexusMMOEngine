@@ -260,7 +260,7 @@ export class DungeonInstance {
     const library = PcgAssetLibrary.empty();
     const shell = layout.shell ? library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name) : null;
     // The chests the run stands (and the open model they swap to) are served too, whether or not the bake dressed one.
-    for (const kind of new Set([...layout.props.map((p) => p.kind), "chest", "chest-open", "trap", "trap-sprung"])) {
+    for (const kind of new Set([...layout.props.map((p) => p.kind), "chest", "chest-open", "trap", "trap-sprung", ...(layout.props.some((p) => p.kind === "bossCrystal") ? ["rubble"] : [])])) {
       const id = `dungeon:${kind}`;
       const mesh = this.opts.props?.archetypes[id]?.asset === id ? propMesh(kind) : null;
       if (mesh) library.addPrebaked(id, mesh, kind);
@@ -322,7 +322,9 @@ export class DungeonInstance {
     // A baked chest the run opens is spawned as the run's chest (populate), not as dressing too.
     const chests = new Set(this.placement().chests.flatMap((c) => (c.prop === undefined ? [] : [c.prop])));
     this.opts.layout.props.forEach((p, i) => {
-      if (!chests.has(i)) this.spawnProp(p);
+      if (chests.has(i)) return;
+      const eid = this.spawnProp(p);
+      if (eid >= 0 && p.kind === "bossCrystal") this.crystals.push({ eid, p });
     });
   }
 
@@ -512,7 +514,10 @@ export class DungeonInstance {
     this.showOpened();
     this.showSprung();
     const now = this.now();
-    if (this.boss.size > 0 && this.remaining().boss === 0) this.end("cleared");
+    if (this.boss.size > 0 && this.remaining().boss === 0) {
+      this.shatterCrystals();
+      this.end("cleared");
+    }
     else if (now - this.startedAt >= this.opts.rules.timeLimitMinutes * 60_000) this.end("timeout");
     else if (this.online.size === 0 && now - this.emptySince >= this.opts.rules.emptyTeardownSeconds * 1000) this.end("abandoned");
     else if (now - this.lastState >= 5000 || this.chests.filter((c) => c.opened).length !== this.openChests) {
@@ -540,6 +545,17 @@ export class DungeonInstance {
     });
   }
   private readonly shownOpen = new Set<string>();
+
+  /** The boss room's crystals: they shatter (swapped for rubble) when the boss falls. */
+  private readonly crystals: Array<{ eid: number; p: LayoutProp }> = [];
+  private shatterCrystals(): void {
+    if (!this.opts.props?.archetypes["dungeon:rubble"]) return;
+    for (const c of this.crystals.splice(0)) {
+      if (!entityExists(this.world.ecs, c.eid)) continue;
+      const debris = this.spawnProp({ ...c.p, kind: "rubble", scale: 1, radius: 0 });
+      if (debris >= 0) this.world.despawn(c.eid);
+    }
+  }
 
   /** A sprung trap shows its spikes up: its plate is swapped for the sprung model (as an opened chest is). */
   private showSprung(): void {

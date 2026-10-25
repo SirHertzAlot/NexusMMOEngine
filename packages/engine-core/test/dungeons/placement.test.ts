@@ -142,4 +142,29 @@ describe("chest and trap placement", () => {
       await inst.close();
     }
   });
+
+  it("the boss room's crystal shatters when the boss falls", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    await characters.create("alice", "Alice", "{}", 8);
+    const layout = bake(77, "grim");
+    assert.ok(layout.props.some((p) => p.kind === "bossCrystal"), "the bake dresses a boss crystal");
+    const inst = new DungeonInstance({
+      id: "run-crystal", entrance: "barrow-gate", layout, rules: content.rules, props: content.props, game: loadGameRules(),
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      chestPool: [11], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    await inst.start();
+    try {
+      const at = (hash: number) => [...defineQuery([C.AssetRef])(inst.world.ecs)].filter((e) => C.AssetRef.assetHash[e] === hash);
+      assert.ok(at(fnv1a32("dungeon:bossCrystal")).length > 0, "a crystal stands in the boss room");
+      const internals = inst as unknown as { boss: Set<number>; fallen: Set<number> };
+      for (const e of internals.boss) internals.fallen.add(e);
+      for (let n = 0; n < 60 && at(fnv1a32("dungeon:bossCrystal")).length > 0; n++) await new Promise((r) => setTimeout(r, 50));
+      assert.equal(at(fnv1a32("dungeon:bossCrystal")).length, 0, "the crystal is gone");
+      assert.ok(at(fnv1a32("dungeon:rubble")).length > 0, "rubble lies where it stood");
+    } finally {
+      await inst.close();
+    }
+  });
 });
