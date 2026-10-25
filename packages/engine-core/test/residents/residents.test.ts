@@ -297,6 +297,19 @@ describe("ResidentSystem: attackable", () => {
     assert.equal(bound.size, 0, "closed once they fall");
   });
 
+  it("summarises each town for the debugger", () => {
+    const sim = new SimWorld();
+    const sys = system({ hour: () => 0.45 });
+    run(sys, sim, 30);
+    const s = sys.summary();
+    assert.equal(s.towns.length, 1);
+    assert.equal(s.towns[0]!.id, "t");
+    assert.equal(s.towns[0]!.people, 60);
+    assert.equal(s.towns[0]!.live, sys.count);
+    assert.equal(s.live, sys.count);
+    assert.ok(s.live > 0, "some stand outdoors by day");
+  });
+
   it("a death survives a restart", () => {
     const store = new SqlitePlacesStore(new Database(":memory:"));
     const clock = { t: 5_000_000 };

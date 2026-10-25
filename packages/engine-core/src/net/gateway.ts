@@ -2851,6 +2851,8 @@ export class Gateway {
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
       res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(t) };
+    } else if (cmd.command === "residents") {
+      res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(this.residents?.summary() ?? { towns: [], live: 0, walking: 0 }) };
     } else if (cmd.command === "whoami") {
       res = {
         kind: "admin",
