@@ -802,7 +802,7 @@ Newest first. One line per merged PR or decision.
 - **2026-10-25**: Zero-Copy Hybrid Engine Data Plane & Lockless Ring Buffers (DoD Architecture, PR #430): Single-call N-API SoA SIMD integration kernel, 30Hz simulation worker isolated via SPSC command ring, embedded SurrealDB persistence worker (`mem://` and `rocksdb://`), and high-throughput lockless telemetry.
 - **2026-10-25**: Dungeon & Room Decoration Pipeline Overhaul: Authentic spatial arrangements (`corners`, `colonnade`, `behind`, `cluster`, `layWallFlush`), natural functional zoning across all 17 room archetypes, elimination of unnatural angles and floating props, multi-category colored architectural footprints in 2D previews, and 3D procedural prop meshes.
 - **2026-10-25**: Placement Engine Review & Optimizations (`@mmo-engine/placement`): Reusable zero-alloc Felzenszwalb-Huttenlocher EDT scratch buffers in `GridSdf`, precomputed candidate distances with lazy raymarch wall-hit caching in `placeInRegion`, flat typed-array Poisson-disc spatial grids, and SoA blocker distance culling.
-- **2026-10-25**: Data & Memory Management Patches 01–05:
+- **2026-10-25**: Data & Memory Management Patches 01–05, Dungeon Overhaul & Placement Tuning (PR #431):
   - `PATCH-01`: AVX2 8-wide FMA3 kernel compiler flags and vector integration kernel in `integrate.cc`.
   - `PATCH-02`: Morton Z-order curve spatial hashing (`encodeMorton2D`, `decodeMorton2D`) and zero-GC 4-pass radix sort (`MortonSpatialIndex`) for O(log N) cache-coherent AoI neighbor range queries.
   - `PATCH-03`: Dmitry Vyukov bounded lock-free MPSC ring buffer (`AtomicMPSCQueue`) with per-slot atomic sequence numbers for multi-producer thread-safe command ingress.
