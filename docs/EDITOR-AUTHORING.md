@@ -78,10 +78,13 @@ grid is no longer three equal columns.
 
 ## End-to-end authoring — is the loop completable?
 
-Walked step by step against the built code (2026-10-24). The skeleton is
-coherent: every hand-off uses the same facts, the same shared selection
-store, and the same verb/envelope types — there are no dead ends in the
-model. The loop breaks at exactly one place: execution.
+Walked step by step against the built code (2026-10-24; re-walked after
+the live-dispatch slice the same evening). The skeleton is coherent:
+every hand-off uses the same facts, the same shared selection store,
+and the same verb/envelope types. Execution is no longer the break:
+dispatch is wired for every verb with an honest admin home, and the
+remaining breaks are named per verb below — verbs with no admin home
+stay unsupported, by design, until the server grows one.
 
 | # | Step | Status |
 |---|---|---|
@@ -90,20 +93,46 @@ model. The loop breaks at exactly one place: execution.
 | 3 | Navigate / filter / save a view of the hierarchy | Live — saved views are session state, not persisted |
 | 4 | Select an object | Live — shared `editorSelection`; picking here is picking in Scenes |
 | 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs |
-| 6 | Read what's applied | **Partial** — selection-local component fields only, not live system reads |
-| 7 | Add what's missing (add shelf) | **Partial** — establishability is live; component adds only announce themselves |
-| 8 | Act (widget CRUD) | **Partial** — VerbCalls built, enveloped, validated, recorded; **not dispatched** |
-| 9 | Provenance history | **Partial** — in-memory session log, per-object; not persisted / not VCS metadata |
-| 10 | See the result in 3D | **Gap** — viewport is in the Scenes workspace; no in-place feedback, no viewport overlays |
+| 6 | Read what's applied | **Partial** — selection-local component fields, PLUS the live `inspect` read-back (its lines join the widgets when the read-back's target is this selection); still not live system reads (vendor stock, dialogue graphs, abilities) |
+| 7 | Add what's missing (add shelf) | **Partial** — establishability is live; verb-shaped shelf actions dispatch (step 8); component-shaped additions are **unsupported** — admin `set` cannot add a component (see gaps) |
+| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Dispatching: giveItem & giveGold (console holder only), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, grantQuestReward (composite give+gold, console holder), resolveBase (a read, via `items`). **Unsupported, with reasons:** takeItem, moveItem, defOf, countBase, startDialogue, placeItemFixture — no admin command honestly implements them |
+| 9 | Provenance history | **Partial** — in-memory session log, per-object, now carrying each call's dispatch outcome + server message; not persisted / not VCS metadata |
+| 10 | See the result | **Partial** — a dispatched mutation re-inspects its target and the stage shows the read-back dump (and the widgets absorb it when the target is the selection). Seeing it in the 3D viewport is still a **gap** — viewport is in the Scenes workspace; no in-place 3D feedback, no viewport overlays |
 | 11 | Quick-start procgen parity | **Gap** — converges by construction via scene docs; no rule-editor widget |
 
-**Verdict:** authoring is viable and navigable end to end as a model, and
-not yet completable end to end as work — an author can find, select,
-inspect and *intend* a change, but cannot yet make it happen and see it.
-The single slice that closes the loop is live dispatch (step 8) with its
-result reflected back through selection (steps 6/10); everything after
-that (persistent history, viewport overlays, procgen rules) is depth,
-not viability.
+**Verdict:** the loop is completable end to end for the verbs the
+admin surface honestly implements — find, select, intend, dispatch,
+and see the read-back — and it stops, explicitly and with reasons, at
+the verbs and the component additions that have no admin home. What
+remains (3D-viewport feedback, persistent history, procgen rule
+editing, live system reads) is depth, not viability.
+
+## Live dispatch — how a VerbCall reaches the world
+
+`apps/editor/src/authoring/dispatch.ts` (pure mapper + executor, tested
+in `authoring-dispatch.test.ts`). A VerbCall maps to a **DispatchPlan**:
+
+- `{ kind: "admin", command, args }` — one real admin command
+  (`give`, `gold`, `spawn`, `teleport`, `vendor attach/detach`).
+- `{ kind: "composite", steps }` — an honest sequence
+  (grantQuestReward → repeated `give` steps + `gold` steps, in order;
+  a refusal stops the sequence and names the step).
+- `{ kind: "read", command, args }` — a query, not a mutation
+  (resolveBase → `items`).
+- `{ kind: "unsupported", reason }` — no admin command honestly
+  implements the verb (the full set + reasons are in Honest gaps).
+
+The executor drives an injectable transport — in the UI, the shared
+`serverLink.admin` gated by `useServerLink()`'s phase (no second gate,
+no parallel channel); in tests, a fake. It returns a **DispatchOutcome**
+(`dispatched` / `refused` with the server's message / `unsupported` with
+the reason / `offline` when no server is live) and never reports
+dispatched on a refusal or offline. The call's 5W1H "why" stays local
+provenance — it is never stuffed into admin args. After a dispatched
+mutation the executor re-inspects the acted-on entity through the same
+link, and the view shows that read-back in the stage (the reflection
+step); when the server isn't running, the action still records and its
+outcome reads `offline — nothing was dispatched`.
 
 ## The templating system — pseudo version control for presentation
 
@@ -188,18 +217,39 @@ a re-homing, not a deletion.
 
 ## Honest gaps in this slice
 
-- **No live dispatch.** Widget and shelf verb actions are built, validated,
-  enveloped and recorded in the session `VerbHistory` — and the UI says so on
-  every click. They do not yet execute against the server verb layer, and
-  component-shaped shelf actions (add Health+Stamina, bind FlowRef) only
-  announce themselves. Wiring dispatch is the next slice.
+- **Dispatch covers only what the admin surface honestly implements.**
+  `apps/editor/src/authoring/dispatch.ts` maps each VerbCall to the real
+  admin commands (gateway `onAdmin` + `packages/engine-core/src/admin/`)
+  and executes them over the shared `serverLink`; outcomes are
+  dispatched / refused (server message carried) / unsupported / offline,
+  never faked. The unsupported set, with reasons: **takeItem** and
+  **moveItem** (no admin command moves items in/out of or between bags),
+  **defOf** and **countBase** (no admin read answers them — `inspect`
+  prints no bag/item lines, `items` counts definitions), **startDialogue**
+  (dialogue is player-initiated; no admin command), **placeItemFixture**
+  (`drop` lands at the caller's feet and takes no x/z; `spawn` plants
+  archetypes, not item defs). **giveItem / giveGold / grantQuestReward**
+  dispatch only for the console holder — admin give/gold take no
+  character target — so a call naming another character is unsupported,
+  never silently redirected. **Component-shaped shelf additions are
+  unsupported**: admin `set` only writes numeric fields of a component
+  an entity already has (whitelist: Transform, Velocity, PlayerIntent,
+  Health, BodyConfig, PathRequest, PathState, NavAgent, AssetRef,
+  Locomotion, Action) — it cannot add Health+Stamina, CharacterRef,
+  QuestGiver, DungeonEntrance, Collider, FlowRef, VfxEmitter or
+  AudioEmitter. Placeholder params the widgets still supply (an empty
+  def, amount 0, an empty vendor template, x/z of 0,0) map to
+  unsupported-with-reason until the widgets grow real input fields.
 - **Stage is not the viewport.** The 3D viewport stays in the Scenes
   workspace; selection is shared, but widgets do not yet render as viewport
-  overlays/modals.
-- **Applied state is selection-local.** Lines come from the selection's
-  component fields, not from live system reads (vendor stock, dialogue
-  graphs, abilities). The widget builder already accepts caller-supplied
-  state per widget; live readers are future work per module.
+  overlays/modals, and a dispatch's result is reflected as an inspect
+  read-back in the stage — not yet as a change you watch happen in 3D.
+- **Applied state is selection-local, plus read-backs.** Lines come from
+  the selection's component fields and — after a dispatch — from the
+  live `inspect` read-back for that target; they are not live system
+  reads (vendor stock, dialogue graphs, abilities). The widget builder
+  already accepts caller-supplied state per widget; live readers are
+  future work per module.
 - **Hierarchy references are only as good as the data.** Scene documents
   carry containment and component facts; quest→giver / vendor→template /
   patrol edges appear when node data carries them (the model supports them;
