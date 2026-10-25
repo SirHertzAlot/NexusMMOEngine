@@ -73,6 +73,8 @@ export interface InstanceTrap {
   x: number;
   z: number;
   sprung: boolean;
+  /** Its plate in the room (-1: the run has no props table); swapped for the sprung model once it goes off. */
+  eid: number;
 }
 
 /** What a run earned, reported once at its end (DUNGEONS-AND-LOOT.md §3.4 step 5). */
@@ -258,7 +260,7 @@ export class DungeonInstance {
     const library = PcgAssetLibrary.empty();
     const shell = layout.shell ? library.addPrebaked(`dungeon:${layout.id}`, readFileSync(layout.shell), layout.name) : null;
     // The chests the run stands (and the open model they swap to) are served too, whether or not the bake dressed one.
-    for (const kind of new Set([...layout.props.map((p) => p.kind), "chest", "chest-open"])) {
+    for (const kind of new Set([...layout.props.map((p) => p.kind), "chest", "chest-open", "trap", "trap-sprung"])) {
       const id = `dungeon:${kind}`;
       const mesh = this.opts.props?.archetypes[id]?.asset === id ? propMesh(kind) : null;
       if (mesh) library.addPrebaked(id, mesh, kind);
@@ -431,7 +433,7 @@ export class DungeonInstance {
 
   private populate(): void {
     const placed = this.placement();
-    placed.traps.forEach((t, i) => this.traps.push({ id: `trap-${i}`, x: t.x, z: t.z, sprung: false }));
+    placed.traps.forEach((t, i) => this.traps.push({ id: `trap-${i}`, x: t.x, z: t.z, sprung: false, eid: this.opts.props ? this.spawnProp({ kind: "trap", x: t.x, z: t.z, yaw: 0, scale: 1, radius: 0 }) : -1 }));
     placed.chests.forEach((p, i) => {
       const eid = this.spawnChest(p.x, p.z, p.prop === undefined ? undefined : this.opts.layout.props[p.prop]);
       this.chestSystem.register(eid, `chest-${i}`, { table: "run", refillSeconds: 1e9 });
@@ -508,6 +510,7 @@ export class DungeonInstance {
     if (this.outcome) return;
     this.springTraps();
     this.showOpened();
+    this.showSprung();
     const now = this.now();
     if (this.boss.size > 0 && this.remaining().boss === 0) this.end("cleared");
     else if (now - this.startedAt >= this.opts.rules.timeLimitMinutes * 60_000) this.end("timeout");
@@ -537,6 +540,18 @@ export class DungeonInstance {
     });
   }
   private readonly shownOpen = new Set<string>();
+
+  /** A sprung trap shows its spikes up: its plate is swapped for the sprung model (as an opened chest is). */
+  private showSprung(): void {
+    if (!this.opts.props?.archetypes["dungeon:trap-sprung"]) return;
+    for (const t of this.traps) {
+      if (!t.sprung || t.eid < 0 || !entityExists(this.world.ecs, t.eid)) continue;
+      const sprung = this.spawnProp({ kind: "trap-sprung", x: t.x, z: t.z, yaw: 0, scale: 1, radius: 0 });
+      if (sprung < 0) continue;
+      this.world.despawn(t.eid);
+      t.eid = sprung;
+    }
+  }
 
   /** A chest stands in its room: the props table's chest model when there is one, else a bare marker the interaction still finds. */
   private spawnChest(x: number, z: number, baked?: LayoutProp): number {

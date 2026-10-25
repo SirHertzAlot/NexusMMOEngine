@@ -317,7 +317,7 @@ describe("dungeon instance", () => {
     const base = `http://127.0.0.1:${port}`;
     const auth = { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` };
     const { assets } = (await (await fetch(`${base}/rpc/Pcg/ListAssets`, { method: "POST", headers: auth, body: "{}" })).json()) as { assets: { id: string; assetHash: number }[] };
-    assert.deepEqual(assets.map((a) => a.id).sort(), ["dungeon:barrel", "dungeon:chest", "dungeon:chest-open", "dungeon:grim-abc", "dungeon:pillar", "dungeon:sarcophagus", "dungeon:torch"], "the shell and one mesh per kind in the run (and the chests it stands, closed and open); none for a kind with no table entry");
+    assert.deepEqual(assets.map((a) => a.id).sort(), ["dungeon:barrel", "dungeon:chest", "dungeon:chest-open", "dungeon:grim-abc", "dungeon:pillar", "dungeon:sarcophagus", "dungeon:torch", "dungeon:trap", "dungeon:trap-sprung"], "the shell and one mesh per kind in the run (and the chests and traps it stands, closed and open, armed and sprung); none for a kind with no table entry");
     const barrel = assets.find((a) => a.id === "dungeon:barrel")!;
     assert.equal(barrel.assetHash, fnv1a32("dungeon:barrel"), "listed under the hash its entities carry");
     const ask = await fetch(`${base}/rpc/Pcg/GetAssetMesh`, { method: "POST", headers: auth, body: JSON.stringify({ assetHash: barrel.assetHash, variant: 0 }) });
@@ -344,8 +344,8 @@ describe("dungeon instance", () => {
       const res = await fetch(`http://127.0.0.1:${port}/rpc/Pcg/ListAssets`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` }, body: "{}" });
       return res.status === 200 ? ((await res.json()) as { assets: { id: string }[] }).assets.map((a) => a.id) : [];
     };
-    assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, content.props), ["dungeon:pillar", "dungeon:chest", "dungeon:chest-open"]);
-    assert.deepEqual(await list(fixture(), content.props), ["dungeon:chest", "dungeon:chest-open"], "no baked props, no shell: only the chests the run stands");
+    assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, content.props), ["dungeon:pillar", "dungeon:chest", "dungeon:chest-open", "dungeon:trap", "dungeon:trap-sprung"]);
+    assert.deepEqual(await list(fixture(), content.props), ["dungeon:chest", "dungeon:chest-open", "dungeon:trap", "dungeon:trap-sprung"], "no baked props, no shell: only the chests and traps the run stands");
     assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, undefined), [], "no table: nothing spawns, nothing to serve");
   });
 
