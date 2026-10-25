@@ -19,8 +19,9 @@ Pure TypeScript, no React, no stores, no I/O. The UI is a thin renderer over it.
 | `hierarchy.ts` | Containment (scene → region → POI → object) plus reference edges (quest → giver, vendor → template, creature → patrol route / dialogue graph). Role filters are defined **as** relevance rules over the same facts (quest givers, vendors, loot spawners, mob spawners, dungeon entrances, environment, characters). Sorting by name or by provenance timestamp ("recently modified"). Saved views (role + sort + query) serialize/deserialize/apply. |
 | `verbs.ts` | The 13 canonical verbs of audit §4 as a typed registry (name, aliases for the paired rows `spawnPack`/`detachVendor`, canonical home, signature). The `VerbCall` envelope requires who (actor + role), what, when, where (hierarchy path), why (intent), how (verb + params); validation rejects anonymous mutations (no actor, no role, no why). `VerbHistory` is the append-only log, queryable per object and per actor. |
 | `widgets.ts` | The widget builder: relevance + caller-supplied applied state → view-models with the three anatomy zones (what it is / what's applied / CRUD), every CRUD affordance resolved to a `VerbCall` with a full envelope. Where no canonical verb honestly covers an action (binding a flow graph, adding an emitter), the widget carries no fake verb — the add shelf establishes those preconditions instead. |
+| `inputs.ts` | Action input descriptors as data: each widget/shelf action that needs a designer-supplied value declares its fields (picker with a named real source — `item-bases` / `creature-kinds` / `vendor-templates` — or a number), with prefills where the facts carry one (a vendor's current template, a creature's kind, teleport x/z from the selection's Transform position). `WidgetAction.callWith(values)` rebuilds the call with the values in its params; unfilled fields leave the placeholder and the dispatch mapper refuses it — the mapper is the single gate. Also the parser for the admin `vendor list` answer. |
 
-Tests: `apps/editor/test/authoring-{relevance,add-shelf,verbs,hierarchy,widgets}.test.ts`.
+Tests: `apps/editor/test/authoring-{relevance,add-shelf,verbs,hierarchy,widgets,templates,dispatch,inputs}.test.ts`.
 
 ## The UI — Design workspace
 
@@ -29,57 +30,119 @@ in `App.tsx` (first tab); its panel is contributed by the new `authoring`
 module (`modules/authoring/editor`) through the module registry, like every
 other panel — the shell hardcodes no panel views.
 
-- **Hierarchy pane** — scene picker (the editor's real scene documents via
-  `scenes-client`), the containment tree, role-filter chips, name/recent sort,
-  and a saved-view picker with save-current. Clicking a node writes the shared
-  `editorSelection` store via the same `nodeSelection` the Scenes panel uses —
-  picking here is picking there.
-- **Stage** — a panel (not the 3D viewport in this slice) showing the selected
-  object's name/kind/path, its reference edges, and the session history for
-  that object from the `VerbHistory`.
-- **Widget stack + add shelf** — rendered straight from the model layer. The
-  facts adapter (`factsFromSelection`) reads the real `EditorSelection`; the
-  applied-state lines are read from the selection's own component fields —
-  the only state this slice claims. Widget tabs reuse the Phase A
-  `merged-modals` tab bar.
+- **Hierarchy dock** (inside the view pane, left edge) — scene picker (the
+  editor's real scene documents via `scenes-client`), the containment tree,
+  role-filter chips, name/recent sort, and a saved-view picker with
+  save-current. Clicking a node writes the shared `editorSelection` store via
+  the same `nodeSelection` the Scenes panel uses — picking here is picking
+  there.
+- **View pane / stage** — a panel (not the 3D viewport in this slice): the
+  identity bar across its top names the selected object; its center zone
+  shows the object's reference edges and, after a dispatch, the live inspect
+  read-back; the session history for the object runs along its bottom strip.
+- **Widget stack + add shelf dock** (inside the view pane, right edge) —
+  rendered straight from the model layer. The facts adapter
+  (`factsFromSelection`) reads the real `EditorSelection`; the applied-state
+  lines are read from the selection's own component fields — the only state
+  this slice claims. Widget tabs reuse the Phase A `merged-modals` tab bar.
+  Actions render their declared input fields inline (see Widget inputs).
 
 Every other workspace is the **Developer surface** (data/IDE tooling over the
 same pipeline); two left-dock titles say so ("Tables · Developer surface",
 "Schema · Developer surface") as the labeling pattern to extend.
 
-### Layout — centered view pane, thirds inside the stage (Joey, 2026-10-24, refined same evening)
+### Layout — panels embedded in the view pane (Joey, 2026-10-24 evening)
 
-Joey's refinement of the earlier equal-thirds instruction: the view
-pane must be large and centered as the main viewpoint — the workspace
-grid is no longer three equal columns.
+Joey's direction, naming his reference set — *"embed the panels into
+the viewport pane… like other editors like VSCode and Blender and
+Unity and PlayCanvas"*: the workspace columns are gone. The workspace
+is **one view pane** (a single framed canvas), and the panels dock
+**inside** it, at its edges:
 
-- **Across (Find | See | Act):** the workspace is quarter / half /
-  quarter (`grid-template-columns: 1fr 2fr 1fr`). The stage takes half
-  the workspace width and sits exactly centered; the hierarchy (Find)
-  and the widget stack + add shelf (Act) are supporting sides taking a
-  quarter each. The work still flows left → right, but the composition
-  is centered-dominant because the view is the main viewpoint, not one
-  of three equals. (Supersedes the equal-thirds columns of the first
-  thirds pass, which itself replaced the original fixed-width rails:
-  288px hierarchy / flexible stage / 320px widgets.)
-- **Down the stage (identity / relationships / provenance):** the rule
-  of thirds now governs the INSIDE of the stage — its vertical thirds
-  and the focal intersections inside the view pane. The object's
-  identity card stays compact at the top; its relationships /
-  viewport-focus zone takes the largest share of the vertical space
-  (it is the viewpoint area, and grows with flex); the session
-  provenance history stays compact along the bottom (capped, scrolling).
-  The presentation header sits above the workspace grid: context
-  first, work below it.
-- **What this does NOT do:** it does not make the stage a 3D viewport
-  (still a panel — see gaps), and it is not applied to the Legacy
-  presentation, whose whole point is to preserve the old layout untouched
-  behind its pin.
+- **Left edge, inside the pane — the hierarchy dock** (Find): VSCode's
+  sidebar / Unity's Hierarchy docked against the scene view. Scene
+  picker, containment tree, role filters, saved views.
+- **Right edge, inside the pane — the widgets + add-shelf dock**
+  (Act): Unity's Inspector / Blender's properties region. Selection
+  widgets, the intent ("why") field, and the available-to-add shelf.
+- **Top, inside the pane — the identity bar**: the selected object's
+  name, kind, id and hierarchy path, spanning the pane's full width,
+  with the two dock toggles at its ends.
+- **Bottom, inside the pane — the provenance strip**: the session
+  history (5W1H + dispatch outcomes) as a collapsible strip, like
+  VSCode's panel/console.
+- **The center is the pane's own middle** — the relationships /
+  viewport-focus zone — unobstructed and dominant. The docks sit at
+  its edges; they are not columns beside it. Both docks and the
+  history strip **collapse** (edge toggles in the identity bar; the
+  strip's own header), and collapsing returns the width/height to the
+  center zone. Collapse state persists in local prefs
+  (`authoring-embedded-panels`), like the presentation pins. The rule
+  of thirds now governs composition inside the pane (identity /
+  viewport-focus / provenance down its height; the work still flows
+  left → right: find, see, act).
+- **History of the layout:** fixed rails (288px / flex / 320px) →
+  equal-thirds columns → centered quarter/half/quarter grid →
+  embedded panels. Each step is Joey's refinement of the last. The
+  Legacy presentation is untouched by all of it — it keeps its own
+  original two-panel layout behind its pin, as designed.
+- **What this does NOT do:** the panels are embedded within the Design
+  workspace's view pane — they are **not** overlays on the real-time
+  3D render. The stage is still a panel; the live 3D viewport stays
+  in the Scenes workspace (selection shared). Making the stage itself
+  the 3D viewport is future work (see gaps).
+
+## Widget inputs — real fields for widget and shelf actions
+
+The dispatch slice's blocker was placeholder params: the widgets
+emitted an empty def, amount 0, an empty template, x/z of 0,0, and the
+mapper honestly refused them all. Actions now declare their input
+fields as data (`authoring/inputs.ts`), the view renders compact
+inline fields on the action row, and the chosen values flow into the
+call's params (`callWith` for widgets, `shelfActionParams` for the
+shelf). The dispatch mapper remains the single gate: an unfilled or
+invalid field still records and still reads the mapper's refusal.
+
+| Action (verb) | Field | Data source | Offline behaviour |
+|---|---|---|---|
+| Give item (giveItem) | Item base picker | Gameplay snapshot refs — `content/rules/items.json` base names, via `loadGameplay()` (the editor's dev host) | List loads without a play server; the give itself records offline, as before |
+| Give gold (giveGold) | Gold amount (number) | Typed by the designer | — |
+| Grant quest reward (grantQuestReward) | Item base picker + gold amount | Same picker + number; params compose into the mapper's give + gold steps | Same |
+| Change template (attachVendor) | Vendor template picker, prefilled with the current template | Admin `vendor {sub:"list"}` on the running server — only templates DEFINED there (content/vendors.json templates are defined lazily, when a scene names one or an admin defines one), refetched when the link goes live and after vendor dispatches | Picker disabled with the note "Vendor templates live on the running server — start it to list them." |
+| Spawn pack / Spawn creature (spawnPack / spawnCreature) | Creature kind picker, prefilled with the selected creature's kind | Gameplay snapshot refs — `content/rules/creatures.json` kind names (the registry the server's spawn command checks) | List loads without a play server; the spawn records offline |
+| Teleport (teleport) | X / Z numbers, prefilled from the selected object's Transform position when the selection carries one, editable before dispatch | The selection itself (scene-node transform / Transform fields) | — |
+| Dungeon "Give item reward" (giveItem) | Item base picker | Same item-bases source | Same |
+
+Two targeting truths the inputs surfaced, stated on the actions
+themselves in the UI: admin give/gold (and quest rewards, which
+resolve to them) act on the **console holder only**, so those actions
+build calls for the editor's avatar and say so in a note — a call
+naming another character still refuses in the mapper, never silently
+redirected. And admin spawn with no x/z plants at the caller's
+avatar, so the spawn actions no longer carry the fake 0,0 — the
+placeholder that would have spawned at the world origin is gone.
+
+**Live smoke (2026-10-24, inputs slice):** real server booted in a
+scratch dir, the editor's real `BackendClient`, calls built by the
+real widget builder with input values exactly as a click produces
+them, executed by the real executor. giveItem {base:"sword"} →
+dispatched, server: *"gave Flaming Steel Sword (item 1)"*.
+attachVendor {templateId:"smoke-shop"} (template defined via admin,
+picker list read + parsed from `vendor list`: *"vendors: smoke-shop"*)
+→ dispatched, server: *"vendor \"smoke-shop\" attached to 51"*, with
+the inspect read-back. spawnPack {kind:"goblin"} → dispatched,
+server: *"spawned a pack of 3 goblin"*. The smoke also found that
+vendor attach resolves its target with `resolveEntityTarget` — a bare
+wire-id lookup with no "me" alias — so attach dispatches for
+live-entity selections (whose ids are wire ids) and is refused
+("no such target", surfaced as the outcome) for scene-document
+selections; see gaps.
 
 ## End-to-end authoring — is the loop completable?
 
 Walked step by step against the built code (2026-10-24; re-walked after
-the live-dispatch slice the same evening). The skeleton is coherent:
+the live-dispatch slice and again after the embedded-panels + widget-inputs
+slice, same evening). The skeleton is coherent:
 every hand-off uses the same facts, the same shared selection store,
 and the same verb/envelope types. Execution is no longer the break:
 dispatch is wired for every verb with an honest admin home, and the
@@ -94,8 +157,8 @@ stay unsupported, by design, until the server grows one.
 | 4 | Select an object | Live — shared `editorSelection`; picking here is picking in Scenes |
 | 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs |
 | 6 | Read what's applied | **Partial** — selection-local component fields, PLUS the live `inspect` read-back (its lines join the widgets when the read-back's target is this selection); still not live system reads (vendor stock, dialogue graphs, abilities) |
-| 7 | Add what's missing (add shelf) | **Partial** — establishability is live; verb-shaped shelf actions dispatch (step 8); component-shaped additions are **unsupported** — admin `set` cannot add a component (see gaps) |
-| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Dispatching: giveItem & giveGold (console holder only), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, grantQuestReward (composite give+gold, console holder), resolveBase (a read, via `items`). **Unsupported, with reasons:** takeItem, moveItem, defOf, countBase, startDialogue, placeItemFixture — no admin command honestly implements them |
+| 7 | Add what's missing (add shelf) | **Partial** — establishability is live; verb-shaped shelf actions dispatch with real input fields (vendor-template and creature-kind pickers — step 8); component-shaped additions are **unsupported** — admin `set` cannot add a component (see gaps) |
+| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Actions render real input fields (item-base / creature-kind / vendor-template pickers fed by real lists, amount and coordinate numbers with Transform prefills), so the dispatching verbs dispatch from clicks with designer-chosen values — live-smoked end to end (give, vendor attach, spawn). Dispatching: giveItem & giveGold (console holder only), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, grantQuestReward (composite give+gold, console holder), resolveBase (a read, via `items`). **Unsupported, with reasons:** takeItem, moveItem, defOf, countBase, startDialogue, placeItemFixture — no admin command honestly implements them |
 | 9 | Provenance history | **Partial** — in-memory session log, per-object, now carrying each call's dispatch outcome + server message; not persisted / not VCS metadata |
 | 10 | See the result | **Partial** — a dispatched mutation re-inspects its target and the stage shows the read-back dump (and the widgets absorb it when the target is the selection). Seeing it in the 3D viewport is still a **gap** — viewport is in the Scenes workspace; no in-place 3D feedback, no viewport overlays |
 | 11 | Quick-start procgen parity | **Gap** — converges by construction via scene docs; no rule-editor widget |
@@ -237,13 +300,25 @@ a re-homing, not a deletion.
   Health, BodyConfig, PathRequest, PathState, NavAgent, AssetRef,
   Locomotion, Action) — it cannot add Health+Stamina, CharacterRef,
   QuestGiver, DungeonEntrance, Collider, FlowRef, VfxEmitter or
-  AudioEmitter. Placeholder params the widgets still supply (an empty
-  def, amount 0, an empty vendor template, x/z of 0,0) map to
-  unsupported-with-reason until the widgets grow real input fields.
-- **Stage is not the viewport.** The 3D viewport stays in the Scenes
-  workspace; selection is shared, but widgets do not yet render as viewport
-  overlays/modals, and a dispatch's result is reflected as an inspect
-  read-back in the stage — not yet as a change you watch happen in 3D.
+  AudioEmitter. The placeholder-params gap is **closed** for widget
+  and shelf actions: they render real input fields (see Widget
+  inputs) and dispatch with designer-chosen values, live-smoked.
+  What remains narrow, honestly: the vendor-template picker lists
+  only templates DEFINED on the running server (the server defines
+  content/vendors.json templates lazily); vendor attach/detach
+  resolve their target by bare wire id (`resolveEntityTarget` has no
+  "me" alias), so they dispatch for live-entity selections and are
+  refused — with the server's "no such target" as the recorded
+  outcome — for scene-document selections, whose ids are node ids;
+  and the no-admin-home verbs above still carry placeholder params,
+  which no input field can fix.
+- **Stage is not the viewport.** The panels are now embedded in the
+  Design workspace's view pane (docks at its edges, collapsible), but
+  that pane is still a panel — the real-time 3D render stays in the
+  Scenes workspace; selection is shared, but widgets do not yet render
+  as overlays on the 3D view, and a dispatch's result is reflected as
+  an inspect read-back in the pane — not yet as a change you watch
+  happen in 3D.
 - **Applied state is selection-local, plus read-backs.** Lines come from
   the selection's component fields and — after a dispatch — from the
   live `inspect` read-back for that target; they are not live system
