@@ -153,6 +153,11 @@ export class SidecarManager {
     if (out.length > OUTPUT_LINES) out.splice(0, out.length - OUTPUT_LINES);
   }
 
+  /** Every known sidecar and its status, by module name. */
+  list(): Array<{ name: string; status: SidecarStatus; dump: boolean }> {
+    return [...this.statuses.entries()].map(([name, status]) => ({ name, status, dump: this.records.get(name)?.lastDump !== undefined }));
+  }
+
   /** The last dump a sidecar left (parked or given up), if any. */
   dumpOf(name: string): SidecarDump | undefined {
     return this.records.get(name)?.lastDump;
