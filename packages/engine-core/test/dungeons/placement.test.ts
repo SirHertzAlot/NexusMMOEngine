@@ -107,4 +107,39 @@ describe("chest and trap placement", () => {
       await inst.close();
     }
   });
+
+  it("a trap stands as a plate in its room and shows its spikes once sprung", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const inst = new DungeonInstance({
+      id: "run-trap-model", entrance: "barrow-gate", layout: bake(77, "grim"), rules: content.rules, props: content.props, game: loadGameRules(),
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      chestPool: [11], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    const c = new HeadlessClient();
+    try {
+      const at = (hash: number) => [...defineQuery([C.AssetRef])(inst.world.ecs)].filter((e) => C.AssetRef.assetHash[e] === hash);
+      const near = (e: number, x: number, z: number) => Math.hypot(C.Transform.px[e] - x, C.Transform.pz[e] - z) < 1e-3;
+      const tr = inst.traps[0];
+      assert.ok(tr.eid >= 0 && at(fnv1a32("dungeon:trap")).some((e) => near(e, tr.x, tr.z)), "an armed plate lies there");
+      await c.connect(`ws://127.0.0.1:${port}`);
+      const w = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+      const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
+      const before = tr.eid;
+      for (let n = 0; n < 60 && !tr.sprung; n++) {
+        C.Transform.px[avatar] = tr.x;
+        C.Transform.pz[avatar] = tr.z;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(tr.sprung);
+      for (let n = 0; n < 40 && tr.eid === before; n++) await new Promise((r) => setTimeout(r, 50));
+      assert.notEqual(tr.eid, before, "the plate is a new entity now");
+      assert.ok(at(fnv1a32("dungeon:trap-sprung")).some((e) => near(e, tr.x, tr.z)), "spikes stand there");
+    } finally {
+      await c.close();
+      await inst.close();
+    }
+  });
 });
