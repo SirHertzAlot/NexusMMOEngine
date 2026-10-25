@@ -710,6 +710,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // disables only its module (logged + reported below); the server
     // still boots.
     const sidecarManager = new SidecarManager({
+      dumpDir: join(dataDir, "sidecar-dumps"),
       log: (line) => {
         if (serverLog.current(logEpoch)) serverLog.append(`${line}\n`, "editor");
       },
@@ -996,6 +997,39 @@ export function editorHost(options: EditorHostOptions): Plugin {
             // Fresh/keep: restore the backup unless keeping play changes.
             playSnapshot.end();
             sendJson(res, 200, { ok: true, stopped });
+            return;
+          }
+          if (url === "/api/editor/sidecars/park" || url === "/api/editor/sidecars/replace") {
+            if (req.method !== "POST") {
+              sendJson(res, 405, { ok: false, error: "POST only" });
+              return;
+            }
+            let body: { name?: unknown; reason?: unknown } = {};
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as typeof body;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "body must be JSON" });
+              return;
+            }
+            if (!owned || typeof body.name !== "string") {
+              sendJson(res, 409, { ok: false, error: owned ? 'need {"name": "<module>"}' : "the play server isn't running" });
+              return;
+            }
+            const report =
+              url.endsWith("/park")
+                ? await owned.sidecars.park(body.name, typeof body.reason === "string" ? body.reason : undefined)
+                : await owned.sidecars.replace(body.name);
+            sendJson(res, 200, { ok: true, report, dump: owned.sidecars.dumpOf(body.name) ?? null });
+            return;
+          }
+          if (url.startsWith("/api/editor/sidecars/dump") && req.method === "GET") {
+            const name = new URL(url, "http://localhost").searchParams.get("name") ?? "";
+            const dump = owned?.sidecars.dumpOf(name);
+            if (!dump) {
+              sendJson(res, 404, { ok: false, error: `no dump for "${name}"` });
+              return;
+            }
+            sendJson(res, 200, { ok: true, dump });
             return;
           }
           if (url.startsWith("/api/editor/server/log") && req.method === "GET") {

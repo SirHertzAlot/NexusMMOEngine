@@ -20,8 +20,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { get } from "node:http";
 import { killProcessTree } from "./proc-tree.js";
 import { WasmSidecarHost } from "./wasm-sidecar-host.js";
+import { writeDump, type ParkTrigger, type SidecarDump, type SidecarExit, type SidecarOutputLine, type SidecarProbe } from "./sidecar-dump.js";
 
-export type SidecarStatus = "starting" | "healthy" | "unhealthy" | "stopped";
+export type SidecarStatus = "starting" | "healthy" | "unhealthy" | "parked" | "stopped";
 
 /**
  * The slice of a discovered module the manager needs: its dir (sidecar
@@ -33,6 +34,7 @@ export interface SidecarModule {
   dir: string;
   manifest: {
     name: string;
+    version?: string;
     sidecar?:
       | { command: string; port: number; health: string }
       | { exec: string[]; port: number; health: string }
@@ -46,7 +48,29 @@ export interface SidecarReport {
   /** Present when status is "unhealthy": why it never became ready. */
   reason?: string;
   port?: number;
+  /** Present when the sidecar was parked or gave up: where its dump was written. */
+  dumpFile?: string;
 }
+
+/** What the manager remembers about one sidecar, for its dump. */
+interface SidecarRecord {
+  startedAt: number | null;
+  lastHealthyAt: number | null;
+  instances: number;
+  exits: SidecarExit[];
+  output: SidecarOutputLine[];
+  probes: SidecarProbe[];
+  probeCount: number;
+  probeFailures: number;
+  pid: number | null;
+  spawnError?: string;
+  lastReason: string;
+  lastDump?: SidecarDump;
+  lastDumpFile?: string;
+}
+
+const OUTPUT_LINES = 200;
+const PROBE_HISTORY = 20;
 
 export interface SidecarManagerOptions {
   /** How long to wait for /health to answer 200 before giving up. Default 15_000. */
@@ -66,6 +90,8 @@ export interface SidecarManagerOptions {
    * sidecar that turns healthy and crashes again still runs out of restarts.
    */
   restartPolicy?: { maxRestarts?: number; baseBackoffMs?: number; stableMs?: number };
+  /** Where parked and given-up sidecars write their dump (JSON). Unset: dumps are kept in memory only (dumpOf). */
+  dumpDir?: string;
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -83,6 +109,8 @@ export class SidecarManager {
   private readonly maxRestarts: number;
   private readonly baseBackoffMs: number;
   private readonly stableMs: number;
+  private readonly dumpDir: string | undefined;
+  private readonly records = new Map<string, SidecarRecord>();
   private readonly procs = new Map<string, ChildProcess>();
   private readonly statuses = new Map<string, SidecarStatus>();
   /** EA11: in-process wasm sidecars, by module name. */
@@ -104,6 +132,154 @@ export class SidecarManager {
     this.maxRestarts = opts.restartPolicy?.maxRestarts ?? 3;
     this.baseBackoffMs = opts.restartPolicy?.baseBackoffMs ?? 1_000;
     this.stableMs = opts.restartPolicy?.stableMs ?? 30_000;
+    this.dumpDir = opts.dumpDir;
+  }
+
+  private record(name: string): SidecarRecord {
+    let r = this.records.get(name);
+    if (!r) {
+      r = { startedAt: null, lastHealthyAt: null, instances: 0, exits: [], output: [], probes: [], probeCount: 0, probeFailures: 0, pid: null, lastReason: "" };
+      this.records.set(name, r);
+    }
+    return r;
+  }
+
+  private note(name: string, stream: "stdout" | "stderr", chunk: Buffer): void {
+    const out = this.record(name).output;
+    for (const text of chunk.toString("utf8").split("\n")) {
+      if (text.trim() === "") continue;
+      out.push({ at: new Date().toISOString(), stream, text });
+    }
+    if (out.length > OUTPUT_LINES) out.splice(0, out.length - OUTPUT_LINES);
+  }
+
+  /** The last dump a sidecar left (parked or given up), if any. */
+  dumpOf(name: string): SidecarDump | undefined {
+    return this.records.get(name)?.lastDump;
+  }
+
+  /**
+   * Park a sidecar: stop it for good (no restarts) and leave a dump of the
+   * error and its 5W1H context. The module's entry stays registered, so
+   * replace() can start a fresh instance later.
+   */
+  async park(name: string, reason = "parked by hand", trigger: ParkTrigger = "manual"): Promise<SidecarReport> {
+    const m = this.modules.get(name);
+    if (!m) return { name, status: "stopped", reason: "unknown sidecar" };
+    const timer = this.restartTimers.get(name);
+    if (timer) clearTimeout(timer);
+    this.restartTimers.delete(name);
+    const child = this.procs.get(name);
+    this.procs.delete(name); // so its exit isn't supervised as a crash
+    const host = this.wasmHosts.get(name);
+    this.wasmHosts.delete(name);
+    if (host) await host.stop();
+    if (child) await this.reap(child);
+    this.statuses.set(name, "parked");
+    this.log(`[sidecar:${name}] PARKED: ${reason}`);
+    const dumpFile = this.dump(name, trigger, reason);
+    const sc = m.manifest.sidecar!;
+    return { name, status: "parked", reason, port: sc.port, dumpFile };
+  }
+
+  /**
+   * Start a sidecar from a clean slate: park whatever is running (the dump is
+   * kept), forget its restart history, and start a new instance of the same
+   * module.
+   */
+  async replace(name: string): Promise<SidecarReport> {
+    const m = this.modules.get(name);
+    if (!m) return { name, status: "stopped", reason: "unknown sidecar" };
+    if (this.procs.has(name) || this.wasmHosts.has(name)) await this.park(name, "replaced by a fresh instance", "replace");
+    this.restartCounts.set(name, 0);
+    const r = this.record(name);
+    r.exits = [];
+    r.output = [];
+    r.probes = [];
+    r.spawnError = undefined;
+    return this.startOne(m);
+  }
+
+  /** Terminate one child tree and wait for it to go. */
+  private reap(child: ChildProcess): Promise<void> {
+    return new Promise((resolve) => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve();
+      const pid = child.pid ?? -1;
+      const killer = setTimeout(() => {
+        killProcessTree(pid, "SIGKILL");
+        setTimeout(resolve, 500).unref?.();
+      }, this.killTimeoutMs);
+      (killer as unknown as { unref?: () => void }).unref?.();
+      child.once("exit", () => {
+        clearTimeout(killer);
+        resolve();
+      });
+      killProcessTree(pid, "SIGTERM");
+    });
+  }
+
+  /** Build (and, with dumpDir, write) the dump for a sidecar. Returns the file path if one was written. */
+  private dump(name: string, trigger: ParkTrigger, reason: string): string | undefined {
+    const m = this.modules.get(name);
+    if (!m) return undefined;
+    const sc = m.manifest.sidecar!;
+    const r = this.record(name);
+    const last = r.exits[r.exits.length - 1];
+    const kind = "wasm" in sc ? "wasm" : "exec" in sc ? "exec" : "command";
+    const now = Date.now();
+    const d: SidecarDump = {
+      schema: 1,
+      who: { module: name, version: m.manifest.version, kind, pid: r.pid, managerPid: process.pid },
+      what: {
+        trigger,
+        reason,
+        status: this.statuses.get(name) ?? "unknown",
+        error: {
+          exitCode: last?.code ?? null,
+          signal: last?.signal ?? null,
+          spawnError: r.spawnError,
+          stderrTail: r.output.filter((l) => l.stream === "stderr").slice(-30).map((l) => l.text),
+        },
+      },
+      when: {
+        parkedAt: new Date(now).toISOString(),
+        startedAt: r.startedAt === null ? null : new Date(r.startedAt).toISOString(),
+        lastHealthyAt: r.lastHealthyAt === null ? null : new Date(r.lastHealthyAt).toISOString(),
+        uptimeMs: r.startedAt === null ? null : now - r.startedAt,
+        exits: r.exits,
+      },
+      where: {
+        moduleDir: m.dir,
+        port: sc.port,
+        healthUrl: `http://127.0.0.1:${sc.port}${sc.health}`,
+        platform: process.platform,
+        arch: process.arch,
+        node: process.version,
+        envKeys: Object.keys(process.env).sort(),
+      },
+      why: {
+        trigger,
+        restartCount: this.restartCounts.get(name) ?? 0,
+        restartPolicy: { maxRestarts: this.maxRestarts, baseBackoffMs: this.baseBackoffMs, stableMs: this.stableMs },
+      },
+      how: {
+        command: "wasm" in sc ? `wasm:${sc.wasm}` : "exec" in sc ? sc.exec.join(" ") : sc.command,
+        recentProbes: r.probes,
+      },
+      output: r.output,
+      telemetry: { instances: r.instances, unexpectedExits: r.exits.length, probes: r.probeCount, probeFailures: r.probeFailures },
+    };
+    r.lastDump = d;
+    r.lastDumpFile = undefined;
+    if (this.dumpDir) {
+      try {
+        r.lastDumpFile = writeDump(this.dumpDir, d);
+        this.log(`[sidecar:${name}] dump written: ${r.lastDumpFile}`);
+      } catch (e) {
+        this.log(`[sidecar:${name}] could not write the dump: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return r.lastDumpFile;
   }
 
   /** Last known status per sidecar name; unknown names return undefined. */
@@ -165,6 +341,10 @@ export class SidecarManager {
     this.stopping = false;
     this.modules.set(name, m);
     this.statuses.set(name, "starting");
+    const rec = this.record(name);
+    rec.instances += 1;
+    rec.startedAt = Date.now();
+    rec.pid = null;
 
     // EA11: wasm kind runs in-process via WasmSidecarHost (no OS process).
     if ("wasm" in sidecar) {
@@ -206,26 +386,44 @@ export class SidecarManager {
       }
     } catch (e) {
       const reason = `failed to spawn: ${e instanceof Error ? e.message : String(e)}`;
-      return this.fail(name, tag, sidecar.port, reason);
+      rec.spawnError = reason;
+      return this.fail(name, tag, sidecar.port, reason, "start-failed");
     }
     this.procs.set(name, child);
-    child.stdout?.on("data", (d: Buffer) => this.log(`${tag} ${d.toString("utf8").trimEnd()}`));
-    child.stderr?.on("data", (d: Buffer) => this.log(`${tag} stderr: ${d.toString("utf8").trimEnd()}`));
+    rec.pid = child.pid ?? null;
+    child.stdout?.on("data", (d: Buffer) => {
+      this.note(name, "stdout", d);
+      this.log(`${tag} ${d.toString("utf8").trimEnd()}`);
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      this.note(name, "stderr", d);
+      this.log(`${tag} stderr: ${d.toString("utf8").trimEnd()}`);
+    });
 
     let exitCode: number | null = null;
     let exited = false;
-    child.on("exit", (code) => {
+    child.on("exit", (code, signal) => {
       exited = true;
       exitCode = code;
+      // A sidecar stopped on purpose (parked, replaced, shut down) is no crash.
+      if (this.procs.get(name) === child) {
+        rec.exits.push({ at: new Date().toISOString(), code, signal, uptimeMs: Date.now() - (rec.startedAt ?? Date.now()) });
+      }
     });
     child.on("error", (err) => {
+      rec.spawnError = err.message;
       this.log(`${tag} spawn error: ${err.message}`);
     });
 
     const deadline = Date.now() + this.healthTimeoutMs;
     let healthy = false;
     while (Date.now() < deadline && !exited) {
-      if (await this.probe(sidecar.port, sidecar.health)) {
+      const ok = await this.probe(sidecar.port, sidecar.health);
+      rec.probeCount += 1;
+      if (!ok) rec.probeFailures += 1;
+      rec.probes.push({ at: new Date().toISOString(), ok });
+      if (rec.probes.length > PROBE_HISTORY) rec.probes.shift();
+      if (ok) {
         healthy = true;
         break;
       }
@@ -235,6 +433,7 @@ export class SidecarManager {
 
     if (healthy) {
       this.statuses.set(name, "healthy");
+      rec.lastHealthyAt = Date.now();
       this.log(`${tag} healthy`);
       // Only a sidecar that stays up forgives its earlier crashes: resetting the count on
       // every healthy report would let a crash loop that briefly turns healthy restart forever.
@@ -255,7 +454,7 @@ export class SidecarManager {
       ? `process exited (code ${exitCode}) before the health check passed`
       : `health check timed out after ${this.healthTimeoutMs}ms`;
     this.killTree(name, child);
-    return this.fail(name, tag, sidecar.port, reason);
+    return this.fail(name, tag, sidecar.port, reason, "start-failed");
   }
 
   /**
@@ -270,6 +469,7 @@ export class SidecarManager {
     if (count > this.maxRestarts) {
       this.statuses.set(name, "unhealthy");
       this.log(`${tag} DISABLED after ${this.maxRestarts} restarts: exited (code ${code}, signal ${signal})`);
+      this.dump(name, "crash-loop", `exited ${count} times in a row (code ${code}, signal ${signal}); the restart limit is ${this.maxRestarts}`);
       return;
     }
     const backoff = this.baseBackoffMs * 2 ** (count - 1);
@@ -293,13 +493,14 @@ export class SidecarManager {
     this.restartTimers.set(name, timer);
   }
 
-  private fail(name: string, tag: string, port: number, reason: string): SidecarReport {
+  private fail(name: string, tag: string, port: number, reason: string, trigger: ParkTrigger = "start-failed"): SidecarReport {
     this.statuses.set(name, "unhealthy");
     this.procs.delete(name);
+    const dumpFile = this.dump(name, trigger, reason);
     // Unhealthy = module disabled, loudly: the server still boots, but the
     // module's helper is out and the reason is on the record.
     this.log(`${tag} DISABLED: ${reason}`);
-    return { name, status: "unhealthy", reason, port };
+    return { name, status: "unhealthy", reason, port, dumpFile };
   }
 
   private probe(port: number, path: string): Promise<boolean> {
