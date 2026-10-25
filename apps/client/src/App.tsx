@@ -44,6 +44,8 @@ import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { HudLayoutProvider, HudSlot, useHudJson } from "./ui/hud-slot.js";
 import { TargetFrame } from "./ui/target-frame.js";
+import { CombatHud, type CombatReticleTelemetry } from "./ui/combat-hud.js";
+import type { HitMessage } from "@mmo-engine/protocol";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
@@ -275,6 +277,18 @@ export function App(): React.ReactElement {
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
+  const [cameraView, setCameraView] = useState<"third" | "first">("third");
+  const [stanceState, setStanceState] = useState<{ technique: string | null; aim: string | null }>({ technique: null, aim: null });
+  const [lastPlayerHit, setLastPlayerHit] = useState<{ hit: HitMessage; atMs: number } | null>(null);
+  const [reticleTelemetry, setReticleTelemetry] = useState<CombatReticleTelemetry>({
+    hoveredEntity: null,
+    hoveredPart: null,
+    hoveredDistance: Infinity,
+    pitchAimPart: "torso",
+    activeMove: 0,
+    moveElapsed: 0,
+    pointerLocked: false,
+  });
 
   /** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient => {
@@ -380,6 +394,9 @@ export function App(): React.ReactElement {
       onHit: (h) => {
         const player = clientRef.current?.playerEntity ?? null;
         combat.hit(h, player);
+        if (player !== null && BigInt(h.source) === player) {
+          setLastPlayerHit({ hit: h, atMs: performance.now() });
+        }
         // Only blows the player gives or takes make a sound, for now, from where the other party stands.
         if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) {
           const other = BigInt(h.source) === player ? BigInt(h.target) : BigInt(h.source);
@@ -634,9 +651,15 @@ export function App(): React.ReactElement {
     const aims = AIMS.filter((a) => known.has(a));
     const st = stance.current;
     if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
-    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    else st.aim = st.aim + 1 >= aims.length ? -1 : st.aim + 1;
+    // technique computed above
+    // aim resolved below
     const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
-    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    // aim resolved below
+    const aim = st.aim >= 0 ? (aims[st.aim] ?? null) : null;
+    setStanceState({ technique, aim });
+    // technique computed above
+    // aim computed above
     c.stance(technique, aim);
     const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : t("stance.weapon"));
     setNotice({ text: t("stance.notice", { technique: label(technique), aim: label(aim) }), at: performance.now() });
@@ -718,8 +741,17 @@ export function App(): React.ReactElement {
           onNearEntrance={setNearEntrance}
           instance={run !== null}
           getLook={() => lookRef.current}
+          // combat feedback and view
+          // combat feedback and view
           combat={combat}
           onCombat={setCombatView}
+          view={cameraView}
+          onViewChange={setCameraView}
+          stance={stanceState}
+          equippedMain={hands.main?.model || hands.main?.base || null}
+          equippedOff={hands.off?.model || hands.off?.base || null}
+          equippedMainColor={hands.main?.color}
+          onReticle={setReticleTelemetry}
           streamingRef={streamingRef}
           audio={audio}
         />
@@ -826,6 +858,15 @@ export function App(): React.ReactElement {
           <CastBar cast={cast} />
         </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
+        <CombatHud
+          view={cameraView}
+          technique={stanceState.technique}
+          lockedAim={stanceState.aim}
+          telemetry={reticleTelemetry}
+          mainWeapon={hands.main}
+          offWeapon={hands.off}
+          lastHit={lastPlayerHit}
+        />
         <SettingsMenu
           quality={quality === "auto" ? t("settings.qualityAuto", { tier: activeQuality?.active ?? "…" }) : quality}
           onQuality={cycleQuality}
@@ -914,6 +955,14 @@ export function App(): React.ReactElement {
           </HudSlot>
         )}
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setCameraView((v) => (v === "third" ? "first" : "third"))}
+            title={t("hud.view.toggleTitle")}
+          >
+            {cameraView === "first" ? t("hud.view.first") : t("hud.view.third")}
+          </Button>
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={t("hud.questLogTitle", { key: prettyCode(bindings.quests[0] ?? "KeyJ") })}>
             {t("hud.quests")}
           </Button>

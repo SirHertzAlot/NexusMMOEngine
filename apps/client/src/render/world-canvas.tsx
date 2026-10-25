@@ -48,7 +48,15 @@ import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import type { CombatFeedback } from "./combat-feedback.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
-import { EYE_HEIGHT, firstPersonCamera } from "./first-person-camera.js";
+import {
+  EYE_HEIGHT,
+  firstPersonCamera,
+  createFirstPersonCameraState,
+  stepFirstPersonMotion,
+  type FirstPersonMotionSample,
+} from "./first-person-camera.js";
+import { FirstPersonRig } from "./first-person-rig.js";
+import { pitchToAimPart, type CombatReticleTelemetry } from "../ui/combat-hud.js";
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
@@ -82,7 +90,7 @@ const FIXED_TIME = 0.42;
 const FOG_NEAR = 200;
 const FOG_FAR = 3200;
 /** Camera range: the far plane sits just past the haze. */
-const CAMERA_NEAR = 0.5;
+const CAMERA_NEAR = 0.08;
 const CAMERA_FAR = FOG_FAR + 800;
 
 const splashAt = new THREE.Vector3();
@@ -180,6 +188,11 @@ export interface WorldCanvasProps {
   onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
+  stance?: { technique: string | null; aim: string | null };
+  equippedMain?: string | null;
+  equippedOff?: string | null;
+  equippedMainColor?: string;
+  onReticle?: (telemetry: CombatReticleTelemetry) => void;
   /** Optional ref to receive the streaming coordinator for region-change notifications. */
   streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
   /** The audio engine for weather sound (rain bed). */
@@ -349,6 +362,7 @@ interface Runtime {
   terrain: TerrainRenderer;
   water: WaterRenderer;
   layer: EntityLayer;
+  fpsRig: FirstPersonRig;
   input: InputState;
   drops: DropLabels;
   resources: ResourceNodes;
@@ -392,6 +406,11 @@ function MirrorWorld({
   getLook,
   combat,
   onCombat,
+  stance,
+  equippedMain,
+  equippedOff,
+  equippedMainColor,
+  onReticle,
   view: viewProp,
   onViewChange,
   settings,
@@ -405,8 +424,30 @@ function MirrorWorld({
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  // Latest ref includes stance, equipped items, and reticle callback.
+  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings });
+  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings };
+  const fpsCamState = useRef(createFirstPersonCameraState());
+  const fpsMotion = useRef<FirstPersonMotionSample>({
+    right: 0,
+    up: 0,
+    forward: 0,
+    pitch: 0,
+    yaw: 0,
+    roll: 0,
+    stridePhase: 0,
+    bobWeight: 0,
+    breathPhase: 0,
+  });
+  const reticlePrev = useRef({
+    hoveredEntity: null as bigint | null,
+    hoveredPart: null as string | null,
+    hoveredDistanceQ: -1,
+    pitchAimPart: "torso",
+    activeMove: 0,
+    inChain: false,
+    pointerLocked: false,
+  });
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -481,7 +522,8 @@ function MirrorWorld({
     const rain = new RainCurtain();
     const weatherFeel = new WeatherFeel();
     weatherFeel.setAudio(audio ?? null);
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh);
+    const fpsRig = new FirstPersonRig(layer.syntyProps);
+    scene.add(sky.group, terrain.group, water.group, layer.group, fpsRig.root, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh);
     ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
     // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
     // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
@@ -560,12 +602,14 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     const observerLayers = new Map<MirrorClient, EntityLayer>();
-    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
-      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { layer, input, client };
+    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { layer, fpsRig, input, client };
+    }
     }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
@@ -604,6 +648,7 @@ function MirrorWorld({
       clouds.dispose();
       rain.dispose();
       ambience?.dispose();
+      fpsRig.root.removeFromParent();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
@@ -760,10 +805,95 @@ function MirrorWorld({
       r.layer.setPlayerHidden(true);
       eyePos.current.copy(r.layer.player);
       eyePos.current.y += EYE_HEIGHT;
-      firstPersonCamera(camera, eyePos.current, r.input.lookYaw, r.input.lookPitch);
+      const ps = r.layer.playerSample;
+      const motion = stepFirstPersonMotion(
+        fpsCamState.current,
+        {
+          dt: delta,
+          vx: ps.vx,
+          vy: ps.vy,
+          vz: ps.vz,
+          mode: ps.mode,
+          grounded: ps.grounded,
+          move: ps.move,
+          moveElapsed: ps.moveElapsed,
+          headBoneOffset: ps.headBoneOffset,
+        },
+        fpsMotion.current,
+      );
+      firstPersonCamera(camera, eyePos.current, r.input.lookYaw, r.input.lookPitch, motion);
+      r.fpsRig.setVisible(true);
+      r.fpsRig.setColors({
+        skin: ps.skinColor ?? undefined,
+        sleeve: ps.sleeveColor ?? undefined,
+        cuff: ps.cuffColor ?? undefined,
+      });
+      r.fpsRig.setEquipment(
+        latest.current.equippedMain ?? ps.mainHeld,
+        latest.current.equippedOff ?? ps.offHeld,
+        latest.current.equippedMainColor,
+      );
+      const pitchAim = pitchToAimPart(r.input.lookPitch);
+      const effAim = latest.current.stance?.aim ?? r.layer.hoveredPart ?? pitchAim;
+      r.fpsRig.update({
+        dt: delta,
+        camera,
+        lookYaw: r.input.lookYaw,
+        lookPitch: r.input.lookPitch,
+        motion,
+        move: ps.move,
+        moveElapsed: ps.moveElapsed,
+        technique: latest.current.stance?.technique ?? null,
+        aimPart: effAim,
+      });
     } else {
       r.layer.setPlayerHidden(false);
+      r.fpsRig.setVisible(false);
       followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    }
+    const isPointerLocked = typeof document !== "undefined" && document.pointerLockElement === gl.domElement;
+    if (isPointerLocked || viewRef.current === "first") {
+      pointer.current.set(0, 0);
+      l.pointerMoved = false;
+      raycaster.current.setFromCamera(pointer.current, camera);
+      r.layer.hover(raycaster.current);
+    } else if (l.pointerMoved) {
+      l.pointerMoved = false;
+      raycaster.current.setFromCamera(pointer.current, camera);
+      r.layer.hover(raycaster.current);
+    }
+    if (latest.current.onReticle) {
+      const ps = r.layer.playerSample;
+      const pitchAim = pitchToAimPart(r.input.lookPitch);
+      const distQ = Number.isFinite(r.layer.hoveredDistance) ? Math.round(r.layer.hoveredDistance * 10) : -1;
+      const elapsedQ = Math.round(ps.moveElapsed * 20);
+      const rp = reticlePrev.current;
+      if (
+        rp.hoveredEntity !== r.layer.hovered ||
+        rp.hoveredPart !== r.layer.hoveredPart ||
+        rp.hoveredDistanceQ !== distQ ||
+        rp.pitchAimPart !== pitchAim ||
+        rp.activeMove !== ps.move ||
+        (ps.move !== 0 && rp.inChain !== (elapsedQ % 2 === 0)) ||
+        rp.pointerLocked !== isPointerLocked
+      ) {
+        rp.hoveredEntity = r.layer.hovered;
+        rp.hoveredPart = r.layer.hoveredPart;
+        rp.hoveredDistanceQ = distQ;
+        rp.pitchAimPart = pitchAim;
+        rp.activeMove = ps.move;
+        rp.inChain = elapsedQ % 2 === 0;
+        rp.pointerLocked = isPointerLocked;
+        latest.current.onReticle({
+          hoveredEntity: r.layer.hovered,
+          hoveredPart: r.layer.hoveredPart,
+          hoveredDistance: r.layer.hoveredDistance,
+          pitchAimPart: pitchAim,
+          activeMove: ps.move,
+          moveElapsed: ps.moveElapsed,
+          pointerLocked: isPointerLocked,
+        });
+      }
     }
     // Chunk streaming: track camera position and velocity for demand + handoff prediction.
     const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;

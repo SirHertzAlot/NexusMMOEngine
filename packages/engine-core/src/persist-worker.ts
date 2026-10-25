@@ -253,7 +253,16 @@ export class PersistenceWorkerRuntime {
     Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.PERSIST_COMMITTED, 1);
   }
 
-  /** Drain all currently queued transactions from the secondary lockless ring. */
+  /**
+   * Drains pending persistence transactions, coalescing redundant ENTITY_CHECKPOINT
+   * mutations for the same sabIndex via a bitset, committing checkpoints and
+   * ACID ledger transactions (PATCH-04).
+   */
+  public async flushOnce(maxBatch = 256): Promise<number> {
+    return this.drainPendingTransactions(maxBatch);
+  }
+
+  /** Drain all currently queued transactions from the secondary lockless ring with dirty-bitset deduplication. */
   public async drainPendingTransactions(maxBatch: number = 256): Promise<number> {
     while (this.draining) {
       await new Promise((r) => setTimeout(r, 2));
@@ -261,9 +270,30 @@ export class PersistenceWorkerRuntime {
     this.draining = true;
     let processed = 0;
     try {
-      while (processed < maxBatch) {
+      const batch: PersistTransaction[] = [];
+      while (batch.length < maxBatch) {
         const tx = this.persistQueue.dequeue();
         if (tx === null) break;
+        batch.push(tx);
+      }
+
+      if (batch.length === 0) {
+        return 0;
+      }
+
+      const bitWords = Math.ceil(this.views.entityCapacity / 32);
+      const seenCheckpoints = new Uint32Array(bitWords);
+
+      for (const tx of batch) {
+        if (tx.kind === PERSIST_TX_KIND.ENTITY_CHECKPOINT) {
+          const w = tx.sabIndex >>> 5;
+          const b = 1 << (tx.sabIndex & 31);
+          if (w < bitWords && (seenCheckpoints[w] & b) !== 0) {
+            processed++;
+            continue;
+          }
+          if (w < bitWords) seenCheckpoints[w] |= b;
+        }
         await this.executeTransaction(tx);
         processed++;
       }

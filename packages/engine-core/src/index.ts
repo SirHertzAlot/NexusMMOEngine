@@ -373,7 +373,7 @@ export { SqliteFriendStore } from "./friend-store.js";
 export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
 export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
 export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
-export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
+export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
 export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";
@@ -467,3 +467,25 @@ export {
 } from "./data-plane-server.js";
 export type { HybridDataPlaneOptions } from "./data-plane-server.js";
 
+
+// PATCH-02, PATCH-03, PATCH-04, PATCH-05 Exports
+export {
+  MortonSpatialIndex,
+  encodeMorton2D,
+  decodeMorton2D,
+  part1By1,
+  compact1By1,
+  GenerationalSlabAllocator,
+  packEntityHandle,
+  unpackEntityHandle,
+  writeEntityStateToSAB,
+  readEntityStateFromSAB,
+  setEntityAliveBit,
+  type EntitySnapshot,
+} from "./sab-store.js";
+
+export {
+  AtomicMPSCQueue,
+  DEFAULT_RING_CAPACITY,
+  COMMAND_SLOT_UINT32_STRIDE,
+} from "./lockless-ring.js";

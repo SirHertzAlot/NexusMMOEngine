@@ -478,3 +478,404 @@ export function syncPlanarToMatrix(views: SharedMemoryPlaneViews, count: number 
   }
 }
 
+
+// =============================================================================
+// PATCH-02 & PATCH-05: Space-Filling Curves & Generational Slab Allocator
+// =============================================================================
+
+export interface EntitySnapshot {
+  px?: number;
+  py?: number;
+  pz?: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
+  hp?: number;
+  mana?: number;
+  intent?: number;
+}
+
+export function writeEntityStateToSAB(
+  floatMatrixView: Float32Array,
+  entityIndex: number,
+  state: Partial<EntitySnapshot>
+): void {
+  const base = entityIndex * SOA_LAYOUT.STRIDE;
+  if (state.px !== undefined) floatMatrixView[base + SOA_LAYOUT.POSITION_X] = state.px;
+  if (state.py !== undefined) floatMatrixView[base + SOA_LAYOUT.POSITION_Y] = state.py;
+  if (state.pz !== undefined) floatMatrixView[base + SOA_LAYOUT.POSITION_Z] = state.pz;
+  if (state.vx !== undefined) floatMatrixView[base + SOA_LAYOUT.VELOCITY_X] = state.vx;
+  if (state.vy !== undefined) floatMatrixView[base + SOA_LAYOUT.VELOCITY_Y] = state.vy;
+  if (state.vz !== undefined) floatMatrixView[base + SOA_LAYOUT.VELOCITY_Z] = state.vz;
+  const intView = new Int32Array(floatMatrixView.buffer, floatMatrixView.byteOffset, floatMatrixView.length);
+  if (state.hp !== undefined) {
+    intView[base + SOA_LAYOUT.HEALTH] = state.hp;
+  }
+  if (state.intent !== undefined) {
+    intView[base + SOA_LAYOUT.INTENT_BIT] = state.intent;
+  }
+}
+
+export function readEntityStateFromSAB(
+  floatMatrixView: Float32Array,
+  entityIndex: number
+): {
+  px: number;
+  py: number;
+  pz: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  hp: number;
+  intent: number;
+} {
+  const base = entityIndex * SOA_LAYOUT.STRIDE;
+  const intView = new Int32Array(floatMatrixView.buffer, floatMatrixView.byteOffset, floatMatrixView.length);
+  return {
+    px: floatMatrixView[base + SOA_LAYOUT.POSITION_X],
+    py: floatMatrixView[base + SOA_LAYOUT.POSITION_Y],
+    pz: floatMatrixView[base + SOA_LAYOUT.POSITION_Z],
+    vx: floatMatrixView[base + SOA_LAYOUT.VELOCITY_X],
+    vy: floatMatrixView[base + SOA_LAYOUT.VELOCITY_Y],
+    vz: floatMatrixView[base + SOA_LAYOUT.VELOCITY_Z],
+    hp: intView[base + SOA_LAYOUT.HEALTH],
+    intent: intView[base + SOA_LAYOUT.INTENT_BIT],
+  };
+}
+
+export function setEntityAliveBit(aliveBitset: Uint32Array, entityIndex: number, alive: boolean): void {
+  const w = entityIndex >>> 5;
+  const b = 1 << (entityIndex & 31);
+  if (alive) {
+    aliveBitset[w] |= b;
+  } else {
+    aliveBitset[w] &= ~b;
+  }
+}
+
+/**
+ * Spreads the lower 16 bits of `v` so there is 1 zero bit between each bit.
+ * SWAR (SIMD Within A Register) branchless bit-interleaving (Karras 2012).
+ */
+export function part1By1(v: number): number {
+  let x = v & 0xffff;
+  x = (x | (x << 8)) & 0x00ff00ff;
+  x = (x | (x << 4)) & 0x0f0f0f0f;
+  x = (x | (x << 2)) & 0x33333333;
+  x = (x | (x << 1)) & 0x55555555;
+  return x >>> 0;
+}
+
+/**
+ * Compacts every even bit of `v` back into the lower 16 bits (inverse of part1By1).
+ */
+export function compact1By1(v: number): number {
+  let x = v & 0x55555555;
+  x = (x | (x >>> 1)) & 0x33333333;
+  x = (x | (x >>> 2)) & 0x0f0f0f0f;
+  x = (x | (x >>> 4)) & 0x00ff00ff;
+  x = (x | (x >>> 8)) & 0x0000ffff;
+  return x >>> 0;
+}
+
+/**
+ * Encodes 2D world coordinates (px, pz) within [-worldHalfExtent, +worldHalfExtent]
+ * into a 32-bit Z-order Morton code.
+ */
+export function encodeMorton2D(
+  px: number,
+  pz: number,
+  worldHalfExtent = 4096
+): number {
+  const scale = 65535 / (worldHalfExtent * 2);
+  const qx = Math.max(0, Math.min(65535, ((px + worldHalfExtent) * scale) | 0));
+  const qz = Math.max(0, Math.min(65535, ((pz + worldHalfExtent) * scale) | 0));
+  return (part1By1(qx) | (part1By1(qz) << 1)) >>> 0;
+}
+
+export function decodeMorton2D(code: number): { qx: number; qz: number } {
+  return {
+    qx: compact1By1(code),
+    qz: compact1By1(code >>> 1),
+  };
+}
+
+/**
+ * Pre-allocated Zero-GC Morton Spatial Sorter using 4-pass 8-bit Radix Sort.
+ * Reorders `spatialOrder` (Uint16Array of entity indices) so spatially adjacent
+ * entities are contiguous in memory.
+ */
+export class MortonSpatialIndex {
+  public readonly mortonKeys: Uint32Array;
+  public readonly spatialOrder: Uint16Array;
+  private readonly scratchKeys: Uint32Array;
+  private readonly scratchOrder: Uint16Array;
+  private readonly histogram = new Uint32Array(256);
+  public activeCount = 0;
+
+  constructor(maxEntities: number = DATA_PLANE_ENTITY_CAPACITY) {
+    this.mortonKeys = new Uint32Array(maxEntities);
+    this.spatialOrder = new Uint16Array(maxEntities);
+    this.scratchKeys = new Uint32Array(maxEntities);
+    this.scratchOrder = new Uint16Array(maxEntities);
+  }
+
+  /**
+   * Computes Morton keys from Planar SoA (px, pz, hp) and performs an O(N)
+   * zero-allocation radix sort over all alive entities.
+   */
+  public rebuildFromSoA(
+    soa: PlanarSoAViews,
+    entityCount: number = DATA_PLANE_ENTITY_CAPACITY,
+    worldHalfExtent = 4096
+  ): number {
+    const { px, pz, hp } = soa;
+    let count = 0;
+    const n = Math.min(entityCount, px.length);
+    for (let i = 0; i < n; i++) {
+      if (hp[i] > 0) {
+        this.mortonKeys[count] = encodeMorton2D(px[i], pz[i], worldHalfExtent);
+        this.spatialOrder[count] = i;
+        count++;
+      }
+    }
+    this.activeCount = count;
+    if (count <= 1) return count;
+
+    let srcKeys = this.mortonKeys;
+    let srcOrder = this.spatialOrder;
+    let dstKeys = this.scratchKeys;
+    let dstOrder = this.scratchOrder;
+
+    // 4-pass 8-bit LSD Radix Sort (32-bit Morton key)
+    for (let shift = 0; shift < 32; shift += 8) {
+      this.histogram.fill(0);
+      for (let i = 0; i < count; i++) {
+        const bucket = (srcKeys[i] >>> shift) & 0xff;
+        this.histogram[bucket]++;
+      }
+      let prefix = 0;
+      for (let b = 0; b < 256; b++) {
+        const c = this.histogram[b];
+        this.histogram[b] = prefix;
+        prefix += c;
+      }
+      for (let i = 0; i < count; i++) {
+        const key = srcKeys[i];
+        const bucket = (key >>> shift) & 0xff;
+        const pos = this.histogram[bucket]++;
+        dstKeys[pos] = key;
+        dstOrder[pos] = srcOrder[i];
+      }
+      const tmpK = srcKeys;
+      srcKeys = dstKeys;
+      dstKeys = tmpK;
+      const tmpO = srcOrder;
+      srcOrder = dstOrder;
+      dstOrder = tmpO;
+    }
+    return count;
+  }
+
+  /**
+   * Queries all alive entities within `radius` of `(centerX, centerZ)` using
+   * Morton Z-order bounding box binary search + exact Euclidean distance filter.
+   * Zero heap allocations: writes matching entity indices into `outEntityIndices`.
+   */
+  public queryRadius(
+    soa: PlanarSoAViews,
+    centerX: number,
+    centerZ: number,
+    radius: number,
+    outEntityIndices: Uint16Array,
+    worldHalfExtent = 4096
+  ): number {
+    if (this.activeCount === 0) return 0;
+    const minCode = encodeMorton2D(centerX - radius, centerZ - radius, worldHalfExtent);
+    const maxCode = encodeMorton2D(centerX + radius, centerZ + radius, worldHalfExtent);
+
+    // Lower-bound binary search for minCode
+    let lo = 0;
+    let hi = this.activeCount - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.mortonKeys[mid] < minCode) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+
+    const rSq = radius * radius;
+    const { px, pz } = soa;
+    let found = 0;
+    const maxOut = outEntityIndices.length;
+
+    for (let idx = lo; idx < this.activeCount && this.mortonKeys[idx] <= maxCode; idx++) {
+      const entityId = this.spatialOrder[idx];
+      const dx = px[entityId] - centerX;
+      const dz = pz[entityId] - centerZ;
+      if (dx * dx + dz * dz <= rSq) {
+        outEntityIndices[found++] = entityId;
+        if (found >= maxOut) break;
+      }
+    }
+    return found;
+  }
+}
+
+export function packEntityHandle(index: number, generation: number): number {
+  return (((generation & 0xffff) << 16) | (index & 0xffff)) >>> 0;
+}
+
+export function unpackEntityHandle(handle: number): {
+  index: number;
+  generation: number;
+} {
+  return {
+    index: handle & 0xffff,
+    generation: (handle >>> 16) & 0xffff,
+  };
+}
+
+/**
+ * Returns the index (0..31) of the least-significant set bit in a non-zero 32-bit word.
+ */
+function ctz32(word: number): number {
+  const lowestBit = (word & -word) >>> 0;
+  return 31 - Math.clz32(lowestBit);
+}
+
+/**
+ * Zero-GC Generational Slab Allocator over the pre-allocated SharedArrayBuffer arena.
+ * Prevents ABA stale-index bugs via 16-bit generation counters and allocates slots
+ * in O(1) amortized time via a bitset freelist.
+ */
+export class GenerationalSlabAllocator {
+  public readonly maxEntities: number;
+  public readonly generations: Uint16Array;
+  public readonly occupiedBitset: Uint32Array;
+  private activeCount = 0;
+  private searchWordHint = 0;
+
+  constructor(maxEntities: number = DATA_PLANE_ENTITY_CAPACITY) {
+    this.maxEntities = maxEntities;
+    this.generations = new Uint16Array(maxEntities);
+    this.generations.fill(1);
+    this.occupiedBitset = new Uint32Array(Math.ceil(maxEntities / 32));
+  }
+
+  public get size(): number {
+    return this.activeCount;
+  }
+
+  /**
+   * Allocates the lowest available entity slot, initializes its state in the
+   * SharedArrayBuffer, and returns its packed 32-bit generational handle.
+   * Returns 0 if the arena is full.
+   */
+  public allocate(
+    floatMatrixView?: Float32Array,
+    soaViews?: PlanarSoAViews,
+    initialState: Partial<EntitySnapshot> = { hp: 100 }
+  ): number {
+    if (this.activeCount >= this.maxEntities) {
+      return 0;
+    }
+
+    const numWords = this.occupiedBitset.length;
+    for (let step = 0; step < numWords; step++) {
+      const wIdx = (this.searchWordHint + step) % numWords;
+      const word = this.occupiedBitset[wIdx];
+      if (word !== 0xffffffff) {
+        const bit = ctz32(~word);
+        const entityIndex = (wIdx << 5) + bit;
+        if (entityIndex >= this.maxEntities) {
+          continue;
+        }
+        this.occupiedBitset[wIdx] = (word | (1 << bit)) >>> 0;
+        this.searchWordHint = wIdx;
+        this.activeCount++;
+
+        const gen = this.generations[entityIndex];
+        if (floatMatrixView) {
+          writeEntityStateToSAB(floatMatrixView, entityIndex, initialState);
+        }
+        if (soaViews) {
+          const hp = initialState.hp ?? 100;
+          soaViews.px[entityIndex] = initialState.px ?? 0;
+          soaViews.py[entityIndex] = initialState.py ?? 0;
+          soaViews.pz[entityIndex] = initialState.pz ?? 0;
+          soaViews.vx[entityIndex] = initialState.vx ?? 0;
+          soaViews.vy[entityIndex] = initialState.vy ?? 0;
+          soaViews.vz[entityIndex] = initialState.vz ?? 0;
+          soaViews.hp[entityIndex] = hp;
+          if (initialState.intent !== undefined) {
+            soaViews.intent[entityIndex] = initialState.intent;
+          }
+          setEntityAliveBit(soaViews.aliveBitset, entityIndex, hp > 0);
+        }
+        return packEntityHandle(entityIndex, gen);
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Validates whether a packed 32-bit handle refers to a currently live entity
+   * of the exact same generation (ABA guard).
+   */
+  public isValid(handle: number): boolean {
+    if (handle === 0) return false;
+    const index = handle & 0xffff;
+    const gen = (handle >>> 16) & 0xffff;
+    if (index >= this.maxEntities) return false;
+    const word = this.occupiedBitset[index >>> 5];
+    const isOccupied = (word & (1 << (index & 31))) !== 0;
+    return isOccupied && this.generations[index] === gen;
+  }
+
+  /**
+   * Frees the entity slot associated with `handle`, increments its 16-bit
+   * generation counter (wrapping 65535 -> 1), and clears its alive bit in SAB.
+   * Returns false if `handle` was already stale/freed.
+   */
+  public free(
+    handle: number,
+    floatMatrixView?: Float32Array,
+    soaViews?: PlanarSoAViews
+  ): boolean {
+    if (!this.isValid(handle)) {
+      return false;
+    }
+    const index = handle & 0xffff;
+    const wIdx = index >>> 5;
+    const bit = index & 31;
+    this.occupiedBitset[wIdx] &= ~(1 << bit);
+    if (wIdx < this.searchWordHint) {
+      this.searchWordHint = wIdx;
+    }
+    this.activeCount--;
+
+    const nextGen = (this.generations[index] + 1) & 0xffff;
+    this.generations[index] = nextGen === 0 ? 1 : nextGen;
+
+    if (floatMatrixView) {
+      writeEntityStateToSAB(floatMatrixView, index, {
+        px: 0,
+        py: 0,
+        pz: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        hp: 0,
+        intent: 0,
+      });
+    }
+    if (soaViews) {
+      soaViews.hp[index] = 0;
+      setEntityAliveBit(soaViews.aliveBitset, index, false);
+    }
+    return true;
+  }
+}
