@@ -109,6 +109,15 @@ describe("gateway: EC1 economy", () => {
     void b;
   });
 
+  it("a joining player hears their balance with the snapshot", async () => {
+    const url = await startGateway();
+    wallet.grant(-1, 40, gw!.world.currentTick); // alice will be holder -1
+    const a = await join(url, "alice");
+    const wallets = a.client.payloads(MessageType.Trade).map((p) => decodeControl<WalletMessage>(p)).filter((m) => m.kind === "wallet");
+    assert.equal(wallets.length, 1);
+    assert.equal(wallets[0]!.balance, 40);
+  });
+
   it("open -> offer gold -> double accept settles over the wire", async () => {
     const url = await startGateway();
     const a = await join(url, "alice");

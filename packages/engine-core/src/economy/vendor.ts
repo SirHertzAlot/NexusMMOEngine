@@ -23,6 +23,7 @@ import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import * as C from "../components.js";
 import type { WalletSystem } from "./wallet.js";
+import type { ChestView } from "@mmo-engine/protocol";
 
 /** How the vendor moves item instances (wired to the ItemService). */
 export interface VendorItems {
@@ -153,6 +154,11 @@ export class VendorSystem implements SimSystem {
   vendorOf(entity: number): VendorDef | undefined {
     const id = this.vendors.get(entity);
     return id === undefined ? undefined : this.defs.get(id);
+  }
+
+  /** Every entity that is a vendor, as interaction targets for the client (E opens the shop). */
+  views(sim: SimWorld, skip?: (entity: number) => boolean): ChestView[] {
+    return [...this.vendors.keys()].filter((e) => !skip?.(e)).map((e) => ({ entity: String(sim.wireId(e)), x: C.Transform.px[e]!, z: C.Transform.pz[e]!, open: false, kind: "vendor" as const }));
   }
 
   /** The vendor's current price list (a copy), with names resolved. Null when unknown or closed. */

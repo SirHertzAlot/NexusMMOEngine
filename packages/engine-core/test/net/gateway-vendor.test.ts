@@ -141,6 +141,24 @@ describe("gateway: EC1 vendors", () => {
     assert.equal(msg.buybackRate, 0.5);
   });
 
+  it("a vendor is an interaction target: joining lists it, and E (interact) opens its shop", async () => {
+    const url = await startGateway();
+    const vWire = spawnVendor(10, 10);
+    const client = new HeadlessClient();
+    await client.connect(url);
+    const targetsP = client.waitFor(MessageType.Interact, 1);
+    const welcome = await client.hello("alice", creds("alice"));
+    const targets = decodeControl<{ kind: string; chests: Array<{ entity: string; kind?: string; open: boolean }> }>((await targetsP)[0]!);
+    assert.deepEqual(targets.chests.map((c) => [c.entity, c.kind, c.open]), [[vWire.toString(), "vendor", false]]);
+    placePlayer(BigInt(welcome.player_entity), 10, 11);
+    const listP = client.waitFor(MessageType.Trade, 1);
+    client.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: vWire.toString() }));
+    await frames(3);
+    const msg = decodeControl<VendorMessage>((await listP)[0]!);
+    assert.deepEqual([msg.state, msg.name], ["listed", "General Goods"]);
+    await client.close();
+  });
+
   it("buying moves gold and delivers the item", async () => {
     const url = await startGateway();
     const a = await join(url, "alice");

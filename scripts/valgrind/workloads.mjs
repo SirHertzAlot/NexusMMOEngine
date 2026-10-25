@@ -18,12 +18,12 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(import.meta.url);
 const probe = require(join(root, "packages/addons/perf-probe/index.js"));
-const core = () => import(join(root, "packages/engine-core/dist/src/index.js"));
+const core = () => import(pathToFileURL(join(root, "packages/engine-core/dist/src/index.js")).href);
 
 /** Deterministic PRNG (mulberry32), as the engine's own benchmarks use. */
 function mulberry32(seed) {
@@ -177,6 +177,43 @@ export const WORKLOADS = {
     },
     run(s) {
       for (const sys of s.systems) sys.step(s.sim, 1 / 30);
+    },
+  },
+
+  /** Residents (RS3): a town of 600 people placed by the schedule, one simulated second per operation (the system steps once a second), a player in the square. */
+  "residents-tick": {
+    n: 40, warm: 10, unit: "second",
+    async setup() {
+      const C = await core();
+      const { addComponent } = await import("bitecs");
+      const comps = await import(pathToFileURL(join(root, "packages/engine-core/dist/src/components.js")).href);
+      const { ResidentSystem } = await import(pathToFileURL(join(root, "packages/engine-core/dist/src/residents/index.js")).href);
+      const settlement = await import(pathToFileURL(join(root, "packages/settlement/dist/src/index.js")).href);
+      const arch = { house: "house", bakery: "bakery", chapel: "chapel", tavern: "tavern" };
+      const structures = Array.from({ length: 60 }, (_, i) => ["h" + i, { x: (i % 10) * 20, z: Math.floor(i / 10) * 20 }]);
+      const pos = new Map([...structures, [settlement.SQUARE, { x: 100, z: 60 }], ["b1", { x: 40, z: 130 }], ["c1", { x: 80, z: 130 }], ["t1", { x: 120, z: 130 }]]);
+      const archetypeOf = (s) => (s.startsWith("h") ? "house" : arch[{ b1: "bakery", c1: "chapel", t1: "tavern" }[s]]);
+      const view = { archetypeOf, tavernNear: () => "t1" };
+      const npcs = Array.from({ length: 600 }, (_, i) => ({
+        id: "npc_" + i, household: "hh" + (i % 60), home: "h" + (i % 60), cohort: i % 5 === 0 ? "child" : "adult", class: "peasant", role: i % 3 === 0 ? "worker" : "resident",
+        ...(i % 3 === 0 && i % 5 !== 0 ? { workplace: ["b1", "c1", "t1"][i % 9 === 0 ? 0 : i % 2 ? 1 : 2] } : {}),
+      }));
+      const town = { id: "t", npcs, positionOf: (a) => pos.get(a), centre: { x: 100, z: 60 }, radius: 100 };
+      const sim = new C.SimWorld();
+      const player = sim.spawn();
+      for (const c of [C.Transform, comps.CharacterRef]) addComponent(sim.ecs, c, player);
+      C.Transform.px[player] = 100; C.Transform.pz[player] = 60; C.Transform.qw[player] = 1;
+      let hour = 0.3;
+      const sys = new ResidentSystem({
+        towns: [town], place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view), timeOfDay: () => hour, catalog: null,
+      });
+      return { sim, sys, tick: 0, bump: () => (hour = (hour + 0.01) % 1) };
+    },
+    run(s) {
+      s.tick += 30;
+      s.bump();
+      s.sim.beginTick(s.tick);
+      s.sys.step(s.sim);
     },
   },
 

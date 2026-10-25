@@ -51,6 +51,31 @@ const FIELDS: Record<
     store: C.Health as unknown as Record<string, { [eid: number]: number }>,
     fields: { current: "float", max: "float" },
   },
+  Stamina: {
+    comp: C.Stamina,
+    store: C.Stamina as unknown as Record<string, { [eid: number]: number }>,
+    fields: { current: "float", max: "float" },
+  },
+  CharacterRef: {
+    comp: C.CharacterRef,
+    store: C.CharacterRef as unknown as Record<string, { [eid: number]: number }>,
+    fields: { idHi: "int", idLo: "int" },
+  },
+  FlowRef: {
+    comp: C.FlowRef,
+    store: C.FlowRef as unknown as Record<string, { [eid: number]: number }>,
+    fields: { graph: "int", enabled: "int" },
+  },
+  VfxEmitter: {
+    comp: C.VfxEmitter,
+    store: C.VfxEmitter as unknown as Record<string, { [eid: number]: number }>,
+    fields: { template: "int", intensity: "float" },
+  },
+  AudioEmitter: {
+    comp: C.AudioEmitter,
+    store: C.AudioEmitter as unknown as Record<string, { [eid: number]: number }>,
+    fields: { clip: "int", radius: "float" },
+  },
   BodyConfig: {
     comp: C.BodyConfig,
     store: C.BodyConfig as unknown as Record<string, { [eid: number]: number }>,

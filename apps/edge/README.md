@@ -18,12 +18,10 @@ not drop player connections. Plan: [`docs/EDGE-CORE-SPLIT.md`](../../docs/EDGE-C
 
 ## Core streams
 
-- `src/tick-buffer.ts`: the last 3600 ticks of the core's gameplay
-  events from the `tick.events` push (`getTickBuffer()`), for content
-  systems such as Q9's mythic evaluator.
-- `src/mirror-buffer.ts`: the newest `snapshot` (every 300 ticks) and
-  `tick.delta` (every tick), base64 FlatBuffers as pushed. A client the
-  edge serves will get the latest snapshot first, then live deltas.
+Players' snapshots and deltas reach the edge as relayed `wire.*` frames
+(E3b, `src/game-relay.ts`); the core no longer pushes a separate base64
+mirror stream. Relayed frames show in
+`mmo_channel_pushes_total{side="edge",type=~"wire.send|wire.publish"}`.
 
 ## Run
 
@@ -100,8 +98,6 @@ that fails, the scrape has edge metrics only and `mmo_edge_core_metrics_stale 1`
 | `mmo_edge_router_requests_total{packet_type}` | counter | Packets routed. Types not in `routes.json` count as `unknown`, and packets with no type as `none`, so clients cannot grow the label set. |
 | `mmo_edge_router_errors_total{packet_type,error}` | counter | Error answers: `unknown_packet`, `bad_packet`, `unknown_module`, `core_unavailable`, or `internal` (a local module threw). |
 | `mmo_edge_router_latency_ms{packet_type}` | histogram | From receiving a packet to having its answer, in ms. |
-| `mmo_edge_mirror_deltas_fanned_out_total` | counter | Tick deltas the mirror buffer took in and handed on. Until the client cutover no players read them, so this counts deltas, not deltas × clients. |
-| `mmo_edge_mirror_snapshot_age_ticks` | gauge | Newest delta's tick minus newest snapshot's tick (0–299 when healthy). |
 | `mmo_edge_core_metrics_stale` | gauge | 1 while the core's metrics cannot be fetched. |
 | `mmo_channel_*{side="edge"}` | | The channel's edge side (see `packages/channel/README.md`). |
 | `mmo_core_tick` | gauge | The core's last tick. |
@@ -140,8 +136,7 @@ same convention: expose the Prometheus format and add a scrape job.
 
 The dashboard's alerts are documented on its panels, not provisioned:
 - router p99 over 50 ms for 5 minutes;
-- `mmo_channel_heartbeat_missed_total` increasing;
-- snapshot age over 600 ticks.
+- `mmo_channel_heartbeat_missed_total` increasing.
 
 The k6 WebSocket soak ramps 0→50 virtual users over 1 minute, holds for 3
 minutes, then ramps down over 30 s. Each user pings every 200 ms and sends

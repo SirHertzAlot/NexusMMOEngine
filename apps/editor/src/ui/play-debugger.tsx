@@ -16,7 +16,9 @@
  * - controls: the key bindings
  * - selection (E6): the entity picked with a left click in the view, its
  *   components and, for a PICG asset, its graph parameters
- *   (inspectors/selection.ts)
+ *   (inspectors/selection.ts); whitelisted fields edit through `set`, and
+ *   server inspect, heal, teleport-me-here and despawn act on it (A2/A3,
+ *   inspectors/entity-actions.ts)
  */
 
 import * as React from "react";
@@ -119,6 +121,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [combat] = React.useState(() => new CombatFeedback());
   const library = usePcgLibrary();
   const [card, setCard] = React.useState<SelectionCard | null>(null);
+  const [picked, setPicked] = React.useState<SelectedEntity | null>(null);
   const selectedWireId = React.useRef<string | null>(null);
   React.useEffect(() => {
     const read = (): void => {
@@ -126,6 +129,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       const entity = target !== null ? client.state.get(target) : undefined;
       const next = entity ? selectionCard(entity as unknown as SelectedEntity, client.names.get(entity.wireId) ?? null, library.assets) : null;
       setCard(next);
+      setPicked(entity ? (entity as unknown as SelectedEntity) : null);
       if (next?.wireId === selectedWireId.current) return;
       selectedWireId.current = next?.wireId ?? null;
       if (!next) {
@@ -271,9 +275,19 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
               clear
             </Button>
           </div>
-          <SelectionCardView card={card} libraryError={library.error} />
+          <SelectionCardView card={card} libraryError={library.error} entity={picked} admin={client} />
         </>
       ),
+    },
+    {
+      id: "interest",
+      title: "interest",
+      content: <InterestPanel client={client} />,
+    },
+    {
+      id: "residents",
+      title: "residents",
+      content: <ResidentsPanel client={client} />,
     },
     {
       id: "controls",
@@ -308,5 +322,91 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
     >
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>
+  );
+}
+
+/**
+ * Interest management (IM6): "show everything" (the debugger's default) or "show what the player
+ * sees", and a map of the sectors the server sends this client around the avatar.
+ */
+interface ResidentsSummary {
+  towns: Array<{ id: string; tier: string; people: number; live: number; raid: boolean }>;
+  live: number;
+  walking: number;
+}
+
+/** Residents (RS3): each baked town's tier (full: they walk; coarse: they stand; none: nobody exists), its people and how many are in the world. */
+function ResidentsPanel({ client }: { client: MirrorClient }): React.JSX.Element {
+  const [s, setS] = React.useState<ResidentsSummary | null>(null);
+  React.useEffect(() => {
+    const poll = (): void => {
+      void client.admin("residents").then((r) => setS(JSON.parse(r.message) as ResidentsSummary)).catch(() => undefined);
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => clearInterval(id);
+  }, [client]);
+  if (!s) return <div className="text-xs text-muted-foreground">asking the server…</div>;
+  if (s.towns.length === 0) return <div className="text-xs text-muted-foreground">no residents on this server</div>;
+  const order = { full: 0, coarse: 1, none: 2 } as Record<string, number>;
+  const towns = [...s.towns].sort((a, b) => (order[a.tier] ?? 3) - (order[b.tier] ?? 3) || a.id.localeCompare(b.id));
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <div className="text-muted-foreground">{s.live} in the world, {s.walking} walking, {s.towns.length} towns</div>
+      <table className="w-full tabular-nums">
+        <thead><tr className="text-left text-muted-foreground"><th>town</th><th>tier</th><th>live / people</th></tr></thead>
+        <tbody>
+          {towns.map((t) => (
+            <tr key={t.id} className={t.raid ? "text-red-400" : undefined}>
+              <td>{t.id}{t.raid ? " (raid)" : ""}</td>
+              <td>{t.tier}</td>
+              <td>{t.live} / {t.people}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function InterestPanel({ client }: { client: MirrorClient }): React.JSX.Element {
+  const [all, setAll] = React.useState(true);
+  const [, tick] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+  const me = client.playerEntity !== null ? client.state.get(client.playerEntity)?.transform : undefined;
+  const cx = me ? Math.floor(me.px / 64) : 0, cz = me ? Math.floor(me.pz / 64) : 0;
+  const R = 4, CELL = 14;
+  const cells: React.JSX.Element[] = [];
+  for (let dz = -R; dz <= R; dz++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const on = client.interestSectors.has(`${cx + dx},${cz + dz}`);
+      cells.push(
+        <rect key={`${dx},${dz}`} x={(dx + R) * CELL} y={(dz + R) * CELL} width={CELL - 1} height={CELL - 1}
+          fill={dx === 0 && dz === 0 ? "currentColor" : on ? "rgb(56 189 248 / 0.6)" : "rgb(148 163 184 / 0.15)"} />,
+      );
+    }
+  }
+  const sectors = [...client.interestSectors].filter((s) => s !== "g").length;
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <Button
+        size="sm"
+        className="h-7 px-2 text-xs"
+        variant="outline"
+        onClick={() => {
+          const next = !all;
+          void client.admin("interest", { mode: next ? "all" : "near" }).then(() => setAll(next)).catch(() => undefined);
+        }}
+      >
+        {all ? "show what the player sees" : "show everything"}
+      </Button>
+      <svg width={(2 * R + 1) * CELL} height={(2 * R + 1) * CELL} aria-label="interest sectors around the avatar">{cells}</svg>
+      <div className="text-muted-foreground">
+        {all ? "everything" : "player's view"}: {sectors} sectors, {client.state.entityCount} entities (64 m sectors; the avatar's is filled)
+      </div>
+    </div>
   );
 }

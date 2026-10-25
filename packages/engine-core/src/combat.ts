@@ -147,6 +147,8 @@ export interface CombatDamage {
    * buffs/debuffs. Absent means 1.
    */
   damageScale?: (source: number, target: number) => number;
+  /** What the kind of a blow does to its target (a breakable prop weak or proof against it). Absent means 1. */
+  kindScale?: (target: number, kind: string) => number;
   /** The rules a blow is resolved by, read each strike (a reload applies at once); absent: the engine defaults. */
   tuning?: () => CombatTuning;
 }
@@ -359,6 +361,7 @@ export class CombatSystem implements SimSystem {
         if (weaponSkill) sk!.train(e, weaponSkill, fightDifficulty, t);
         // Status effects (status.ts): buffs/debuffs scale the landed blow.
         amount *= dmg.damageScale?.(e, t) ?? 1;
+        amount *= dmg.kindScale?.(t, blow.kind) ?? 1;
         if (body && amount > 0) {
           const r = body.applyBlow(sim, t, part, blow.kind, amount);
           part = r.part;

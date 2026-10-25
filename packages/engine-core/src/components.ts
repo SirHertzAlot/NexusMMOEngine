@@ -20,8 +20,7 @@
  *   by PhysicsSystem (src/systems.ts); IntegrateSystem skips them.
  *
  * COMPONENT_IDS documents the registry order (Transform=0 …
- * StructuralIntegrity=21) for future compact wire formats; the current
- * AudioEmitter=20) for future compact wire formats; the current
+ * AudioEmitter=20; 21 is unused, 23=Breakable) for future compact wire formats; the current
  * Snapshot/Delta framing carries one block per component, so ids are
  * not on the wire yet.
  */
@@ -106,6 +105,13 @@ export const Needs = defineSABComponent({
 export const God = defineComponent();
 
 /**
+ * Breakable (IX4): a tag, never replicated. A carrier has Health but is a prop, not a body that dies and rises:
+ * DeathSystem skips it and BreakSystem breaks it at zero (what it breaks into comes from its archetype).
+ */
+// Tag: no data, so no SAB backing — plain defineComponent().
+export const Breakable = defineComponent();
+
+/**
  * No-clip (A4): a tag, never replicated. Carriers move freely (vertical
  * intent, no ground clamp, no gravity) and dungeon walls let them pass;
  * the `noclip` admin command adds and removes it.
@@ -173,7 +179,7 @@ export const COMPONENT_IDS = {
   God: 15,
   Noclip: 16,
   Animation: 17,
-  StructuralIntegrity: 21,
+  Breakable: 23,
   FlowRef: 18,
   VfxEmitter: 19,
   AudioEmitter: 20,
@@ -373,20 +379,8 @@ export const Animation = defineSABComponent({
   layerMask: Types.ui8,
 });
 
-// ---------------------------------------------------------------------------
-// StructuralIntegrity (ComponentId 21): how much punishment a built
-// structure (wall, gate, building) can still take — current / max,
-// following Health's shape. Set at construction from the build material;
-// damage (siege, decay, sabotage) drains current, and at 0 the structure
-// collapses. Owned by the future structure system. Server-only for now:
-// no wire field yet, so no snapshot/delta wiring (like WorldItem) —
-// replication lands with the structure system.
-// ---------------------------------------------------------------------------
-
-export const StructuralIntegrity = defineSABComponent({
-  current: Types.f32,
-  max: Types.f32,
-});
+// ComponentId 21 was StructuralIntegrity, reserved for buildings. Buildings are Health + Breakable (IX6), so the component is gone
+// and its id stays unused.
 
 // Per-object flow/vfx/audio markers (viewport authoring, code-first cut).
 //

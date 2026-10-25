@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "peak": 6,
+  "floor": 0.05,
+  "startFloor": 0.35,
+  "grandFactor": 1.5,
+  "cost": 10,
+  "costSlope": 4,
+  "professions": {
+    "farming": "foraging",
+    "baking": "foraging",
+    "smithing": "mining",
+    "crafting": "woodcutting",
+    "fishing": "fishing",
+    "timber": "woodcutting",
+    "mining": "mining"
+  }
+}

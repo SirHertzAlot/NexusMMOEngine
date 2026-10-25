@@ -31,8 +31,6 @@ import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
 import { EdgeRegistry, edgeModulesHandler, loadEdgeModules } from "./edge-registry.js";
 import { createCoreLifecycle } from "./lifecycle.js";
-import { createMirrorBuffer } from "./mirror-buffer.js";
-import { pushTick } from "./tick-buffer.js";
 import { createCoreMetricsProxy, createEdgeMetrics, metricsHandler, packetTypeLabel, recordRoute } from "./metrics.js";
 
 /** Walks up from this file until a package.json with a `workspaces` field: the repo root. */
@@ -63,13 +61,6 @@ const log = netLogger("edge");
 const channel = new ChannelClient({ port: config.coreChannelPort, metrics: metrics.channel, log: netLogger("channel") });
 // E4: log outages, resync on reconnect, track sessions from logins.
 const lifecycle = createCoreLifecycle(channel);
-channel.onPush("tick.events", (p) => { const { tick, events } = p as { tick: number; events: unknown[] }; pushTick(tick, events); });
-// The core's mirror stream; read by the client cutover (players still connect to the core today).
-export const mirror = createMirrorBuffer(channel);
-mirror.onDelta((d) => {
-  metrics.mirrorDeltasFannedOut.inc();
-  if (mirror.latestSnapshot) metrics.mirrorSnapshotAgeTicks.set(d.tick - mirror.latestSnapshot.tick);
-});
 const coreMetrics = createCoreMetricsProxy(channel, metrics);
 coreMetrics.start();
 // Don't wait out the 15 s interval to un-stale after (re)connecting.

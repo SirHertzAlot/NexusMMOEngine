@@ -112,4 +112,34 @@ describe("files-host", () => {
     assert.equal((await call(root, "DELETE", "/api/editor/files/playtest/smoke"))?.status, 404);
     rmSync(root, { recursive: true });
   });
+
+  it("creates a scene from the registered template (name in the doc, validated)", async () => {
+    const root = fakeRepo();
+    const r = await call(root, "POST", "/api/editor/files/scene", { name: "newtown" });
+    assert.equal(r?.status, 200);
+    assert.deepEqual(r?.body, { ok: true, name: "newtown" });
+    assert.ok(existsSync(join(root, "content", "scenes", "newtown.scene.json")));
+    const doc = JSON.parse(readFileSync(join(root, "content", "scenes", "newtown.scene.json"), "utf8")) as { name: string };
+    assert.equal(doc.name, "newtown");
+    assert.deepEqual(listFiles(root, "scene"), ["arena", "newtown"]);
+    rmSync(root, { recursive: true });
+  });
+
+  it("refuses to create a scene the game flow already uses, or one that exists", async () => {
+    const root = fakeRepo();
+    writeFileSync(join(root, "content", "flow", "game.flow.json"), JSON.stringify({ nodes: { start: { scene: "arena" } } }));
+    assert.equal((await call(root, "POST", "/api/editor/files/scene", { name: "arena" }))?.status, 409);
+    assert.equal((await call(root, "POST", "/api/editor/files/scene", { name: "newtown" }))?.status, 200);
+    assert.equal((await call(root, "POST", "/api/editor/files/scene", { name: "newtown" }))?.status, 409);
+    rmSync(root, { recursive: true });
+  });
+
+  it("refuses to create a kind without a template, and rejects bad names", async () => {
+    const root = fakeRepo();
+    assert.equal((await call(root, "POST", "/api/editor/files/playtest", { name: "smoke" }))?.status, 400);
+    assert.equal((await call(root, "POST", "/api/editor/files/build", { name: "mine" }))?.status, 400);
+    assert.equal((await call(root, "POST", "/api/editor/files/scene"))?.status, 400);
+    assert.equal((await call(root, "POST", "/api/editor/files/scene", { name: "A" }))?.status, 400);
+    rmSync(root, { recursive: true });
+  });
 });

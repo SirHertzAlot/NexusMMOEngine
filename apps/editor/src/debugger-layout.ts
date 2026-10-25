@@ -19,11 +19,11 @@ export interface PanelStart {
 
 export interface DebuggerLayout {
   hidden: boolean;
-  panels: Record<"status" | "perf" | "tools" | "selection" | "controls", PanelStart>;
+  panels: Record<"status" | "perf" | "tools" | "selection" | "interest" | "residents" | "controls", PanelStart>;
 }
 
 /** Panel ids, in the order the dev menu lists them. */
-export const DEBUGGER_PANELS = ["status", "perf", "tools", "selection", "controls"] as const;
+export const DEBUGGER_PANELS = ["status", "perf", "tools", "selection", "interest", "residents", "controls"] as const;
 
 const MARGIN = 12;
 
@@ -38,6 +38,10 @@ export function debuggerLayoutDefaults(vp: { width: number; height: number }): D
       tools: panel(right(300), MARGIN, 300),
       // The selection card (E6) under the tools, sized to scroll its components.
       selection: { ...panel(right(320), 200, 320), h: Math.max(160, Math.min(420, vp.height - 200 - MARGIN)) },
+      // Interest management (IM6): closed until asked for, beside the controls.
+      interest: panel(MARGIN, Math.max(MARGIN, vp.height - 260), 220, false),
+      // Residents (RS3): each town's tier and who stands in the world, closed until asked for.
+      residents: panel(MARGIN + 232, Math.max(MARGIN, vp.height - 260), 300, false),
       controls: panel(right(380), Math.max(MARGIN, vp.height - 120), 380, false),
     },
   };
