@@ -5,14 +5,14 @@
  * 0s. A rules dir with no skills.json / disciplines.json at all is skill-less
  * mode: the contract is skipped and systems keep their graceful fallbacks.
  *
- * Fixtures are pre-created under /tmp (see /tmp/make-fixtures.sh); this test
- * performs no writes. Rules objects are built in memory.
+ * Rules objects are built in memory; the dirs only need the files to exist.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
+import { fixtureDir, repoContentDir } from "../support/fixture-dir.js";
 import { engineDefaults, loadRules, type Rules } from "@mmo-engine/rules";
 import {
   ENGINE_REQUIRED_SKILLS,
@@ -22,6 +22,7 @@ import {
   checkEngineSkillContract,
 } from "../../src/rules/skill-contract.js";
 
+const FULL = fixtureDir({ "skills.json": "{}", "disciplines.json": "{}" });
 const SAMPLE_SKILLS = ["medicine", "swimming", "athletics", "evading", "parrying", "blocking", "cutting"];
 
 function rulesWith(skillIds: string[], unlocks: string[]): Rules {
@@ -36,13 +37,13 @@ function rulesWith(skillIds: string[], unlocks: string[]): Rules {
 describe("engine skill contract", () => {
   it("passes when every required id is declared", () => {
     const r = rulesWith(SAMPLE_SKILLS, ["disarm"]);
-    assert.deepEqual(checkEngineSkillContract(r, "/tmp/fix-contract-full"), []);
-    assert.doesNotThrow(() => assertEngineSkillContract(r, "/tmp/fix-contract-full"));
+    assert.deepEqual(checkEngineSkillContract(r, FULL), []);
+    assert.doesNotThrow(() => assertEngineSkillContract(r, FULL));
   });
 
   it("fails loud naming a missing skill id", () => {
     const r = rulesWith(SAMPLE_SKILLS.filter((s) => s !== "medicine"), ["disarm"]);
-    assert.throws(() => assertEngineSkillContract(r, "/tmp/fix-contract-full"), (e: unknown) => {
+    assert.throws(() => assertEngineSkillContract(r, FULL), (e: unknown) => {
       assert.ok(e instanceof EngineSkillContractError);
       assert.match(e.message, /skill "medicine"/);
       assert.deepEqual(e.missing, [`skill "medicine"`]);
@@ -52,7 +53,7 @@ describe("engine skill contract", () => {
 
   it("fails loud naming every missing id at once", () => {
     const r = rulesWith(["cutting"], []);
-    assert.throws(() => assertEngineSkillContract(r, "/tmp/fix-contract-full"), (e: unknown) => {
+    assert.throws(() => assertEngineSkillContract(r, FULL), (e: unknown) => {
       assert.ok(e instanceof EngineSkillContractError);
       for (const id of ENGINE_REQUIRED_SKILLS) assert.match(e.message, new RegExp(`skill "${id}"`));
       for (const t of ENGINE_REQUIRED_TECHNIQUES) assert.match(e.message, new RegExp(`technique "${t}"`));
@@ -62,23 +63,23 @@ describe("engine skill contract", () => {
 
   it("fails loud naming a missing technique id", () => {
     const r = rulesWith(SAMPLE_SKILLS, ["riposte"]);
-    assert.throws(() => assertEngineSkillContract(r, "/tmp/fix-contract-full"), /technique "disarm"/);
+    assert.throws(() => assertEngineSkillContract(r, FULL), /technique "disarm"/);
   });
 
   it("checks techniques only when disciplines.json exists", () => {
     // skills.json present but disciplines.json absent: technique check skipped.
     const r = rulesWith(SAMPLE_SKILLS, []);
-    assert.deepEqual(checkEngineSkillContract(r, "/tmp/fix-contract-skills-only"), []);
+    assert.deepEqual(checkEngineSkillContract(r, fixtureDir({ "skills.json": "{}" })), []);
   });
 
   it("skips the contract when no skills/disciplines files exist (skill-less mode)", () => {
     const r = engineDefaults();
-    assert.deepEqual(checkEngineSkillContract(r, "/tmp/fix-contract-empty"), []);
+    assert.deepEqual(checkEngineSkillContract(r, fixtureDir()), []);
   });
 
   it("the sample pack satisfies the contract", () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const rulesDir = resolve(here, "..", "..", "..", "..", "content", "rules");
+    const rulesDir = repoContentDir(here, "rules");
     const r = loadRules(rulesDir);
     assert.deepEqual(checkEngineSkillContract(r, rulesDir), []);
   });

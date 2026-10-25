@@ -98,7 +98,7 @@ describe("ItemService with a ledger", () => {
     }));
     const defs = new ItemDefs(pool, rules);
     const loot = { ownershipSeconds: 30, despawnSeconds: 300, pickupRange: 2.5, bagSlots: 4, maxGroundItems: 100 };
-    const make = (): ItemService => new ItemService({ defs, loot, tickHz: 30 });
+    const make = (): ItemService => new ItemService({ defs, loot, tickHz: 30, starterBase: "sword" });
 
     SimWorld.resetEntityCursorForTesting();
     const sim = new SimWorld();
