@@ -57,6 +57,25 @@ export function inspectEntity(world: SimWorld, wireId: bigint): string | null {
   if (hasComponent(ecs, C.Health, eid)) {
     lines.push(`Health: ${r2(C.Health.current[eid])}/${r2(C.Health.max[eid])}`);
   }
+  if (hasComponent(ecs, C.Stamina, eid)) {
+    lines.push(`Stamina: ${r2(C.Stamina.current[eid])}/${r2(C.Stamina.max[eid])}`);
+  }
+  if (hasComponent(ecs, C.Needs, eid)) {
+    const N = C.Needs;
+    lines.push(`Needs: hunger ${r2(N.hunger[eid])}/${r2(N.hungerMax[eid])} thirst ${r2(N.thirst[eid])}/${r2(N.thirstMax[eid])}`);
+  }
+  if (hasComponent(ecs, C.CharacterRef, eid)) {
+    lines.push(`CharacterRef: character ${joinU64(C.CharacterRef.idHi[eid], C.CharacterRef.idLo[eid])}`);
+  }
+  if (hasComponent(ecs, C.FlowRef, eid)) {
+    lines.push(`FlowRef: graph ${C.FlowRef.graph[eid]} enabled ${C.FlowRef.enabled[eid]}`);
+  }
+  if (hasComponent(ecs, C.VfxEmitter, eid)) {
+    lines.push(`VfxEmitter: template ${C.VfxEmitter.template[eid]} intensity ${r2(C.VfxEmitter.intensity[eid])}`);
+  }
+  if (hasComponent(ecs, C.AudioEmitter, eid)) {
+    lines.push(`AudioEmitter: clip ${C.AudioEmitter.clip[eid]} radius ${r2(C.AudioEmitter.radius[eid])}`);
+  }
   if (hasComponent(ecs, C.BodyConfig, eid)) {
     const B = C.BodyConfig;
     lines.push(`BodyConfig: shape ${B.shapeKind[eid]} motion ${B.motionType[eid]} mass ${r2(B.mass[eid])}`);
