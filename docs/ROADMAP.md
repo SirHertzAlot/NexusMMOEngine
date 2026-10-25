@@ -20,9 +20,9 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-18)
+## At a glance (2026-10-25)
 
-**152 items built, 34 in progress, 11 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
+**189 items built, 43 in progress, 14 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -129,7 +129,7 @@ loadable modules, a database editor and production tools.
 | EA6 | Play the scene | ✅ | Server `MMO_SCENE` spawn and Play with the open scene built; "Keep" built; host Play round trip not run to completion here. |
 | EA9 | Server modules | ✅ | `feat/ea3-ea9-modules`: `server.ts`'s systems array is the `core` module's instances in the order `modules/core/module.json` fixes; `MMO_MODULES` (default `content/modules.json`) selects modules; order resolved from `after`/`before`, unknown ids and cycles stop the boot with every problem; `modules/sample-heartbeat` adds a system; "Apply modules" restarts the owned play server. Open: `valgrind:perf` not run (no host valgrind on the Windows dev machine; the tick-order test pins the order instead), play mode does not auto-reconnect after Apply, admin commands / rule hooks / persistence tables contributions |
 | EA10 | C++ modules | ✅ | `native` manifest field, validation, design doc (`EDITOR-ARCHITECTURE.md` §4.4), addon template (`packages/addons/template`) and Build/Check/Apply framework completed. Memcheck verified (`valgrind:memcheck -- template` clean). `deleteWorld` cleanup added to `integrate`. |
-| EA11 | Sidecars | ✅ | `sidecar` manifest, validation and lifecycle (`start`, `health-check`, `stop`) complete. Supervisor owns sidecar process groups; play mode stops them with the server. `wasm` host and `exec` kind documented; sample `sidecar` deferred to follow-up. |
+| EA11 | Sidecars | ✅ | `sidecar` manifest, validation and lifecycle (`start`, `health-check`, `stop`) complete. Supervisor owns sidecar process groups; play mode stops them with the server. `wasm` host and `exec` kind documented; sample `sidecar` deferred to follow-up. Park and replace: `park(name)` stops a sidecar for good and writes a telemetry and 5W1H debugging dump (who, what, when, where, why, how, plus the output tail); a crash loop or failed start writes the same dump; `replace(name)` starts a fresh instance with the restart history cleared; editor routes `/api/editor/sidecars/{park,replace,dump}` (#425). A crash-looping sidecar now runs out of restarts after `maxRestarts` instead of restarting forever (#422). |
 | EA12 | Edge modules | ✅ | `edge` manifest field, registry and discovery complete (`packages/channel` E2 framing). `local:<module>` routes integrated at boot (`content/edge/routes.json`). |
 | EA13 | Existing tools as modules | ✅ | Flow, Story and HUD panels moved into `packages/modules` (`core` module + contributions). `M10` (`host.ts` route table) and `M11` (`previews` split) complete; mock previews removed (`port/polish`). |
 | EA14 | The play menu | ✅ | #212: saved setups (one-key start). Port from `integration/editor`: setups live in `content/play/setups.json` (`GET/PUT /api/editor/play/setups`, validated, a refused save writes nothing; browser storage keeps a copy); Edge + core really starts the edge beside the core and waits for its `/health` (supersedes the core-only fallback); accounts are seeded into a scratch CSV (`MMO_USERS_CSV`, the saved world's users.csv is not touched); Start node lists the flow's own nodes, and a non-world node opens the player's client (started on demand) at that node, one window per account |
@@ -468,6 +468,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+
+- **2026-10-25**: Bug sweep (#417 to #425): engine-core tests no longer depend on `/tmp` fixtures or a starter sword (the engine/game split made both opt-in); terrain-kernel `npm test` builds its JS reference on a clean tree; engine-core builds fortify first; the crafting and dungeon props tests fixed; the Rules editor gets the gather cast time (EG12 follow-up); a crash-looping sidecar runs out of restarts; sidecars can be parked with a debugging dump and replaced fresh (EA11). Every workspace passes locally; CI is still out of credits.
 
 - **2026-10-24**: World scenes (`feat/world-scenes`): `MMO_SCENE` takes a comma-separated list and `world` (every baked `settlement-*` scene plus `places`); one settlement per town for wildlife and raids; a region shard spawns only nodes inside its `REGION_CHUNK_RANGE`; `bake:all` prints `MMO_SCENE=world` and `npm start` sets it when towns are baked. A 3-town bake spawns 2607 entities (385 KB full snapshot) against 962 (142 KB) for one town.
 - **2026-10-23**: PL4 (`feat/dev-world-server`): `npm start` boots the world server (embedded SurrealDB under `<data>/world-server`, a random dev `WORLD_API_KEY` per run) before the game server, which registers as `region-1` with `REGION_CHUNK_RANGE` derived from the baked `world_bounds`, so range snapshots reach the world store. `npm start -- --standalone` runs without it.
