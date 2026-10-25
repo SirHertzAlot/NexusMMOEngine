@@ -14,6 +14,9 @@ import { BUILTIN_DRESSING, BUILTIN_THEMES, dressDungeon, generateDungeon } from 
 /** Not in the table on purpose: litter and growth no stand-in box does justice (decals, ceiling and wall plants: they wait for art). */
 const WAITS_FOR_ART = new Set(["crack", "moss", "debris", "bones", "icicle", "roots"]);
 
+/** Kinds that spawn as another kind's asset on purpose: broken-prop debris is the rubble pile. */
+const ASSET_ALIAS: Record<string, string> = { "dungeon:debris": "dungeon:rubble" };
+
 const table = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../../content/dungeons/props.json"), "utf8")) as {
   archetypes: Record<string, { asset: string; collision?: { halfExtents?: number[] } }>;
   lift: Record<string, number>;
@@ -37,7 +40,7 @@ describe("content/dungeons/props.json", () => {
     for (const [key, a] of Object.entries(table.archetypes)) {
       const kind = key.replace(/^dungeon:/, "");
       assert.ok(key.startsWith("dungeon:"), `${key}: keyed by asset id, dungeon:<kind>`);
-      assert.equal(a.asset, key, `${kind}: asset id`);
+      assert.equal(a.asset, ASSET_ALIAS[key] ?? key, `${kind}: asset id`);
       assert.equal(a.collision?.halfExtents?.length, 3, `${kind}: a collision box`);
       assert.ok(a.collision!.halfExtents!.every((h) => h > 0), `${kind}: a positive box`);
     }
