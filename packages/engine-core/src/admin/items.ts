@@ -7,6 +7,24 @@
  *   give {def? | base?, rank?}      a new item into the caller's bag
  *   drop {def? | base?, rank?}      a new item on the ground at the caller
  *   loot {count?}                   `count` mob drops scattered round the caller
+ *
+ * The `items` command also carries the bag verbs the ItemService
+ * already owns (viewport authoring), as sub-actions in the vendor
+ * command's style — they act on the CONSOLE HOLDER's bag, like give:
+ *
+ *   items {sub: "take", item}       destroy that item in the caller's bag
+ *   items {sub: "take", base}       destroy one item of that base instead
+ *   items {sub: "move", item, to, from?}  move an item between bags
+ *                                   (from defaults to the caller's holder;
+ *                                   from/to are character (holder) ids)
+ *   items {sub: "defof", item}      READ: the definition of an item instance
+ *   items {sub: "countbase", base}  READ: how many of a base the caller carries
+ *
+ * And `drop` generalises with a position (ItemService.placeFixture is
+ * the fixture form — it never despawns on the timer):
+ *
+ *   drop {pick, x, z}               a new item on the ground at (x, z)
+ *   drop {pick, x, z, fixture: true}  the same, placed as a fixture
  */
 
 import { z } from "zod";
@@ -33,6 +51,32 @@ export const ItemPickArgsSchema = pick;
 export type ItemPickArgs = z.infer<typeof pick>;
 
 export const LootArgsSchema = z.object({ count: z.number().int().min(1).max(50).optional() }).strict();
+
+/**
+ * The `items` command's full args: a definition pick (the browse read)
+ * or one bag sub-action. `item` is an ItemStore instance id; `from` /
+ * `to` are character (holder) ids — the ids ItemService.take /
+ * moveItem / countBase themselves take.
+ */
+export const ItemsCommandArgsSchema = pick
+  .extend({
+    sub: z.enum(["take", "move", "defof", "countbase"]).optional(),
+    item: z.number().int().positive().optional(),
+    from: z.number().int().optional(),
+    to: z.number().int().optional(),
+  })
+  .strict();
+export type ItemsCommandArgs = z.infer<typeof ItemsCommandArgsSchema>;
+
+/** The `drop` command's args: a pick, plus an optional exact position and the fixture form. */
+export const DropArgsSchema = pick
+  .extend({
+    x: z.number().finite().optional(),
+    z: z.number().finite().optional(),
+    fixture: z.boolean().optional(),
+  })
+  .strict();
+export type DropArgs = z.infer<typeof DropArgsSchema>;
 
 /** Definitions matching a pick, in definition order. */
 export function matchDefs(defs: ItemDefs, a: ItemPickArgs): number[] {
