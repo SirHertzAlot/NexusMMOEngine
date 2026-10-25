@@ -94,6 +94,7 @@ interface CrudSpec {
 }
 
 const AVATAR_NOTE = "Admin give/gold act on your avatar (the console holder) — they take no character target, so this grant lands there, not on the selected character.";
+const BAG_NOTE = "Admin bag verbs act on your avatar's bag (the console holder) — they take no character target, so this runs there, not on the selected character.";
 const REWARD_NOTE = "Quest rewards resolve to admin give + gold steps, which act on your avatar (the console holder) only.";
 
 /** Per-widget CRUD that a canonical verb honestly covers. Widgets absent here render no verb actions. */
@@ -136,9 +137,53 @@ const CRUD: Readonly<Record<string, readonly CrudSpec[]>> = {
     },
   ],
   items: [
-    { id: "take-item", label: "Take item", verb: "takeItem", params: (f) => ({ character: f.id, item: "" }) },
-    { id: "move-item", label: "Move item", verb: "moveItem", params: (f) => ({ item: f.id, from: "", to: "" }) },
-    { id: "count-base", label: "Count base", verb: "countBase", params: (f) => ({ character: f.id, base: "" }) },
+    {
+      id: "take-item",
+      label: "Take item",
+      verb: "takeItem",
+      note: BAG_NOTE,
+      inputs: () => [
+        { id: "base", label: "Item base (takes one)", kind: "picker", source: "item-bases", placeholder: "Choose a base" },
+        { id: "item", label: "or item id", kind: "number", placeholder: "instance id" },
+      ],
+      params: (_f, v) => {
+        const item = parseInputNumber(v.item);
+        return { character: "me", ...(v.base ? { base: v.base } : {}), ...(item !== undefined ? { item } : {}) };
+      },
+    },
+    {
+      id: "move-item",
+      label: "Move item",
+      verb: "moveItem",
+      note: "Admin move takes the item out of your avatar's bag (the console holder) unless a from id is named in the call — the destination is a character (holder) id, as in an inspect dump's CharacterRef line.",
+      inputs: () => [
+        { id: "item", label: "Item id", kind: "number", placeholder: "instance id" },
+        { id: "to", label: "To character id", kind: "number", placeholder: "holder id" },
+      ],
+      params: (_f, v) => {
+        const item = parseInputNumber(v.item);
+        const to = parseInputNumber(v.to);
+        return { ...(item !== undefined ? { item } : {}), ...(to !== undefined ? { to } : {}) };
+      },
+    },
+    {
+      id: "count-base",
+      label: "Count base",
+      verb: "countBase",
+      note: BAG_NOTE,
+      inputs: () => [{ id: "base", label: "Item base", kind: "picker", source: "item-bases", placeholder: "Choose a base" }],
+      params: (_f, v) => ({ character: "me", ...(v.base ? { base: v.base } : {}) }),
+    },
+    {
+      id: "def-of",
+      label: "Def of item",
+      verb: "defOf",
+      inputs: () => [{ id: "item", label: "Item id", kind: "number", placeholder: "instance id" }],
+      params: (_f, v) => {
+        const item = parseInputNumber(v.item);
+        return { ...(item !== undefined ? { item } : {}) };
+      },
+    },
   ],
   quests: [
     {

@@ -256,3 +256,60 @@ describe("input helpers", () => {
     assert.deepEqual(parseVendorTemplateList(""), []);
   });
 });
+
+describe("input fields — the bag verbs and the fixture (admin homes added in the server slice)", () => {
+  it("take-item: a chosen base builds a take-by-base call that maps to items {sub: take, base}", () => {
+    const take = action(blacksmith, "items", "take-item");
+    assert.deepEqual(planDispatch(take.callWith({ base: "sword" })), {
+      kind: "admin", verb: "takeItem", command: "items", args: { sub: "take", base: "sword" },
+    });
+  });
+
+  it("take-item: a typed item id wins over the base and maps to items {sub: take, item}", () => {
+    const take = action(blacksmith, "items", "take-item");
+    assert.deepEqual(planDispatch(take.callWith({ base: "sword", item: "9" })), {
+      kind: "admin", verb: "takeItem", command: "items", args: { sub: "take", item: 9 },
+    });
+    // Neither filled: the mapper refuses — the form never pre-approves.
+    assert.equal(planDispatch(take.callWith({})).kind, "unsupported");
+  });
+
+  it("count-base: a chosen base builds a read on the items command", () => {
+    const count = action(blacksmith, "items", "count-base");
+    assert.deepEqual(planDispatch(count.callWith({ base: "helm" })), {
+      kind: "read", verb: "countBase", command: "items", args: { sub: "countbase", base: "helm" },
+    });
+    assert.equal(planDispatch(count.callWith({})).kind, "unsupported");
+  });
+
+  it("def-of: a typed item id builds the defof read; empty refuses", () => {
+    const defOf = action(blacksmith, "items", "def-of");
+    assert.deepEqual(planDispatch(defOf.callWith({ item: "42" })), {
+      kind: "read", verb: "defOf", command: "items", args: { sub: "defof", item: 42 },
+    });
+    assert.equal(planDispatch(defOf.callWith({})).kind, "unsupported");
+  });
+
+  it("move-item: item + destination ids build the move; a missing destination refuses", () => {
+    const move = action(blacksmith, "items", "move-item");
+    assert.deepEqual(planDispatch(move.callWith({ item: "9", to: "77" })), {
+      kind: "admin", verb: "moveItem", command: "items", args: { sub: "move", item: 9, to: 77 },
+    });
+    assert.equal(planDispatch(move.callWith({ item: "9" })).kind, "unsupported");
+  });
+
+  it("shelf 'Place as item': position prefills from the selection; a chosen base maps to the fixture drop", () => {
+    const rock = makeFacts({ id: "rock-1", label: "Rock", kind: "prop", components: ["Transform"], hasCollider: true, position: { x: 30, z: 40 } });
+    const entry = visibleShelf(rock).find((e) => e.moduleId === "items");
+    assert.ok(entry?.action);
+    // Unfilled base: params carry the prefilled position but no item — the mapper refuses.
+    const unfilled = shelfActionParams(entry.action, {});
+    assert.deepEqual(unfilled, { base: "", x: 30, z: 40 });
+    const call = makeVerbCall("placeItemFixture", shelfActionParams(entry.action, { base: "sword" }), {
+      who: opts.actor, what: "Rock", when: opts.when, where: opts.where, why: opts.why,
+    });
+    assert.deepEqual(planDispatch(call), {
+      kind: "admin", verb: "placeItemFixture", command: "drop", args: { base: "sword", x: 30, z: 40, fixture: true },
+    });
+  });
+});

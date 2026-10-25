@@ -18,13 +18,22 @@
  *   naming another character is unsupported, not redirected.
  * - Admin item picks address defs by STRING id or by base/rank pick
  *   (ItemPickArgsSchema). A numeric def index has no admin translation.
- * - Reads (resolveBase) route to the real read that answers them
- *   (`items`). Reads that no admin command honestly answers (defOf,
- *   countBase) are unsupported with the reason, not approximated.
- * - Component-shaped shelf actions can NOT ride admin `set`: applySet
- *   only writes numeric fields of a component the entity ALREADY has
- *   (it refuses otherwise) and only for its field whitelist, so `set`
- *   can never establish a component. Those plans are unsupported.
+ * - The bag verbs ride the `items` command's sub-actions (the gateway's
+ *   bag family, in the vendor command's sub style): takeItem /
+ *   moveItem mutate through ItemService.take / takeBase / moveItem,
+ *   defOf / countBase are reads the same command answers, resolveBase
+ *   routes to the `items` browse read. All of them act on the console
+ *   holder's bag except moveItem's destination, which is a character
+ *   (holder) id — the id ItemService.moveItem itself takes.
+ * - placeItemFixture rides `drop` with an exact position and the
+ *   fixture flag (ItemService.placeFixture: lies there for anyone,
+ *   never despawns on the timer).
+ * - Component-shaped shelf actions ride `addcomponent`: the server
+ *   adds a component an entity lacks, at its defaults (the addable set
+ *   is the server's defaults table). The shelf names that are not ECS
+ *   components at all (QuestGiver, DungeonEntrance) stay unsupported
+ *   with the reason; the shelf's "Collider" is the scene name for the
+ *   BodyConfig the scene spawner writes, and maps to it.
  *
  * The executor takes an injectable transport (the ServerLink's admin
  * surface in the UI, a fake in tests) and reports outcomes honestly:
@@ -129,14 +138,50 @@ export function planDispatch(call: VerbCall): DispatchPlan {
       }
       return { kind: "admin", verb, command: "gold", args: { amount } };
     }
-    case "takeItem":
-      return unsupported(verb, "no admin command takes an item out of a character's bag — the item commands (give/drop/loot) only add items for the console holder; ItemService.take has no admin home");
-    case "moveItem":
-      return unsupported(verb, "no admin command moves an item between two bags — items change hands only through player trade/auction actions; ItemService.moveItem has no admin home");
-    case "defOf":
-      return unsupported(verb, "no admin read answers an item instance's definition: `inspect` dumps component lines and prints no item/def line for a world item, and `items` looks definitions up by pick — it does not map an item instance to its def");
-    case "countBase":
-      return unsupported(verb, "no admin read counts a character's bag by base: `items` counts matching item DEFINITIONS, and `inspect` does not dump bag contents");
+    case "takeItem": {
+      const caller = callerOnly(p, "items");
+      if (caller !== undefined) return unsupported(verb, caller);
+      const item = num(p, "item");
+      if (item !== undefined) {
+        if (!Number.isInteger(item) || item <= 0) return unsupported(verb, `takeItem needs a positive integer item id (got ${JSON.stringify(p.item)})`);
+        return { kind: "admin", verb, command: "items", args: { sub: "take", item } };
+      }
+      const base = str(p, "base");
+      if (base !== undefined) return { kind: "admin", verb, command: "items", args: { sub: "take", base } };
+      return unsupported(verb, "no item chosen: takeItem needs an item id or a base (the admin take destroys one item from the console holder's bag)");
+    }
+    case "moveItem": {
+      const item = num(p, "item");
+      if (item === undefined || !Number.isInteger(item) || item <= 0) {
+        return unsupported(verb, `moveItem needs a positive integer item id (got ${JSON.stringify(p.item ?? null)})`);
+      }
+      const to = num(p, "to");
+      if (to === undefined || !Number.isInteger(to)) {
+        return unsupported(verb, "moveItem needs the destination character (holder) id — the numeric id ItemService.moveItem takes (an entity's is in its inspect dump, \"CharacterRef: character <id>\")");
+      }
+      const args: Record<string, unknown> = { sub: "move", item, to };
+      const from = num(p, "from");
+      if (from !== undefined) {
+        if (!Number.isInteger(from)) return unsupported(verb, `moveItem's from must be a character (holder) id (got ${JSON.stringify(p.from)})`);
+        args.from = from;
+      }
+      // from absent = the gateway's default, the console holder — its own convention, not an invented target.
+      return { kind: "admin", verb, command: "items", args };
+    }
+    case "defOf": {
+      const item = num(p, "item");
+      if (item === undefined || !Number.isInteger(item) || item <= 0) {
+        return unsupported(verb, `defOf needs a positive integer item id (got ${JSON.stringify(p.item ?? null)})`);
+      }
+      return { kind: "read", verb, command: "items", args: { sub: "defof", item } };
+    }
+    case "countBase": {
+      const caller = callerOnly(p, "items");
+      if (caller !== undefined) return unsupported(verb, caller);
+      const base = str(p, "base");
+      if (base === undefined) return unsupported(verb, "countBase needs a base name (none supplied)");
+      return { kind: "read", verb, command: "items", args: { sub: "countbase", base } };
+    }
     case "resolveBase": {
       const base = str(p, "base");
       if (base === undefined) return unsupported(verb, "resolveBase needs a base name (none supplied)");
@@ -175,8 +220,14 @@ export function planDispatch(call: VerbCall): DispatchPlan {
       if (templateId === undefined) return unsupported(verb, "no vendor template chosen: admin vendor attach needs {id, target} and this call's templateId is empty");
       return { kind: "admin", verb, command: "vendor", args: { sub: "attach", id: templateId, target } };
     }
-    case "placeItemFixture":
-      return unsupported(verb, "no admin command places an item fixture at a position: `drop` drops a fresh matching item at the console holder's feet and its args take no x/z, and `spawn` plants spawn-table archetypes, not item definitions — ItemService.placeFixture has no admin home");
+    case "placeItemFixture": {
+      const pick = itemPick(p);
+      if ("problem" in pick) return unsupported(verb, pick.problem);
+      const x = num(p, "x");
+      const z = num(p, "z");
+      if (x === undefined || z === undefined) return unsupported(verb, "placeItemFixture needs an exact x and z (admin drop places the fixture there — it has no default position)");
+      return { kind: "admin", verb, command: "drop", args: { ...pick.args, x, z, fixture: true } };
+    }
     case "grantQuestReward": {
       const caller = callerOnly(p, "give/gold");
       if (caller !== undefined) return unsupported(verb, `grantQuestReward resolves to giveItem/giveGold steps, and ${caller}`);
@@ -210,19 +261,55 @@ export function planDispatch(call: VerbCall): DispatchPlan {
 }
 
 /**
- * The plan for a component-shaped shelf action (addComponents). Admin
- * `set` can never establish a component — applySet writes only numeric
- * fields of a component the entity already has, and only for its field
- * whitelist — so every such action is unsupported, with the reason.
- * Returns null for verb-shaped actions (those go through planDispatch).
+ * Shelf component names → the ECS component `addcomponent` adds. The
+ * shelf speaks designer language; the registry speaks components.ts.
+ * "Collider" is the scene document's name for the static body the
+ * scene spawner writes as a BodyConfig, so it maps to BodyConfig.
  */
-export function shelfComponentPlan(action: ShelfAction): DispatchPlan | null {
+const SHELF_COMPONENT_TO_ECS: Readonly<Record<string, string>> = {
+  CharacterRef: "CharacterRef",
+  Health: "Health",
+  Stamina: "Stamina",
+  Collider: "BodyConfig",
+  PlayerIntent: "PlayerIntent",
+  FlowRef: "FlowRef",
+  VfxEmitter: "VfxEmitter",
+  AudioEmitter: "AudioEmitter",
+};
+
+/** Shelf names that name no ECS component at all, and why they can never be an add. */
+const SHELF_COMPONENT_NOT_ECS: Readonly<Record<string, string>> = {
+  QuestGiver:
+    "QuestGiver is a scene-document role, not an ECS component: at scene spawn it places a quest post through the quest service — there is no component to add to a live entity",
+  DungeonEntrance:
+    "DungeonEntrance is a scene-document kind marker: no component by that name exists anywhere in the engine — there is nothing to add",
+};
+
+/**
+ * The plan for a component-shaped shelf action (addComponents): one
+ * `addcomponent` admin step per component, against the selected
+ * entity (a wire id — a scene-document selection id is refused by the
+ * server as an unknown entity, honestly). A name that is not an ECS
+ * component blocks the whole action: a half-established precondition
+ * is worse than a named refusal. Returns null for verb-shaped actions
+ * (those go through planDispatch).
+ */
+export function shelfComponentPlan(action: ShelfAction, entity: string | undefined): DispatchPlan | null {
   const components = action.addComponents;
   if (!components || components.length === 0) return null;
-  return unsupported(
-    "addComponents",
-    `admin "set" cannot add ${components.join(" + ")}: set only writes numeric fields of a component an entity already has (it refuses with "has no <component>" otherwise) and only for its whitelist (Transform, Velocity, PlayerIntent, Health, BodyConfig, PathRequest, PathState, NavAgent, AssetRef, Locomotion, Action) — adding a component has no admin home`,
-  );
+  if (entity === undefined || entity.trim() === "") {
+    return unsupported("addComponents", `adding ${components.join(" + ")} needs the selected entity (a wire id) — no target was supplied`);
+  }
+  const steps: AdminStep[] = [];
+  for (const name of components) {
+    const notEcs = SHELF_COMPONENT_NOT_ECS[name];
+    if (notEcs !== undefined) return unsupported("addComponents", notEcs);
+    const ecs = SHELF_COMPONENT_TO_ECS[name];
+    if (ecs === undefined) return unsupported("addComponents", `"${name}" names no component the add shelf can establish — it is not in the shelf-to-ECS mapping`);
+    steps.push({ command: "addcomponent", args: { entity, component: ecs } });
+  }
+  if (steps.length === 1) return { kind: "admin", verb: "addComponents", ...steps[0] };
+  return { kind: "composite", verb: "addComponents", steps };
 }
 
 // ---------------------------------------------------------------- executor
@@ -255,7 +342,7 @@ export function inspectTargetForCall(call: VerbCall): string | null {
   const entity = str(p, "entity") ?? str(p, "target");
   if (entity !== undefined) return entity;
   const canonical = verbByName(call.verb)?.name;
-  if (canonical === "giveItem" || canonical === "giveGold" || canonical === "grantQuestReward") return "me"; // the console holder acted on
+  if (canonical === "giveItem" || canonical === "giveGold" || canonical === "grantQuestReward" || canonical === "takeItem" || canonical === "moveItem") return "me"; // the console holder acted on
   const character = str(p, "character");
   if (character !== undefined) return character;
   return null;
@@ -264,20 +351,22 @@ export function inspectTargetForCall(call: VerbCall): string | null {
 const OFFLINE_HINT = /not connected|not running|no live|not in the world/i;
 
 /**
- * Execute one verb call's plan over the transport. `transport: null`
- * means no live server — the outcome is `offline` and nothing runs.
- * An unsupported plan short-circuits before the transport is touched.
+ * Execute one plan over the transport. `transport: null` means no
+ * live server — the outcome is `offline` and nothing runs. An
+ * unsupported plan short-circuits before the transport is touched.
  * After a dispatched mutation, the target entity is re-inspected (when
- * the transport offers inspect and a target exists) and the dump rides
- * the outcome as readResult — the reflection step.
+ * one is named and the transport offers inspect) and the dump rides
+ * the outcome as readResult — the reflection step. This is the one
+ * executor: verb calls (executeDispatch) and shelf component plans
+ * both run through it.
  */
-export async function executeDispatch(call: VerbCall, transport: DispatchTransport | null): Promise<DispatchOutcome> {
-  const plan = planDispatch(call);
+export async function executePlan(plan: DispatchPlan, transport: DispatchTransport | null, inspectTarget: string | null): Promise<DispatchOutcome> {
+  const verb = plan.verb;
   if (plan.kind === "unsupported") {
-    return { status: "unsupported", verb: call.verb, plan, message: plan.reason, stepsRun: 0, stepsTotal: 0 };
+    return { status: "unsupported", verb, plan, message: plan.reason, stepsRun: 0, stepsTotal: 0 };
   }
   if (transport === null) {
-    return { status: "offline", verb: call.verb, plan, message: "the play server isn't running — nothing was dispatched", stepsRun: 0, stepsTotal: plan.kind === "composite" ? plan.steps.length : 1 };
+    return { status: "offline", verb, plan, message: "the play server isn't running — nothing was dispatched", stepsRun: 0, stepsTotal: plan.kind === "composite" ? plan.steps.length : 1 };
   }
   const steps: readonly AdminStep[] = plan.kind === "composite" ? plan.steps : [plan];
   let lastMessage = "";
@@ -287,28 +376,32 @@ export async function executeDispatch(call: VerbCall, transport: DispatchTranspo
       res = await transport.admin(steps[i].command, steps[i].args);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      return { status: OFFLINE_HINT.test(message) ? "offline" : "refused", verb: call.verb, plan, message, stepsRun: i, stepsTotal: steps.length };
+      return { status: OFFLINE_HINT.test(message) ? "offline" : "refused", verb, plan, message, stepsRun: i, stepsTotal: steps.length };
     }
     if (!res.ok) {
       const where = steps.length > 1 ? `step ${i + 1}/${steps.length} (${steps[i].command}) refused: ` : "";
-      return { status: OFFLINE_HINT.test(res.message) ? "offline" : "refused", verb: call.verb, plan, message: `${where}${res.message}`, stepsRun: i, stepsTotal: steps.length };
+      return { status: OFFLINE_HINT.test(res.message) ? "offline" : "refused", verb, plan, message: `${where}${res.message}`, stepsRun: i, stepsTotal: steps.length };
     }
     lastMessage = res.message;
   }
-  const outcome: DispatchOutcome = { status: "dispatched", verb: call.verb, plan, message: lastMessage, stepsRun: steps.length, stepsTotal: steps.length };
+  const outcome: DispatchOutcome = { status: "dispatched", verb, plan, message: lastMessage, stepsRun: steps.length, stepsTotal: steps.length };
   if (plan.kind === "read") {
     outcome.readResult = lastMessage;
     return outcome;
   }
   // Reflect the result: re-inspect the acted-on entity and carry the dump back.
-  const target = inspectTargetForCall(call);
-  if (target !== null && transport.inspect) {
+  if (inspectTarget !== null && transport.inspect) {
     try {
-      const read = await transport.inspect(target);
+      const read = await transport.inspect(inspectTarget);
       if (read.ok) outcome.readResult = read.message;
     } catch {
       /* the mutation already landed; a failed read-back never rewrites its outcome */
     }
   }
   return outcome;
+}
+
+/** Execute one verb call: map it, then run its plan (see executePlan). */
+export async function executeDispatch(call: VerbCall, transport: DispatchTransport | null): Promise<DispatchOutcome> {
+  return executePlan(planDispatch(call), transport, inspectTargetForCall(call));
 }

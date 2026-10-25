@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   executeDispatch,
+  executePlan,
   inspectTargetForCall,
   makeVerbCall,
   planDispatch,
@@ -85,6 +86,44 @@ describe("dispatch mapper — verbs with a real admin home", () => {
   });
 });
 
+describe("dispatch mapper — the bag verbs and fixture (admin homes added in the server slice)", () => {
+  it("takeItem by instance id maps to items {sub: take, item}", () => {
+    assert.deepEqual(planDispatch(call("takeItem", { character: "me", item: 9 })), {
+      kind: "admin", verb: "takeItem", command: "items", args: { sub: "take", item: 9 },
+    });
+  });
+
+  it("takeItem by base maps to items {sub: take, base}", () => {
+    assert.deepEqual(planDispatch(call("takeItem", { character: "me", base: "sword" })), {
+      kind: "admin", verb: "takeItem", command: "items", args: { sub: "take", base: "sword" },
+    });
+  });
+
+  it("moveItem maps to items {sub: move, item, to} — from rides only when the call names it", () => {
+    assert.deepEqual(planDispatch(call("moveItem", { item: 9, to: 77 })), {
+      kind: "admin", verb: "moveItem", command: "items", args: { sub: "move", item: 9, to: 77 },
+    });
+    assert.deepEqual(planDispatch(call("moveItem", { item: 9, from: 55, to: 77 })), {
+      kind: "admin", verb: "moveItem", command: "items", args: { sub: "move", item: 9, to: 77, from: 55 },
+    });
+  });
+
+  it("defOf and countBase are reads on the items command", () => {
+    assert.deepEqual(planDispatch(call("defOf", { item: 9 })), {
+      kind: "read", verb: "defOf", command: "items", args: { sub: "defof", item: 9 },
+    });
+    assert.deepEqual(planDispatch(call("countBase", { character: "me", base: "sword" })), {
+      kind: "read", verb: "countBase", command: "items", args: { sub: "countbase", base: "sword" },
+    });
+  });
+
+  it("placeItemFixture maps to drop with the exact position and the fixture flag", () => {
+    assert.deepEqual(planDispatch(call("placeItemFixture", { base: "sword", rank: "rare", x: 10, z: -4 })), {
+      kind: "admin", verb: "placeItemFixture", command: "drop", args: { base: "sword", rank: "rare", x: 10, z: -4, fixture: true },
+    });
+  });
+});
+
 describe("dispatch mapper — unsupported, with the real reason (never an invented target)", () => {
   const reason = (verb: string, params: Record<string, unknown>): string => {
     const plan = planDispatch(call(verb, params));
@@ -121,22 +160,28 @@ describe("dispatch mapper — unsupported, with the real reason (never an invent
     assert.match(reason("grantQuestReward", { character: "me", rewards: [] }), /non-empty rewards/);
   });
 
-  it("takeItem / moveItem: no admin home exists", () => {
-    assert.match(reason("takeItem", { character: "me", item: "9" }), /no admin command takes/);
-    assert.match(reason("moveItem", { item: "9", from: "1", to: "2" }), /no admin command moves/);
+  it("takeItem with another character named: the bag sub-actions act on the console holder only", () => {
+    assert.match(reason("takeItem", { character: "someone-else", item: 9 }), /console holder/);
+    assert.match(reason("countBase", { character: "someone-else", base: "sword" }), /console holder/);
   });
 
-  it("defOf / countBase: no admin read honestly answers them", () => {
-    assert.match(reason("defOf", { item: "9" }), /no admin read/);
-    assert.match(reason("countBase", { character: "me", base: "sword" }), /no admin read/);
+  it("takeItem with neither an item id nor a base; defOf with no item id; countBase with no base", () => {
+    assert.match(reason("takeItem", { character: "me" }), /no item chosen/);
+    assert.match(reason("takeItem", { character: "me", item: "9" }), /no item chosen/); // a string id is not an instance id
+    assert.match(reason("defOf", {}), /positive integer item id/);
+    assert.match(reason("countBase", { character: "me" }), /base name/);
+  });
+
+  it("moveItem with no destination character id", () => {
+    assert.match(reason("moveItem", { item: 9 }), /destination character \(holder\) id/);
   });
 
   it("startDialogue: no admin command starts a dialogue", () => {
     assert.match(reason("startDialogue", { npc: "1", player: "2" }), /no admin command starts a dialogue/);
   });
 
-  it("placeItemFixture: drop is at the caller's feet and takes no x/z; spawn plants archetypes", () => {
-    assert.match(reason("placeItemFixture", { base: "sword", rank: "", x: 1, z: 2 }), /no admin command places/);
+  it("placeItemFixture with no position: drop places the fixture at an exact x/z, so the call must name one", () => {
+    assert.match(reason("placeItemFixture", { base: "sword" }), /exact x and z/);
   });
 
   it("an unknown verb is unsupported, not dispatched", () => {
@@ -146,20 +191,47 @@ describe("dispatch mapper — unsupported, with the real reason (never an invent
 });
 
 describe("dispatch mapper — component-shaped shelf actions", () => {
-  it("addComponents actions are unsupported: admin set cannot add a component (it only writes fields of one already present)", () => {
-    const plan = shelfComponentPlan({ label: "Add combat", addComponents: ["Health", "Stamina"] });
-    assert.ok(plan);
-    assert.equal(plan.kind, "unsupported");
-    if (plan.kind === "unsupported") assert.match(plan.reason, /cannot add Health \+ Stamina/);
+  it("Health + Stamina maps to a composite of addcomponent steps against the selected entity", () => {
+    const plan = shelfComponentPlan({ label: "Add combat", addComponents: ["Health", "Stamina"] }, "12345");
+    assert.deepEqual(plan, {
+      kind: "composite",
+      verb: "addComponents",
+      steps: [
+        { command: "addcomponent", args: { entity: "12345", component: "Health" } },
+        { command: "addcomponent", args: { entity: "12345", component: "Stamina" } },
+      ],
+    });
   });
 
-  it("marker additions (FlowRef etc.) are unsupported for the same reason", () => {
-    const plan = shelfComponentPlan({ label: "Bind flow graph", addComponents: ["FlowRef"] });
+  it("a single marker addition maps to one addcomponent step", () => {
+    assert.deepEqual(shelfComponentPlan({ label: "Bind flow graph", addComponents: ["FlowRef"] }, "12345"), {
+      kind: "admin", verb: "addComponents", command: "addcomponent", args: { entity: "12345", component: "FlowRef" },
+    });
+  });
+
+  it("the shelf's Collider is the scene name for BodyConfig and maps to it", () => {
+    assert.deepEqual(shelfComponentPlan({ label: "Add collider", addComponents: ["Collider"] }, "12345"), {
+      kind: "admin", verb: "addComponents", command: "addcomponent", args: { entity: "12345", component: "BodyConfig" },
+    });
+  });
+
+  it("QuestGiver and DungeonEntrance name no ECS component and stay unsupported, with the reason", () => {
+    const quest = shelfComponentPlan({ label: "Make quest giver", addComponents: ["QuestGiver"] }, "12345");
+    assert.equal(quest?.kind, "unsupported");
+    if (quest?.kind === "unsupported") assert.match(quest.reason, /scene-document role, not an ECS component/);
+    const dungeon = shelfComponentPlan({ label: "Make dungeon entrance", addComponents: ["DungeonEntrance"] }, "12345");
+    assert.equal(dungeon?.kind, "unsupported");
+    if (dungeon?.kind === "unsupported") assert.match(dungeon.reason, /no component by that name exists/);
+  });
+
+  it("with no target entity the plan is unsupported, never a guessed target", () => {
+    const plan = shelfComponentPlan({ label: "Add combat", addComponents: ["Health", "Stamina"] }, undefined);
     assert.equal(plan?.kind, "unsupported");
+    if (plan?.kind === "unsupported") assert.match(plan.reason, /needs the selected entity/);
   });
 
   it("verb-shaped shelf actions return null (they route through planDispatch)", () => {
-    assert.equal(shelfComponentPlan({ label: "Add vendor", verb: "attachVendor", params: { entity: "1", templateId: "t" } }), null);
+    assert.equal(shelfComponentPlan({ label: "Add vendor", verb: "attachVendor", params: { entity: "1", templateId: "t" } }, "12345"), null);
   });
 });
 
@@ -247,6 +319,36 @@ describe("dispatch executor — fake transport", () => {
     const out = await executeDispatch(call("teleport", { entity: "1", x: 1, z: 2 }), t);
     assert.equal(out.status, "dispatched");
     assert.equal(out.readResult, undefined);
+  });
+});
+
+describe("dispatch executor — shelf component plans (executePlan)", () => {
+  it("a composite add runs its steps in order and re-inspects the entity", async () => {
+    const plan = shelfComponentPlan({ label: "Add combat", addComponents: ["Health", "Stamina"] }, "12345");
+    assert.ok(plan);
+    const t = fakeTransport((command) => ({ ok: true, message: `${command} ok` }), "entity 12345 (slot 7)\nHealth: 100/100\nStamina: 100/100");
+    const out = await executePlan(plan, t, "12345");
+    assert.equal(out.status, "dispatched");
+    assert.deepEqual(t.calls, ["addcomponent", "addcomponent", "inspect"]);
+    assert.match(out.readResult ?? "", /Health: 100\/100/);
+  });
+
+  it("a refused second step stops the composite and names the step", async () => {
+    const plan = shelfComponentPlan({ label: "Add combat", addComponents: ["Health", "Stamina"] }, "12345");
+    assert.ok(plan);
+    let n = 0;
+    const t = fakeTransport(() => (++n === 2 ? { ok: false, message: "entity 12345 already has Stamina" } : { ok: true, message: "ok" }));
+    const out = await executePlan(plan, t, "12345");
+    assert.equal(out.status, "refused");
+    assert.equal(out.stepsRun, 1);
+    assert.match(out.message, /step 2\/2 \(addcomponent\) refused/);
+  });
+
+  it("a takeItem call dispatches through the items command and reflects on the holder", async () => {
+    const t = fakeTransport(() => ({ ok: true, message: "took Helm h (item 9) from your bag" }));
+    const out = await executeDispatch(call("takeItem", { character: "me", item: 9 }), t);
+    assert.equal(out.status, "dispatched");
+    assert.deepEqual(t.calls, ["items", "inspect"]);
   });
 });
 

@@ -35,9 +35,10 @@
  *   the session history, and a dispatched mutation re-inspects its
  *   target so the stage shows the read-back. Verbs with no honest
  *   admin home stay unsupported — the mapper says why, per verb.
- *   Component-shaped shelf additions (add Health+Stamina, bind a
- *   marker) are unsupported for a real reason: admin `set` cannot add
- *   a component.
+ *   Component-shaped shelf additions dispatch through the same
+ *   executor as `addcomponent` plans (the server adds the component
+ *   at its defaults); the shelf names that are not ECS components
+ *   (QuestGiver, DungeonEntrance) stay unsupported with the reason.
  * - Actions that need a value render real input fields (the model's
  *   input descriptors): item bases and creature kinds come from the
  *   gameplay snapshot the editor already loads; vendor templates from
@@ -67,6 +68,7 @@ import {
   deserializeSavedView,
   evaluateRelevance,
   executeDispatch,
+  executePlan,
   inputValue,
   inspectTargetForCall,
   makeFacts,
@@ -670,13 +672,42 @@ function AuthoringPresentation(): React.JSX.Element {
     }
   };
 
-  /** Component-shaped shelf actions: no canonical verb exists, so the mapper's verdict is the outcome. */
+  /**
+   * Component-shaped shelf actions: no canonical verb exists, so they
+   * run as plans through the same executor. Addable components (the
+   * server's defaults table) dispatch as `addcomponent` steps against
+   * the selected entity; names that are not ECS components
+   * (QuestGiver, DungeonEntrance) come back unsupported with the
+   * reason, and the outcome lands in the session history either way.
+   */
   const dispatchShelfComponents = (label: string, components: readonly string[]): void => {
-    const plan = shelfComponentPlan({ label, addComponents: components });
-    const detail = plan !== null && plan.kind === "unsupported" ? plan.reason : "no dispatch plan for a component addition";
-    setShelfLog((prev) => [...prev, { id: prev.length + 1, title: `${label} (${components.join(" + ")})`, detail }]);
-    setHistoryTick((t) => t + 1);
-    notify(`${label}: not dispatchable — admin set cannot add a component. The full reason is in the session history.`);
+    if (!facts) return;
+    const entity = facts.id;
+    const plan = shelfComponentPlan({ label, addComponents: components }, entity);
+    if (plan === null) return;
+    const transport = serverLive
+      ? {
+          admin: (command: string, args?: Record<string, unknown>) => serverLink.admin(command, args),
+          inspect: (e: string) => serverLink.admin("inspect", { entity: e }),
+        }
+      : null;
+    void (async () => {
+      const outcome = await executePlan(plan, transport, entity);
+      setShelfLog((prev) => [...prev, { id: prev.length + 1, title: `${label} (${components.join(" + ")})`, detail: `${outcome.status} — ${outcome.message}` }]);
+      setHistoryTick((t) => t + 1);
+      if (outcome.status === "dispatched") {
+        notify(`${label} dispatched — ${outcome.message}`);
+        if (outcome.readResult !== undefined) {
+          setReadBack({ target: entity, lines: outcome.readResult.split("\n").filter((l) => l.trim() !== "") });
+        }
+      } else if (outcome.status === "refused") {
+        notify(`${label} refused by the server — ${outcome.message}`);
+      } else if (outcome.status === "offline") {
+        notify(`${label} recorded — the play server isn't running, so nothing was dispatched.`);
+      } else {
+        notify(`${label}: can't be dispatched — ${outcome.message}`);
+      }
+    })();
   };
 
   const pickNode = (node: HierarchyNode): void => {

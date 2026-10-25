@@ -19,7 +19,7 @@
  */
 
 import { hasComponent, isPersonKind, type SelectionFacts } from "./facts.js";
-import { inputValue, type ActionInput, type InputValues } from "./inputs.js";
+import { inputValue, parseInputNumber, type ActionInput, type InputValues } from "./inputs.js";
 import { evaluateRelevance, type ModuleId } from "./relevance.js";
 
 export interface ShelfAction {
@@ -40,13 +40,21 @@ export interface ShelfAction {
  * declared input's resolved value (typed value, else its prefill)
  * overrides the action's placeholder param of the same id; an empty
  * value leaves the placeholder, and the dispatch mapper refuses it
- * with its reason — the mapper stays the single gate.
+ * with its reason — the mapper stays the single gate. Number inputs
+ * are parsed to numbers (an unparseable one contributes nothing, so
+ * the mapper — not this helper — delivers the refusal).
  */
 export function shelfActionParams(action: ShelfAction, values: InputValues): Record<string, unknown> {
   const out: Record<string, unknown> = { ...(action.params ?? {}) };
   for (const input of action.inputs ?? []) {
     const v = inputValue(values, input);
-    if (v !== "") out[input.id] = v;
+    if (v === "") continue;
+    if (input.kind === "number") {
+      const n = parseInputNumber(v);
+      if (n !== undefined) out[input.id] = n;
+    } else {
+      out[input.id] = v;
+    }
   }
   return out;
 }
@@ -144,7 +152,20 @@ export function evaluateAddShelf(facts: SelectionFacts): readonly ShelfEntry[] {
     title: "Item",
     verdict: canFixture ? "establishable" : "never",
     reason: canFixture ? "This object can be placed as an item fixture." : "Characters hold bags instead of being items; entrances are not items.",
-    ...(canFixture ? { action: { label: "Place as item", verb: "placeItemFixture", params: { base: "", rank: "", x: 0, z: 0 } } } : {}),
+    ...(canFixture
+      ? {
+          action: {
+            label: "Place as item",
+            verb: "placeItemFixture",
+            params: { base: "" },
+            inputs: [
+              { id: "base", label: "Item base", kind: "picker", source: "item-bases", placeholder: "Choose an item base" },
+              { id: "x", label: "Fixture x", kind: "number", ...(facts.position ? { initial: String(facts.position.x) } : {}), placeholder: "x" },
+              { id: "z", label: "Fixture z", kind: "number", ...(facts.position ? { initial: String(facts.position.z) } : {}), placeholder: "z" },
+            ] as readonly ActionInput[],
+          },
+        }
+      : {}),
   });
 
   // Quests: a person-like object can be marked as a giver.
