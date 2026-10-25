@@ -19,6 +19,7 @@
  */
 
 import { hasComponent, isPersonKind, type SelectionFacts } from "./facts.js";
+import { inputValue, type ActionInput, type InputValues } from "./inputs.js";
 import { evaluateRelevance, type ModuleId } from "./relevance.js";
 
 export interface ShelfAction {
@@ -26,10 +27,28 @@ export interface ShelfAction {
   label: string;
   /** Canonical verb that establishes the precondition, when the precondition is verb-shaped. */
   verb?: string;
-  /** Params for the verb (targets filled from the selection). */
+  /** Params for the verb (targets filled from the selection; input values override the placeholders — see shelfActionParams). */
   params?: Record<string, unknown>;
+  /** Fields the designer fills before the action can dispatch (data — see inputs.ts). */
+  inputs?: readonly ActionInput[];
   /** Components/markers whose addition establishes the precondition, when it is component-shaped. */
   addComponents?: readonly string[];
+}
+
+/**
+ * A shelf action's params with designer input values applied: each
+ * declared input's resolved value (typed value, else its prefill)
+ * overrides the action's placeholder param of the same id; an empty
+ * value leaves the placeholder, and the dispatch mapper refuses it
+ * with its reason — the mapper stays the single gate.
+ */
+export function shelfActionParams(action: ShelfAction, values: InputValues): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(action.params ?? {}) };
+  for (const input of action.inputs ?? []) {
+    const v = inputValue(values, input);
+    if (v !== "") out[input.id] = v;
+  }
+  return out;
 }
 
 export interface ShelfEntry {
@@ -59,7 +78,16 @@ export function evaluateAddShelf(facts: SelectionFacts): readonly ShelfEntry[] {
     title: "Vendor",
     verdict: person ? "establishable" : "never",
     reason: person ? "This character can host a vendor template." : "Only characters and creatures can sell — this kind never hosts a vendor.",
-    ...(person ? { action: { label: "Add vendor", verb: "attachVendor", params: { entity: facts.id, templateId: "" } } } : {}),
+    ...(person
+      ? {
+          action: {
+            label: "Add vendor",
+            verb: "attachVendor",
+            params: { entity: facts.id, templateId: "" },
+            inputs: [{ id: "templateId", label: "Vendor template", kind: "picker", source: "vendor-templates", placeholder: "Choose a template" }],
+          },
+        }
+      : {}),
   });
 
   // Character sheet: creatures/NPCs can gain a CharacterRef; a plain prop never offers the sheet.
@@ -88,7 +116,16 @@ export function evaluateAddShelf(facts: SelectionFacts): readonly ShelfEntry[] {
     title: "Creature",
     verdict: isSpawner ? "establishable" : "never",
     reason: isSpawner ? "This spawner can spawn a creature kind here." : "Creature behaviour belongs to spawned creatures and their spawners.",
-    ...(isSpawner ? { action: { label: "Spawn creature", verb: "spawnCreature", params: { kind: "", x: 0, z: 0 } } } : {}),
+    ...(isSpawner
+      ? {
+          action: {
+            label: "Spawn creature",
+            verb: "spawnCreature",
+            params: { kind: "" },
+            inputs: [{ id: "kind", label: "Creature kind", kind: "picker", source: "creature-kinds", placeholder: "Choose a kind" }],
+          },
+        }
+      : {}),
   });
 
   // Physics: any placed object can gain a collider.

@@ -45,6 +45,8 @@ export interface SelectionFacts {
   flowRef?: string;
   vfxEmitter?: string;
   audioEmitter?: string;
+  /** The object's ground position from its Transform, when the selection carries one — prefills teleport/spawn inputs. */
+  position?: { x: number; z: number };
   /** Reference targets the hierarchy renders as edges, when the data carries them. */
   patrolRouteId?: string;
   dialogueGraphId?: string;

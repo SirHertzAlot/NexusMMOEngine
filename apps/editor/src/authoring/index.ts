@@ -17,3 +17,4 @@ export * from "./hierarchy.js";
 export * from "./widgets.js";
 export * from "./templates.js";
 export * from "./dispatch.js";
+export * from "./inputs.js";
