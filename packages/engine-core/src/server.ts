@@ -232,6 +232,7 @@ import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
+import { loadLessons } from "./residents/lessons.js";
 import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
@@ -1384,6 +1385,7 @@ async function main(): Promise<void> {
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
     needs: game.rules.needs,
+    lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {

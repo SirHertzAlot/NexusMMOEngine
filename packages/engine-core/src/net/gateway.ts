@@ -182,6 +182,7 @@ import { StatusSystem } from "../status.js";
 import { TelegraphSystem } from "../telegraph.js";
 import { DuelSystem } from "../duel.js";
 import { WalletSystem } from "../economy/wallet.js";
+import { lessonCost, lessonPoints, type Lessons } from "../residents/lessons.js";
 import { TradeSystem } from "../economy/trade.js";
 import { VendorSystem } from "../economy/vendor.js";
 import { AuctionSystem } from "../economy/auction.js";
@@ -331,6 +332,8 @@ export interface GatewayOptions {
   social?: SocialRules;
   /** Needs rules: how long eating and drinking take (a cast; 0 at once). */
   needs?: { eatSeconds: number };
+  /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
+  lessons?: Lessons | null;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -839,6 +842,7 @@ export class Gateway {
       | "scale"
       | "extensions"
       | "needs"
+      | "lessons"
       | "items"
       | "sectorBroadcast"
       | "interest"
@@ -1015,6 +1019,7 @@ export class Gateway {
     this.fixedMaxCharacters = opts.maxCharacters !== undefined;
     if (opts.social) this.setSocial(opts.social);
     this.eatSeconds = opts.needs?.eatSeconds ?? 0;
+    this.lessons = opts.lessons ?? null;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -3549,6 +3554,31 @@ export class Gateway {
   }
 
   /** A server notice in the sender's chat (S2). */
+  /** A master townsperson gives a lesson (RS5 learn): bonus points by an S curve of the pupil's level, for gold, once a day. */
+  private teach(s: ClientSession, avatar: number, info: { npc: string; mastery?: string; grandMaster?: boolean }): void {
+    const l = this.lessons;
+    if (!l || !info.mastery || !this.mastery) return;
+    const skill = l.professions[info.mastery];
+    const i = skill === undefined ? -1 : this.mastery.index.of(skill);
+    if (i < 0) return;
+    const who = s.character?.id ?? -1;
+    const day = Math.floor(Date.now() / 86_400_000); // ponytail: a real day, not the game's; the game clock is not visible here
+    const key = `${who}/${info.npc}`;
+    if (this.lessonDay.get(key) === day) return this.sendSystem(s, "They have taught you what they can for today.");
+    const sheet = this.mastery.sheetOf(avatar);
+    const level = sheet.get(skill);
+    const max = this.mastery.index.rules.max;
+    const points = lessonPoints(l, level, max, info.grandMaster === true);
+    if (points <= 0) return this.sendSystem(s, `You have nothing left to learn about ${skill} from them.`);
+    const cost = lessonCost(l, level, max);
+    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    if (cost > 0 && (!wallet || !wallet.spend(this.holderOf(s), cost, this.tick))) return this.sendSystem(s, `A lesson in ${skill} costs ${cost} gold.`);
+    sheet.grant(i, points, Date.now());
+    this.lessonDay.set(key, day);
+    this.sendSystem(s, `A lesson in ${skill} (${cost} gold): +${points.toFixed(1)}.`);
+    if (wallet) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
+  }
+
   private sendSystem(s: ClientSession, text: string): void {
     const msg: ChatBroadcast = { kind: "chat", channel: "system", text, from: "", entity: "" };
     this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
@@ -5566,6 +5596,7 @@ export class Gateway {
         return;
       }
       this.sendEnvelope(s, MessageType.Chat, encodeControl({ kind: "dialog", npc: talk.npc, name: talk.name, text: talk.text, replies: [] }));
+      this.teach(s, avatar, this.residents.describe(eid)!);
       // A shopkeeper (RS5 trade) also opens their shop.
       if (this.vendors?.vendorOf(eid)) this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
     } else if (eid >= 0 && this.vendors?.vendorOf(eid)) {
@@ -5635,6 +5666,9 @@ export class Gateway {
 
   /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
   private readonly eatSeconds: number;
+  private readonly lessons: Lessons | null;
+  /** The game day a pupil last took a lesson from a master, by character and npc. */
+  private readonly lessonDay = new Map<string, number>();
 
   /** Interaction casts under way, one per session: the timer, where the player stood and their health when it began. */
   private readonly casts = new Map<ClientSession, { timer: ReturnType<typeof setTimeout>; x: number; z: number; hp: number; spell: string; avatar: number }>();
