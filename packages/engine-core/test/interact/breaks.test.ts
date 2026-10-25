@@ -7,7 +7,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { entityExists, hasComponent } from "bitecs";
+import { defineQuery, entityExists, hasComponent } from "bitecs";
 import { parseSpawnTableJSON } from "@mmo-engine/scatter";
 import { BROKEN_VARIANT } from "@mmo-engine/protocol";
 import { AssetRef, BodyConfig, Breakable, Health } from "../../src/components.js";
@@ -15,13 +15,17 @@ import { buildSpawn } from "../../src/admin/spawn.js";
 import { spawnScatterEntity } from "../../src/procgen/scatter-spawn.js";
 import { SimWorld } from "../../src/world.js";
 import { DeathSystem } from "../../src/death.js";
-import { BreakSystem, breakDefsOf, type BreakEvent } from "../../src/interact/index.js";
+import Database from "better-sqlite3";
+import { fnv1a32 } from "@mmo-engine/scatter";
+import { BreakSystem, breakDefsOf, SqlitePlacesStore, type BreakEvent } from "../../src/interact/index.js";
 
 const TABLE = parseSpawnTableJSON({
   version: 1,
   archetypes: {
     "dungeon:barrel": { asset: "dungeon:barrel", collision: { halfExtents: [0.4, 1, 0.4], motion: "static", shape: "box" }, breakable: { health: 30, into: "debris", debris: "dungeon:debris", loot: "prop:barrel" } },
     "dungeon:shelf": { asset: "dungeon:shelf", collision: { halfExtents: [0.6, 2, 0.6], motion: "static", shape: "box" }, breakable: { health: 60, into: "variant" } },
+    "world:bush": { asset: "world:bush", collision: { halfExtents: [0.4, 0.5, 0.4], motion: "static", shape: "box" }, breakable: { health: 10, respawnS: 60 } },
+    "dungeon:crate": { asset: "dungeon:crate", collision: { halfExtents: [0.4, 0.5, 0.4], motion: "static", shape: "box" }, breakable: { health: 30, damageMultipliers: { blunt: 1.5, thrust: 0.5 } } },
     "dungeon:sack": { asset: "dungeon:sack", collision: { halfExtents: [0.3, 0.5, 0.3], motion: "static", shape: "box" }, breakable: { health: 10 } },
     "dungeon:debris": { asset: "dungeon:rubble", collision: { shape: "none" } },
   },
@@ -89,6 +93,38 @@ describe("BreakSystem", () => {
     breaks.step(sim);
     assert.equal(entityExists(sim.ecs, sack), false);
     assert.equal(debris.length, 0);
+  });
+
+  it("a world scatter prop that broke comes back on its timer, even across a restart", () => {
+    const store = new SqlitePlacesStore(new Database(":memory:"));
+    const clock = { t: 1_000_000 };
+    const sim = new SimWorld();
+    const first = new BreakSystem(breakDefsOf(TABLE), { store, now: () => clock.t });
+    const bush = put(sim, "world:bush", 7, 9);
+    Health.current[bush] = 0;
+    first.step(sim);
+    assert.equal(entityExists(sim.ecs, bush), false, "it broke");
+    assert.equal(store.all().length, 1, "and was written down");
+    // The server restarts: a new system, the same store, the prop still gone.
+    clock.t += 30_000;
+    const second = new BreakSystem(breakDefsOf(TABLE), { store, now: () => clock.t });
+    second.step(sim);
+    const back = () => [...defineQuery([AssetRef])(sim.ecs)].filter((e) => AssetRef.assetHash[e] === fnv1a32("world:bush") >>> 0);
+    assert.equal(back().length, 0, "not yet");
+    clock.t += 31_000;
+    second.step(sim);
+    assert.equal(back().length, 1, "back after its minute");
+    assert.equal(store.all().length, 0, "the record is cleared");
+  });
+
+  it("a prop takes more or less from each kind of blow, by its damage multipliers", () => {
+    const { sim, breaks } = setup();
+    const crate = put(sim, "dungeon:crate", 3, 3);
+    const sack = put(sim, "dungeon:sack", 4, 4);
+    assert.equal(breaks.kindScale(crate, "blunt"), 1.5);
+    assert.equal(breaks.kindScale(crate, "thrust"), 0.5);
+    assert.equal(breaks.kindScale(crate, "cut"), 1, "a kind it does not name counts 1");
+    assert.equal(breaks.kindScale(sack, "blunt"), 1, "no table: 1");
   });
 
   it("DeathSystem leaves a breakable alone: it does not die and rise", () => {

@@ -1162,6 +1162,7 @@ async function main(): Promise<void> {
   const combatConfig = {
     // A building holds out against a blow from anyone below its minStrength (IX6).
     canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
+    kindScale: (target: number, kind: string): number => breaks.kindScale(target, kind),
     rules: game.rules,
     hooks,
     combatSkills,

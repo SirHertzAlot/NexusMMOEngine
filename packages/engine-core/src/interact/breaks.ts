@@ -138,7 +138,28 @@ export class BreakSystem implements SimSystem {
     this.breakIt(sim, eid, def, { at: rec.at, respawnAt: rec.respawnAt });
   }
 
+  private recovered = false;
+
+  /** Once after a boot: scatter props that broke before the restart are put back on their timers (their def is found by asset). */
+  private recover(sim: SimWorld): void {
+    this.recovered = true;
+    for (const rec of this.opts.store?.all?.() ?? []) {
+      if (rec.kind !== "break" || !rec.state.startsWith("scatter:") || rec.respawnAt === null) continue;
+      let snap: Snap;
+      try {
+        snap = JSON.parse(rec.state.slice("scatter:".length)) as Snap;
+      } catch {
+        this.opts.store!.clear("break", rec.key);
+        continue;
+      }
+      const def = this.defs.get(snap.assetHash >>> 0);
+      if (!def) continue;
+      this.pending.push({ key: rec.key, def, snap, respawnAt: rec.respawnAt, eid: null, debris: null });
+    }
+  }
+
   step(sim: SimWorld): void {
+    if (!this.recovered) this.recover(sim);
     this.respawns(sim);
     for (const eid of this.bodies(sim.ecs)) {
       if (Health.current[eid]! > 0) continue;
@@ -163,6 +184,9 @@ export class BreakSystem implements SimSystem {
     if (!again) this.opts.onBreak?.(sim, { eid, x, z, ...(def.loot !== undefined ? { loot: def.loot } : {}), killer: this.opts.killerOf?.(eid) });
     if (key !== null) this.opts.store?.save({ kind: "break", key, state: "broken", at, respawnAt });
     const snap = respawnAt !== null || def.repair ? capture(sim, eid) : null;
+    // A world scatter prop has no scene key: it is found again after a restart by what it was and where it stood.
+    const scatterKey = key === null && snap && respawnAt !== null && def.into !== "variant" ? `scatter/${snap.assetHash}/${x.toFixed(1)},${z.toFixed(1)}` : null;
+    if (scatterKey !== null && !again) this.opts.store?.save({ kind: "break", key: scatterKey, state: `scatter:${JSON.stringify(snap)}`, at, respawnAt });
     let debris: number | null = null;
     this.keys.delete(eid);
     this.eidDefs.delete(eid);
@@ -182,7 +206,7 @@ export class BreakSystem implements SimSystem {
       this.ruins.set(eid, { key, def, snap });
       this.changed.add(eid);
     }
-    if (snap && respawnAt !== null) this.pending.push({ key, def, snap, respawnAt, eid: def.into === "variant" ? eid : null, debris });
+    if (snap && respawnAt !== null) this.pending.push({ key: key ?? scatterKey, def, snap, respawnAt, eid: def.into === "variant" ? eid : null, debris });
   }
 
   /** Whether a blow from `attacker` can hurt `target`: a building holds out against anyone below its `minStrength` (bodies with no stats pass). */
@@ -191,6 +215,11 @@ export class BreakSystem implements SimSystem {
     if (!need) return true;
     const str = sim.stats.get(attacker, "strength");
     return str === undefined || str >= need;
+  }
+
+  /** What a blow of `kind` does to `target`, as a multiple: its `damageMultipliers` entry (1 when it has none, or is not breakable). */
+  kindScale(target: number, kind: string): number {
+    return this.eidDefs.get(target)?.damageMultipliers?.[kind] ?? this.defs.get(AssetRef.assetHash[target]! >>> 0)?.damageMultipliers?.[kind] ?? 1;
   }
 
   hasRuin(eid: number): boolean {
@@ -264,7 +293,7 @@ export class BreakSystem implements SimSystem {
       restore(sim, eid, p.snap, p.eid !== null);
       this.eidDefs.set(eid, p.def);
       if (p.key !== null) {
-        this.keys.set(eid, p.key);
+        if (!p.key.startsWith("scatter/")) this.keys.set(eid, p.key);
         this.opts.store?.clear("break", p.key);
       }
     }

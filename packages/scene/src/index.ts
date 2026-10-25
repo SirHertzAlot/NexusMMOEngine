@@ -147,6 +147,10 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     repairMaterial: { type: "string", default: "" },
     repairCount: { type: "number", default: 1, min: 1 },
     repairSeconds: { type: "number", default: 4, min: 0 },
+    /** How much a blow of each kind hurts it, as a multiple (1: normal, 0: proof). */
+    cutMultiplier: { type: "number", default: 1, min: 0 },
+    bluntMultiplier: { type: "number", default: 1, min: 0 },
+    thrustMultiplier: { type: "number", default: 1, min: 0 },
   }),
   /** A shop (IX8): the node is a vendor of the template in content/vendors.json; E opens its shop. */
   Vendor: component("Vendor", {

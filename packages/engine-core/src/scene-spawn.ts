@@ -329,6 +329,10 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             ...(str(brk.loot) ? { loot: str(brk.loot) } : {}),
             respawnS: Number(brk.respawnSeconds ?? 0) > 0 ? Number(brk.respawnSeconds) : null,
             ...(Number(brk.minStrength ?? 0) > 0 ? { minStrength: Number(brk.minStrength) } : {}),
+            ...(() => {
+              const m = { cut: Number(brk.cutMultiplier ?? 1), blunt: Number(brk.bluntMultiplier ?? 1), thrust: Number(brk.thrustMultiplier ?? 1) };
+              return Object.values(m).some((v) => v !== 1) ? { damageMultipliers: m } : {};
+            })(),
             ...(str(brk.repairMaterial) ? { repair: { material: str(brk.repairMaterial), count: Math.max(1, Math.round(Number(brk.repairCount ?? 1))), castSeconds: Number(brk.repairSeconds ?? 4) } } : {}),
           });
         }
