@@ -61,9 +61,11 @@ export interface SidecarManagerOptions {
    * Restart supervision (EA11): when a healthy sidecar exits unexpectedly,
    * restart it with exponential backoff. `maxRestarts` caps consecutive
    * restarts (0 = never restart, default 3); `baseBackoffMs` is the first
-   * delay, doubled each time (default 1_000).
+   * delay, doubled each time (default 1_000). A restart only stops counting
+   * once the sidecar has stayed up for `stableMs` (default 30_000), so a
+   * sidecar that turns healthy and crashes again still runs out of restarts.
    */
-  restartPolicy?: { maxRestarts?: number; baseBackoffMs?: number };
+  restartPolicy?: { maxRestarts?: number; baseBackoffMs?: number; stableMs?: number };
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -80,6 +82,7 @@ export class SidecarManager {
   private readonly log: (line: string) => void;
   private readonly maxRestarts: number;
   private readonly baseBackoffMs: number;
+  private readonly stableMs: number;
   private readonly procs = new Map<string, ChildProcess>();
   private readonly statuses = new Map<string, SidecarStatus>();
   /** EA11: in-process wasm sidecars, by module name. */
@@ -100,6 +103,7 @@ export class SidecarManager {
     this.log = opts.log ?? (() => {});
     this.maxRestarts = opts.restartPolicy?.maxRestarts ?? 3;
     this.baseBackoffMs = opts.restartPolicy?.baseBackoffMs ?? 1_000;
+    this.stableMs = opts.restartPolicy?.stableMs ?? 30_000;
   }
 
   /** Last known status per sidecar name; unknown names return undefined. */
@@ -231,10 +235,14 @@ export class SidecarManager {
 
     if (healthy) {
       this.statuses.set(name, "healthy");
-      this.restartCounts.set(name, 0);
       this.log(`${tag} healthy`);
+      // Only a sidecar that stays up forgives its earlier crashes: resetting the count on
+      // every healthy report would let a crash loop that briefly turns healthy restart forever.
+      const stable = setTimeout(() => this.restartCounts.set(name, 0), this.stableMs);
+      (stable as unknown as { unref?: () => void }).unref?.();
       // EA11: supervise the healthy sidecar — an unexpected exit restarts it.
       child.on("exit", (code, signal) => {
+        clearTimeout(stable);
         if (this.stopping) return;
         // If stop() already reaped it, procs won't have it.
         if (!this.procs.has(name)) return;
