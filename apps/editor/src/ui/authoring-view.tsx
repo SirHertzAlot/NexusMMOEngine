@@ -33,6 +33,13 @@
  *   Component-shaped shelf additions (add Health+Stamina, bind a
  *   marker) are unsupported for a real reason: admin `set` cannot add
  *   a component.
+ * - Actions that need a value render real input fields (the model's
+ *   input descriptors): item bases and creature kinds come from the
+ *   gameplay snapshot the editor already loads; vendor templates from
+ *   the running server's own `vendor list` (defined templates only —
+ *   offline the picker is honestly empty). Field values flow into the
+ *   call's params via `callWith` / `shelfActionParams`; the dispatch
+ *   mapper stays the single gate on what was built.
  * - Applied-state lines come from the selection's own component fields
  *   (what the editor already read), never invented server state; after
  *   a dispatch whose read-back target IS this selection, the inspect
@@ -41,6 +48,7 @@
 
 import * as React from "react";
 import type { SceneDoc, SceneNode } from "@mmo-engine/scene";
+import { loadGameplay } from "../gameplay-client.js";
 import { getScene, listScenes } from "../scenes-client.js";
 import { nodeSelection } from "../viewport-model.js";
 import {
@@ -54,28 +62,36 @@ import {
   deserializeSavedView,
   evaluateRelevance,
   executeDispatch,
+  inputValue,
   inspectTargetForCall,
   makeFacts,
   makeVerbCall,
+  parseVendorTemplateList,
   roleFilterById,
   sceneLevelWidgets,
   serializeSavedView,
+  shelfActionParams,
   shelfComponentPlan,
   sortNodes,
   visibleShelf,
   VerbHistory,
   ROLE_FILTERS,
+  type ActionInput,
   type AppliedState,
   type DispatchOutcome,
   type HierarchyNode,
+  type InputValues,
+  type PickerSource,
   type PresentationPin,
   type Provenance,
   type RoleFilterId,
   type SavedView,
   type SceneNodeData,
   type SelectionFacts,
+  type ShelfEntry,
   type SortMode,
   type VerbCall,
+  type WidgetAction,
 } from "../authoring/index.js";
 import { Button, Chip, EmptyState, Input, MIcon, SectionTitle, Select, notify, useLocalStorage } from "./components.js";
 import { EcsInspectorPanel } from "./ecs-inspector.js";
@@ -219,6 +235,35 @@ function hasSelComponent(sel: EditorSelection, name: string): boolean {
   return sel.components.some((c) => c.name.toLowerCase() === name.toLowerCase());
 }
 
+/**
+ * The selection's ground position from its Transform fields, when it
+ * carries one: scene-node selections carry `position` ("x, y, z"),
+ * live-entity selections may carry `px`/`pz`. Absent/unparseable →
+ * undefined, and teleport inputs simply start empty.
+ */
+export function positionFromSelection(sel: EditorSelection): { x: number; z: number } | undefined {
+  const t = sel.components.find((c) => c.name.toLowerCase() === "transform");
+  if (!t) return undefined;
+  const field = (key: string): string | undefined => t.fields.find((f) => f.key.toLowerCase() === key)?.value;
+  const px = field("px");
+  const pz = field("pz");
+  if (px !== undefined && pz !== undefined) {
+    const x = Number(px);
+    const z = Number(pz);
+    if (Number.isFinite(x) && Number.isFinite(z)) return { x, z };
+  }
+  for (const key of ["position", "pos"]) {
+    const raw = field(key);
+    if (raw === undefined) continue;
+    const parts = raw
+      .split(/[,\s]+/)
+      .filter((s) => s !== "")
+      .map(Number);
+    if (parts.length >= 3 && parts.every((n) => Number.isFinite(n))) return { x: parts[0], z: parts[2] };
+  }
+  return undefined;
+}
+
 /** EditorSelection (the shared store) → SelectionFacts (the authoring layer's input). */
 export function factsFromSelection(sel: EditorSelection): SelectionFacts {
   const isQuestGiver = hasSelComponent(sel, "QuestGiver");
@@ -247,6 +292,7 @@ export function factsFromSelection(sel: EditorSelection): SelectionFacts {
     flowRef: fieldOf(sel, "FlowRef", ["graph", "graphId", "flow"]),
     vfxEmitter: fieldOf(sel, "VfxEmitter", ["effect", "emitter", "vfx"]),
     audioEmitter: fieldOf(sel, "AudioEmitter", ["clip", "emitter", "audio"]),
+    position: positionFromSelection(sel),
   });
 }
 
@@ -268,7 +314,15 @@ export function sceneDocToHierarchyData(doc: SceneDoc): SceneNodeData[] {
         questIds: questGiver && typeof questGiver.quest === "string" && questGiver.quest !== "" ? [questGiver.quest] : undefined,
         hasCollider: n.components?.Collider !== undefined,
       });
-      out.push({ id: n.id, name: n.name || n.id, level, parentId, kind: facts.kind, facts });
+      const pos = n.transform?.position;
+      out.push({
+        id: n.id,
+        name: n.name || n.id,
+        level,
+        parentId,
+        kind: facts.kind,
+        facts: pos && pos.length >= 3 ? { ...facts, position: { x: pos[0], z: pos[2] } } : facts,
+      });
       walk(kids, n.id, depth + 1);
     }
   };
@@ -325,6 +379,99 @@ export function inspectTargetMatches(target: string, sel: EditorSelection): bool
   return target === sel.id;
 }
 
+// ------------------------------------------------- action input fields
+
+/** A picker source resolved to its real option list + the honest note shown when that list is empty. */
+export interface PickerResolution {
+  options: readonly string[];
+  emptyNote: string;
+}
+export type PickerResolver = (source: PickerSource | undefined) => PickerResolution;
+
+/** One input field rendered from its descriptor: a picker fed by a resolved real list, or a compact number/text box. */
+function ActionField({ input, value, onChange, pickerFor }: { input: ActionInput; value: string; onChange: (v: string) => void; pickerFor: PickerResolver }): React.JSX.Element {
+  if (input.kind === "picker") {
+    const { options, emptyNote } = pickerFor(input.source);
+    const empty = options.length === 0;
+    // A prefilled value the list doesn't carry (e.g. the vendor's current template) stays selectable, labelled as current.
+    const withCurrent = value !== "" && !options.includes(value) ? [value, ...options] : options;
+    return (
+      <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+        {input.label}
+        <Select size="sm" value={value} disabled={empty && value === ""} onChange={(e) => onChange(e.target.value)} aria-label={input.label}>
+          <option value="">{empty ? emptyNote : (input.placeholder ?? "Choose…")}</option>
+          {withCurrent.map((o) => (
+            <option key={o} value={o}>
+              {o}
+              {o === value && !options.includes(o) ? " (current)" : ""}
+            </option>
+          ))}
+        </Select>
+      </label>
+    );
+  }
+  return (
+    <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+      {input.label}
+      <Input
+        style={{ width: input.kind === "number" ? 90 : 150 }}
+        value={value}
+        inputMode={input.kind === "number" ? "decimal" : undefined}
+        placeholder={input.placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={input.label}
+      />
+    </label>
+  );
+}
+
+/**
+ * A widget action row: its declared input fields (if any), the action
+ * button, and its note. Owns its field values — the caller keys it by
+ * selection, so switching objects resets the fields to the new
+ * selection's prefills. Firing hands the raw values to `callWith`;
+ * the dispatch mapper remains the gate on the built call.
+ */
+function WidgetActionRow({ action, pickerFor, onDispatch }: { action: WidgetAction; pickerFor: PickerResolver; onDispatch: (call: VerbCall) => void }): React.JSX.Element {
+  const [values, setValues] = React.useState<InputValues>({});
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {action.inputs.map((input) => (
+          <ActionField key={input.id} input={input} value={inputValue(values, input)} onChange={(v) => setValues((prev) => ({ ...prev, [input.id]: v }))} pickerFor={pickerFor} />
+        ))}
+        <Button size="sm" variant="outline" onClick={() => onDispatch(action.callWith(values))}>
+          {action.label}
+        </Button>
+      </div>
+      {action.note && <p className="text-[12px] text-muted-foreground">{action.note}</p>}
+    </div>
+  );
+}
+
+/** A shelf entry whose verb action declares inputs: the fields render inline and the values ride the button. */
+function ShelfActionRow({ entry, pickerFor, onFire }: { entry: ShelfEntry; pickerFor: PickerResolver; onFire: (entry: ShelfEntry, values: InputValues) => void }): React.JSX.Element {
+  const [values, setValues] = React.useState<InputValues>({});
+  const action = entry.action;
+  if (!action) return <></>;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border p-2.5" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+      <div>
+        <div className="text-sm font-medium">{entry.title}</div>
+        <p className="text-[12px] text-muted-foreground">{entry.reason}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(action.inputs ?? []).map((input) => (
+          <ActionField key={input.id} input={input} value={inputValue(values, input)} onChange={(v) => setValues((prev) => ({ ...prev, [input.id]: v }))} pickerFor={pickerFor} />
+        ))}
+        <Button size="sm" onClick={() => onFire(entry, values)}>
+          {action.label}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------- the view
 
 const DEFAULT_VIEWS: readonly SavedView[] = [
@@ -356,6 +503,56 @@ function AuthoringPresentation(): React.JSX.Element {
   const serverLive = link.phase === "live";
   /** Embedded-panel collapse state for the view pane (left dock / right dock / history strip), persisted like the pins. */
   const [panels, setPanels] = useLocalStorage("authoring-embedded-panels", { left: true, right: true, history: true });
+  // ---- picker lists for action inputs: real data only, resolved here (the model layer names the sources, never the lists)
+  const [itemBases, setItemBases] = React.useState<readonly string[]>([]);
+  const [creatureKinds, setCreatureKinds] = React.useState<readonly string[]>([]);
+  const [gameplayError, setGameplayError] = React.useState<string | null>(null);
+  const [vendorTemplates, setVendorTemplates] = React.useState<readonly string[]>([]);
+
+  // Item bases + creature kinds: the gameplay snapshot the editor already
+  // loads from the dev host (content/rules/items.json + creatures.json refs).
+  React.useEffect(() => {
+    let live = true;
+    loadGameplay()
+      .then((snap) => {
+        if (!live) return;
+        setItemBases(snap.context.refs.items);
+        setCreatureKinds(snap.context.refs.creatures);
+      })
+      .catch((e: unknown) => live && setGameplayError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Vendor templates: only the running server knows which are DEFINED
+  // (content/vendors.json templates are defined lazily), so the list is
+  // the server's own `vendor list` answer — refetched when the link goes
+  // live and after any vendor dispatch. Offline there is no list.
+  const refreshVendorTemplates = React.useCallback(async () => {
+    const r = await serverLink.admin("vendor", { sub: "list" });
+    if (r.ok) setVendorTemplates(parseVendorTemplateList(r.message));
+  }, []);
+  React.useEffect(() => {
+    if (serverLive) void refreshVendorTemplates();
+  }, [serverLive, refreshVendorTemplates]);
+
+  /** Resolve a picker source to its options + the note shown while the list is empty. */
+  const pickerFor: PickerResolver = (source) => {
+    switch (source) {
+      case "item-bases":
+        return { options: itemBases, emptyNote: gameplayError ? "Item bases couldn't load from the gameplay tables." : "Loading item bases…" };
+      case "creature-kinds":
+        return { options: creatureKinds, emptyNote: gameplayError ? "Creature kinds couldn't load from the gameplay tables." : "Loading creature kinds…" };
+      case "vendor-templates":
+        return {
+          options: vendorTemplates,
+          emptyNote: serverLive ? "No vendor templates are defined on the server." : "Vendor templates live on the running server — start it to list them.",
+        };
+      default:
+        return { options: [], emptyNote: "No list for this field." };
+    }
+  };
 
   React.useEffect(() => {
     let live = true;
@@ -431,6 +628,7 @@ function AuthoringPresentation(): React.JSX.Element {
       const outcome = await executeDispatch(call, transport);
       setOutcomes((prev) => new Map(prev).set(call, outcome));
       setHistoryTick((t) => t + 1);
+      if (call.verb === "attachVendor" || call.verb === "detachVendor") void refreshVendorTemplates();
       if (outcome.status === "dispatched") {
         notify(`${call.verb} dispatched — ${outcome.message}`);
         if (outcome.readResult !== undefined && outcome.plan.kind !== "read") {
@@ -445,6 +643,16 @@ function AuthoringPresentation(): React.JSX.Element {
         notify(`${call.verb} can't be dispatched — ${outcome.message}`);
       }
     })();
+  };
+
+  /** Fire a shelf entry: verb actions merge their input values over the placeholder params (the mapper gates the result); component-shaped ones have no verb. */
+  const fireShelf = (e: ShelfEntry, values: InputValues): void => {
+    if (!facts || !e.action) return;
+    if (e.action.verb) {
+      dispatch(makeVerbCall(e.action.verb, shelfActionParams(e.action, values), { who: actor, what: facts.label, when: Date.now(), where, why: why.trim() || "hand tweak" }));
+    } else {
+      dispatchShelfComponents(e.action.label, e.action.addComponents ?? []);
+    }
   };
 
   /** Component-shaped shelf actions: no canonical verb exists, so the mapper's verdict is the outcome. */
@@ -702,38 +910,30 @@ function AuthoringPresentation(): React.JSX.Element {
                   ) : (
                     <p className="mt-1 text-[13px] text-muted-foreground">No live state read for this widget yet.</p>
                   )}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                  <div className="mt-2 flex flex-col gap-2">
                     {w.actions.map((a) => (
-                      <Button key={a.id} size="sm" variant="outline" onClick={() => dispatch(a.call)}>
-                        {a.label}
-                      </Button>
+                      <WidgetActionRow key={`${facts?.id ?? ""}:${a.id}`} action={a} pickerFor={pickerFor} onDispatch={dispatch} />
                     ))}
                   </div>
                 </div>
               ))}
               {facts && widgets.length === 0 && <p className="text-[13px] text-muted-foreground">No widgets apply to this selection.</p>}
               <SectionTitle>Available to add</SectionTitle>
-              {shelf.map((e) => (
-                <div key={e.moduleId} className="flex items-center gap-2 rounded-lg border p-2.5" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{e.title}</div>
-                    <p className="text-[12px] text-muted-foreground">{e.reason}</p>
+              {shelf.map((e) =>
+                e.action && (e.action.inputs?.length ?? 0) > 0 ? (
+                  <ShelfActionRow key={e.moduleId} entry={e} pickerFor={pickerFor} onFire={fireShelf} />
+                ) : (
+                  <div key={e.moduleId} className="flex items-center gap-2 rounded-lg border p-2.5" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium">{e.title}</div>
+                      <p className="text-[12px] text-muted-foreground">{e.reason}</p>
+                    </div>
+                    <Button size="sm" onClick={() => fireShelf(e, {})}>
+                      {e.action?.label ?? "Add"}
+                    </Button>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      if (!facts || !e.action) return;
-                      if (e.action.verb) {
-                        dispatch(makeVerbCall(e.action.verb, e.action.params ?? {}, { who: actor, what: facts.label, when: Date.now(), where, why: why.trim() || "hand tweak" }));
-                      } else {
-                        dispatchShelfComponents(e.action.label, e.action.addComponents ?? []);
-                      }
-                    }}
-                  >
-                    {e.action?.label ?? "Add"}
-                  </Button>
-                </div>
-              ))}
+                ),
+              )}
               {facts && shelf.length === 0 && <p className="text-[13px] text-muted-foreground">Everything establishable is already applied.</p>}
             </div>
           )}
