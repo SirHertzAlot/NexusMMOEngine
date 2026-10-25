@@ -392,3 +392,78 @@ export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHo
 export type { GatewayTick } from "./net/gateway.js";
 export { backupWorld, discardBackup, hasBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
 export * from "./server-settings.js";
+
+// Zero-Copy Hybrid Engine Data Plane (ENGINE_IMPLEMENTATION_SPEC.md)
+export {
+  SAB_ENTITY_CAPACITY,
+  DATA_PLANE_ENTITY_CAPACITY,
+  BYTES_PER_FLOAT,
+  BYTES_PER_INT,
+  CACHE_LINE_BYTES,
+  SOA_LAYOUT,
+  INTENT_FLAGS,
+  OFFSETS,
+  TELEMETRY_SLOTS,
+  alignCacheLine,
+  computeArenaOffsets,
+  createSharedMemoryPlane,
+  attachSharedMemoryPlane,
+  syncMatrixToPlanar,
+  syncPlanarToMatrix,
+  sabBackComponent,
+  defineSABComponent,
+} from "./sab-store.js";
+export type {
+  MemoryArenaOffsets,
+  PlanarSoAViews,
+  SharedMemoryPlaneViews,
+} from "./sab-store.js";
+
+export {
+  SPSC_CACHE_LINE_BYTES,
+  SPSC_HEADER_BYTES,
+  packCommandToken,
+  unpackCommandToken,
+  AtomicSPSCQueue,
+  PERSIST_TX_KIND,
+  AtomicSPSCTransactionQueue,
+} from "./lockless-ring.js";
+export type { PersistTxKind, PersistTransaction } from "./lockless-ring.js";
+
+export {
+  TICK_RATE_HZ,
+  FRAME_BUDGET_MS,
+  DT,
+  DEFAULT_INPUT_RING_CAPACITY,
+  DEFAULT_PERSIST_RING_CAPACITY,
+  DEFAULT_BASE_SPEED,
+  loadNativeKernel,
+  SimWorkerRuntime,
+} from "./sim-worker.js";
+export type {
+  NativeEngineKernel,
+  SimExecutionMode,
+  SimWorkerConfig,
+  SimTickMetrics,
+} from "./sim-worker.js";
+
+export {
+  PERSIST_SCHEMA_SURREALQL,
+  loadPersistSchemaSurrealQL,
+  PersistenceWorkerRuntime,
+} from "./persist-worker.js";
+export type {
+  PersistWorkerConfig,
+  EntityPersistRecord,
+  InventorySlotRecord,
+} from "./persist-worker.js";
+
+export {
+  DEFAULT_DATA_PLANE_PORT,
+  WS_SIM_ROUTE,
+  encodeBinaryCommandFrame,
+  encodeBinaryCommandBatch,
+  HybridDataPlaneServer,
+} from "./data-plane-server.js";
+export type { HybridDataPlaneOptions } from "./data-plane-server.js";
+
