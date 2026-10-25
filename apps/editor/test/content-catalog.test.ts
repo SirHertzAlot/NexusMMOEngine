@@ -28,7 +28,7 @@ describe("buildCatalog", () => {
     assert.ok(of("item").includes("sword"));
     assert.deepEqual(of("prefab"), ["camps/goblin"]);
     assert.ok(of("picg").includes("oak"));
-    assert.deepEqual(of("scene"), ["test-arena"]);
+    assert.deepEqual(of("scene"), ["places", "test-arena"]);
     assert.ok(of("quest").includes("goblin-trouble"));
     assert.ok(c.entries.every((e) => e.drag.kind === e.kind && e.drag.id === e.id));
   });
