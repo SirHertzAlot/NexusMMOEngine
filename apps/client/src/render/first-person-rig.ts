@@ -47,6 +47,37 @@ export const DEFAULT_HAND_COLORS: Readonly<FirstPersonHandColors> = Object.freez
   metal: "#9aa3ad",
 });
 
+/**
+ * Canonical Synty art pack prop models for each weapon category (matching content/rules/items.json).
+ * Used as the primary high-fidelity visual asset; if unavailable or missing from the loaded catalog,
+ * FirstPersonRig gracefully falls back to the clean procedural weapon mesh.
+ */
+export const DEFAULT_SYNTY_WEAPON_MODELS: Readonly<Partial<Record<WeaponVisualKind, string>>> = Object.freeze({
+  sword: "dungeon-pack/SM_Wep_Straightsword_01",
+  greatsword: "dungeon-pack/SM_Wep_GreatSword_01",
+  axe: "dungeon-pack/SM_Wep_Axe_01",
+  mace: "fantasy-kingdom/SM_Wep_Mace_01",
+  dagger: "fantasy-kingdom/SM_Wep_Dagger_01",
+  spear: "dungeon-pack/SM_Wep_Spear_01",
+  staff: "fantasy-kingdom/SM_Wep_Staff_01",
+  wand: "fantasy-kingdom/SM_Wep_Sceptre_01",
+  shield: "dungeon-pack/SM_Wep_Shield_Bone_01",
+});
+
+/**
+ * Resolve the Synty prop asset identifier for a given equipment model string or item base.
+ * If the string contains an art pack path (e.g. "fantasy-kingdom/SM_Wep_Sword_02"), it is preserved.
+ * Otherwise, the standard Synty prop for that weapon category is returned.
+ */
+export function resolveSyntyWeaponModel(
+  modelOrBase: string | null | undefined,
+  kind: WeaponVisualKind,
+): string | null {
+  if (!modelOrBase || kind === "unarmed") return null;
+  if (modelOrBase.includes("/")) return modelOrBase;
+  return DEFAULT_SYNTY_WEAPON_MODELS[kind] ?? null;
+}
+
 export interface FirstPersonRigUpdate {
   dt: number;
   camera: THREE.Camera;
@@ -559,6 +590,10 @@ export class FirstPersonRig {
   private offKey: string | null = null;
   private mainKind: WeaponVisualKind = "unarmed";
   private offKind: WeaponVisualKind = "unarmed";
+  private mainModelId: string | null = null;
+  private offModelId: string | null = null;
+  private mainHasSynty = false;
+  private offHasSynty = false;
 
   private prevLookYaw = 0;
   private prevLookPitch = 0;
@@ -662,6 +697,29 @@ export class FirstPersonRig {
     }
   }
 
+  private tryAttachSyntyProp(hand: "main" | "off"): boolean {
+    if (!this.props) return false;
+    const modelId = hand === "main" ? this.mainModelId : this.offModelId;
+    if (!modelId) return false;
+    const ready = this.props.model(fnv1a32(modelId), 0);
+    if (!ready) return false;
+
+    const socket = hand === "main" ? this.rightSocket : this.leftSocket;
+    this.clearSocket(socket);
+    const mesh = new THREE.Mesh(ready.geometry, ready.material);
+    mesh.name = `fps-synty-${hand}`;
+    if (hand === "main") {
+      mesh.rotation.x = -0.58;
+    } else {
+      mesh.position.set(-0.04, 0.04, -0.05);
+      mesh.rotation.set(0.1, 0.35, 0);
+    }
+    socket.add(mesh);
+    if (hand === "main") this.mainHasSynty = true;
+    else this.offHasSynty = true;
+    return true;
+  }
+
   private attachSlot(
     hand: "main" | "off",
     modelOrBase: string | null,
@@ -670,28 +728,21 @@ export class FirstPersonRig {
   ): void {
     const socket = hand === "main" ? this.rightSocket : this.leftSocket;
     this.clearSocket(socket);
+    if (hand === "main") {
+      this.mainHasSynty = false;
+      this.mainModelId = resolveSyntyWeaponModel(modelOrBase, kind);
+    } else {
+      this.offHasSynty = false;
+      this.offModelId = resolveSyntyWeaponModel(modelOrBase, kind);
+    }
     if (!modelOrBase || kind === "unarmed") return;
 
     // 1. Immediate procedural weapon/shield mesh so the hand is never empty while loading
     const fallback = buildProceduralWeaponMesh(kind, rankColor);
     socket.add(fallback);
 
-    // 2. If a SyntyProps loader is wired and `modelOrBase` is an art catalog path, swap when loaded
-    if (this.props && modelOrBase.includes("/")) {
-      const ready = this.props.model(fnv1a32(modelOrBase), 0);
-      if (ready) {
-        this.clearSocket(socket);
-        const mesh = new THREE.Mesh(ready.geometry, ready.material);
-        mesh.name = `fps-art-${hand}`;
-        if (hand === "main") {
-          mesh.rotation.x = -0.58;
-        } else {
-          mesh.position.set(-0.04, 0.04, -0.05);
-          mesh.rotation.set(0.1, 0.35, 0);
-        }
-        socket.add(mesh);
-      }
-    }
+    // 2. Try loading Synty prop model immediately if already available
+    this.tryAttachSyntyProp(hand);
   }
 
   /** Current main-hand weapon visual family. */
@@ -702,6 +753,16 @@ export class FirstPersonRig {
   /** Current off-hand visual family. */
   get offWeaponKind(): WeaponVisualKind {
     return this.offKind;
+  }
+
+  /** Whether the main-hand slot is currently showing a loaded Synty prop mesh. */
+  get hasMainSyntyMesh(): boolean {
+    return this.mainHasSynty;
+  }
+
+  /** Whether the off-hand slot is currently showing a loaded Synty prop mesh. */
+  get hasOffSyntyMesh(): boolean {
+    return this.offHasSynty;
   }
 
   /**
@@ -755,6 +816,16 @@ export class FirstPersonRig {
     const trailAlpha = pose.swingIntensity * (this.mainKind === "unarmed" ? 0.22 : 0.48);
     this.swingTrailMat.opacity = trailAlpha;
     this.swingTrail.visible = trailAlpha > 0.02;
+
+    // Seamlessly swap pending Synty weapon/shield models once ready from asset stream
+    if (this.props) {
+      if (this.mainModelId && !this.mainHasSynty) {
+        this.tryAttachSyntyProp("main");
+      }
+      if (this.offModelId && !this.offHasSynty) {
+        this.tryAttachSyntyProp("off");
+      }
+    }
 
     return pose;
   }

@@ -15,7 +15,10 @@ import {
   FirstPersonRig,
   inferWeaponKind,
   buildProceduralWeaponMesh,
+  resolveSyntyWeaponModel,
+  DEFAULT_SYNTY_WEAPON_MODELS,
 } from "../src/render/first-person-rig.js";
+import { fnv1a32, type SyntyProps } from "../src/render/synty-props.js";
 
 describe("FirstPersonRig", () => {
   it("infers weapon visual kinds from item bases and art catalog paths", () => {
@@ -110,5 +113,56 @@ describe("FirstPersonRig", () => {
     );
     assert.ok(guardPose.leftHand.px > restPose.leftHand.px + 0.08, "Guard raises shield toward center");
     assert.ok(guardPose.leftHand.py > restPose.leftHand.py + 0.08, "Guard lifts shield up");
+  });
+
+  it("resolves canonical Synty prop models for weapon categories with procedural fallback", () => {
+    assert.equal(resolveSyntyWeaponModel("sword", "sword"), DEFAULT_SYNTY_WEAPON_MODELS.sword);
+    assert.equal(resolveSyntyWeaponModel("custom-pack/SM_Wep_Excalibur", "sword"), "custom-pack/SM_Wep_Excalibur");
+    assert.equal(resolveSyntyWeaponModel("shield", "shield"), DEFAULT_SYNTY_WEAPON_MODELS.shield);
+    assert.equal(resolveSyntyWeaponModel(null, "unarmed"), null);
+  });
+
+  it("utilizes SyntyProps when models are ready and falls back to procedural meshes when pending", () => {
+    const fakeGeom = new THREE.BoxGeometry(0.1, 0.8, 0.1);
+    const fakeMat = new THREE.MeshBasicMaterial();
+    const readyMap = new Map<number, { key: string; geometry: THREE.BufferGeometry; material: THREE.Material; lods: [] }>();
+
+    const mockSyntyProps = {
+      model(hash: number): { key: string; geometry: THREE.BufferGeometry; material: THREE.Material; lods: [] } | null {
+        return readyMap.get(hash) ?? null;
+      },
+    } as unknown as SyntyProps;
+
+    const rig = new FirstPersonRig(mockSyntyProps);
+    rig.setVisible(true);
+
+    // 1. Model not yet cached: attaches procedural mesh immediately as fallback
+    rig.setEquipment("sword", "shield");
+    assert.equal(rig.hasMainSyntyMesh, false, "procedural fallback active while Synty model pending");
+    assert.equal(rig.hasOffSyntyMesh, false, "procedural fallback active while shield pending");
+
+    // 2. SyntyProps completes load for sword
+    const swordHash = fnv1a32(DEFAULT_SYNTY_WEAPON_MODELS.sword!);
+    readyMap.set(swordHash, { key: "sword", geometry: fakeGeom, material: fakeMat, lods: [] });
+
+    // Step frame: rig should detect model ready and swap to Synty mesh
+    const cam = new THREE.PerspectiveCamera();
+    const camState = createFirstPersonCameraState();
+    const motion = stepFirstPersonMotion(camState, { dt: 1 / 60 });
+    rig.update({ dt: 1 / 60, camera: cam, lookYaw: 0, lookPitch: 0, motion });
+
+    assert.equal(rig.hasMainSyntyMesh, true, "upgraded to Synty weapon mesh once loaded");
+    assert.equal(rig.hasOffSyntyMesh, false, "shield remains procedural fallback since not yet loaded");
+
+    // 3. SyntyProps completes load for shield
+    const shieldHash = fnv1a32(DEFAULT_SYNTY_WEAPON_MODELS.shield!);
+    readyMap.set(shieldHash, { key: "shield", geometry: fakeGeom, material: fakeMat, lods: [] });
+    rig.update({ dt: 1 / 60, camera: cam, lookYaw: 0, lookPitch: 0, motion });
+
+    assert.equal(rig.hasMainSyntyMesh, true);
+    assert.equal(rig.hasOffSyntyMesh, true, "upgraded to Synty shield mesh once loaded");
+
+    fakeGeom.dispose();
+    fakeMat.dispose();
   });
 });
