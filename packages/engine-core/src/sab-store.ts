@@ -242,3 +242,239 @@ export function defineSABComponent<T extends ISchema>(
   const comp = defineComponent(schema, SAB_ENTITY_CAPACITY);
   return sabBackComponent(comp);
 }
+
+// ---------------------------------------------------------------------------
+// Zero-Copy Hybrid Engine Data Plane Memory Arena (ENGINE_IMPLEMENTATION_SPEC.md §2)
+// ---------------------------------------------------------------------------
+
+/** Default entity capacity for the standalone/hybrid zero-copy matrix plane. */
+export const DATA_PLANE_ENTITY_CAPACITY = 10_000;
+export const BYTES_PER_FLOAT = 4;
+export const BYTES_PER_INT = 4;
+export const CACHE_LINE_BYTES = 64;
+
+/**
+ * Structure of Arrays (SoA) / Strided Matrix Layout Map Per Entity Index.
+ * Padded to 32 bytes (8 x 4-byte words) per entity for direct SIMD vector alignment.
+ */
+export const SOA_LAYOUT = {
+  // Float32 Fields
+  POSITION_X: 0,
+  POSITION_Y: 1,
+  POSITION_Z: 2,
+  VELOCITY_X: 3,
+  VELOCITY_Y: 4,
+  VELOCITY_Z: 5,
+  // Int32 Fields
+  HEALTH:     6,
+  INTENT_BIT: 7,
+  STRIDE:     8, // Total 32 bytes per entity (8 components * 4 bytes)
+} as const;
+
+/** Action / Intent bitflags written into INTENT_BIT or passed via the SPSC command ring. */
+export const INTENT_FLAGS = {
+  NONE:               0,
+  FORWARD:            1 << 0, // +Z
+  BACKWARD:           1 << 1, // -Z
+  LEFT:               1 << 2, // -X
+  RIGHT:              1 << 3, // +X
+  UP:                 1 << 4, // +Y
+  DOWN:               1 << 5, // -Y
+  SPRINT:             1 << 6, // 2x speed multiplier
+  PERSIST_CHECKPOINT: 1 << 8, // Triggers async persistence transaction on the Secondary Ring
+} as const;
+
+/** Byte offsets within the Master SharedArrayBuffer memory arena. */
+export const OFFSETS = {
+  MATRIX: 0,
+  RINGS: DATA_PLANE_ENTITY_CAPACITY * SOA_LAYOUT.STRIDE * BYTES_PER_FLOAT, // Staged right after the matrix array (320,000)
+  PERSIST_RING: DATA_PLANE_ENTITY_CAPACITY * SOA_LAYOUT.STRIDE * BYTES_PER_FLOAT + 16_384, // Secondary SPSC ring for Persistence Worker
+  TELEMETRY: DATA_PLANE_ENTITY_CAPACITY * SOA_LAYOUT.STRIDE * BYTES_PER_FLOAT + 49_152, // Lockless atomic telemetry words
+  BAKE: DATA_PLANE_ENTITY_CAPACITY * SOA_LAYOUT.STRIDE * BYTES_PER_FLOAT + 65_536, // 64KB allocated for thread coordination fields
+} as const;
+
+/** Lockless atomic telemetry word indices at OFFSETS.TELEMETRY. */
+export const TELEMETRY_SLOTS = {
+  TICK_COUNT: 0,
+  LAST_TICK_US: 1,
+  MAX_TICK_US: 2,
+  COMMANDS_PROCESSED: 3,
+  PERSIST_ENQUEUED: 4,
+  PERSIST_COMMITTED: 5,
+  BUDGET_OVERRUNS: 6,
+  SHUTDOWN_SIGNAL: 7,
+  COUNT: 8,
+} as const;
+
+export interface MemoryArenaOffsets {
+  readonly MATRIX: number;
+  readonly RINGS: number;
+  readonly PERSIST_RING: number;
+  readonly TELEMETRY: number;
+  readonly BAKE: number;
+  readonly PLANAR_SOA: number;
+}
+
+/** Round `byteOffset` up to a 64-byte CPU cache-line boundary. */
+export function alignCacheLine(byteOffset: number): number {
+  return Math.ceil(byteOffset / CACHE_LINE_BYTES) * CACHE_LINE_BYTES;
+}
+
+/** Compute byte-aligned arena offsets for a given `entityCapacity`. */
+export function computeArenaOffsets(
+  entityCapacity: number = DATA_PLANE_ENTITY_CAPACITY,
+): MemoryArenaOffsets {
+  const matrixBytes = entityCapacity * SOA_LAYOUT.STRIDE * BYTES_PER_FLOAT;
+  const rings = alignCacheLine(matrixBytes);
+  const persistRing = rings + 16_384;
+  const telemetry = rings + 49_152;
+  const bake = rings + 65_536;
+  const planarSoA = alignCacheLine(bake);
+  return {
+    MATRIX: 0,
+    RINGS: rings,
+    PERSIST_RING: persistRing,
+    TELEMETRY: telemetry,
+    BAKE: bake,
+    PLANAR_SOA: planarSoA,
+  };
+}
+
+/**
+ * Instantiates the absolute, page-aligned master shared memory allocation layer
+ * (ENGINE_IMPLEMENTATION_SPEC.md §2).
+ */
+export function createSharedMemoryPlane(
+  entityCapacity: number = DATA_PLANE_ENTITY_CAPACITY,
+  heapMegabytes: number = 32,
+): SharedArrayBuffer {
+  if (!Number.isInteger(entityCapacity) || entityCapacity <= 0) {
+    throw new RangeError(`sab-store: entityCapacity must be a positive integer (got ${entityCapacity})`);
+  }
+  if (!(heapMegabytes > 0)) {
+    throw new RangeError(`sab-store: heapMegabytes must be > 0 (got ${heapMegabytes})`);
+  }
+  const offsets =
+    entityCapacity === DATA_PLANE_ENTITY_CAPACITY
+      ? OFFSETS
+      : computeArenaOffsets(entityCapacity);
+  // Matrix Block + 64KB Atomic Rings Configuration Room + 32MB Heap Space for Chunks, Planar SoA & NavMesh Bakes
+  const totalBytes = offsets.BAKE + Math.ceil(heapMegabytes * 1024 * 1024);
+  return new SharedArrayBuffer(totalBytes);
+}
+
+/**
+ * DoD Planar SoA views carved from the shared memory plane.
+ * Each column is contiguous and 64-byte cache-line aligned so 4-wide SSE2 / 8-wide AVX2
+ * vector loads never cross component boundaries or waste L1 cache bandwidth on unused fields.
+ */
+export interface PlanarSoAViews {
+  readonly px: Float32Array;
+  readonly py: Float32Array;
+  readonly pz: Float32Array;
+  readonly vx: Float32Array;
+  readonly vy: Float32Array;
+  readonly vz: Float32Array;
+  readonly hp: Int32Array;
+  readonly intent: Int32Array;
+  /** 1 bit per entity (ceil(entityCapacity / 32) Uint32 words). */
+  readonly aliveBitset: Uint32Array;
+}
+
+export interface SharedMemoryPlaneViews {
+  readonly sab: SharedArrayBuffer;
+  readonly entityCapacity: number;
+  readonly offsets: MemoryArenaOffsets;
+  readonly floatMatrixView: Float32Array;
+  readonly intMatrixView: Int32Array;
+  readonly telemetryView: Int32Array;
+  readonly planar: PlanarSoAViews;
+}
+
+/**
+ * Attach typed-array views (both interleaved strided Matrix and Planar SoA columns)
+ * to a SharedArrayBuffer created by `createSharedMemoryPlane()`.
+ */
+export function attachSharedMemoryPlane(
+  sab: SharedArrayBuffer,
+  entityCapacity: number = DATA_PLANE_ENTITY_CAPACITY,
+): SharedMemoryPlaneViews {
+  const offsets = computeArenaOffsets(entityCapacity);
+  const matrixLen = entityCapacity * SOA_LAYOUT.STRIDE;
+  const floatMatrixView = new Float32Array(sab, offsets.MATRIX, matrixLen);
+  const intMatrixView = new Int32Array(sab, offsets.MATRIX, matrixLen);
+  const telemetryView = new Int32Array(sab, offsets.TELEMETRY, TELEMETRY_SLOTS.COUNT);
+
+  const colBytes = alignCacheLine(entityCapacity * BYTES_PER_FLOAT);
+  let cursor = offsets.PLANAR_SOA;
+  const nextF32 = (): Float32Array => {
+    const view = new Float32Array(sab, cursor, entityCapacity);
+    cursor += colBytes;
+    return view;
+  };
+  const nextI32 = (): Int32Array => {
+    const view = new Int32Array(sab, cursor, entityCapacity);
+    cursor += colBytes;
+    return view;
+  };
+  const px = nextF32();
+  const py = nextF32();
+  const pz = nextF32();
+  const vx = nextF32();
+  const vy = nextF32();
+  const vz = nextF32();
+  const hp = nextI32();
+  const intent = nextI32();
+  const bitsetWords = Math.ceil(entityCapacity / 32);
+  const aliveBitset = new Uint32Array(sab, cursor, bitsetWords);
+
+  return {
+    sab,
+    entityCapacity,
+    offsets,
+    floatMatrixView,
+    intMatrixView,
+    telemetryView,
+    planar: { px, py, pz, vx, vy, vz, hp, intent, aliveBitset },
+  };
+}
+
+/** Synchronize the strided matrix view into the Planar SoA columns and alive bitset. */
+export function syncMatrixToPlanar(views: SharedMemoryPlaneViews, count: number = views.entityCapacity): void {
+  const { floatMatrixView, intMatrixView, planar } = views;
+  const n = Math.min(count, views.entityCapacity);
+  planar.aliveBitset.fill(0);
+  for (let i = 0; i < n; i++) {
+    const base = i * SOA_LAYOUT.STRIDE;
+    planar.px[i] = floatMatrixView[base + SOA_LAYOUT.POSITION_X];
+    planar.py[i] = floatMatrixView[base + SOA_LAYOUT.POSITION_Y];
+    planar.pz[i] = floatMatrixView[base + SOA_LAYOUT.POSITION_Z];
+    planar.vx[i] = floatMatrixView[base + SOA_LAYOUT.VELOCITY_X];
+    planar.vy[i] = floatMatrixView[base + SOA_LAYOUT.VELOCITY_Y];
+    planar.vz[i] = floatMatrixView[base + SOA_LAYOUT.VELOCITY_Z];
+    const h = intMatrixView[base + SOA_LAYOUT.HEALTH];
+    planar.hp[i] = h;
+    planar.intent[i] = intMatrixView[base + SOA_LAYOUT.INTENT_BIT];
+    if (h > 0) {
+      planar.aliveBitset[i >>> 5] |= 1 << (i & 31);
+    }
+  }
+}
+
+/** Synchronize Planar SoA columns back into the strided matrix view. */
+export function syncPlanarToMatrix(views: SharedMemoryPlaneViews, count: number = views.entityCapacity): void {
+  const { floatMatrixView, intMatrixView, planar } = views;
+  const n = Math.min(count, views.entityCapacity);
+  for (let i = 0; i < n; i++) {
+    const base = i * SOA_LAYOUT.STRIDE;
+    floatMatrixView[base + SOA_LAYOUT.POSITION_X] = planar.px[i];
+    floatMatrixView[base + SOA_LAYOUT.POSITION_Y] = planar.py[i];
+    floatMatrixView[base + SOA_LAYOUT.POSITION_Z] = planar.pz[i];
+    floatMatrixView[base + SOA_LAYOUT.VELOCITY_X] = planar.vx[i];
+    floatMatrixView[base + SOA_LAYOUT.VELOCITY_Y] = planar.vy[i];
+    floatMatrixView[base + SOA_LAYOUT.VELOCITY_Z] = planar.vz[i];
+    intMatrixView[base + SOA_LAYOUT.HEALTH] = planar.hp[i];
+    intMatrixView[base + SOA_LAYOUT.INTENT_BIT] = planar.intent[i];
+  }
+}
+
