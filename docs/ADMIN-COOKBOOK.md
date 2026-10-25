@@ -61,7 +61,7 @@ against the console holder's bag (the same holder `give` fills):
 {command: "items", args: {sub: "move", item: 1234, to: 77}}
 ```
 
-## Components — add one, then tune it
+## Components — add one, tune it, take it off again
 
 `set` writes fields of a component an entity already has. To give an
 entity a component it lacks, add it first — it starts at the
@@ -84,6 +84,20 @@ AudioEmitter. Adding a component the entity already has refuses, and
 components whose rows are system-owned state (PathState, NavAgent,
 WorldItem, Chunk, Animation, Action, AssetRef, Appearance) have no
 defined defaults and refuse by name.
+
+`removecomponent` is the inverse — the authoring layer's unbind. It
+takes a component off a live entity through the normal ECS path, so
+queries, systems and `inspect` stop seeing it:
+
+```js
+{command: "removecomponent", args: {entity: "12345", component: "FlowRef"}}
+// → "FlowRef removed from 12345"
+```
+
+Removing a component the entity lacks refuses. Every registered
+component is removable except **God** and **Noclip**: those stay with
+their `god` / `noclip` toggle commands, which own the session-facing
+side of the state, and `removecomponent` refuses them by name.
 
 ## Gold — grant and check
 
@@ -157,6 +171,7 @@ within 4 metres of the NPC. The shop list shows real item names.
 | `give`    | Item → your bag               | same as `items` |
 | `drop`    | Item → ground (at your feet, or at `x`/`z`; `fixture` stays) | pick + `x?`, `z?`, `fixture?` |
 | `addcomponent` | Component → entity, at its defaults | `entity`, `component` |
+| `removecomponent` | Component off an entity (unbind) | `entity`, `component` |
 | `gold`    | Gold → your wallet            | `amount` |
 | `spawn`   | Creature pack / prop          | `asset`, `x?`, `z?`, `yaw?` |
 | `spawnlist` | List placeable archetypes   | — |

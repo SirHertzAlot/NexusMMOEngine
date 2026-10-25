@@ -130,6 +130,7 @@ import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/inde
 import { ResidentSystem } from "../residents/index.js";
 import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
+import { RemoveComponentArgsSchema, applyRemoveComponent } from "../admin/remove-component.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
@@ -2852,7 +2853,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2882,6 +2883,13 @@ export class Gateway {
       }
     } else if (cmd.command === "addcomponent") {
       res = this.runAddComponent(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "removecomponent") {
+      res = this.runRemoveComponent(s, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -3093,6 +3101,27 @@ export class Gateway {
     const r = applyAddComponent(this.world, target.wireId, parsed.data.component);
     if (!r.ok) return { kind: "admin", command: "addcomponent", ok: false, message: r.message };
     return { kind: "admin", command: "addcomponent", ok: true, message: r.message };
+  }
+
+  /**
+   * `removecomponent` (viewport authoring): take a component off an
+   * entity, live — the inverse of `addcomponent` (the authoring
+   * unbind). Args: {entity: "<u64>" | "me", component}. Absent
+   * components, the toggle-owned tags (God / Noclip), and unknown
+   * entities/components read as errors, never throw.
+   */
+  private runRemoveComponent(s: ClientSession, args: unknown): AdminResult {
+    const parsed = RemoveComponentArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "removecomponent", ok: false, message: "usage: removecomponent {entity, component}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "removecomponent", ok: false, message: target.error };
+    }
+    const r = applyRemoveComponent(this.world, target.wireId, parsed.data.component);
+    if (!r.ok) return { kind: "admin", command: "removecomponent", ok: false, message: r.message };
+    return { kind: "admin", command: "removecomponent", ok: true, message: r.message };
   }
 
   /**
